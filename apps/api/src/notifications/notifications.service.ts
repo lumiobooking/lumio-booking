@@ -28,6 +28,8 @@ export interface SendNotificationInput {
   smtp?: SmtpConfig;
   // The salon's own Brevo HTTPS config (preferred over SMTP when present).
   brevo?: BrevoConfig;
+  // Explicit delivery choice (Amelia-style). When set, it wins over auto-detection.
+  mailService?: 'off' | 'smtp' | 'brevo';
 }
 
 /**
@@ -51,8 +53,16 @@ export class NotificationsService {
     // (env) fallback > mock.
     const emailProvider: EmailProvider = ((): EmailProvider => {
       if (input.channel !== NotificationChannel.EMAIL) return this.email;
-      if (input.brevo?.apiKey && input.brevo?.senderEmail) return new BrevoEmailProvider(input.brevo);
-      if (input.smtp?.user && input.smtp?.pass) return new SmtpEmailProvider(input.smtp);
+      const svc = input.mailService;
+      const brevoReady = !!(input.brevo?.apiKey && input.brevo?.senderEmail);
+      const smtpReady = !!(input.smtp?.user && input.smtp?.pass);
+      // Explicit choice wins (no guessing) — this is the Amelia-style behaviour.
+      if (svc === 'brevo' && brevoReady) return new BrevoEmailProvider(input.brevo!);
+      if (svc === 'smtp' && smtpReady) return new SmtpEmailProvider(input.smtp!);
+      if (svc === 'off') return this.email; // logged only, no real send
+      // Auto fallback (svc unset, or chosen provider not configured yet).
+      if (brevoReady) return new BrevoEmailProvider(input.brevo!);
+      if (smtpReady) return new SmtpEmailProvider(input.smtp!);
       const envKey = process.env.BREVO_API_KEY;
       const envSender = process.env.BREVO_SENDER_EMAIL;
       if (envKey && envSender) {

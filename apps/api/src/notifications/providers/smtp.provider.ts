@@ -11,6 +11,7 @@ export interface SmtpConfig {
   // Encryption (Amelia-style): 'ssl' (implicit TLS, port 465),
   // 'tls' (STARTTLS, port 587), 'none' (plain, port 25). Defaults from port.
   secure?: 'ssl' | 'tls' | 'none';
+  replyTo?: string;
 }
 
 const logger = new Logger('SmtpEmail');
@@ -42,6 +43,7 @@ export class SmtpEmailProvider implements EmailProvider {
       const info = await transporter.sendMail({
         from: this.config.from || this.config.user,
         to: message.to,
+        replyTo: this.config.replyTo || undefined,
         subject: message.subject,
         text: message.body,
         html: message.html,

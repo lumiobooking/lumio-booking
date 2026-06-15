@@ -5,6 +5,7 @@ export interface BrevoConfig {
   apiKey: string;
   senderEmail: string;
   senderName: string;
+  replyTo?: string;
 }
 
 const logger = new Logger('BrevoEmail');
@@ -31,6 +32,7 @@ export class BrevoEmailProvider implements EmailProvider {
         body: JSON.stringify({
           sender: { email: this.config.senderEmail, name: this.config.senderName || 'Lumio Booking' },
           to: [{ email: message.to }],
+          replyTo: this.config.replyTo ? { email: this.config.replyTo } : undefined,
           subject: message.subject,
           htmlContent: message.html || `<p>${message.body}</p>`,
           textContent: message.body,

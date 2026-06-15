@@ -7,7 +7,13 @@ export const NOTIFICATION_SETTINGS_KEY = 'notifications';
 
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */
 export interface NotificationSettings {
+  // Which delivery method this salon uses for emails (Amelia-style explicit choice).
+  //  'off'  = don't send real emails (logged only)
+  //  'smtp' = the salon's own SMTP server
+  //  'brevo'= the salon's Brevo HTTPS API
+  mailService: 'off' | 'smtp' | 'brevo';
   senderName: string; // "From" name on emails
+  replyTo: string; // optional Reply-To address
   adminEmail: string; // where the salon receives booking alerts
   adminPhone: string; // where the salon receives booking SMS
   emailCustomerOnBooking: boolean;
@@ -34,7 +40,9 @@ export interface NotificationSettings {
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  mailService: 'off',
   senderName: '',
+  replyTo: '',
   adminEmail: '',
   adminPhone: '',
   emailCustomerOnBooking: true,

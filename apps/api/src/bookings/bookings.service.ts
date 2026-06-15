@@ -290,11 +290,11 @@ export class BookingsService {
     const related = { relatedType: 'appointment', relatedId: appointment.id };
     const smtp =
       n.smtp.user && n.smtp.pass
-        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, from: `${n.senderName || d.salon} <${n.smtp.fromEmail || n.smtp.user}>` }
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || d.salon} <${n.smtp.fromEmail || n.smtp.user}>` }
         : undefined;
     const brevo =
       n.brevo.apiKey && n.brevo.senderEmail
-        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName || n.senderName || d.salon }
+        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || d.salon }
         : undefined;
 
     const jobs: Promise<unknown>[] = [];
@@ -331,7 +331,7 @@ export class BookingsService {
           subject: fillPct(tpl.subject, pct),
           body: htmlToText(bodyFilled),
           html: renderTemplatedEmailHtml({ salon: d.salon, accent: d.accent, contact: d.contact, bodyText: bodyFilled }),
-          smtp, brevo, ...related,
+          smtp, brevo, mailService: n.mailService, ...related,
         }));
       } else {
         const intro = fill(n.emailIntroCustomer, d);
@@ -341,7 +341,7 @@ export class BookingsService {
           subject: fill(n.emailSubjectCustomer, d),
           body: renderBookingEmailText('Booking confirmed', intro, footer, d),
           html: renderBookingEmailHtml({ heading: 'Booking confirmed', intro, footer, d }),
-          smtp, brevo, ...related,
+          smtp, brevo, mailService: n.mailService, ...related,
         }));
       }
     }
@@ -356,7 +356,7 @@ export class BookingsService {
         subject: fill(n.emailSubjectAdmin, d),
         body: renderBookingEmailText('New booking', intro, '', d),
         html: renderBookingEmailHtml({ heading: 'New booking', intro, footer: '', d }),
-        smtp, brevo, ...related,
+        smtp, brevo, mailService: n.mailService, ...related,
       }));
     }
     if (n.smsAdminOnBooking && n.adminPhone) {
@@ -430,11 +430,11 @@ export class BookingsService {
 
     const smtp =
       n.smtp.user && n.smtp.pass
-        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, from: `${n.senderName || salon} <${n.smtp.fromEmail || n.smtp.user}>` }
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || salon} <${n.smtp.fromEmail || n.smtp.user}>` }
         : undefined;
     const brevo =
       n.brevo.apiKey && n.brevo.senderEmail
-        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName || n.senderName || salon }
+        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || salon }
         : undefined;
 
     const bodyFilled = fillPct(tpl.body, pct);
@@ -447,6 +447,7 @@ export class BookingsService {
       html: renderTemplatedEmailHtml({ salon, accent, contact, bodyText: bodyFilled }),
       smtp,
       brevo,
+      mailService: n.mailService,
       relatedType: 'appointment',
       relatedId: appt.id,
     });

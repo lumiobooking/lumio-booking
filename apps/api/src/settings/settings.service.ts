@@ -96,6 +96,8 @@ export class SettingsService {
   /** Notification view for the frontend — hides the SMTP pass + Twilio token. */
   private sanitizeNotifications(n: NotificationSettings) {
     return {
+      mailService: n.mailService,
+      replyTo: n.replyTo,
       senderName: n.senderName,
       adminEmail: n.adminEmail,
       adminPhone: n.adminPhone,
@@ -200,26 +202,43 @@ export class SettingsService {
     const tenantId = this.tenantId(user);
     const n = await this.getNotificationSettings(tenantId);
 
-    // Provider preference (per salon): this salon's own Brevo > its own SMTP >
-    // an optional platform-wide Brevo fallback (env).
+    const reply = n.replyTo || undefined;
+    const brevoReady = !!(n.brevo.apiKey && n.brevo.senderEmail);
+    const smtpReady = !!(n.smtp.user && n.smtp.pass);
     const envBrevoKey = process.env.BREVO_API_KEY;
     const envBrevoSender = process.env.BREVO_SENDER_EMAIL;
-    let provider: SmtpEmailProvider | BrevoEmailProvider;
-    let to: string;
-    if (n.brevo.apiKey && n.brevo.senderEmail) {
-      provider = new BrevoEmailProvider({ apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName || n.senderName || 'Lumio Booking' });
-      to = n.adminEmail || n.brevo.senderEmail;
-    } else if (n.smtp.user && n.smtp.pass) {
-      provider = new SmtpEmailProvider({
-        host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure,
+    const mkBrevo = (apiKey: string, senderEmail: string, senderName: string) =>
+      new BrevoEmailProvider({ apiKey, senderEmail, senderName, replyTo: reply });
+    const mkSmtp = () =>
+      new SmtpEmailProvider({
+        host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: reply,
         from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
       });
+
+    // The salon's explicit Mail service choice wins; otherwise auto-detect.
+    let provider: SmtpEmailProvider | BrevoEmailProvider;
+    let to: string;
+    if (n.mailService === 'off') {
+      return { ok: false, error: 'Email sending is set to Off. Choose SMTP or Brevo as the Mail service, then Save before testing.' };
+    } else if (n.mailService === 'brevo') {
+      if (!brevoReady) return { ok: false, error: 'Brevo is selected but missing the API key or sender email.' };
+      provider = mkBrevo(n.brevo.apiKey, n.brevo.senderEmail, n.brevo.senderName || n.senderName || 'Lumio Booking');
+      to = n.adminEmail || n.brevo.senderEmail;
+    } else if (n.mailService === 'smtp') {
+      if (!smtpReady) return { ok: false, error: 'SMTP is selected but missing the username or password.' };
+      provider = mkSmtp();
+      to = n.adminEmail || n.smtp.user;
+    } else if (brevoReady) {
+      provider = mkBrevo(n.brevo.apiKey, n.brevo.senderEmail, n.brevo.senderName || n.senderName || 'Lumio Booking');
+      to = n.adminEmail || n.brevo.senderEmail;
+    } else if (smtpReady) {
+      provider = mkSmtp();
       to = n.adminEmail || n.smtp.user;
     } else if (envBrevoKey && envBrevoSender) {
-      provider = new BrevoEmailProvider({ apiKey: envBrevoKey, senderEmail: envBrevoSender, senderName: n.senderName || 'Lumio Booking' });
+      provider = mkBrevo(envBrevoKey, envBrevoSender, n.senderName || 'Lumio Booking');
       to = n.adminEmail || envBrevoSender;
     } else {
-      return { ok: false, error: 'No email provider configured. Add your Brevo API key + sender email (recommended), or Gmail SMTP, then Save before testing.' };
+      return { ok: false, error: 'No email provider configured. Pick a Mail service (SMTP or Brevo) and fill its fields, then Save before testing.' };
     }
     const sendPromise = provider.sendEmail({
       to,

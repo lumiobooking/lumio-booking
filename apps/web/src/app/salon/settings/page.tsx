@@ -22,6 +22,7 @@ interface SettingsData {
   branding: { accentColor: string; logoUrl: string };
   gateways: Record<string, GatewayView>;
   notifications: {
+    mailService: 'off' | 'smtp' | 'brevo'; replyTo: string;
     senderName: string; adminEmail: string; adminPhone: string;
     emailCustomerOnBooking: boolean; emailAdminOnBooking: boolean;
     smsCustomerOnBooking: boolean; smsAdminOnBooking: boolean;
@@ -403,6 +404,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
 function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const n = data.notifications;
   const [f, setF] = useState({
+    mailService: n.mailService, replyTo: n.replyTo,
     senderName: n.senderName, adminEmail: n.adminEmail, adminPhone: n.adminPhone,
     emailCustomerOnBooking: n.emailCustomerOnBooking, emailAdminOnBooking: n.emailAdminOnBooking,
     smsCustomerOnBooking: n.smsCustomerOnBooking, smsAdminOnBooking: n.smsAdminOnBooking,
@@ -477,6 +479,20 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         </div>
       )}
 
+      {/* Mail service: explicit choice (Amelia-style). Only the chosen provider's fields show. */}
+      <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Mail service">
+          <select style={ui.input} value={f.mailService} onChange={(e) => setF({ ...f, mailService: e.target.value as 'off' | 'smtp' | 'brevo' })}>
+            <option value="off">Off — don’t send emails</option>
+            <option value="brevo">Brevo (recommended)</option>
+            <option value="smtp">SMTP server</option>
+          </select>
+        </Field>
+        <Field label="Reply-to email (optional)"><input style={ui.input} value={f.replyTo} onChange={(e) => setF({ ...f, replyTo: e.target.value })} placeholder="where replies should go" /></Field>
+      </div>
+
+      {f.mailService === 'brevo' && (
+      <>
       <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
         Email via Brevo (recommended){' '}
         {n.brevo.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Connected</span>}
@@ -491,9 +507,13 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <div style={{ marginTop: 10 }}>
         <Field label="Brevo API key"><input style={ui.input} type="password" value={brevo.apiKey} onChange={(e) => setBrevo({ ...brevo, apiKey: e.target.value })} placeholder={n.brevo.connected ? '•••••• (saved)' : 'xkeysib-…'} /></Field>
       </div>
+      </>
+      )}
 
+      {f.mailService === 'smtp' && (
+      <>
       <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
-        Email sending (SMTP / Gmail){' '}
+        Email sending (SMTP server){' '}
         {n.smtp.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Connected</span>}
       </div>
       <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
@@ -515,8 +535,10 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           </select>
         </Field>
       </div>
+      </>
+      )}
 
-      {/* Diagnostics: verify the SMTP connection actually works. */}
+      {/* Diagnostics: verify the chosen email provider actually works. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
         <button type="button" onClick={sendTest} disabled={test.kind === 'sending'}
           style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', fontSize: 13, cursor: 'pointer' }}>

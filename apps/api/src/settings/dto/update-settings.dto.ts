@@ -48,6 +48,8 @@ export class UpdateBrandingDto {
  * service) so adding a new gateway never requires a DTO change.
  */
 export class UpdateNotificationsDto {
+  @IsOptional() @IsIn(['off', 'smtp', 'brevo']) mailService?: 'off' | 'smtp' | 'brevo';
+  @IsOptional() @IsString() @MaxLength(160) replyTo?: string;
   @IsOptional() @IsString() @MaxLength(120) senderName?: string;
   @IsOptional() @IsString() @MaxLength(160) adminEmail?: string;
   @IsOptional() @IsString() @MaxLength(40) adminPhone?: string;

@@ -15,7 +15,7 @@ services:
     rootDir: .
     # install whole workspace -> generate Prisma client -> build -> run migrations
     buildCommand: >-
-      npm install &&
+      npm install --include=dev &&
       npm run db:generate --workspace=apps/api &&
       npm run build --workspace=apps/api &&
       npm run db:migrate:deploy --workspace=apps/api
@@ -53,7 +53,7 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: npm install && npm run build --workspace=apps/web
+    buildCommand: npm install --include=dev && npm run build --workspace=apps/web
     startCommand: cd apps/web && npx next start -p $PORT
     envVars:
       - key: NODE_ENV

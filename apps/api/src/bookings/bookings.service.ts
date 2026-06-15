@@ -290,7 +290,7 @@ export class BookingsService {
     const related = { relatedType: 'appointment', relatedId: appointment.id };
     const smtp =
       n.smtp.user && n.smtp.pass
-        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, from: `${n.senderName || d.salon} <${n.smtp.fromEmail || n.smtp.user}>` }
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, from: `${n.senderName || d.salon} <${n.smtp.fromEmail || n.smtp.user}>` }
         : undefined;
     const brevo =
       n.brevo.apiKey && n.brevo.senderEmail
@@ -430,7 +430,7 @@ export class BookingsService {
 
     const smtp =
       n.smtp.user && n.smtp.pass
-        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, from: `${n.senderName || salon} <${n.smtp.fromEmail || n.smtp.user}>` }
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, from: `${n.senderName || salon} <${n.smtp.fromEmail || n.smtp.user}>` }
         : undefined;
     const brevo =
       n.brevo.apiKey && n.brevo.senderEmail

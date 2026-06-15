@@ -115,6 +115,7 @@ export class SettingsService {
         port: n.smtp.port,
         user: n.smtp.user,
         fromEmail: n.smtp.fromEmail,
+        secure: n.smtp.secure,
         connected: n.smtp.pass.length > 0,
       },
       brevo: {
@@ -144,6 +145,7 @@ export class SettingsService {
         port: typeof incSmtp.port === 'number' ? incSmtp.port : cur.smtp.port,
         user: typeof incSmtp.user === 'string' ? incSmtp.user : cur.smtp.user,
         fromEmail: typeof incSmtp.fromEmail === 'string' ? incSmtp.fromEmail : cur.smtp.fromEmail,
+        secure: incSmtp.secure === 'ssl' || incSmtp.secure === 'tls' || incSmtp.secure === 'none' ? incSmtp.secure : cur.smtp.secure,
         // Blank password keeps the stored one.
         pass: incSmtp.pass ? String(incSmtp.pass) : cur.smtp.pass,
       },
@@ -209,7 +211,7 @@ export class SettingsService {
       to = n.adminEmail || n.brevo.senderEmail;
     } else if (n.smtp.user && n.smtp.pass) {
       provider = new SmtpEmailProvider({
-        host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass,
+        host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure,
         from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
       });
       to = n.adminEmail || n.smtp.user;

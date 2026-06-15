@@ -28,7 +28,7 @@ interface SettingsData {
     emailSubjectCustomer: string; emailIntroCustomer: string;
     emailSubjectAdmin: string; emailIntroAdmin: string; emailFooter: string;
     smsCustomer: string; smsAdmin: string;
-    smtp: { host: string; port: number; user: string; fromEmail: string; connected: boolean };
+    smtp: { host: string; port: number; user: string; fromEmail: string; secure: 'ssl' | 'tls' | 'none'; connected: boolean };
     brevo: { senderEmail: string; senderName: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
@@ -412,7 +412,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   });
   const [showTpl, setShowTpl] = useState(false);
   const [tw, setTw] = useState({ accountSid: n.twilio.accountSid, fromNumber: n.twilio.fromNumber, authToken: '' });
-  const [smtp, setSmtp] = useState({ host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, fromEmail: n.smtp.fromEmail, pass: '' });
+  const [smtp, setSmtp] = useState({ host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, fromEmail: n.smtp.fromEmail, secure: n.smtp.secure, pass: '' });
   const [brevo, setBrevo] = useState({ senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName, apiKey: '' });
   const { token } = useAuth();
   const [test, setTest] = useState<{ kind: 'idle' | 'sending' | 'ok' | 'err'; msg?: string }>({ kind: 'idle' });
@@ -503,9 +503,17 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
         <Field label="SMTP host"><input style={ui.input} value={smtp.host} onChange={(e) => setSmtp({ ...smtp, host: e.target.value })} placeholder="smtp.gmail.com" /></Field>
         <Field label="Port"><input style={ui.input} type="number" value={smtp.port} onChange={(e) => setSmtp({ ...smtp, port: Number(e.target.value) })} placeholder="465" /></Field>
-        <Field label="Gmail address (user)"><input style={ui.input} value={smtp.user} onChange={(e) => setSmtp({ ...smtp, user: e.target.value })} placeholder="yoursalon@gmail.com" /></Field>
-        <Field label="App password"><input style={ui.input} type="password" value={smtp.pass} onChange={(e) => setSmtp({ ...smtp, pass: e.target.value })} placeholder={n.smtp.connected ? '•••••• (saved)' : '16-char app password'} /></Field>
-        <Field label="From email (optional)"><input style={ui.input} value={smtp.fromEmail} onChange={(e) => setSmtp({ ...smtp, fromEmail: e.target.value })} placeholder="defaults to Gmail address" /></Field>
+        <Field label="Username (email)"><input style={ui.input} value={smtp.user} onChange={(e) => setSmtp({ ...smtp, user: e.target.value })} placeholder="you@yoursalon.com" /></Field>
+        <Field label="Password"><input style={ui.input} type="password" value={smtp.pass} onChange={(e) => setSmtp({ ...smtp, pass: e.target.value })} placeholder={n.smtp.connected ? '•••••• (saved)' : 'mailbox or app password'} /></Field>
+        <Field label="From email (optional)"><input style={ui.input} value={smtp.fromEmail} onChange={(e) => setSmtp({ ...smtp, fromEmail: e.target.value })} placeholder="defaults to the username" /></Field>
+        <Field label="Encryption">
+          <select style={ui.input} value={smtp.secure}
+            onChange={(e) => { const v = e.target.value as 'ssl' | 'tls' | 'none'; setSmtp({ ...smtp, secure: v, port: v === 'ssl' ? 465 : v === 'tls' ? 587 : 25 }); }}>
+            <option value="ssl">SSL (port 465)</option>
+            <option value="tls">TLS / STARTTLS (port 587)</option>
+            <option value="none">None (port 25)</option>
+          </select>
+        </Field>
       </div>
 
       {/* Diagnostics: verify the SMTP connection actually works. */}

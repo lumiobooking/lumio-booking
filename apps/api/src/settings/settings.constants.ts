@@ -24,7 +24,8 @@ export interface NotificationSettings {
   smsCustomer: string;
   smsAdmin: string;
   // Email gateway (SMTP, e.g. Gmail). pass is private and never returned to UI.
-  smtp: { host: string; port: number; user: string; pass: string; fromEmail: string };
+  // `secure` mirrors Amelia: ssl (465), tls/STARTTLS (587), or none (25).
+  smtp: { host: string; port: number; user: string; pass: string; fromEmail: string; secure: 'ssl' | 'tls' | 'none' };
   // Email via Brevo HTTPS API (recommended: reliable from the cloud, free tier).
   // apiKey is private and never returned to the UI.
   brevo: { apiKey: string; senderEmail: string; senderName: string };
@@ -47,7 +48,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   emailFooter: 'We look forward to seeing you. If you need to make changes, just reply to this email.',
   smsCustomer: '{salon}: your {service} on {date} at {time} is booked. See you soon!',
   smsAdmin: 'New booking: {service} for {customer} on {date} at {time}.',
-  smtp: { host: 'smtp.gmail.com', port: 465, user: '', pass: '', fromEmail: '' },
+  smtp: { host: 'smtp.gmail.com', port: 465, user: '', pass: '', fromEmail: '', secure: 'ssl' },
   brevo: { apiKey: '', senderEmail: '', senderName: '' },
   twilio: { accountSid: '', authToken: '', fromNumber: '' },
 };

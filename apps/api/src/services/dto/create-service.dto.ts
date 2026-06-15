@@ -3,6 +3,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   Min,
   MaxLength,
   MinLength,
@@ -27,6 +28,13 @@ export class CreateServiceDto {
   @IsInt()
   @Min(0)
   priceCents!: number;
+
+  // Optional promo discount percent (0–90). Shown to customers as "-X%".
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(90)
+  discountPercent?: number;
 
   @IsOptional()
   @IsString()

@@ -56,6 +56,7 @@ export class ServicesService {
         description: dto.description ?? null,
         durationMinutes: dto.durationMinutes,
         priceCents: dto.priceCents,
+        discountPercent: dto.discountPercent ?? 0,
         currency: dto.currency ?? 'USD',
         isActive: dto.isActive ?? true,
       },
@@ -80,6 +81,7 @@ export class ServicesService {
       description: dto.description,
       durationMinutes: dto.durationMinutes,
       priceCents: dto.priceCents,
+      discountPercent: dto.discountPercent,
       currency: dto.currency,
       isActive: dto.isActive,
     };

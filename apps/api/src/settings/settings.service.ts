@@ -99,6 +99,7 @@ export class SettingsService {
       mailService: n.mailService,
       replyTo: n.replyTo,
       senderName: n.senderName,
+      senderEmail: n.senderEmail,
       adminEmail: n.adminEmail,
       adminPhone: n.adminPhone,
       emailCustomerOnBooking: n.emailCustomerOnBooking,
@@ -203,16 +204,17 @@ export class SettingsService {
     const n = await this.getNotificationSettings(tenantId);
 
     const reply = n.replyTo || undefined;
-    const brevoReady = !!(n.brevo.apiKey && n.brevo.senderEmail);
+    const senderName = n.senderName || 'Lumio Booking';
+    const brevoReady = !!(n.brevo.apiKey && n.senderEmail);
     const smtpReady = !!(n.smtp.user && n.smtp.pass);
     const envBrevoKey = process.env.BREVO_API_KEY;
     const envBrevoSender = process.env.BREVO_SENDER_EMAIL;
-    const mkBrevo = (apiKey: string, senderEmail: string, senderName: string) =>
+    const mkBrevo = (apiKey: string, senderEmail: string) =>
       new BrevoEmailProvider({ apiKey, senderEmail, senderName, replyTo: reply });
     const mkSmtp = () =>
       new SmtpEmailProvider({
         host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: reply,
-        from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
+        from: `${senderName} <${n.senderEmail || n.smtp.user}>`,
       });
 
     // The salon's explicit Mail service choice wins; otherwise auto-detect.
@@ -221,21 +223,22 @@ export class SettingsService {
     if (n.mailService === 'off') {
       return { ok: false, error: 'Email sending is set to Off. Choose SMTP or Brevo as the Mail service, then Save before testing.' };
     } else if (n.mailService === 'brevo') {
-      if (!brevoReady) return { ok: false, error: 'Brevo is selected but missing the API key or sender email.' };
-      provider = mkBrevo(n.brevo.apiKey, n.brevo.senderEmail, n.brevo.senderName || n.senderName || 'Lumio Booking');
-      to = n.adminEmail || n.brevo.senderEmail;
+      if (!n.brevo.apiKey) return { ok: false, error: 'Brevo is selected but the API key is missing.' };
+      if (!n.senderEmail) return { ok: false, error: 'Please set a Sender email (it must be verified in Brevo).' };
+      provider = mkBrevo(n.brevo.apiKey, n.senderEmail);
+      to = n.adminEmail || n.senderEmail;
     } else if (n.mailService === 'smtp') {
       if (!smtpReady) return { ok: false, error: 'SMTP is selected but missing the username or password.' };
       provider = mkSmtp();
-      to = n.adminEmail || n.smtp.user;
+      to = n.adminEmail || n.senderEmail || n.smtp.user;
     } else if (brevoReady) {
-      provider = mkBrevo(n.brevo.apiKey, n.brevo.senderEmail, n.brevo.senderName || n.senderName || 'Lumio Booking');
-      to = n.adminEmail || n.brevo.senderEmail;
+      provider = mkBrevo(n.brevo.apiKey, n.senderEmail);
+      to = n.adminEmail || n.senderEmail;
     } else if (smtpReady) {
       provider = mkSmtp();
-      to = n.adminEmail || n.smtp.user;
+      to = n.adminEmail || n.senderEmail || n.smtp.user;
     } else if (envBrevoKey && envBrevoSender) {
-      provider = mkBrevo(envBrevoKey, envBrevoSender, n.senderName || 'Lumio Booking');
+      provider = mkBrevo(envBrevoKey, envBrevoSender);
       to = n.adminEmail || envBrevoSender;
     } else {
       return { ok: false, error: 'No email provider configured. Pick a Mail service (SMTP or Brevo) and fill its fields, then Save before testing.' };

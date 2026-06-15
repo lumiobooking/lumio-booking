@@ -12,6 +12,7 @@ interface Service {
   description: string | null;
   durationMinutes: number;
   priceCents: number;
+  discountPercent?: number;
   currency: string;
   isActive: boolean;
 }
@@ -139,7 +140,17 @@ function FragmentRow({ service: s, token, onToggle, onDelete }: {
           {s.description && <div style={{ color: '#94a3b8', fontSize: 12 }}>{s.description}</div>}
         </td>
         <td style={ui.td}>{s.durationMinutes} min</td>
-        <td style={ui.td}>{formatPrice(s.priceCents, s.currency)}</td>
+        <td style={ui.td}>
+          {s.discountPercent && s.discountPercent > 0 ? (
+            <span>
+              <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{formatPrice(s.priceCents, s.currency)}</span>
+              <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(Math.round((s.priceCents * (100 - s.discountPercent)) / 100), s.currency)}</span>
+              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
+            </span>
+          ) : (
+            formatPrice(s.priceCents, s.currency)
+          )}
+        </td>
         <td style={ui.td}>
           <button onClick={onToggle} style={{ cursor: 'pointer', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : '#64748b'}`, color: s.isActive ? '#22c55e' : '#94a3b8', borderRadius: 999, padding: '2px 10px', fontSize: 12 }}>
             {s.isActive ? 'Active' : 'Inactive'}
@@ -242,7 +253,7 @@ function AddonsPanel({ serviceId, token }: { serviceId: string; token: string })
 }
 
 function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25' });
+  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0' });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -259,6 +270,7 @@ function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () 
           description: form.description || undefined,
           durationMinutes: parseInt(form.durationMinutes, 10),
           priceCents: Math.round(parseFloat(form.price) * 100),
+          discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
         },
       });
       onCreated();
@@ -271,7 +283,7 @@ function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () 
 
   return (
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
         <label>
           <span style={ui.label}>Service name</span>
           <input
@@ -302,6 +314,17 @@ function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () 
             value={form.price}
             onChange={(e) => setForm({ ...form, price: e.target.value })}
             required
+          />
+        </label>
+        <label>
+          <span style={ui.label}>Discount %</span>
+          <input
+            style={ui.input}
+            type="number"
+            min={0}
+            max={90}
+            value={form.discount}
+            onChange={(e) => setForm({ ...form, discount: e.target.value })}
           />
         </label>
       </div>

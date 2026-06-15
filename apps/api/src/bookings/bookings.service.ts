@@ -165,10 +165,12 @@ export class BookingsService {
       throw new BadRequestException('One or more add-ons are invalid for this service');
     }
 
-    // Totals = service + add-ons.
+    // Totals = discounted service price + add-ons (add-ons are not discounted).
     const addonPrice = addons.reduce((s, a) => s + a.priceCents, 0);
     const addonDuration = addons.reduce((s, a) => s + a.durationMinutes, 0);
-    const totalPrice = service.priceCents + addonPrice;
+    const discountPct = Math.min(90, Math.max(0, service.discountPercent ?? 0));
+    const discountedServiceCents = Math.round((service.priceCents * (100 - discountPct)) / 100);
+    const totalPrice = discountedServiceCents + addonPrice;
     const totalDuration = service.durationMinutes + addonDuration;
 
     const start = parseStartTime(dto.startTime);
@@ -290,11 +292,11 @@ export class BookingsService {
     const related = { relatedType: 'appointment', relatedId: appointment.id };
     const smtp =
       n.smtp.user && n.smtp.pass
-        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || d.salon} <${n.smtp.fromEmail || n.smtp.user}>` }
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || d.salon} <${n.senderEmail || n.smtp.user}>` }
         : undefined;
     const brevo =
-      n.brevo.apiKey && n.brevo.senderEmail
-        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || d.salon }
+      n.brevo.apiKey && n.senderEmail
+        ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || d.salon }
         : undefined;
 
     const jobs: Promise<unknown>[] = [];
@@ -430,11 +432,11 @@ export class BookingsService {
 
     const smtp =
       n.smtp.user && n.smtp.pass
-        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || salon} <${n.smtp.fromEmail || n.smtp.user}>` }
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || salon} <${n.senderEmail || n.smtp.user}>` }
         : undefined;
     const brevo =
-      n.brevo.apiKey && n.brevo.senderEmail
-        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || salon }
+      n.brevo.apiKey && n.senderEmail
+        ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || salon }
         : undefined;
 
     const bodyFilled = fillPct(tpl.body, pct);
@@ -463,6 +465,7 @@ export class BookingsService {
         description: true,
         durationMinutes: true,
         priceCents: true,
+        discountPercent: true,
         currency: true,
         addons: {
           where: { isActive: true },

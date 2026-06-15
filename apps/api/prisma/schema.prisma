@@ -306,6 +306,7 @@ model Service {
   description     String?
   durationMinutes Int
   priceCents      Int     @default(0)
+  discountPercent Int     @default(0) // 0–90: optional promo discount shown to customers
   currency        String  @default("USD")
   isActive        Boolean @default(true)
 

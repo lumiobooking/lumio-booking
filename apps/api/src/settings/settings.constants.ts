@@ -13,6 +13,7 @@ export interface NotificationSettings {
   //  'brevo'= the salon's Brevo HTTPS API
   mailService: 'off' | 'smtp' | 'brevo';
   senderName: string; // "From" name on emails
+  senderEmail: string; // shared "From" address (used by every provider)
   replyTo: string; // optional Reply-To address
   adminEmail: string; // where the salon receives booking alerts
   adminPhone: string; // where the salon receives booking SMS
@@ -42,6 +43,7 @@ export interface NotificationSettings {
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   mailService: 'off',
   senderName: '',
+  senderEmail: '',
   replyTo: '',
   adminEmail: '',
   adminPhone: '',

@@ -40,7 +40,10 @@ function fmtMoney(cents: number, r: BookingRules): string {
 
 interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
-interface Service { id: string; name: string; durationMinutes: number; priceCents: number; addons: Addon[] }
+interface Service { id: string; name: string; durationMinutes: number; priceCents: number; discountPercent?: number; addons: Addon[] }
+/** Clamped service discount % and the net (after-discount) price in cents. */
+function svcDiscount(s: Service | null): number { return s ? Math.min(90, Math.max(0, s.discountPercent ?? 0)) : 0; }
+function svcNetCents(s: Service | null): number { return s ? Math.round((s.priceCents * (100 - svcDiscount(s))) / 100) : 0; }
 interface Staff { id: string; firstName: string; lastName: string | null; avatarUrl: string | null }
 interface Availability { eligibleStaffIds: string[]; staffBusy: Record<string, { start: string; end: string }[]> }
 type Slot = { start: Date; end: Date };
@@ -77,7 +80,10 @@ export default function PublicBookingPage() {
   const employee = staff.find((s) => s.id === staffId) ?? null;
   const serviceAddons = service?.addons ?? [];
   const selectedAddons = serviceAddons.filter((a) => addonIds.includes(a.id));
-  const totalCents = (service?.priceCents ?? 0) + selectedAddons.reduce((s, a) => s + a.priceCents, 0);
+  const serviceNetCents = svcNetCents(service);
+  const serviceDiscount = svcDiscount(service);
+  const totalCents = serviceNetCents + selectedAddons.reduce((s, a) => s + a.priceCents, 0);
+  const savingsCents = (service?.priceCents ?? 0) - serviceNetCents;
   const totalDuration = (service?.durationMinutes ?? 0) + selectedAddons.reduce((s, a) => s + a.durationMinutes, 0);
   const fmt = (c: number) => fmtMoney(c, rules);
 
@@ -201,7 +207,10 @@ export default function PublicBookingPage() {
               <Field label="Service" required>
                 <select style={field} value={serviceId} onChange={(e) => { setServiceId(e.target.value); setAddonIds([]); setStaffId(''); }}>
                   <option value="">Select a service…</option>
-                  {services.map((s) => <option key={s.id} value={s.id}>{s.name} — {s.durationMinutes} min — {fmt(s.priceCents)}</option>)}
+                  {services.map((s) => {
+                    const d = svcDiscount(s); const net = svcNetCents(s);
+                    return <option key={s.id} value={s.id}>{s.name} — {s.durationMinutes} min — {fmt(net)}{d > 0 ? ` (was ${fmt(s.priceCents)}, -${d}%)` : ''}</option>;
+                  })}
                 </select>
               </Field>
               {serviceAddons.length > 0 && (
@@ -223,10 +232,21 @@ export default function PublicBookingPage() {
                   </div>
                 </div>
               )}
+              {service && serviceDiscount > 0 && (
+                <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'linear-gradient(90deg,#fee2e2,#fef3c7)', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ background: '#ef4444', color: '#fff', borderRadius: 8, padding: '3px 9px', fontSize: 14, fontWeight: 800 }}>-{serviceDiscount}%</span>
+                  <span style={{ color: '#9a3412', fontSize: 13, fontWeight: 600 }}>
+                    Special offer! You save {fmt(savingsCents)} on {service.name} 🎉
+                  </span>
+                </div>
+              )}
               {service && (
-                <div style={{ marginTop: 14, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                <div style={{ marginTop: 12, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14 }}>
                   <span style={{ color: '#64748b' }}>Total ({totalDuration} min)</span>
-                  <strong style={{ color: '#1e293b' }}>{fmt(totalCents)}</strong>
+                  <span>
+                    {serviceDiscount > 0 && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 8 }}>{fmt(service.priceCents + selectedAddons.reduce((s, a) => s + a.priceCents, 0))}</span>}
+                    <strong style={{ color: serviceDiscount > 0 ? '#dc2626' : '#1e293b', fontSize: 16 }}>{fmt(totalCents)}</strong>
+                  </span>
                 </div>
               )}
             </StepFrame>
@@ -470,7 +490,8 @@ function StepPayment({ service, employee, slot, addons, totalCents, fmt, onlineE
       <h2 style={stepTitle}>Payment</h2>
       <div style={scrollArea}>
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 18 }}>
-          <Row k="Service" v={`${service.name} (${fmt(service.priceCents)})`} />
+          <Row k="Service" v={`${service.name} (${fmt(svcNetCents(service))})`} />
+          {svcDiscount(service) > 0 && <Row k={`Discount −${svcDiscount(service)}%`} v={`− ${fmt(service.priceCents - svcNetCents(service))}`} />}
           {addons.map((a) => <Row key={a.id} k={`+ ${a.name}`} v={fmt(a.priceCents)} />)}
           <Row k="Technician" v={employee ? `${employee.firstName} ${employee.lastName ?? ''}` : 'Any available'} />
           <Row k="When" v={`${slot.start.toLocaleDateString()} · ${fmtTime(slot.start)} – ${fmtTime(slot.end)}`} />

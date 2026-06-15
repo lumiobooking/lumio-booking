@@ -199,11 +199,15 @@ export function rankCandidates(candidates: CandidateInput[], rules: EngineRule[]
     return { staffId: c.staffId, score, excluded, reasons };
   });
 
-  // Non-excluded first; then highest score; deterministic tie-break by staffId.
+  // Non-excluded first; then highest score; then a RANDOM tie-break so that
+  // equally-loaded free technicians are picked fairly (no one is consistently
+  // favoured when scores are tied). A stable random key per staff keeps the sort
+  // well-defined within a single ranking.
+  const rand = new Map(ranked.map((r) => [r.staffId, Math.random()]));
   return ranked.sort((a, b) => {
     if (a.excluded !== b.excluded) return a.excluded ? 1 : -1;
     if (b.score !== a.score) return b.score - a.score;
-    return a.staffId.localeCompare(b.staffId);
+    return (rand.get(a.staffId) ?? 0) - (rand.get(b.staffId) ?? 0);
   });
 }
 

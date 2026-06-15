@@ -51,6 +51,7 @@ export class UpdateNotificationsDto {
   @IsOptional() @IsIn(['off', 'smtp', 'brevo']) mailService?: 'off' | 'smtp' | 'brevo';
   @IsOptional() @IsString() @MaxLength(160) replyTo?: string;
   @IsOptional() @IsString() @MaxLength(120) senderName?: string;
+  @IsOptional() @IsString() @MaxLength(160) senderEmail?: string;
   @IsOptional() @IsString() @MaxLength(160) adminEmail?: string;
   @IsOptional() @IsString() @MaxLength(40) adminPhone?: string;
   @IsOptional() @IsBoolean() emailCustomerOnBooking?: boolean;

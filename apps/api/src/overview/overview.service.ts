@@ -183,10 +183,16 @@ export class OverviewService {
       guard += 1;
     }
 
-    // --- Top staff (bookings handled + revenue earned). ---
-    const staffAgg = new Map<string, { name: string; bookings: number; revenueCents: number }>();
+    // --- Staff revenue: bookings handled + revenue earned, for EVERY active
+    // technician (seeded at zero so no one is hidden — full, fair transparency). ---
     const staffName = (s: { firstName: string; lastName: string | null } | null) =>
       s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : 'Unassigned';
+    const activeStaff = await this.prisma.staffMember.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const staffAgg = new Map<string, { name: string; bookings: number; revenueCents: number }>();
+    for (const s of activeStaff) staffAgg.set(s.id, { name: staffName(s), bookings: 0, revenueCents: 0 });
     for (const a of appts) {
       const id = a.assignedStaffId ?? 'unassigned';
       const entry = staffAgg.get(id) ?? { name: staffName(a.assignedStaff), bookings: 0, revenueCents: 0 };
@@ -205,7 +211,7 @@ export class OverviewService {
     }
     const topStaff = [...staffAgg.values()]
       .sort((a, b) => b.revenueCents - a.revenueCents || b.bookings - a.bookings)
-      .slice(0, 5);
+      .slice(0, 50);
 
     // --- Top services (bookings + revenue). ---
     const serviceAgg = new Map<string, { name: string; bookings: number; revenueCents: number }>();

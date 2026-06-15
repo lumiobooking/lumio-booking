@@ -23,7 +23,7 @@ interface SettingsData {
   gateways: Record<string, GatewayView>;
   notifications: {
     mailService: 'off' | 'smtp' | 'brevo'; replyTo: string;
-    senderName: string; adminEmail: string; adminPhone: string;
+    senderName: string; senderEmail: string; adminEmail: string; adminPhone: string;
     emailCustomerOnBooking: boolean; emailAdminOnBooking: boolean;
     smsCustomerOnBooking: boolean; smsAdminOnBooking: boolean;
     emailSubjectCustomer: string; emailIntroCustomer: string;
@@ -405,7 +405,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   const n = data.notifications;
   const [f, setF] = useState({
     mailService: n.mailService, replyTo: n.replyTo,
-    senderName: n.senderName, adminEmail: n.adminEmail, adminPhone: n.adminPhone,
+    senderName: n.senderName, senderEmail: n.senderEmail, adminEmail: n.adminEmail, adminPhone: n.adminPhone,
     emailCustomerOnBooking: n.emailCustomerOnBooking, emailAdminOnBooking: n.emailAdminOnBooking,
     smsCustomerOnBooking: n.smsCustomerOnBooking, smsAdminOnBooking: n.smsAdminOnBooking,
     emailSubjectCustomer: n.emailSubjectCustomer, emailIntroCustomer: n.emailIntroCustomer,
@@ -432,11 +432,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
 
   return (
     <Card title="Notifications" desc="Who gets notified when a booking is made, by email and SMS.">
-      <Field label="Sender name (shown on emails)">
-        <input style={ui.input} value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} placeholder="Your salon name" />
-      </Field>
-
-      <div style={{ marginTop: 14, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>When a booking is made</div>
+      <div style={{ marginTop: 0, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>When a booking is made</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginTop: 6 }}>
         <Toggle on={f.emailCustomerOnBooking} onChange={(v) => setF({ ...f, emailCustomerOnBooking: v })} label="Email the customer" />
         <Toggle on={f.emailAdminOnBooking} onChange={(v) => setF({ ...f, emailAdminOnBooking: v })} label="Email the salon (admin)" />
@@ -479,35 +475,38 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         </div>
       )}
 
-      {/* Mail service: explicit choice (Amelia-style). Only the chosen provider's fields show. */}
-      <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <Field label="Mail service">
-          <select style={ui.input} value={f.mailService} onChange={(e) => setF({ ...f, mailService: e.target.value as 'off' | 'smtp' | 'brevo' })}>
-            <option value="off">Off — don’t send emails</option>
-            <option value="brevo">Brevo (recommended)</option>
-            <option value="smtp">SMTP server</option>
-          </select>
-        </Field>
-        <Field label="Reply-to email (optional)"><input style={ui.input} value={f.replyTo} onChange={(e) => setF({ ...f, replyTo: e.target.value })} placeholder="where replies should go" /></Field>
+      {/* Email sending — Amelia-style: pick a Mail service, then shared sender fields,
+          then only the chosen provider's fields show below. */}
+      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Email sending</div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+        Choose how this salon sends emails, fill the fields, then use “Send test email” to confirm it works.
+      </p>
+      <Field label="Mail service">
+        <select style={ui.input} value={f.mailService} onChange={(e) => setF({ ...f, mailService: e.target.value as 'off' | 'smtp' | 'brevo' })}>
+          <option value="off">Off — don’t send emails</option>
+          <option value="brevo">Brevo (HTTPS API — recommended)</option>
+          <option value="smtp">SMTP server (Gmail, Outlook, your own…)</option>
+        </select>
+      </Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+        <Field label="Sender name *"><input style={ui.input} value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} placeholder="Your salon name" /></Field>
+        <Field label="Sender email *"><input style={ui.input} value={f.senderEmail} onChange={(e) => setF({ ...f, senderEmail: e.target.value })} placeholder="bookings@yoursalon.com" /></Field>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <Field label="Reply-to email (optional)"><input style={ui.input} value={f.replyTo} onChange={(e) => setF({ ...f, replyTo: e.target.value })} placeholder="where customer replies go (defaults to sender)" /></Field>
       </div>
 
       {f.mailService === 'brevo' && (
-      <>
-      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
-        Email via Brevo (recommended){' '}
-        {n.brevo.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Connected</span>}
-      </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
-        Most reliable &amp; free (300 emails/day). Sign up at <strong>brevo.com</strong>, verify your sender email, create an API key, and paste it here. Powers customer, admin &amp; staff emails.
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <Field label="Sender email (verified in Brevo)"><input style={ui.input} value={brevo.senderEmail} onChange={(e) => setBrevo({ ...brevo, senderEmail: e.target.value })} placeholder="bookings@yoursalon.com" /></Field>
-        <Field label="Sender name"><input style={ui.input} value={brevo.senderName} onChange={(e) => setBrevo({ ...brevo, senderName: e.target.value })} placeholder="Your Salon" /></Field>
-      </div>
-      <div style={{ marginTop: 10 }}>
+      <div style={{ marginTop: 12, padding: 14, background: '#0f172a', borderRadius: 10, border: '1px solid #334155' }}>
+        <div style={{ fontWeight: 600, fontSize: 13, color: '#cbd5e1' }}>
+          Brevo setup{' '}
+          {n.brevo.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Key saved</span>}
+        </div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '4px 0 10px' }}>
+          Free 300 emails/day, delivers reliably from the cloud. Sign up at <strong>brevo.com</strong>, verify the <strong>Sender email</strong> above, then create an API key and paste it here.
+        </p>
         <Field label="Brevo API key"><input style={ui.input} type="password" value={brevo.apiKey} onChange={(e) => setBrevo({ ...brevo, apiKey: e.target.value })} placeholder={n.brevo.connected ? '•••••• (saved)' : 'xkeysib-…'} /></Field>
       </div>
-      </>
       )}
 
       {f.mailService === 'smtp' && (
@@ -525,7 +524,6 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <Field label="Port"><input style={ui.input} type="number" value={smtp.port} onChange={(e) => setSmtp({ ...smtp, port: Number(e.target.value) })} placeholder="465" /></Field>
         <Field label="Username (email)"><input style={ui.input} value={smtp.user} onChange={(e) => setSmtp({ ...smtp, user: e.target.value })} placeholder="you@yoursalon.com" /></Field>
         <Field label="Password"><input style={ui.input} type="password" value={smtp.pass} onChange={(e) => setSmtp({ ...smtp, pass: e.target.value })} placeholder={n.smtp.connected ? '•••••• (saved)' : 'mailbox or app password'} /></Field>
-        <Field label="From email (optional)"><input style={ui.input} value={smtp.fromEmail} onChange={(e) => setSmtp({ ...smtp, fromEmail: e.target.value })} placeholder="defaults to the username" /></Field>
         <Field label="Encryption">
           <select style={ui.input} value={smtp.secure}
             onChange={(e) => { const v = e.target.value as 'ssl' | 'tls' | 'none'; setSmtp({ ...smtp, secure: v, port: v === 'ssl' ? 465 : v === 'tls' ? 587 : 25 }); }}>

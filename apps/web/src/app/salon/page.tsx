@@ -153,8 +153,8 @@ function Inner() {
 
           {/* Top staff + Upcoming */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
-            <Card title="Top staff">
-              <RankedTable rows={data.topStaff} firstCol="Staff" empty="No activity in this range." />
+            <Card title="Staff revenue">
+              <RankedTable rows={data.topStaff} firstCol="Staff" empty="No staff yet." />
             </Card>
             <Card title="Upcoming bookings">
               {data.upcoming.length === 0 ? (

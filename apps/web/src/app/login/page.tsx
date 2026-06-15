@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/auth';
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState('superadmin@lumio.test');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -95,10 +95,6 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} style={buttonStyle}>
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
-
-        <p style={{ color: '#64748b', fontSize: 12, marginTop: 16, lineHeight: 1.6 }}>
-          Demo (local): superadmin@lumio.test / Password123!
-        </p>
       </form>
     </main>
   );

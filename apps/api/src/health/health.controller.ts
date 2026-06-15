@@ -1,6 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Public } from '../auth/decorators/public.decorator';
 
+// Health check must be reachable WITHOUT authentication so platform probes
+// (e.g. Render) get a 2xx instead of a 401.
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}

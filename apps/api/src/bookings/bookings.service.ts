@@ -226,6 +226,10 @@ export class BookingsService {
 
     // Fire-and-forget confirmation; never block/fail the booking on it.
     this.sendBookingConfirmation(tenantId, appointment).catch(() => undefined);
+    // If a technician was assigned at creation, email them too.
+    if (appointment.assignedStaffId) {
+      this.sendStaffAssignmentEmail(tenantId, appointment.id).catch(() => undefined);
+    }
 
     return appointment;
   }
@@ -355,6 +359,88 @@ export class BookingsService {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: n.adminPhone, body: fill(n.smsAdmin, d), ...related }));
     }
     await Promise.allSettled(jobs);
+  }
+
+  /**
+   * Emails the assigned technician about a booking (the `staff_new_booking`
+   * template). Fire-and-forget; safe no-op when the staff has no email or the
+   * template is disabled. Uses the salon's SMTP connection.
+   */
+  private async sendStaffAssignmentEmail(tenantId: string, appointmentId: string) {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: {
+        id: true, startTime: true, endTime: true, priceCents: true, currency: true, addons: true,
+        customer: { select: { firstName: true, lastName: true } },
+        service: { select: { name: true } },
+        assignedStaff: {
+          select: { firstName: true, lastName: true, email: true, user: { select: { email: true } } },
+        },
+      },
+    });
+    if (!appt || !appt.assignedStaff) return;
+    const staffEmail = appt.assignedStaff.email || appt.assignedStaff.user?.email;
+    if (!staffEmail) return;
+
+    const templates = await this.settings.getNotificationTemplates(tenantId);
+    const tpl = templates['staff_new_booking'];
+    if (!tpl || !tpl.enabled || !tpl.email) return;
+
+    const n = await this.settings.getNotificationSettings(tenantId);
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, contactEmail: true, contactPhone: true, branding: true },
+    });
+
+    const start = appt.startTime;
+    const end = appt.endTime;
+    const durationMin = Math.round((end.getTime() - start.getTime()) / 60_000);
+    const addonNames = Array.isArray(appt.addons)
+      ? (appt.addons as { name?: string }[]).map((a) => a.name).filter(Boolean).join(', ')
+      : '';
+    let total: string;
+    try {
+      total = new Intl.NumberFormat('en-US', { style: 'currency', currency: appt.currency }).format(appt.priceCents / 100);
+    } catch {
+      total = `${(appt.priceCents / 100).toFixed(2)} ${appt.currency}`;
+    }
+    const salon = tenant?.name ?? 'Our salon';
+    const accent = this.settings.brandingFrom(tenant?.branding).accentColor;
+    const contact = tenant?.contactEmail ?? tenant?.contactPhone ?? '';
+    const customerName = `${appt.customer?.firstName ?? ''} ${appt.customer?.lastName ?? ''}`.trim() || 'A customer';
+    const staffName = `${appt.assignedStaff.firstName} ${appt.assignedStaff.lastName ?? ''}`.trim();
+
+    const pct: Record<string, string> = {
+      salon_name: salon,
+      customer_name: customerName,
+      service_name: appt.service?.name ?? 'a service',
+      staff_name: staffName,
+      appointment_date: start.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }),
+      appointment_time: `${fmtTimeOf(start)} – ${fmtTimeOf(end)}`,
+      duration: `${durationMin} min`,
+      total_price: total,
+      add_ons: addonNames,
+      salon_contact: contact,
+      booking_id: appt.id,
+    };
+
+    const smtp =
+      n.smtp.user && n.smtp.pass
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, from: `${n.senderName || salon} <${n.smtp.fromEmail || n.smtp.user}>` }
+        : undefined;
+
+    const bodyFilled = fillPct(tpl.body, pct);
+    await this.notifications.send({
+      tenantId,
+      channel: NotificationChannel.EMAIL,
+      recipient: staffEmail,
+      subject: fillPct(tpl.subject, pct),
+      body: htmlToText(bodyFilled),
+      html: renderTemplatedEmailHtml({ salon, accent, contact, bodyText: bodyFilled }),
+      smtp,
+      relatedType: 'appointment',
+      relatedId: appt.id,
+    });
   }
 
   /** Active services for a tenant, with their active add-ons (public flow). */
@@ -504,6 +590,9 @@ export class BookingsService {
       resourceId: id,
       metadata: { staffId },
     });
+
+    // Notify the assigned technician (fire-and-forget).
+    this.sendStaffAssignmentEmail(tenantId, id).catch(() => undefined);
 
     return updated;
   }
@@ -754,6 +843,8 @@ export class BookingsService {
       resourceId: booking.id,
       metadata: { staffId, via: 'engine' },
     });
+    // Notify the newly-assigned technician (fire-and-forget).
+    this.sendStaffAssignmentEmail(tenantId, booking.id).catch(() => undefined);
     return updated;
   }
 

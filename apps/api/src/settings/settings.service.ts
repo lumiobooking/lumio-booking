@@ -27,6 +27,7 @@ import {
   PaymentGateways,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
+import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
 import {
   UpdateBookingRulesDto,
   UpdateBrandingDto,
@@ -183,23 +184,38 @@ export class SettingsService {
   async sendTestEmail(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const n = await this.getNotificationSettings(tenantId);
-    if (!n.smtp.user || !n.smtp.pass) {
-      return { ok: false, error: 'SMTP is not configured. Enter your Gmail address and App Password, then Save, before testing.' };
+
+    // Prefer Brevo (HTTPS API, works from the cloud) when configured platform-wide.
+    const brevoKey = process.env.BREVO_API_KEY;
+    const brevoSender = process.env.BREVO_SENDER_EMAIL;
+    const useBrevo = !!(brevoKey && brevoSender);
+    if (!useBrevo && (!n.smtp.user || !n.smtp.pass)) {
+      return { ok: false, error: 'No email provider configured. Set BREVO_API_KEY + BREVO_SENDER_EMAIL on the server (recommended), or configure Gmail SMTP first.' };
     }
-    const to = n.adminEmail || n.smtp.user;
-    const provider = new SmtpEmailProvider({
-      host: n.smtp.host,
-      port: n.smtp.port,
-      user: n.smtp.user,
-      pass: n.smtp.pass,
-      from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
-    });
-    const result = await provider.sendEmail({
+    const to = n.adminEmail || n.smtp.user || brevoSender || '';
+    const provider = useBrevo
+      ? new BrevoEmailProvider({ apiKey: brevoKey as string, senderEmail: brevoSender as string, senderName: n.senderName || 'Lumio Booking' })
+      : new SmtpEmailProvider({
+          host: n.smtp.host,
+          port: n.smtp.port,
+          user: n.smtp.user,
+          pass: n.smtp.pass,
+          from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
+        });
+    const sendPromise = provider.sendEmail({
       to,
       subject: 'Lumio Booking — test email',
       body: 'This is a test email from your Lumio Booking notification settings. If you received it, email sending works.',
       html: '<p>This is a <strong>test email</strong> from your Lumio Booking notification settings.</p><p>If you received it, your email sending is working correctly. ✅</p>',
     });
+    // Hard ceiling so the request can never hang the UI, even if the network stalls.
+    const timeout = new Promise<{ success: boolean; error?: string }>((resolve) =>
+      setTimeout(
+        () => resolve({ success: false, error: 'Timed out after 22s: the mail server did not respond. The host may be blocking outbound SMTP, or Gmail is refusing the connection from the cloud server.' }),
+        22000,
+      ),
+    );
+    const result = await Promise.race([sendPromise, timeout]);
     return result.success ? { ok: true, to } : { ok: false, error: result.error || 'Send failed' };
   }
 

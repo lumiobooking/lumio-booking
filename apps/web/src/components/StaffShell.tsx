@@ -60,6 +60,10 @@ export function StaffShell({ children }: { children: ReactNode }) {
         </button>
       </header>
       {children}
+      <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
+        style={{ display: 'block', textAlign: 'center', marginTop: 28, fontSize: 11, color: '#64748b', textDecoration: 'none' }}>
+        Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>
+      </a>
     </div>
   );
 }

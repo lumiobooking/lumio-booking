@@ -38,6 +38,14 @@ services:
         value: "12"
       - key: EMAIL_PROVIDER
         value: mock
+      # Brevo (HTTPS email API) — recommended for reliable sending from the cloud.
+      # Sign up free at brevo.com, verify a sender, paste the API key here.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: Lumio Booking
       - key: SMS_PROVIDER
         value: mock
       - key: PAYMENT_PROVIDER

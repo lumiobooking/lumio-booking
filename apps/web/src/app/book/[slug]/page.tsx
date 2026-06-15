@@ -182,7 +182,9 @@ export default function PublicBookingPage() {
                 </div>
               );
             })}
-            <div style={{ marginTop: 'auto', fontSize: 12, opacity: 0.8, paddingTop: 24 }}>Powered by Lumio Booking</div>
+            <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ marginTop: 'auto', fontSize: 12, opacity: 0.85, paddingTop: 24, color: 'white', textDecoration: 'none' }}>
+              Powered by <span style={{ fontWeight: 700 }}>Lumio Booking</span>
+            </a>
           </aside>
         )}
 
@@ -285,6 +287,12 @@ export default function PublicBookingPage() {
             </Center>
           )}
         </section>
+        {isMobile && (
+          <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
+            style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', textDecoration: 'none', borderTop: '1px solid #eef1f6', background: 'white' }}>
+            Powered by <span style={{ color: ACCENT, fontWeight: 700 }}>Lumio Booking</span>
+          </a>
+        )}
       </div>
     </Shell>
   );

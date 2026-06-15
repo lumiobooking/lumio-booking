@@ -5,6 +5,14 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { EmailProvider, SmsProvider } from './providers/notification-provider.interface';
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
+import { BrevoEmailProvider } from './providers/brevo.provider';
+
+/** Extracts the display name from a "Name <email>" string. */
+function parseSenderName(from?: string): string {
+  if (!from) return '';
+  const m = from.match(/^\s*(.+?)\s*</);
+  return m ? m[1] : '';
+}
 
 export interface SendNotificationInput {
   tenantId: string;
@@ -36,11 +44,19 @@ export class NotificationsService {
     let status: NotificationStatus = NotificationStatus.PENDING;
     let error: string | null = null;
 
-    // For email, prefer the salon's SMTP credentials (real send) when present.
-    const emailProvider: EmailProvider =
-      input.channel === NotificationChannel.EMAIL && input.smtp?.user && input.smtp?.pass
-        ? new SmtpEmailProvider(input.smtp)
-        : this.email;
+    // Email provider preference: Brevo HTTPS API (works from cloud) > the salon's
+    // own SMTP > mock. Brevo is configured platform-wide via env vars.
+    const emailProvider: EmailProvider = ((): EmailProvider => {
+      if (input.channel !== NotificationChannel.EMAIL) return this.email;
+      const brevoKey = process.env.BREVO_API_KEY;
+      const brevoSender = process.env.BREVO_SENDER_EMAIL;
+      if (brevoKey && brevoSender) {
+        const name = parseSenderName(input.smtp?.from) || process.env.BREVO_SENDER_NAME || 'Lumio Booking';
+        return new BrevoEmailProvider({ apiKey: brevoKey, senderEmail: brevoSender, senderName: name });
+      }
+      if (input.smtp?.user && input.smtp?.pass) return new SmtpEmailProvider(input.smtp);
+      return this.email;
+    })();
     const provider = input.channel === NotificationChannel.EMAIL ? emailProvider : this.sms;
 
     try {

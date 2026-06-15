@@ -79,6 +79,10 @@ export function SalonShell({ children }: { children: ReactNode }) {
       <button onClick={logout} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>
         Log out
       </button>
+      <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
+        style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 11, color: '#64748b', textDecoration: 'none' }}>
+        Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>
+      </a>
     </div>
   );
 

@@ -63,6 +63,7 @@ export class UpdateNotificationsDto {
   @IsOptional() @IsString() @MaxLength(320) smsCustomer?: string;
   @IsOptional() @IsString() @MaxLength(320) smsAdmin?: string;
   @IsOptional() @IsObject() smtp?: Record<string, unknown>;
+  @IsOptional() @IsObject() brevo?: Record<string, unknown>;
   @IsOptional() @IsObject() twilio?: Record<string, unknown>;
 }
 

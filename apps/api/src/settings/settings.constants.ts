@@ -25,6 +25,9 @@ export interface NotificationSettings {
   smsAdmin: string;
   // Email gateway (SMTP, e.g. Gmail). pass is private and never returned to UI.
   smtp: { host: string; port: number; user: string; pass: string; fromEmail: string };
+  // Email via Brevo HTTPS API (recommended: reliable from the cloud, free tier).
+  // apiKey is private and never returned to the UI.
+  brevo: { apiKey: string; senderEmail: string; senderName: string };
   // SMS gateway (Twilio). authToken is private and never returned to the UI.
   twilio: { accountSid: string; authToken: string; fromNumber: string };
 }
@@ -45,6 +48,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   smsCustomer: '{salon}: your {service} on {date} at {time} is booked. See you soon!',
   smsAdmin: 'New booking: {service} for {customer} on {date} at {time}.',
   smtp: { host: 'smtp.gmail.com', port: 465, user: '', pass: '', fromEmail: '' },
+  brevo: { apiKey: '', senderEmail: '', senderName: '' },
   twilio: { accountSid: '', authToken: '', fromNumber: '' },
 };
 

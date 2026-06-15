@@ -5,7 +5,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { EmailProvider, SmsProvider } from './providers/notification-provider.interface';
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
-import { BrevoEmailProvider } from './providers/brevo.provider';
+import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
 
 /** Extracts the display name from a "Name <email>" string. */
 function parseSenderName(from?: string): string {
@@ -26,6 +26,8 @@ export interface SendNotificationInput {
   // When provided for an EMAIL, deliver over the salon's own SMTP (real email)
   // instead of the mock provider.
   smtp?: SmtpConfig;
+  // The salon's own Brevo HTTPS config (preferred over SMTP when present).
+  brevo?: BrevoConfig;
 }
 
 /**
@@ -44,17 +46,19 @@ export class NotificationsService {
     let status: NotificationStatus = NotificationStatus.PENDING;
     let error: string | null = null;
 
-    // Email provider preference: Brevo HTTPS API (works from cloud) > the salon's
-    // own SMTP > mock. Brevo is configured platform-wide via env vars.
+    // Email provider preference (per salon): the salon's own Brevo (HTTPS, works
+    // from the cloud) > the salon's own SMTP > an optional platform-wide Brevo
+    // (env) fallback > mock.
     const emailProvider: EmailProvider = ((): EmailProvider => {
       if (input.channel !== NotificationChannel.EMAIL) return this.email;
-      const brevoKey = process.env.BREVO_API_KEY;
-      const brevoSender = process.env.BREVO_SENDER_EMAIL;
-      if (brevoKey && brevoSender) {
-        const name = parseSenderName(input.smtp?.from) || process.env.BREVO_SENDER_NAME || 'Lumio Booking';
-        return new BrevoEmailProvider({ apiKey: brevoKey, senderEmail: brevoSender, senderName: name });
-      }
+      if (input.brevo?.apiKey && input.brevo?.senderEmail) return new BrevoEmailProvider(input.brevo);
       if (input.smtp?.user && input.smtp?.pass) return new SmtpEmailProvider(input.smtp);
+      const envKey = process.env.BREVO_API_KEY;
+      const envSender = process.env.BREVO_SENDER_EMAIL;
+      if (envKey && envSender) {
+        const name = parseSenderName(input.smtp?.from) || process.env.BREVO_SENDER_NAME || 'Lumio Booking';
+        return new BrevoEmailProvider({ apiKey: envKey, senderEmail: envSender, senderName: name });
+      }
       return this.email;
     })();
     const provider = input.channel === NotificationChannel.EMAIL ? emailProvider : this.sms;

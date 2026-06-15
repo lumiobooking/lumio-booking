@@ -88,6 +88,7 @@ export class SettingsService {
     return {
       ...merged,
       smtp: { ...DEFAULT_NOTIFICATION_SETTINGS.smtp, ...(merged.smtp ?? {}) },
+      brevo: { ...DEFAULT_NOTIFICATION_SETTINGS.brevo, ...(merged.brevo ?? {}) },
       twilio: { ...DEFAULT_NOTIFICATION_SETTINGS.twilio, ...(merged.twilio ?? {}) },
     };
   }
@@ -116,6 +117,11 @@ export class SettingsService {
         fromEmail: n.smtp.fromEmail,
         connected: n.smtp.pass.length > 0,
       },
+      brevo: {
+        senderEmail: n.brevo.senderEmail,
+        senderName: n.brevo.senderName,
+        connected: n.brevo.apiKey.length > 0,
+      },
       twilio: {
         accountSid: n.twilio.accountSid,
         fromNumber: n.twilio.fromNumber,
@@ -128,6 +134,7 @@ export class SettingsService {
     const tenantId = this.tenantId(user);
     const cur = await this.getNotificationSettings(tenantId);
     const incSmtp = (dto.smtp ?? {}) as Record<string, unknown>;
+    const incBrevo = (dto.brevo ?? {}) as Record<string, unknown>;
     const incTwilio = (dto.twilio ?? {}) as Record<string, unknown>;
     const merged: NotificationSettings = {
       ...cur,
@@ -139,6 +146,12 @@ export class SettingsService {
         fromEmail: typeof incSmtp.fromEmail === 'string' ? incSmtp.fromEmail : cur.smtp.fromEmail,
         // Blank password keeps the stored one.
         pass: incSmtp.pass ? String(incSmtp.pass) : cur.smtp.pass,
+      },
+      brevo: {
+        senderEmail: typeof incBrevo.senderEmail === 'string' ? incBrevo.senderEmail : cur.brevo.senderEmail,
+        senderName: typeof incBrevo.senderName === 'string' ? incBrevo.senderName : cur.brevo.senderName,
+        // Blank API key keeps the stored one.
+        apiKey: incBrevo.apiKey ? String(incBrevo.apiKey) : cur.brevo.apiKey,
       },
       twilio: {
         accountSid: typeof incTwilio.accountSid === 'string' ? incTwilio.accountSid : cur.twilio.accountSid,
@@ -185,23 +198,27 @@ export class SettingsService {
     const tenantId = this.tenantId(user);
     const n = await this.getNotificationSettings(tenantId);
 
-    // Prefer Brevo (HTTPS API, works from the cloud) when configured platform-wide.
-    const brevoKey = process.env.BREVO_API_KEY;
-    const brevoSender = process.env.BREVO_SENDER_EMAIL;
-    const useBrevo = !!(brevoKey && brevoSender);
-    if (!useBrevo && (!n.smtp.user || !n.smtp.pass)) {
-      return { ok: false, error: 'No email provider configured. Set BREVO_API_KEY + BREVO_SENDER_EMAIL on the server (recommended), or configure Gmail SMTP first.' };
+    // Provider preference (per salon): this salon's own Brevo > its own SMTP >
+    // an optional platform-wide Brevo fallback (env).
+    const envBrevoKey = process.env.BREVO_API_KEY;
+    const envBrevoSender = process.env.BREVO_SENDER_EMAIL;
+    let provider: SmtpEmailProvider | BrevoEmailProvider;
+    let to: string;
+    if (n.brevo.apiKey && n.brevo.senderEmail) {
+      provider = new BrevoEmailProvider({ apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName || n.senderName || 'Lumio Booking' });
+      to = n.adminEmail || n.brevo.senderEmail;
+    } else if (n.smtp.user && n.smtp.pass) {
+      provider = new SmtpEmailProvider({
+        host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass,
+        from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
+      });
+      to = n.adminEmail || n.smtp.user;
+    } else if (envBrevoKey && envBrevoSender) {
+      provider = new BrevoEmailProvider({ apiKey: envBrevoKey, senderEmail: envBrevoSender, senderName: n.senderName || 'Lumio Booking' });
+      to = n.adminEmail || envBrevoSender;
+    } else {
+      return { ok: false, error: 'No email provider configured. Add your Brevo API key + sender email (recommended), or Gmail SMTP, then Save before testing.' };
     }
-    const to = n.adminEmail || n.smtp.user || brevoSender || '';
-    const provider = useBrevo
-      ? new BrevoEmailProvider({ apiKey: brevoKey as string, senderEmail: brevoSender as string, senderName: n.senderName || 'Lumio Booking' })
-      : new SmtpEmailProvider({
-          host: n.smtp.host,
-          port: n.smtp.port,
-          user: n.smtp.user,
-          pass: n.smtp.pass,
-          from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
-        });
     const sendPromise = provider.sendEmail({
       to,
       subject: 'Lumio Booking — test email',

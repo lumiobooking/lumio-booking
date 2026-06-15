@@ -292,6 +292,10 @@ export class BookingsService {
       n.smtp.user && n.smtp.pass
         ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, from: `${n.senderName || d.salon} <${n.smtp.fromEmail || n.smtp.user}>` }
         : undefined;
+    const brevo =
+      n.brevo.apiKey && n.brevo.senderEmail
+        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName || n.senderName || d.salon }
+        : undefined;
 
     const jobs: Promise<unknown>[] = [];
 
@@ -327,7 +331,7 @@ export class BookingsService {
           subject: fillPct(tpl.subject, pct),
           body: htmlToText(bodyFilled),
           html: renderTemplatedEmailHtml({ salon: d.salon, accent: d.accent, contact: d.contact, bodyText: bodyFilled }),
-          smtp, ...related,
+          smtp, brevo, ...related,
         }));
       } else {
         const intro = fill(n.emailIntroCustomer, d);
@@ -337,7 +341,7 @@ export class BookingsService {
           subject: fill(n.emailSubjectCustomer, d),
           body: renderBookingEmailText('Booking confirmed', intro, footer, d),
           html: renderBookingEmailHtml({ heading: 'Booking confirmed', intro, footer, d }),
-          smtp, ...related,
+          smtp, brevo, ...related,
         }));
       }
     }
@@ -352,7 +356,7 @@ export class BookingsService {
         subject: fill(n.emailSubjectAdmin, d),
         body: renderBookingEmailText('New booking', intro, '', d),
         html: renderBookingEmailHtml({ heading: 'New booking', intro, footer: '', d }),
-        smtp, ...related,
+        smtp, brevo, ...related,
       }));
     }
     if (n.smsAdminOnBooking && n.adminPhone) {
@@ -428,6 +432,10 @@ export class BookingsService {
       n.smtp.user && n.smtp.pass
         ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, from: `${n.senderName || salon} <${n.smtp.fromEmail || n.smtp.user}>` }
         : undefined;
+    const brevo =
+      n.brevo.apiKey && n.brevo.senderEmail
+        ? { apiKey: n.brevo.apiKey, senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName || n.senderName || salon }
+        : undefined;
 
     const bodyFilled = fillPct(tpl.body, pct);
     await this.notifications.send({
@@ -438,6 +446,7 @@ export class BookingsService {
       body: htmlToText(bodyFilled),
       html: renderTemplatedEmailHtml({ salon, accent, contact, bodyText: bodyFilled }),
       smtp,
+      brevo,
       relatedType: 'appointment',
       relatedId: appt.id,
     });

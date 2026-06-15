@@ -29,6 +29,7 @@ interface SettingsData {
     emailSubjectAdmin: string; emailIntroAdmin: string; emailFooter: string;
     smsCustomer: string; smsAdmin: string;
     smtp: { host: string; port: number; user: string; fromEmail: string; connected: boolean };
+    brevo: { senderEmail: string; senderName: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
 }
@@ -412,6 +413,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   const [showTpl, setShowTpl] = useState(false);
   const [tw, setTw] = useState({ accountSid: n.twilio.accountSid, fromNumber: n.twilio.fromNumber, authToken: '' });
   const [smtp, setSmtp] = useState({ host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, fromEmail: n.smtp.fromEmail, pass: '' });
+  const [brevo, setBrevo] = useState({ senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName, apiKey: '' });
   const { token } = useAuth();
   const [test, setTest] = useState<{ kind: 'idle' | 'sending' | 'ok' | 'err'; msg?: string }>({ kind: 'idle' });
 
@@ -476,11 +478,26 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       )}
 
       <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+        Email via Brevo (recommended){' '}
+        {n.brevo.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Connected</span>}
+      </div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+        Most reliable &amp; free (300 emails/day). Sign up at <strong>brevo.com</strong>, verify your sender email, create an API key, and paste it here. Powers customer, admin &amp; staff emails.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Sender email (verified in Brevo)"><input style={ui.input} value={brevo.senderEmail} onChange={(e) => setBrevo({ ...brevo, senderEmail: e.target.value })} placeholder="bookings@yoursalon.com" /></Field>
+        <Field label="Sender name"><input style={ui.input} value={brevo.senderName} onChange={(e) => setBrevo({ ...brevo, senderName: e.target.value })} placeholder="Your Salon" /></Field>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <Field label="Brevo API key"><input style={ui.input} type="password" value={brevo.apiKey} onChange={(e) => setBrevo({ ...brevo, apiKey: e.target.value })} placeholder={n.brevo.connected ? '•••••• (saved)' : 'xkeysib-…'} /></Field>
+      </div>
+
+      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
         Email sending (SMTP / Gmail){' '}
         {n.smtp.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Connected</span>}
       </div>
       <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
-        For Gmail: enable 2-step verification, create an <strong>App Password</strong>, and paste it below.
+        Alternative if you don’t use Brevo. For Gmail: enable 2-step verification, create an <strong>App Password</strong>, and paste it below.
         Host smtp.gmail.com · Port 465. The password is stored securely and never shown again.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
@@ -515,7 +532,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <Field label="From number"><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
       </div>
 
-      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, twilio: tw }, 'Notifications')}>Save notifications</button>
+      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, twilio: tw }, 'Notifications')}>Save notifications</button>
     </Card>
   );
 }

@@ -1,0 +1,97 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { SalonShell } from '../../../components/SalonShell';
+import { useAuth } from '../../../lib/auth';
+import { apiFetch } from '../../../lib/api';
+import { ui, formatPrice } from '../../../lib/ui';
+
+interface Payment {
+  id: string;
+  amountCents: number;
+  currency: string;
+  type: string;
+  status: string;
+  provider: string;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+const COLORS: Record<string, string> = { PAID: '#22c55e', PENDING: '#eab308', FAILED: '#ef4444', REFUNDED: '#94a3b8' };
+
+export default function PaymentsPage() {
+  return (
+    <SalonShell>
+      <Inner />
+    </SalonShell>
+  );
+}
+
+function Inner() {
+  const { token } = useAuth();
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setPayments(await apiFetch<Payment[]>('/payments', { token }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load payments');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totalPaid = payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
+
+  return (
+    <section>
+      <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Payments</h1>
+      <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
+        {payments.length} payments · {formatPrice(totalPaid)} collected
+      </p>
+
+      {error && <div style={ui.banner}>{error}</div>}
+
+      {loading ? (
+        <p style={{ color: '#94a3b8' }}>Loading…</p>
+      ) : (
+        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto', marginTop: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#1e293b' }}>
+                <th style={ui.th}>Date</th>
+                <th style={ui.th}>Amount</th>
+                <th style={ui.th}>Type</th>
+                <th style={ui.th}>Status</th>
+                <th style={ui.th}>Provider</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.length === 0 && (
+                <tr><td style={ui.td} colSpan={5}>No payments yet.</td></tr>
+              )}
+              {payments.map((p) => (
+                <tr key={p.id} style={{ borderTop: '1px solid #334155' }}>
+                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString()}</td>
+                  <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
+                  <td style={ui.td}>{p.type === 'PAY_ONLINE' ? 'Online' : 'At salon'}</td>
+                  <td style={ui.td}>
+                    <span style={{ color: COLORS[p.status] ?? '#94a3b8', fontWeight: 600 }}>{p.status}</span>
+                  </td>
+                  <td style={{ ...ui.td, color: '#94a3b8' }}>{p.provider}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}

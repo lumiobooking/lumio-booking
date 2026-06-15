@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables (NEVER commit secrets)
+.env
+.env.local
+.env.development
+.env.production
+*.env
+!.env.example
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Prisma
+apps/api/prisma/*.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Testing
+coverage/
+
+# Misc
+.cache/
+tmp/

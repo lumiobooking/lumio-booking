@@ -1,0 +1,670 @@
+// ===========================================================================
+// Lumio Booking - Multi-tenant SaaS database schema (PostgreSQL)
+// ---------------------------------------------------------------------------
+// Design rules (enforced by code review + tests):
+//   * `Tenant` is the root entity. One Tenant == one nail salon.
+//   * Every tenant-scoped table carries `tenantId` and is indexed on it.
+//   * Platform-level tables (Plan, and SUPER_ADMIN rows in User) are NOT
+//     tenant-scoped on purpose.
+//   * All cross-tenant access is forbidden; queries are scoped by the
+//     authenticated tenantId in the service/repository layer.
+// ===========================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// ENUMS
+// ===========================================================================
+
+enum UserRole {
+  SUPER_ADMIN // Lumio platform team (no tenantId)
+  SALON_ADMIN // Salon owner/manager (scoped to one tenant)
+  STAFF // Technician (scoped to one tenant)
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum AppointmentStatus {
+  PENDING // Created, not yet assigned to a staff member
+  ASSIGNED // Assigned to a staff member, awaiting their response
+  ACCEPTED // Staff accepted the assignment
+  REJECTED // Staff rejected; needs re-assignment
+  CONFIRMED // Confirmed (e.g. after payment / admin confirm)
+  CANCELLED // Cancelled by customer or salon
+  COMPLETED // Service delivered
+  NO_SHOW // Customer did not show up
+}
+
+enum RejectionType {
+  REJECTED // Staff explicitly rejected
+  NO_RESPONSE // Staff did not respond before the deadline
+}
+
+enum AssignmentRuleType {
+  REJECTION_THRESHOLD // Too many rejections in a window
+  NO_RESPONSE_THRESHOLD // Too many no-responses in a window
+  REJECTION_RATE // Rejection rate above a % with min assignments
+  PERFORMANCE_SCORE // Weight by performance score
+  PREFERRED_STAFF // Honor customer's preferred staff
+  FAIR_DISTRIBUTION // Spread bookings evenly
+}
+
+enum PaymentType {
+  PAY_ONLINE
+  PAY_LATER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ===========================================================================
+// PLATFORM-LEVEL TABLES (NOT tenant-scoped)
+// ===========================================================================
+
+/// Subscription plans offered by Lumio (Basic, Pro, ...). Feature limits live
+/// here; a Tenant points to one Plan via its Subscription.
+model Plan {
+  id              String          @id @default(uuid())
+  name            String
+  description     String?
+  priceCents      Int             @default(0)
+  currency        String          @default("USD")
+  billingInterval BillingInterval @default(MONTHLY)
+
+  // Feature limits (business model). Null = unlimited.
+  maxStaff             Int?
+  maxBookingsPerMonth  Int?
+  maxSmsPerMonth       Int?
+  onlinePaymentEnabled Boolean @default(false)
+  multiLocationEnabled Boolean @default(false)
+  whiteLabelEnabled    Boolean @default(false)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenants       Tenant[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+// ===========================================================================
+// TENANT ROOT
+// ===========================================================================
+
+/// The root entity. One row per nail salon (tenant).
+model Tenant {
+  id       String       @id @default(uuid())
+  name     String
+  slug     String       @unique // URL-safe identifier, also used for routing
+  status   TenantStatus @default(ACTIVE)
+  timezone String       @default("UTC")
+
+  contactEmail String?
+  contactPhone String?
+
+  // Branding settings for future white-label (logo URL, colors, etc.)
+  branding Json @default("{}")
+
+  // Current plan (denormalized convenience pointer); source of truth for
+  // billing periods is the Subscription rows.
+  planId             String?
+  plan               Plan?              @relation(fields: [planId], references: [id])
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations (all tenant-scoped children)
+  users             User[]
+  subscriptions     Subscription[]
+  apiKeys           ApiKey[]
+  wordpressSites    WordpressSite[]
+  services          Service[]
+  serviceAddons     ServiceAddon[]
+  staffMembers      StaffMember[]
+  workingHours      StaffWorkingHour[]
+  staffServices     StaffService[]
+  customers         Customer[]
+  appointments      Appointment[]
+  payments          Payment[]
+  notifications     Notification[]
+  bookingRejections BookingRejection[]
+  assignmentRules   AssignmentRule[]
+  settings          Setting[]
+  auditLogs         AuditLog[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+/// Billing subscription history for a tenant.
+model Subscription {
+  id       String             @id @default(uuid())
+  tenantId String
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId   String
+  plan     Plan               @relation(fields: [planId], references: [id])
+  status   SubscriptionStatus @default(TRIALING)
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelledAt        DateTime?
+
+  // External billing reference (e.g. Stripe subscription id) - filled later.
+  externalReference String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+// ===========================================================================
+// USERS & AUTH (backend's own user system - NOT WordPress users)
+// ===========================================================================
+
+/// Backend user accounts. SUPER_ADMIN has tenantId = null; SALON_ADMIN and
+/// STAFF always belong to exactly one tenant. Email is globally unique to keep
+/// login simple.
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String? // null only for SUPER_ADMIN
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role         UserRole
+  email        String   @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  phone        String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+
+  // If this user is a technician, this links to their StaffMember profile.
+  staffMember StaffMember?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@index([tenantId])
+  @@index([role])
+  @@map("users")
+}
+
+// ===========================================================================
+// WORDPRESS PLUGIN CONNECTION
+// ===========================================================================
+
+/// A WordPress site connected to a tenant. One site links to exactly one
+/// tenant (unless explicitly configured otherwise in the future).
+model WordpressSite {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name     String?
+  siteUrl  String
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  apiKeys ApiKey[]
+
+  @@unique([tenantId, siteUrl])
+  @@index([tenantId])
+  @@map("wordpress_sites")
+}
+
+/// API / license keys used by the WordPress plugin to authenticate to the
+/// backend. Only a HASH of the key is stored (never the plaintext). Keys are
+/// revocable. The plugin stores the plaintext on the WordPress side, not here.
+model ApiKey {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  wordpressSiteId String?
+  wordpressSite   WordpressSite? @relation(fields: [wordpressSiteId], references: [id], onDelete: SetNull)
+
+  name      String? // Human label, e.g. "Main website"
+  keyHash   String       @unique // Hash of the full key (e.g. bcrypt/sha256)
+  keyPrefix String // First few public chars for identification in UI
+  lastFour  String // Last 4 chars for display, e.g. "...a1b2"
+  status    ApiKeyStatus @default(ACTIVE)
+
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("api_keys")
+}
+
+// ===========================================================================
+// SERVICES
+// ===========================================================================
+
+model Service {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String?
+  durationMinutes Int
+  priceCents      Int     @default(0)
+  currency        String  @default("USD")
+  isActive        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staffServices StaffService[]
+  appointments  Appointment[]
+  addons        ServiceAddon[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("services")
+}
+
+/// Optional extras a customer can add to a service at booking time
+/// (e.g. "Nail art", "French tips"). Each adds price and time.
+model ServiceAddon {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  name            String
+  durationMinutes Int     @default(0)
+  priceCents      Int     @default(0)
+  currency        String  @default("USD")
+  isActive        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([serviceId])
+  @@map("service_addons")
+}
+
+// ===========================================================================
+// STAFF / TECHNICIANS
+// ===========================================================================
+
+model StaffMember {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Optional login account (a staff member may or may not log in).
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  firstName String
+  lastName  String?
+  email     String?
+  phone     String?
+  avatarUrl String? // public image URL shown on the booking page
+  isActive  Boolean @default(true)
+
+  // Used by the assignment rule engine. Higher = preferred.
+  performanceScore Int @default(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workingHours      StaffWorkingHour[]
+  staffServices     StaffService[]
+  assignedBookings  Appointment[]      @relation("AssignedStaff")
+  preferredBookings Appointment[]      @relation("PreferredStaff")
+  bookingRejections BookingRejection[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("staff_members")
+}
+
+/// Weekly recurring working hours for a staff member.
+model StaffWorkingHour {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  dayOfWeek Int // 0 = Sunday ... 6 = Saturday
+  startTime String // "09:00" (salon local time)
+  endTime   String // "17:30"
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([staffMemberId])
+  @@map("staff_working_hours")
+}
+
+/// Join table: which services a staff member can perform (skills).
+model StaffService {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([staffMemberId, serviceId])
+  @@index([tenantId])
+  @@map("staff_services")
+}
+
+// ===========================================================================
+// CUSTOMERS (END CUSTOMERS / CLIENTS)
+// ===========================================================================
+
+model Customer {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName String
+  lastName  String?
+  email     String?
+  phone     String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+
+  // A customer email is unique within a tenant (not across the platform).
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, phone])
+  @@map("customers")
+}
+
+// ===========================================================================
+// APPOINTMENTS / BOOKINGS
+// ===========================================================================
+
+model Appointment {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  // Staff actually assigned to perform the service.
+  assignedStaffId String?
+  assignedStaff   StaffMember? @relation("AssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+
+  // Staff the customer requested (optional preference).
+  preferredStaffId String?
+  preferredStaff   StaffMember? @relation("PreferredStaff", fields: [preferredStaffId], references: [id], onDelete: SetNull)
+
+  status AppointmentStatus @default(PENDING)
+
+  startTime DateTime
+  endTime   DateTime
+
+  priceCents Int    @default(0)
+  currency   String @default("USD")
+  notes      String?
+
+  // Snapshot of the add-ons the customer selected, e.g.
+  // [{ "id": "...", "name": "Nail art", "priceCents": 1500, "durationMinutes": 15 }]
+  addons Json @default("[]")
+
+  // Deadline for the assigned staff to accept/reject before reassignment.
+  responseDeadline DateTime?
+
+  // Lifecycle timestamps
+  assignedAt  DateTime?
+  acceptedAt  DateTime?
+  rejectedAt  DateTime?
+  confirmedAt DateTime?
+  cancelledAt DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments          Payment[]
+  bookingRejections BookingRejection[]
+
+  // NOTE on double-booking: a hard guarantee that one staff member is not
+  // double-booked for an overlapping time range cannot be expressed as a plain
+  // Prisma unique constraint (it needs a range/exclusion constraint). This is
+  // enforced in the booking service via a transaction + row lock, plus a
+  // PostgreSQL EXCLUDE constraint added in a later migration. These indexes
+  // support the overlap lookup efficiently.
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedStaffId, startTime])
+  @@index([tenantId, startTime])
+  @@map("appointments")
+}
+
+/// History of staff rejections and no-responses (feeds the rule engine).
+model BookingRejection {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  staffMemberId String
+  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  type   RejectionType
+  reason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, staffMemberId, createdAt])
+  @@map("booking_rejections")
+}
+
+/// Configurable rules for the assignment engine. `config` holds rule-specific
+/// thresholds/windows as JSON so new rules don't require schema changes.
+model AssignmentRule {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name     String
+  type     AssignmentRuleType
+  // e.g. { "maxRejections": 3, "windowDays": 7, "priorityPenalty": 50 }
+  config   Json               @default("{}")
+  priority Int                @default(0) // Higher runs first
+  isActive Boolean            @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("assignment_rules")
+}
+
+// ===========================================================================
+// PAYMENTS
+// ===========================================================================
+
+model Payment {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  amountCents Int
+  currency    String        @default("USD")
+  type        PaymentType   @default(PAY_LATER)
+  status      PaymentStatus @default(PENDING)
+
+  // Provider abstraction: "mock" now, "stripe" later. No secret keys stored.
+  provider          String  @default("mock")
+  providerReference String?
+
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("payments")
+}
+
+// ===========================================================================
+// NOTIFICATIONS
+// ===========================================================================
+
+model Notification {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  channel   NotificationChannel
+  recipient String // email address or phone number
+  subject   String?
+  body      String
+
+  status   NotificationStatus @default(PENDING)
+  provider String             @default("mock") // mock | sendgrid | twilio | ...
+  error    String?
+
+  // Loose link to the resource that triggered this notification.
+  relatedType String? // e.g. "appointment"
+  relatedId   String?
+
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("notifications")
+}
+
+// ===========================================================================
+// SETTINGS (per-tenant key/value, e.g. SMS/email config, booking rules)
+// ===========================================================================
+
+model Setting {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  key   String
+  value Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("settings")
+}
+
+// ===========================================================================
+// AUDIT LOGS
+// ===========================================================================
+
+/// Important actions. tenantId/userId are nullable so platform-level
+/// SUPER_ADMIN actions can also be logged.
+model AuditLog {
+  id       String  @id @default(uuid())
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action       String // e.g. "tenant.suspended", "service.created"
+  resourceType String? // e.g. "tenant", "service"
+  resourceId   String?
+  metadata     Json    @default("{}")
+  ipAddress    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}

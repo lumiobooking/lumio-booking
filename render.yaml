@@ -1,0 +1,65 @@
+# ===========================================================================
+# Render Blueprint for Lumio Booking (monorepo: NestJS API + Next.js web).
+# One push to GitHub -> Render rebuilds & redeploys both services.
+# Database is hosted on Neon (set DATABASE_URL below).
+#
+# Env vars marked "sync: false" must be filled in the Render dashboard
+# (or when you first apply the blueprint). See DEPLOY.md for the walkthrough.
+# ===========================================================================
+services:
+  # ---------------------- Backend API (NestJS, /api) ----------------------
+  - type: web
+    name: lumio-api
+    runtime: node
+    plan: free
+    rootDir: .
+    # install whole workspace -> generate Prisma client -> build -> run migrations
+    buildCommand: >-
+      npm install &&
+      npm run db:generate --workspace=apps/api &&
+      npm run build --workspace=apps/api &&
+      npm run db:migrate:deploy --workspace=apps/api
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Neon connection string (postgresql://...?sslmode=require). Secret.
+      - key: DATABASE_URL
+        sync: false
+      # Auto-generated strong secret for signing JWTs.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 7d
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: BCRYPT_SALT_ROUNDS
+        value: "12"
+      - key: EMAIL_PROVIDER
+        value: mock
+      - key: SMS_PROVIDER
+        value: mock
+      - key: PAYMENT_PROVIDER
+        value: mock
+      # Comma-separated allowed frontend origins. Set to the web URL after the
+      # first deploy, e.g. https://lumio-web.onrender.com
+      - key: CORS_ORIGINS
+        sync: false
+
+  # ---------------------- Frontend (Next.js dashboard) --------------------
+  - type: web
+    name: lumio-web
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm run build --workspace=apps/web
+    startCommand: cd apps/web && npx next start -p $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Base URL of the API INCLUDING the /api suffix. Baked in at build time,
+      # so set it before the first web build, e.g.
+      #   https://lumio-api.onrender.com/api
+      - key: NEXT_PUBLIC_API_URL
+        sync: false

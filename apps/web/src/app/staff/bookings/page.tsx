@@ -1,0 +1,142 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { StaffShell } from '../../../components/StaffShell';
+import { useAuth } from '../../../lib/auth';
+import { apiFetch } from '../../../lib/api';
+import { ui } from '../../../lib/ui';
+
+interface NamedRef {
+  firstName?: string;
+  lastName?: string | null;
+}
+interface Booking {
+  id: string;
+  status: string;
+  startTime: string;
+  notes: string | null;
+  customer: NamedRef | null;
+  service: { name: string } | null;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  ASSIGNED: '#3b82f6',
+  ACCEPTED: '#22c55e',
+  CONFIRMED: '#22c55e',
+  COMPLETED: '#a855f7',
+  CANCELLED: '#94a3b8',
+  NO_SHOW: '#ef4444',
+};
+
+export default function StaffBookingsPage() {
+  return (
+    <StaffShell>
+      <Inner />
+    </StaffShell>
+  );
+}
+
+function Inner() {
+  const { token } = useAuth();
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setBookings(await apiFetch<Booking[]>('/bookings/my', { token }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load bookings');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function respond(id: string, action: 'accept' | 'reject') {
+    try {
+      const body = action === 'reject' ? { reason: 'Not available' } : undefined;
+      await apiFetch(`/bookings/${id}/${action}`, { method: 'POST', token, body });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed');
+    }
+  }
+
+  const name = (c: NamedRef | null) => (c ? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() : '—');
+
+  return (
+    <section>
+      {error && <div style={ui.banner}>{error}</div>}
+      {loading ? (
+        <p style={{ color: '#94a3b8' }}>Loading...</p>
+      ) : bookings.length === 0 ? (
+        <div style={{ ...ui.card }}>
+          <p style={{ margin: 0, color: '#94a3b8' }}>No bookings assigned to you right now.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {bookings.map((b) => (
+            <div
+              key={b.id}
+              style={{
+                ...ui.card,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{b.service?.name ?? 'Service'}</div>
+                <div style={{ color: '#cbd5e1', fontSize: 14, marginTop: 2 }}>
+                  {new Date(b.startTime).toLocaleString()} · {name(b.customer)}
+                </div>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    marginTop: 8,
+                    color: STATUS_COLORS[b.status] ?? '#94a3b8',
+                    border: `1px solid ${STATUS_COLORS[b.status] ?? '#94a3b8'}`,
+                    borderRadius: 999,
+                    padding: '2px 10px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {b.status}
+                </span>
+              </div>
+              {b.status === 'ASSIGNED' && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => respond(b.id, 'accept')} style={acceptBtn}>
+                    Accept
+                  </button>
+                  <button onClick={() => respond(b.id, 'reject')} style={ui.dangerBtn}>
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const acceptBtn: React.CSSProperties = {
+  padding: '8px 16px',
+  borderRadius: 8,
+  border: 'none',
+  background: '#22c55e',
+  color: 'white',
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: 'pointer',
+};

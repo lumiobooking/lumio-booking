@@ -17,6 +17,7 @@ export const ui = {
     background: '#0f172a',
     color: '#e2e8f0',
     fontSize: 14,
+    colorScheme: 'dark',
   } as CSSProperties,
   primaryBtn: {
     padding: '9px 14px',
@@ -51,5 +52,4 @@ export const ui = {
 };
 
 export function formatPrice(cents: number, currency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100);
-}
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }

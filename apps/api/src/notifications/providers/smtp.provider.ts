@@ -28,6 +28,10 @@ export class SmtpEmailProvider implements EmailProvider {
         port: this.config.port,
         secure: this.config.port === 465,
         auth: { user: this.config.user, pass: this.config.pass },
+        // Fail fast instead of hanging forever when the network/port blocks SMTP.
+        connectionTimeout: 15000,
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
       });
       const info = await transporter.sendMail({
         from: this.config.from || this.config.user,

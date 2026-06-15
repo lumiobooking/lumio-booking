@@ -116,7 +116,7 @@ function ServicesInner() {
                 </tr>
               )}
               {services.map((s) => (
-                <FragmentRow key={s.id} service={s} token={token!} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} />
+                <FragmentRow key={s.id} service={s} token={token!} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
               ))}
             </tbody>
           </table>
@@ -128,10 +128,11 @@ function ServicesInner() {
 
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
 
-function FragmentRow({ service: s, token, onToggle, onDelete }: {
-  service: Service; token: string; onToggle: () => void; onDelete: () => void;
+function FragmentRow({ service: s, token, onToggle, onDelete, onSaved }: {
+  service: Service; token: string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   return (
     <>
       <tr style={{ borderTop: '1px solid #334155' }}>
@@ -157,7 +158,10 @@ function FragmentRow({ service: s, token, onToggle, onDelete }: {
           </button>
         </td>
         <td style={ui.td}>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button onClick={() => setEditing((e) => !e)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editing ? '#475569' : '#0ea5e9' }}>
+              {editing ? 'Close' : 'Edit'}
+            </button>
             <button onClick={() => setOpen((o) => !o)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: open ? '#475569' : '#6366f1' }}>
               {open ? 'Hide add-ons' : 'Add-ons'}
             </button>
@@ -165,6 +169,13 @@ function FragmentRow({ service: s, token, onToggle, onDelete }: {
           </div>
         </td>
       </tr>
+      {editing && (
+        <tr>
+          <td colSpan={5} style={{ padding: 0, background: '#0f172a' }}>
+            <EditServicePanel service={s} token={token} onSaved={onSaved} />
+          </td>
+        </tr>
+      )}
       {open && (
         <tr>
           <td colSpan={5} style={{ padding: 0, background: '#0f172a' }}>
@@ -173,6 +184,75 @@ function FragmentRow({ service: s, token, onToggle, onDelete }: {
         </tr>
       )}
     </>
+  );
+}
+
+function EditServicePanel({ service, token, onSaved }: { service: Service; token: string; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    name: service.name,
+    description: service.description ?? '',
+    duration: String(service.durationMinutes),
+    price: (service.priceCents / 100).toString(),
+    discount: String(service.discountPercent ?? 0),
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const updated = await apiFetch<Service>(`/services/${service.id}`, {
+        method: 'PATCH',
+        token,
+        body: {
+          name: form.name,
+          description: form.description || undefined,
+          durationMinutes: parseInt(form.duration, 10),
+          priceCents: Math.round(parseFloat(form.price) * 100),
+          discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
+        },
+      });
+      // Re-sync the form from what the server actually stored (confirms persistence).
+      if (updated && typeof updated === 'object') {
+        setForm({
+          name: updated.name,
+          description: updated.description ?? '',
+          duration: String(updated.durationMinutes),
+          price: (updated.priceCents / 100).toString(),
+          discount: String(updated.discountPercent ?? 0),
+        });
+      }
+      setSaved(true);
+      onSaved(); // refresh the list/prices in the background; panel stays open
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} style={{ padding: 16 }}>
+      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>Edit service</div>
+      {error && <div style={ui.banner}>{error}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10 }}>
+        <label><span style={ui.label}>Name</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
+        <label><span style={ui.label}>Duration (min)</span><input style={ui.input} type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} required /></label>
+        <label><span style={ui.label}>Price (USD)</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
+        <label><span style={ui.label}>Discount %</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
+      </div>
+      <label style={{ display: 'block', marginTop: 10 }}>
+        <span style={ui.label}>Description (optional)</span>
+        <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
+        <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? 'Saving…' : 'Save changes'}</button>
+        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>✓ Saved — discount is now live on the booking page.</span>}
+      </div>
+    </form>
   );
 }
 

@@ -412,6 +412,19 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   const [showTpl, setShowTpl] = useState(false);
   const [tw, setTw] = useState({ accountSid: n.twilio.accountSid, fromNumber: n.twilio.fromNumber, authToken: '' });
   const [smtp, setSmtp] = useState({ host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, fromEmail: n.smtp.fromEmail, pass: '' });
+  const { token } = useAuth();
+  const [test, setTest] = useState<{ kind: 'idle' | 'sending' | 'ok' | 'err'; msg?: string }>({ kind: 'idle' });
+
+  const sendTest = async () => {
+    setTest({ kind: 'sending' });
+    try {
+      const r = await apiFetch<{ ok: boolean; to?: string; error?: string }>('/settings/notifications/test', { method: 'POST', token });
+      if (r.ok) setTest({ kind: 'ok', msg: `Test email sent to ${r.to}. Check the inbox (and Spam).` });
+      else setTest({ kind: 'err', msg: r.error || 'Failed to send.' });
+    } catch (e) {
+      setTest({ kind: 'err', msg: e instanceof Error ? e.message : 'Request failed' });
+    }
+  };
 
   return (
     <Card title="Notifications" desc="Who gets notified when a booking is made, by email and SMS.">
@@ -477,6 +490,17 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <Field label="App password"><input style={ui.input} type="password" value={smtp.pass} onChange={(e) => setSmtp({ ...smtp, pass: e.target.value })} placeholder={n.smtp.connected ? '•••••• (saved)' : '16-char app password'} /></Field>
         <Field label="From email (optional)"><input style={ui.input} value={smtp.fromEmail} onChange={(e) => setSmtp({ ...smtp, fromEmail: e.target.value })} placeholder="defaults to Gmail address" /></Field>
       </div>
+
+      {/* Diagnostics: verify the SMTP connection actually works. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+        <button type="button" onClick={sendTest} disabled={test.kind === 'sending'}
+          style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', fontSize: 13, cursor: 'pointer' }}>
+          {test.kind === 'sending' ? 'Sending…' : 'Send test email'}
+        </button>
+        <span style={{ fontSize: 12, color: '#64748b' }}>Save your settings first, then test. The test goes to your admin email.</span>
+      </div>
+      {test.kind === 'ok' && <div style={{ marginTop: 8, color: '#22c55e', fontSize: 13 }}>✓ {test.msg}</div>}
+      {test.kind === 'err' && <div style={{ marginTop: 8, color: '#ef4444', fontSize: 13, wordBreak: 'break-word' }}>✕ {test.msg}</div>}
 
       <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
         SMS gateway (Twilio){' '}

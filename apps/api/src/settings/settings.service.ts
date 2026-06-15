@@ -26,6 +26,7 @@ import {
   PAYMENT_GATEWAYS_KEY,
   PaymentGateways,
 } from './settings.constants';
+import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import {
   UpdateBookingRulesDto,
   UpdateBrandingDto,
@@ -173,6 +174,33 @@ export class SettingsService {
     await this.writeKey(tenantId, NOTIFICATION_TEMPLATES_KEY, merged);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.notification_templates_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
+  }
+
+  /**
+   * Sends a real test email using the saved SMTP credentials, to the admin email
+   * (or the SMTP user). Returns the exact error message so the admin can fix it.
+   */
+  async sendTestEmail(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const n = await this.getNotificationSettings(tenantId);
+    if (!n.smtp.user || !n.smtp.pass) {
+      return { ok: false, error: 'SMTP is not configured. Enter your Gmail address and App Password, then Save, before testing.' };
+    }
+    const to = n.adminEmail || n.smtp.user;
+    const provider = new SmtpEmailProvider({
+      host: n.smtp.host,
+      port: n.smtp.port,
+      user: n.smtp.user,
+      pass: n.smtp.pass,
+      from: `${n.senderName || 'Lumio Booking'} <${n.smtp.fromEmail || n.smtp.user}>`,
+    });
+    const result = await provider.sendEmail({
+      to,
+      subject: 'Lumio Booking — test email',
+      body: 'This is a test email from your Lumio Booking notification settings. If you received it, email sending works.',
+      html: '<p>This is a <strong>test email</strong> from your Lumio Booking notification settings.</p><p>If you received it, your email sending is working correctly. ✅</p>',
+    });
+    return result.success ? { ok: true, to } : { ok: false, error: result.error || 'Send failed' };
   }
 
   /** Gateway view for the frontend — NEVER includes the secret value. */

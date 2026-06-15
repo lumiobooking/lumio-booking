@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { SettingsService } from './settings.service';
 import {
@@ -49,6 +49,12 @@ export class SettingsController {
     @Body() dto: { templates?: Record<string, unknown> },
   ) {
     return this.settings.updateNotificationTemplates(user, dto as never);
+  }
+
+  // Sends a real test email with the saved SMTP credentials (diagnostics).
+  @Post('notifications/test')
+  testEmail(@CurrentUser() user: AuthenticatedUser) {
+    return this.settings.sendTestEmail(user);
   }
 
   @Patch('branding')

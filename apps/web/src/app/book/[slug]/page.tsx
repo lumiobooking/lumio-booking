@@ -239,16 +239,29 @@ export default function PublicBookingPage() {
               onBack={() => setStep(2)} onContinue={() => setStep(4)} />
           )}
 
-          {step === 4 && (
-            <StepFrame title="Your information" canContinue={form.firstName.trim().length > 0} onContinue={() => setStep(5)} onBack={() => setStep(3)}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <Field label="First name" required><input style={field} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
-                <Field label="Last name"><input style={field} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
-                <Field label="Email"><input style={field} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-                <Field label="Phone"><input style={field} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Enter phone" /></Field>
-              </div>
-            </StepFrame>
-          )}
+          {step === 4 && (() => {
+            const phoneValid = isValidPhone(form.phone);
+            const showPhoneError = form.phone.trim().length > 0 && !phoneValid;
+            const infoOk = form.firstName.trim().length > 0 && phoneValid;
+            return (
+              <StepFrame title="Your information" canContinue={infoOk} onContinue={() => setStep(5)} onBack={() => setStep(3)}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+                  <Field label="First name" required><input style={field} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
+                  <Field label="Last name"><input style={field} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
+                  <Field label="Email"><input style={field} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@email.com" /></Field>
+                  <Field label="Phone" required>
+                    <input
+                      style={{ ...field, borderColor: showPhoneError ? '#ef4444' : '#cbd5e1' }}
+                      value={form.phone} inputMode="tel" placeholder="e.g. 0901234567"
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    />
+                    {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}
+                  </Field>
+                </div>
+                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>First name and a valid phone number are required to continue.</p>}
+              </StepFrame>
+            );
+          })()}
 
           {step === 5 && service && slot && (
             <StepPayment service={service} employee={employee} slot={slot} addons={selectedAddons} totalCents={totalCents}
@@ -531,6 +544,13 @@ function Center({ children }: { children: React.ReactNode }) {
 // Helpers
 // ---------------------------------------------------------------------------
 function fmtTime(d: Date) { return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+/** Phone must be present and look like a real number: 8–15 digits, optional + and separators. */
+function isValidPhone(v: string): boolean {
+  const s = v.trim();
+  if (!s) return false;
+  const digits = s.replace(/\D/g, '');
+  return /^\+?[0-9\s().-]+$/.test(s) && digits.length >= 8 && digits.length <= 15;
+}
 function sameDay(a: Date, b: Date) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function buildMonth(view: Date): (Date | null)[] {

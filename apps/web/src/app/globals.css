@@ -1,0 +1,68 @@
+/* ===========================================================================
+ * Global base + responsive foundations for Lumio Booking.
+ * The app uses inline styles; these rules cover cross-cutting mobile concerns
+ * that inline styles can't (box model, overflow guard, iOS input zoom, tap size).
+ * =========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Media never overflows its container on small screens. */
+img,
+svg,
+video,
+iframe {
+  max-width: 100%;
+}
+
+/* Long words / URLs wrap instead of forcing horizontal scroll. */
+p,
+h1,
+h2,
+h3,
+a,
+span,
+div,
+td,
+th {
+  overflow-wrap: anywhere;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Comfortable, tappable controls + no iOS auto-zoom (needs >= 16px font). */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  button {
+    min-height: 40px;
+  }
+}
+
+/* Nicer scrollbars for the many horizontal-scroll tables on desktop. */
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 8px;
+}

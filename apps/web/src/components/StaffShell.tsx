@@ -27,12 +27,14 @@ export function StaffShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '28px 24px' }}>
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px' }}>
       <header
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
           marginBottom: 24,
         }}
       >

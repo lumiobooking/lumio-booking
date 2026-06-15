@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState, FormEvent } from 'react';
 import { useParams } from 'next/navigation';
+import { useIsMobile } from '../../../lib/responsive';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const ACCENT = 'var(--accent, #6366f1)';
@@ -49,6 +50,7 @@ export default function PublicBookingPage() {
   const params = useParams();
   const slug = String(params?.slug ?? '');
   const base = `${API_URL}/public/salons/${encodeURIComponent(slug)}`;
+  const isMobile = useIsMobile();
 
   const [salon, setSalon] = useState<Salon | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -150,24 +152,41 @@ export default function PublicBookingPage() {
     { n: 5, label: 'Payment', summary: step > 5 ? (paymentType === 'PAY_ONLINE' ? 'Online' : 'At salon') : '' },
   ];
 
+  const currentLabel = steps.find((s) => s.n === Math.min(step, 5))?.label ?? '';
+
   return (
     <Shell>
-      <div style={{ ...wrap, ['--accent' as string]: accent } as React.CSSProperties}>
-        <aside style={sidebar}>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>{salon?.name}</div>
-          {steps.map((s) => {
-            const active = step === s.n; const done = step > s.n;
-            return (
-              <div key={s.n} style={{ ...sideStep, background: active ? 'rgba(255,255,255,0.20)' : 'transparent' }}>
-                <div style={{ ...stepBadge, background: done ? '#22c55e' : 'rgba(255,255,255,0.25)' }}>{done ? '✓' : s.n}</div>
-                <div><div style={{ fontWeight: 600, fontSize: 14 }}>{s.label}</div>{s.summary && <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>{s.summary}</div>}</div>
-              </div>
-            );
-          })}
-          <div style={{ marginTop: 'auto', fontSize: 12, opacity: 0.8, paddingTop: 24 }}>Powered by Lumio Booking</div>
-        </aside>
+      <div style={{ ...(isMobile ? wrapMobile : wrap), ['--accent' as string]: accent } as React.CSSProperties}>
+        {isMobile ? (
+          /* Compact mobile header: salon name + progress bar + current step */
+          <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>{salon?.name}</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+              {steps.map((s) => (
+                <div key={s.n} style={{ flex: 1, height: 6, borderRadius: 999, background: step >= s.n ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.30)' }} />
+              ))}
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.95, marginTop: 8 }}>
+              {step > 5 ? 'Done' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
+            </div>
+          </div>
+        ) : (
+          <aside style={sidebar}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>{salon?.name}</div>
+            {steps.map((s) => {
+              const active = step === s.n; const done = step > s.n;
+              return (
+                <div key={s.n} style={{ ...sideStep, background: active ? 'rgba(255,255,255,0.20)' : 'transparent' }}>
+                  <div style={{ ...stepBadge, background: done ? '#22c55e' : 'rgba(255,255,255,0.25)' }}>{done ? '✓' : s.n}</div>
+                  <div><div style={{ fontWeight: 600, fontSize: 14 }}>{s.label}</div>{s.summary && <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>{s.summary}</div>}</div>
+                </div>
+              );
+            })}
+            <div style={{ marginTop: 'auto', fontSize: 12, opacity: 0.8, paddingTop: 24 }}>Powered by Lumio Booking</div>
+          </aside>
+        )}
 
-        <section style={content}>
+        <section style={isMobile ? contentMobile : content}>
           {step === 1 && (
             <StepDateTime rules={rules} selectedDate={selectedDate} slot={slot}
               onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
@@ -551,6 +570,9 @@ function overlaps(slot: Slot, intervals: { start: string; end: string }[]): bool
 // Styles
 // ---------------------------------------------------------------------------
 const wrap: React.CSSProperties = { width: '100%', maxWidth: 900, height: 620, display: 'grid', gridTemplateColumns: '280px 1fr', background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 48px rgba(15,23,42,0.18)' };
+// Mobile: single column, natural height, narrower card.
+const wrapMobile: React.CSSProperties = { width: '100%', maxWidth: 560, display: 'flex', flexDirection: 'column', background: 'white', borderRadius: 14, overflow: 'hidden', boxShadow: '0 10px 36px rgba(15,23,42,0.16)' };
+const contentMobile: React.CSSProperties = { minHeight: 0, display: 'flex', flexDirection: 'column' };
 const sidebar: React.CSSProperties = { background: ACCENT, color: 'white', padding: 24, display: 'flex', flexDirection: 'column' };
 const sideStep: React.CSSProperties = { display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 10, marginBottom: 6 };
 const stepBadge: React.CSSProperties = { width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 };

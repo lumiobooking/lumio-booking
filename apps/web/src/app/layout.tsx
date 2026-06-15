@@ -1,9 +1,17 @@
 import type { ReactNode } from 'react';
+import './globals.css';
 import { AuthProvider } from '../lib/auth';
 
 export const metadata = {
   title: 'Lumio Booking - Admin',
   description: 'Multi-tenant booking platform for nail salons',
+};
+
+// Critical for mobile: makes the page scale to the device width.
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

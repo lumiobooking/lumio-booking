@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useIsMobile } from '../../../lib/responsive';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number }
 interface Booking {
@@ -66,6 +67,7 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<SectionId>('company');
+  const isMobile = useIsMobile();
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -104,14 +106,14 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {savedMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{savedMsg}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
-        {/* Settings sub-nav */}
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, position: 'sticky', top: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 1fr', gap: isMobile ? 14 : 20, alignItems: 'start' }}>
+        {/* Settings sub-nav: scrollable row on mobile, sidebar on desktop */}
+        <nav style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: isMobile ? 8 : 4, position: isMobile ? 'static' : 'sticky', top: 0, overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? 4 : 0 }}>
           {SECTIONS.map((s) => {
             const active = tab === s.id;
             return (
               <button key={s.id} onClick={() => setTab(s.id)}
-                style={{ textAlign: 'left', display: 'flex', gap: 10, alignItems: 'center', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                style={{ textAlign: 'left', display: 'flex', gap: 10, alignItems: 'center', padding: '10px 12px', borderRadius: 10, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
                   border: '1px solid ' + (active ? '#6366f1' : '#334155'), background: active ? '#312e81' : '#1e293b', color: '#e2e8f0' }}>
                 <span style={{ fontSize: 16 }}>{s.icon}</span>
                 <span>

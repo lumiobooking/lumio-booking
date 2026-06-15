@@ -14,6 +14,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useIsMobile } from '../../../lib/responsive';
 
 interface Tpl {
   enabled: boolean; email: boolean; sms: boolean;
@@ -99,6 +100,7 @@ function TemplatesView({ token }: { token: string | null }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const smsRef = useRef<HTMLTextAreaElement>(null);
   const focusedRef = useRef<'subject' | 'body' | 'smsBody'>('body');
+  const isMobile = useIsMobile();
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -176,7 +178,7 @@ function TemplatesView({ token }: { token: string | null }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 300px) 1fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(240px, 300px) 1fr', gap: 16, alignItems: 'start' }}>
         {/* event list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {groups.map((g) => (

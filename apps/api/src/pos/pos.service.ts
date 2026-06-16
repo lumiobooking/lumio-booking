@@ -213,6 +213,9 @@ export class PosService {
           }
         }
         // Mirror into the Payment ledger so dashboard revenue includes POS sales.
+        // Encode the tender method in `provider` so reports can split Cash/Card/Transfer.
+        const m = dto.tenders?.[0]?.method;
+        const provider = m === 'CASH' ? 'pos-cash' : m === 'CARD' ? 'pos-card' : 'pos-transfer';
         await tx.payment.create({
           data: {
             tenantId,
@@ -221,7 +224,7 @@ export class PosService {
             currency: created.currency,
             type: PaymentType.PAY_LATER,
             status: PaymentStatus.PAID,
-            provider: 'pos',
+            provider,
             providerReference: `order:${created.id}`,
             paidAt: new Date(),
           },

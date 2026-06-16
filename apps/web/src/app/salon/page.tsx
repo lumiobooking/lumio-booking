@@ -30,6 +30,7 @@ interface Dashboard {
     completionRate: number;
   };
   statusBreakdown: Record<string, number>;
+  paymentMethods: { cash: number; card: number; transfer: number; online: number; onsite: number };
   series: SeriesPoint[];
   topStaff: Ranked[];
   topServices: Ranked[];
@@ -141,11 +142,18 @@ function Inner() {
             <TrendChart series={data.series} />
           </Card>
 
-          {/* Status breakdown + Top services side by side */}
+          {/* Status breakdown + Payment methods side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
             <Card title="Booking status">
               <StatusBreakdown breakdown={data.statusBreakdown} total={data.kpis.totalBookings} />
             </Card>
+            <Card title="Revenue by payment method">
+              <PaymentMethods pm={data.paymentMethods} />
+            </Card>
+          </div>
+
+          {/* Top services */}
+          <div style={{ marginTop: 16 }}>
             <Card title="Top services">
               <RankedTable rows={data.topServices} firstCol="Service" empty="No bookings in this range." />
             </Card>
@@ -235,6 +243,37 @@ function RankedTable({ rows, firstCol, empty }: { rows: Ranked[]; firstCol: stri
         </div>
       ))}
     </div>
+  );
+}
+
+function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: number; online: number; onsite: number } }) {
+  const rows: { label: string; value: number; color: string }[] = [
+    { label: 'Cash', value: pm.cash, color: '#22c55e' },
+    { label: 'Card', value: pm.card, color: '#3b82f6' },
+    { label: 'Bank transfer', value: pm.transfer, color: '#06b6d4' },
+    { label: 'Online', value: pm.online, color: '#a855f7' },
+    { label: 'At salon (other)', value: pm.onsite, color: '#eab308' },
+  ];
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  if (total === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>No payments in this range.</p>;
+  return (
+    <>
+      <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', marginBottom: 14 }}>
+        {rows.filter((r) => r.value > 0).map((r) => (
+          <div key={r.label} title={`${r.label}: ${formatPrice(r.value)}`} style={{ width: `${(r.value / total) * 100}%`, background: r.color }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {rows.map((r) => (
+          <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: r.color }} />
+            <span style={{ color: '#cbd5e1' }}>{r.label}</span>
+            <span style={{ marginLeft: 'auto', color: '#e2e8f0', fontWeight: 600 }}>{formatPrice(r.value)}</span>
+            <span style={{ color: '#64748b', width: 42, textAlign: 'right' }}>{Math.round((r.value / total) * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

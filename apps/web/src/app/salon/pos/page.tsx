@@ -257,6 +257,11 @@ function Register() {
           🧾 Checking out a booking{bookingCustomer ? ` for ${bookingCustomer}` : ''} — the booking will be marked Completed after payment.
         </div>
       )}
+      {!appointmentId && customerId && bookingCustomer && (
+        <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
+          🛒 New sale for <strong>{bookingCustomer}</strong> — this sale will be linked to their profile.
+        </div>
+      )}
       {error && <div style={ui.banner}>{error}</div>}
       {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
 

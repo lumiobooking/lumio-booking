@@ -53,6 +53,11 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function markPaid(paymentId: string) {
+    try { await apiFetch(`/payments/${paymentId}/mark-paid`, { method: 'POST', token }); await load(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Action failed'); }
+  }
+
   if (loading) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
   if (error) return <div style={ui.banner}>{error}</div>;
   if (!c) return <p style={{ color: '#94a3b8' }}>Customer not found.</p>;
@@ -67,12 +72,18 @@ function Inner() {
         <span style={{ width: 52, height: 52, borderRadius: '50%', background: '#334155', color: '#e2e8f0', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>
           {(c.firstName || '?').charAt(0).toUpperCase()}
         </span>
-        <div>
+        <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 24, margin: 0 }}>{c.firstName} {c.lastName ?? ''}</h1>
           <div style={{ color: '#94a3b8', fontSize: 14 }}>
             {c.email ?? 'no email'} · {c.phone ?? 'no phone'} · since {new Date(c.createdAt).toLocaleDateString()}
           </div>
         </div>
+        <a
+          href={`/salon/pos?customerId=${c.id}&customer=${encodeURIComponent(`${c.firstName} ${c.lastName ?? ''}`.trim())}`}
+          style={{ ...ui.primaryBtn, textDecoration: 'none', whiteSpace: 'nowrap' }}
+        >
+          + New sale (POS)
+        </a>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 18 }}>
@@ -106,7 +117,14 @@ function Inner() {
                   <td style={ui.td}>{a.assignedStaff ? `${a.assignedStaff.firstName} ${a.assignedStaff.lastName ?? ''}`.trim() : '—'}</td>
                   <td style={ui.td}><span style={{ color: STATUS_COLORS[a.status] ?? '#94a3b8', fontWeight: 600 }}>{a.status}</span></td>
                   <td style={ui.td}>
-                    {pay ? <span style={{ color: PAY_COLORS[pay.status] ?? '#94a3b8' }}>{formatPrice(pay.amountCents, pay.currency)} · {pay.status}</span> : '—'}
+                    {pay ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: PAY_COLORS[pay.status] ?? '#94a3b8' }}>{formatPrice(pay.amountCents, pay.currency)} · {pay.status}</span>
+                        {pay.status === 'PENDING' && (
+                          <button onClick={() => markPaid(pay.id)} style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #22c55e', background: 'transparent', color: '#22c55e', fontSize: 12, cursor: 'pointer' }}>Mark paid</button>
+                        )}
+                      </span>
+                    ) : '—'}
                   </td>
                 </tr>
               );

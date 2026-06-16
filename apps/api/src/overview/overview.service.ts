@@ -125,6 +125,8 @@ export class OverviewService {
         select: {
           amountCents: true,
           paidAt: true,
+          provider: true,
+          type: true,
           appointment: {
             select: {
               status: true,
@@ -169,6 +171,17 @@ export class OverviewService {
     const revenueCents = countablePayments.reduce((s, p) => s + p.amountCents, 0);
     const paidCount = countablePayments.length;
     const avgBookingValueCents = paidCount > 0 ? Math.round(revenueCents / paidCount) : 0;
+
+    // Revenue split by payment source/method (for the breakdown + filtering).
+    const paymentMethods = { cash: 0, card: 0, transfer: 0, online: 0, onsite: 0 };
+    for (const p of countablePayments) {
+      const prov = p.provider || '';
+      if (prov === 'pos-cash') paymentMethods.cash += p.amountCents;
+      else if (prov === 'pos-card') paymentMethods.card += p.amountCents;
+      else if (prov === 'pos-transfer') paymentMethods.transfer += p.amountCents;
+      else if (p.type === 'PAY_ONLINE') paymentMethods.online += p.amountCents;
+      else paymentMethods.onsite += p.amountCents; // booking paid at salon (Mark paid)
+    }
     const noShowRate = totalBookings > 0 ? noShow / totalBookings : 0;
     const completionRate = totalBookings > 0 ? completed / totalBookings : 0;
 
@@ -265,6 +278,7 @@ export class OverviewService {
         completionRate,
       },
       statusBreakdown,
+      paymentMethods,
       series,
       topStaff,
       topServices,

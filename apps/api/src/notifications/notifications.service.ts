@@ -29,7 +29,11 @@ export interface SendNotificationInput {
   // The salon's own Brevo HTTPS config (preferred over SMTP when present).
   brevo?: BrevoConfig;
   // Explicit delivery choice (Amelia-style). When set, it wins over auto-detection.
-  mailService?: 'off' | 'smtp' | 'brevo';
+  mailService?: 'auto' | 'off' | 'smtp' | 'brevo';
+  // Used by the platform-email (Auto) path so the customer sees the SALON's name
+  // and replies route back to the salon.
+  senderName?: string;
+  replyTo?: string;
 }
 
 /**
@@ -66,8 +70,9 @@ export class NotificationsService {
       const envKey = process.env.BREVO_API_KEY;
       const envSender = process.env.BREVO_SENDER_EMAIL;
       if (envKey && envSender) {
-        const name = parseSenderName(input.smtp?.from) || process.env.BREVO_SENDER_NAME || 'Lumio Booking';
-        return new BrevoEmailProvider({ apiKey: envKey, senderEmail: envSender, senderName: name });
+        const name = input.senderName || parseSenderName(input.smtp?.from) || process.env.BREVO_SENDER_NAME || 'Lumio Booking';
+        const replyTo = input.replyTo || input.smtp?.replyTo || input.brevo?.replyTo;
+        return new BrevoEmailProvider({ apiKey: envKey, senderEmail: envSender, senderName: name, replyTo });
       }
       return this.email;
     })();

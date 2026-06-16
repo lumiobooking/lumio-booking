@@ -22,7 +22,7 @@ interface SettingsData {
   branding: { accentColor: string; logoUrl: string };
   gateways: Record<string, GatewayView>;
   notifications: {
-    mailService: 'off' | 'smtp' | 'brevo'; replyTo: string;
+    mailService: 'auto' | 'off' | 'smtp' | 'brevo'; replyTo: string;
     senderName: string; senderEmail: string; adminEmail: string; adminPhone: string;
     emailCustomerOnBooking: boolean; emailAdminOnBooking: boolean;
     smsCustomerOnBooking: boolean; smsAdminOnBooking: boolean;
@@ -545,12 +545,24 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         Choose how this salon sends emails, fill the fields, then use “Send test email” to confirm it works.
       </p>
       <Field label="Mail service">
-        <select style={ui.input} value={f.mailService} onChange={(e) => setF({ ...f, mailService: e.target.value as 'off' | 'smtp' | 'brevo' })}>
+        <select style={ui.input} value={f.mailService} onChange={(e) => setF({ ...f, mailService: e.target.value as 'auto' | 'off' | 'smtp' | 'brevo' })}>
+          <option value="auto">Auto — use platform email (recommended, free)</option>
+          <option value="brevo">My own Brevo (HTTPS API)</option>
+          <option value="smtp">My own SMTP server (Gmail, Outlook…)</option>
           <option value="off">Off — don’t send emails</option>
-          <option value="brevo">Brevo (HTTPS API — recommended)</option>
-          <option value="smtp">SMTP server (Gmail, Outlook, your own…)</option>
         </select>
       </Field>
+      {f.mailService === 'auto' && (
+        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 12, marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+          Sent through the platform’s built-in mail service — no account or setup needed. The customer sees your salon’s name as the sender; replies go to your email.
+          <div style={{ marginTop: 8, color: '#cbd5e1' }}>
+            Preview — the customer’s inbox shows:<br />
+            <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{f.senderName || 'Your salon name'}</span>{' '}
+            <span style={{ color: '#64748b' }}>&lt;notifications@lumio-booking&gt;</span><br />
+            <span style={{ color: '#64748b' }}>Reply-to: {f.replyTo || f.senderEmail || 'your@email'}</span>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
         <Field label="Sender name *"><input style={ui.input} value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} placeholder="Your salon name" /></Field>
         <Field label="Sender email *"><input style={ui.input} value={f.senderEmail} onChange={(e) => setF({ ...f, senderEmail: e.target.value })} placeholder="bookings@yoursalon.com" /></Field>
@@ -579,9 +591,19 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         {n.smtp.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Connected</span>}
       </div>
       <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
-        Alternative if you don’t use Brevo. For Gmail: enable 2-step verification, create an <strong>App Password</strong>, and paste it below.
-        Host smtp.gmail.com · Port 465. The password is stored securely and never shown again.
+        For Gmail: turn on 2-Step Verification, create an <strong>App Password</strong> (Google Account → Security → App passwords),
+        and paste that 16-character password below — your normal Gmail password will NOT work.
       </p>
+      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
+        ⚠ SMTP (incl. Gmail) only sends when the API runs on a <strong>paid</strong> hosting instance. The free tier blocks SMTP — if so, use “Auto / platform email” instead.
+      </div>
+      <button
+        type="button"
+        onClick={() => setSmtp({ ...smtp, host: 'smtp.gmail.com', secure: 'ssl', port: 465 })}
+        style={{ ...ui.input, width: 'auto', cursor: 'pointer', marginBottom: 10, background: '#1e293b' }}
+      >
+        ✦ Use Gmail preset (smtp.gmail.com · SSL · 465)
+      </button>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
         <Field label="SMTP host"><input style={ui.input} value={smtp.host} onChange={(e) => setSmtp({ ...smtp, host: e.target.value })} placeholder="smtp.gmail.com" /></Field>
         <Field label="Port"><input style={ui.input} type="number" value={smtp.port} onChange={(e) => setSmtp({ ...smtp, port: Number(e.target.value) })} placeholder="465" /></Field>

@@ -298,6 +298,10 @@ export class BookingsService {
       n.brevo.apiKey && n.senderEmail
         ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || d.salon }
         : undefined;
+    // Used when sending via the platform email (Auto): show the SALON's name and
+    // route replies to the salon, so the customer never sees a generic sender.
+    const senderName = n.senderName || d.salon;
+    const replyTo = n.replyTo || n.senderEmail || undefined;
 
     const jobs: Promise<unknown>[] = [];
 
@@ -333,7 +337,7 @@ export class BookingsService {
           subject: fillPct(tpl.subject, pct),
           body: htmlToText(bodyFilled),
           html: renderTemplatedEmailHtml({ salon: d.salon, accent: d.accent, contact: d.contact, bodyText: bodyFilled }),
-          smtp, brevo, mailService: n.mailService, ...related,
+          smtp, brevo, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       } else {
         const intro = fill(n.emailIntroCustomer, d);
@@ -343,7 +347,7 @@ export class BookingsService {
           subject: fill(n.emailSubjectCustomer, d),
           body: renderBookingEmailText('Booking confirmed', intro, footer, d),
           html: renderBookingEmailHtml({ heading: 'Booking confirmed', intro, footer, d }),
-          smtp, brevo, mailService: n.mailService, ...related,
+          smtp, brevo, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       }
     }
@@ -450,6 +454,8 @@ export class BookingsService {
       smtp,
       brevo,
       mailService: n.mailService,
+      senderName: n.senderName || salon,
+      replyTo: n.replyTo || n.senderEmail || undefined,
       relatedType: 'appointment',
       relatedId: appt.id,
     });

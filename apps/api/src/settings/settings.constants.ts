@@ -30,10 +30,11 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */
 export interface NotificationSettings {
   // Which delivery method this salon uses for emails (Amelia-style explicit choice).
+  //  'auto' = use the salon's own config if set, else the platform email (free) — default
   //  'off'  = don't send real emails (logged only)
   //  'smtp' = the salon's own SMTP server
   //  'brevo'= the salon's Brevo HTTPS API
-  mailService: 'off' | 'smtp' | 'brevo';
+  mailService: 'auto' | 'off' | 'smtp' | 'brevo';
   senderName: string; // "From" name on emails
   senderEmail: string; // shared "From" address (used by every provider)
   replyTo: string; // optional Reply-To address
@@ -63,7 +64,7 @@ export interface NotificationSettings {
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
-  mailService: 'off',
+  mailService: 'auto',
   senderName: '',
   senderEmail: '',
   replyTo: '',

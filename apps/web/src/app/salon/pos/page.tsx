@@ -8,12 +8,14 @@ import { ui, formatPrice } from '../../../lib/ui';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean }
 interface Product { id: string; name: string; priceCents: number; isActive: boolean; trackStock: boolean; stockQty: number }
+interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
 
 interface Line {
   uid: string;
   kind: 'SERVICE' | 'PRODUCT';
   refId: string;
+  isAddon?: boolean; // a service extra (kind SERVICE, but not a standalone service row)
   name: string;
   unitPriceCents: number;
   quantity: number;
@@ -35,10 +37,11 @@ function Register() {
   const { token } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [addons, setAddons] = useState<Addon[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [taxRate, setTaxRate] = useState(0);
   const [currency, setCurrency] = useState('USD');
-  const [tab, setTab] = useState<'SERVICE' | 'PRODUCT'>('SERVICE');
+  const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
   const [cart, setCart] = useState<Line[]>([]);
   const [orderDiscount, setOrderDiscount] = useState('');
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD'>('CASH');
@@ -51,14 +54,16 @@ function Register() {
     if (!token) return;
     setLoading(true);
     try {
-      const [s, p, st, settings] = await Promise.all([
+      const [s, p, a, st, settings] = await Promise.all([
         apiFetch<Service[]>('/services', { token }),
         apiFetch<Product[]>('/pos/products', { token }),
+        apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
         apiFetch<{ pos?: { taxRatePercent?: number }; booking?: { currency?: string } }>('/settings', { token }),
       ]);
       setServices(s.filter((x) => x.isActive));
       setProducts(p.filter((x) => x.isActive));
+      setAddons(a);
       setStaff(st.filter((x) => x.isActive));
       setTaxRate(settings.pos?.taxRatePercent ?? 0);
       setCurrency(settings.booking?.currency ?? 'USD');
@@ -78,6 +83,9 @@ function Register() {
 
   function addService(s: Service) {
     setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, unitPriceCents: svcNet(s), quantity: 1, tipCents: 0, staffMemberId: '' }]);
+  }
+  function addAddon(a: Addon) {
+    setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: a.id, isAddon: true, name: a.name, unitPriceCents: a.priceCents, quantity: 1, tipCents: 0, staffMemberId: '' }]);
   }
   function addProduct(p: Product) {
     setCart((c) => {
@@ -125,7 +133,7 @@ function Register() {
           discountCents: money.discount,
           items: cart.map((l) => ({
             kind: l.kind,
-            serviceId: l.kind === 'SERVICE' ? l.refId : undefined,
+            serviceId: l.kind === 'SERVICE' && !l.isAddon ? l.refId : undefined,
             productId: l.kind === 'PRODUCT' ? l.refId : undefined,
             name: l.name,
             unitPriceCents: l.unitPriceCents,
@@ -197,25 +205,61 @@ function Register() {
         <div style={{ ...ui.card }}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
             <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>Services</button>
+            <button onClick={() => setTab('ADDON')} style={tabBtn(tab === 'ADDON')}>Add-ons</button>
             <button onClick={() => setTab('PRODUCT')} style={tabBtn(tab === 'PRODUCT')}>Products</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
-            {tab === 'SERVICE' && services.map((s) => (
-              <button key={s.id} onClick={() => addService(s)} style={catBtn}>
-                <span style={{ fontWeight: 600 }}>{s.name}</span>
-                <span style={{ color: '#22c55e' }}>{formatPrice(svcNet(s), currency)}</span>
-              </button>
-            ))}
-            {tab === 'SERVICE' && services.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No active services.</p>}
-            {tab === 'PRODUCT' && products.map((p) => (
-              <button key={p.id} onClick={() => addProduct(p)} style={catBtn}>
-                <span style={{ fontWeight: 600 }}>{p.name}</span>
-                <span style={{ color: '#22c55e' }}>{formatPrice(p.priceCents, currency)}</span>
-                {p.trackStock && <span style={{ fontSize: 11, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>Stock: {p.stockQty}</span>}
-              </button>
-            ))}
-            {tab === 'PRODUCT' && products.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No products yet. <a href="/salon/products" style={{ color: '#818cf8' }}>Add some →</a></p>}
-          </div>
+
+          {/* Services */}
+          {tab === 'SERVICE' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+              {services.map((s) => (
+                <button key={s.id} onClick={() => addService(s)} style={catBtn}>
+                  <span style={{ fontWeight: 600 }}>{s.name}</span>
+                  <span style={{ color: '#22c55e' }}>{formatPrice(svcNet(s), currency)}</span>
+                </button>
+              ))}
+              {services.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No active services.</p>}
+            </div>
+          )}
+
+          {/* Add-ons, grouped by parent service */}
+          {tab === 'ADDON' && (
+            addons.length === 0 ? (
+              <p style={{ color: '#94a3b8', fontSize: 13 }}>No add-ons yet. Create them under a service in <a href="/salon/services" style={{ color: '#818cf8' }}>Services</a>.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {groupAddons(addons).map((grp) => (
+                  <div key={grp.service}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+                      {grp.service}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+                      {grp.items.map((a) => (
+                        <button key={a.id} onClick={() => addAddon(a)} style={{ ...catBtn, borderStyle: 'dashed' }}>
+                          <span style={{ fontWeight: 600 }}>+ {a.name}</span>
+                          <span style={{ color: '#22c55e' }}>{formatPrice(a.priceCents, currency)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* Products */}
+          {tab === 'PRODUCT' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+              {products.map((p) => (
+                <button key={p.id} onClick={() => addProduct(p)} style={catBtn}>
+                  <span style={{ fontWeight: 600 }}>{p.name}</span>
+                  <span style={{ color: '#22c55e' }}>{formatPrice(p.priceCents, currency)}</span>
+                  {p.trackStock && <span style={{ fontSize: 11, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>Stock: {p.stockQty}</span>}
+                </button>
+              ))}
+              {products.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No products yet. <a href="/salon/products" style={{ color: '#818cf8' }}>Add some →</a></p>}
+            </div>
+          )}
         </div>
 
         {/* Ticket */}
@@ -228,7 +272,10 @@ function Register() {
               {cart.map((l) => (
                 <div key={l.uid} style={{ borderBottom: '1px solid #334155', paddingBottom: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{l.name}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>ADD-ON</span>}
+                      {l.name}
+                    </div>
                     <button onClick={() => removeLine(l.uid)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16 }}>×</button>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
@@ -305,6 +352,16 @@ function Row({ label, value }: { label: string; value: string }) {
       <span style={{ color: '#94a3b8' }}>{label}</span><span>{value}</span>
     </div>
   );
+}
+
+function groupAddons(addons: Addon[]): { service: string; items: Addon[] }[] {
+  const map = new Map<string, Addon[]>();
+  for (const a of addons) {
+    const key = a.service?.name ?? 'Other';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(a);
+  }
+  return [...map.entries()].map(([service, items]) => ({ service, items }));
 }
 
 function escapeHtml(s: string) {

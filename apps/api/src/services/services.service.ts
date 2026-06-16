@@ -118,6 +118,23 @@ export class ServicesService {
 
   // ---- Service add-ons (extras) ------------------------------------------
 
+  /** All active add-ons for the tenant, with parent service name (POS catalog). */
+  listAllAddons(user: AuthenticatedUser) {
+    return this.prisma.serviceAddon.findMany({
+      where: { tenantId: this.tenantId(user), isActive: true },
+      select: {
+        id: true,
+        name: true,
+        priceCents: true,
+        durationMinutes: true,
+        currency: true,
+        serviceId: true,
+        service: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async listAddons(user: AuthenticatedUser, serviceId: string) {
     await this.getById(user, serviceId); // ensures the service is in this tenant
     return this.prisma.serviceAddon.findMany({

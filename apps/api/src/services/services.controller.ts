@@ -28,6 +28,13 @@ export class ServicesController {
     return this.servicesService.list(user);
   }
 
+  // All add-ons for the tenant (used by the POS catalog). Two-segment path so it
+  // never collides with GET /services/:id.
+  @Get('addons/all')
+  listAllAddons(@CurrentUser() user: AuthenticatedUser) {
+    return this.servicesService.listAllAddons(user);
+  }
+
   @Get(':id')
   getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.servicesService.getById(user, id);

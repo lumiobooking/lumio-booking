@@ -190,6 +190,25 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
   );
 }
 
+/** Collapsible sub-section so a long settings card stays short by default. */
+function Panel({ title, badge, hint, defaultOpen = false, children }: {
+  title: string; badge?: { text: string; color: string } | null; hint?: string; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ marginTop: 10, border: '1px solid #334155', borderRadius: 10, background: '#0f172a', overflow: 'hidden' }}>
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+        <span style={{ color: '#64748b', fontSize: 11, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▶</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{title}</span>
+        {badge && <span style={{ fontSize: 11, fontWeight: 600, color: badge.color, border: `1px solid ${badge.color}`, borderRadius: 999, padding: '1px 8px' }}>{badge.text}</span>}
+        {hint && !open && <span style={{ marginLeft: 'auto', color: '#64748b', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '45%' }}>{hint}</span>}
+      </button>
+      {open && <div style={{ padding: '0 14px 14px' }}>{children}</div>}
+    </div>
+  );
+}
+
 function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const [f, setF] = useState(data.company);
   return (
@@ -325,15 +344,20 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
     setGw((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   }
 
+  const enabledGw = GATEWAYS.filter((g) => gw[g.id]?.enabled);
+  const connectedGw = GATEWAYS.filter((g) => data.gateways?.[g.id]?.connected);
+  const cardChannelName = GATEWAYS.find((g) => g.id === data.pos?.primaryCardGateway)?.name;
+
   return (
     <Card title="Payments" desc="Currency, price display, accepted methods, and online gateways.">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {/* --- Core: currency + price display (always visible, compact) --- */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
         <Field label="Currency">
           <select style={ui.input} value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
-        <Field label="Custom symbol (optional)">
+        <Field label="Custom symbol">
           <input style={ui.input} value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder={SYMBOLS[currency] ?? currency} />
         </Field>
         <Field label="Symbol position">
@@ -348,55 +372,86 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           </select>
         </Field>
       </div>
-      <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 6 }}>
-        Price preview: <strong style={{ color: '#e2e8f0' }}>{previewPrice(35, currency, symbol, position, decimals)}</strong>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
+        <div style={{ fontSize: 13, color: '#94a3b8' }}>
+          Preview: <strong style={{ color: '#e2e8f0' }}>{previewPrice(35, currency, symbol, position, decimals)}</strong>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <Toggle on={onSite} onChange={setOnSite} label="Accept pay-at-salon" />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#94a3b8' }}>
+            Default:
+            <select style={{ ...ui.input, padding: '6px 8px', width: 'auto' }} value={defaultMethod} onChange={(e) => setDefaultMethod(e.target.value as 'online' | 'onsite')}>
+              <option value="onsite">Pay at salon</option>
+              <option value="online">Pay online</option>
+            </select>
+          </label>
+        </div>
       </div>
 
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Accept in-person</div>
-      <Toggle on={onSite} onChange={setOnSite} label="Pay at the salon (cash / card on-site)" />
-
-      <Field label="Default payment method (pre-selected at checkout)">
-        <select style={{ ...ui.input, maxWidth: 260, marginTop: 6 }} value={defaultMethod} onChange={(e) => setDefaultMethod(e.target.value as 'online' | 'onsite')}>
-          <option value="onsite">Pay at the salon</option>
-          <option value="online">Pay online</option>
-        </select>
-      </Field>
-
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Online payment gateways</div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
-        Connect any gateway so customers can pay when booking. Secret keys are stored securely and never shown again.
-      </p>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {GATEWAYS.map((g) => {
-          const e = gw[g.id];
-          const connected = data.gateways?.[g.id]?.connected;
-          return (
-            <div key={g.id} style={{ border: `1px solid ${e.enabled ? '#6366f1' : '#334155'}`, borderRadius: 10, padding: 14, background: '#0f172a' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>
-                    {g.name}{' '}
-                    {connected && <span style={{ color: '#22c55e', fontSize: 12, fontWeight: 600 }}>● Connected</span>}
+      {/* --- Collapsible sub-sections keep the card short --- */}
+      <Panel
+        title="Online payment gateways"
+        badge={connectedGw.length ? { text: `${connectedGw.length} connected`, color: '#22c55e' } : { text: 'None', color: '#64748b' }}
+        hint={connectedGw.length ? connectedGw.map((g) => g.name).join(', ') : 'Stripe, Square, PayPal…'}
+      >
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 10px' }}>
+          Connect any gateway so customers can pay when booking. Secret keys are stored securely and never shown again.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {GATEWAYS.map((g) => {
+            const e = gw[g.id];
+            const connected = data.gateways?.[g.id]?.connected;
+            return (
+              <div key={g.id} style={{ border: `1px solid ${e.enabled ? '#6366f1' : '#334155'}`, borderRadius: 10, padding: 14, background: '#111827' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 15 }}>
+                      {g.name}{' '}
+                      {connected && <span style={{ color: '#22c55e', fontSize: 12, fontWeight: 600 }}>● Connected</span>}
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: 12 }}>{g.desc}</div>
                   </div>
-                  <div style={{ color: '#94a3b8', fontSize: 12 }}>{g.desc}</div>
+                  <Toggle on={e.enabled} onChange={(v) => upd(g.id, { enabled: v })} label="" />
                 </div>
-                <Toggle on={e.enabled} onChange={(v) => upd(g.id, { enabled: v })} label="" />
+                {e.enabled && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+                    <Field label={g.apiLabel}>
+                      <input style={ui.input} value={e.apiKey} onChange={(ev) => upd(g.id, { apiKey: ev.target.value })} placeholder={g.apiLabel} />
+                    </Field>
+                    <Field label={g.secretLabel}>
+                      <input style={ui.input} type="password" value={e.secret} onChange={(ev) => upd(g.id, { secret: ev.target.value })} placeholder={connected ? '•••••••• (saved — leave blank to keep)' : g.secretLabel} />
+                    </Field>
+                  </div>
+                )}
               </div>
-              {e.enabled && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
-                  <Field label={g.apiLabel}>
-                    <input style={ui.input} value={e.apiKey} onChange={(ev) => upd(g.id, { apiKey: ev.target.value })} placeholder={g.apiLabel} />
-                  </Field>
-                  <Field label={g.secretLabel}>
-                    <input style={ui.input} type="password" value={e.secret} onChange={(ev) => upd(g.id, { secret: ev.target.value })} placeholder={connected ? '•••••••• (saved — leave blank to keep)' : g.secretLabel} />
-                  </Field>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #334155' }}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: '#cbd5e1' }}>Primary card channel (POS)</div>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+            When a cashier taps “Card” at the register, charge through this gateway.
+          </p>
+          <PrimaryCardChannel data={data} onSave={onSave} />
+        </div>
+      </Panel>
+
+      <Panel
+        title="Loyalty points"
+        badge={data.loyalty?.enabled ? { text: 'On', color: '#eab308' } : { text: 'Off', color: '#64748b' }}
+        hint="Earn on paid visits, redeem at checkout"
+      >
+        <LoyaltyConfig data={data} onSave={onSave} />
+      </Panel>
+
+      <Panel
+        title="Bank transfer (manual)"
+        badge={data.pos?.transferInstructions ? { text: 'Set', color: '#22c55e' } : { text: 'Not set', color: '#64748b' }}
+        hint="Shown when customer chooses “Transfer”"
+      >
+        <BankTransferConfig data={data} onSave={onSave} />
+      </Panel>
 
       <button
         style={{ ...ui.primaryBtn, marginTop: 16 }}
@@ -404,33 +459,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       >
         Save payments
       </button>
-
-      {/* Which connected gateway the POS "Card" button charges through. */}
-      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #334155' }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Primary card channel (POS)</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
-          When a cashier taps “Card” at the register, charge through this gateway. Enable & save the gateway above first.
-        </p>
-        <PrimaryCardChannel data={data} onSave={onSave} />
-      </div>
-
-      {/* Loyalty program */}
-      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #334155' }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Loyalty points</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
-          Customers earn points on paid visits and redeem them for a discount at checkout.
-        </p>
-        <LoyaltyConfig data={data} onSave={onSave} />
-      </div>
-
-      {/* Bank transfer details shown to the customer at checkout (manual confirm). */}
-      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #334155' }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Bank transfer (manual)</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
-          Shown to the customer when they choose “Transfer” at the register. The cashier confirms once the money arrives.
-        </p>
-        <BankTransferConfig data={data} onSave={onSave} />
-      </div>
+      <span style={{ color: '#64748b', fontSize: 12, marginLeft: 12 }}>Saves currency, methods & gateway keys{enabledGw.length ? ` (${enabledGw.length} on)` : ''}.</span>
     </Card>
   );
 }

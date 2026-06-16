@@ -178,6 +178,10 @@ model Tenant {
   assignmentRules   AssignmentRule[]
   settings          Setting[]
   auditLogs         AuditLog[]
+  products          Product[]
+  orders            Order[]
+  orderItems        OrderItem[]
+  orderPayments     OrderPayment[]
 
   @@index([status])
   @@map("tenants")
@@ -368,6 +372,9 @@ model StaffMember {
 
   // Used by the assignment rule engine. Higher = preferred.
   performanceScore Int @default(100)
+
+  // POS service commission rate (percent of service revenue this tech earns).
+  commissionPercent Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -668,4 +675,141 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([action])
   @@map("audit_logs")
+}
+
+// ===========================================================================
+// POS (point of sale) — counter checkout: tickets, line items, tenders.
+// All tenant-scoped. Optional FKs (service/product/staff/customer/appointment)
+// are stored as scalar IDs with names snapshotted onto the line item so a
+// receipt is stable even if the catalog later changes.
+// ===========================================================================
+
+enum OrderStatus {
+  OPEN // ticket being built
+  PAID // fully paid / closed
+  VOID // cancelled before/after payment (no revenue)
+  REFUNDED // money returned after payment
+}
+
+enum OrderItemKind {
+  SERVICE
+  PRODUCT
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  OTHER
+}
+
+/// Retail products sold at the counter (with optional stock tracking).
+model Product {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  sku         String?
+  priceCents  Int
+  currency    String  @default("USD")
+  taxable     Boolean @default(true)
+  trackStock  Boolean @default(false)
+  stockQty    Int     @default(0)
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("products")
+}
+
+/// A POS ticket / sale.
+model Order {
+  id          String      @id @default(uuid())
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderNumber Int // human-friendly, sequential per tenant
+  status      OrderStatus @default(OPEN)
+
+  // Optional links (scalar IDs, no relations to keep the schema lean).
+  customerId      String?
+  appointmentId   String?
+  createdByUserId String?
+
+  // Money (all in minor units / cents).
+  subtotalCents Int    @default(0) // sum of line totals before order discount/tax
+  discountCents Int    @default(0) // order-level discount
+  taxCents      Int    @default(0) // tax on taxable (retail) lines
+  tipCents      Int    @default(0) // total tips across lines
+  totalCents    Int    @default(0) // amount due
+  paidCents     Int    @default(0) // amount tendered
+  changeCents   Int    @default(0) // change returned (cash)
+  currency      String @default("USD")
+
+  note   String?
+  items  OrderItem[]
+  tenders OrderPayment[]
+
+  createdAt DateTime  @default(now())
+  paidAt    DateTime?
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("orders")
+}
+
+/// One line on a ticket — a service or a retail product, with the technician
+/// who performed/sold it (for per-tech revenue, tips and commission).
+model OrderItem {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  kind      OrderItemKind
+  serviceId String?
+  productId String?
+  name      String // snapshot of service/product name
+
+  unitPriceCents Int
+  quantity       Int @default(1)
+  discountCents  Int @default(0)
+  taxCents       Int @default(0)
+  tipCents       Int @default(0)
+  lineTotalCents Int // unitPrice*qty - discount (tax/tip tracked separately)
+
+  staffMemberId String? // technician credited for this line
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@index([tenantId, staffMemberId])
+  @@map("order_items")
+}
+
+/// A tender against an order (supports split payment).
+model OrderPayment {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  method     PaymentMethod
+  amountCents Int
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("order_payments")
 }

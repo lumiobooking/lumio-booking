@@ -61,4 +61,13 @@ export class SettingsController {
   updateBranding(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateBrandingDto) {
     return this.settings.updateBranding(user, dto);
   }
+
+  // POS settings: retail tax rate + receipt footer.
+  @Patch('pos')
+  updatePos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { taxRatePercent?: number; receiptFooter?: string },
+  ) {
+    return this.settings.updatePos(user, dto);
+  }
 }

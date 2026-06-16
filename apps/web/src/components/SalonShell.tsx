@@ -8,11 +8,14 @@ import { useIsMobile } from '../lib/responsive';
 
 const NAV: { href: string; label: string; icon: string }[] = [
   { href: '/salon', label: 'Dashboard', icon: '◉' },
+  { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾' },
   { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
   { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
   { href: '/salon/customers', label: 'Customers', icon: '☺' },
   { href: '/salon/services', label: 'Services', icon: '✦' },
+  { href: '/salon/products', label: 'Products', icon: '🛍' },
   { href: '/salon/staff', label: 'Staff', icon: '✄' },
+  { href: '/salon/pos/report', label: 'Sales report', icon: '📊' },
   { href: '/salon/payments', label: 'Payments', icon: '＄' },
   { href: '/salon/notifications', label: 'Notifications', icon: '✉' },
   { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },

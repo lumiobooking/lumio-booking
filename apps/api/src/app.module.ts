@@ -16,6 +16,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { CustomersModule } from './customers/customers.module';
 import { OverviewModule } from './overview/overview.module';
 import { SettingsModule } from './settings/settings.module';
+import { PosModule } from './pos/pos.module';
 
 @Module({
   imports: [
@@ -49,6 +50,8 @@ import { SettingsModule } from './settings/settings.module';
     CustomersModule,
     OverviewModule,
     SettingsModule,
+    // Point of sale: counter checkout (tickets, products, tips, receipts).
+    PosModule,
   ],
 })
 export class AppModule {}

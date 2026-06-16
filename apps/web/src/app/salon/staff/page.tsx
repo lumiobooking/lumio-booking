@@ -21,6 +21,7 @@ interface StaffMember {
   avatarUrl: string | null;
   isActive: boolean;
   performanceScore: number;
+  commissionPercent?: number;
   staffServices: { serviceId: string }[];
   workingHours: { id: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
   user: { id: string; email: string } | null;
@@ -289,6 +290,7 @@ function StaffEditPanel({
     phone: member.phone ?? '',
     avatarUrl: member.avatarUrl ?? '',
     isActive: member.isActive,
+    commissionPercent: String(member.commissionPercent ?? 0),
   });
   const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
   const [hours, setHours] = useState<DayRow[]>(
@@ -331,6 +333,7 @@ function StaffEditPanel({
           phone: form.phone || undefined,
           avatarUrl: form.avatarUrl || undefined,
           isActive: form.isActive,
+          commissionPercent: Math.max(0, Math.min(100, parseInt(form.commissionPercent, 10) || 0)),
           serviceIds: skillIds,
           workingHours,
         },
@@ -362,6 +365,8 @@ function StaffEditPanel({
           <input style={ui.input} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
         <label><span style={ui.label}>Avatar image URL</span>
           <input style={ui.input} value={form.avatarUrl} onChange={(e) => up('avatarUrl', e.target.value)} placeholder="https://…" /></label>
+        <label><span style={ui.label}>Commission % (POS services)</span>
+          <input style={ui.input} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 22 }}>
           <input type="checkbox" checked={form.isActive} onChange={(e) => up('isActive', e.target.checked)} />
           <span style={{ fontSize: 14, color: '#e2e8f0' }}>Active (can take bookings)</span>

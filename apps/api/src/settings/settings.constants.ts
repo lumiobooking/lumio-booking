@@ -4,6 +4,20 @@ export const BOOKING_RULES_KEY = 'booking_rules';
 export const COMPANY_EXTRA_KEY = 'company_extra';
 export const PAYMENT_GATEWAYS_KEY = 'payment_gateways';
 export const NOTIFICATION_SETTINGS_KEY = 'notifications';
+export const POS_SETTINGS_KEY = 'pos_settings';
+
+// POS (counter checkout) settings. Tax applies to retail products only
+// (nail services are tax-exempt in many US states); receiptFooter prints at the
+// bottom of every receipt.
+export interface PosSettings {
+  taxRatePercent: number; // e.g. 8.25 for 8.25% sales tax on retail
+  receiptFooter: string;
+}
+
+export const DEFAULT_POS_SETTINGS: PosSettings = {
+  taxRatePercent: 0,
+  receiptFooter: '',
+};
 
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */
 export interface NotificationSettings {

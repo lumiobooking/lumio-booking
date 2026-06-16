@@ -25,6 +25,9 @@ import {
   NotificationTemplates,
   PAYMENT_GATEWAYS_KEY,
   PaymentGateways,
+  POS_SETTINGS_KEY,
+  PosSettings,
+  DEFAULT_POS_SETTINGS,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -60,6 +63,24 @@ export class SettingsService {
       update: { value: value as unknown as Prisma.InputJsonValue },
       create: { tenantId, key, value: value as unknown as Prisma.InputJsonValue },
     });
+  }
+
+  /** POS settings (tax rate on retail + receipt footer), merged over defaults. */
+  async getPosSettings(tenantId: string): Promise<PosSettings> {
+    return this.readKey<PosSettings>(tenantId, POS_SETTINGS_KEY, DEFAULT_POS_SETTINGS);
+  }
+
+  async updatePos(user: AuthenticatedUser, dto: { taxRatePercent?: number; receiptFooter?: string }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getPosSettings(tenantId);
+    const next: PosSettings = {
+      taxRatePercent:
+        typeof dto.taxRatePercent === 'number' && dto.taxRatePercent >= 0 ? dto.taxRatePercent : cur.taxRatePercent,
+      receiptFooter: typeof dto.receiptFooter === 'string' ? dto.receiptFooter : cur.receiptFooter,
+    };
+    await this.writeKey(tenantId, POS_SETTINGS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.pos_updated', resourceType: 'tenant', resourceId: tenantId });
+    return next;
   }
 
   /** Booking rules merged over defaults, with a guaranteed 7-day hours array. */
@@ -293,6 +314,7 @@ export class SettingsService {
       gateways: this.sanitizeGateways(await this.getGateways(tenantId)),
       notifications: this.sanitizeNotifications(await this.getNotificationSettings(tenantId)),
       notificationTemplates: await this.getNotificationTemplates(tenantId),
+      pos: await this.getPosSettings(tenantId),
     };
   }
 

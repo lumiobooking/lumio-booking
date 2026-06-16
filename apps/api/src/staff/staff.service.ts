@@ -131,6 +131,7 @@ export class StaffService {
           avatarUrl: dto.avatarUrl,
           isActive: dto.isActive,
           performanceScore: dto.performanceScore,
+          commissionPercent: dto.commissionPercent,
         },
       });
 

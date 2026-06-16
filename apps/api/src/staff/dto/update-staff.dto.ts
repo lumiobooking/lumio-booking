@@ -49,6 +49,13 @@ export class UpdateStaffDto {
   @Max(1000)
   performanceScore?: number;
 
+  // POS service commission rate (percent of service revenue).
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  commissionPercent?: number;
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

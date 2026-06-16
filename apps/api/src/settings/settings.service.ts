@@ -70,17 +70,22 @@ export class SettingsService {
     return this.readKey<PosSettings>(tenantId, POS_SETTINGS_KEY, DEFAULT_POS_SETTINGS);
   }
 
-  async updatePos(user: AuthenticatedUser, dto: { taxRatePercent?: number; receiptFooter?: string }) {
+  async updatePos(
+    user: AuthenticatedUser,
+    dto: { taxRatePercent?: number; receiptFooter?: string; primaryCardGateway?: string },
+  ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getPosSettings(tenantId);
     const next: PosSettings = {
       taxRatePercent:
         typeof dto.taxRatePercent === 'number' && dto.taxRatePercent >= 0 ? dto.taxRatePercent : cur.taxRatePercent,
       receiptFooter: typeof dto.receiptFooter === 'string' ? dto.receiptFooter : cur.receiptFooter,
+      primaryCardGateway:
+        typeof dto.primaryCardGateway === 'string' ? dto.primaryCardGateway : cur.primaryCardGateway,
     };
     await this.writeKey(tenantId, POS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.pos_updated', resourceType: 'tenant', resourceId: tenantId });
-    return next;
+    return this.get(user);
   }
 
   /** Booking rules merged over defaults, with a guaranteed 7-day hours array. */

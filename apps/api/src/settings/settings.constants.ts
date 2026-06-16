@@ -12,11 +12,13 @@ export const POS_SETTINGS_KEY = 'pos_settings';
 export interface PosSettings {
   taxRatePercent: number; // e.g. 8.25 for 8.25% sales tax on retail
   receiptFooter: string;
+  primaryCardGateway: string; // which enabled gateway the POS "Card" button uses ('' = none)
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
   taxRatePercent: 0,
   receiptFooter: '',
+  primaryCardGateway: '',
 };
 
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */
@@ -77,15 +79,15 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   twilio: { accountSid: '', authToken: '', fromNumber: '' },
 };
 
-/** Supported online gateways (most common for US salons). */
-export const GATEWAY_IDS = ['stripe', 'square', 'paypal'] as const;
+/** Supported card/online gateways (most popular for US/Canada salons). */
+export const GATEWAY_IDS = ['stripe', 'square', 'clover', 'authorizenet', 'paypal', 'sumup'] as const;
 export type GatewayId = (typeof GATEWAY_IDS)[number];
 
 /** Stored per gateway. apiKey is the public/identifier value; secret is private. */
 export interface GatewayConfig {
   enabled: boolean;
-  apiKey: string; // Stripe publishable key / PayPal client id / Square location id
-  secret: string; // Stripe secret key / PayPal secret / Square access token
+  apiKey: string; // public/identifier value (publishable key / location id / client id…)
+  secret: string; // private value (secret key / access token…)
 }
 export type PaymentGateways = Record<GatewayId, GatewayConfig>;
 
@@ -93,7 +95,10 @@ export const DEFAULT_GATEWAY: GatewayConfig = { enabled: false, apiKey: '', secr
 export const DEFAULT_PAYMENT_GATEWAYS: PaymentGateways = {
   stripe: { ...DEFAULT_GATEWAY },
   square: { ...DEFAULT_GATEWAY },
+  clover: { ...DEFAULT_GATEWAY },
+  authorizenet: { ...DEFAULT_GATEWAY },
   paypal: { ...DEFAULT_GATEWAY },
+  sumup: { ...DEFAULT_GATEWAY },
 };
 
 /** Open/close for one weekday (index 0 = Sunday … 6 = Saturday). */

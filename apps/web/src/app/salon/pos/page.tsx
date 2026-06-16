@@ -46,10 +46,11 @@ function Register() {
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
   const [cart, setCart] = useState<Line[]>([]);
   const [orderDiscount, setOrderDiscount] = useState('');
-  const [payMethod, setPayMethod] = useState<'CASH' | 'CARD'>('CASH');
+  const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
   const [tendered, setTendered] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -130,9 +131,14 @@ function Register() {
 
   async function pay() {
     if (cart.length === 0) { setError('Add at least one item.'); return; }
+    // Cash needs the amount received; Card & Transfer are paid in full at the terminal/bank.
     const tenderCents = payMethod === 'CASH' ? money.tenderedCents : money.total;
-    if (tenderCents < money.total) { setError('Tendered amount is less than the total due.'); return; }
-    setSubmitting(true); setError(null);
+    if (payMethod === 'CASH' && tenderCents < money.total) {
+      setError('Cash received is less than the total due. Enter the amount the customer handed over (or tap “Exact”).');
+      return;
+    }
+    const apiMethod = payMethod === 'CASH' ? 'CASH' : payMethod === 'CARD' ? 'CARD' : 'OTHER';
+    setSubmitting(true); setError(null); setOkMsg(null);
     try {
       const order = await apiFetch<{ orderNumber: number }>('/pos/orders', {
         method: 'POST', token,
@@ -148,10 +154,11 @@ function Register() {
             tipCents: l.tipCents,
             staffMemberId: l.staffMemberId || undefined,
           })),
-          tenders: [{ method: payMethod, amountCents: tenderCents }],
+          tenders: [{ method: apiMethod, amountCents: tenderCents }],
         },
       });
       printReceipt(order.orderNumber);
+      setOkMsg(`Paid ✓ Order #${order.orderNumber} — receipt sent to printer.`);
       clearCart();
       load(); // refresh stock
     } catch (err) {
@@ -211,6 +218,7 @@ function Register() {
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
+      {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* Catalog */}
@@ -344,21 +352,37 @@ function Register() {
             </div>
           </div>
 
-          {/* Payment */}
+          {/* Payment method */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>Cash</button>
-            <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>Card</button>
+            <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>💵 Cash</button>
+            <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>💳 Card</button>
+            <button onClick={() => setPayMethod('TRANSFER')} style={tabBtn(payMethod === 'TRANSFER')}>🏦 Transfer</button>
           </div>
+
           {payMethod === 'CASH' && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ color: '#94a3b8' }}>Cash received $</span>
-              <input type="number" min={0} step="0.01" value={tendered} onChange={(e) => setTendered(e.target.value)} style={{ ...ui.input, width: 120, padding: '6px 8px', textAlign: 'right' }} />
-            </div>
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => setTendered((money.total / 100).toFixed(2))} style={chip}>Exact</button>
+                {quickCash(money.total).map((amt) => (
+                  <button key={amt} onClick={() => setTendered((amt / 100).toFixed(2))} style={chip}>{formatPrice(amt, currency)}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ color: '#94a3b8' }}>Cash received $</span>
+                <input type="number" min={0} step="0.01" value={tendered} onChange={(e) => setTendered(e.target.value)} style={{ ...ui.input, width: 120, padding: '6px 8px', textAlign: 'right' }} />
+              </div>
+              {money.tenderedCents > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontWeight: 600 }}>
+                  <span>Change</span><span style={{ color: money.change >= 0 ? '#22c55e' : '#ef4444' }}>{formatPrice(money.change, currency)}</span>
+                </div>
+              )}
+            </>
           )}
-          {payMethod === 'CASH' && money.tenderedCents > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontWeight: 600 }}>
-              <span>Change</span><span>{formatPrice(money.change, currency)}</span>
-            </div>
+          {payMethod === 'CARD' && (
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>Charge {formatPrice(money.total, currency)} on the card reader, then press Pay &amp; Print to record &amp; print.</p>
+          )}
+          {payMethod === 'TRANSFER' && (
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>Confirm the bank transfer / e-transfer of {formatPrice(money.total, currency)} was received, then press Pay &amp; Print.</p>
           )}
 
           <div style={{ display: 'flex', gap: 8 }}>
@@ -394,6 +418,19 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Suggested cash denominations >= total (next round $5/$10/$20/$50/$100).
+function quickCash(totalCents: number): number[] {
+  if (totalCents <= 0) return [];
+  const steps = [500, 1000, 2000, 5000, 10000];
+  const out: number[] = [];
+  for (const s of steps) {
+    const up = Math.ceil(totalCents / s) * s;
+    if (up > totalCents && !out.includes(up)) out.push(up);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
 function groupAddons(addons: Addon[]): { service: string; items: Addon[] }[] {
   const map = new Map<string, Addon[]>();
   for (const a of addons) {
@@ -418,6 +455,9 @@ const catBtn: React.CSSProperties = {
 };
 const qtyBtn: React.CSSProperties = {
   width: 28, height: 28, borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 16,
+};
+const chip: React.CSSProperties = {
+  padding: '5px 10px', borderRadius: 999, border: '1px solid #475569', background: '#0f172a', color: '#cbd5e1', fontSize: 12, cursor: 'pointer',
 };
 const ghost: React.CSSProperties = {
   padding: '10px 14px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer',

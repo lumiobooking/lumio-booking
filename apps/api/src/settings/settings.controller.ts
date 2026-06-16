@@ -66,7 +66,7 @@ export class SettingsController {
   @Patch('pos')
   updatePos(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { taxRatePercent?: number; receiptFooter?: string },
+    @Body() dto: { taxRatePercent?: number; receiptFooter?: string; primaryCardGateway?: string },
   ) {
     return this.settings.updatePos(user, dto);
   }

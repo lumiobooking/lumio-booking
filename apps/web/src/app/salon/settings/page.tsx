@@ -33,14 +33,18 @@ interface SettingsData {
     brevo: { senderEmail: string; senderName: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
+  pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string };
 }
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'VND', 'JPY', 'SGD'];
-// US-popular online gateways. apiKey = public identifier; secret = private key.
+// Most popular US/Canada card gateways. apiKey = public identifier; secret = private key.
 const GATEWAYS = [
-  { id: 'stripe', name: 'Stripe', desc: 'Cards, Apple Pay & Google Pay — most popular', apiLabel: 'Publishable key', secretLabel: 'Secret key' },
-  { id: 'square', name: 'Square', desc: 'Cards & in-store POS', apiLabel: 'Location ID', secretLabel: 'Access token' },
+  { id: 'stripe', name: 'Stripe', desc: 'Cards, Apple Pay & Google Pay, Tap to Pay — most popular', apiLabel: 'Publishable key', secretLabel: 'Secret key' },
+  { id: 'square', name: 'Square', desc: 'Cards & in-store POS terminals', apiLabel: 'Application / Location ID', secretLabel: 'Access token' },
+  { id: 'clover', name: 'Clover', desc: 'Popular all-in-one salon terminals', apiLabel: 'Merchant ID', secretLabel: 'API token' },
+  { id: 'authorizenet', name: 'Authorize.Net', desc: 'Widely used US card gateway', apiLabel: 'API Login ID', secretLabel: 'Transaction key' },
   { id: 'paypal', name: 'PayPal', desc: 'PayPal balance & cards', apiLabel: 'Client ID', secretLabel: 'Secret' },
+  { id: 'sumup', name: 'SumUp', desc: 'Low-cost card reader for small salons', apiLabel: 'Merchant code', secretLabel: 'API key' },
 ];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -397,7 +401,31 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       >
         Save payments
       </button>
+
+      {/* Which connected gateway the POS "Card" button charges through. */}
+      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #334155' }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Primary card channel (POS)</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+          When a cashier taps “Card” at the register, charge through this gateway. Enable & save the gateway above first.
+        </p>
+        <PrimaryCardChannel data={data} onSave={onSave} />
+      </div>
     </Card>
+  );
+}
+
+function PrimaryCardChannel({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const [sel, setSel] = useState(data.pos?.primaryCardGateway ?? '');
+  const enabled = GATEWAYS.filter((g) => data.gateways?.[g.id]?.enabled);
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <select style={{ ...ui.input, maxWidth: 300 }} value={sel} onChange={(e) => setSel(e.target.value)}>
+        <option value="">— None (cashier confirms manually) —</option>
+        {enabled.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+      </select>
+      <button style={ui.primaryBtn} onClick={() => onSave('pos', { primaryCardGateway: sel }, 'Card channel')}>Save channel</button>
+      {enabled.length === 0 && <span style={{ color: '#94a3b8', fontSize: 12 }}>Enable & save a gateway above first.</span>}
+    </div>
   );
 }
 

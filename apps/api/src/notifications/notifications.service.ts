@@ -49,7 +49,7 @@ export interface SendNotificationInput {
   // The salon's own Gmail OAuth2 config (Gmail API over HTTPS).
   gmail?: GmailOAuthConfig;
   // Explicit delivery choice (Amelia-style). When set, it wins over auto-detection.
-  mailService?: 'auto' | 'off' | 'smtp' | 'brevo';
+  mailService?: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail';
   // Used by the platform-email (Auto) path so the customer sees the SALON's name
   // and replies route back to the salon.
   senderName?: string;

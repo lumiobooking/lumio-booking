@@ -281,6 +281,35 @@ export class PosService {
     return this.getOrder(user, id);
   }
 
+  /** Permanently delete an order (admin cleanup): reverses revenue, restocks if it
+   *  was a live paid sale, then removes the order (items + tenders cascade). */
+  async removeOrder(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
+    if (!order) throw new NotFoundException('Order not found');
+
+    await this.prisma.$transaction(async (tx) => {
+      // Restock only if it was still a live PAID sale (a VOID order was already restocked).
+      if (order.status === OrderStatus.PAID) {
+        for (const l of order.items) {
+          if (l.kind === OrderItemKind.PRODUCT && l.productId) {
+            await tx.product.updateMany({
+              where: { id: l.productId, tenantId, trackStock: true },
+              data: { stockQty: { increment: l.quantity } },
+            });
+          }
+        }
+      }
+      // Remove the revenue mirror so the deleted sale never counts.
+      await tx.payment.deleteMany({ where: { tenantId, providerReference: `order:${id}` } });
+      // Delete the order; order_items + order_payments cascade via FK.
+      await tx.order.deleteMany({ where: { id, tenantId } });
+    });
+
+    await this.audit.log({ tenantId, userId: user.userId, action: 'order.deleted', resourceType: 'order', resourceId: id });
+    return { id, deleted: true };
+  }
+
   /**
    * Per-technician POS report over a date range: service revenue, product
    * revenue, tips and commission (service revenue × the tech's commission %).

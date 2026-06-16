@@ -78,4 +78,9 @@ export class PosController {
   voidOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pos.voidOrder(user, id);
   }
+
+  @Delete('orders/:id')
+  removeOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.pos.removeOrder(user, id);
+  }
 }

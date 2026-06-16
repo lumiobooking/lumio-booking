@@ -72,6 +72,12 @@ function Inner() {
     catch (err) { setError(err instanceof Error ? err.message : 'Void failed'); }
   }
 
+  async function removeOrder(o: Order) {
+    if (!confirm(`Delete order #${o.orderNumber} permanently? This removes it and its revenue${o.status === 'PAID' ? ' (stock is restored)' : ''}. Cannot be undone.\n\nTo keep the record, use Void instead.`)) return;
+    try { await apiFetch(`/pos/orders/${o.id}`, { method: 'DELETE', token }); await load(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
+  }
+
   function reprint(o: Order) {
     const line = (label: string, val: string, bold = false) =>
       `<tr><td style="${bold ? 'font-weight:700' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:700' : ''}">${val}</td></tr>`;
@@ -160,6 +166,7 @@ function Inner() {
                       <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => reprint(o)} style={tiny}>Reprint</button>
                         {o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>Void</button>}
+                        <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }} title="Permanently delete this order">Delete</button>
                       </div>
                     </td>
                   </tr>

@@ -57,6 +57,12 @@ export class SettingsController {
     return this.settings.sendTestEmail(user);
   }
 
+  // Starts the Gmail OAuth flow — returns the Google consent URL to open.
+  @Get('gmail/auth-url')
+  gmailAuthUrl(@CurrentUser() user: AuthenticatedUser) {
+    return this.settings.gmailAuthUrl(user);
+  }
+
   @Patch('branding')
   updateBranding(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateBrandingDto) {
     return this.settings.updateBranding(user, dto);

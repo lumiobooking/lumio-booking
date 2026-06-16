@@ -34,7 +34,8 @@ export interface NotificationSettings {
   //  'off'  = don't send real emails (logged only)
   //  'smtp' = the salon's own SMTP server
   //  'brevo'= the salon's Brevo HTTPS API
-  mailService: 'auto' | 'off' | 'smtp' | 'brevo';
+  //  'gmail'= the salon's Gmail via Google OAuth2 (Gmail API over HTTPS)
+  mailService: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail';
   senderName: string; // "From" name on emails
   senderEmail: string; // shared "From" address (used by every provider)
   replyTo: string; // optional Reply-To address
@@ -59,6 +60,9 @@ export interface NotificationSettings {
   // Email via Brevo HTTPS API (recommended: reliable from the cloud, free tier).
   // apiKey is private and never returned to the UI.
   brevo: { apiKey: string; senderEmail: string; senderName: string };
+  // Email via Gmail Google OAuth2 (Gmail API over HTTPS — free, no SMTP needed).
+  // clientSecret + refreshToken are private and never returned to the UI.
+  gmail: { clientId: string; clientSecret: string; refreshToken: string; senderEmail: string };
   // SMS gateway (Twilio). authToken is private and never returned to the UI.
   twilio: { accountSid: string; authToken: string; fromNumber: string };
 }
@@ -83,6 +87,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   smsAdmin: 'New booking: {service} for {customer} on {date} at {time}.',
   smtp: { host: 'smtp.gmail.com', port: 465, user: '', pass: '', fromEmail: '', secure: 'ssl' },
   brevo: { apiKey: '', senderEmail: '', senderName: '' },
+  gmail: { clientId: '', clientSecret: '', refreshToken: '', senderEmail: '' },
   twilio: { accountSid: '', authToken: '', fromNumber: '' },
 };
 

@@ -6,7 +6,7 @@ import { EmailProvider, SmsProvider } from './providers/notification-provider.in
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
 import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
-import { GmailOAuthProvider } from './providers/gmail-oauth.provider';
+import { GmailOAuthConfig, GmailOAuthProvider } from './providers/gmail-oauth.provider';
 
 /** Build a platform Gmail-OAuth provider from env vars, or null if not configured. */
 function envGmailProvider(senderName?: string, replyTo?: string): GmailOAuthProvider | null {
@@ -46,6 +46,8 @@ export interface SendNotificationInput {
   smtp?: SmtpConfig;
   // The salon's own Brevo HTTPS config (preferred over SMTP when present).
   brevo?: BrevoConfig;
+  // The salon's own Gmail OAuth2 config (Gmail API over HTTPS).
+  gmail?: GmailOAuthConfig;
   // Explicit delivery choice (Amelia-style). When set, it wins over auto-detection.
   mailService?: 'auto' | 'off' | 'smtp' | 'brevo';
   // Used by the platform-email (Auto) path so the customer sees the SALON's name
@@ -78,12 +80,15 @@ export class NotificationsService {
       const svc = input.mailService;
       const brevoReady = !!(input.brevo?.apiKey && input.brevo?.senderEmail);
       const smtpReady = !!(input.smtp?.user && input.smtp?.pass);
+      const gmailReady = !!(input.gmail?.clientId && input.gmail?.clientSecret && input.gmail?.refreshToken && input.gmail?.senderEmail);
       // Explicit choice wins (no guessing) — this is the Amelia-style behaviour.
       if (svc === 'brevo' && brevoReady) return new BrevoEmailProvider(input.brevo!);
       if (svc === 'smtp' && smtpReady) return new SmtpEmailProvider(input.smtp!);
+      if (svc === 'gmail' && gmailReady) return new GmailOAuthProvider(input.gmail!);
       if (svc === 'off') return this.email; // logged only, no real send
-      // Auto fallback (svc unset, or chosen provider not configured yet):
-      // salon's own Brevo > salon's own SMTP > platform Gmail (OAuth) > platform Brevo > mock.
+      // Auto fallback (svc unset, or chosen provider not configured yet): salon's own
+      // Gmail > Brevo > SMTP > platform Gmail (env) > platform Brevo > mock.
+      if (gmailReady) return new GmailOAuthProvider(input.gmail!);
       if (brevoReady) return new BrevoEmailProvider(input.brevo!);
       if (smtpReady) return new SmtpEmailProvider(input.smtp!);
       const gmail = envGmailProvider(

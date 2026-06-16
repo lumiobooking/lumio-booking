@@ -302,6 +302,10 @@ export class BookingsService {
     // route replies to the salon, so the customer never sees a generic sender.
     const senderName = n.senderName || d.salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;
+    const gmail =
+      n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+        ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+        : undefined;
 
     const jobs: Promise<unknown>[] = [];
 
@@ -337,7 +341,7 @@ export class BookingsService {
           subject: fillPct(tpl.subject, pct),
           body: htmlToText(bodyFilled),
           html: renderTemplatedEmailHtml({ salon: d.salon, accent: d.accent, contact: d.contact, bodyText: bodyFilled }),
-          smtp, brevo, mailService: n.mailService, senderName, replyTo, ...related,
+          smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       } else {
         const intro = fill(n.emailIntroCustomer, d);
@@ -347,7 +351,7 @@ export class BookingsService {
           subject: fill(n.emailSubjectCustomer, d),
           body: renderBookingEmailText('Booking confirmed', intro, footer, d),
           html: renderBookingEmailHtml({ heading: 'Booking confirmed', intro, footer, d }),
-          smtp, brevo, mailService: n.mailService, senderName, replyTo, ...related,
+          smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       }
     }
@@ -442,6 +446,10 @@ export class BookingsService {
       n.brevo.apiKey && n.senderEmail
         ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || salon }
         : undefined;
+    const gmail =
+      n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+        ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName: n.senderName || salon, replyTo: n.replyTo || n.senderEmail || undefined }
+        : undefined;
 
     const bodyFilled = fillPct(tpl.body, pct);
     await this.notifications.send({
@@ -453,6 +461,7 @@ export class BookingsService {
       html: renderTemplatedEmailHtml({ salon, accent, contact, bodyText: bodyFilled }),
       smtp,
       brevo,
+      gmail,
       mailService: n.mailService,
       senderName: n.senderName || salon,
       replyTo: n.replyTo || n.senderEmail || undefined,

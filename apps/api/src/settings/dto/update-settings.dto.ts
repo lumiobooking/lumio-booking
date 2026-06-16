@@ -48,7 +48,7 @@ export class UpdateBrandingDto {
  * service) so adding a new gateway never requires a DTO change.
  */
 export class UpdateNotificationsDto {
-  @IsOptional() @IsIn(['auto', 'off', 'smtp', 'brevo']) mailService?: 'auto' | 'off' | 'smtp' | 'brevo';
+  @IsOptional() @IsIn(['auto', 'off', 'smtp', 'brevo', 'gmail']) mailService?: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail';
   @IsOptional() @IsString() @MaxLength(160) replyTo?: string;
   @IsOptional() @IsString() @MaxLength(120) senderName?: string;
   @IsOptional() @IsString() @MaxLength(160) senderEmail?: string;
@@ -67,6 +67,7 @@ export class UpdateNotificationsDto {
   @IsOptional() @IsString() @MaxLength(320) smsAdmin?: string;
   @IsOptional() @IsObject() smtp?: Record<string, unknown>;
   @IsOptional() @IsObject() brevo?: Record<string, unknown>;
+  @IsOptional() @IsObject() gmail?: Record<string, unknown>;
   @IsOptional() @IsObject() twilio?: Record<string, unknown>;
 }
 

@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -125,6 +126,7 @@ export class SettingsService {
       ...merged,
       smtp: { ...DEFAULT_NOTIFICATION_SETTINGS.smtp, ...(merged.smtp ?? {}) },
       brevo: { ...DEFAULT_NOTIFICATION_SETTINGS.brevo, ...(merged.brevo ?? {}) },
+      gmail: { ...DEFAULT_NOTIFICATION_SETTINGS.gmail, ...(merged.gmail ?? {}) },
       twilio: { ...DEFAULT_NOTIFICATION_SETTINGS.twilio, ...(merged.twilio ?? {}) },
     };
   }
@@ -162,6 +164,12 @@ export class SettingsService {
         senderName: n.brevo.senderName,
         connected: n.brevo.apiKey.length > 0,
       },
+      gmail: {
+        clientId: n.gmail.clientId,
+        senderEmail: n.gmail.senderEmail,
+        // "connected" only when OAuth has produced a refresh token.
+        connected: n.gmail.refreshToken.length > 0,
+      },
       twilio: {
         accountSid: n.twilio.accountSid,
         fromNumber: n.twilio.fromNumber,
@@ -175,6 +183,7 @@ export class SettingsService {
     const cur = await this.getNotificationSettings(tenantId);
     const incSmtp = (dto.smtp ?? {}) as Record<string, unknown>;
     const incBrevo = (dto.brevo ?? {}) as Record<string, unknown>;
+    const incGmail = (dto.gmail ?? {}) as Record<string, unknown>;
     const incTwilio = (dto.twilio ?? {}) as Record<string, unknown>;
     const merged: NotificationSettings = {
       ...cur,
@@ -193,6 +202,14 @@ export class SettingsService {
         senderName: typeof incBrevo.senderName === 'string' ? incBrevo.senderName : cur.brevo.senderName,
         // Blank API key keeps the stored one.
         apiKey: incBrevo.apiKey ? String(incBrevo.apiKey) : cur.brevo.apiKey,
+      },
+      gmail: {
+        clientId: typeof incGmail.clientId === 'string' ? incGmail.clientId : cur.gmail.clientId,
+        // Blank client secret keeps the stored one.
+        clientSecret: incGmail.clientSecret ? String(incGmail.clientSecret) : cur.gmail.clientSecret,
+        // refreshToken + senderEmail are set only by the OAuth callback.
+        refreshToken: cur.gmail.refreshToken,
+        senderEmail: cur.gmail.senderEmail,
       },
       twilio: {
         accountSid: typeof incTwilio.accountSid === 'string' ? incTwilio.accountSid : cur.twilio.accountSid,
@@ -231,6 +248,103 @@ export class SettingsService {
     return this.get(user);
   }
 
+  // ---- Gmail OAuth2 connect (Google API — like WP Mail SMTP's Google mailer) ----
+
+  private apiBase(): string {
+    return (process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || 'https://lumio-api-uqm6.onrender.com').replace(/\/$/, '');
+  }
+  private webBase(): string {
+    const cors = (process.env.CORS_ORIGINS || '').split(',')[0].trim();
+    return (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || cors || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
+  }
+  /** Redirect URI the salon must add to their Google OAuth client. */
+  gmailRedirectUri(): string {
+    return `${this.apiBase()}/api/settings/gmail/callback`;
+  }
+  private signState(tenantId: string): string {
+    const payload = Buffer.from(JSON.stringify({ t: tenantId, exp: Date.now() + 600_000 })).toString('base64url');
+    const sig = crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    return `${payload}.${sig}`;
+  }
+  private verifyState(state: string): string | null {
+    const [payload, sig] = (state || '').split('.');
+    if (!payload || !sig) return null;
+    const expect = crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    if (sig !== expect) return null;
+    try {
+      const data = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { t: string; exp: number };
+      if (!data.exp || Date.now() > data.exp) return null;
+      return data.t;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Build the Google consent URL the salon admin is sent to. */
+  async gmailAuthUrl(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const n = await this.getNotificationSettings(tenantId);
+    if (!n.gmail.clientId || !n.gmail.clientSecret) {
+      throw new BadRequestException('Enter your Google Client ID and Client secret and Save before connecting.');
+    }
+    const params = new URLSearchParams({
+      client_id: n.gmail.clientId,
+      redirect_uri: this.gmailRedirectUri(),
+      response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email',
+      access_type: 'offline',
+      prompt: 'consent',
+      state: this.signState(tenantId),
+    });
+    return { url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` };
+  }
+
+  /** Google redirects here with ?code&state. Exchange for a refresh token + email,
+   *  store them, switch the salon to Gmail, then bounce back to the web settings. */
+  async gmailCallback(code: string, state: string): Promise<string> {
+    const web = this.webBase();
+    const back = (q: string) => `${web}/salon/settings?${q}`;
+    const tenantId = this.verifyState(state);
+    if (!tenantId || !code) return back('gmail=error&msg=invalid_state');
+    const n = await this.getNotificationSettings(tenantId);
+    if (!n.gmail.clientId || !n.gmail.clientSecret) return back('gmail=error&msg=missing_client');
+    try {
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: n.gmail.clientId,
+          client_secret: n.gmail.clientSecret,
+          redirect_uri: this.gmailRedirectUri(),
+          grant_type: 'authorization_code',
+        }).toString(),
+      });
+      const tokenData = (await tokenRes.json().catch(() => ({}))) as { refresh_token?: string; access_token?: string };
+      if (!tokenRes.ok || !tokenData.refresh_token) {
+        return back('gmail=error&msg=no_refresh_token');
+      }
+      let senderEmail = n.gmail.senderEmail;
+      if (tokenData.access_token) {
+        const ui = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { authorization: `Bearer ${tokenData.access_token}` },
+        });
+        const uiData = (await ui.json().catch(() => ({}))) as { email?: string };
+        if (uiData.email) senderEmail = uiData.email;
+      }
+      await this.writeKey(tenantId, NOTIFICATION_SETTINGS_KEY, {
+        ...n,
+        mailService: 'gmail',
+        senderEmail: n.senderEmail || senderEmail,
+        gmail: { ...n.gmail, refreshToken: tokenData.refresh_token, senderEmail },
+      });
+      await this.audit.log({ tenantId, userId: null, action: 'settings.gmail_connected', resourceType: 'tenant', resourceId: tenantId });
+      return back('gmail=connected');
+    } catch {
+      return back('gmail=error&msg=exchange_failed');
+    }
+  }
+
   /**
    * Sends a real test email using the saved SMTP credentials, to the admin email
    * (or the SMTP user). Returns the exact error message so the admin can fix it.
@@ -243,10 +357,16 @@ export class SettingsService {
     const senderName = n.senderName || 'Lumio Booking';
     const brevoReady = !!(n.brevo.apiKey && n.senderEmail);
     const smtpReady = !!(n.smtp.user && n.smtp.pass);
+    const gmailReady = !!(n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail);
     const envBrevoKey = process.env.BREVO_API_KEY;
     const envBrevoSender = process.env.BREVO_SENDER_EMAIL;
     const mkBrevo = (apiKey: string, senderEmail: string) =>
       new BrevoEmailProvider({ apiKey, senderEmail, senderName, replyTo: reply });
+    const mkGmail = () =>
+      new GmailOAuthProvider({
+        clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken,
+        senderEmail: n.gmail.senderEmail, senderName, replyTo: reply,
+      });
     const mkSmtp = () =>
       new SmtpEmailProvider({
         host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: reply,
@@ -267,6 +387,13 @@ export class SettingsService {
       if (!smtpReady) return { ok: false, error: 'SMTP is selected but missing the username or password.' };
       provider = mkSmtp();
       to = n.adminEmail || n.senderEmail || n.smtp.user;
+    } else if (n.mailService === 'gmail') {
+      if (!gmailReady) return { ok: false, error: 'Gmail is selected but not connected yet. Enter Client ID/secret, Save, then click “Connect with Google”.' };
+      provider = mkGmail();
+      to = n.adminEmail || n.senderEmail || n.gmail.senderEmail;
+    } else if (gmailReady) {
+      provider = mkGmail();
+      to = n.adminEmail || n.senderEmail || n.gmail.senderEmail;
     } else if (brevoReady) {
       provider = mkBrevo(n.brevo.apiKey, n.senderEmail);
       to = n.adminEmail || n.senderEmail;
@@ -341,6 +468,7 @@ export class SettingsService {
       notifications: this.sanitizeNotifications(await this.getNotificationSettings(tenantId)),
       notificationTemplates: await this.getNotificationTemplates(tenantId),
       pos: await this.getPosSettings(tenantId),
+      gmailRedirectUri: this.gmailRedirectUri(),
     };
   }
 

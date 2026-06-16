@@ -31,9 +31,11 @@ interface SettingsData {
     smsCustomer: string; smsAdmin: string;
     smtp: { host: string; port: number; user: string; fromEmail: string; secure: 'ssl' | 'tls' | 'none'; connected: boolean };
     brevo: { senderEmail: string; senderName: string; connected: boolean };
+    gmail: { clientId: string; senderEmail: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
   pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
+  gmailRedirectUri?: string;
 }
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'VND', 'JPY', 'SGD'];
@@ -479,6 +481,8 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   const [tw, setTw] = useState({ accountSid: n.twilio.accountSid, fromNumber: n.twilio.fromNumber, authToken: '' });
   const [smtp, setSmtp] = useState({ host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, fromEmail: n.smtp.fromEmail, secure: n.smtp.secure, pass: '' });
   const [brevo, setBrevo] = useState({ senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName, apiKey: '' });
+  const [gmail, setGmail] = useState({ clientId: n.gmail?.clientId ?? '', clientSecret: '' });
+  const [gmailMsg, setGmailMsg] = useState<string | null>(null);
   const { token } = useAuth();
   const [test, setTest] = useState<{ kind: 'idle' | 'sending' | 'ok' | 'err'; msg?: string }>({ kind: 'idle' });
 
@@ -490,6 +494,25 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       else setTest({ kind: 'err', msg: r.error || 'Failed to send.' });
     } catch (e) {
       setTest({ kind: 'err', msg: e instanceof Error ? e.message : 'Request failed' });
+    }
+  };
+
+  // Show the result of returning from Google's consent screen.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('gmail') === 'connected') setGmailMsg('✓ Gmail connected! Click “Send test email” to confirm.');
+    else if (p.get('gmail') === 'error') setGmailMsg(`Gmail connect failed (${p.get('msg') || 'unknown'}). Re-check Client ID/secret and that the redirect URI is added in Google.`);
+  }, []);
+
+  const connectGmail = async () => {
+    setGmailMsg(null);
+    try {
+      // Save Client ID/secret first so the server can build the consent URL.
+      await apiFetch('/settings/notifications', { method: 'PATCH', token, body: { mailService: 'gmail', gmail: { clientId: gmail.clientId, clientSecret: gmail.clientSecret || undefined } } });
+      const r = await apiFetch<{ url: string }>('/settings/gmail/auth-url', { token });
+      window.location.href = r.url;
+    } catch (e) {
+      setGmailMsg(e instanceof Error ? e.message : 'Could not start Google connect');
     }
   };
 
@@ -545,8 +568,9 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         Choose how this salon sends emails, fill the fields, then use “Send test email” to confirm it works.
       </p>
       <Field label="Mail service">
-        <select style={ui.input} value={f.mailService} onChange={(e) => setF({ ...f, mailService: e.target.value as 'auto' | 'off' | 'smtp' | 'brevo' })}>
+        <select style={ui.input} value={f.mailService} onChange={(e) => setF({ ...f, mailService: e.target.value as 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail' })}>
           <option value="auto">Auto — use platform email (recommended, free)</option>
+          <option value="gmail">My Gmail (Google API — free, connect with Google)</option>
           <option value="brevo">My own Brevo (HTTPS API)</option>
           <option value="smtp">My own SMTP server (Gmail, Outlook…)</option>
           <option value="off">Off — don’t send emails</option>
@@ -582,6 +606,38 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         </p>
         <Field label="Brevo API key"><input style={ui.input} type="password" value={brevo.apiKey} onChange={(e) => setBrevo({ ...brevo, apiKey: e.target.value })} placeholder={n.brevo.connected ? '•••••• (saved)' : 'xkeysib-…'} /></Field>
       </div>
+      )}
+
+      {f.mailService === 'gmail' && (
+      <>
+      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+        Connect Gmail (Google API){' '}
+        {n.gmail?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>● Connected as {n.gmail.senderEmail}</span>}
+      </div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+        Free &amp; reliable (Gmail API over HTTPS). 1) In Google Cloud Console create an OAuth Client (Web), enable the Gmail API.
+        2) Paste Client ID &amp; secret below. 3) Add the redirect URI below to your OAuth client. 4) Click “Connect with Google”.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Client ID"><input style={ui.input} value={gmail.clientId} onChange={(e) => setGmail({ ...gmail, clientId: e.target.value })} placeholder="…apps.googleusercontent.com" /></Field>
+        <Field label="Client secret"><input style={ui.input} type="password" value={gmail.clientSecret} onChange={(e) => setGmail({ ...gmail, clientSecret: e.target.value })} placeholder={n.gmail?.connected ? '•••••• (saved)' : 'GOCSPX-…'} /></Field>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <Field label="Authorized redirect URI (add this to your Google OAuth client)">
+          <input style={ui.input} readOnly value={data.gmailRedirectUri ?? ''} onFocus={(e) => e.currentTarget.select()} />
+        </Field>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+        <button onClick={connectGmail} style={{ ...ui.primaryBtn, background: '#ea4335' }}>
+          {n.gmail?.connected ? 'Reconnect with Google' : 'Connect with Google'}
+        </button>
+        {n.gmail?.connected && <span style={{ color: '#22c55e', fontSize: 13 }}>Connected as {n.gmail.senderEmail}</span>}
+        {gmailMsg && <span style={{ color: gmailMsg.startsWith('✓') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{gmailMsg}</span>}
+      </div>
+      <p style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+        Tip: on the Google “OAuth consent screen”, click <strong>Publish app</strong> so the connection doesn’t expire after 7 days.
+      </p>
+      </>
       )}
 
       {f.mailService === 'smtp' && (
@@ -645,7 +701,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <Field label="From number"><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
       </div>
 
-      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, twilio: tw }, 'Notifications')}>Save notifications</button>
+      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, gmail, twilio: tw }, 'Notifications')}>Save notifications</button>
     </Card>
   );
 }

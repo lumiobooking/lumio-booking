@@ -9,6 +9,7 @@ import { useIsMobile } from '../lib/responsive';
 const NAV: { href: string; label: string; icon: string }[] = [
   { href: '/salon', label: 'Dashboard', icon: '◉' },
   { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾' },
+  { href: '/salon/orders', label: 'Orders', icon: '📋' },
   { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
   { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
   { href: '/salon/customers', label: 'Customers', icon: '☺' },

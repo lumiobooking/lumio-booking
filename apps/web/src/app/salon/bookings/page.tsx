@@ -263,6 +263,13 @@ function BookingsInner() {
                       )}
                       {ACTIVE_STATUSES.includes(b.status) && (
                         <>
+                          <a
+                            href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
+                            style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 13, textDecoration: 'none', display: 'inline-block' }}
+                            title="Ring up & take payment for this booking"
+                          >
+                            Checkout
+                          </a>
                           <button onClick={() => action(b.id, 'complete')} style={smallOk}>
                             Complete
                           </button>

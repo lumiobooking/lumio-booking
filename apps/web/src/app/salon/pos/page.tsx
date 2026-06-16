@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -30,13 +31,21 @@ let uidSeq = 1;
 export default function PosPage() {
   return (
     <SalonShell>
-      <Register />
+      <Suspense fallback={<p style={{ color: '#94a3b8' }}>Loading register…</p>}>
+        <Register />
+      </Suspense>
     </SalonShell>
   );
 }
 
 function Register() {
   const { token } = useAuth();
+  const params = useSearchParams();
+  // When opened from a booking's "Checkout" button these are pre-filled.
+  const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
+  const [customerId] = useState<string | null>(() => params.get('customerId'));
+  const [bookingCustomer] = useState<string | null>(() => params.get('customer'));
+  const [prefilled, setPrefilled] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [addons, setAddons] = useState<Addon[]>([]);
@@ -78,6 +87,26 @@ function Register() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Pre-fill the ticket from a booking checkout (?serviceId=&staffId=).
+  useEffect(() => {
+    if (prefilled || services.length === 0) return;
+    const sid = params.get('serviceId');
+    const stid = params.get('staffId') || '';
+    if (sid) {
+      const s = services.find((x) => x.id === sid);
+      if (s) {
+        const d = s.discountPercent ?? 0;
+        const unit = d > 0 ? Math.round((s.priceCents * (100 - d)) / 100) : s.priceCents;
+        setCart((c) =>
+          c.length === 0
+            ? [{ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: unit, discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: stid }]
+            : c,
+        );
+      }
+    }
+    setPrefilled(true);
+  }, [services, prefilled, params]);
 
   const net = (priceCents: number, discountPercent?: number) =>
     discountPercent && discountPercent > 0
@@ -143,6 +172,8 @@ function Register() {
       const order = await apiFetch<{ orderNumber: number }>('/pos/orders', {
         method: 'POST', token,
         body: {
+          appointmentId: appointmentId || undefined,
+          customerId: customerId || undefined,
           discountCents: money.discount,
           items: cart.map((l) => ({
             kind: l.kind,
@@ -217,6 +248,11 @@ function Register() {
         <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>Manage products</a>
       </div>
 
+      {appointmentId && (
+        <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
+          🧾 Checking out a booking{bookingCustomer ? ` for ${bookingCustomer}` : ''} — the booking will be marked Completed after payment.
+        </div>
+      )}
       {error && <div style={ui.banner}>{error}</div>}
       {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
 

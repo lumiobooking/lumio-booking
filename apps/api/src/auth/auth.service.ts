@@ -35,8 +35,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Block login for suspended/cancelled salons (super admin has no tenant).
+    // Block login for non-active salons (super admin has no tenant).
     if (user.tenant && user.tenant.status !== TenantStatus.ACTIVE) {
+      if (user.tenant.status === TenantStatus.PENDING) {
+        throw new UnauthorizedException('Your account is awaiting payment. Please complete checkout to activate it.');
+      }
       throw new UnauthorizedException('This salon account is not active');
     }
 

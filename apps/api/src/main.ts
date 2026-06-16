@@ -4,7 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true keeps the raw request buffer so Stripe webhook signatures can
+  // be verified (req.rawBody). JSON parsing still works for all other routes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
 
   // Global API prefix: all routes live under /api

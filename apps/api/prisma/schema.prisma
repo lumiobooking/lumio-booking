@@ -30,6 +30,7 @@ enum UserRole {
 }
 
 enum TenantStatus {
+  PENDING // Signed up, awaiting first payment/activation
   ACTIVE
   SUSPENDED
   CANCELLED
@@ -113,6 +114,24 @@ model Plan {
   priceCents      Int             @default(0)
   currency        String          @default("USD")
   billingInterval BillingInterval @default(MONTHLY)
+
+  // Self-serve pricing (cents). Yearly is usually ~10 months for a discount.
+  priceMonthlyCents Int @default(0)
+  priceYearlyCents  Int @default(0)
+  trialDays         Int @default(14)
+
+  // Marketing (public landing page).
+  tagline       String?
+  featuresJson  Json    @default("[]") // string[] of selling points
+  publicVisible Boolean @default(false)
+  highlighted   Boolean @default(false) // "Most popular" badge
+  sortOrder     Int     @default(0)
+
+  // External billing references (created in the Stripe/PayPal dashboards).
+  stripePriceMonthlyId String?
+  stripePriceYearlyId  String?
+  paypalPlanMonthlyId  String?
+  paypalPlanYearlyId   String?
 
   // Feature limits (business model). Null = unlimited.
   maxStaff             Int?
@@ -198,12 +217,18 @@ model Subscription {
   plan     Plan               @relation(fields: [planId], references: [id])
   status   SubscriptionStatus @default(TRIALING)
 
+  interval BillingInterval @default(MONTHLY)
+  provider String? // 'stripe' | 'paypal'
+
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
+  trialEndsAt        DateTime?
   cancelledAt        DateTime?
 
-  // External billing reference (e.g. Stripe subscription id) - filled later.
-  externalReference String?
+  // External billing references. externalReference = provider subscription id
+  // (used as the webhook lookup key); externalCustomerId = Stripe customer id.
+  externalReference  String? @unique
+  externalCustomerId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

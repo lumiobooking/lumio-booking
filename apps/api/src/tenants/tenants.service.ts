@@ -255,8 +255,20 @@ export class TenantsService {
         multiLocationEnabled: true,
         whiteLabelEnabled: true,
         isActive: true,
+        priceMonthlyCents: true,
+        priceYearlyCents: true,
+        trialDays: true,
+        tagline: true,
+        featuresJson: true,
+        publicVisible: true,
+        highlighted: true,
+        sortOrder: true,
+        stripePriceMonthlyId: true,
+        stripePriceYearlyId: true,
+        paypalPlanMonthlyId: true,
+        paypalPlanYearlyId: true,
       },
-      orderBy: { priceCents: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
     });
   }
 
@@ -275,10 +287,12 @@ export class TenantsService {
   }
 
   private planData(dto: PlanInput) {
+    // Keep legacy priceCents in sync with the monthly price for older readers.
+    const monthly = dto.priceMonthlyCents ?? dto.priceCents ?? 0;
     return {
       name: dto.name,
       description: dto.description ?? null,
-      priceCents: dto.priceCents ?? 0,
+      priceCents: monthly,
       currency: dto.currency ?? 'USD',
       maxStaff: dto.maxStaff ?? null,
       maxBookingsPerMonth: dto.maxBookingsPerMonth ?? null,
@@ -287,6 +301,18 @@ export class TenantsService {
       multiLocationEnabled: dto.multiLocationEnabled ?? false,
       whiteLabelEnabled: dto.whiteLabelEnabled ?? false,
       isActive: dto.isActive ?? true,
+      priceMonthlyCents: monthly,
+      priceYearlyCents: dto.priceYearlyCents ?? 0,
+      trialDays: dto.trialDays ?? 14,
+      tagline: dto.tagline ?? null,
+      featuresJson: Array.isArray(dto.features) ? dto.features : [],
+      publicVisible: dto.publicVisible ?? false,
+      highlighted: dto.highlighted ?? false,
+      sortOrder: dto.sortOrder ?? 0,
+      stripePriceMonthlyId: dto.stripePriceMonthlyId ?? null,
+      stripePriceYearlyId: dto.stripePriceYearlyId ?? null,
+      paypalPlanMonthlyId: dto.paypalPlanMonthlyId ?? null,
+      paypalPlanYearlyId: dto.paypalPlanYearlyId ?? null,
     };
   }
 
@@ -304,4 +330,16 @@ export interface PlanInput {
   multiLocationEnabled?: boolean;
   whiteLabelEnabled?: boolean;
   isActive?: boolean;
+  priceMonthlyCents?: number;
+  priceYearlyCents?: number;
+  trialDays?: number;
+  tagline?: string | null;
+  features?: string[];
+  publicVisible?: boolean;
+  highlighted?: boolean;
+  sortOrder?: number;
+  stripePriceMonthlyId?: string | null;
+  stripePriceYearlyId?: string | null;
+  paypalPlanMonthlyId?: string | null;
+  paypalPlanYearlyId?: string | null;
 }

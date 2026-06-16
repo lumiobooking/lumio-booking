@@ -1,0 +1,16 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from '../prisma/prisma.module';
+import { AuditModule } from '../audit/audit.module';
+import { BillingController } from './billing.controller';
+import { BillingService } from './billing.service';
+import { StripeService } from './stripe.service';
+import { PaypalService } from './paypal.service';
+
+@Module({
+  imports: [ConfigModule, PrismaModule, AuditModule],
+  controllers: [BillingController],
+  providers: [BillingService, StripeService, PaypalService],
+  exports: [BillingService, StripeService],
+})
+export class BillingModule {}

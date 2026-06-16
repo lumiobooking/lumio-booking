@@ -18,6 +18,18 @@ interface Plan {
   multiLocationEnabled: boolean;
   whiteLabelEnabled: boolean;
   isActive: boolean;
+  priceMonthlyCents: number;
+  priceYearlyCents: number;
+  trialDays: number;
+  tagline: string | null;
+  featuresJson: unknown;
+  publicVisible: boolean;
+  highlighted: boolean;
+  sortOrder: number;
+  stripePriceMonthlyId: string | null;
+  stripePriceYearlyId: string | null;
+  paypalPlanMonthlyId: string | null;
+  paypalPlanYearlyId: string | null;
 }
 
 export default function PlansPage() {
@@ -79,10 +91,13 @@ export default function PlansPage() {
                 <Fragment key={p.id}>
                   <tr style={{ borderTop: '1px solid #334155' }}>
                     <td style={td}><strong>{p.name}</strong>{p.description ? <div style={{ color: '#94a3b8', fontSize: 12 }}>{p.description}</div> : null}</td>
-                    <td style={td}>${(p.priceCents / 100).toFixed(0)}/mo</td>
+                    <td style={td}>
+                      ${((p.priceMonthlyCents || p.priceCents) / 100).toFixed(0)}/mo
+                      {p.priceYearlyCents ? <div style={{ color: '#94a3b8', fontSize: 12 }}>${(p.priceYearlyCents / 100).toFixed(0)}/yr</div> : null}
+                    </td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <Tag on>Booking</Tag>
+                        <Tag on={p.publicVisible}>On website</Tag>
                         <Tag on={p.posEnabled}>POS suite</Tag>
                         <Tag on={p.onlinePaymentEnabled}>Online pay</Tag>
                         <Tag on={p.multiLocationEnabled}>Multi-location</Tag>
@@ -111,7 +126,9 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
   const [form, setForm] = useState({
     name: plan?.name ?? '',
     description: plan?.description ?? '',
-    price: plan ? (plan.priceCents / 100).toString() : '',
+    price: plan ? ((plan.priceMonthlyCents || plan.priceCents) / 100).toString() : '',
+    priceYearly: plan && plan.priceYearlyCents ? (plan.priceYearlyCents / 100).toString() : '',
+    trialDays: plan?.trialDays != null ? String(plan.trialDays) : '14',
     maxStaff: plan?.maxStaff != null ? String(plan.maxStaff) : '',
     maxBookingsPerMonth: plan?.maxBookingsPerMonth != null ? String(plan.maxBookingsPerMonth) : '',
     posEnabled: plan?.posEnabled ?? false,
@@ -119,6 +136,15 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
     multiLocationEnabled: plan?.multiLocationEnabled ?? false,
     whiteLabelEnabled: plan?.whiteLabelEnabled ?? false,
     isActive: plan?.isActive ?? true,
+    tagline: plan?.tagline ?? '',
+    features: Array.isArray(plan?.featuresJson) ? (plan!.featuresJson as string[]).join('\n') : '',
+    publicVisible: plan?.publicVisible ?? false,
+    highlighted: plan?.highlighted ?? false,
+    sortOrder: plan?.sortOrder != null ? String(plan.sortOrder) : '0',
+    stripePriceMonthlyId: plan?.stripePriceMonthlyId ?? '',
+    stripePriceYearlyId: plan?.stripePriceYearlyId ?? '',
+    paypalPlanMonthlyId: plan?.paypalPlanMonthlyId ?? '',
+    paypalPlanYearlyId: plan?.paypalPlanYearlyId ?? '',
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -130,7 +156,9 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
       const body = {
         name: form.name,
         description: form.description || undefined,
-        priceCents: Math.round((parseFloat(form.price) || 0) * 100),
+        priceMonthlyCents: Math.round((parseFloat(form.price) || 0) * 100),
+        priceYearlyCents: Math.round((parseFloat(form.priceYearly) || 0) * 100),
+        trialDays: parseInt(form.trialDays, 10) || 0,
         maxStaff: form.maxStaff === '' ? null : parseInt(form.maxStaff, 10),
         maxBookingsPerMonth: form.maxBookingsPerMonth === '' ? null : parseInt(form.maxBookingsPerMonth, 10),
         posEnabled: form.posEnabled,
@@ -138,6 +166,15 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
         multiLocationEnabled: form.multiLocationEnabled,
         whiteLabelEnabled: form.whiteLabelEnabled,
         isActive: form.isActive,
+        tagline: form.tagline || null,
+        features: form.features.split('\n').map((s) => s.trim()).filter(Boolean),
+        publicVisible: form.publicVisible,
+        highlighted: form.highlighted,
+        sortOrder: parseInt(form.sortOrder, 10) || 0,
+        stripePriceMonthlyId: form.stripePriceMonthlyId || null,
+        stripePriceYearlyId: form.stripePriceYearlyId || null,
+        paypalPlanMonthlyId: form.paypalPlanMonthlyId || null,
+        paypalPlanYearlyId: form.paypalPlanYearlyId || null,
       };
       if (plan) await apiFetch(`/tenants/plans/${plan.id}`, { method: 'PATCH', token, body });
       else await apiFetch('/tenants/plans', { method: 'POST', token, body });
@@ -153,13 +190,34 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
 
   return (
     <form onSubmit={submit} style={plan ? {} : { background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <Field label="Plan name"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Basic / Pro" /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+        <Field label="Plan name"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Starter / Pro" /></Field>
         <Field label="Price $/month"><input style={inp} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></Field>
+        <Field label="Price $/year"><input style={inp} type="number" min={0} step="0.01" value={form.priceYearly} onChange={(e) => setForm({ ...form, priceYearly: e.target.value })} /></Field>
+        <Field label="Free trial (days)"><input style={inp} type="number" min={0} value={form.trialDays} onChange={(e) => setForm({ ...form, trialDays: e.target.value })} /></Field>
         <Field label="Max staff (blank = unlimited)"><input style={inp} type="number" min={0} value={form.maxStaff} onChange={(e) => setForm({ ...form, maxStaff: e.target.value })} /></Field>
         <Field label="Max bookings/mo (blank = unlimited)"><input style={inp} type="number" min={0} value={form.maxBookingsPerMonth} onChange={(e) => setForm({ ...form, maxBookingsPerMonth: e.target.value })} /></Field>
+        <Field label="Sort order (low = first)"><input style={inp} type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} /></Field>
       </div>
-      <Field label="Description"><input style={inp} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Short summary shown on the plan" /></Field>
+      <Field label="Description (internal)"><input style={inp} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Short internal summary" /></Field>
+
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Public marketing (landing page)</div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>Shown on the homepage pricing section when “Show on website” is on.</p>
+      <Field label="Tagline"><input style={inp} value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} placeholder="e.g. For a single salon getting started" /></Field>
+      <Field label="Selling points (one per line)"><textarea style={{ ...inp, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }} value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} placeholder={'Online booking 24/7\nEmail reminders\nUp to 3 staff'} /></Field>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+        <label style={chkRow}>{chk('publicVisible')} <span><strong>Show on website</strong> — list this plan on the public pricing page</span></label>
+        <label style={chkRow}>{chk('highlighted')} <span><strong>Highlight</strong> — show a “Most popular” badge</span></label>
+      </div>
+
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Payment provider IDs</div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>Create recurring prices/plans in Stripe &amp; PayPal, then paste their IDs here. A provider only appears at checkout when both its monthly &amp; yearly IDs are filled.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        <Field label="Stripe price ID — monthly"><input style={inp} value={form.stripePriceMonthlyId} onChange={(e) => setForm({ ...form, stripePriceMonthlyId: e.target.value })} placeholder="price_…" /></Field>
+        <Field label="Stripe price ID — yearly"><input style={inp} value={form.stripePriceYearlyId} onChange={(e) => setForm({ ...form, stripePriceYearlyId: e.target.value })} placeholder="price_…" /></Field>
+        <Field label="PayPal plan ID — monthly"><input style={inp} value={form.paypalPlanMonthlyId} onChange={(e) => setForm({ ...form, paypalPlanMonthlyId: e.target.value })} placeholder="P-…" /></Field>
+        <Field label="PayPal plan ID — yearly"><input style={inp} value={form.paypalPlanYearlyId} onChange={(e) => setForm({ ...form, paypalPlanYearlyId: e.target.value })} placeholder="P-…" /></Field>
+      </div>
 
       <div style={{ marginTop: 14, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Features unlocked</div>
       <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>Booking is always included. Tick what this plan adds on top.</p>

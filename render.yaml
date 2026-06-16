@@ -62,6 +62,24 @@ services:
         value: mock
       - key: PAYMENT_PROVIDER
         value: mock
+      # ---- Self-serve SaaS billing (subscriptions) ----
+      # Public base URL of the web app, used for checkout success/cancel links.
+      - key: APP_URL
+        value: https://lumiobooking.com
+      # Stripe: secret key (sk_live_…) + webhook signing secret (whsec_…).
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # PayPal: REST app credentials + webhook id. PAYPAL_ENV = live | sandbox.
+      - key: PAYPAL_ENV
+        value: live
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
       # Comma-separated allowed frontend origins. Set to the web URL after the
       # first deploy, e.g. https://lumio-web.onrender.com
       - key: CORS_ORIGINS

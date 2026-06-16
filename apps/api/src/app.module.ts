@@ -52,6 +52,8 @@ import { PosModule } from './pos/pos.module';
     SettingsModule,
     // Point of sale: counter checkout (tickets, products, tips, receipts).
     PosModule,
+    // Self-serve SaaS billing: public signup, Stripe/PayPal checkout + webhooks.
+    BillingModule,
   ],
 })
 export class AppModule {}

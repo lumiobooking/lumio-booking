@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface OrderItem {
   id: string; kind: 'SERVICE' | 'PRODUCT'; name: string; quantity: number;
@@ -38,6 +38,7 @@ function Inner() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
+  const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -100,7 +101,15 @@ function Inner() {
   }
 
   const visible = sortNewest(
-    orders.filter((o) => range.inRange(o.createdAt) && (!statusFilter || o.status === statusFilter)),
+    orders.filter(
+      (o) =>
+        range.inRange(o.createdAt) &&
+        (!statusFilter || o.status === statusFilter) &&
+        matchesQuery(
+          `#${o.orderNumber} ${o.status} ${o.items.map((i) => i.name).join(' ')} ${o.tenders.map((t) => METHOD_LABEL[t.method] ?? t.method).join(' ')}`,
+          q,
+        ),
+    ),
     (o) => o.createdAt,
   );
   const paidTotal = visible.filter((o) => o.status === 'PAID').reduce((s, o) => s + o.totalCents, 0);
@@ -118,6 +127,7 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <SearchBox value={q} onChange={setQ} placeholder="Search order #, item, method…" />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...ui.input, width: 'auto' }}>
           <option value="">All statuses</option>
           <option value="PAID">Paid</option>

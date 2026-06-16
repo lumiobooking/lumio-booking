@@ -52,6 +52,8 @@ function Register() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [taxRate, setTaxRate] = useState(0);
   const [currency, setCurrency] = useState('USD');
+  const [transferInfo, setTransferInfo] = useState('');
+  const [transferQr, setTransferQr] = useState('');
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
   const [cart, setCart] = useState<Line[]>([]);
   const [orderDiscount, setOrderDiscount] = useState('');
@@ -71,13 +73,15 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number }; booking?: { currency?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string } }>('/settings', { token }),
       ]);
       setServices(s.filter((x) => x.isActive));
       setProducts(p.filter((x) => x.isActive));
       setAddons(a);
       setStaff(st.filter((x) => x.isActive));
       setTaxRate(settings.pos?.taxRatePercent ?? 0);
+      setTransferInfo(settings.pos?.transferInstructions ?? '');
+      setTransferQr(settings.pos?.transferQrUrl ?? '');
       setCurrency(settings.booking?.currency ?? 'USD');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load POS data');
@@ -418,7 +422,23 @@ function Register() {
             <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>Charge {formatPrice(money.total, currency)} on the card reader, then press Pay &amp; Print to record &amp; print.</p>
           )}
           {payMethod === 'TRANSFER' && (
-            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>Confirm the bank transfer / e-transfer of {formatPrice(money.total, currency)} was received, then press Pay &amp; Print.</p>
+            <div style={{ marginBottom: 10 }}>
+              {transferInfo || transferQr ? (
+                <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Show this to the customer to transfer {formatPrice(money.total, currency)}:</div>
+                  {transferInfo && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#e2e8f0', margin: 0 }}>{transferInfo}</pre>}
+                  {transferQr && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={transferQr} alt="Transfer QR" style={{ width: 140, height: 140, objectFit: 'contain', marginTop: 10, background: '#fff', borderRadius: 8, padding: 4 }} />
+                  )}
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>After the money arrives, press Pay &amp; Print.</div>
+                </div>
+              ) : (
+                <p style={{ color: '#94a3b8', fontSize: 13 }}>
+                  No transfer details set. Add them in <a href="/salon/settings" style={{ color: '#818cf8' }}>Settings → Payments → Bank transfer</a>. Confirm receipt then press Pay &amp; Print.
+                </p>
+              )}
+            </div>
           )}
 
           <div style={{ display: 'flex', gap: 8 }}>

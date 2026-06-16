@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface Payment {
   id: string;
@@ -31,6 +31,7 @@ export default function PaymentsPage() {
 function Inner() {
   const { token } = useAuth();
   const range = useDateRange('all');
+  const [q, setQ] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +51,9 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Filter by payment date, then newest first.
+  // Filter by payment date + search, then newest first.
   const visible = sortNewest(
-    payments.filter((p) => range.inRange(p.createdAt)),
+    payments.filter((p) => range.inRange(p.createdAt) && matchesQuery(`${p.status} ${p.type} ${p.provider}`, q)),
     (p) => p.createdAt,
   );
   const totalPaid = visible.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
@@ -64,7 +65,8 @@ function Inner() {
         {visible.length} payments · {formatPrice(totalPaid)} collected
       </p>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+        <SearchBox value={q} onChange={setQ} placeholder="Search status, type, provider…" />
         <DateRangeBar range={range} />
       </div>
 

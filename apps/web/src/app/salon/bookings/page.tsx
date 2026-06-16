@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
-import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface NamedRef {
   id: string;
@@ -65,6 +65,7 @@ export default function BookingsPage() {
 function BookingsInner() {
   const { token } = useAuth();
   const range = useDateRange('all');
+  const [q, setQ] = useState('');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -154,9 +155,13 @@ function BookingsInner() {
   const staffName = (s: NamedRef | null) =>
     s ? `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() : '—';
 
-  // Filter by appointment date, then show newest first.
+  // Filter by appointment date + search text, then show newest first.
   const visible = sortNewest(
-    bookings.filter((b) => range.inRange(b.startTime)),
+    bookings.filter(
+      (b) =>
+        range.inRange(b.startTime) &&
+        matchesQuery(`${staffName(b.customer)} ${b.service?.name ?? ''} ${staffName(b.assignedStaff)} ${b.status}`, q),
+    ),
     (b) => b.startTime,
   );
 
@@ -175,6 +180,7 @@ function BookingsInner() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <SearchBox value={q} onChange={setQ} placeholder="Search customer, service, staff, status…" />
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} booking{visible.length === 1 ? '' : 's'}</span>
         <DateRangeBar range={range} />
       </div>

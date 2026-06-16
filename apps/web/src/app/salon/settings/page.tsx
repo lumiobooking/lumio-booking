@@ -33,7 +33,7 @@ interface SettingsData {
     brevo: { senderEmail: string; senderName: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
-  pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string };
+  pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
 }
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'VND', 'JPY', 'SGD'];
@@ -410,6 +410,15 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         </p>
         <PrimaryCardChannel data={data} onSave={onSave} />
       </div>
+
+      {/* Bank transfer details shown to the customer at checkout (manual confirm). */}
+      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #334155' }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Bank transfer (manual)</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+          Shown to the customer when they choose “Transfer” at the register. The cashier confirms once the money arrives.
+        </p>
+        <BankTransferConfig data={data} onSave={onSave} />
+      </div>
     </Card>
   );
 }
@@ -425,6 +434,32 @@ function PrimaryCardChannel({ data, onSave }: { data: SettingsData; onSave: Save
       </select>
       <button style={ui.primaryBtn} onClick={() => onSave('pos', { primaryCardGateway: sel }, 'Card channel')}>Save channel</button>
       {enabled.length === 0 && <span style={{ color: '#94a3b8', fontSize: 12 }}>Enable & save a gateway above first.</span>}
+    </div>
+  );
+}
+
+function BankTransferConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const [text, setText] = useState(data.pos?.transferInstructions ?? '');
+  const [qr, setQr] = useState(data.pos?.transferQrUrl ?? '');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Field label="Transfer details (bank / account / Zelle / Interac email)">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          placeholder={'e.g.\nBank of America — Lumio Nails\nAccount: 1234567890\nZelle: pay@lumionails.com'}
+          style={{ ...ui.input, resize: 'vertical', fontFamily: 'inherit' }}
+        />
+      </Field>
+      <Field label="QR image URL (optional — customer scans to pay)">
+        <input style={ui.input} value={qr} onChange={(e) => setQr(e.target.value)} placeholder="https://… (paste a QR image link)" />
+      </Field>
+      <div>
+        <button style={ui.primaryBtn} onClick={() => onSave('pos', { transferInstructions: text, transferQrUrl: qr }, 'Bank transfer')}>
+          Save transfer details
+        </button>
+      </div>
     </div>
   );
 }

@@ -72,7 +72,13 @@ export class SettingsService {
 
   async updatePos(
     user: AuthenticatedUser,
-    dto: { taxRatePercent?: number; receiptFooter?: string; primaryCardGateway?: string },
+    dto: {
+      taxRatePercent?: number;
+      receiptFooter?: string;
+      primaryCardGateway?: string;
+      transferInstructions?: string;
+      transferQrUrl?: string;
+    },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getPosSettings(tenantId);
@@ -82,6 +88,9 @@ export class SettingsService {
       receiptFooter: typeof dto.receiptFooter === 'string' ? dto.receiptFooter : cur.receiptFooter,
       primaryCardGateway:
         typeof dto.primaryCardGateway === 'string' ? dto.primaryCardGateway : cur.primaryCardGateway,
+      transferInstructions:
+        typeof dto.transferInstructions === 'string' ? dto.transferInstructions : cur.transferInstructions,
+      transferQrUrl: typeof dto.transferQrUrl === 'string' ? dto.transferQrUrl : cur.transferQrUrl,
     };
     await this.writeKey(tenantId, POS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.pos_updated', resourceType: 'tenant', resourceId: tenantId });

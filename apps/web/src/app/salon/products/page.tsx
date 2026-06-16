@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface Product {
   id: string; name: string; sku: string | null; priceCents: number; discountPercent?: number; currency: string;
@@ -29,6 +29,7 @@ export default function ProductsPage() {
 function Inner() {
   const { token } = useAuth();
   const range = useDateRange('all');
+  const [q, setQ] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [taxRate, setTaxRate] = useState('');
   const [footer, setFooter] = useState('');
@@ -75,7 +76,10 @@ function Inner() {
     catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
   }
 
-  const visible = sortNewest(products.filter((p) => range.inRange(p.createdAt)), (p) => p.createdAt);
+  const visible = sortNewest(
+    products.filter((p) => range.inRange(p.createdAt) && matchesQuery(`${p.name} ${p.sku ?? ''}`, q)),
+    (p) => p.createdAt,
+  );
 
   return (
     <section>
@@ -103,6 +107,7 @@ function Inner() {
       {showForm && <ProductForm token={token!} onDone={async () => { setShowForm(false); await load(); }} />}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <SearchBox value={q} onChange={setQ} placeholder="Search product name, SKU…" />
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} products</span>
         <DateRangeBar range={range} />
       </div>

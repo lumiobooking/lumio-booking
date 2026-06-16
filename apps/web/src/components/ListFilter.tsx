@@ -112,6 +112,48 @@ const dateInput: React.CSSProperties = {
   colorScheme: 'dark',
 };
 
+/** Case-insensitive substring match (true when the query is empty). */
+export function matchesQuery(haystack: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return haystack.toLowerCase().includes(q);
+}
+
+/** A compact search box for filtering long lists. */
+export function SearchBox({
+  value,
+  onChange,
+  placeholder = 'Search…',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
+      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 30px', borderRadius: 8,
+          border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 14, colorScheme: 'dark',
+        }}
+      />
+      {value && (
+        <button
+          onClick={() => onChange('')}
+          aria-label="Clear search"
+          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16 }}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** The visual date-range control. Pass it the object returned by useDateRange. */
 export function DateRangeBar({ range }: { range: DateRange }) {
   const { from, to, preset, applyPreset, setFrom, setTo } = range;

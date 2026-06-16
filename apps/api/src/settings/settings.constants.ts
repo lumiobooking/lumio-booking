@@ -13,12 +13,18 @@ export interface PosSettings {
   taxRatePercent: number; // e.g. 8.25 for 8.25% sales tax on retail
   receiptFooter: string;
   primaryCardGateway: string; // which enabled gateway the POS "Card" button uses ('' = none)
+  // Bank-transfer details shown to the customer when paying by Transfer
+  // (cashier confirms receipt — no auto-confirmation).
+  transferInstructions: string; // bank name / account / Zelle / Interac email, etc.
+  transferQrUrl: string; // optional QR image URL the customer can scan
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
   taxRatePercent: 0,
   receiptFooter: '',
   primaryCardGateway: '',
+  transferInstructions: '',
+  transferQrUrl: '',
 };
 
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */

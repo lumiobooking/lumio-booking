@@ -8,8 +8,14 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface Product {
-  id: string; name: string; sku: string | null; priceCents: number; currency: string;
+  id: string; name: string; sku: string | null; priceCents: number; discountPercent?: number; currency: string;
   taxable: boolean; trackStock: boolean; stockQty: number; isActive: boolean; createdAt?: string;
+}
+
+function netCents(p: { priceCents: number; discountPercent?: number }) {
+  return p.discountPercent && p.discountPercent > 0
+    ? Math.round((p.priceCents * (100 - p.discountPercent)) / 100)
+    : p.priceCents;
 }
 
 export default function ProductsPage() {
@@ -113,7 +119,15 @@ function Inner() {
                 <Fragment key={p.id}>
                   <tr style={{ borderTop: '1px solid #334155' }}>
                     <td style={ui.td}>{p.name}{p.sku ? <span style={{ color: '#64748b', fontSize: 12 }}> · {p.sku}</span> : null}</td>
-                    <td style={ui.td}>{formatPrice(p.priceCents, p.currency)}</td>
+                    <td style={ui.td}>
+                      {p.discountPercent && p.discountPercent > 0 ? (
+                        <span>
+                          <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
+                          <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
+                          <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
+                        </span>
+                      ) : formatPrice(p.priceCents, p.currency)}
+                    </td>
                     <td style={ui.td}>{p.taxable ? 'Yes' : 'No'}</td>
                     <td style={ui.td}>{p.trackStock ? p.stockQty : '—'}</td>
                     <td style={ui.td}><span style={{ color: p.isActive ? '#22c55e' : '#94a3b8' }}>{p.isActive ? 'Active' : 'Inactive'}</span></td>
@@ -144,6 +158,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
     name: product?.name ?? '',
     sku: product?.sku ?? '',
     price: product ? (product.priceCents / 100).toString() : '',
+    discountPercent: product ? String(product.discountPercent ?? 0) : '0',
     taxable: product?.taxable ?? true,
     trackStock: product?.trackStock ?? false,
     stockQty: product ? String(product.stockQty) : '0',
@@ -160,6 +175,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
         name: form.name,
         sku: form.sku || undefined,
         priceCents: Math.round((parseFloat(form.price) || 0) * 100),
+        discountPercent: Math.max(0, Math.min(90, parseInt(form.discountPercent, 10) || 0)),
         taxable: form.taxable,
         trackStock: form.trackStock,
         stockQty: parseInt(form.stockQty, 10) || 0,
@@ -179,6 +195,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
         <label><span style={ui.label}>Name</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>SKU (optional)</span><input style={ui.input} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label>
         <label><span style={ui.label}>Price $</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
+        <label><span style={ui.label}>Discount %</span><input style={ui.input} type="number" min={0} max={90} value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></label>
         <label><span style={ui.label}>Stock qty</span><input style={ui.input} type="number" min={0} value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} disabled={!form.trackStock} /></label>
       </div>
       <div style={{ display: 'flex', gap: 18, marginTop: 12, flexWrap: 'wrap' }}>

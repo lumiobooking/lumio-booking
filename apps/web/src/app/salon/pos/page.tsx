@@ -7,7 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean }
-interface Product { id: string; name: string; priceCents: number; isActive: boolean; trackStock: boolean; stockQty: number }
+interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
 
@@ -17,7 +17,9 @@ interface Line {
   refId: string;
   isAddon?: boolean; // a service extra (kind SERVICE, but not a standalone service row)
   name: string;
-  unitPriceCents: number;
+  origUnitPriceCents: number; // list price before any discount
+  unitPriceCents: number; // net price actually charged
+  discountPercent: number; // promo % off (0 = none)
   quantity: number;
   tipCents: number;
   staffMemberId: string;
@@ -76,22 +78,24 @@ function Register() {
 
   useEffect(() => { load(); }, [load]);
 
-  const svcNet = (s: Service) =>
-    s.discountPercent && s.discountPercent > 0
-      ? Math.round((s.priceCents * (100 - s.discountPercent)) / 100)
-      : s.priceCents;
+  const net = (priceCents: number, discountPercent?: number) =>
+    discountPercent && discountPercent > 0
+      ? Math.round((priceCents * (100 - discountPercent)) / 100)
+      : priceCents;
 
   function addService(s: Service) {
-    setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, unitPriceCents: svcNet(s), quantity: 1, tipCents: 0, staffMemberId: '' }]);
+    const d = s.discountPercent ?? 0;
+    setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: net(s.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }]);
   }
   function addAddon(a: Addon) {
-    setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: a.id, isAddon: true, name: a.name, unitPriceCents: a.priceCents, quantity: 1, tipCents: 0, staffMemberId: '' }]);
+    setCart((c) => [...c, { uid: `u${uidSeq++}`, kind: 'SERVICE', refId: a.id, isAddon: true, name: a.name, origUnitPriceCents: a.priceCents, unitPriceCents: a.priceCents, discountPercent: 0, quantity: 1, tipCents: 0, staffMemberId: '' }]);
   }
   function addProduct(p: Product) {
+    const d = p.discountPercent ?? 0;
     setCart((c) => {
       const existing = c.find((l) => l.kind === 'PRODUCT' && l.refId === p.id);
       if (existing) return c.map((l) => (l.uid === existing.uid ? { ...l, quantity: l.quantity + 1 } : l));
-      return [...c, { uid: `u${uidSeq++}`, kind: 'PRODUCT', refId: p.id, name: p.name, unitPriceCents: p.priceCents, quantity: 1, tipCents: 0, staffMemberId: '' }];
+      return [...c, { uid: `u${uidSeq++}`, kind: 'PRODUCT', refId: p.id, name: p.name, origUnitPriceCents: p.priceCents, unitPriceCents: net(p.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }];
     });
   }
   function updateLine(uid: string, patch: Partial<Line>) {
@@ -106,14 +110,17 @@ function Register() {
 
   const money = useMemo(() => {
     const subtotal = cart.reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
+    // Savings from per-item promo discounts (list price vs net price).
+    const itemSavings = cart.reduce((s, l) => s + (l.origUnitPriceCents - l.unitPriceCents) * l.quantity, 0);
     const productBase = cart.filter((l) => l.kind === 'PRODUCT').reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
     const discount = Math.min(Math.round((parseFloat(orderDiscount) || 0) * 100), subtotal);
     const tax = Math.round((productBase * taxRate) / 100);
     const tip = cart.reduce((s, l) => s + l.tipCents, 0);
     const total = Math.max(0, subtotal - discount + tax + tip);
+    const savings = itemSavings + discount;
     const tenderedCents = Math.round((parseFloat(tendered) || 0) * 100);
     const change = payMethod === 'CASH' ? Math.max(0, tenderedCents - total) : 0;
-    return { subtotal, discount, tax, tip, total, tenderedCents, change };
+    return { subtotal, itemSavings, discount, tax, tip, total, savings, tenderedCents, change };
   }, [cart, orderDiscount, taxRate, tendered, payMethod]);
 
   const staffName = (id: string) => {
@@ -160,7 +167,11 @@ function Register() {
         const lt = formatPrice(l.unitPriceCents * l.quantity, currency);
         const tech = l.staffMemberId ? `<div style="font-size:11px;color:#555">${staffName(l.staffMemberId)}</div>` : '';
         const tip = l.tipCents ? `<div style="font-size:11px;color:#555">Tip: ${formatPrice(l.tipCents, currency)}</div>` : '';
-        return `<tr><td>${l.quantity}× ${escapeHtml(l.name)}${tech}${tip}</td><td style="text-align:right">${lt}</td></tr>`;
+        const disc = l.discountPercent > 0
+          ? `<div style="font-size:11px;color:#777"><s>${formatPrice(l.origUnitPriceCents * l.quantity, currency)}</s> &nbsp;-${l.discountPercent}%</div>`
+          : '';
+        const addon = l.isAddon ? `<span style="font-size:10px;color:#777"> (add-on)</span>` : '';
+        return `<tr><td>${l.quantity}× ${escapeHtml(l.name)}${addon}${disc}${tech}${tip}</td><td style="text-align:right;vertical-align:top">${lt}</td></tr>`;
       })
       .join('');
     const line = (label: string, val: string, bold = false) =>
@@ -175,9 +186,10 @@ function Register() {
       <table>${rows}</table><hr>
       <table>
         ${line('Subtotal', formatPrice(money.subtotal, currency))}
-        ${money.discount ? line('Discount', '-' + formatPrice(money.discount, currency)) : ''}
+        ${money.discount ? line('Order discount', '-' + formatPrice(money.discount, currency)) : ''}
         ${money.tax ? line('Tax', formatPrice(money.tax, currency)) : ''}
         ${money.tip ? line('Tip', formatPrice(money.tip, currency)) : ''}
+        ${money.savings ? line('You saved', '-' + formatPrice(money.savings, currency)) : ''}
         ${line('TOTAL', formatPrice(money.total, currency), true)}
         ${line('Paid (' + payMethod + ')', formatPrice(money.tenderedCents || money.total, currency))}
         ${money.change ? line('Change', formatPrice(money.change, currency)) : ''}
@@ -215,7 +227,7 @@ function Register() {
               {services.map((s) => (
                 <button key={s.id} onClick={() => addService(s)} style={catBtn}>
                   <span style={{ fontWeight: 600 }}>{s.name}</span>
-                  <span style={{ color: '#22c55e' }}>{formatPrice(svcNet(s), currency)}</span>
+                  <CatPrice priceCents={s.priceCents} discountPercent={s.discountPercent} currency={currency} />
                 </button>
               ))}
               {services.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No active services.</p>}
@@ -253,7 +265,7 @@ function Register() {
               {products.map((p) => (
                 <button key={p.id} onClick={() => addProduct(p)} style={catBtn}>
                   <span style={{ fontWeight: 600 }}>{p.name}</span>
-                  <span style={{ color: '#22c55e' }}>{formatPrice(p.priceCents, currency)}</span>
+                  <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
                   {p.trackStock && <span style={{ fontSize: 11, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>Stock: {p.stockQty}</span>}
                 </button>
               ))}
@@ -284,7 +296,17 @@ function Register() {
                       <span style={{ minWidth: 20, textAlign: 'center' }}>{l.quantity}</span>
                       <button onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={qtyBtn}>+</button>
                     </div>
-                    <span style={{ marginLeft: 'auto', color: '#cbd5e1' }}>{formatPrice(l.unitPriceCents * l.quantity, currency)}</span>
+                    <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                      {l.discountPercent > 0 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                          <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
+                          <span style={{ background: '#ef4444', color: '#fff', borderRadius: 5, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>-{l.discountPercent}%</span>
+                          <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(l.unitPriceCents * l.quantity, currency)}</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#cbd5e1' }}>{formatPrice(l.unitPriceCents * l.quantity, currency)}</span>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                     <select value={l.staffMemberId} onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })} style={{ ...ui.input, padding: '5px 8px', fontSize: 13, flex: 1, minWidth: 120 }}>
@@ -312,6 +334,11 @@ function Register() {
             </div>
             {money.tax > 0 && <Row label={`Tax (${taxRate}% retail)`} value={formatPrice(money.tax, currency)} />}
             {money.tip > 0 && <Row label="Tips" value={formatPrice(money.tip, currency)} />}
+            {money.savings > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#22c55e', fontWeight: 600 }}>
+                <span>You saved</span><span>−{formatPrice(money.savings, currency)}</span>
+              </div>
+            )}
             <div style={{ borderTop: '1px solid #334155', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700 }}>
               <span>Total</span><span style={{ color: '#22c55e' }}>{formatPrice(money.total, currency)}</span>
             </div>
@@ -343,6 +370,19 @@ function Register() {
         </div>
       </div>
     </section>
+  );
+}
+
+function CatPrice({ priceCents, discountPercent, currency }: { priceCents: number; discountPercent?: number; currency: string }) {
+  const d = discountPercent ?? 0;
+  if (d <= 0) return <span style={{ color: '#22c55e' }}>{formatPrice(priceCents, currency)}</span>;
+  const netP = Math.round((priceCents * (100 - d)) / 100);
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+      <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: 11 }}>{formatPrice(priceCents, currency)}</span>
+      <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netP, currency)}</span>
+      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 700 }}>-{d}%</span>
+    </span>
   );
 }
 

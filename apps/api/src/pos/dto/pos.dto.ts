@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  Max,
   MaxLength,
   ValidateNested,
   ArrayMinSize,
@@ -18,6 +19,7 @@ export class CreateProductDto {
   @IsString() @MaxLength(120) name!: string;
   @IsOptional() @IsString() @MaxLength(60) sku?: string;
   @IsInt() @Min(0) priceCents!: number;
+  @IsOptional() @IsInt() @Min(0) @Max(90) discountPercent?: number;
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
   @IsOptional() @IsBoolean() taxable?: boolean;
   @IsOptional() @IsBoolean() trackStock?: boolean;
@@ -29,6 +31,7 @@ export class UpdateProductDto {
   @IsOptional() @IsString() @MaxLength(120) name?: string;
   @IsOptional() @IsString() @MaxLength(60) sku?: string;
   @IsOptional() @IsInt() @Min(0) priceCents?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(90) discountPercent?: number;
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
   @IsOptional() @IsBoolean() taxable?: boolean;
   @IsOptional() @IsBoolean() trackStock?: boolean;

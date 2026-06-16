@@ -213,20 +213,70 @@ export class TenantsService {
     return updated;
   }
 
-  /** Plans list for the create/edit forms. */
+  /** Plans list for the create/edit forms + plan management. */
   listPlans() {
     return this.prisma.plan.findMany({
-      where: { isActive: true },
       select: {
         id: true,
         name: true,
+        description: true,
         priceCents: true,
         currency: true,
         billingInterval: true,
         maxStaff: true,
         maxBookingsPerMonth: true,
+        posEnabled: true,
+        onlinePaymentEnabled: true,
+        multiLocationEnabled: true,
+        whiteLabelEnabled: true,
+        isActive: true,
       },
       orderBy: { priceCents: 'asc' },
     });
   }
+
+  async createPlan(user: AuthenticatedUser, dto: PlanInput) {
+    const plan = await this.prisma.plan.create({ data: this.planData(dto) });
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'plan.created', resourceType: 'plan', resourceId: plan.id });
+    return plan;
+  }
+
+  async updatePlan(user: AuthenticatedUser, id: string, dto: PlanInput) {
+    const exists = await this.prisma.plan.findUnique({ where: { id } });
+    if (!exists) throw new BadRequestException('Plan not found');
+    const plan = await this.prisma.plan.update({ where: { id }, data: this.planData(dto) });
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'plan.updated', resourceType: 'plan', resourceId: id });
+    return plan;
+  }
+
+  private planData(dto: PlanInput) {
+    return {
+      name: dto.name,
+      description: dto.description ?? null,
+      priceCents: dto.priceCents ?? 0,
+      currency: dto.currency ?? 'USD',
+      maxStaff: dto.maxStaff ?? null,
+      maxBookingsPerMonth: dto.maxBookingsPerMonth ?? null,
+      posEnabled: dto.posEnabled ?? false,
+      onlinePaymentEnabled: dto.onlinePaymentEnabled ?? false,
+      multiLocationEnabled: dto.multiLocationEnabled ?? false,
+      whiteLabelEnabled: dto.whiteLabelEnabled ?? false,
+      isActive: dto.isActive ?? true,
+    };
+  }
+
+}
+
+export interface PlanInput {
+  name: string;
+  description?: string;
+  priceCents?: number;
+  currency?: string;
+  maxStaff?: number | null;
+  maxBookingsPerMonth?: number | null;
+  posEnabled?: boolean;
+  onlinePaymentEnabled?: boolean;
+  multiLocationEnabled?: boolean;
+  whiteLabelEnabled?: boolean;
+  isActive?: boolean;
 }

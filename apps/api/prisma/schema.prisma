@@ -118,6 +118,7 @@ model Plan {
   maxStaff             Int?
   maxBookingsPerMonth  Int?
   maxSmsPerMonth       Int?
+  posEnabled           Boolean @default(false) // unlocks POS / Products / Orders / Sales report
   onlinePaymentEnabled Boolean @default(false)
   multiLocationEnabled Boolean @default(false)
   whiteLabelEnabled    Boolean @default(false)

@@ -4,19 +4,21 @@ import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
+import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
 
-const NAV: { href: string; label: string; icon: string }[] = [
+// `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
+const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
   { href: '/salon', label: 'Dashboard', icon: '◉' },
-  { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾' },
-  { href: '/salon/orders', label: 'Orders', icon: '📋' },
+  { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾', feature: 'pos' },
+  { href: '/salon/orders', label: 'Orders', icon: '📋', feature: 'pos' },
   { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
   { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
   { href: '/salon/customers', label: 'Customers', icon: '☺' },
   { href: '/salon/services', label: 'Services', icon: '✦' },
-  { href: '/salon/products', label: 'Products', icon: '🛍' },
+  { href: '/salon/products', label: 'Products', icon: '🛍', feature: 'pos' },
   { href: '/salon/staff', label: 'Staff', icon: '✄' },
-  { href: '/salon/pos/report', label: 'Sales report', icon: '📊' },
+  { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
   { href: '/salon/payments', label: 'Payments', icon: '＄' },
   { href: '/salon/notifications', label: 'Notifications', icon: '✉' },
   { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },
@@ -33,12 +35,23 @@ export function SalonShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [posEnabled, setPosEnabled] = useState(true); // assume on until plan loads (avoids fl/hide)
 
   useEffect(() => {
     if (!ready) return;
     if (!token) router.replace('/login');
     else if (user && user.role !== 'SALON_ADMIN') router.replace('/');
   }, [ready, token, user, router]);
+
+  // Load the salon's plan to gate plan-locked features.
+  useEffect(() => {
+    if (!token || user?.role !== 'SALON_ADMIN') return;
+    apiFetch<{ posEnabled: boolean }>('/me/plan', { token })
+      .then((p) => setPosEnabled(p?.posEnabled ?? true))
+      .catch(() => setPosEnabled(true));
+  }, [token, user]);
+
+  const visibleNav = NAV.filter((item) => item.feature !== 'pos' || posEnabled);
 
   // Close the drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
@@ -53,7 +66,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
 
   const navList = (
     <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {NAV.map((item) => {
+      {visibleNav.map((item) => {
         const active = pathname === item.href;
         return (
           <Link

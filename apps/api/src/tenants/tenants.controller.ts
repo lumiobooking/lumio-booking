@@ -10,7 +10,7 @@ import {
   HttpCode,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { TenantsService } from './tenants.service';
+import { TenantsService, PlanInput } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { ListTenantsDto } from './dto/list-tenants.dto';
@@ -36,6 +36,16 @@ export class TenantsController {
   @Get('plans')
   plans() {
     return this.tenantsService.listPlans();
+  }
+
+  @Post('plans')
+  createPlan(@CurrentUser() user: AuthenticatedUser, @Body() dto: PlanInput) {
+    return this.tenantsService.createPlan(user, dto);
+  }
+
+  @Patch('plans/:id')
+  updatePlan(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: PlanInput) {
+    return this.tenantsService.updatePlan(user, id, dto);
   }
 
   @Get(':id')

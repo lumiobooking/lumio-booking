@@ -33,4 +33,29 @@ export class MeController {
     });
     return tenant;
   }
+
+  // GET /api/me/plan -> the salon's plan feature flags (for UI gating).
+  // No plan assigned → full access so nothing breaks for un-planned salons.
+  @Get('plan')
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  async myPlan(@CurrentUser() user: AuthenticatedUser) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return null;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        plan: {
+          select: { name: true, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true },
+        },
+      },
+    });
+    const p = tenant?.plan;
+    return {
+      planName: p?.name ?? null,
+      posEnabled: p ? p.posEnabled : true,
+      onlinePaymentEnabled: p ? p.onlinePaymentEnabled : true,
+      multiLocationEnabled: p ? p.multiLocationEnabled : true,
+      whiteLabelEnabled: p ? p.whiteLabelEnabled : true,
+    };
+  }
 }

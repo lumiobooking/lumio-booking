@@ -72,6 +72,15 @@ export default function TenantsPage() {
     }
   }, [ready, token, user, loadData]);
 
+  async function changePlan(id: string, planId: string) {
+    try {
+      await apiFetch(`/tenants/${id}`, { method: 'PATCH', token, body: { planId: planId || null } });
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change plan');
+    }
+  }
+
   async function setStatus(id: string, action: 'suspend' | 'reactivate') {
     try {
       await apiFetch(`/tenants/${id}/${action}`, { method: 'POST', token });
@@ -113,6 +122,9 @@ export default function TenantsPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <a href="/super-admin/plans" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            Manage plans
+          </a>
           <button onClick={() => setShowForm((s) => !s)} style={primaryBtn}>
             {showForm ? 'Close' : '+ New salon'}
           </button>
@@ -148,6 +160,7 @@ export default function TenantsPage() {
               <th style={th}>Name</th>
               <th style={th}>Slug</th>
               <th style={th}>Status</th>
+              <th style={th}>Plan</th>
               <th style={th}>Users</th>
               <th style={th}>Created</th>
               <th style={th}>Actions</th>
@@ -156,7 +169,7 @@ export default function TenantsPage() {
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td style={td} colSpan={6}>
+                <td style={td} colSpan={7}>
                   No salons in this range.
                 </td>
               </tr>
@@ -167,6 +180,16 @@ export default function TenantsPage() {
                 <td style={{ ...td, color: '#94a3b8' }}>{t.slug}</td>
                 <td style={td}>
                   <StatusBadge status={t.status} />
+                </td>
+                <td style={td}>
+                  <select
+                    value={t.planId ?? ''}
+                    onChange={(e) => changePlan(t.id, e.target.value)}
+                    style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 110 }}
+                  >
+                    <option value="">— No plan —</option>
+                    {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                 </td>
                 <td style={td}>{t._count?.users ?? '-'}</td>
                 <td style={{ ...td, color: '#94a3b8' }}>

@@ -22,7 +22,7 @@ interface SettingsData {
   branding: { accentColor: string; logoUrl: string };
   gateways: Record<string, GatewayView>;
   notifications: {
-    mailService: 'auto' | 'off' | 'smtp' | 'brevo'; replyTo: string;
+    mailService: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail'; replyTo: string;
     senderName: string; senderEmail: string; adminEmail: string; adminPhone: string;
     emailCustomerOnBooking: boolean; emailAdminOnBooking: boolean;
     smsCustomerOnBooking: boolean; smsAdminOnBooking: boolean;

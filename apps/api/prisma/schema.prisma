@@ -183,6 +183,7 @@ model Tenant {
   orders            Order[]
   orderItems        OrderItem[]
   orderPayments     OrderPayment[]
+  loyaltyTransactions LoyaltyTransaction[]
 
   @@index([status])
   @@map("tenants")
@@ -447,10 +448,14 @@ model Customer {
   phone     String?
   notes     String?
 
+  // Loyalty points balance (earned on paid visits, spent on rewards).
+  loyaltyPoints Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  appointments Appointment[]
+  appointments        Appointment[]
+  loyaltyTransactions LoyaltyTransaction[]
 
   // A customer email is unique within a tenant (not across the platform).
   @@unique([tenantId, email])
@@ -795,6 +800,28 @@ model OrderItem {
   @@index([orderId])
   @@index([tenantId, staffMemberId])
   @@map("order_items")
+}
+
+/// Loyalty points ledger: +points earned on paid visits, -points on redemption.
+model LoyaltyTransaction {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  points       Int // positive = earned, negative = redeemed
+  balanceAfter Int // customer's balance right after this transaction
+  reason       String // e.g. "Earned on order #12", "Redeemed for discount"
+  refType      String? // 'order' | 'appointment'
+  refId        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("loyalty_transactions")
 }
 
 /// A tender against an order (supports split payment).

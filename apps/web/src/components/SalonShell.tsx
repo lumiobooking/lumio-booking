@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
+import { InstallAppButton } from './InstallAppButton';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
 const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
@@ -96,6 +97,9 @@ export function SalonShell({ children }: { children: ReactNode }) {
       <button onClick={logout} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>
         Log out
       </button>
+      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+        <InstallAppButton label="Install app" />
+      </div>
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
         style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 11, color: '#64748b', textDecoration: 'none' }}>
         Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>

@@ -5,6 +5,22 @@ export const COMPANY_EXTRA_KEY = 'company_extra';
 export const PAYMENT_GATEWAYS_KEY = 'payment_gateways';
 export const NOTIFICATION_SETTINGS_KEY = 'notifications';
 export const POS_SETTINGS_KEY = 'pos_settings';
+export const LOYALTY_SETTINGS_KEY = 'loyalty_settings';
+
+// Loyalty program: earn points per $ spent, redeem points for a discount.
+export interface LoyaltySettings {
+  enabled: boolean;
+  earnPointsPerDollar: number; // points earned per $1 paid (e.g. 1)
+  redeemCentsPerPoint: number; // value of 1 point when redeemed, in cents (e.g. 5 → 100 pts = $5)
+  minRedeemPoints: number; // minimum points required to redeem (e.g. 100)
+}
+
+export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
+  enabled: false,
+  earnPointsPerDollar: 1,
+  redeemCentsPerPoint: 5,
+  minRedeemPoints: 100,
+};
 
 // POS (counter checkout) settings. Tax applies to retail products only
 // (nail services are tax-exempt in many US states); receiptFooter prints at the

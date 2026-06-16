@@ -27,6 +27,7 @@ export class CustomersService {
         email: true,
         phone: true,
         createdAt: true,
+        loyaltyPoints: true,
         _count: { select: { appointments: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -47,6 +48,12 @@ export class CustomersService {
         phone: true,
         notes: true,
         createdAt: true,
+        loyaltyPoints: true,
+        loyaltyTransactions: {
+          select: { id: true, points: true, balanceAfter: true, reason: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 30,
+        },
         appointments: {
           select: {
             id: true,

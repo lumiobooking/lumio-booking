@@ -35,6 +35,7 @@ interface SettingsData {
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
   pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
+  loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   gmailRedirectUri?: string;
 }
 
@@ -413,6 +414,15 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         <PrimaryCardChannel data={data} onSave={onSave} />
       </div>
 
+      {/* Loyalty program */}
+      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #334155' }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Loyalty points</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+          Customers earn points on paid visits and redeem them for a discount at checkout.
+        </p>
+        <LoyaltyConfig data={data} onSave={onSave} />
+      </div>
+
       {/* Bank transfer details shown to the customer at checkout (manual confirm). */}
       <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #334155' }}>
         <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Bank transfer (manual)</div>
@@ -462,6 +472,35 @@ function BankTransferConfig({ data, onSave }: { data: SettingsData; onSave: Save
           Save transfer details
         </button>
       </div>
+    </div>
+  );
+}
+
+function LoyaltyConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const l = data.loyalty ?? { enabled: false, earnPointsPerDollar: 1, redeemCentsPerPoint: 5, minRedeemPoints: 100 };
+  const [enabled, setEnabled] = useState(l.enabled);
+  const [earn, setEarn] = useState(String(l.earnPointsPerDollar));
+  const [cpp, setCpp] = useState(String(l.redeemCentsPerPoint));
+  const [minR, setMinR] = useState(String(l.minRedeemPoints));
+  const earnN = parseFloat(earn) || 0;
+  const cppN = parseFloat(cpp) || 0;
+  return (
+    <div>
+      <Toggle on={enabled} onChange={setEnabled} label="Enable loyalty program" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 10, opacity: enabled ? 1 : 0.5 }}>
+        <Field label="Points earned per $1 spent"><input style={ui.input} type="number" min={0} step="0.1" value={earn} onChange={(e) => setEarn(e.target.value)} /></Field>
+        <Field label="Value of 1 point (cents)"><input style={ui.input} type="number" min={0} step="1" value={cpp} onChange={(e) => setCpp(e.target.value)} /></Field>
+        <Field label="Min points to redeem"><input style={ui.input} type="number" min={0} value={minR} onChange={(e) => setMinR(e.target.value)} /></Field>
+      </div>
+      <p style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+        Example: earn {earnN || 1} pt/$ · {Math.round(100 / (cppN || 1))} points = ${((100 * (cppN || 1)) / 100).toFixed(2)} … i.e. <strong>100 points = ${((100 * (cppN || 0)) / 100).toFixed(2)}</strong> off.
+      </p>
+      <button
+        style={{ ...ui.primaryBtn, marginTop: 6 }}
+        onClick={() => onSave('loyalty', { enabled, earnPointsPerDollar: earnN, redeemCentsPerPoint: cppN, minRedeemPoints: parseInt(minR, 10) || 0 }, 'Loyalty')}
+      >
+        Save loyalty
+      </button>
     </div>
   );
 }

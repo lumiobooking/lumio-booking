@@ -10,6 +10,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateOrderDto, CreateProductDto, UpdateProductDto } from './dto/pos.dto';
 
@@ -24,6 +25,7 @@ export class PosService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
+    private readonly loyalty: LoyaltyService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -144,14 +146,23 @@ export class PosService {
     });
 
     const subtotal = lines.reduce((s, l) => s + l.lineTotalCents, 0);
-    const orderDiscount = Math.min(dto.discountCents ?? 0, subtotal);
+    const manualDiscount = Math.min(dto.discountCents ?? 0, subtotal);
     const productBase = lines
       .filter((l) => l.kind === OrderItemKind.PRODUCT)
       .reduce((s, l) => s + l.lineTotalCents, 0);
     const taxCents = Math.round((productBase * taxRate) / 100);
     const tipCents = lines.reduce((s, l) => s + l.tipCents, 0);
-    const totalCents = subtotal - orderDiscount + taxCents + tipCents;
-    if (totalCents < 0) throw new BadRequestException('Order total cannot be negative');
+
+    // Loyalty redemption: validate + value the points as an extra discount.
+    const redeemPoints = dto.customerId && dto.redeemPoints && dto.redeemPoints > 0 ? dto.redeemPoints : 0;
+    let redeemDiscount = 0;
+    if (redeemPoints > 0) {
+      const preview = await this.loyalty.previewRedeem(tenantId, dto.customerId!, redeemPoints);
+      // Never let the redemption push the order below the tip (tips are owed to staff).
+      redeemDiscount = Math.min(preview.discountCents, Math.max(0, subtotal - manualDiscount + taxCents));
+    }
+    const orderDiscount = manualDiscount + redeemDiscount;
+    const totalCents = Math.max(0, subtotal - orderDiscount + taxCents + tipCents);
 
     const paidCents = (dto.tenders ?? []).reduce((s, t) => s + t.amountCents, 0);
     const hasTenders = (dto.tenders ?? []).length > 0;
@@ -235,6 +246,13 @@ export class PosService {
             where: { id: dto.appointmentId, tenantId },
             data: { status: AppointmentStatus.COMPLETED, completedAt: new Date() },
           });
+        }
+        // Loyalty: redeem the points used, then award points on the amount paid.
+        if (dto.customerId && redeemPoints > 0) {
+          await this.loyalty.redeem(tx, tenantId, dto.customerId, redeemPoints, 'order', created.id);
+        }
+        if (dto.customerId) {
+          await this.loyalty.award(tx, tenantId, dto.customerId, totalCents, 'order', created.id);
         }
       }
 

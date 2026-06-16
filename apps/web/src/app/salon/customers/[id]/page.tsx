@@ -14,9 +14,12 @@ interface Appt {
   assignedStaff: { firstName: string; lastName: string | null } | null;
   payments: Pay[];
 }
+interface LoyaltyTxn { id: string; points: number; balanceAfter: number; reason: string; createdAt: string }
 interface CustomerDetail {
   id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null;
   notes: string | null; createdAt: string;
+  loyaltyPoints?: number;
+  loyaltyTransactions?: LoyaltyTxn[];
   appointments: Appt[];
   stats: { bookings: number; completed: number; totalSpentCents: number; lastVisit: string | null };
 }
@@ -88,10 +91,25 @@ function Inner() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 18 }}>
         <Kpi label="Total spent" value={formatPrice(c.stats.totalSpentCents, currency)} accent="#22c55e" />
+        <Kpi label="Loyalty points" value={`${c.loyaltyPoints ?? 0} pts`} accent="#eab308" />
         <Kpi label="Bookings" value={String(c.stats.bookings)} accent="#3b82f6" />
         <Kpi label="Completed" value={String(c.stats.completed)} accent="#a855f7" />
         <Kpi label="Last visit" value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString() : '—'} accent="#06b6d4" />
       </div>
+
+      {c.loyaltyTransactions && c.loyaltyTransactions.length > 0 && (
+        <div style={{ ...ui.card, marginBottom: 18 }}>
+          <div style={{ fontSize: 14, color: '#cbd5e1', fontWeight: 600, marginBottom: 8 }}>Loyalty history</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {c.loyaltyTransactions.map((t) => (
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
+                <span style={{ color: '#cbd5e1' }}>{new Date(t.createdAt).toLocaleDateString()} · {t.reason}</span>
+                <span style={{ color: t.points >= 0 ? '#22c55e' : '#f97316', fontWeight: 600 }}>{t.points >= 0 ? '+' : ''}{t.points} pts <span style={{ color: '#64748b', fontWeight: 400 }}>(bal {t.balanceAfter})</span></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {c.notes && (
         <div style={{ ...ui.card, marginBottom: 18 }}>

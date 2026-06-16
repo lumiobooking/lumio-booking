@@ -29,6 +29,9 @@ import {
   POS_SETTINGS_KEY,
   PosSettings,
   DEFAULT_POS_SETTINGS,
+  LOYALTY_SETTINGS_KEY,
+  LoyaltySettings,
+  DEFAULT_LOYALTY_SETTINGS,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -70,6 +73,29 @@ export class SettingsService {
   /** POS settings (tax rate on retail + receipt footer), merged over defaults. */
   async getPosSettings(tenantId: string): Promise<PosSettings> {
     return this.readKey<PosSettings>(tenantId, POS_SETTINGS_KEY, DEFAULT_POS_SETTINGS);
+  }
+
+  /** Loyalty program settings, merged over defaults. */
+  async getLoyaltySettings(tenantId: string): Promise<LoyaltySettings> {
+    return this.readKey<LoyaltySettings>(tenantId, LOYALTY_SETTINGS_KEY, DEFAULT_LOYALTY_SETTINGS);
+  }
+
+  async updateLoyalty(
+    user: AuthenticatedUser,
+    dto: { enabled?: boolean; earnPointsPerDollar?: number; redeemCentsPerPoint?: number; minRedeemPoints?: number },
+  ) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getLoyaltySettings(tenantId);
+    const num = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 ? v : d);
+    const next: LoyaltySettings = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      earnPointsPerDollar: num(dto.earnPointsPerDollar, cur.earnPointsPerDollar),
+      redeemCentsPerPoint: num(dto.redeemCentsPerPoint, cur.redeemCentsPerPoint),
+      minRedeemPoints: num(dto.minRedeemPoints, cur.minRedeemPoints),
+    };
+    await this.writeKey(tenantId, LOYALTY_SETTINGS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.loyalty_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
   }
 
   async updatePos(
@@ -468,6 +494,7 @@ export class SettingsService {
       notifications: this.sanitizeNotifications(await this.getNotificationSettings(tenantId)),
       notificationTemplates: await this.getNotificationTemplates(tenantId),
       pos: await this.getPosSettings(tenantId),
+      loyalty: await this.getLoyaltySettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
   }

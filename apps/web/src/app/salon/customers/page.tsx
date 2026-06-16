@@ -14,6 +14,7 @@ interface Customer {
   email: string | null;
   phone: string | null;
   createdAt: string;
+  loyaltyPoints?: number;
   _count: { appointments: number };
 }
 
@@ -101,13 +102,14 @@ function Inner() {
                 <th style={ui.th}>Email</th>
                 <th style={ui.th}>Phone</th>
                 <th style={ui.th}>Bookings</th>
+                <th style={ui.th}>Points</th>
                 <th style={ui.th}>Since</th>
                 <th style={ui.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td style={ui.td} colSpan={6}>No customers found.</td></tr>
+                <tr><td style={ui.td} colSpan={7}>No customers found.</td></tr>
               )}
               {filtered.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid #334155' }}>
@@ -115,6 +117,7 @@ function Inner() {
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.email ?? '—'}</td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.phone ?? '—'}</td>
                   <td style={ui.td}>{c._count.appointments}</td>
+                  <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} pts</span> : '—'}</td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(c.createdAt).toLocaleDateString()}</td>
                   <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>Delete</button></td>
                 </tr>

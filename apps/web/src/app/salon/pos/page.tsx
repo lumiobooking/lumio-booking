@@ -63,6 +63,9 @@ function Register() {
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loyalty, setLoyalty] = useState({ enabled: false, redeemCentsPerPoint: 5, minRedeemPoints: 100 });
+  const [customerPoints, setCustomerPoints] = useState(0);
+  const [redeemInput, setRedeemInput] = useState('');
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -73,7 +76,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number } }>('/settings', { token }),
       ]);
       setServices(s.filter((x) => x.isActive));
       setProducts(p.filter((x) => x.isActive));
@@ -83,12 +86,17 @@ function Register() {
       setTransferInfo(settings.pos?.transferInstructions ?? '');
       setTransferQr(settings.pos?.transferQrUrl ?? '');
       setCurrency(settings.booking?.currency ?? 'USD');
+      if (settings.loyalty) setLoyalty({ enabled: settings.loyalty.enabled, redeemCentsPerPoint: settings.loyalty.redeemCentsPerPoint, minRedeemPoints: settings.loyalty.minRedeemPoints });
+      if (customerId) {
+        const cust = await apiFetch<{ loyaltyPoints?: number }>(`/customers/${customerId}`, { token }).catch(() => null);
+        setCustomerPoints(cust?.loyaltyPoints ?? 0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load POS data');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, customerId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -139,7 +147,7 @@ function Register() {
     setCart((c) => c.filter((l) => l.uid !== uid));
   }
   function clearCart() {
-    setCart([]); setOrderDiscount(''); setTendered(''); setError(null);
+    setCart([]); setOrderDiscount(''); setTendered(''); setRedeemInput(''); setError(null);
   }
 
   const money = useMemo(() => {
@@ -150,12 +158,17 @@ function Register() {
     const discount = Math.min(Math.round((parseFloat(orderDiscount) || 0) * 100), subtotal);
     const tax = Math.round((productBase * taxRate) / 100);
     const tip = cart.reduce((s, l) => s + l.tipCents, 0);
-    const total = Math.max(0, subtotal - discount + tax + tip);
-    const savings = itemSavings + discount;
+    // Loyalty redemption (only when enabled, a customer is attached, and >= min).
+    const wantPts = loyalty.enabled && customerId ? Math.min(parseInt(redeemInput, 10) || 0, customerPoints) : 0;
+    const redeemValid = wantPts > 0 && wantPts >= loyalty.minRedeemPoints;
+    const redeemDiscount = redeemValid ? Math.min(wantPts * loyalty.redeemCentsPerPoint, Math.max(0, subtotal - discount + tax)) : 0;
+    const redeemPts = redeemDiscount > 0 ? wantPts : 0;
+    const total = Math.max(0, subtotal - discount + tax + tip - redeemDiscount);
+    const savings = itemSavings + discount + redeemDiscount;
     const tenderedCents = Math.round((parseFloat(tendered) || 0) * 100);
     const change = payMethod === 'CASH' ? Math.max(0, tenderedCents - total) : 0;
-    return { subtotal, itemSavings, discount, tax, tip, total, savings, tenderedCents, change };
-  }, [cart, orderDiscount, taxRate, tendered, payMethod]);
+    return { subtotal, itemSavings, discount, tax, tip, total, savings, tenderedCents, change, redeemDiscount, redeemPts };
+  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput]);
 
   const staffName = (id: string) => {
     const s = staff.find((x) => x.id === id);
@@ -179,6 +192,7 @@ function Register() {
           appointmentId: appointmentId || undefined,
           customerId: customerId || undefined,
           discountCents: money.discount,
+          redeemPoints: money.redeemPts || undefined,
           items: cart.map((l) => ({
             kind: l.kind,
             serviceId: l.kind === 'SERVICE' && !l.isAddon ? l.refId : undefined,
@@ -387,6 +401,21 @@ function Register() {
             </div>
             {money.tax > 0 && <Row label={`Tax (${taxRate}% retail)`} value={formatPrice(money.tax, currency)} />}
             {money.tip > 0 && <Row label="Tips" value={formatPrice(money.tip, currency)} />}
+            {loyalty.enabled && customerId && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#eab308' }}>Redeem points ({customerPoints} avail)</span>
+                <input
+                  type="number" min={0} value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)}
+                  placeholder={`min ${loyalty.minRedeemPoints}`}
+                  style={{ ...ui.input, width: 110, padding: '5px 8px', textAlign: 'right' }}
+                />
+              </div>
+            )}
+            {money.redeemDiscount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308' }}>
+                <span>Points discount ({money.redeemPts} pts)</span><span>−{formatPrice(money.redeemDiscount, currency)}</span>
+              </div>
+            )}
             {money.savings > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#22c55e', fontWeight: 600 }}>
                 <span>You saved</span><span>−{formatPrice(money.savings, currency)}</span>

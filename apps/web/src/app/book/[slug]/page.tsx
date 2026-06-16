@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState, FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { useIsMobile } from '../../../lib/responsive';
+import { InstallAppButton } from '../../../components/InstallAppButton';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const ACCENT = 'var(--accent, #6366f1)';
@@ -172,8 +173,11 @@ export default function PublicBookingPage() {
                 <div key={s.n} style={{ flex: 1, height: 6, borderRadius: 999, background: step >= s.n ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.30)' }} />
               ))}
             </div>
-            <div style={{ fontSize: 12, opacity: 0.95, marginTop: 8 }}>
-              {step > 5 ? 'Done' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <div style={{ fontSize: 12, opacity: 0.95 }}>
+                {step > 5 ? 'Done' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
+              </div>
+              <InstallAppButton label="Get the app" />
             </div>
           </div>
         ) : (
@@ -188,7 +192,10 @@ export default function PublicBookingPage() {
                 </div>
               );
             })}
-            <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ marginTop: 'auto', fontSize: 12, opacity: 0.85, paddingTop: 24, color: 'white', textDecoration: 'none' }}>
+            <div style={{ marginTop: 'auto', paddingTop: 24 }}>
+              <InstallAppButton label="Install this booking app" />
+            </div>
+            <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, opacity: 0.85, paddingTop: 16, color: 'white', textDecoration: 'none' }}>
               Powered by <span style={{ fontWeight: 700 }}>Lumio Booking</span>
             </a>
           </aside>

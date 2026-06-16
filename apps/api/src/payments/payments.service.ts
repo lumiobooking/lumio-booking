@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PaymentStatus, PaymentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentProvider } from './providers/payment-provider.interface';
@@ -14,6 +15,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly loyalty: LoyaltyService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -105,7 +107,7 @@ export class PaymentsService {
     const tenantId = this.tenantId(user);
     const existing = await this.prisma.payment.findFirst({
       where: { id, tenantId },
-      select: { id: true },
+      select: { id: true, status: true, amountCents: true, appointment: { select: { customerId: true } } },
     });
     if (!existing) {
       throw new NotFoundException('Payment not found');
@@ -121,6 +123,10 @@ export class PaymentsService {
       resourceType: 'payment',
       resourceId: id,
     });
+    // Award loyalty points to the booking's customer (only on the PENDING→PAID transition).
+    if (existing.status !== PaymentStatus.PAID && existing.appointment?.customerId) {
+      await this.loyalty.award(this.prisma, tenantId, existing.appointment.customerId, existing.amountCents, 'appointment', id);
+    }
     return this.prisma.payment.findFirst({ where: { id, tenantId } });
   }
 

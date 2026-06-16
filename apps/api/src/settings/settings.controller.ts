@@ -68,6 +68,14 @@ export class SettingsController {
     return this.settings.updateBranding(user, dto);
   }
 
+  @Patch('loyalty')
+  updateLoyalty(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { enabled?: boolean; earnPointsPerDollar?: number; redeemCentsPerPoint?: number; minRedeemPoints?: number },
+  ) {
+    return this.settings.updateLoyalty(user, dto);
+  }
+
   // POS settings: retail tax rate + receipt footer.
   @Patch('pos')
   updatePos(

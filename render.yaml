@@ -46,6 +46,18 @@ services:
         sync: false
       - key: BREVO_SENDER_NAME
         value: Lumio Booking
+      # Platform Gmail (OAuth2 — same as WP Mail SMTP's Google mailer). Free, works
+      # over HTTPS so it isn't blocked like SMTP. Fill all 4 to enable.
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: GMAIL_SENDER_EMAIL
+        sync: false
+      - key: GMAIL_SENDER_NAME
+        value: Lumio Booking
       - key: SMS_PROVIDER
         value: mock
       - key: PAYMENT_PROVIDER

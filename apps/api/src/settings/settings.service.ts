@@ -31,6 +31,7 @@ import {
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
+import { GmailOAuthProvider } from '../notifications/providers/gmail-oauth.provider';
 import {
   UpdateBookingRulesDto,
   UpdateBrandingDto,
@@ -253,7 +254,7 @@ export class SettingsService {
       });
 
     // The salon's explicit Mail service choice wins; otherwise auto-detect.
-    let provider: SmtpEmailProvider | BrevoEmailProvider;
+    let provider: SmtpEmailProvider | BrevoEmailProvider | GmailOAuthProvider;
     let to: string;
     if (n.mailService === 'off') {
       return { ok: false, error: 'Email sending is set to Off. Choose SMTP or Brevo as the Mail service, then Save before testing.' };
@@ -272,6 +273,17 @@ export class SettingsService {
     } else if (smtpReady) {
       provider = mkSmtp();
       to = n.adminEmail || n.senderEmail || n.smtp.user;
+    } else if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN && process.env.GMAIL_SENDER_EMAIL) {
+      // Platform Gmail (OAuth2) — same mechanism as WP Mail SMTP's Google mailer.
+      provider = new GmailOAuthProvider({
+        clientId: process.env.GMAIL_CLIENT_ID,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+        senderEmail: process.env.GMAIL_SENDER_EMAIL,
+        senderName,
+        replyTo: reply,
+      });
+      to = n.adminEmail || n.senderEmail || process.env.GMAIL_SENDER_EMAIL;
     } else if (envBrevoKey && envBrevoSender) {
       provider = mkBrevo(envBrevoKey, envBrevoSender);
       to = n.adminEmail || envBrevoSender;

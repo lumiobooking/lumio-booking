@@ -6,6 +6,24 @@ import { EmailProvider, SmsProvider } from './providers/notification-provider.in
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
 import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
+import { GmailOAuthProvider } from './providers/gmail-oauth.provider';
+
+/** Build a platform Gmail-OAuth provider from env vars, or null if not configured. */
+function envGmailProvider(senderName?: string, replyTo?: string): GmailOAuthProvider | null {
+  const clientId = process.env.GMAIL_CLIENT_ID;
+  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+  const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
+  const senderEmail = process.env.GMAIL_SENDER_EMAIL;
+  if (!clientId || !clientSecret || !refreshToken || !senderEmail) return null;
+  return new GmailOAuthProvider({
+    clientId,
+    clientSecret,
+    refreshToken,
+    senderEmail,
+    senderName: senderName || process.env.GMAIL_SENDER_NAME || 'Lumio Booking',
+    replyTo,
+  });
+}
 
 /** Extracts the display name from a "Name <email>" string. */
 function parseSenderName(from?: string): string {
@@ -64,9 +82,15 @@ export class NotificationsService {
       if (svc === 'brevo' && brevoReady) return new BrevoEmailProvider(input.brevo!);
       if (svc === 'smtp' && smtpReady) return new SmtpEmailProvider(input.smtp!);
       if (svc === 'off') return this.email; // logged only, no real send
-      // Auto fallback (svc unset, or chosen provider not configured yet).
+      // Auto fallback (svc unset, or chosen provider not configured yet):
+      // salon's own Brevo > salon's own SMTP > platform Gmail (OAuth) > platform Brevo > mock.
       if (brevoReady) return new BrevoEmailProvider(input.brevo!);
       if (smtpReady) return new SmtpEmailProvider(input.smtp!);
+      const gmail = envGmailProvider(
+        input.senderName || parseSenderName(input.smtp?.from),
+        input.replyTo || input.smtp?.replyTo || input.brevo?.replyTo,
+      );
+      if (gmail) return gmail;
       const envKey = process.env.BREVO_API_KEY;
       const envSender = process.env.BREVO_SENDER_EMAIL;
       if (envKey && envSender) {

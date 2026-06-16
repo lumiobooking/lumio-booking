@@ -54,6 +54,23 @@ services:
       # first deploy, e.g. https://lumio-web.onrender.com
       - key: CORS_ORIGINS
         sync: false
+      # ---- Keep-alive (anti cold-start on the free tier) ----
+      # The API pings itself (RENDER_EXTERNAL_URL is injected automatically) and
+      # the web app to keep both warm during business hours. Set KEEPALIVE_WEB_URL
+      # to your web service URL. Tune the window/timezone to your salons' hours.
+      # On a paid plan that never sleeps, set KEEPALIVE_ENABLED=false.
+      - key: KEEPALIVE_ENABLED
+        value: "true"
+      - key: KEEPALIVE_WEB_URL
+        value: https://lumio-web-1xqk.onrender.com
+      # US/Canada: 10:00–21:00 US Eastern = 07:00–18:00 Pacific. ~11h window keeps
+      # both services under Render's 750 free instance-hours/month budget.
+      - key: KEEPALIVE_START_HOUR
+        value: "10"
+      - key: KEEPALIVE_END_HOUR
+        value: "21"
+      - key: KEEPALIVE_TZ
+        value: America/New_York
 
   # ---------------------- Frontend (Next.js dashboard) --------------------
   - type: web

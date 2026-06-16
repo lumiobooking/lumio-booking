@@ -63,10 +63,19 @@ export function getLocalSlot(start: Date, durationMinutes: number, timeZone: str
 /**
  * True iff the appointment slot fits fully inside one active working-hours block
  * on the same local day. Back-to-back is fine (block end may equal slot end).
+ *
+ * Fallback: a technician with NO active working hours configured is treated as
+ * available during the salon's open hours. The booking slot has already been
+ * validated against the salon business hours when it was created, so this lets
+ * auto-assignment work out of the box without forcing the salon to fill in a
+ * per-technician schedule first. Once a technician HAS hours configured, those
+ * are respected strictly.
  */
 export function isWithinWorkingHours(slot: LocalSlot, hours: WorkingHourLite[]): boolean {
-  return hours.some((h) => {
-    if (!h.isActive || h.dayOfWeek !== slot.dayOfWeek) return false;
+  const active = hours.filter((h) => h.isActive);
+  if (active.length === 0) return true; // unconfigured -> available during salon hours
+  return active.some((h) => {
+    if (h.dayOfWeek !== slot.dayOfWeek) return false;
     const start = parseHmToMinutes(h.startTime);
     const end = parseHmToMinutes(h.endTime);
     if (Number.isNaN(start) || Number.isNaN(end)) return false;

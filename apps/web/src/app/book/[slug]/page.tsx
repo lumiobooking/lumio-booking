@@ -274,7 +274,7 @@ export default function PublicBookingPage() {
                   <Field label="Phone" required>
                     <input
                       style={{ ...field, borderColor: showPhoneError ? '#ef4444' : '#cbd5e1' }}
-                      value={form.phone} inputMode="tel" placeholder="e.g. 0901234567"
+                      value={form.phone} inputMode="tel" placeholder="e.g. (201) 555-0123"
                       onChange={(e) => setForm({ ...form, phone: e.target.value })}
                     />
                     {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}

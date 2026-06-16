@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
+import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface Service {
   id: string;
@@ -15,6 +16,7 @@ interface Service {
   discountPercent?: number;
   currency: string;
   isActive: boolean;
+  createdAt?: string;
 }
 
 export default function ServicesPage() {
@@ -27,6 +29,7 @@ export default function ServicesPage() {
 
 function ServicesInner() {
   const { token } = useAuth();
+  const range = useDateRange('all');
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +75,12 @@ function ServicesInner() {
     }
   }
 
+  // Filter by created date, then newest first.
+  const visible = sortNewest(
+    services.filter((s) => range.inRange(s.createdAt)),
+    (s) => s.createdAt,
+  );
+
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -79,6 +88,11 @@ function ServicesInner() {
         <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
           {showForm ? 'Close' : '+ New service'}
         </button>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} service{visible.length === 1 ? '' : 's'}</span>
+        <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -108,14 +122,14 @@ function ServicesInner() {
               </tr>
             </thead>
             <tbody>
-              {services.length === 0 && (
+              {visible.length === 0 && (
                 <tr>
                   <td style={ui.td} colSpan={5}>
-                    No services yet.
+                    No services in this range.
                   </td>
                 </tr>
               )}
-              {services.map((s) => (
+              {visible.map((s) => (
                 <FragmentRow key={s.id} service={s} token={token!} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
               ))}
             </tbody>

@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface Service {
   id: string;
@@ -21,7 +22,9 @@ interface StaffMember {
   isActive: boolean;
   performanceScore: number;
   staffServices: { serviceId: string }[];
+  workingHours: { id: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
   user: { id: string; email: string } | null;
+  createdAt?: string;
 }
 
 function Avatar({ url, name }: { url: string | null; name: string }) {
@@ -46,11 +49,13 @@ export default function StaffPage() {
 
 function StaffInner() {
   const { token } = useAuth();
+  const range = useDateRange('all');
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editFor, setEditFor] = useState<string | null>(null);
   const [loginFor, setLoginFor] = useState<string | null>(null);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [createdMsg, setCreatedMsg] = useState<string | null>(null);
@@ -108,6 +113,12 @@ function StaffInner() {
 
   const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? '—';
 
+  // Filter by created date, then newest first.
+  const visible = sortNewest(
+    staff.filter((m) => range.inRange(m.createdAt)),
+    (m) => m.createdAt,
+  );
+
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -115,6 +126,11 @@ function StaffInner() {
         <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
           {showForm ? 'Close' : '+ New staff'}
         </button>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} staff</span>
+        <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -147,14 +163,14 @@ function StaffInner() {
               </tr>
             </thead>
             <tbody>
-              {staff.length === 0 && (
+              {visible.length === 0 && (
                 <tr>
                   <td style={ui.td} colSpan={6}>
-                    No staff yet.
+                    No staff in this range.
                   </td>
                 </tr>
               )}
-              {staff.map((m) => (
+              {visible.map((m) => (
                 <Fragment key={m.id}>
                 <tr style={{ borderTop: '1px solid #334155' }}>
                   <td style={ui.td}>
@@ -187,11 +203,31 @@ function StaffInner() {
                     </span>
                   </td>
                   <td style={ui.td}>
-                    <button onClick={() => remove(m.id)} style={ui.dangerBtn}>
-                      Delete
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }}
+                        style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? '#475569' : '#6366f1' }}
+                      >
+                        {editFor === m.id ? 'Close' : 'Edit'}
+                      </button>
+                      <button onClick={() => remove(m.id)} style={ui.dangerBtn}>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
+                {editFor === m.id && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                      <StaffEditPanel
+                        token={token!}
+                        member={m}
+                        services={services}
+                        onSaved={load}
+                      />
+                    </td>
+                  </tr>
+                )}
                 {loginFor === m.id && (
                   <tr>
                     <td colSpan={6} style={{ padding: 14, background: '#0f172a' }}>
@@ -219,6 +255,176 @@ function StaffInner() {
         </div>
       )}
     </section>
+  );
+}
+
+// Monday-first display order mapped to JS getDay() values (0 = Sun … 6 = Sat).
+const DAYS: { dow: number; label: string }[] = [
+  { dow: 1, label: 'Mon' },
+  { dow: 2, label: 'Tue' },
+  { dow: 3, label: 'Wed' },
+  { dow: 4, label: 'Thu' },
+  { dow: 5, label: 'Fri' },
+  { dow: 6, label: 'Sat' },
+  { dow: 0, label: 'Sun' },
+];
+
+interface DayRow { dow: number; enabled: boolean; start: string; end: string }
+
+function StaffEditPanel({
+  token,
+  member,
+  services,
+  onSaved,
+}: {
+  token: string;
+  member: StaffMember;
+  services: Service[];
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    firstName: member.firstName,
+    lastName: member.lastName ?? '',
+    email: member.email ?? '',
+    phone: member.phone ?? '',
+    avatarUrl: member.avatarUrl ?? '',
+    isActive: member.isActive,
+  });
+  const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
+  const [hours, setHours] = useState<DayRow[]>(
+    DAYS.map((d) => {
+      const wh = member.workingHours.find((h) => h.dayOfWeek === d.dow && h.isActive);
+      return { dow: d.dow, enabled: !!wh, start: wh?.startTime ?? '09:00', end: wh?.endTime ?? '18:00' };
+    }),
+  );
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function up(key: keyof typeof form, v: string | boolean) {
+    setForm((f) => ({ ...f, [key]: v }));
+    setSaved(false);
+  }
+  function toggleSkill(id: string) {
+    setSkillIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSaved(false);
+  }
+  function updDay(dow: number, patch: Partial<DayRow>) {
+    setHours((prev) => prev.map((d) => (d.dow === dow ? { ...d, ...patch } : d)));
+    setSaved(false);
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const workingHours = hours
+        .filter((d) => d.enabled)
+        .map((d) => ({ dayOfWeek: d.dow, startTime: d.start, endTime: d.end }));
+      await apiFetch(`/staff/${member.id}`, {
+        method: 'PATCH',
+        token,
+        body: {
+          firstName: form.firstName,
+          lastName: form.lastName || undefined,
+          email: form.email || undefined,
+          phone: form.phone || undefined,
+          avatarUrl: form.avatarUrl || undefined,
+          isActive: form.isActive,
+          serviceIds: skillIds,
+          workingHours,
+        },
+      });
+      setSaved(true);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const anyEnabled = hours.some((d) => d.enabled);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>Edit {member.firstName}</div>
+
+      {/* Profile */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+        <label><span style={ui.label}>First name</span>
+          <input style={ui.input} value={form.firstName} onChange={(e) => up('firstName', e.target.value)} /></label>
+        <label><span style={ui.label}>Last name</span>
+          <input style={ui.input} value={form.lastName} onChange={(e) => up('lastName', e.target.value)} /></label>
+        <label><span style={ui.label}>Email</span>
+          <input style={ui.input} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} /></label>
+        <label><span style={ui.label}>Phone</span>
+          <input style={ui.input} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
+        <label><span style={ui.label}>Avatar image URL</span>
+          <input style={ui.input} value={form.avatarUrl} onChange={(e) => up('avatarUrl', e.target.value)} placeholder="https://…" /></label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 22 }}>
+          <input type="checkbox" checked={form.isActive} onChange={(e) => up('isActive', e.target.checked)} />
+          <span style={{ fontSize: 14, color: '#e2e8f0' }}>Active (can take bookings)</span>
+        </label>
+      </div>
+
+      {/* Skills */}
+      <div>
+        <span style={ui.label}>Skills (services this technician can do)</span>
+        {services.length === 0 ? (
+          <p style={{ color: '#94a3b8', fontSize: 13 }}>No services yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {services.map((s) => (
+              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: '1px solid #475569', fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={skillIds.includes(s.id)} onChange={() => toggleSkill(s.id)} />
+                {s.name}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Working hours */}
+      <div>
+        <span style={ui.label}>Working hours (when this technician can be auto-assigned)</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 460 }}>
+          {hours.map((d) => {
+            const label = DAYS.find((x) => x.dow === d.dow)?.label ?? '';
+            return (
+              <div key={d.dow} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, width: 64 }}>
+                  <input type="checkbox" checked={d.enabled} onChange={(e) => updDay(d.dow, { enabled: e.target.checked })} />
+                  <span style={{ fontSize: 14 }}>{label}</span>
+                </label>
+                {d.enabled ? (
+                  <>
+                    <input type="time" style={{ ...ui.input, width: 120 }} value={d.start} onChange={(e) => updDay(d.dow, { start: e.target.value })} />
+                    <span style={{ color: '#64748b' }}>–</span>
+                    <input type="time" style={{ ...ui.input, width: 120 }} value={d.end} onChange={(e) => updDay(d.dow, { end: e.target.value })} />
+                  </>
+                ) : (
+                  <span style={{ color: '#64748b', fontSize: 13 }}>Off</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8 }}>
+          {anyEnabled
+            ? 'The technician is only auto-assigned inside these hours.'
+            : 'No hours set → available during the salon’s open hours (default).'}
+        </p>
+      </div>
+
+      {error && <div style={ui.banner}>{error}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={save} disabled={saving} style={ui.primaryBtn}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>✓ Saved</span>}
+      </div>
+    </div>
   );
 }
 

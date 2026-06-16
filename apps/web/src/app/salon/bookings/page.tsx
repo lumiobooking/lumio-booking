@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface NamedRef {
   id: string;
@@ -63,6 +64,7 @@ export default function BookingsPage() {
 
 function BookingsInner() {
   const { token } = useAuth();
+  const range = useDateRange('all');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -152,9 +154,15 @@ function BookingsInner() {
   const staffName = (s: NamedRef | null) =>
     s ? `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() : '—';
 
+  // Filter by appointment date, then show newest first.
+  const visible = sortNewest(
+    bookings.filter((b) => range.inRange(b.startTime)),
+    (b) => b.startTime,
+  );
+
   return (
     <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>Bookings</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={processTimeouts} style={ghostBtn} title="Reassign bookings whose staff did not respond in time">
@@ -164,6 +172,11 @@ function BookingsInner() {
             {showForm ? 'Close' : '+ New booking'}
           </button>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} booking{visible.length === 1 ? '' : 's'}</span>
+        <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -197,14 +210,14 @@ function BookingsInner() {
               </tr>
             </thead>
             <tbody>
-              {bookings.length === 0 && (
+              {visible.length === 0 && (
                 <tr>
                   <td style={ui.td} colSpan={7}>
-                    No bookings yet.
+                    No bookings in this range.
                   </td>
                 </tr>
               )}
-              {bookings.map((b) => (
+              {visible.map((b) => (
                 <tr key={b.id} style={{ borderTop: '1px solid #334155' }}>
                   <td style={ui.td}>{new Date(b.startTime).toLocaleString()}</td>
                   <td style={ui.td}>{staffName(b.customer)}</td>

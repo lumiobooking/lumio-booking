@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface Tenant {
   id: string;
@@ -28,6 +29,7 @@ interface Plan {
 export default function TenantsPage() {
   const { token, user, ready, logout } = useAuth();
   const router = useRouter();
+  const range = useDateRange('all');
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -85,6 +87,12 @@ export default function TenantsPage() {
     return <Centered>Redirecting...</Centered>;
   }
 
+  // Filter by signup date, then newest first.
+  const visible = sortNewest(
+    tenants.filter((t) => range.inRange(t.createdAt)),
+    (t) => t.createdAt,
+  );
+
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px' }}>
       <header
@@ -115,6 +123,11 @@ export default function TenantsPage() {
 
       {error && <Banner>{error}</Banner>}
 
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} salon{visible.length === 1 ? '' : 's'}</span>
+        <DateRangeBar range={range} />
+      </div>
+
       {showForm && (
         <CreateTenantForm
           plans={plans}
@@ -139,14 +152,14 @@ export default function TenantsPage() {
             </tr>
           </thead>
           <tbody>
-            {tenants.length === 0 && (
+            {visible.length === 0 && (
               <tr>
                 <td style={td} colSpan={6}>
-                  No salons yet. Click “+ New salon”.
+                  No salons in this range.
                 </td>
               </tr>
             )}
-            {tenants.map((t) => (
+            {visible.map((t) => (
               <tr key={t.id} style={{ borderTop: '1px solid #334155' }}>
                 <td style={td}>{t.name}</td>
                 <td style={{ ...td, color: '#94a3b8' }}>{t.slug}</td>

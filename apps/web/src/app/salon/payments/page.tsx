@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
+import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface Payment {
   id: string;
@@ -29,6 +30,7 @@ export default function PaymentsPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const range = useDateRange('all');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,14 +50,23 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
 
-  const totalPaid = payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
+  // Filter by payment date, then newest first.
+  const visible = sortNewest(
+    payments.filter((p) => range.inRange(p.createdAt)),
+    (p) => p.createdAt,
+  );
+  const totalPaid = visible.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
 
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Payments</h1>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
-        {payments.length} payments · {formatPrice(totalPaid)} collected
+        {visible.length} payments · {formatPrice(totalPaid)} collected
       </p>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+        <DateRangeBar range={range} />
+      </div>
 
       {error && <div style={ui.banner}>{error}</div>}
 
@@ -74,10 +85,10 @@ function Inner() {
               </tr>
             </thead>
             <tbody>
-              {payments.length === 0 && (
-                <tr><td style={ui.td} colSpan={5}>No payments yet.</td></tr>
+              {visible.length === 0 && (
+                <tr><td style={ui.td} colSpan={5}>No payments in this range.</td></tr>
               )}
-              {payments.map((p) => (
+              {visible.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid #334155' }}>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString()}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>

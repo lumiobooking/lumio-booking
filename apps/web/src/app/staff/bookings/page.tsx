@@ -5,6 +5,7 @@ import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
 
 interface NamedRef {
   firstName?: string;
@@ -38,6 +39,7 @@ export default function StaffBookingsPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const range = useDateRange('all');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,18 +73,30 @@ function Inner() {
 
   const name = (c: NamedRef | null) => (c ? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() : '—');
 
+  // Filter by appointment date, then newest first.
+  const visible = sortNewest(
+    bookings.filter((b) => range.inRange(b.startTime)),
+    (b) => b.startTime,
+  );
+
   return (
     <section>
       {error && <div style={ui.banner}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} booking{visible.length === 1 ? '' : 's'}</span>
+        <DateRangeBar range={range} />
+      </div>
+
       {loading ? (
         <p style={{ color: '#94a3b8' }}>Loading...</p>
-      ) : bookings.length === 0 ? (
+      ) : visible.length === 0 ? (
         <div style={{ ...ui.card }}>
-          <p style={{ margin: 0, color: '#94a3b8' }}>No bookings assigned to you right now.</p>
+          <p style={{ margin: 0, color: '#94a3b8' }}>No bookings in this range.</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
-          {bookings.map((b) => (
+          {visible.map((b) => (
             <div
               key={b.id}
               style={{

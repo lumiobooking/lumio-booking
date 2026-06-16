@@ -47,6 +47,13 @@ set /p MSG="Describe this update (press Enter for 'update'): "
 if "!MSG!"=="" set "MSG=update"
 
 echo.
+REM --- Clear any stale git locks left by an interrupted process ---
+del /f /q ".git\index.lock" >nul 2>&1
+del /f /q ".git\HEAD.lock" >nul 2>&1
+del /f /q ".git\ORIG_HEAD.lock" >nul 2>&1
+del /f /q ".git\config.lock" >nul 2>&1
+del /f /q ".git\refs\heads\*.lock" >nul 2>&1
+
 echo Staging changes...
 git add -A
 git commit -m "!MSG!"

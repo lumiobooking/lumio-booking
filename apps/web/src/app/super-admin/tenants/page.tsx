@@ -32,6 +32,7 @@ export default function TenantsPage() {
   const range = useDateRange('all');
   const [q, setQ] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
+  const [showAccount, setShowAccount] = useState(false);
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -123,6 +124,9 @@ export default function TenantsPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setShowAccount((s) => !s)} style={ghostBtn}>
+            {showAccount ? 'Close' : 'My account'}
+          </button>
           <a href="/super-admin/plans" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Manage plans
           </a>
@@ -136,6 +140,8 @@ export default function TenantsPage() {
       </header>
 
       {error && <Banner>{error}</Banner>}
+
+      {showAccount && <AccountPanel token={token} currentEmail={user.email} />}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder="Search salon name, slug, email…" />
@@ -228,6 +234,44 @@ export default function TenantsPage() {
         Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>
       </a>
     </main>
+  );
+}
+
+function AccountPanel({ token, currentEmail }: { token: string; currentEmail: string }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newEmail, setNewEmail] = useState(currentEmail);
+  const [newPassword, setNewPassword] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setErr(null); setMsg(null);
+    if (!currentPassword) { setErr('Enter your current password to confirm the change.'); return; }
+    setBusy(true);
+    try {
+      const r = await apiFetch<{ ok: boolean; email: string }>('/me/account', {
+        method: 'PATCH', token,
+        body: { currentPassword, newEmail: newEmail !== currentEmail ? newEmail : undefined, newPassword: newPassword || undefined },
+      });
+      setMsg(`✓ Saved. Login email: ${r.email}.${newPassword ? ' Use your new password next time you log in.' : ''}`);
+      setCurrentPassword(''); setNewPassword('');
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Update failed'); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+      <h2 style={{ fontSize: 16, marginTop: 0 }}>My account</h2>
+      <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 0 }}>Change your own Super Admin login email and/or password.</p>
+      {err && <Banner>{err}</Banner>}
+      {msg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '8px 0' }}>{msg}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <Field label="Login email"><input style={inp} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /></Field>
+        <Field label="New password (leave blank to keep)"><input style={inp} type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="min 8 chars" /></Field>
+        <Field label="Current password (required to confirm)"><input style={inp} type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></Field>
+      </div>
+      <button onClick={save} disabled={busy} style={{ ...primaryBtn, marginTop: 14 }}>{busy ? 'Saving…' : 'Save account'}</button>
+    </div>
   );
 }
 

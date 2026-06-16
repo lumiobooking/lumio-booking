@@ -1,9 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Patch } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { hashSecret, verifySecret } from '../auth/password.util';
 
 /**
  * Demonstration of tenant-scoped + role-protected endpoints. Real feature
@@ -57,5 +58,37 @@ export class MeController {
       multiLocationEnabled: p ? p.multiLocationEnabled : true,
       whiteLabelEnabled: p ? p.whiteLabelEnabled : true,
     };
+  }
+
+  // PATCH /api/me/account -> the signed-in user changes their OWN login email
+  // and/or password. Works for any role (Super Admin, Salon Admin, Staff).
+  // Current password is required to authorise the change.
+  @Patch('account')
+  async updateAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { currentPassword?: string; newEmail?: string; newPassword?: string },
+  ) {
+    const u = await this.prisma.user.findUnique({ where: { id: user.userId } });
+    if (!u) throw new NotFoundException('Account not found');
+    if (!dto.currentPassword || !(await verifySecret(dto.currentPassword, u.passwordHash))) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    const data: { email?: string; passwordHash?: string } = {};
+    if (dto.newEmail && dto.newEmail.trim() && dto.newEmail.trim() !== u.email) {
+      data.email = dto.newEmail.trim().toLowerCase();
+    }
+    if (dto.newPassword) {
+      if (dto.newPassword.length < 8) throw new BadRequestException('New password must be at least 8 characters');
+      data.passwordHash = await hashSecret(dto.newPassword);
+    }
+    if (!data.email && !data.passwordHash) {
+      throw new BadRequestException('Nothing to change — enter a new email or new password');
+    }
+    try {
+      await this.prisma.user.update({ where: { id: u.id }, data });
+    } catch {
+      throw new BadRequestException('That email is already in use by another account');
+    }
+    return { ok: true, email: data.email ?? u.email };
   }
 }

@@ -135,6 +135,16 @@ function BookingsInner() {
     }
   }
 
+  async function removeBooking(id: string) {
+    if (!confirm('Delete this booking permanently? This cannot be undone. (To keep history, use Cancel instead.)')) return;
+    try {
+      await apiFetch(`/bookings/${id}`, { method: 'DELETE', token });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
   async function processTimeouts() {
     try {
       const res = await apiFetch<{ processed: number; reassigned: number }>(
@@ -294,6 +304,13 @@ function BookingsInner() {
                           </button>
                         </>
                       )}
+                      <button
+                        onClick={() => removeBooking(b.id)}
+                        style={{ ...ui.dangerBtn, opacity: 0.75 }}
+                        title="Permanently delete this booking"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>

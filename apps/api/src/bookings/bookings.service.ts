@@ -359,14 +359,17 @@ export class BookingsService {
       const smsText = tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d);
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, ...related }));
     }
-    if (n.emailAdminOnBooking && n.adminEmail) {
+    // Admin notification: who gets it = the Admin email, falling back to the
+    // sender email so the salon is never left un-notified.
+    const adminTo = n.adminEmail || n.senderEmail || n.gmail.senderEmail || '';
+    if (n.emailAdminOnBooking && adminTo) {
       const intro = fill(n.emailIntroAdmin, d);
       jobs.push(this.notifications.send({
-        tenantId, channel: NotificationChannel.EMAIL, recipient: n.adminEmail,
+        tenantId, channel: NotificationChannel.EMAIL, recipient: adminTo,
         subject: fill(n.emailSubjectAdmin, d),
         body: renderBookingEmailText('New booking', intro, '', d),
         html: renderBookingEmailHtml({ heading: 'New booking', intro, footer: '', d }),
-        smtp, brevo, mailService: n.mailService, ...related,
+        smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
       }));
     }
     if (n.smsAdminOnBooking && n.adminPhone) {
@@ -688,6 +691,21 @@ export class BookingsService {
 
   noShow(user: AuthenticatedUser, id: string) {
     return this.transition(user, id, AppointmentStatus.NO_SHOW, 'booking.no_show', 'updatedAt');
+  }
+
+  /** Permanently delete a booking (admin cleanup). Payments are kept (unlinked). */
+  async remove(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    await this.getById(user, id); // 404 + tenant ownership
+    await this.prisma.appointment.deleteMany({ where: { id, tenantId } });
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'booking.deleted',
+      resourceType: 'appointment',
+      resourceId: id,
+    });
+    return { id, deleted: true };
   }
 
   // =========================================================================

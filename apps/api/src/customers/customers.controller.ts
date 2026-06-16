@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Delete, Get, Param } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { CustomersService } from './customers.service';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -18,5 +18,10 @@ export class CustomersController {
   @Get(':id')
   getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.customers.getById(user, id);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.customers.remove(user, id);
   }
 }

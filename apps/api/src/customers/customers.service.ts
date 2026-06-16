@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -60,5 +64,16 @@ export class CustomersService {
       throw new NotFoundException('Customer not found');
     }
     return customer;
+  }
+
+  /** Delete a customer (and, by cascade, their appointments). Admin only. */
+  async remove(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const existing = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!existing) throw new NotFoundException('Customer not found');
+    // deleteMany with tenantId is a safety net so a forged id can't touch another tenant.
+    await this.prisma.customer.deleteMany({ where: { id, tenantId } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'customer.deleted', resourceType: 'customer', resourceId: id });
+    return { id, deleted: true };
   }
 }

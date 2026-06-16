@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -119,5 +120,11 @@ export class BookingsController {
   @HttpCode(200)
   noShow(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.bookings.noShow(user, id);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Delete(':id')
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.bookings.remove(user, id);
   }
 }

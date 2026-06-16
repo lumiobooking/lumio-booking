@@ -123,4 +123,14 @@ export class PaymentsService {
     });
     return this.prisma.payment.findFirst({ where: { id, tenantId } });
   }
+
+  /** Permanently delete a payment record (admin cleanup of stray/orphaned rows). */
+  async remove(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const existing = await this.prisma.payment.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!existing) throw new NotFoundException('Payment not found');
+    await this.prisma.payment.deleteMany({ where: { id, tenantId } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'payment.deleted', resourceType: 'payment', resourceId: id });
+    return { id, deleted: true };
+  }
 }

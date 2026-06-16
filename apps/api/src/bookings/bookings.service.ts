@@ -693,11 +693,17 @@ export class BookingsService {
     return this.transition(user, id, AppointmentStatus.NO_SHOW, 'booking.no_show', 'updatedAt');
   }
 
-  /** Permanently delete a booking (admin cleanup). Payments are kept (unlinked). */
+  /**
+   * Permanently delete a booking (admin cleanup). Its payments are deleted too so
+   * the booking's revenue is removed from reports (no orphaned PAID rows left).
+   */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     await this.getById(user, id); // 404 + tenant ownership
-    await this.prisma.appointment.deleteMany({ where: { id, tenantId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payment.deleteMany({ where: { tenantId, appointmentId: id } });
+      await tx.appointment.deleteMany({ where: { id, tenantId } });
+    });
     await this.audit.log({
       tenantId,
       userId: user.userId,

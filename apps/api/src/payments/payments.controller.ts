@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, HttpCode } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, HttpCode } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -25,5 +25,10 @@ export class PaymentsController {
   @HttpCode(200)
   markPaid(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.payments.markPaid(user, id);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.payments.remove(user, id);
   }
 }

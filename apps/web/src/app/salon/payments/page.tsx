@@ -51,6 +51,12 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function removePayment(p: Payment) {
+    if (!confirm(`Delete this ${formatPrice(p.amountCents, p.currency)} payment record? It will be removed from revenue reports. Cannot be undone.`)) return;
+    try { await apiFetch(`/payments/${p.id}`, { method: 'DELETE', token }); await load(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
+  }
+
   // Filter by payment date + search, then newest first.
   const visible = sortNewest(
     payments.filter((p) => range.inRange(p.createdAt) && matchesQuery(`${p.status} ${p.type} ${p.provider}`, q)),
@@ -84,11 +90,12 @@ function Inner() {
                 <th style={ui.th}>Type</th>
                 <th style={ui.th}>Status</th>
                 <th style={ui.th}>Provider</th>
+                <th style={ui.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
-                <tr><td style={ui.td} colSpan={5}>No payments in this range.</td></tr>
+                <tr><td style={ui.td} colSpan={6}>No payments in this range.</td></tr>
               )}
               {visible.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid #334155' }}>
@@ -99,6 +106,7 @@ function Inner() {
                     <span style={{ color: COLORS[p.status] ?? '#94a3b8', fontWeight: 600 }}>{p.status}</span>
                   </td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{p.provider}</td>
+                  <td style={ui.td}><button onClick={() => removePayment(p)} style={ui.dangerBtn}>Delete</button></td>
                 </tr>
               ))}
             </tbody>

@@ -111,7 +111,7 @@ function Inner() {
               )}
               {filtered.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid #334155' }}>
-                  <td style={ui.td}>{c.firstName} {c.lastName ?? ''}</td>
+                  <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a></td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.email ?? '—'}</td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.phone ?? '—'}</td>
                   <td style={ui.td}>{c._count.appointments}</td>

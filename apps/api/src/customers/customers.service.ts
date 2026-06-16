@@ -34,7 +34,7 @@ export class CustomersService {
     });
   }
 
-  /** A single customer with their recent bookings. */
+  /** A single customer with their full history: bookings + payments + totals. */
   async getById(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     const customer = await this.prisma.customer.findFirst({
@@ -54,16 +54,31 @@ export class CustomersService {
             startTime: true,
             service: { select: { name: true } },
             assignedStaff: { select: { firstName: true, lastName: true } },
+            payments: { select: { id: true, amountCents: true, currency: true, status: true, type: true, createdAt: true } },
           },
           orderBy: { startTime: 'desc' },
-          take: 20,
+          take: 100,
         },
       },
     });
     if (!customer) {
       throw new NotFoundException('Customer not found');
     }
-    return customer;
+    // Flatten payments + compute lifetime totals (PAID only = real collected).
+    const payments = customer.appointments.flatMap((a) => a.payments);
+    const totalSpentCents = payments
+      .filter((p) => p.status === 'PAID')
+      .reduce((s, p) => s + p.amountCents, 0);
+    const completed = customer.appointments.filter((a) => a.status === 'COMPLETED').length;
+    return {
+      ...customer,
+      stats: {
+        bookings: customer.appointments.length,
+        completed,
+        totalSpentCents,
+        lastVisit: customer.appointments[0]?.startTime ?? null,
+      },
+    };
   }
 
   /** Delete a customer (and, by cascade, their appointments). Admin only. */

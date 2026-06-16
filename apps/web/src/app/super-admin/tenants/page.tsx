@@ -92,6 +92,16 @@ export default function TenantsPage() {
     }
   }
 
+  async function removeTenant(t: Tenant) {
+    if (!confirm(`Delete salon "${t.name}"?\n\nIt will be removed from the list and the salon can no longer log in. (Data is archived, not hard-erased.) This cannot be undone from here.`)) return;
+    try {
+      await apiFetch(`/tenants/${t.id}`, { method: 'DELETE', token });
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
   if (!ready || (token && user?.role === 'SUPER_ADMIN' && loading)) {
     return <Centered>Loading...</Centered>;
   }
@@ -213,6 +223,7 @@ export default function TenantsPage() {
                     ) : (
                       <button onClick={() => setStatus(t.id, 'reactivate')} style={okBtn}>Reactivate</button>
                     )}
+                    <button onClick={() => removeTenant(t)} style={dangerBtn}>Delete</button>
                   </div>
                 </td>
               </tr>
@@ -538,6 +549,15 @@ const warnBtn: React.CSSProperties = {
   border: '1px solid #eab308',
   background: 'transparent',
   color: '#eab308',
+  fontSize: 13,
+  cursor: 'pointer',
+};
+const dangerBtn: React.CSSProperties = {
+  padding: '6px 12px',
+  borderRadius: 8,
+  border: '1px solid #ef4444',
+  background: 'transparent',
+  color: '#ef4444',
   fontSize: 13,
   cursor: 'pointer',
 };

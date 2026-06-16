@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
 import { InstallAppButton } from './InstallAppButton';
+import { ShareBookingLink } from './ShareBookingLink';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
 const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
@@ -93,6 +94,9 @@ export function SalonShell({ children }: { children: ReactNode }) {
 
   const footer = (
     <div style={{ marginTop: 'auto', borderTop: '1px solid #1f2937', paddingTop: 14 }}>
+      <div style={{ marginBottom: 10 }}>
+        <ShareBookingLink />
+      </div>
       <div style={{ fontSize: 12, color: '#94a3b8', padding: '0 10px 8px', wordBreak: 'break-all' }}>{user.email}</div>
       <button onClick={logout} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>
         Log out

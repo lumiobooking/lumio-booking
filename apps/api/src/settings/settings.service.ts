@@ -128,7 +128,14 @@ export class SettingsService {
   /** Booking rules merged over defaults, with a guaranteed 7-day hours array. */
   async getBookingRules(tenantId: string): Promise<BookingRules> {
     const merged = await this.readKey<BookingRules>(tenantId, BOOKING_RULES_KEY, DEFAULT_BOOKING_RULES);
-    return { ...merged, businessHours: normalizeHours(merged.businessHours), daysOff: merged.daysOff ?? [] };
+    // Online payment is only truly available when a gateway is enabled AND has a
+    // secret saved. Derive it live so a stale stored flag can never offer "Pay
+    // online" to customers when no gateway is actually connected.
+    const gateways = await this.getGateways(tenantId);
+    const onlinePaymentEnabled = (Object.values(gateways) as GatewayConfig[]).some(
+      (g) => g.enabled && g.secret.length > 0,
+    );
+    return { ...merged, onlinePaymentEnabled, businessHours: normalizeHours(merged.businessHours), daysOff: merged.daysOff ?? [] };
   }
 
   brandingFrom(branding: unknown): Branding {

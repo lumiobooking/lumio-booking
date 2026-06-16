@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -31,6 +31,7 @@ export default function TenantsPage() {
   const router = useRouter();
   const range = useDateRange('all');
   const [q, setQ] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -175,7 +176,8 @@ export default function TenantsPage() {
               </tr>
             )}
             {visible.map((t) => (
-              <tr key={t.id} style={{ borderTop: '1px solid #334155' }}>
+              <Fragment key={t.id}>
+              <tr style={{ borderTop: '1px solid #334155' }}>
                 <td style={td}>{t.name}</td>
                 <td style={{ ...td, color: '#94a3b8' }}>{t.slug}</td>
                 <td style={td}>
@@ -196,17 +198,26 @@ export default function TenantsPage() {
                   {new Date(t.createdAt).toLocaleDateString()}
                 </td>
                 <td style={td}>
-                  {t.status === 'ACTIVE' ? (
-                    <button onClick={() => setStatus(t.id, 'suspend')} style={warnBtn}>
-                      Suspend
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setEditId(editId === t.id ? null : t.id)} style={{ ...primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === t.id ? '#475569' : '#6366f1' }}>
+                      {editId === t.id ? 'Close' : 'Edit'}
                     </button>
-                  ) : (
-                    <button onClick={() => setStatus(t.id, 'reactivate')} style={okBtn}>
-                      Reactivate
-                    </button>
-                  )}
+                    {t.status === 'ACTIVE' ? (
+                      <button onClick={() => setStatus(t.id, 'suspend')} style={warnBtn}>Suspend</button>
+                    ) : (
+                      <button onClick={() => setStatus(t.id, 'reactivate')} style={okBtn}>Reactivate</button>
+                    )}
+                  </div>
                 </td>
               </tr>
+              {editId === t.id && (
+                <tr>
+                  <td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
+                    <TenantEditPanel token={token} tenant={t} onSaved={loadData} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -217,6 +228,56 @@ export default function TenantsPage() {
         Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>
       </a>
     </main>
+  );
+}
+
+function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Tenant; onSaved: () => void }) {
+  const [form, setForm] = useState({ name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone });
+  const [pw, setPw] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function saveInfo() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      await apiFetch(`/tenants/${tenant.id}`, { method: 'PATCH', token, body: { name: form.name, contactEmail: form.contactEmail || undefined, timezone: form.timezone } });
+      setMsg('✓ Salon info saved');
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); } finally { setBusy(false); }
+  }
+  async function resetPw() {
+    if (pw.length < 8) { setErr('Password must be at least 8 characters'); return; }
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ email: string }>(`/tenants/${tenant.id}/reset-admin-password`, { method: 'POST', token, body: { password: pw } });
+      setMsg(`✓ Password reset for ${r.email}. Share the new password with the salon.`);
+      setPw('');
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Reset failed'); } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ fontWeight: 600, color: '#cbd5e1' }}>Edit {tenant.name}</div>
+      {err && <Banner>{err}</Banner>}
+      {msg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 12px', borderRadius: 8, fontSize: 13 }}>{msg}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+        <Field label="Salon name"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Contact email"><input style={inp} value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></Field>
+        <Field label="Timezone"><input style={inp} value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} /></Field>
+      </div>
+      <div><button onClick={saveInfo} disabled={busy} style={primaryBtn}>Save salon info</button></div>
+
+      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Reset salon admin password</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>Sets a new login password for this salon’s admin account. Give it to the salon owner.</p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input style={{ ...inp, maxWidth: 260 }} type="text" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password (min 8 chars)" />
+          <button onClick={resetPw} disabled={busy} style={warnBtn}>Reset password</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

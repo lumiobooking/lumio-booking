@@ -213,6 +213,31 @@ export class TenantsService {
     return updated;
   }
 
+  /** Super Admin resets a salon's admin login password. */
+  async resetAdminPassword(id: string, password: string, actor: AuthenticatedUser) {
+    await this.getById(id);
+    if (!password || password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters');
+    }
+    const adminUser = await this.prisma.user.findFirst({
+      where: { tenantId: id, role: UserRole.SALON_ADMIN },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!adminUser) {
+      throw new BadRequestException('This salon has no admin user to reset');
+    }
+    const passwordHash = await hashSecret(password);
+    await this.prisma.user.update({ where: { id: adminUser.id }, data: { passwordHash } });
+    await this.audit.log({
+      tenantId: id,
+      userId: actor.userId,
+      action: 'tenant.admin_password_reset',
+      resourceType: 'user',
+      resourceId: adminUser.id,
+    });
+    return { ok: true, email: adminUser.email };
+  }
+
   /** Plans list for the create/edit forms + plan management. */
   listPlans() {
     return this.prisma.plan.findMany({

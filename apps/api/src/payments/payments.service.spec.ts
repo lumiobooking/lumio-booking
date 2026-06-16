@@ -26,11 +26,12 @@ function makePrisma(appointmentTenant: string | null) {
 }
 
 const audit = { log: jest.fn(async () => undefined) };
+const loyalty = { award: jest.fn(async () => undefined) };
 
 describe('PaymentsService', () => {
   it('PAY_ONLINE charges via the mock provider and is marked PAID', async () => {
     const prisma = makePrisma('tenant-a');
-    const svc = new PaymentsService(prisma as any, audit as any);
+    const svc = new PaymentsService(prisma as any, audit as any, loyalty as any);
 
     const payment: any = await svc.createForBooking(salonA, {
       appointmentId: 'appt-1',
@@ -45,7 +46,7 @@ describe('PaymentsService', () => {
 
   it('PAY_LATER is recorded as PENDING with no charge', async () => {
     const prisma = makePrisma('tenant-a');
-    const svc = new PaymentsService(prisma as any, audit as any);
+    const svc = new PaymentsService(prisma as any, audit as any, loyalty as any);
 
     const payment: any = await svc.createForBooking(salonA, {
       appointmentId: 'appt-1',
@@ -59,7 +60,7 @@ describe('PaymentsService', () => {
   it('rejects creating a payment for another tenant booking', async () => {
     // The appointment belongs to tenant-b; salonA must not be able to pay it.
     const prisma = makePrisma('tenant-b');
-    const svc = new PaymentsService(prisma as any, audit as any);
+    const svc = new PaymentsService(prisma as any, audit as any, loyalty as any);
 
     await expect(
       svc.createForBooking(salonA, { appointmentId: 'appt-1', type: PaymentType.PAY_ONLINE }),

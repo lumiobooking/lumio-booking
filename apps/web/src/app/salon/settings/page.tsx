@@ -380,9 +380,14 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           <Toggle on={onSite} onChange={setOnSite} label="Accept pay-at-salon" />
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#94a3b8' }}>
             Default:
-            <select style={{ ...ui.input, padding: '6px 8px', width: 'auto' }} value={defaultMethod} onChange={(e) => setDefaultMethod(e.target.value as 'online' | 'onsite')}>
+            <select
+              style={{ ...ui.input, padding: '6px 8px', width: 'auto' }}
+              value={connectedGw.length ? defaultMethod : 'onsite'}
+              onChange={(e) => setDefaultMethod(e.target.value as 'online' | 'onsite')}
+            >
               <option value="onsite">Pay at salon</option>
-              <option value="online">Pay online</option>
+              {/* Only offer "Pay online" once a gateway is actually connected. */}
+              {connectedGw.length > 0 && <option value="online">Pay online</option>}
             </select>
           </label>
         </div>

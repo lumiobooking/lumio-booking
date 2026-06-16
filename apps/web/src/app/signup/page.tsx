@@ -2,6 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Link from 'next/link';
+import { useIsMobile } from '../../lib/responsive';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f172a';
@@ -18,6 +19,7 @@ const money = (cents: number, currency = 'USD') =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
 
 export default function SignupPage() {
+  const mobile = useIsMobile();
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [planId, setPlanId] = useState('');
   const [interval, setInterval] = useState<'month' | 'year'>('month');
@@ -73,9 +75,9 @@ export default function SignupPage() {
         <Link href="/" style={{ fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></Link>
       </div>
 
-      <div style={{ maxWidth: 980, margin: '0 auto', padding: '0 24px 64px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 360px', gap: 28, alignItems: 'start' }} className="lumio-signup-grid">
+      <div style={{ maxWidth: 980, margin: '0 auto', padding: mobile ? '0 16px 48px' : '0 24px 64px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'minmax(0,1fr) 360px', gap: mobile ? 18 : 28, alignItems: 'start' }}>
         {/* Form */}
-        <form onSubmit={submit} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: 32, boxShadow: '0 6px 24px rgba(15,23,42,0.06)' }}>
+        <form onSubmit={submit} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: mobile ? 20 : 32, boxShadow: '0 6px 24px rgba(15,23,42,0.06)', order: mobile ? 2 : 1 }}>
           <h1 style={{ fontSize: 26, margin: 0, letterSpacing: -0.5 }}>Create your salon account</h1>
           <p style={{ color: '#64748b', margin: '6px 0 22px', fontSize: 15 }}>Start your {plan?.trialDays ?? 14}-day free trial. No charge today.</p>
 
@@ -110,7 +112,7 @@ export default function SignupPage() {
         </form>
 
         {/* Order summary */}
-        <aside style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: 26, position: 'sticky', top: 24 }}>
+        <aside style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: mobile ? 20 : 26, position: mobile ? 'static' : 'sticky', top: 24, order: mobile ? 1 : 2 }}>
           <h2 style={{ fontSize: 16, margin: '0 0 14px', color: '#334155' }}>Order summary</h2>
           {!plan ? <p style={{ color: '#94a3b8', fontSize: 14 }}>Loading plans…</p> : (
             <>

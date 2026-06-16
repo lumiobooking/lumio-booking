@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../lib/auth';
+import { useIsMobile } from '../lib/responsive';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f172a';
@@ -20,6 +21,7 @@ const money = (cents: number, currency = 'USD') =>
 
 export default function HomePage() {
   const { user, ready } = useAuth();
+  const mobile = useIsMobile();
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [yearly, setYearly] = useState(false);
 
@@ -37,18 +39,20 @@ export default function HomePage() {
           <Link href="/" style={{ fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none', letterSpacing: -0.5 }}>
             Lumio<span style={{ color: INDIGO }}>Booking</span>
           </Link>
-          <div style={{ display: 'flex', gap: 22, marginLeft: 16 }} className="lumio-navlinks">
-            <a href="#features" style={navLink}>Features</a>
-            <a href="#how" style={navLink}>How it works</a>
-            <a href="#pricing" style={navLink}>Pricing</a>
-          </div>
+          {!mobile && (
+            <div style={{ display: 'flex', gap: 22, marginLeft: 16 }}>
+              <a href="#features" style={navLink}>Features</a>
+              <a href="#how" style={navLink}>How it works</a>
+              <a href="#pricing" style={navLink}>Pricing</a>
+            </div>
+          )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
             {ready && user ? (
-              <Link href={dashHref} style={primaryBtn}>Go to dashboard</Link>
+              <Link href={dashHref} style={primaryBtn}>{mobile ? 'Dashboard' : 'Go to dashboard'}</Link>
             ) : (
               <>
                 <Link href="/login" style={{ ...navLink, fontWeight: 600 }}>Sign in</Link>
-                <a href="#pricing" style={primaryBtn}>Start free trial</a>
+                <a href="#pricing" style={primaryBtn}>{mobile ? 'Try free' : 'Start free trial'}</a>
               </>
             )}
           </div>
@@ -57,17 +61,17 @@ export default function HomePage() {
 
       {/* ---------------- Hero ---------------- */}
       <section style={{ background: 'linear-gradient(180deg,#eef2ff 0%, #ffffff 70%)' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '84px 24px 64px', textAlign: 'center' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: mobile ? '52px 20px 44px' : '84px 24px 64px', textAlign: 'center' }}>
           <span style={pill}>For nail salons in the US &amp; Canada</span>
-          <h1 style={{ fontSize: 52, lineHeight: 1.05, fontWeight: 800, letterSpacing: -1.5, margin: '20px 0 0' }}>
+          <h1 style={{ fontSize: mobile ? 33 : 52, lineHeight: 1.1, fontWeight: 800, letterSpacing: mobile ? -0.8 : -1.5, margin: '18px 0 0' }}>
             The booking system that fills your chairs — and runs your salon.
           </h1>
-          <p style={{ fontSize: 20, color: '#475569', maxWidth: 640, margin: '20px auto 0', lineHeight: 1.5 }}>
+          <p style={{ fontSize: mobile ? 16 : 20, color: '#475569', maxWidth: 640, margin: '16px auto 0', lineHeight: 1.5 }}>
             Online booking, point-of-sale checkout, loyalty rewards, automatic reminders and payments — all in one beautiful app your clients can install on their phone.
           </p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 32, flexWrap: 'wrap' }}>
-            <a href="#pricing" style={{ ...primaryBtn, padding: '14px 28px', fontSize: 16 }}>Start your 14-day free trial</a>
-            <Link href="/book/lumio-salon" style={{ ...ghostBtn, padding: '14px 28px', fontSize: 16 }}>See a live booking page →</Link>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 28, flexWrap: 'wrap' }}>
+            <a href="#pricing" style={{ ...primaryBtn, padding: '14px 28px', fontSize: 16, width: mobile ? '100%' : 'auto', textAlign: 'center' }}>Start your 14-day free trial</a>
+            <Link href="/book/lumio-salon" style={{ ...ghostBtn, padding: '14px 28px', fontSize: 16, width: mobile ? '100%' : 'auto', textAlign: 'center' }}>See a live booking page →</Link>
           </div>
           <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 16 }}>No setup fees · Cancel anytime · Card or PayPal</p>
         </div>
@@ -83,7 +87,7 @@ export default function HomePage() {
       </section>
 
       {/* ---------------- Features ---------------- */}
-      <section id="features" style={{ maxWidth: 1120, margin: '0 auto', padding: '80px 24px' }}>
+      <section id="features" style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
         <SectionHead eyebrow="Everything in one place" title="Run the whole salon, not just the calendar" />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20, marginTop: 40 }}>
           {FEATURES.map((f) => (
@@ -98,7 +102,7 @@ export default function HomePage() {
 
       {/* ---------------- How it works ---------------- */}
       <section id="how" style={{ background: '#0b1120', color: '#e2e8f0' }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '80px 24px' }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
           <SectionHead eyebrow="Up and running today" title="Launch in three simple steps" dark />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24, marginTop: 44 }}>
             {STEPS.map((s, i) => (
@@ -113,7 +117,7 @@ export default function HomePage() {
       </section>
 
       {/* ---------------- Pricing ---------------- */}
-      <section id="pricing" style={{ maxWidth: 1120, margin: '0 auto', padding: '80px 24px' }}>
+      <section id="pricing" style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
         <SectionHead eyebrow="Simple, transparent pricing" title="Choose the plan that fits your salon" />
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
           <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: 999, padding: 4 }}>
@@ -166,8 +170,8 @@ export default function HomePage() {
 
       {/* ---------------- Final CTA ---------------- */}
       <section style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: '#fff' }}>
-        <div style={{ maxWidth: 800, margin: '0 auto', padding: '72px 24px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 34, fontWeight: 800, margin: 0, letterSpacing: -1 }}>Ready to grow your salon?</h2>
+        <div style={{ maxWidth: 800, margin: '0 auto', padding: mobile ? '52px 20px' : '72px 24px', textAlign: 'center' }}>
+          <h2 style={{ fontSize: mobile ? 26 : 34, fontWeight: 800, margin: 0, letterSpacing: -1 }}>Ready to grow your salon?</h2>
           <p style={{ fontSize: 18, opacity: 0.9, margin: '14px 0 28px' }}>Start free for 14 days. No card charged until your trial ends.</p>
           <a href="#pricing" style={{ ...primaryBtn, background: '#fff', color: INDIGO, padding: '14px 30px', fontSize: 16 }}>Get started</a>
         </div>
@@ -207,7 +211,7 @@ function SectionHead({ eyebrow, title, dark }: { eyebrow: string; title: string;
   return (
     <div style={{ textAlign: 'center' }}>
       <div style={{ color: INDIGO, fontWeight: 700, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>{eyebrow}</div>
-      <h2 style={{ fontSize: 34, fontWeight: 800, letterSpacing: -1, margin: '10px 0 0', color: dark ? '#fff' : INK, maxWidth: 640, marginLeft: 'auto', marginRight: 'auto' }}>{title}</h2>
+      <h2 style={{ fontSize: 'clamp(24px, 6vw, 34px)', fontWeight: 800, letterSpacing: -1, margin: '10px 0 0', color: dark ? '#fff' : INK, maxWidth: 640, marginLeft: 'auto', marginRight: 'auto' }}>{title}</h2>
     </div>
   );
 }

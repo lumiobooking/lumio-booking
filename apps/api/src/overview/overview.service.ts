@@ -10,6 +10,13 @@ const ACTIVE_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.CONFIRMED,
 ];
 
+// Money tied to a cancelled/rejected booking is refunded/void and must never
+// count as revenue. (No-show keeps its deposit, so NO_SHOW is NOT excluded.)
+const REVENUE_EXCLUDED_STATUSES = new Set<string>([
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.REJECTED,
+]);
+
 @Injectable()
 export class OverviewService {
   constructor(private readonly prisma: PrismaService) {}
@@ -120,6 +127,7 @@ export class OverviewService {
           paidAt: true,
           appointment: {
             select: {
+              status: true,
               assignedStaffId: true,
               serviceId: true,
               assignedStaff: { select: { firstName: true, lastName: true } },
@@ -153,8 +161,13 @@ export class OverviewService {
     const cancelled =
       (statusBreakdown[AppointmentStatus.CANCELLED] ?? 0) +
       (statusBreakdown[AppointmentStatus.REJECTED] ?? 0);
-    const revenueCents = payments.reduce((s, p) => s + p.amountCents, 0);
-    const paidCount = payments.length;
+    // Countable revenue = PAID payments NOT tied to a cancelled/rejected booking
+    // (manual payments with no appointment are always counted).
+    const countablePayments = payments.filter(
+      (p) => !p.appointment || !REVENUE_EXCLUDED_STATUSES.has(p.appointment.status),
+    );
+    const revenueCents = countablePayments.reduce((s, p) => s + p.amountCents, 0);
+    const paidCount = countablePayments.length;
     const avgBookingValueCents = paidCount > 0 ? Math.round(revenueCents / paidCount) : 0;
     const noShowRate = totalBookings > 0 ? noShow / totalBookings : 0;
     const completionRate = totalBookings > 0 ? completed / totalBookings : 0;
@@ -168,7 +181,7 @@ export class OverviewService {
       bookingsByDay.set(k, (bookingsByDay.get(k) ?? 0) + 1);
     }
     const revenueByDay = new Map<string, number>();
-    for (const p of payments) {
+    for (const p of countablePayments) {
       if (!p.paidAt) continue;
       const k = dayKey(new Date(p.paidAt));
       revenueByDay.set(k, (revenueByDay.get(k) ?? 0) + p.amountCents);
@@ -199,7 +212,10 @@ export class OverviewService {
       entry.bookings += 1;
       staffAgg.set(id, entry);
     }
+    // Staff revenue counts ONLY completed bookings, credited to the technician
+    // who finally handled it (assignedStaffId already reflects any reassignment).
     for (const p of payments) {
+      if (p.appointment?.status !== AppointmentStatus.COMPLETED) continue;
       const id = p.appointment?.assignedStaffId ?? 'unassigned';
       const entry = staffAgg.get(id) ?? {
         name: staffName(p.appointment?.assignedStaff ?? null),
@@ -221,7 +237,7 @@ export class OverviewService {
       entry.bookings += 1;
       serviceAgg.set(id, entry);
     }
-    for (const p of payments) {
+    for (const p of countablePayments) {
       const id = p.appointment?.serviceId ?? 'unknown';
       const entry = serviceAgg.get(id) ?? {
         name: p.appointment?.service?.name ?? '—',

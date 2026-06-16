@@ -266,7 +266,17 @@ function BookingsInner() {
                           <button onClick={() => action(b.id, 'complete')} style={smallOk}>
                             Complete
                           </button>
-                          <button onClick={() => action(b.id, 'cancel')} style={ui.dangerBtn}>
+                          <button
+                            onClick={() => { if (confirm('Mark as NO-SHOW? Any deposit already paid is kept as revenue.')) action(b.id, 'no-show'); }}
+                            style={smallWarn}
+                            title="Customer did not show up (deposit kept)"
+                          >
+                            No-show
+                          </button>
+                          <button
+                            onClick={() => { if (confirm('Cancel this booking? Any payment will be refunded and removed from revenue.')) action(b.id, 'cancel'); }}
+                            style={ui.dangerBtn}
+                          >
                             Cancel
                           </button>
                         </>
@@ -468,6 +478,16 @@ const smallOk: React.CSSProperties = {
   border: '1px solid #22c55e',
   background: 'transparent',
   color: '#22c55e',
+  fontSize: 13,
+  cursor: 'pointer',
+};
+
+const smallWarn: React.CSSProperties = {
+  padding: '6px 12px',
+  borderRadius: 8,
+  border: '1px solid #f97316',
+  background: 'transparent',
+  color: '#f97316',
   fontSize: 13,
   cursor: 'pointer',
 };

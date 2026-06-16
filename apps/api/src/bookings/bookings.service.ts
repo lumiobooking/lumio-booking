@@ -5,7 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import { AppointmentStatus, NotificationChannel, Prisma, RejectionType } from '@prisma/client';
+import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AssignmentService } from '../assignment/assignment.service';
@@ -634,8 +634,37 @@ export class BookingsService {
     return this.getById(user, id);
   }
 
-  cancel(user: AuthenticatedUser, id: string) {
-    return this.transition(user, id, AppointmentStatus.CANCELLED, 'booking.cancelled', 'cancelledAt');
+  /**
+   * Cancel a booking AND settle its money so it never inflates revenue:
+   *  - already-collected (PAID) -> REFUNDED (drops out of revenue)
+   *  - not-yet-collected (PENDING) -> FAILED (voided, can't be marked paid)
+   * (No-show keeps its money — that path uses noShow(), not cancel().)
+   */
+  async cancel(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    await this.getById(user, id);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.appointment.updateMany({
+        where: { id, tenantId },
+        data: { status: AppointmentStatus.CANCELLED, cancelledAt: new Date() },
+      });
+      await tx.payment.updateMany({
+        where: { tenantId, appointmentId: id, status: PaymentStatus.PAID },
+        data: { status: PaymentStatus.REFUNDED },
+      });
+      await tx.payment.updateMany({
+        where: { tenantId, appointmentId: id, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.FAILED },
+      });
+    });
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'booking.cancelled',
+      resourceType: 'appointment',
+      resourceId: id,
+    });
+    return this.getById(user, id);
   }
 
   complete(user: AuthenticatedUser, id: string) {

@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 
 interface PlanFlags { planName: string | null }
+interface SubStatus { status: string; provider: string | null; interval: string; currentPeriodEnd: string | null; trialEndsAt: string | null }
 interface PublicPlan {
   id: string; name: string; tagline: string | null; currency: string;
   priceMonthlyCents: number; priceYearlyCents: number; features: string[]; highlighted: boolean;
@@ -22,6 +23,7 @@ export default function BillingPage() {
 function Inner() {
   const { token } = useAuth();
   const [current, setCurrent] = useState<PlanFlags | null>(null);
+  const [sub, setSub] = useState<SubStatus | null>(null);
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [yearly, setYearly] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,12 +33,14 @@ function Inner() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [p, list] = await Promise.all([
+      const [p, list, s] = await Promise.all([
         apiFetch<PlanFlags>('/me/plan', { token }),
         apiFetch<PublicPlan[]>('/billing/plans', { token }).catch(() => [] as PublicPlan[]),
+        apiFetch<SubStatus | null>('/billing/status', { token }).catch(() => null),
       ]);
       setCurrent(p);
       setPlans(Array.isArray(list) ? list : []);
+      setSub(s);
     } catch { /* ignore */ }
   }, [token]);
   useEffect(() => { load(); }, [load]);
@@ -77,6 +81,15 @@ function Inner() {
         <div>
           <div style={{ fontSize: 13, color: '#94a3b8' }}>Current plan</div>
           <div style={{ fontSize: 22, fontWeight: 700 }}>{current?.planName ?? '—'}</div>
+          {sub ? (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+              {sub.status}
+              {sub.trialEndsAt ? ` · trial ends ${new Date(sub.trialEndsAt).toLocaleDateString()}` : ''}
+              {sub.currentPeriodEnd ? ` · renews ${new Date(sub.currentPeriodEnd).toLocaleDateString()}` : ''}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>No paid subscription yet (manual/free access)</div>
+          )}
         </div>
         <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>Manage card &amp; cancel</button>
       </div>

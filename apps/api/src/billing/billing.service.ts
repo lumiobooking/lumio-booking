@@ -56,15 +56,30 @@ export class BillingService {
     const plans = await this.prisma.plan.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
-      select: { id: true, name: true, tagline: true, currency: true, priceMonthlyCents: true, priceYearlyCents: true, featuresJson: true, highlighted: true },
+      select: { id: true, name: true, tagline: true, currency: true, priceMonthlyCents: true, priceYearlyCents: true, priceCents: true, featuresJson: true, highlighted: true },
     });
     const [stripeOn, paypalOn] = await Promise.all([this.stripe.isEnabled(), this.paypal.isEnabled()]);
     return plans.map((p) => ({
       id: p.id, name: p.name, tagline: p.tagline, currency: p.currency,
-      priceMonthlyCents: p.priceMonthlyCents, priceYearlyCents: p.priceYearlyCents, highlighted: p.highlighted,
+      // Fall back to the legacy priceCents so plans priced before the monthly/
+      // yearly fields existed still show a price (instead of $0).
+      priceMonthlyCents: p.priceMonthlyCents || p.priceCents,
+      priceYearlyCents: p.priceYearlyCents,
+      highlighted: p.highlighted,
       features: Array.isArray(p.featuresJson) ? (p.featuresJson as string[]) : [],
       providers: { stripe: stripeOn, paypal: paypalOn },
     }));
+  }
+
+  /** The salon's current subscription dates/status (null if none). */
+  async subscriptionStatus(user: AuthenticatedUser) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return null;
+    return this.prisma.subscription.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      select: { status: true, provider: true, interval: true, currentPeriodStart: true, currentPeriodEnd: true, trialEndsAt: true, createdAt: true },
+    });
   }
 
   /** Super Admin: actually call Stripe/PayPal to confirm the keys work. */
@@ -104,7 +119,7 @@ export class BillingService {
       orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
       select: {
         id: true, name: true, tagline: true, description: true, currency: true,
-        priceMonthlyCents: true, priceYearlyCents: true, trialDays: true,
+        priceMonthlyCents: true, priceYearlyCents: true, priceCents: true, trialDays: true,
         featuresJson: true, highlighted: true,
         maxStaff: true, maxBookingsPerMonth: true, posEnabled: true,
         onlinePaymentEnabled: true, multiLocationEnabled: true,
@@ -114,6 +129,8 @@ export class BillingService {
     const [stripeOn, paypalOn] = await Promise.all([this.stripe.isEnabled(), this.paypal.isEnabled()]);
     return plans.map((p) => ({
       ...p,
+      priceMonthlyCents: p.priceMonthlyCents || p.priceCents, // fall back to legacy price
+      priceCents: undefined,
       features: Array.isArray(p.featuresJson) ? (p.featuresJson as string[]) : [],
       featuresJson: undefined,
       providers: { stripe: stripeOn, paypal: paypalOn },
@@ -176,7 +193,7 @@ export class BillingService {
     const cancel = `${this.appUrl()}/signup?plan=${plan.id}&interval=${dto.interval}&canceled=1`;
     const meta = { tenantId: tenant.id, planId: plan.id, interval };
     const isYearly = interval === BillingInterval.YEARLY;
-    const amountCents = isYearly ? plan.priceYearlyCents : plan.priceMonthlyCents;
+    const amountCents = isYearly ? plan.priceYearlyCents : (plan.priceMonthlyCents || plan.priceCents);
     if (!amountCents || amountCents <= 0) throw new BadRequestException(`This plan has no ${isYearly ? 'yearly' : 'monthly'} price set`);
 
     if (dto.provider === 'paypal') {
@@ -219,7 +236,7 @@ export class BillingService {
     if (!plan) throw new BadRequestException('Plan not found');
 
     const isYearly = dto.interval === 'year';
-    const amountCents = isYearly ? plan.priceYearlyCents : plan.priceMonthlyCents;
+    const amountCents = isYearly ? plan.priceYearlyCents : (plan.priceMonthlyCents || plan.priceCents);
     if (!amountCents || amountCents <= 0) throw new BadRequestException(`This plan has no ${isYearly ? 'yearly' : 'monthly'} price set`);
 
     const interval: BillingInterval = isYearly ? BillingInterval.YEARLY : BillingInterval.MONTHLY;

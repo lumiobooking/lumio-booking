@@ -67,6 +67,13 @@ export class BillingController {
     return this.billing.upgradePlans();
   }
 
+  /** Salon admin: current subscription status + dates. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('billing/status')
+  status(@CurrentUser() user: AuthenticatedUser) {
+    return this.billing.subscriptionStatus(user);
+  }
+
   /** Salon admin: subscribe to / upgrade to a plan (checkout for this salon). */
   @Roles(UserRole.SALON_ADMIN)
   @Post('billing/subscribe')

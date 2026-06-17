@@ -98,6 +98,9 @@ export function SalonShell({ children }: { children: ReactNode }) {
         <ShareBookingLink />
       </div>
       <div style={{ fontSize: 12, color: '#94a3b8', padding: '0 10px 8px', wordBreak: 'break-all' }}>{user.email}</div>
+      <Link href="/salon/account" style={{ display: 'block', textAlign: 'center', marginBottom: 8, padding: '9px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, textDecoration: 'none' }}>
+        My account
+      </Link>
       <button onClick={logout} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>
         Log out
       </button>

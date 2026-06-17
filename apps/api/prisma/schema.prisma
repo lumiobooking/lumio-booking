@@ -199,6 +199,8 @@ model Tenant {
   settings          Setting[]
   auditLogs         AuditLog[]
   serviceCategories ServiceCategory[]
+  feedbacks         Feedback[]
+  staffRewardTransactions StaffRewardTransaction[]
   products          Product[]
   orders            Order[]
   orderItems        OrderItem[]
@@ -432,18 +434,65 @@ model StaffMember {
   // POS service commission rate (percent of service revenue this tech earns).
   commissionPercent Int @default(0)
 
+  // Review-reward program: lifetime points balance.
+  rewardPoints Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workingHours      StaffWorkingHour[]
-  staffServices     StaffService[]
-  assignedBookings  Appointment[]      @relation("AssignedStaff")
-  preferredBookings Appointment[]      @relation("PreferredStaff")
-  bookingRejections BookingRejection[]
+  workingHours       StaffWorkingHour[]
+  staffServices      StaffService[]
+  assignedBookings   Appointment[]      @relation("AssignedStaff")
+  preferredBookings  Appointment[]      @relation("PreferredStaff")
+  bookingRejections  BookingRejection[]
+  feedbacks          Feedback[]
+  rewardTransactions StaffRewardTransaction[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@map("staff_members")
+}
+
+/// A customer's post-service rating (your own feedback form). Drives staff
+/// reward points and the salon's CSAT; the Google review is invited separately.
+model Feedback {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffId    String?
+  staff      StaffMember? @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  customerId String?
+  customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  rating          Int // 1–5
+  comment         String?
+  invitedToGoogle Boolean @default(false) // did we show them the Google button
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, staffId])
+  @@map("feedbacks")
+}
+
+/// Ledger of staff reward-point changes (earn from feedback, redeem by admin).
+model StaffRewardTransaction {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffId String
+  staff   StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  points       Int
+  balanceAfter Int
+  reason       String
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, staffId])
+  @@map("staff_reward_transactions")
 }
 
 /// Weekly recurring working hours for a staff member.
@@ -510,6 +559,7 @@ model Customer {
 
   appointments        Appointment[]
   loyaltyTransactions LoyaltyTransaction[]
+  feedbacks           Feedback[]
 
   // A customer email is unique within a tenant (not across the platform).
   @@unique([tenantId, email])

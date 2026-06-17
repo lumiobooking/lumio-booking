@@ -20,6 +20,7 @@ const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
   { href: '/salon/services', label: 'Services', icon: '✦' },
   { href: '/salon/products', label: 'Products', icon: '🛍', feature: 'pos' },
   { href: '/salon/staff', label: 'Staff', icon: '✄' },
+  { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
   { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
   { href: '/salon/payments', label: 'Payments', icon: '＄' },
   { href: '/salon/notifications', label: 'Notifications', icon: '✉' },

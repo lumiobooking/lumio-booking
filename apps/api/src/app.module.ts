@@ -18,6 +18,7 @@ import { OverviewModule } from './overview/overview.module';
 import { SettingsModule } from './settings/settings.module';
 import { PosModule } from './pos/pos.module';
 import { BillingModule } from './billing/billing.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -55,6 +56,8 @@ import { BillingModule } from './billing/billing.module';
     PosModule,
     // Self-serve SaaS billing: public signup, Stripe/PayPal checkout + webhooks.
     BillingModule,
+    // Review-reward program: customer feedback → staff & customer points.
+    ReviewsModule,
   ],
 })
 export class AppModule {}

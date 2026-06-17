@@ -32,6 +32,9 @@ import {
   LOYALTY_SETTINGS_KEY,
   LoyaltySettings,
   DEFAULT_LOYALTY_SETTINGS,
+  REVIEW_SETTINGS_KEY,
+  ReviewSettings,
+  DEFAULT_REVIEW_SETTINGS,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -95,6 +98,31 @@ export class SettingsService {
     };
     await this.writeKey(tenantId, LOYALTY_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.loyalty_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
+  }
+
+  /** Review-reward program settings, merged over defaults. */
+  async getReviewSettings(tenantId: string): Promise<ReviewSettings> {
+    return this.readKey<ReviewSettings>(tenantId, REVIEW_SETTINGS_KEY, DEFAULT_REVIEW_SETTINGS);
+  }
+
+  async updateReview(
+    user: AuthenticatedUser,
+    dto: { enabled?: boolean; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number },
+  ) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getReviewSettings(tenantId);
+    const num = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 ? v : d);
+    const next: ReviewSettings = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      googleReviewUrl: typeof dto.googleReviewUrl === 'string' ? dto.googleReviewUrl.trim() : cur.googleReviewUrl,
+      staffPointsPerFeedback: num(dto.staffPointsPerFeedback, cur.staffPointsPerFeedback),
+      staffBonusFor5Star: num(dto.staffBonusFor5Star, cur.staffBonusFor5Star),
+      customerPoints: num(dto.customerPoints, cur.customerPoints),
+      minRatingForGoogle: Math.min(5, Math.max(1, num(dto.minRatingForGoogle, cur.minRatingForGoogle))),
+    };
+    await this.writeKey(tenantId, REVIEW_SETTINGS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.review_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
   }
 
@@ -502,6 +530,7 @@ export class SettingsService {
       notificationTemplates: await this.getNotificationTemplates(tenantId),
       pos: await this.getPosSettings(tenantId),
       loyalty: await this.getLoyaltySettings(tenantId),
+      review: await this.getReviewSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
   }

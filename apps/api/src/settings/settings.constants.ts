@@ -22,6 +22,27 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
   minRedeemPoints: 100,
 };
 
+export const REVIEW_SETTINGS_KEY = 'review_settings';
+
+// Review-reward program: customer rates on our page, then is invited to Google.
+export interface ReviewSettings {
+  enabled: boolean;
+  googleReviewUrl: string; // the salon's Google "write a review" link
+  staffPointsPerFeedback: number; // points the technician earns per feedback
+  staffBonusFor5Star: number; // extra staff points when rating is 5
+  customerPoints: number; // loyalty points the customer earns for giving feedback
+  minRatingForGoogle: number; // show the Google button when rating >= this (1 = always)
+}
+
+export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
+  enabled: false,
+  googleReviewUrl: '',
+  staffPointsPerFeedback: 10,
+  staffBonusFor5Star: 5,
+  customerPoints: 20,
+  minRatingForGoogle: 4,
+};
+
 // POS (counter checkout) settings. Tax applies to retail products only
 // (nail services are tax-exempt in many US states); receiptFooter prints at the
 // bottom of every receipt.

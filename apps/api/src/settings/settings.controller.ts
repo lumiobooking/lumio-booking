@@ -76,6 +76,14 @@ export class SettingsController {
     return this.settings.updateLoyalty(user, dto);
   }
 
+  @Patch('review')
+  updateReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { enabled?: boolean; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number },
+  ) {
+    return this.settings.updateReview(user, dto);
+  }
+
   // POS settings: retail tax rate + receipt footer.
   @Patch('pos')
   updatePos(

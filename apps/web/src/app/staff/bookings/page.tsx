@@ -104,9 +104,10 @@ function Inner() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                gap: 12,
               }}
             >
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{b.service?.name ?? 'Service'}</div>
                 <div style={{ color: '#cbd5e1', fontSize: 14, marginTop: 2 }}>
                   {new Date(b.startTime).toLocaleString()} · {name(b.customer)}
@@ -127,11 +128,11 @@ function Inner() {
                 </span>
               </div>
               {b.status === 'ASSIGNED' && (
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <button onClick={() => respond(b.id, 'accept')} style={acceptBtn}>
                     Accept
                   </button>
-                  <button onClick={() => respond(b.id, 'reject')} style={ui.dangerBtn}>
+                  <button onClick={() => respond(b.id, 'reject')} style={{ ...ui.dangerBtn, whiteSpace: 'nowrap' }}>
                     Reject
                   </button>
                 </div>
@@ -153,4 +154,5 @@ const acceptBtn: React.CSSProperties = {
   fontWeight: 600,
   fontSize: 13,
   cursor: 'pointer',
+  whiteSpace: 'nowrap',
 };

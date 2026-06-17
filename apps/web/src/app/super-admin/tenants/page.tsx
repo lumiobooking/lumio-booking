@@ -17,6 +17,7 @@ interface Tenant {
   subscriptionStatus: string;
   createdAt: string;
   _count?: { users: number; staffMembers: number };
+  users?: { email: string }[]; // first SALON_ADMIN — the login email
 }
 
 interface Plan {
@@ -287,7 +288,9 @@ function AccountPanel({ token, currentEmail }: { token: string; currentEmail: st
 }
 
 function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Tenant; onSaved: () => void }) {
+  const currentLoginEmail = tenant.users?.[0]?.email ?? '';
   const [form, setForm] = useState({ name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone });
+  const [loginEmail, setLoginEmail] = useState(currentLoginEmail);
   const [pw, setPw] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -300,6 +303,14 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
       setMsg('✓ Salon info saved');
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); } finally { setBusy(false); }
+  }
+  async function saveLoginEmail() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ email: string }>(`/tenants/${tenant.id}/admin-email`, { method: 'POST', token, body: { email: loginEmail } });
+      setMsg(`✓ Login email changed to ${r.email}. The salon now signs in with this email.`);
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not change login email'); } finally { setBusy(false); }
   }
   async function resetPw() {
     if (pw.length < 8) { setErr('Password must be at least 8 characters'); return; }
@@ -323,6 +334,17 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
         <Field label="Timezone"><input style={inp} value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} /></Field>
       </div>
       <div><button onClick={saveInfo} disabled={busy} style={primaryBtn}>Save salon info</button></div>
+
+      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Login email (how the salon signs in)</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+          This is the salon admin&apos;s sign-in email — different from the contact email above. Current: <strong style={{ color: '#cbd5e1' }}>{currentLoginEmail || '—'}</strong>
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input style={{ ...inp, maxWidth: 320 }} type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="new-login@email.com" />
+          <button onClick={saveLoginEmail} disabled={busy || !loginEmail || loginEmail === currentLoginEmail} style={primaryBtn}>Change login email</button>
+        </div>
+      </div>
 
       <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
         <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Reset salon admin password</div>

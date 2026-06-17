@@ -48,7 +48,12 @@ export class TenantsService {
     }
     return this.prisma.tenant.findMany({
       where,
-      select: { ...TENANT_PUBLIC_SELECT, _count: { select: { users: true, staffMembers: true } } },
+      select: {
+        ...TENANT_PUBLIC_SELECT,
+        _count: { select: { users: true, staffMembers: true } },
+        // The salon's admin login email (first SALON_ADMIN) so the UI can show it.
+        users: { where: { role: UserRole.SALON_ADMIN }, select: { email: true }, orderBy: { createdAt: 'asc' }, take: 1 },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -236,6 +241,39 @@ export class TenantsService {
       resourceId: adminUser.id,
     });
     return { ok: true, email: adminUser.email };
+  }
+
+  /** Super Admin changes a salon's admin LOGIN email. */
+  async updateAdminEmail(id: string, newEmail: string, actor: AuthenticatedUser) {
+    await this.getById(id);
+    const email = (newEmail ?? '').trim().toLowerCase();
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      throw new BadRequestException('Please enter a valid email address');
+    }
+    const adminUser = await this.prisma.user.findFirst({
+      where: { tenantId: id, role: UserRole.SALON_ADMIN },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!adminUser) {
+      throw new BadRequestException('This salon has no admin user');
+    }
+    if (email === adminUser.email) {
+      return { ok: true, email };
+    }
+    const clash = await this.prisma.user.findUnique({ where: { email } });
+    if (clash) {
+      throw new ConflictException('That email is already used by another account');
+    }
+    await this.prisma.user.update({ where: { id: adminUser.id }, data: { email } });
+    await this.audit.log({
+      tenantId: id,
+      userId: actor.userId,
+      action: 'tenant.admin_email_changed',
+      resourceType: 'user',
+      resourceId: adminUser.id,
+      metadata: { from: adminUser.email, to: email },
+    });
+    return { ok: true, email };
   }
 
   /** Plans list for the create/edit forms + plan management. */

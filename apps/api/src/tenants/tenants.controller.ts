@@ -58,6 +58,16 @@ export class TenantsController {
     return this.tenantsService.resetAdminPassword(id, dto.password, user);
   }
 
+  @Post(':id/admin-email')
+  @HttpCode(200)
+  updateAdminEmail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: { email: string },
+  ) {
+    return this.tenantsService.updateAdminEmail(id, dto.email, user);
+  }
+
   @Get(':id')
   getOne(@Param('id') id: string) {
     return this.tenantsService.getById(id);

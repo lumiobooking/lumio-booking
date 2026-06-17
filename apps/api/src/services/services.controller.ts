@@ -12,6 +12,7 @@ import { ServicesService } from './services.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { CreateServiceAddonDto } from './dto/create-addon.dto';
+import { CreateServiceCategoryDto, UpdateServiceCategoryDto } from './dto/category.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -33,6 +34,27 @@ export class ServicesController {
   @Get('addons/all')
   listAllAddons(@CurrentUser() user: AuthenticatedUser) {
     return this.servicesService.listAllAddons(user);
+  }
+
+  // ---- Categories (menu groups). Declared before :id to avoid collision. ----
+  @Get('categories')
+  listCategories(@CurrentUser() user: AuthenticatedUser) {
+    return this.servicesService.listCategories(user);
+  }
+
+  @Post('categories')
+  createCategory(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateServiceCategoryDto) {
+    return this.servicesService.createCategory(user, dto);
+  }
+
+  @Patch('categories/:catId')
+  updateCategory(@CurrentUser() user: AuthenticatedUser, @Param('catId') catId: string, @Body() dto: UpdateServiceCategoryDto) {
+    return this.servicesService.updateCategory(user, catId, dto);
+  }
+
+  @Delete('categories/:catId')
+  removeCategory(@CurrentUser() user: AuthenticatedUser, @Param('catId') catId: string) {
+    return this.servicesService.removeCategory(user, catId);
   }
 
   @Get(':id')

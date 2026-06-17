@@ -29,11 +29,58 @@ export class ServicesService {
     return id;
   }
 
+  /** Returns the categoryId if it belongs to this tenant, else null. */
+  private async validCategoryId(tenantId: string, categoryId?: string | null): Promise<string | null> {
+    if (!categoryId) return null;
+    const cat = await this.prisma.serviceCategory.findFirst({ where: { id: categoryId, tenantId }, select: { id: true } });
+    return cat ? cat.id : null;
+  }
+
   list(user: AuthenticatedUser) {
     return this.prisma.service.findMany({
       where: { tenantId: this.tenantId(user) },
-      orderBy: { createdAt: 'desc' },
+      include: { category: { select: { id: true, name: true } } },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     });
+  }
+
+  // ---- Categories (menu groups) ------------------------------------------
+
+  listCategories(user: AuthenticatedUser) {
+    return this.prisma.serviceCategory.findMany({
+      where: { tenantId: this.tenantId(user) },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createCategory(user: AuthenticatedUser, dto: { name: string; icon?: string; sortOrder?: number }) {
+    const tenantId = this.tenantId(user);
+    const cat = await this.prisma.serviceCategory.create({
+      data: { tenantId, name: dto.name, icon: dto.icon ?? null, sortOrder: dto.sortOrder ?? 0 },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'service_category.created', resourceType: 'service_category', resourceId: cat.id, metadata: { name: cat.name } });
+    return cat;
+  }
+
+  async updateCategory(user: AuthenticatedUser, id: string, dto: { name?: string; icon?: string; sortOrder?: number; isActive?: boolean }) {
+    const tenantId = this.tenantId(user);
+    const exists = await this.prisma.serviceCategory.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!exists) throw new NotFoundException('Category not found');
+    await this.prisma.serviceCategory.updateMany({
+      where: { id, tenantId },
+      data: { name: dto.name, icon: dto.icon, sortOrder: dto.sortOrder, isActive: dto.isActive },
+    });
+    return this.prisma.serviceCategory.findFirst({ where: { id, tenantId } });
+  }
+
+  async removeCategory(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const exists = await this.prisma.serviceCategory.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!exists) throw new NotFoundException('Category not found');
+    // Services keep existing but become uncategorised (FK is SET NULL).
+    await this.prisma.serviceCategory.deleteMany({ where: { id, tenantId } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'service_category.deleted', resourceType: 'service_category', resourceId: id });
+    return { id, deleted: true };
   }
 
   async getById(user: AuthenticatedUser, id: string) {
@@ -59,6 +106,10 @@ export class ServicesService {
         discountPercent: dto.discountPercent ?? 0,
         currency: dto.currency ?? 'USD',
         isActive: dto.isActive ?? true,
+        categoryId: await this.validCategoryId(tenantId, dto.categoryId),
+        sortOrder: dto.sortOrder ?? 0,
+        isFeatured: dto.isFeatured ?? false,
+        priceFrom: dto.priceFrom ?? false,
       },
     });
     await this.audit.log({
@@ -76,7 +127,7 @@ export class ServicesService {
     const tenantId = this.tenantId(user);
     await this.getById(user, id); // enforces tenant ownership / 404
 
-    const data: Prisma.ServiceUpdateInput = {
+    const data: Prisma.ServiceUncheckedUpdateInput = {
       name: dto.name,
       description: dto.description,
       durationMinutes: dto.durationMinutes,
@@ -84,7 +135,14 @@ export class ServicesService {
       discountPercent: dto.discountPercent,
       currency: dto.currency,
       isActive: dto.isActive,
+      sortOrder: dto.sortOrder,
+      isFeatured: dto.isFeatured,
+      priceFrom: dto.priceFrom,
     };
+    // categoryId: only touch when provided (null clears it).
+    if (dto.categoryId !== undefined) {
+      data.categoryId = dto.categoryId ? await this.validCategoryId(tenantId, dto.categoryId) : null;
+    }
 
     // updateMany with tenantId in the filter is a second safety net so a forged
     // id can never update another tenant's row.

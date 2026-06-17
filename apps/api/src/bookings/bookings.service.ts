@@ -485,13 +485,26 @@ export class BookingsService {
         priceCents: true,
         discountPercent: true,
         currency: true,
+        categoryId: true,
+        isFeatured: true,
+        priceFrom: true,
+        sortOrder: true,
         addons: {
           where: { isActive: true },
           select: { id: true, name: true, durationMinutes: true, priceCents: true, currency: true },
           orderBy: { createdAt: 'asc' },
         },
       },
-      orderBy: { name: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  /** Active menu categories for the public booking page (ordered). */
+  publicCategories(tenantId: string) {
+    return this.prisma.serviceCategory.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true, icon: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
   }
 

@@ -17,7 +17,13 @@ interface Service {
   currency: string;
   isActive: boolean;
   createdAt?: string;
+  categoryId?: string | null;
+  isFeatured?: boolean;
+  priceFrom?: boolean;
+  sortOrder?: number;
 }
+
+interface Category { id: string; name: string; icon: string | null; sortOrder: number; isActive: boolean }
 
 export default function ServicesPage() {
   return (
@@ -32,16 +38,23 @@ function ServicesInner() {
   const range = useDateRange('all');
   const [q, setQ] = useState('');
   const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [catFilter, setCatFilter] = useState<string>('all');
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      setServices(await apiFetch<Service[]>('/services', { token }));
+      const [svc, cats] = await Promise.all([
+        apiFetch<Service[]>('/services', { token }),
+        apiFetch<Category[]>('/services/categories', { token }),
+      ]);
+      setServices(svc);
+      setCategories(cats);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
     } finally {
@@ -76,9 +89,14 @@ function ServicesInner() {
     }
   }
 
-  // Filter by created date + search, then newest first.
+  const catName = (id?: string | null) => categories.find((c) => c.id === id)?.name ?? '—';
+
+  // Filter by created date + search + category, then newest first.
   const visible = sortNewest(
-    services.filter((s) => range.inRange(s.createdAt) && matchesQuery(`${s.name} ${s.description ?? ''}`, q)),
+    services.filter((s) =>
+      range.inRange(s.createdAt) &&
+      matchesQuery(`${s.name} ${s.description ?? ''}`, q) &&
+      (catFilter === 'all' || (catFilter === 'none' ? !s.categoryId : s.categoryId === catFilter))),
     (s) => s.createdAt,
   );
 
@@ -99,9 +117,22 @@ function ServicesInner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
+      <CategoryManager token={token!} categories={categories} onChanged={load} />
+
+      {categories.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
+          <FilterChip active={catFilter === 'all'} onClick={() => setCatFilter('all')}>All</FilterChip>
+          {categories.map((c) => (
+            <FilterChip key={c.id} active={catFilter === c.id} onClick={() => setCatFilter(c.id)}>{c.name}</FilterChip>
+          ))}
+          <FilterChip active={catFilter === 'none'} onClick={() => setCatFilter('none')}>Uncategorised</FilterChip>
+        </div>
+      )}
+
       {showForm && (
         <CreateServiceForm
           token={token!}
+          categories={categories}
           onCreated={async () => {
             setShowForm(false);
             await load();
@@ -117,6 +148,7 @@ function ServicesInner() {
             <thead>
               <tr style={{ background: '#1e293b' }}>
                 <th style={ui.th}>Name</th>
+                <th style={ui.th}>Category</th>
                 <th style={ui.th}>Duration</th>
                 <th style={ui.th}>Price</th>
                 <th style={ui.th}>Status</th>
@@ -126,13 +158,13 @@ function ServicesInner() {
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td style={ui.td} colSpan={5}>
+                  <td style={ui.td} colSpan={6}>
                     No services in this range.
                   </td>
                 </tr>
               )}
               {visible.map((s) => (
-                <FragmentRow key={s.id} service={s} token={token!} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
+                <FragmentRow key={s.id} service={s} token={token!} categories={categories} catName={catName} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
               ))}
             </tbody>
           </table>
@@ -144,8 +176,8 @@ function ServicesInner() {
 
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
 
-function FragmentRow({ service: s, token, onToggle, onDelete, onSaved }: {
-  service: Service; token: string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
+function FragmentRow({ service: s, token, categories, catName, onToggle, onDelete, onSaved }: {
+  service: Service; token: string; categories: Category[]; catName: (id?: string | null) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -153,9 +185,13 @@ function FragmentRow({ service: s, token, onToggle, onDelete, onSaved }: {
     <>
       <tr style={{ borderTop: '1px solid #334155' }}>
         <td style={ui.td}>
-          <div>{s.name}</div>
+          <div>
+            {s.name}
+            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>POPULAR</span>}
+          </div>
           {s.description && <div style={{ color: '#94a3b8', fontSize: 12 }}>{s.description}</div>}
         </td>
+        <td style={{ ...ui.td, color: '#94a3b8' }}>{catName(s.categoryId)}</td>
         <td style={ui.td}>{s.durationMinutes} min</td>
         <td style={ui.td}>
           {s.discountPercent && s.discountPercent > 0 ? (
@@ -188,7 +224,7 @@ function FragmentRow({ service: s, token, onToggle, onDelete, onSaved }: {
       {editing && (
         <tr>
           <td colSpan={5} style={{ padding: 0, background: '#0f172a' }}>
-            <EditServicePanel service={s} token={token} onSaved={onSaved} />
+            <EditServicePanel service={s} token={token} categories={categories} onSaved={onSaved} />
           </td>
         </tr>
       )}
@@ -203,13 +239,16 @@ function FragmentRow({ service: s, token, onToggle, onDelete, onSaved }: {
   );
 }
 
-function EditServicePanel({ service, token, onSaved }: { service: Service; token: string; onSaved: () => void }) {
+function EditServicePanel({ service, token, categories, onSaved }: { service: Service; token: string; categories: Category[]; onSaved: () => void }) {
   const [form, setForm] = useState({
     name: service.name,
     description: service.description ?? '',
     duration: String(service.durationMinutes),
     price: (service.priceCents / 100).toString(),
     discount: String(service.discountPercent ?? 0),
+    categoryId: service.categoryId ?? '',
+    isFeatured: service.isFeatured ?? false,
+    priceFrom: service.priceFrom ?? false,
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -229,9 +268,11 @@ function EditServicePanel({ service, token, onSaved }: { service: Service; token
           durationMinutes: parseInt(form.duration, 10),
           priceCents: Math.round(parseFloat(form.price) * 100),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
+          categoryId: form.categoryId || null,
+          isFeatured: form.isFeatured,
+          priceFrom: form.priceFrom,
         },
       });
-      // Re-sync the form from what the server actually stored (confirms persistence).
       if (updated && typeof updated === 'object') {
         setForm({
           name: updated.name,
@@ -239,6 +280,9 @@ function EditServicePanel({ service, token, onSaved }: { service: Service; token
           duration: String(updated.durationMinutes),
           price: (updated.priceCents / 100).toString(),
           discount: String(updated.discountPercent ?? 0),
+          categoryId: updated.categoryId ?? '',
+          isFeatured: updated.isFeatured ?? false,
+          priceFrom: updated.priceFrom ?? false,
         });
       }
       setSaved(true);
@@ -259,6 +303,20 @@ function EditServicePanel({ service, token, onSaved }: { service: Service; token
         <label><span style={ui.label}>Duration (min)</span><input style={ui.input} type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} required /></label>
         <label><span style={ui.label}>Price (USD)</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
         <label><span style={ui.label}>Discount %</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginTop: 10, alignItems: 'end' }}>
+        <label><span style={ui.label}>Category</span>
+          <select style={ui.input} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+            <option value="">— Uncategorised —</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+          <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> Popular
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> "From" price
+        </label>
       </div>
       <label style={{ display: 'block', marginTop: 10 }}>
         <span style={ui.label}>Description (optional)</span>
@@ -348,8 +406,8 @@ function AddonsPanel({ serviceId, token }: { serviceId: string; token: string })
   );
 }
 
-function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0' });
+function CreateServiceForm({ token, categories, onCreated }: { token: string; categories: Category[]; onCreated: () => void }) {
+  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -367,6 +425,9 @@ function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () 
           durationMinutes: parseInt(form.durationMinutes, 10),
           priceCents: Math.round(parseFloat(form.price) * 100),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
+          categoryId: form.categoryId || null,
+          isFeatured: form.isFeatured,
+          priceFrom: form.priceFrom,
         },
       });
       onCreated();
@@ -424,6 +485,20 @@ function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () 
           />
         </label>
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginTop: 12, alignItems: 'end' }}>
+        <label><span style={ui.label}>Category</span>
+          <select style={ui.input} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+            <option value="">— Uncategorised —</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+          <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> Popular
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> "From" price
+        </label>
+      </div>
       <label style={{ display: 'block', marginTop: 12 }}>
         <span style={ui.label}>Description (optional)</span>
         <input
@@ -439,3 +514,76 @@ function CreateServiceForm({ token, onCreated }: { token: string; onCreated: () 
     </form>
   );
 }
+
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} style={{ padding: '6px 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${active ? '#6366f1' : '#334155'}`, background: active ? '#312e81' : 'transparent', color: active ? '#c7d2fe' : '#94a3b8' }}>
+      {children}
+    </button>
+  );
+}
+
+function CategoryManager({ token, categories, onChanged }: { token: string; categories: Category[]; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setError(null);
+    try {
+      await apiFetch('/services/categories', { method: 'POST', token, body: { name: name.trim(), sortOrder: categories.length } });
+      setName('');
+      onChanged();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Create failed'); }
+  }
+  async function rename(c: Category) {
+    const next = prompt('Rename category', c.name);
+    if (!next || next.trim() === c.name) return;
+    try { await apiFetch(`/services/categories/${c.id}`, { method: 'PATCH', token, body: { name: next.trim() } }); onChanged(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Rename failed'); }
+  }
+  async function move(c: Category, dir: -1 | 1) {
+    try { await apiFetch(`/services/categories/${c.id}`, { method: 'PATCH', token, body: { sortOrder: Math.max(0, c.sortOrder + dir) } }); onChanged(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Reorder failed'); }
+  }
+  async function remove(c: Category) {
+    if (!confirm(`Delete category "${c.name}"? Services keep existing but become uncategorised.`)) return;
+    try { await apiFetch(`/services/categories/${c.id}`, { method: 'DELETE', token }); onChanged(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
+        <span style={{ fontSize: 11, transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
+        Menu categories ({categories.length})
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          {error && <div style={ui.banner}>{error}</div>}
+          {categories.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+              {categories.map((c) => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                  <span style={{ flex: 1 }}>{c.name}</span>
+                  <button onClick={() => move(c, -1)} style={miniBtn} aria-label="Move up">↑</button>
+                  <button onClick={() => move(c, 1)} style={miniBtn} aria-label="Move down">↓</button>
+                  <button onClick={() => rename(c)} style={miniBtn}>Rename</button>
+                  <button onClick={() => remove(c)} style={{ ...miniBtn, color: '#ef4444', borderColor: '#ef4444' }}>Delete</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <form onSubmit={add} style={{ display: 'flex', gap: 8 }}>
+            <input style={{ ...ui.input, flex: 1 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="New category (e.g. Hand & Feet Care)" />
+            <button type="submit" style={ui.primaryBtn}>+ Add</button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };

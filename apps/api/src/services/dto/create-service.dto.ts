@@ -44,4 +44,22 @@ export class CreateServiceDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // Menu organisation.
+  @IsOptional()
+  @IsString()
+  categoryId?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  priceFrom?: boolean;
 }

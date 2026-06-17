@@ -45,4 +45,22 @@ export class UpdateServiceDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // Menu organisation. categoryId may be null to clear.
+  @IsOptional()
+  @IsString()
+  categoryId?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  priceFrom?: boolean;
 }

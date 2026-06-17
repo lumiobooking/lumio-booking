@@ -60,6 +60,11 @@ export class PublicSalonController {
     return this.bookings.publicServices(await this.resolveTenantId(slug));
   }
 
+  @Get(':slug/categories')
+  async categories(@Param('slug') slug: string) {
+    return this.bookings.publicCategories(await this.resolveTenantId(slug));
+  }
+
   @Get(':slug/staff')
   async staff(@Param('slug') slug: string) {
     return this.bookings.publicStaff(await this.resolveTenantId(slug));

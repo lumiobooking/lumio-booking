@@ -198,6 +198,7 @@ model Tenant {
   assignmentRules   AssignmentRule[]
   settings          Setting[]
   auditLogs         AuditLog[]
+  serviceCategories ServiceCategory[]
   products          Product[]
   orders            Order[]
   orderItems        OrderItem[]
@@ -341,6 +342,13 @@ model Service {
   currency        String  @default("USD")
   isActive        Boolean @default(true)
 
+  // Menu organisation for long catalogs.
+  categoryId String?
+  category   ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sortOrder  Int              @default(0)
+  isFeatured Boolean          @default(false) // "Popular" highlight
+  priceFrom  Boolean          @default(false) // show "from $X" (price varies)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -350,7 +358,28 @@ model Service {
 
   @@index([tenantId])
   @@index([tenantId, isActive])
+  @@index([tenantId, categoryId])
   @@map("services")
+}
+
+/// Menu groups (e.g. "Hand & Feet Care", "Artificial Nails"). Tenant-scoped.
+model ServiceCategory {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String
+  icon      String? // optional emoji/icon name
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services Service[]
+
+  @@index([tenantId])
+  @@map("service_categories")
 }
 
 /// Optional extras a customer can add to a service at booking time

@@ -41,7 +41,8 @@ function fmtMoney(cents: number, r: BookingRules): string {
 
 interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
-interface Service { id: string; name: string; durationMinutes: number; priceCents: number; discountPercent?: number; addons: Addon[] }
+interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; addons: Addon[] }
+interface Category { id: string; name: string; icon?: string | null }
 /** Clamped service discount % and the net (after-discount) price in cents. */
 function svcDiscount(s: Service | null): number { return s ? Math.min(90, Math.max(0, s.discountPercent ?? 0)) : 0; }
 function svcNetCents(s: Service | null): number { return s ? Math.round((s.priceCents * (100 - svcDiscount(s))) / 100) : 0; }
@@ -58,7 +59,10 @@ export default function PublicBookingPage() {
 
   const [salon, setSalon] = useState<Salon | null>(null);
   const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [svcSearch, setSvcSearch] = useState('');
+  const [activeCat, setActiveCat] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -93,12 +97,13 @@ export default function PublicBookingPage() {
     try {
       const sRes = await fetch(base);
       if (!sRes.ok) { setLoadError(sRes.status === 404 ? 'This salon booking page was not found.' : 'Could not load the salon.'); return; }
-      const [salonData, servicesData, staffData] = await Promise.all([
+      const [salonData, servicesData, staffData, catData] = await Promise.all([
         sRes.json(),
         fetch(`${base}/services`).then((r) => r.json()),
         fetch(`${base}/staff`).then((r) => r.json()),
+        fetch(`${base}/categories`).then((r) => r.json()).catch(() => []),
       ]);
-      setSalon(salonData); setServices(servicesData ?? []); setStaff(staffData ?? []);
+      setSalon(salonData); setServices(servicesData ?? []); setStaff(staffData ?? []); setCategories(catData ?? []);
     } catch { setLoadError('Could not reach the booking service. Please try again later.'); }
     finally { setLoading(false); }
   }, [base]);
@@ -211,15 +216,14 @@ export default function PublicBookingPage() {
 
           {step === 2 && (
             <StepFrame title="Choose a service" canContinue={!!serviceId} onContinue={() => service && setStep(3)} onBack={() => setStep(1)}>
-              <Field label="Service" required>
-                <select style={field} value={serviceId} onChange={(e) => { setServiceId(e.target.value); setAddonIds([]); setStaffId(''); }}>
-                  <option value="">Select a service…</option>
-                  {services.map((s) => {
-                    const d = svcDiscount(s); const net = svcNetCents(s);
-                    return <option key={s.id} value={s.id}>{s.name} — {s.durationMinutes} min — {fmt(net)}{d > 0 ? ` (was ${fmt(s.priceCents)}, -${d}%)` : ''}</option>;
-                  })}
-                </select>
-              </Field>
+              <ServiceMenu
+                services={services} categories={categories}
+                search={svcSearch} setSearch={setSvcSearch}
+                activeCat={activeCat} setActiveCat={setActiveCat}
+                selectedId={serviceId}
+                onSelect={(id) => { setServiceId(id); setAddonIds([]); setStaffId(''); }}
+                fmt={fmt}
+              />
               {serviceAddons.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                   <span style={fieldLabel}>Add-ons (optional)</span>
@@ -552,6 +556,99 @@ function Field({ label, required, children }: { label: string; required?: boolea
 }
 function Row({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
   return <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 14 }}><span style={{ color: '#64748b' }}>{k}</span><span style={{ color: '#1e293b', fontWeight: bold ? 700 : 500 }}>{v}</span></div>;
+}
+
+function ServiceMenu({ services, categories, search, setSearch, activeCat, setActiveCat, selectedId, onSelect, fmt }: {
+  services: Service[]; categories: Category[]; search: string; setSearch: (v: string) => void;
+  activeCat: string; setActiveCat: (v: string) => void; selectedId: string; onSelect: (id: string) => void; fmt: (c: number) => string;
+}) {
+  const featured = services.filter((s) => s.isFeatured);
+  const uncategorised = services.filter((s) => !s.categoryId);
+  const q = search.trim().toLowerCase();
+  const matches = (s: Service) => !q || `${s.name} ${s.description ?? ''}`.toLowerCase().includes(q);
+  const inCat = (catId: string) => services.filter((s) => s.categoryId === catId);
+
+  const chip = (key: string, label: string) => (
+    <button key={key} type="button" onClick={() => setActiveCat(key)}
+      style={{ whiteSpace: 'nowrap', fontSize: 13, padding: '7px 14px', borderRadius: 999, cursor: 'pointer',
+        border: activeCat === key ? `1px solid ${ACCENT}` : '1px solid #e2e8f0',
+        background: activeCat === key ? ACCENT : 'white', color: activeCat === key ? 'white' : '#475569', fontWeight: 600 }}>
+      {label}
+    </button>
+  );
+
+  const card = (s: Service) => {
+    const d = svcDiscount(s); const net = svcNetCents(s); const on = s.id === selectedId;
+    return (
+      <button key={s.id} type="button" onClick={() => onSelect(s.id)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', marginBottom: 8,
+          border: on ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: on ? '#eef2ff' : 'white' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+            {s.name}
+            {s.isFeatured && <span style={{ marginLeft: 6, background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>POPULAR</span>}
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{s.durationMinutes} min</div>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          {d > 0 && <div style={{ fontSize: 12, color: '#94a3b8', textDecoration: 'line-through' }}>{fmt(s.priceCents)}</div>}
+          <div style={{ fontSize: 14, fontWeight: 700, color: d > 0 ? '#dc2626' : '#1e293b' }}>{s.priceFrom ? 'from ' : ''}{fmt(net)}</div>
+        </div>
+        <span style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, border: `2px solid ${on ? ACCENT : '#cbd5e1'}`, background: on ? ACCENT : 'white', color: 'white', display: 'grid', placeItems: 'center', fontSize: 13 }}>{on ? '✓' : ''}</span>
+      </button>
+    );
+  };
+
+  const section = (title: string, list: Service[]) => {
+    const items = list.filter(matches);
+    if (items.length === 0) return null;
+    return (
+      <div key={title} style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, margin: '4px 0 8px' }}>{title}</div>
+        {items.map(card)}
+      </div>
+    );
+  };
+
+  let body: React.ReactNode;
+  if (q) {
+    const all = services.filter(matches);
+    body = all.length ? all.map(card) : <p style={{ color: '#94a3b8', fontSize: 14 }}>No services match “{search}”.</p>;
+  } else if (activeCat === 'popular') {
+    body = section('Popular', featured);
+  } else if (activeCat === 'none') {
+    body = section('Other', uncategorised);
+  } else if (activeCat !== 'all') {
+    const c = categories.find((x) => x.id === activeCat);
+    body = section(c?.name ?? 'Services', inCat(activeCat));
+  } else {
+    body = (
+      <>
+        {featured.length > 0 && section('⭐ Popular', featured)}
+        {categories.map((c) => section(c.name, inCat(c.id)))}
+        {section('Other', uncategorised)}
+      </>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search services…"
+          style={{ ...field, paddingLeft: 36 }} />
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>⌕</span>
+      </div>
+      {(categories.length > 0 || featured.length > 0) && (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 8 }}>
+          {chip('all', 'All')}
+          {featured.length > 0 && chip('popular', 'Popular')}
+          {categories.map((c) => chip(c.id, c.name))}
+          {uncategorised.length > 0 && chip('none', 'Other')}
+        </div>
+      )}
+      <div>{body}</div>
+    </div>
+  );
 }
 function TechCard({ selected, onClick, label, avatar, subtitle, disabled }: { selected: boolean; onClick: () => void; label: string; avatar: string | null; subtitle?: string; disabled?: boolean }) {
   const initial = (label || '?').trim().charAt(0).toUpperCase();

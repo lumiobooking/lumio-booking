@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
 
 interface Service {
   id: string;
@@ -35,7 +35,6 @@ export default function ServicesPage() {
 
 function ServicesInner() {
   const { token } = useAuth();
-  const range = useDateRange('all');
   const [q, setQ] = useState('');
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -91,10 +90,10 @@ function ServicesInner() {
 
   const catName = (id?: string | null) => categories.find((c) => c.id === id)?.name ?? '—';
 
-  // Filter by created date + search + category, then newest first.
+  // Search + category filter, then newest first. (No date filter — a service
+  // menu shouldn't be hidden by when it was created.)
   const visible = sortNewest(
     services.filter((s) =>
-      range.inRange(s.createdAt) &&
       matchesQuery(`${s.name} ${s.description ?? ''}`, q) &&
       (catFilter === 'all' || (catFilter === 'none' ? !s.categoryId : s.categoryId === catFilter))),
     (s) => s.createdAt,
@@ -112,7 +111,6 @@ function ServicesInner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder="Search service name…" />
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} service{visible.length === 1 ? '' : 's'}</span>
-        <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

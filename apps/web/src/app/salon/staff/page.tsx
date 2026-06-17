@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
 
 interface Service {
   id: string;
@@ -115,7 +115,6 @@ export default function StaffPage() {
 
 function StaffInner() {
   const { token } = useAuth();
-  const range = useDateRange('all');
   const [q, setQ] = useState('');
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -180,9 +179,9 @@ function StaffInner() {
 
   const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? '—';
 
-  // Filter by created date + search, then newest first.
+  // Search only, newest first. (No date filter — staff list isn't time-based.)
   const visible = sortNewest(
-    staff.filter((m) => range.inRange(m.createdAt) && matchesQuery(`${m.firstName} ${m.lastName ?? ''} ${m.email ?? ''} ${m.phone ?? ''}`, q)),
+    staff.filter((m) => matchesQuery(`${m.firstName} ${m.lastName ?? ''} ${m.email ?? ''} ${m.phone ?? ''}`, q)),
     (m) => m.createdAt,
   );
 
@@ -198,7 +197,6 @@ function StaffInner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder="Search name, email, phone…" />
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} staff</span>
-        <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

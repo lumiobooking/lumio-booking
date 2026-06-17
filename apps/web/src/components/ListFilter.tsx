@@ -14,15 +14,18 @@ export function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function computeRange(preset: Preset): { from: string; to: string } {
+// openFuture: for future-oriented lists (bookings) the presets leave the END
+// open so upcoming appointments still show ("from N days ago onward").
+function computeRange(preset: Preset, openFuture = false): { from: string; to: string } {
   const today = isoDay(new Date());
+  const end = openFuture ? '' : today;
   if (preset === 'all' || preset === 'custom') return { from: '', to: '' };
   if (preset === 'month') {
     const d = new Date();
-    return { from: isoDay(new Date(d.getFullYear(), d.getMonth(), 1)), to: today };
+    return { from: isoDay(new Date(d.getFullYear(), d.getMonth(), 1)), to: end };
   }
   const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
-  return { from: isoDay(new Date(Date.now() - (days - 1) * 86400000)), to: today };
+  return { from: isoDay(new Date(Date.now() - (days - 1) * 86400000)), to: end };
 }
 
 export interface DateRange {
@@ -40,14 +43,14 @@ export interface DateRange {
  * State + logic for a date range. Default 'all' shows everything (so nothing is
  * ever hidden until the user narrows the range).
  */
-export function useDateRange(initial: Preset = 'all'): DateRange {
-  const init = computeRange(initial);
+export function useDateRange(initial: Preset = 'all', openFuture = false): DateRange {
+  const init = computeRange(initial, openFuture);
   const [from, setFromState] = useState(init.from);
   const [to, setToState] = useState(init.to);
   const [preset, setPreset] = useState<Preset>(initial);
 
   const applyPreset = (p: Preset) => {
-    const r = computeRange(p);
+    const r = computeRange(p, openFuture);
     setFromState(r.from);
     setToState(r.to);
     setPreset(p);
@@ -180,7 +183,6 @@ export function DateRangeBar({ range }: { range: DateRange }) {
         type="date"
         value={to}
         min={from || undefined}
-        max={today}
         onChange={(e) => setTo(e.target.value)}
         style={dateInput}
         aria-label="To date"

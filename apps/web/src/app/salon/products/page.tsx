@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
 
 interface Product {
   id: string; name: string; sku: string | null; priceCents: number; discountPercent?: number; currency: string;
@@ -28,7 +28,6 @@ export default function ProductsPage() {
 
 function Inner() {
   const { token } = useAuth();
-  const range = useDateRange('all');
   const [q, setQ] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [taxRate, setTaxRate] = useState('');
@@ -77,7 +76,7 @@ function Inner() {
   }
 
   const visible = sortNewest(
-    products.filter((p) => range.inRange(p.createdAt) && matchesQuery(`${p.name} ${p.sku ?? ''}`, q)),
+    products.filter((p) => matchesQuery(`${p.name} ${p.sku ?? ''}`, q)),
     (p) => p.createdAt,
   );
 
@@ -109,7 +108,6 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder="Search product name, SKU…" />
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} products</span>
-        <DateRangeBar range={range} />
       </div>
 
       {loading ? <p style={{ color: '#94a3b8' }}>Loading…</p> : (

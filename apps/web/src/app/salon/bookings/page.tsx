@@ -64,7 +64,7 @@ export default function BookingsPage() {
 
 function BookingsInner() {
   const { token } = useAuth();
-  const range = useDateRange('all');
+  const range = useDateRange('all', true); // bookings are future-oriented
   const [q, setQ] = useState('');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);

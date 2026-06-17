@@ -39,7 +39,7 @@ export default function StaffBookingsPage() {
 
 function Inner() {
   const { token } = useAuth();
-  const range = useDateRange('all');
+  const range = useDateRange('all', true); // bookings are future-oriented
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

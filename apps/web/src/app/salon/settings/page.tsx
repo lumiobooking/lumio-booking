@@ -222,7 +222,12 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
         <Field label="Address"><input style={ui.input} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         <Field label="Website"><input style={ui.input} value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} placeholder="https://…" /></Field>
       </div>
-      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('company', f, 'Company')}>Save company</button>
+      <button
+        style={{ ...ui.primaryBtn, marginTop: 16 }}
+        onClick={() => onSave('company', { name: f.name, contactEmail: f.contactEmail, contactPhone: f.contactPhone, timezone: f.timezone, address: f.address, website: f.website }, 'Company')}
+      >
+        Save company
+      </button>
     </Card>
   );
 }

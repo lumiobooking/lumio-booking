@@ -32,6 +32,11 @@ export interface ReviewSettings {
   staffBonusFor5Star: number; // extra staff points when rating is 5
   customerPoints: number; // loyalty points the customer earns for giving feedback
   minRatingForGoogle: number; // show the Google button when rating >= this (1 = always)
+  // Anti-abuse controls.
+  requireRealVisit: boolean; // only reward when feedback matches a real recent appointment
+  visitWindowHours: number; // how recent the matching appointment must be
+  dailyCapPerStaff: number; // max rewarded feedbacks per staff per day
+  dedupDays: number; // same customer can reward the same staff once per N days
 }
 
 export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
@@ -41,6 +46,10 @@ export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
   staffBonusFor5Star: 5,
   customerPoints: 20,
   minRatingForGoogle: 4,
+  requireRealVisit: true,
+  visitWindowHours: 48,
+  dailyCapPerStaff: 10,
+  dedupDays: 7,
 };
 
 // POS (counter checkout) settings. Tax applies to retail products only

@@ -108,7 +108,7 @@ export class SettingsService {
 
   async updateReview(
     user: AuthenticatedUser,
-    dto: { enabled?: boolean; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number },
+    dto: { enabled?: boolean; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getReviewSettings(tenantId);
@@ -120,6 +120,10 @@ export class SettingsService {
       staffBonusFor5Star: num(dto.staffBonusFor5Star, cur.staffBonusFor5Star),
       customerPoints: num(dto.customerPoints, cur.customerPoints),
       minRatingForGoogle: Math.min(5, Math.max(1, num(dto.minRatingForGoogle, cur.minRatingForGoogle))),
+      requireRealVisit: typeof dto.requireRealVisit === 'boolean' ? dto.requireRealVisit : (cur.requireRealVisit ?? true),
+      visitWindowHours: num(dto.visitWindowHours, cur.visitWindowHours ?? 48),
+      dailyCapPerStaff: num(dto.dailyCapPerStaff, cur.dailyCapPerStaff ?? 10),
+      dedupDays: num(dto.dedupDays, cur.dedupDays ?? 7),
     };
     await this.writeKey(tenantId, REVIEW_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.review_updated', resourceType: 'tenant', resourceId: tenantId });

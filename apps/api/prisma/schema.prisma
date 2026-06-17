@@ -472,10 +472,15 @@ model Feedback {
   comment         String?
   invitedToGoogle Boolean @default(false) // did we show them the Google button
 
+  // Anti-abuse: rewardable feedback must be anchored to a real visit.
+  appointmentId String? // the matched appointment (one reward per visit)
+  verified      Boolean @default(false) // passed real-visit + limit checks → points awarded
+
   createdAt DateTime @default(now())
 
   @@index([tenantId])
   @@index([tenantId, staffId])
+  @@index([tenantId, appointmentId])
   @@map("feedbacks")
 }
 

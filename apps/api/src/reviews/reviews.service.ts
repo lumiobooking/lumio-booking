@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { TenantStatus } from '@prisma/client';
+import { AppointmentStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
@@ -64,25 +64,78 @@ export class ReviewsService {
       select: { id: true },
     });
 
-    // Optionally match/create a customer by phone so they can earn loyalty points.
+    // Match the customer by phone (no anonymous junk customers any more).
     let customerId: string | null = null;
-    let customerPointsAwarded = 0;
     const phone = (dto.phone ?? '').trim();
     if (phone) {
-      let customer = await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true, loyaltyPoints: true } });
-      if (!customer) {
-        const created = await this.prisma.customer.create({ data: { tenantId, firstName: 'Guest', phone }, select: { id: true, loyaltyPoints: true } });
-        customer = created;
+      const customer = await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true } });
+      customerId = customer?.id ?? null;
+    }
+
+    // ---- Anti-abuse: only REWARD feedback anchored to a real recent visit. ----
+    const requireRealVisit = settings.requireRealVisit ?? true;
+    const windowH = settings.visitWindowHours ?? 48;
+    const dailyCap = settings.dailyCapPerStaff ?? 10;
+    const dedupDays = settings.dedupDays ?? 7;
+
+    let matchedAppointmentId: string | null = null;
+    let verified = false;
+    let blockReason: string | null = null;
+
+    if (staff && customerId) {
+      // 1) A real, recent appointment with THIS staff for THIS customer.
+      const since = new Date(Date.now() - windowH * 3600 * 1000);
+      const appt = await this.prisma.appointment.findFirst({
+        where: {
+          tenantId, customerId, assignedStaffId: staff.id,
+          startTime: { gte: since },
+          status: { in: [AppointmentStatus.COMPLETED, AppointmentStatus.CONFIRMED, AppointmentStatus.ACCEPTED] },
+        },
+        orderBy: { startTime: 'desc' },
+        select: { id: true },
+      });
+      // Ensure that visit hasn't already been reviewed (one reward per visit).
+      if (appt) {
+        const already = await this.prisma.feedback.count({ where: { tenantId, appointmentId: appt.id } });
+        matchedAppointmentId = already > 0 ? null : appt.id;
       }
-      customerId = customer.id;
+
+      if (requireRealVisit && !matchedAppointmentId) {
+        blockReason = appt ? 'duplicate' : 'no-visit';
+      } else {
+        // 2) Same customer can only reward the same staff once per dedupDays.
+        const dupSince = new Date(Date.now() - dedupDays * 86400 * 1000);
+        const recentDup = await this.prisma.feedback.count({ where: { tenantId, staffId: staff.id, customerId, verified: true, createdAt: { gte: dupSince } } });
+        if (recentDup > 0) blockReason = 'duplicate';
+        else {
+          // 3) Daily cap of rewarded feedbacks per staff.
+          const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+          const todayCount = await this.prisma.feedback.count({ where: { tenantId, staffId: staff.id, verified: true, createdAt: { gte: startOfDay } } });
+          if (todayCount >= dailyCap) blockReason = 'cap';
+          else verified = true;
+        }
+      }
+    } else if (!requireRealVisit && staff) {
+      // Lenient mode (admin turned off real-visit requirement): still cap per day.
+      const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+      const todayCount = await this.prisma.feedback.count({ where: { tenantId, staffId: staff.id, verified: true, createdAt: { gte: startOfDay } } });
+      if (todayCount >= dailyCap) blockReason = 'cap';
+      else verified = true;
     }
 
     const invitedToGoogle = rating >= settings.minRatingForGoogle && !!settings.googleReviewUrl;
+    let customerPointsAwarded = 0;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.feedback.create({
-        data: { tenantId, staffId: staff?.id ?? null, customerId, rating, comment: dto.comment?.slice(0, 1000) || null, invitedToGoogle },
+        data: {
+          tenantId, staffId: staff?.id ?? null, customerId, rating,
+          comment: dto.comment?.slice(0, 1000) || null,
+          invitedToGoogle, appointmentId: matchedAppointmentId, verified,
+        },
       });
+
+      if (!verified) return; // store the feedback, but award nothing
 
       // Staff reward points.
       if (staff) {
@@ -92,8 +145,7 @@ export class ReviewsService {
           await tx.staffRewardTransaction.create({ data: { tenantId, staffId: staff.id, points: pts, balanceAfter: updated.rewardPoints, reason: `Feedback ${rating}★` } });
         }
       }
-
-      // Customer loyalty points for giving feedback (our own survey — allowed).
+      // Customer loyalty points (our own survey — allowed).
       if (customerId && settings.customerPoints > 0) {
         const c = await tx.customer.update({ where: { id: customerId }, data: { loyaltyPoints: { increment: settings.customerPoints } }, select: { loyaltyPoints: true } });
         await tx.loyaltyTransaction.create({ data: { tenantId, customerId, points: settings.customerPoints, balanceAfter: c.loyaltyPoints, reason: 'Feedback reward', refType: 'feedback' } });
@@ -104,6 +156,8 @@ export class ReviewsService {
     return {
       ok: true,
       rating,
+      verified,
+      reason: blockReason,
       customerPointsAwarded,
       googleReviewUrl: invitedToGoogle ? settings.googleReviewUrl : null,
     };
@@ -138,7 +192,7 @@ export class ReviewsService {
     return this.prisma.feedback.findMany({
       where: { tenantId },
       select: {
-        id: true, rating: true, comment: true, createdAt: true, invitedToGoogle: true,
+        id: true, rating: true, comment: true, createdAt: true, invitedToGoogle: true, verified: true,
         staff: { select: { firstName: true, lastName: true } },
         customer: { select: { firstName: true, phone: true } },
       },

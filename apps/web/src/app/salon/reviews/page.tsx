@@ -6,9 +6,9 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 
-interface ReviewSettings { enabled: boolean; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number }
+interface ReviewSettings { enabled: boolean; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number }
 interface LeaderRow { id: string; name: string; avatarUrl: string | null; rewardPoints: number; feedbackCount: number; avgRating: number }
-interface FeedbackRow { id: string; rating: number; comment: string | null; createdAt: string; invitedToGoogle: boolean; staff: { firstName: string; lastName: string | null } | null; customer: { firstName: string; phone: string | null } | null }
+interface FeedbackRow { id: string; rating: number; comment: string | null; createdAt: string; invitedToGoogle: boolean; verified: boolean; staff: { firstName: string; lastName: string | null } | null; customer: { firstName: string; phone: string | null } | null }
 
 export default function ReviewsPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -94,7 +94,10 @@ function Inner() {
             </div>
             <div style={{ fontSize: 13, color: '#cbd5e1', marginTop: 4 }}>
               {f.staff ? `${f.staff.firstName} ${f.staff.lastName ?? ''}`.trim() : 'Salon'} · {f.customer?.phone ?? f.customer?.firstName ?? 'Anonymous'}
-              {f.invitedToGoogle && <span style={{ marginLeft: 8, color: '#22c55e', fontSize: 11 }}>● invited to Google</span>}
+              {f.verified
+                ? <span style={{ marginLeft: 8, color: '#22c55e', fontSize: 11 }}>● verified visit · points awarded</span>
+                : <span style={{ marginLeft: 8, color: '#f59e0b', fontSize: 11 }}>● no matching visit · no points</span>}
+              {f.invitedToGoogle && <span style={{ marginLeft: 8, color: '#818cf8', fontSize: 11 }}>● invited to Google</span>}
             </div>
             {f.comment && <div style={{ fontSize: 14, marginTop: 6, color: '#e2e8f0' }}>“{f.comment}”</div>}
           </div>
@@ -112,6 +115,10 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
     staffBonusFor5Star: String(initial.staffBonusFor5Star),
     customerPoints: String(initial.customerPoints),
     minRatingForGoogle: String(initial.minRatingForGoogle),
+    requireRealVisit: initial.requireRealVisit ?? true,
+    dailyCapPerStaff: String(initial.dailyCapPerStaff ?? 10),
+    dedupDays: String(initial.dedupDays ?? 7),
+    visitWindowHours: String(initial.visitWindowHours ?? 48),
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -127,6 +134,10 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         staffBonusFor5Star: parseInt(f.staffBonusFor5Star, 10) || 0,
         customerPoints: parseInt(f.customerPoints, 10) || 0,
         minRatingForGoogle: Math.min(5, Math.max(1, parseInt(f.minRatingForGoogle, 10) || 4)),
+        requireRealVisit: f.requireRealVisit,
+        dailyCapPerStaff: parseInt(f.dailyCapPerStaff, 10) || 0,
+        dedupDays: parseInt(f.dedupDays, 10) || 0,
+        visitWindowHours: parseInt(f.visitWindowHours, 10) || 0,
       } });
       setSaved(true); onSaved();
     } catch (e2) { setErr(e2 instanceof Error ? e2.message : 'Save failed'); }
@@ -155,6 +166,20 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         </label>
       </div>
       <p style={{ color: '#64748b', fontSize: 12, margin: '10px 0 0' }}>Note: rewarding customers for a Google review violates Google policy — points here are for completing your in-house feedback, and the Google step is only an invitation.</p>
+
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #334155' }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1', marginBottom: 6 }}>Anti-fraud (stops staff farming their own points)</div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <Toggle on={f.requireRealVisit} onChange={(v) => setF({ ...f, requireRealVisit: v })} />
+          <span style={{ fontSize: 14 }}>Only reward when feedback matches a real recent appointment (recommended)</span>
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+          <label><span style={ui.label}>Visit window (hours)</span><input style={ui.input} type="number" min={1} value={f.visitWindowHours} onChange={(e) => setF({ ...f, visitWindowHours: e.target.value })} /></label>
+          <label><span style={ui.label}>Max rewarded / staff / day</span><input style={ui.input} type="number" min={1} value={f.dailyCapPerStaff} onChange={(e) => setF({ ...f, dailyCapPerStaff: e.target.value })} /></label>
+          <label><span style={ui.label}>Same client cooldown (days)</span><input style={ui.input} type="number" min={1} value={f.dedupDays} onChange={(e) => setF({ ...f, dedupDays: e.target.value })} /></label>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>With this on, a feedback only earns points if the customer (by phone) had a real appointment with that technician in the window — one reward per visit, capped per day, and the same client can&apos;t re-reward the same tech within the cooldown.</p>
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
         <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? 'Saving…' : 'Save settings'}</button>
         {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>✓ Saved</span>}

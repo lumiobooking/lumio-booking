@@ -372,7 +372,7 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ fontSize: 13, color: '#94a3b8' }}>Locked after:</label>
           <input type="date" value={accessUntil} disabled={exempt} onChange={(e) => setAccessUntil(e.target.value)} style={{ ...inp, width: 'auto', opacity: exempt ? 0.5 : 1 }} />
-          {accessUntil && !exempt && <button onClick={() => setAccessUntil('')} style={ghost}>Clear</button>}
+          {accessUntil && !exempt && <button onClick={() => setAccessUntil('')} style={ghostBtn}>Clear</button>}
           <button onClick={saveAccess} disabled={busy} style={primaryBtn}>Save access</button>
         </div>
         <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>

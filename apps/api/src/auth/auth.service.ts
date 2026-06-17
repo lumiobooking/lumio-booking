@@ -35,12 +35,19 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Block login for non-active salons (super admin has no tenant).
-    if (user.tenant && user.tenant.status !== TenantStatus.ACTIVE) {
-      if (user.tenant.status === TenantStatus.PENDING) {
-        throw new UnauthorizedException('Your account is awaiting payment. Please complete checkout to activate it.');
+    // Access control (super admin has no tenant). Free salons always pass.
+    if (user.tenant && !user.tenant.billingExempt) {
+      const t = user.tenant;
+      if (t.status !== TenantStatus.ACTIVE) {
+        if (t.status === TenantStatus.PENDING) {
+          throw new UnauthorizedException('Your account is awaiting payment. Please complete checkout to activate it.');
+        }
+        throw new UnauthorizedException('This salon account is not active. Please contact support.');
       }
-      throw new UnauthorizedException('This salon account is not active');
+      // Hard expiry set by the platform admin.
+      if (t.accessUntil && new Date(t.accessUntil).getTime() < Date.now()) {
+        throw new UnauthorizedException('Your access period has ended. Please renew to continue.');
+      }
     }
 
     await this.prisma.user.update({

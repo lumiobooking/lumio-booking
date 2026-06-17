@@ -35,6 +35,13 @@ export class BillingController {
     return this.billing.signup(dto);
   }
 
+  /** Salon admin: open the Stripe Billing Portal to upgrade/cancel/update card. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('billing/portal')
+  portal(@CurrentUser() user: AuthenticatedUser) {
+    return this.billing.billingPortal(user);
+  }
+
   /** Stripe webhook (signature-verified against the raw body). */
   @Public()
   @Post('billing/webhook/stripe')

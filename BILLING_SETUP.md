@@ -29,24 +29,26 @@ appears at checkout once its keys + plan IDs are set.
 
 ## 2. Stripe setup
 
-1. **Create products & prices** — Stripe Dashboard → Products. For each plan
-   (Starter, Pro) add a **recurring** price for **Monthly** and one for **Yearly**.
-   Copy each price id (looks like `price_1AbC…`).
-2. **Webhook** — Developers → Webhooks → *Add endpoint*:
-   - URL: `https://lumio-api.onrender.com/api/billing/webhook/stripe`
-     *(use your API URL; it ends in `/api/billing/webhook/stripe`)*
+No products/prices to create — the app charges the plan's amount directly via
+inline pricing. You only need:
+
+1. **Webhook** — Developers → Webhooks → *Add endpoint*:
+   - URL: `https://<your-api>.onrender.com/api/billing/webhook/stripe`
    - Events: `checkout.session.completed`, `customer.subscription.updated`,
      `customer.subscription.deleted`, `invoice.payment_failed`.
    - Copy the **Signing secret** (`whsec_…`) → set as `STRIPE_WEBHOOK_SECRET`.
+2. (For self-serve upgrades) enable the **Customer Billing Portal** in Stripe →
+   Settings → Billing → Customer portal (turn on plan switching + cancel).
 
 ## 3. PayPal setup (optional)
 
+No billing plans to create — the app creates them automatically from the plan
+amounts. You only need:
+
 1. **REST app** — developer.paypal.com → Apps & Credentials → create app →
    copy Client ID & Secret.
-2. **Billing plans** — create a subscription **Plan** for each plan + interval
-   (Monthly, Yearly). Copy each plan id (looks like `P-….`).
-3. **Webhook** — App → Webhooks → add:
-   - URL: `https://lumio-api.onrender.com/api/billing/webhook/paypal`
+2. **Webhook** — App → Webhooks → add:
+   - URL: `https://<your-api>.onrender.com/api/billing/webhook/paypal`
    - Events: `BILLING.SUBSCRIPTION.ACTIVATED`, `PAYMENT.SALE.COMPLETED`,
      `BILLING.SUBSCRIPTION.CANCELLED`, `BILLING.SUBSCRIPTION.EXPIRED`,
      `BILLING.SUBSCRIPTION.SUSPENDED`.
@@ -62,10 +64,10 @@ Sign in as Super Admin → **Plans**. For **Starter** and **Pro**:
 2. Set **Free trial (days)** = 14.
 3. Fill the **marketing** tagline + selling points (one per line).
 4. Turn on **Show on website** (and **Highlight** on Pro for the "Most popular" badge).
-5. Paste the **Stripe price IDs** and/or **PayPal plan IDs** (monthly + yearly)
-   you created above.
 
-Save. Your homepage pricing section now shows these plans.
+That's it — **no payment IDs to paste.** Stripe charges the amount directly and
+PayPal plans are auto-created on first checkout. Save and your homepage pricing
+section shows these plans.
 
 ---
 

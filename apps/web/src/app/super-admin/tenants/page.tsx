@@ -19,6 +19,8 @@ interface Tenant {
   createdAt: string;
   _count?: { users: number; staffMembers: number };
   users?: { email: string }[]; // first SALON_ADMIN — the login email
+  billingExempt?: boolean;
+  accessUntil?: string | null;
 }
 
 interface Plan {
@@ -293,9 +295,20 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
   const [form, setForm] = useState({ name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone });
   const [loginEmail, setLoginEmail] = useState(currentLoginEmail);
   const [pw, setPw] = useState('');
+  const [exempt, setExempt] = useState(tenant.billingExempt ?? false);
+  const [accessUntil, setAccessUntil] = useState(tenant.accessUntil ? tenant.accessUntil.slice(0, 10) : '');
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  async function saveAccess() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ status: string }>(`/tenants/${tenant.id}/access`, { method: 'POST', token, body: { billingExempt: exempt, accessUntil: accessUntil || null } });
+      setMsg(`✓ Access updated — salon is now ${r.status}.`);
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not update access'); } finally { setBusy(false); }
+  }
 
   async function saveInfo() {
     setBusy(true); setErr(null); setMsg(null);
@@ -345,6 +358,26 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
           <input style={{ ...inp, maxWidth: 320 }} type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="new-login@email.com" />
           <button onClick={saveLoginEmail} disabled={busy || !loginEmail || loginEmail === currentLoginEmail} style={primaryBtn}>Change login email</button>
         </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Access control</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+          Grant free access, or set a date after which the salon is locked until you renew. Overrides billing.
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 10 }}>
+          <input type="checkbox" checked={exempt} onChange={(e) => setExempt(e.target.checked)} />
+          <span><strong>Free access</strong> — no payment required, always open</span>
+        </label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 13, color: '#94a3b8' }}>Locked after:</label>
+          <input type="date" value={accessUntil} disabled={exempt} onChange={(e) => setAccessUntil(e.target.value)} style={{ ...inp, width: 'auto', opacity: exempt ? 0.5 : 1 }} />
+          {accessUntil && !exempt && <button onClick={() => setAccessUntil('')} style={ghost}>Clear</button>}
+          <button onClick={saveAccess} disabled={busy} style={primaryBtn}>Save access</button>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>
+          Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString()}` : 'billing-controlled'} · status {tenant.status}
+        </p>
       </div>
 
       <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>

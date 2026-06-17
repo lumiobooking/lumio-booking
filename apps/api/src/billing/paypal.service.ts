@@ -73,6 +73,45 @@ export class PaypalService {
     return { url: approve, subscriptionId: json.id };
   }
 
+  /**
+   * Create a PayPal product + billing plan from a plain amount, and return the
+   * plan id. Used to auto-provision plans so the admin never pastes PayPal IDs.
+   */
+  async createPlan(params: { name: string; amountCents: number; currency: string; interval: 'month' | 'year' }): Promise<string> {
+    const access = await this.token();
+    const base = this.base();
+    // 1) Product (idempotent enough for our use; PayPal allows duplicates).
+    const prodRes = await fetch(`${base}/v1/catalogs/products`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: params.name, type: 'SERVICE', category: 'SOFTWARE' }),
+    });
+    const prod = (await prodRes.json()) as { id?: string; message?: string };
+    if (!prodRes.ok || !prod.id) throw new BadRequestException(`PayPal product failed: ${prod.message ?? 'unknown'}`);
+
+    // 2) Plan with a single regular billing cycle (infinite).
+    const value = (params.amountCents / 100).toFixed(2);
+    const planRes = await fetch(`${base}/v1/billing/plans`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_id: prod.id,
+        name: `${params.name} (${params.interval}ly)`,
+        billing_cycles: [{
+          frequency: { interval_unit: params.interval === 'year' ? 'YEAR' : 'MONTH', interval_count: 1 },
+          tenure_type: 'REGULAR',
+          sequence: 1,
+          total_cycles: 0,
+          pricing_scheme: { fixed_price: { value, currency_code: (params.currency || 'USD').toUpperCase() } },
+        }],
+        payment_preferences: { auto_bill_outstanding: true, setup_fee_failure_action: 'CONTINUE', payment_failure_threshold: 3 },
+      }),
+    });
+    const plan = (await planRes.json()) as { id?: string; message?: string };
+    if (!planRes.ok || !plan.id) throw new BadRequestException(`PayPal plan failed: ${plan.message ?? 'unknown'}`);
+    return plan.id;
+  }
+
   async getSubscription(id: string): Promise<any> {
     const access = await this.token();
     const res = await fetch(`${this.base()}/v1/billing/subscriptions/${id}`, {

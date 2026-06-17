@@ -141,10 +141,6 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
     publicVisible: plan?.publicVisible ?? false,
     highlighted: plan?.highlighted ?? false,
     sortOrder: plan?.sortOrder != null ? String(plan.sortOrder) : '0',
-    stripePriceMonthlyId: plan?.stripePriceMonthlyId ?? '',
-    stripePriceYearlyId: plan?.stripePriceYearlyId ?? '',
-    paypalPlanMonthlyId: plan?.paypalPlanMonthlyId ?? '',
-    paypalPlanYearlyId: plan?.paypalPlanYearlyId ?? '',
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -171,10 +167,6 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
         publicVisible: form.publicVisible,
         highlighted: form.highlighted,
         sortOrder: parseInt(form.sortOrder, 10) || 0,
-        stripePriceMonthlyId: form.stripePriceMonthlyId || null,
-        stripePriceYearlyId: form.stripePriceYearlyId || null,
-        paypalPlanMonthlyId: form.paypalPlanMonthlyId || null,
-        paypalPlanYearlyId: form.paypalPlanYearlyId || null,
       };
       if (plan) await apiFetch(`/tenants/plans/${plan.id}`, { method: 'PATCH', token, body });
       else await apiFetch('/tenants/plans', { method: 'POST', token, body });
@@ -210,14 +202,7 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
         <label style={chkRow}>{chk('highlighted')} <span><strong>Highlight</strong> — show a “Most popular” badge</span></label>
       </div>
 
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Payment provider IDs</div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>Create recurring prices/plans in Stripe &amp; PayPal, then paste their IDs here. A provider only appears at checkout when both its monthly &amp; yearly IDs are filled.</p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-        <Field label="Stripe price ID — monthly"><input style={inp} value={form.stripePriceMonthlyId} onChange={(e) => setForm({ ...form, stripePriceMonthlyId: e.target.value })} placeholder="price_…" /></Field>
-        <Field label="Stripe price ID — yearly"><input style={inp} value={form.stripePriceYearlyId} onChange={(e) => setForm({ ...form, stripePriceYearlyId: e.target.value })} placeholder="price_…" /></Field>
-        <Field label="PayPal plan ID — monthly"><input style={inp} value={form.paypalPlanMonthlyId} onChange={(e) => setForm({ ...form, paypalPlanMonthlyId: e.target.value })} placeholder="P-…" /></Field>
-        <Field label="PayPal plan ID — yearly"><input style={inp} value={form.paypalPlanYearlyId} onChange={(e) => setForm({ ...form, paypalPlanYearlyId: e.target.value })} placeholder="P-…" /></Field>
-      </div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '12px 0 0' }}>💳 No payment IDs needed — Stripe charges this amount directly and PayPal plans are created automatically. Just set the prices above and configure your Stripe/PayPal keys once in the server settings.</p>
 
       <div style={{ marginTop: 14, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Features unlocked</div>
       <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>Booking is always included. Tick what this plan adds on top.</p>

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashSecret } from '../auth/password.util';
 import { uniqueSlug } from '../tenants/slug.util';
+import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
 
@@ -47,22 +48,19 @@ export class BillingService {
         featuresJson: true, highlighted: true,
         maxStaff: true, maxBookingsPerMonth: true, posEnabled: true,
         onlinePaymentEnabled: true, multiLocationEnabled: true,
-        stripePriceMonthlyId: true, stripePriceYearlyId: true,
-        paypalPlanMonthlyId: true, paypalPlanYearlyId: true,
       },
     });
-    // Tell the frontend which providers are actually usable per plan/interval.
+    // Prices are now derived from the plan's amounts (Stripe inline price_data;
+    // PayPal plans auto-created on first use), so a provider is usable whenever
+    // its account keys are configured — no per-plan IDs needed.
     return plans.map((p) => ({
       ...p,
       features: Array.isArray(p.featuresJson) ? (p.featuresJson as string[]) : [],
       featuresJson: undefined,
       providers: {
-        stripe: this.stripe.enabled && !!(p.stripePriceMonthlyId && p.stripePriceYearlyId),
-        paypal: this.paypal.enabled && !!(p.paypalPlanMonthlyId && p.paypalPlanYearlyId),
+        stripe: this.stripe.enabled,
+        paypal: this.paypal.enabled,
       },
-      // Never leak the raw external ids to the public page.
-      stripePriceMonthlyId: undefined, stripePriceYearlyId: undefined,
-      paypalPlanMonthlyId: undefined, paypalPlanYearlyId: undefined,
     }));
   }
 
@@ -121,10 +119,21 @@ export class BillingService {
     const success = `${this.appUrl()}/welcome?provider=${dto.provider}`;
     const cancel = `${this.appUrl()}/signup?plan=${plan.id}&interval=${dto.interval}&canceled=1`;
     const meta = { tenantId: tenant.id, planId: plan.id, interval };
+    const isYearly = interval === BillingInterval.YEARLY;
+    const amountCents = isYearly ? plan.priceYearlyCents : plan.priceMonthlyCents;
+    if (!amountCents || amountCents <= 0) throw new BadRequestException(`This plan has no ${isYearly ? 'yearly' : 'monthly'} price set`);
 
     if (dto.provider === 'paypal') {
-      const planRef = interval === BillingInterval.YEARLY ? plan.paypalPlanYearlyId : plan.paypalPlanMonthlyId;
-      if (!planRef) throw new BadRequestException('PayPal is not available for this plan yet');
+      if (!this.paypal.enabled) throw new BadRequestException('PayPal is not configured');
+      // Reuse the cached billing plan if present; otherwise auto-create + persist it.
+      let planRef = isYearly ? plan.paypalPlanYearlyId : plan.paypalPlanMonthlyId;
+      if (!planRef) {
+        planRef = await this.paypal.createPlan({ name: plan.name, amountCents, currency: plan.currency, interval: dto.interval });
+        await this.prisma.plan.update({
+          where: { id: plan.id },
+          data: isYearly ? { paypalPlanYearlyId: planRef } : { paypalPlanMonthlyId: planRef },
+        });
+      }
       const { url } = await this.paypal.createSubscription({
         planId: planRef, tenantId: tenant.id, email, brandName: 'Lumio Booking',
         returnUrl: success, cancelUrl: cancel,
@@ -132,14 +141,29 @@ export class BillingService {
       return { checkoutUrl: url, tenantId: tenant.id };
     }
 
-    // Default: Stripe
-    const priceId = interval === BillingInterval.YEARLY ? plan.stripePriceYearlyId : plan.stripePriceMonthlyId;
-    if (!priceId) throw new BadRequestException('Card payment is not available for this plan yet');
+    // Default: Stripe — inline price from the plan amount (no pre-created price).
+    if (!this.stripe.enabled) throw new BadRequestException('Card payment is not configured');
     const { url } = await this.stripe.createCheckoutSession({
-      priceId, trialDays: plan.trialDays, customerEmail: email,
+      amountCents, currency: plan.currency, interval: dto.interval,
+      productName: `${plan.name} — ${isYearly ? 'Yearly' : 'Monthly'}`,
+      trialDays: plan.trialDays, customerEmail: email,
       successUrl: success, cancelUrl: cancel, metadata: meta,
     });
     return { checkoutUrl: url, tenantId: tenant.id };
+  }
+
+  /** Stripe Billing Portal link so a salon can upgrade/downgrade/cancel/update card. */
+  async billingPortal(user: AuthenticatedUser): Promise<{ url: string }> {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon context');
+    const sub = await this.prisma.subscription.findFirst({
+      where: { tenantId, provider: 'stripe', externalCustomerId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      select: { externalCustomerId: true },
+    });
+    if (!sub?.externalCustomerId) throw new BadRequestException('No Stripe subscription found for this salon');
+    const url = await this.stripe.billingPortalUrl(sub.externalCustomerId, `${this.appUrl()}/salon/billing`);
+    return { url };
   }
 
   // ----------------------------- Activation -----------------------------

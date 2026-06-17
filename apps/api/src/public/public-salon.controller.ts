@@ -24,12 +24,19 @@ export class PublicSalonController {
     private readonly settings: SettingsService,
   ) {}
 
+  /** A salon is reachable only if ACTIVE and not past its access expiry. */
+  private isOpen(t: { status: TenantStatus; billingExempt?: boolean; accessUntil?: Date | null }): boolean {
+    if (t.status !== TenantStatus.ACTIVE) return false;
+    if (!t.billingExempt && t.accessUntil && t.accessUntil.getTime() < Date.now()) return false;
+    return true;
+  }
+
   private async resolveTenantId(slug: string): Promise<string> {
     const tenant = await this.prisma.tenant.findFirst({
-      where: { slug, deletedAt: null, status: TenantStatus.ACTIVE },
-      select: { id: true },
+      where: { slug, deletedAt: null },
+      select: { id: true, status: true, billingExempt: true, accessUntil: true },
     });
-    if (!tenant) {
+    if (!tenant || !this.isOpen(tenant)) {
       throw new NotFoundException('Salon not found');
     }
     return tenant.id;
@@ -40,10 +47,10 @@ export class PublicSalonController {
   @Get(':slug')
   async salon(@Param('slug') slug: string) {
     const tenant = await this.prisma.tenant.findFirst({
-      where: { slug, deletedAt: null, status: TenantStatus.ACTIVE },
-      select: { id: true, name: true, slug: true, timezone: true, branding: true },
+      where: { slug, deletedAt: null },
+      select: { id: true, name: true, slug: true, timezone: true, branding: true, status: true, billingExempt: true, accessUntil: true },
     });
-    if (!tenant) {
+    if (!tenant || !this.isOpen(tenant)) {
       throw new NotFoundException('Salon not found');
     }
     return {

@@ -23,6 +23,8 @@ const TENANT_PUBLIC_SELECT = {
   contactEmail: true,
   planId: true,
   subscriptionStatus: true,
+  billingExempt: true,
+  accessUntil: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.TenantSelect;
@@ -243,6 +245,29 @@ export class TenantsService {
     return { ok: true, email: adminUser.email };
   }
 
+  /**
+   * Super Admin sets manual access for a salon, independent of billing:
+   *  - billingExempt: free salon (always open).
+   *  - accessUntil: lock the salon after this date (null = no expiry).
+   * Status is recalculated immediately so the change takes effect at once.
+   */
+  async setAccess(id: string, dto: { billingExempt?: boolean; accessUntil?: string | null }, actor: AuthenticatedUser) {
+    const tenant = await this.prisma.tenant.findFirst({ where: { id, deletedAt: null }, select: { id: true, billingExempt: true, accessUntil: true } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const billingExempt = typeof dto.billingExempt === 'boolean' ? dto.billingExempt : tenant.billingExempt;
+    let accessUntil: Date | null = tenant.accessUntil;
+    if (dto.accessUntil !== undefined) accessUntil = dto.accessUntil ? new Date(dto.accessUntil) : null;
+
+    // Decide the resulting status: open unless a non-exempt salon is past its date.
+    const expired = !billingExempt && !!accessUntil && accessUntil.getTime() < Date.now();
+    const status = expired ? TenantStatus.SUSPENDED : TenantStatus.ACTIVE;
+
+    await this.prisma.tenant.update({ where: { id }, data: { billingExempt, accessUntil, status } });
+    await this.audit.log({ tenantId: id, userId: actor.userId, action: 'tenant.access_updated', resourceType: 'tenant', resourceId: id, metadata: { billingExempt, accessUntil: accessUntil?.toISOString() ?? null, status } });
+    return { id, billingExempt, accessUntil: accessUntil?.toISOString() ?? null, status };
+  }
+
   /** Super Admin changes a salon's admin LOGIN email. */
   async updateAdminEmail(id: string, newEmail: string, actor: AuthenticatedUser) {
     await this.getById(id);
@@ -347,10 +372,9 @@ export class TenantsService {
       publicVisible: dto.publicVisible ?? false,
       highlighted: dto.highlighted ?? false,
       sortOrder: dto.sortOrder ?? 0,
-      stripePriceMonthlyId: dto.stripePriceMonthlyId ?? null,
-      stripePriceYearlyId: dto.stripePriceYearlyId ?? null,
-      paypalPlanMonthlyId: dto.paypalPlanMonthlyId ?? null,
-      paypalPlanYearlyId: dto.paypalPlanYearlyId ?? null,
+      // Note: Stripe/PayPal provider IDs are NOT set here — they're auto-managed
+      // by the billing service (PayPal plans are cached on first checkout), so
+      // editing a plan must never overwrite them.
     };
   }
 

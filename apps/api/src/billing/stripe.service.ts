@@ -32,16 +32,29 @@ export class StripeService {
    * metadata carries our tenant/plan context back through the webhook.
    */
   async createCheckoutSession(params: {
-    priceId: string;
+    amountCents: number;
+    currency: string;
+    interval: 'month' | 'year';
+    productName: string;
     trialDays: number;
     customerEmail: string;
     successUrl: string;
     cancelUrl: string;
     metadata: Record<string, string>;
   }): Promise<{ url: string }> {
+    // Inline price_data — no pre-created Stripe Price needed. The amount comes
+    // straight from the plan the admin configured, so every tier "just works".
     const session = await this.stripe().checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price: params.priceId, quantity: 1 }],
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: (params.currency || 'USD').toLowerCase(),
+          product_data: { name: params.productName },
+          unit_amount: params.amountCents,
+          recurring: { interval: params.interval },
+        },
+      }],
       customer_email: params.customerEmail,
       subscription_data: {
         trial_period_days: params.trialDays > 0 ? params.trialDays : undefined,

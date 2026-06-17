@@ -207,6 +207,7 @@ model Tenant {
   serviceCategories ServiceCategory[]
   feedbacks         Feedback[]
   staffRewardTransactions StaffRewardTransaction[]
+  reviewClicks      ReviewClick[]
   products          Product[]
   orders            Order[]
   orderItems        OrderItem[]
@@ -466,6 +467,7 @@ model StaffMember {
   bookingRejections  BookingRejection[]
   feedbacks          Feedback[]
   rewardTransactions StaffRewardTransaction[]
+  reviewClicks       ReviewClick[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -517,6 +519,31 @@ model StaffRewardTransaction {
   @@index([tenantId])
   @@index([tenantId, staffId])
   @@map("staff_reward_transactions")
+}
+
+/// A logged "send to Google" tap from the direct-review landing. Drives staff
+/// stats (how many customers each tech sent to Google) and gates reward points
+/// (deduped per device + daily cap). NOTE: Google gives no callback, so this
+/// counts sends/intent — NOT confirmed posted reviews.
+model ReviewClick {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffId String?
+  staff   StaffMember? @relation(fields: [staffId], references: [id], onDelete: SetNull)
+
+  deviceId String? // anonymous per-device id (localStorage) used for dedupe
+  ipHash   String? // hashed IP — coarse dedupe / abuse signal
+  counted  Boolean @default(false) // passed all fraud checks → earned reward points
+  reason   String? // why it was / wasn't counted: ok | dedup | cap | over-visits | off-hours | disabled
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, staffId])
+  @@index([tenantId, staffId, createdAt])
+  @@map("review_clicks")
 }
 
 /// Weekly recurring working hours for a staff member.

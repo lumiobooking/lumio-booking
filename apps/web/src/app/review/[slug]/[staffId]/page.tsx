@@ -10,12 +10,23 @@ interface Ctx {
   branding?: { accentColor?: string; logoUrl?: string };
   staff: { id: string; name: string; avatarUrl: string | null } | null;
   enabled: boolean;
+  reviewMode?: 'direct' | 'rate_first';
   customerPoints: number;
   minRatingForGoogle: number;
   hasGoogle: boolean;
+  googleUrl?: string | null;
 }
 
 type Phase = 'rate' | 'comment' | 'done';
+
+// A stable anonymous per-device id (used server-side to dedupe reward counting).
+function deviceId(): string {
+  try {
+    let id = localStorage.getItem('lumio_device_id');
+    if (!id) { id = (crypto.randomUUID?.() ?? String(Math.random()).slice(2)) + Date.now().toString(36); localStorage.setItem('lumio_device_id', id); }
+    return id;
+  } catch { return ''; }
+}
 
 export default function ReviewPage() {
   const params = useParams();
@@ -34,6 +45,7 @@ export default function ReviewPage() {
   const [err, setErr] = useState<string | null>(null);
   const [googleWords, setGoogleWords] = useState('');
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/public/review/${encodeURIComponent(slug)}/${encodeURIComponent(staffId)}`)
@@ -79,9 +91,69 @@ export default function ReviewPage() {
     if (result?.googleUrl) window.location.href = result.googleUrl;
   }
 
+  // Direct mode: log the send (so the salon can count it for this tech), then
+  // hand off to Google in the SAME tab → opens the Google Maps app where the
+  // customer is already signed in.
+  async function sendDirect() {
+    if (sending) return;
+    setSending(true);
+    let url = ctx?.googleUrl ?? null;
+    try {
+      const res = await fetch(`${API_URL}/public/review-send`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, staffId, deviceId: deviceId() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.googleUrl) url = data.googleUrl;
+    } catch { /* logging failed — still send them to Google */ }
+    if (url) window.location.href = url;
+    else setSending(false);
+  }
+
   if (loadErr) return <Center accent="#6366f1"><p style={{ color: '#64748b' }}>{loadErr}</p></Center>;
   if (!ctx) return <Center accent="#6366f1"><p style={{ color: '#94a3b8' }}>Loading…</p></Center>;
   if (!ctx.enabled) return <Center accent={accent}><p style={{ color: '#64748b' }}>Thank you for visiting {ctx.salonName}!</p></Center>;
+
+  // ---- DIRECT MODE: one-tap straight to Google ----
+  if (ctx.reviewMode === 'direct') {
+    return (
+      <Center accent={accent}>
+        <div style={card}>
+          <div style={{ textAlign: 'center' }}>
+            {ctx.branding?.logoUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={ctx.branding.logoUrl} alt={ctx.salonName} style={{ height: 40, objectFit: 'contain', marginBottom: 8 }} />
+              : <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{ctx.salonName}</div>}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: 18 }}>
+            {ctx.staff?.avatarUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={ctx.staff.avatarUrl} alt={ctx.staff.name} width={84} height={84} style={{ borderRadius: '50%', objectFit: 'cover', border: `3px solid ${accent}22` }} />
+              : <div style={{ width: 84, height: 84, borderRadius: '50%', background: `${accent}1a`, color: accent, display: 'grid', placeItems: 'center', fontSize: 32, fontWeight: 800, margin: '0 auto' }}>{(ctx.staff?.name || ctx.salonName).charAt(0).toUpperCase()}</div>}
+            <h1 style={{ fontSize: 22, margin: '14px 0 4px', color: '#0f172a', lineHeight: 1.25 }}>
+              Thank you{ctx.staff ? <> for visiting <span style={{ color: accent }}>{ctx.staff.name}</span></> : ''}! 💛
+            </h1>
+            <p style={{ color: '#64748b', fontSize: 14, margin: '0 0 20px' }}>A quick Google review would mean the world to us.</p>
+          </div>
+          {ctx.googleUrl ? (
+            <>
+              <button type="button" onClick={sendDirect} disabled={sending} style={{ ...bigBtn, background: accent }}>
+                {sending ? 'Opening…' : '⭐ Leave a Google review'}
+              </button>
+              <p style={{ color: '#94a3b8', fontSize: 11.5, margin: '12px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
+                Opens the Google Maps app on your phone — you&apos;re already signed in there, no password needed.
+              </p>
+            </>
+          ) : (
+            <p style={{ color: '#b45309', fontSize: 13, textAlign: 'center', background: '#fef3c7', borderRadius: 10, padding: 12 }}>
+              The salon hasn&apos;t finished setting up Google reviews yet.
+            </p>
+          )}
+          <div style={{ textAlign: 'center', marginTop: 22, fontSize: 11, color: '#cbd5e1' }}>Powered by Lumio Booking</div>
+        </div>
+      </Center>
+    );
+  }
 
   return (
     <Center accent={accent}>

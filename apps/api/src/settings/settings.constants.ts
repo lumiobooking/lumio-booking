@@ -27,21 +27,34 @@ export const REVIEW_SETTINGS_KEY = 'review_settings';
 // Review-reward program: customer rates on our page, then is invited to Google.
 export interface ReviewSettings {
   enabled: boolean;
+  // How the customer review page behaves:
+  //  'direct'     = straight to Google (one tap), logs a "send" per staff (default)
+  //  'rate_first' = rate in-house first, then invite happy customers to Google (filters bad reviews)
+  reviewMode: 'direct' | 'rate_first';
   googlePlaceId: string; // the salon's Google Place ID — used to build a "write a review" link that opens the Google Maps app (where the customer is already signed in)
   googleReviewUrl: string; // optional fallback "write a review" URL (used only if no Place ID is set)
   staffPointsPerFeedback: number; // points the technician earns per feedback
   staffBonusFor5Star: number; // extra staff points when rating is 5
   customerPoints: number; // loyalty points the customer earns for giving feedback
   minRatingForGoogle: number; // show the Google button when rating >= this (1 = always)
-  // Anti-abuse controls.
+  // Anti-abuse controls (rate-first mode).
   requireRealVisit: boolean; // only reward when feedback matches a real recent appointment
   visitWindowHours: number; // how recent the matching appointment must be
   dailyCapPerStaff: number; // max rewarded feedbacks per staff per day
   dedupDays: number; // same customer can reward the same staff once per N days
+  // Direct mode — reward staff per "send to Google" (deduped per device + capped).
+  staffPointsPerSend: number; // points the technician earns per counted send (0 = off)
+  sendDailyCap: number; // hard cap: max counted (rewarded) sends per staff per day
+  sendDedupHours: number; // same device counts at most once per staff per N hours
+  // Direct-mode anti-fraud (anchor reward volume to real customers).
+  anchorToVisits: boolean; // counted sends/day ≤ (completed appts + POS checkouts) + visitBuffer
+  visitBuffer: number; // grace allowance over recorded visits for untracked walk-ins
+  onlyBusinessHours: boolean; // only count sends during the salon's open hours
 }
 
 export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
   enabled: false,
+  reviewMode: 'direct',
   googlePlaceId: '',
   googleReviewUrl: '',
   staffPointsPerFeedback: 10,
@@ -52,6 +65,12 @@ export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
   visitWindowHours: 48,
   dailyCapPerStaff: 10,
   dedupDays: 7,
+  staffPointsPerSend: 5,
+  sendDailyCap: 20,
+  sendDedupHours: 12,
+  anchorToVisits: true,
+  visitBuffer: 3,
+  onlyBusinessHours: true,
 };
 
 // POS (counter checkout) settings. Tax applies to retail products only

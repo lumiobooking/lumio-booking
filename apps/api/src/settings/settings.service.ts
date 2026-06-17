@@ -108,13 +108,14 @@ export class SettingsService {
 
   async updateReview(
     user: AuthenticatedUser,
-    dto: { enabled?: boolean; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number },
+    dto: { enabled?: boolean; reviewMode?: string; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number; staffPointsPerSend?: number; sendDailyCap?: number; sendDedupHours?: number; anchorToVisits?: boolean; visitBuffer?: number; onlyBusinessHours?: boolean },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getReviewSettings(tenantId);
     const num = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 ? v : d);
     const next: ReviewSettings = {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      reviewMode: dto.reviewMode === 'rate_first' || dto.reviewMode === 'direct' ? dto.reviewMode : (cur.reviewMode ?? 'direct'),
       googlePlaceId: typeof dto.googlePlaceId === 'string' ? dto.googlePlaceId.trim() : (cur.googlePlaceId ?? ''),
       googleReviewUrl: typeof dto.googleReviewUrl === 'string' ? dto.googleReviewUrl.trim() : cur.googleReviewUrl,
       staffPointsPerFeedback: num(dto.staffPointsPerFeedback, cur.staffPointsPerFeedback),
@@ -125,6 +126,12 @@ export class SettingsService {
       visitWindowHours: num(dto.visitWindowHours, cur.visitWindowHours ?? 48),
       dailyCapPerStaff: num(dto.dailyCapPerStaff, cur.dailyCapPerStaff ?? 10),
       dedupDays: num(dto.dedupDays, cur.dedupDays ?? 7),
+      staffPointsPerSend: num(dto.staffPointsPerSend, cur.staffPointsPerSend ?? 5),
+      sendDailyCap: num(dto.sendDailyCap, cur.sendDailyCap ?? 20),
+      sendDedupHours: num(dto.sendDedupHours, cur.sendDedupHours ?? 12),
+      anchorToVisits: typeof dto.anchorToVisits === 'boolean' ? dto.anchorToVisits : (cur.anchorToVisits ?? true),
+      visitBuffer: num(dto.visitBuffer, cur.visitBuffer ?? 3),
+      onlyBusinessHours: typeof dto.onlyBusinessHours === 'boolean' ? dto.onlyBusinessHours : (cur.onlyBusinessHours ?? true),
     };
     await this.writeKey(tenantId, REVIEW_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.review_updated', resourceType: 'tenant', resourceId: tenantId });

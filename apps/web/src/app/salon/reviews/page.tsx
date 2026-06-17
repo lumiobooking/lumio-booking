@@ -7,8 +7,9 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
-interface ReviewSettings { enabled: boolean; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number }
-interface LeaderRow { id: string; name: string; avatarUrl: string | null; rewardPoints: number; feedbackCount: number; avgRating: number }
+interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean }
+interface LeaderRow { id: string; name: string; avatarUrl: string | null; rewardPoints: number; feedbackCount: number; avgRating: number; sendsTotal: number; sends30: number; sendsToday: number; rejectedToday: number; flagged: boolean }
+interface SendRow { id: string; createdAt: string; counted: boolean; reason: string | null; staff: string; device: string }
 interface FeedbackRow { id: string; rating: number; comment: string | null; createdAt: string; invitedToGoogle: boolean; verified: boolean; staff: { firstName: string; lastName: string | null } | null; customer: { firstName: string; phone: string | null } | null }
 
 export default function ReviewsPage() {
@@ -20,6 +21,7 @@ function Inner() {
   const [settings, setSettings] = useState<ReviewSettings | null>(null);
   const [board, setBoard] = useState<LeaderRow[]>([]);
   const [feedback, setFeedback] = useState<FeedbackRow[]>([]);
+  const [sends, setSends] = useState<SendRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,14 +29,16 @@ function Inner() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const [s, b, f] = await Promise.all([
+      const [s, b, f, sn] = await Promise.all([
         apiFetch<{ review: ReviewSettings }>('/settings', { token }),
         apiFetch<LeaderRow[]>('/reviews/leaderboard', { token }),
         apiFetch<FeedbackRow[]>('/reviews/feedback', { token }),
+        apiFetch<SendRow[]>('/reviews/sends', { token }).catch(() => [] as SendRow[]),
       ]);
       setSettings(s.review);
       setBoard(b);
       setFeedback(f);
+      setSends(sn);
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -48,6 +52,7 @@ function Inner() {
   }
 
   const fbPage = usePaged(feedback, 20);
+  const sendsPage = usePaged(sends, 20);
 
   if (loading) return <SalonShellLoading />;
 
@@ -64,14 +69,16 @@ function Inner() {
       <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead><tr style={{ background: '#1e293b' }}>
-            <th style={ui.th}>Technician</th><th style={ui.th}>Points</th><th style={ui.th}>Feedbacks</th><th style={ui.th}>Avg ★</th><th style={ui.th}>Adjust</th>
+            <th style={ui.th}>Technician</th><th style={ui.th}>Points</th><th style={ui.th}>Sends (30d)</th><th style={ui.th}>Sends total</th><th style={ui.th}>Feedbacks</th><th style={ui.th}>Avg ★</th><th style={ui.th}>Adjust</th>
           </tr></thead>
           <tbody>
-            {board.length === 0 && <tr><td style={ui.td} colSpan={5}>No staff yet.</td></tr>}
+            {board.length === 0 && <tr><td style={ui.td} colSpan={7}>No staff yet.</td></tr>}
             {board.map((s) => (
               <tr key={s.id} style={{ borderTop: '1px solid #334155' }}>
-                <td style={ui.td}>{s.name}</td>
+                <td style={ui.td}>{s.name}{s.flagged && <span title={`${s.rejectedToday} blocked attempts today — possible self-farming`} style={{ marginLeft: 6, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>⚠ CHECK</span>}</td>
                 <td style={ui.td}><strong style={{ color: '#eab308' }}>{s.rewardPoints}</strong></td>
+                <td style={ui.td}><strong style={{ color: '#22c55e' }}>{s.sends30}</strong>{s.sendsToday ? <span style={{ color: '#64748b', fontSize: 12 }}> · {s.sendsToday} today</span> : null}{s.rejectedToday ? <span style={{ color: '#f97316', fontSize: 12 }}> · {s.rejectedToday} blocked</span> : null}</td>
+                <td style={ui.td}>{s.sendsTotal}</td>
                 <td style={ui.td}>{s.feedbackCount}</td>
                 <td style={ui.td}>{s.avgRating ? `${s.avgRating}★` : '—'}</td>
                 <td style={ui.td}>
@@ -107,6 +114,28 @@ function Inner() {
         ))}
         <Pager paged={fbPage} />
       </div>
+
+      <h2 style={{ fontSize: 16, margin: '24px 0 10px' }}>Google send log <span style={{ color: '#64748b', fontSize: 12, fontWeight: 400 }}>(anti-fraud audit)</span></h2>
+      <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead><tr style={{ background: '#1e293b' }}>
+            <th style={ui.th}>When</th><th style={ui.th}>Technician</th><th style={ui.th}>Device</th><th style={ui.th}>Counted</th><th style={ui.th}>Reason</th>
+          </tr></thead>
+          <tbody>
+            {sends.length === 0 && <tr><td style={ui.td} colSpan={5}>No sends yet.</td></tr>}
+            {sendsPage.paged.map((r) => (
+              <tr key={r.id} style={{ borderTop: '1px solid #334155' }}>
+                <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(r.createdAt).toLocaleString()}</td>
+                <td style={ui.td}>{r.staff}</td>
+                <td style={{ ...ui.td, color: '#64748b' }}>{r.device}</td>
+                <td style={ui.td}>{r.counted ? <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ +pts</span> : <span style={{ color: '#94a3b8' }}>—</span>}</td>
+                <td style={ui.td}>{reasonLabel(r.reason)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ padding: '0 14px 12px' }}><Pager paged={sendsPage} /></div>
+      </div>
     </section>
   );
 }
@@ -114,6 +143,7 @@ function Inner() {
 function SettingsCard({ token, initial, onSaved }: { token: string; initial: ReviewSettings; onSaved: () => void }) {
   const [f, setF] = useState({
     enabled: initial.enabled,
+    reviewMode: initial.reviewMode ?? 'direct',
     googlePlaceId: initial.googlePlaceId ?? '',
     googleReviewUrl: initial.googleReviewUrl,
     staffPointsPerFeedback: String(initial.staffPointsPerFeedback),
@@ -124,6 +154,12 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
     dailyCapPerStaff: String(initial.dailyCapPerStaff ?? 10),
     dedupDays: String(initial.dedupDays ?? 7),
     visitWindowHours: String(initial.visitWindowHours ?? 48),
+    staffPointsPerSend: String(initial.staffPointsPerSend ?? 5),
+    sendDailyCap: String(initial.sendDailyCap ?? 20),
+    sendDedupHours: String(initial.sendDedupHours ?? 12),
+    anchorToVisits: initial.anchorToVisits ?? true,
+    visitBuffer: String(initial.visitBuffer ?? 3),
+    onlyBusinessHours: initial.onlyBusinessHours ?? true,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -134,6 +170,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
     try {
       await apiFetch('/settings/review', { method: 'PATCH', token, body: {
         enabled: f.enabled,
+        reviewMode: f.reviewMode,
         googlePlaceId: f.googlePlaceId,
         googleReviewUrl: f.googleReviewUrl,
         staffPointsPerFeedback: parseInt(f.staffPointsPerFeedback, 10) || 0,
@@ -144,6 +181,12 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         dailyCapPerStaff: parseInt(f.dailyCapPerStaff, 10) || 0,
         dedupDays: parseInt(f.dedupDays, 10) || 0,
         visitWindowHours: parseInt(f.visitWindowHours, 10) || 0,
+        staffPointsPerSend: parseInt(f.staffPointsPerSend, 10) || 0,
+        sendDailyCap: parseInt(f.sendDailyCap, 10) || 0,
+        sendDedupHours: parseInt(f.sendDedupHours, 10) || 0,
+        anchorToVisits: f.anchorToVisits,
+        visitBuffer: parseInt(f.visitBuffer, 10) || 0,
+        onlyBusinessHours: f.onlyBusinessHours,
       } });
       setSaved(true); onSaved();
     } catch (e2) { setErr(e2 instanceof Error ? e2.message : 'Save failed'); }
@@ -157,6 +200,46 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         <span style={{ fontWeight: 600 }}>Enable review &amp; rewards program</span>
       </div>
       {err && <div style={ui.banner}>{err}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 12 }}>
+        <button type="button" onClick={() => setF({ ...f, reviewMode: 'direct' })}
+          style={modeCard(f.reviewMode === 'direct')}>
+          <div style={{ fontWeight: 700 }}>⭐ Straight to Google</div>
+          <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>One tap → Google review. Counts a &quot;send&quot; per technician. No bad-review filter.</div>
+        </button>
+        <button type="button" onClick={() => setF({ ...f, reviewMode: 'rate_first' })}
+          style={modeCard(f.reviewMode === 'rate_first')}>
+          <div style={{ fontWeight: 700 }}>📝 Rate first</div>
+          <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>Rate in-house, then only happy customers (≥ chosen ★) are invited to Google.</div>
+        </button>
+      </div>
+
+      {f.reviewMode === 'direct' && (
+        <div style={{ marginBottom: 12, padding: 12, background: '#0f172a', borderRadius: 10, border: '1px solid #334155' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1', marginBottom: 8 }}>Reward per Google send</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+            <label><span style={ui.label}>Points / send</span><input style={ui.input} type="number" min={0} value={f.staffPointsPerSend} onChange={(e) => setF({ ...f, staffPointsPerSend: e.target.value })} /></label>
+            <label><span style={ui.label}>Same-device cooldown (hours)</span><input style={ui.input} type="number" min={0} value={f.sendDedupHours} onChange={(e) => setF({ ...f, sendDedupHours: e.target.value })} /></label>
+            <label><span style={ui.label}>Hard cap / staff / day</span><input style={ui.input} type="number" min={0} value={f.sendDailyCap} onChange={(e) => setF({ ...f, sendDailyCap: e.target.value })} /></label>
+          </div>
+
+          <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1', margin: '14px 0 8px' }}>Anti-fraud (stops staff farming their own points)</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <Toggle on={f.anchorToVisits} onChange={(v) => setF({ ...f, anchorToVisits: v })} />
+            <span style={{ fontSize: 14 }}>Anchor to real customers — counted sends/day ≤ (completed bookings + POS checkouts) + buffer</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <Toggle on={f.onlyBusinessHours} onChange={(v) => setF({ ...f, onlyBusinessHours: v })} />
+            <span style={{ fontSize: 14 }}>Only count sends during business hours</span>
+          </label>
+          <label style={{ display: 'block', maxWidth: 240 }}>
+            <span style={ui.label}>Walk-in grace buffer / staff / day</span>
+            <input style={ui.input} type="number" min={0} value={f.visitBuffer} onChange={(e) => setF({ ...f, visitBuffer: e.target.value })} disabled={!f.anchorToVisits} />
+          </label>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '10px 0 0' }}>A technician earns points when a customer taps &quot;Leave a Google review&quot; from their QR — deduped per device, only in business hours, and capped to real customer volume (bookings + POS) plus a small buffer for untracked walk-ins. Set the buffer to 0 for the strictest limit. Note: Google can&apos;t confirm whether the review was posted, so this counts sends, not confirmed reviews — and salons that don&apos;t use bookings or POS should rely on the cooldown + daily cap.</p>
+        </div>
+      )}
+
       <label style={{ display: 'block', marginBottom: 6 }}>
         <span style={ui.label}>Google Place ID</span>
         <input style={ui.input} value={f.googlePlaceId} onChange={(e) => setF({ ...f, googlePlaceId: e.target.value })} placeholder="ChIJ… (your salon's Google Place ID)" />
@@ -216,3 +299,18 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 function SalonShellLoading() { return <p style={{ color: '#94a3b8' }}>Loading…</p>; }
 
 const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };
+function modeCard(active: boolean): React.CSSProperties {
+  return { textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', background: active ? '#312e81' : 'transparent', border: `1px solid ${active ? '#6366f1' : '#334155'}`, color: '#e2e8f0' };
+}
+function reasonLabel(r: string | null): React.ReactNode {
+  const map: Record<string, { t: string; c: string }> = {
+    ok: { t: 'Counted', c: '#22c55e' },
+    dedup: { t: 'Same device (cooldown)', c: '#94a3b8' },
+    'off-hours': { t: 'Outside business hours', c: '#f97316' },
+    cap: { t: 'Daily cap reached', c: '#f97316' },
+    'over-visits': { t: 'Over real-visit limit', c: '#f97316' },
+    disabled: { t: 'Rewards off', c: '#94a3b8' },
+  };
+  const m = r ? map[r] : null;
+  return <span style={{ color: m?.c ?? '#94a3b8', fontSize: 13 }}>{m?.t ?? (r || '—')}</span>;
+}

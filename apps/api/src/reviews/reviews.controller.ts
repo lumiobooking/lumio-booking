@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Post } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsInt, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -13,6 +13,12 @@ class SubmitFeedbackDto {
   @IsInt() @Min(1) @Max(5) rating!: number;
   @IsOptional() @IsString() @MaxLength(1000) comment?: string;
   @IsOptional() @IsString() @MaxLength(40) phone?: string;
+}
+
+class SendDto {
+  @IsString() slug!: string;
+  @IsString() staffId!: string;
+  @IsOptional() @IsString() @MaxLength(80) deviceId?: string;
 }
 
 @Controller()
@@ -32,6 +38,13 @@ export class ReviewsController {
     return this.reviews.submit(dto);
   }
 
+  /** Direct mode: log a "send to Google" tap → returns the Google URL to open. */
+  @Public()
+  @Post('public/review-send')
+  send(@Body() dto: SendDto, @Ip() ip: string) {
+    return this.reviews.logSend({ slug: dto.slug, staffId: dto.staffId, deviceId: dto.deviceId, ip });
+  }
+
   // ---- Salon Admin ----
   @Roles(UserRole.SALON_ADMIN)
   @Get('reviews/leaderboard')
@@ -43,6 +56,13 @@ export class ReviewsController {
   @Get('reviews/feedback')
   feedback(@CurrentUser() user: AuthenticatedUser) {
     return this.reviews.recentFeedback(user);
+  }
+
+  /** Direct-mode audit trail: recent "send to Google" taps + why each counted. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('reviews/sends')
+  sends(@CurrentUser() user: AuthenticatedUser) {
+    return this.reviews.recentSends(user);
   }
 
   @Roles(UserRole.SALON_ADMIN)

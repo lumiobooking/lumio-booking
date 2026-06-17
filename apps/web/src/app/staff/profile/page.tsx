@@ -73,7 +73,10 @@ function Inner() {
     if (!file) return;
     if (!file.type.startsWith('image/')) { setError('Please choose an image file'); return; }
     setBusy(true); setError(null);
-    try { setForm((f) => ({ ...f, avatarUrl: await fileToAvatarDataUrl(file) })); }
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      setForm((f) => ({ ...f, avatarUrl: dataUrl }));
+    }
     catch { setError('Could not process that image'); }
     finally { setBusy(false); }
   }

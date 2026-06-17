@@ -561,19 +561,44 @@ export class BookingsService {
     return { eligibleStaffIds: ids, staffBusy };
   }
 
-  /** Active staff for a tenant, with avatar + the services they can perform. */
-  publicStaff(tenantId: string) {
-    return this.prisma.staffMember.findMany({
+  /**
+   * Active staff for a tenant, ordered FAIRLY for the booking page:
+   *  1) Admin-pinned staff first (bookingPriority > 0, highest first).
+   *  2) Everyone else by a WEIGHTED RANDOM shuffle — more reward points gives
+   *     better odds of a top spot, but base weight + randomness guarantee every
+   *     technician still gets a fair chance to appear first on each visit.
+   * This rotates exposure so walk-in/"first choice" bookings spread across the
+   * team, while still rewarding high performers and honoring admin priority.
+   */
+  async publicStaff(tenantId: string) {
+    const staff = await this.prisma.staffMember.findMany({
       where: { tenantId, isActive: true },
       select: {
         id: true,
         firstName: true,
         lastName: true,
         avatarUrl: true,
+        bookingPriority: true,
+        rewardPoints: true,
         staffServices: { select: { serviceId: true } },
       },
-      orderBy: { firstName: 'asc' },
     });
+
+    const pinned = staff.filter((s) => (s.bookingPriority ?? 0) > 0)
+      .sort((a, b) => (b.bookingPriority ?? 0) - (a.bookingPriority ?? 0));
+
+    // Weighted random: weight = 1 + capped points bonus (max ~4x). Each render
+    // gives a fresh random key so the order rotates fairly per customer/visit.
+    const auto = staff.filter((s) => (s.bookingPriority ?? 0) <= 0)
+      .map((s) => {
+        const weight = 1 + Math.min(s.rewardPoints ?? 0, 300) / 100; // 1x → 4x
+        return { s, key: Math.random() * weight };
+      })
+      .sort((a, b) => b.key - a.key)
+      .map((x) => x.s);
+
+    // Strip the internal ordering fields before returning to the public.
+    return [...pinned, ...auto].map(({ bookingPriority, rewardPoints, ...rest }) => rest);
   }
 
   async list(user: AuthenticatedUser, filters: ListBookingsDto) {

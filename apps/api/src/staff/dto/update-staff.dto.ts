@@ -56,6 +56,13 @@ export class UpdateStaffDto {
   @Max(100)
   commissionPercent?: number;
 
+  // Booking-list priority: 0 = auto/fair ordering; higher = pinned to the top.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  bookingPriority?: number;
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

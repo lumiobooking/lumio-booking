@@ -437,6 +437,9 @@ model StaffMember {
   // Review-reward program: lifetime points balance.
   rewardPoints Int @default(0)
 
+  // Booking-list ordering: admin priority (0 = auto/fair; higher = pinned first).
+  bookingPriority Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

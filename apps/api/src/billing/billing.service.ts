@@ -180,6 +180,47 @@ export class BillingService {
     return { checkoutUrl: url, tenantId: tenant.id };
   }
 
+  /**
+   * A logged-in salon subscribes to / upgrades to a plan (checkout for the
+   * EXISTING tenant). The webhook then sets the tenant's plan + subscription.
+   */
+  async subscribeExisting(user: AuthenticatedUser, dto: { planId: string; interval: 'month' | 'year'; provider?: 'stripe' | 'paypal' }): Promise<{ checkoutUrl: string }> {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon context');
+    const plan = await this.prisma.plan.findFirst({ where: { id: dto.planId, isActive: true } });
+    if (!plan) throw new BadRequestException('Plan not found');
+
+    const isYearly = dto.interval === 'year';
+    const amountCents = isYearly ? plan.priceYearlyCents : plan.priceMonthlyCents;
+    if (!amountCents || amountCents <= 0) throw new BadRequestException(`This plan has no ${isYearly ? 'yearly' : 'monthly'} price set`);
+
+    const interval: BillingInterval = isYearly ? BillingInterval.YEARLY : BillingInterval.MONTHLY;
+    const email = user.email;
+    const success = `${this.appUrl()}/salon/billing?upgraded=1`;
+    const cancel = `${this.appUrl()}/salon/billing`;
+    const meta = { tenantId, planId: plan.id, interval };
+    const provider = dto.provider ?? 'stripe';
+
+    if (provider === 'paypal') {
+      if (!(await this.paypal.isEnabled())) throw new BadRequestException('PayPal is not configured');
+      let planRef = isYearly ? plan.paypalPlanYearlyId : plan.paypalPlanMonthlyId;
+      if (!planRef) {
+        planRef = await this.paypal.createPlan({ name: plan.name, amountCents, currency: plan.currency, interval: dto.interval });
+        await this.prisma.plan.update({ where: { id: plan.id }, data: isYearly ? { paypalPlanYearlyId: planRef } : { paypalPlanMonthlyId: planRef } });
+      }
+      const { url } = await this.paypal.createSubscription({ planId: planRef, tenantId, email, brandName: 'Lumio Booking', returnUrl: success, cancelUrl: cancel });
+      return { checkoutUrl: url };
+    }
+
+    if (!(await this.stripe.isEnabled())) throw new BadRequestException('Card payment is not configured');
+    const { url } = await this.stripe.createCheckoutSession({
+      amountCents, currency: plan.currency, interval: dto.interval,
+      productName: `${plan.name} — ${isYearly ? 'Yearly' : 'Monthly'}`,
+      trialDays: 0, customerEmail: email, successUrl: success, cancelUrl: cancel, metadata: meta,
+    });
+    return { checkoutUrl: url };
+  }
+
   /** Stripe Billing Portal link so a salon can upgrade/downgrade/cancel/update card. */
   async billingPortal(user: AuthenticatedUser): Promise<{ url: string }> {
     const tenantId = resolveTenantScope(user);

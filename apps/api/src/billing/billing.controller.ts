@@ -53,7 +53,14 @@ export class BillingController {
     return this.billing.saveGateways(dto);
   }
 
-  /** Salon admin: open the Stripe Billing Portal to upgrade/cancel/update card. */
+  /** Salon admin: subscribe to / upgrade to a plan (checkout for this salon). */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('billing/subscribe')
+  subscribe(@CurrentUser() user: AuthenticatedUser, @Body() dto: { planId: string; interval: 'month' | 'year'; provider?: 'stripe' | 'paypal' }) {
+    return this.billing.subscribeExisting(user, dto);
+  }
+
+  /** Salon admin: open the Stripe Billing Portal to manage/cancel/update card. */
   @Roles(UserRole.SALON_ADMIN)
   @Post('billing/portal')
   portal(@CurrentUser() user: AuthenticatedUser) {

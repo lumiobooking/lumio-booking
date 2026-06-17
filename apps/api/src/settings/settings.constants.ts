@@ -27,7 +27,8 @@ export const REVIEW_SETTINGS_KEY = 'review_settings';
 // Review-reward program: customer rates on our page, then is invited to Google.
 export interface ReviewSettings {
   enabled: boolean;
-  googleReviewUrl: string; // the salon's Google "write a review" link
+  googlePlaceId: string; // the salon's Google Place ID — used to build a "write a review" link that opens the Google Maps app (where the customer is already signed in)
+  googleReviewUrl: string; // optional fallback "write a review" URL (used only if no Place ID is set)
   staffPointsPerFeedback: number; // points the technician earns per feedback
   staffBonusFor5Star: number; // extra staff points when rating is 5
   customerPoints: number; // loyalty points the customer earns for giving feedback
@@ -41,6 +42,7 @@ export interface ReviewSettings {
 
 export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
   enabled: false,
+  googlePlaceId: '',
   googleReviewUrl: '',
   staffPointsPerFeedback: 10,
   staffBonusFor5Star: 5,

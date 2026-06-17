@@ -32,6 +32,8 @@ export default function ReviewPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ points: number; googleUrl: string | null } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [googleWords, setGoogleWords] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/public/review/${encodeURIComponent(slug)}/${encodeURIComponent(staffId)}`)
@@ -64,6 +66,17 @@ export default function ReviewPage() {
     // High rating → submit instantly. Low rating → ask what went wrong first.
     if (ctx && r >= ctx.minRatingForGoogle) submit(r, '');
     else setPhase('comment');
+  }
+
+  // Open Google review. If the customer typed a few words, copy them to the
+  // clipboard first so they just paste (no retyping). We navigate in the SAME tab
+  // so the OS hands off to the Google Maps app — where they're already signed in.
+  async function openGoogle() {
+    const words = googleWords.trim();
+    if (words) {
+      try { await navigator.clipboard.writeText(words); setCopied(true); } catch { /* clipboard blocked — open anyway */ }
+    }
+    if (result?.googleUrl) window.location.href = result.googleUrl;
   }
 
   if (loadErr) return <Center accent="#6366f1"><p style={{ color: '#64748b' }}>{loadErr}</p></Center>;
@@ -140,10 +153,21 @@ export default function ReviewPage() {
 
             {result.googleUrl ? (
               <>
-                <p style={{ fontSize: 14, color: '#0f172a', margin: '0 0 10px' }}>Loved your visit? It would mean the world if you shared it on Google 💛</p>
-                <a href={result.googleUrl} target="_blank" rel="noopener noreferrer" style={{ ...bigBtn, background: accent, textDecoration: 'none', display: 'block' }}>
-                  ⭐ Review us on Google
-                </a>
+                <p style={{ fontSize: 14, color: '#0f172a', margin: '0 0 8px' }}>Loved your visit? A quick Google review means the world 💛</p>
+                <textarea
+                  value={googleWords}
+                  onChange={(e) => setGoogleWords(e.target.value)}
+                  rows={2}
+                  placeholder="Optional — write a few words and we'll copy them for you"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 15, resize: 'vertical', fontFamily: 'inherit', marginBottom: 10 }}
+                />
+                <button type="button" onClick={openGoogle} style={{ ...bigBtn, background: accent }}>
+                  ⭐ Open Google review
+                </button>
+                {copied && <p style={{ color: '#15803d', fontSize: 12.5, fontWeight: 600, margin: '10px 0 0' }}>✓ Your words are copied — just press &amp; hold to paste on Google</p>}
+                <p style={{ color: '#94a3b8', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.4 }}>
+                  Opens the Google Maps app on your phone — you&apos;re already signed in there, no password needed.
+                </p>
               </>
             ) : (
               <p style={{ color: '#94a3b8', fontSize: 13 }}>The salon will follow up with you shortly.</p>

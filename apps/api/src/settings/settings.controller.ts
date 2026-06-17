@@ -79,7 +79,7 @@ export class SettingsController {
   @Patch('review')
   updateReview(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number },
+    @Body() dto: { enabled?: boolean; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number },
   ) {
     return this.settings.updateReview(user, dto);
   }

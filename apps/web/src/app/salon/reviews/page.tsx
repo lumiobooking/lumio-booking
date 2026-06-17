@@ -7,7 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
-interface ReviewSettings { enabled: boolean; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number }
+interface ReviewSettings { enabled: boolean; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number }
 interface LeaderRow { id: string; name: string; avatarUrl: string | null; rewardPoints: number; feedbackCount: number; avgRating: number }
 interface FeedbackRow { id: string; rating: number; comment: string | null; createdAt: string; invitedToGoogle: boolean; verified: boolean; staff: { firstName: string; lastName: string | null } | null; customer: { firstName: string; phone: string | null } | null }
 
@@ -114,6 +114,7 @@ function Inner() {
 function SettingsCard({ token, initial, onSaved }: { token: string; initial: ReviewSettings; onSaved: () => void }) {
   const [f, setF] = useState({
     enabled: initial.enabled,
+    googlePlaceId: initial.googlePlaceId ?? '',
     googleReviewUrl: initial.googleReviewUrl,
     staffPointsPerFeedback: String(initial.staffPointsPerFeedback),
     staffBonusFor5Star: String(initial.staffBonusFor5Star),
@@ -133,6 +134,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
     try {
       await apiFetch('/settings/review', { method: 'PATCH', token, body: {
         enabled: f.enabled,
+        googlePlaceId: f.googlePlaceId,
         googleReviewUrl: f.googleReviewUrl,
         staffPointsPerFeedback: parseInt(f.staffPointsPerFeedback, 10) || 0,
         staffBonusFor5Star: parseInt(f.staffBonusFor5Star, 10) || 0,
@@ -155,10 +157,19 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         <span style={{ fontWeight: 600 }}>Enable review &amp; rewards program</span>
       </div>
       {err && <div style={ui.banner}>{err}</div>}
-      <label style={{ display: 'block', marginBottom: 12 }}>
-        <span style={ui.label}>Google review link (your salon&apos;s &quot;write a review&quot; URL)</span>
-        <input style={ui.input} value={f.googleReviewUrl} onChange={(e) => setF({ ...f, googleReviewUrl: e.target.value })} placeholder="https://g.page/r/…/review" />
+      <label style={{ display: 'block', marginBottom: 6 }}>
+        <span style={ui.label}>Google Place ID</span>
+        <input style={ui.input} value={f.googlePlaceId} onChange={(e) => setF({ ...f, googlePlaceId: e.target.value })} placeholder="ChIJ… (your salon's Google Place ID)" />
       </label>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 6px' }}>
+        Using a Place ID lets the review open in the customer&apos;s <strong>Google Maps app</strong> (where they&apos;re already signed in) instead of a browser login screen.{' '}
+        <a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener noreferrer" style={{ color: '#818cf8' }}>Find your Place ID →</a>
+        {' '}Search your salon name, copy the ID that starts with <code style={{ color: '#cbd5e1' }}>ChIJ…</code>
+      </p>
+      <details style={{ marginBottom: 12 }}>
+        <summary style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 12 }}>No Place ID? Paste a review link instead</summary>
+        <input style={{ ...ui.input, marginTop: 6 }} value={f.googleReviewUrl} onChange={(e) => setF({ ...f, googleReviewUrl: e.target.value })} placeholder="https://g.page/r/…/review (fallback)" />
+      </details>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
         <label><span style={ui.label}>Staff points / feedback</span><input style={ui.input} type="number" min={0} value={f.staffPointsPerFeedback} onChange={(e) => setF({ ...f, staffPointsPerFeedback: e.target.value })} /></label>
         <label><span style={ui.label}>Bonus for 5★</span><input style={ui.input} type="number" min={0} value={f.staffBonusFor5Star} onChange={(e) => setF({ ...f, staffBonusFor5Star: e.target.value })} /></label>

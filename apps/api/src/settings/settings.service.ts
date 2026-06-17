@@ -108,13 +108,14 @@ export class SettingsService {
 
   async updateReview(
     user: AuthenticatedUser,
-    dto: { enabled?: boolean; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number },
+    dto: { enabled?: boolean; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getReviewSettings(tenantId);
     const num = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 ? v : d);
     const next: ReviewSettings = {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      googlePlaceId: typeof dto.googlePlaceId === 'string' ? dto.googlePlaceId.trim() : (cur.googlePlaceId ?? ''),
       googleReviewUrl: typeof dto.googleReviewUrl === 'string' ? dto.googleReviewUrl.trim() : cur.googleReviewUrl,
       staffPointsPerFeedback: num(dto.staffPointsPerFeedback, cur.staffPointsPerFeedback),
       staffBonusFor5Star: num(dto.staffBonusFor5Star, cur.staffBonusFor5Star),

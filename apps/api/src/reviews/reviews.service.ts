@@ -19,6 +19,22 @@ export class ReviewsService {
     return id;
   }
 
+  /**
+   * Build the customer-facing "write a Google review" link.
+   *
+   * Prefers the salon's Google Place ID, which produces the official
+   * `search.google.com/local/writereview` link. On a phone this hands off to
+   * the Google Maps app — where the customer is almost always already signed in —
+   * instead of a browser that may demand a login they don't remember. Falls back
+   * to a manually-pasted URL only when no Place ID is configured.
+   */
+  private buildGoogleUrl(settings: { googlePlaceId?: string; googleReviewUrl?: string }): string | null {
+    const placeId = (settings.googlePlaceId ?? '').trim();
+    if (placeId) return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
+    const url = (settings.googleReviewUrl ?? '').trim();
+    return url || null;
+  }
+
   // ---------------------------- Public ----------------------------
 
   /** Data to render the customer feedback page (by salon slug + staff id). */
@@ -40,7 +56,7 @@ export class ReviewsService {
       enabled: review.enabled,
       customerPoints: review.customerPoints,
       minRatingForGoogle: review.minRatingForGoogle,
-      hasGoogle: !!review.googleReviewUrl,
+      hasGoogle: !!this.buildGoogleUrl(review),
     };
   }
 
@@ -123,7 +139,8 @@ export class ReviewsService {
       else verified = true;
     }
 
-    const invitedToGoogle = rating >= settings.minRatingForGoogle && !!settings.googleReviewUrl;
+    const googleUrl = this.buildGoogleUrl(settings);
+    const invitedToGoogle = rating >= settings.minRatingForGoogle && !!googleUrl;
     let customerPointsAwarded = 0;
 
     await this.prisma.$transaction(async (tx) => {
@@ -159,7 +176,7 @@ export class ReviewsService {
       verified,
       reason: blockReason,
       customerPointsAwarded,
-      googleReviewUrl: invitedToGoogle ? settings.googleReviewUrl : null,
+      googleReviewUrl: invitedToGoogle ? googleUrl : null,
     };
   }
 

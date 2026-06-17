@@ -40,6 +40,24 @@ function fmtMoney(cents: number, r: BookingRules): string {
 }
 
 interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules }
+
+/**
+ * Treats the wall-clock digits of `local` (year/month/day/hour/minute) as a time
+ * IN `timeZone` (the salon's zone) and returns the matching UTC ISO instant.
+ * So "3:00 PM" picked for a salon in America/New_York is stored as 3 PM ET,
+ * no matter what timezone the customer's phone is set to.
+ */
+function wallTimeToISO(local: Date, timeZone: string): string {
+  const y = local.getFullYear(), mo = local.getMonth(), d = local.getDate(), h = local.getHours(), mi = local.getMinutes();
+  const naiveUTC = Date.UTC(y, mo, d, h, mi);
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const parts = dtf.formatToParts(new Date(naiveUTC));
+  const g = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  let hh = g('hour'); if (hh === 24) hh = 0;
+  const asTz = Date.UTC(g('year'), g('month') - 1, g('day'), hh, g('minute'), g('second'));
+  const offset = asTz - naiveUTC; // ms the salon zone is ahead of UTC
+  return new Date(naiveUTC - offset).toISOString();
+}
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
@@ -133,7 +151,11 @@ export default function PublicBookingPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           serviceId, addonIds, preferredStaffId: staffId || undefined,
-          startTime: slot.start.toISOString(),
+          // The picked time means "this wall-clock time AT THE SALON". Convert it
+          // to the correct UTC instant using the salon's timezone, so the time
+          // stored (and shown in admin emails) matches what the customer chose,
+          // regardless of the customer's own device timezone.
+          startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
           paymentType,

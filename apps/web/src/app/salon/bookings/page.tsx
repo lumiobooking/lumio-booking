@@ -216,13 +216,13 @@ function BookingsInner() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>When</th>
-                <th style={ui.th}>Customer</th>
-                <th style={ui.th}>Service</th>
-                <th style={ui.th}>Staff</th>
-                <th style={ui.th}>Status</th>
-                <th style={ui.th}>Payment</th>
-                <th style={ui.th}>Actions</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>When</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Customer</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Service</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Staff</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Status</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Payment</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -243,14 +243,16 @@ function BookingsInner() {
                   </td>
                   <td style={ui.td}>{b.service?.name ?? '—'}</td>
                   <td style={ui.td}>{staffName(b.assignedStaff)}</td>
-                  <td style={ui.td}>
+                  <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
                     <span
                       style={{
+                        display: 'inline-block',
+                        whiteSpace: 'nowrap',
                         color: STATUS_COLORS[b.status] ?? '#94a3b8',
                         border: `1px solid ${STATUS_COLORS[b.status] ?? '#94a3b8'}`,
                         borderRadius: 999,
-                        padding: '2px 10px',
-                        fontSize: 12,
+                        padding: '3px 10px',
+                        fontSize: 11,
                         fontWeight: 600,
                       }}
                     >
@@ -265,7 +267,7 @@ function BookingsInner() {
                     />
                   </td>
                   <td style={ui.td}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', maxWidth: 360 }}>
                       {b.status === 'PENDING' && (
                         <>
                           <button
@@ -285,7 +287,7 @@ function BookingsInner() {
                         <>
                           <a
                             href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
-                            style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 13, textDecoration: 'none', display: 'inline-block' }}
+                            style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}
                             title="Ring up & take payment for this booking"
                           >
                             Checkout
@@ -302,7 +304,7 @@ function BookingsInner() {
                           </button>
                           <button
                             onClick={() => { if (confirm('Cancel this booking? Any payment will be refunded and removed from revenue.')) action(b.id, 'cancel'); }}
-                            style={ui.dangerBtn}
+                            style={actBtnOutline('#ef4444')}
                           >
                             Cancel
                           </button>
@@ -310,7 +312,7 @@ function BookingsInner() {
                       )}
                       <button
                         onClick={() => removeBooking(b.id)}
-                        style={{ ...ui.dangerBtn, opacity: 0.75 }}
+                        style={{ ...actBtnOutline('#94a3b8') }}
                         title="Permanently delete this booking"
                       >
                         Delete
@@ -506,25 +508,16 @@ const tinyBtn: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const smallOk: React.CSSProperties = {
-  padding: '6px 12px',
-  borderRadius: 8,
-  border: '1px solid #22c55e',
-  background: 'transparent',
-  color: '#22c55e',
-  fontSize: 13,
-  cursor: 'pointer',
-};
+// Uniform compact action-button styles so the Actions cell stays tidy.
+function actBtnOutline(color: string): React.CSSProperties {
+  return { padding: '6px 11px', borderRadius: 8, border: `1px solid ${color}`, background: 'transparent', color, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.2 };
+}
+function actBtnFilled(bg: string): React.CSSProperties {
+  return { padding: '6px 11px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.2, display: 'inline-block' };
+}
 
-const smallWarn: React.CSSProperties = {
-  padding: '6px 12px',
-  borderRadius: 8,
-  border: '1px solid #f97316',
-  background: 'transparent',
-  color: '#f97316',
-  fontSize: 13,
-  cursor: 'pointer',
-};
+const smallOk: React.CSSProperties = actBtnOutline('#22c55e');
+const smallWarn: React.CSSProperties = actBtnOutline('#f97316');
 
 const ghostBtn: React.CSSProperties = {
   padding: '9px 14px',

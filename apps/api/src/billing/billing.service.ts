@@ -17,6 +17,7 @@ export interface SignupInput {
   planId: string;
   interval: 'month' | 'year';
   provider: 'stripe' | 'paypal';
+  timezone?: string;
 }
 
 @Injectable()
@@ -99,6 +100,7 @@ export class BillingService {
           planId: plan.id,
           subscriptionStatus: SubscriptionStatus.TRIALING,
           contactEmail: email,
+          ...(dto.timezone ? { timezone: dto.timezone } : {}),
         },
       });
       await tx.user.create({

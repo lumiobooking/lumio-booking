@@ -257,9 +257,12 @@ export class BookingsService {
     const n = await this.settings.getNotificationSettings(tenantId);
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, contactEmail: true, contactPhone: true, branding: true },
+      select: { name: true, contactEmail: true, contactPhone: true, branding: true, timezone: true },
     });
 
+    const tz = tenant?.timezone || 'America/New_York';
+    const fmtT = (dd: Date) => dd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    const fmtD = (dd: Date) => dd.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
     const start = appointment.startTime;
     const end = appointment.endTime;
     const durationMin = Math.round((end.getTime() - start.getTime()) / 60_000);
@@ -277,8 +280,8 @@ export class BookingsService {
       salon: tenant?.name ?? 'Our salon',
       customer: appointment.customer?.firstName ?? 'there',
       service: appointment.service?.name ?? 'your appointment',
-      date: start.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }),
-      time: `${fmtTimeOf(start)} – ${fmtTimeOf(end)}`,
+      date: fmtD(start),
+      time: `${fmtT(start)} – ${fmtT(end)}`,
       technician: appointment.assignedStaff ? `${appointment.assignedStaff.firstName} ${appointment.assignedStaff.lastName ?? ''}`.trim() : 'To be assigned',
       total,
       duration: `${durationMin} min`,
@@ -406,9 +409,12 @@ export class BookingsService {
     const n = await this.settings.getNotificationSettings(tenantId);
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, contactEmail: true, contactPhone: true, branding: true },
+      select: { name: true, contactEmail: true, contactPhone: true, branding: true, timezone: true },
     });
 
+    const tz = tenant?.timezone || 'America/New_York';
+    const fmtT = (dd: Date) => dd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    const fmtD = (dd: Date) => dd.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
     const start = appt.startTime;
     const end = appt.endTime;
     const durationMin = Math.round((end.getTime() - start.getTime()) / 60_000);
@@ -432,8 +438,8 @@ export class BookingsService {
       customer_name: customerName,
       service_name: appt.service?.name ?? 'a service',
       staff_name: staffName,
-      appointment_date: start.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }),
-      appointment_time: `${fmtTimeOf(start)} – ${fmtTimeOf(end)}`,
+      appointment_date: fmtD(start),
+      appointment_time: `${fmtT(start)} – ${fmtT(end)}`,
       duration: `${durationMin} min`,
       total_price: total,
       add_ons: addonNames,

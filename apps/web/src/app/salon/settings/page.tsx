@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useIsMobile } from '../../../lib/responsive';
+import { TimezonePicker } from '../../../components/TimezonePicker';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number }
 interface Booking {
@@ -215,7 +216,7 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
     <Card title="Company" desc="Your salon identity and contact details.">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Salon name"><input style={ui.input} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field label="Timezone"><input style={ui.input} value={f.timezone} onChange={(e) => setF({ ...f, timezone: e.target.value })} placeholder="America/New_York" /></Field>
+        <Field label="Timezone (controls all booking times)"><TimezonePicker value={f.timezone} onChange={(tz) => setF({ ...f, timezone: tz })} selectStyle={ui.input} /></Field>
         <Field label="Contact email"><input style={ui.input} value={f.contactEmail ?? ''} onChange={(e) => setF({ ...f, contactEmail: e.target.value })} /></Field>
         <Field label="Contact phone"><input style={ui.input} value={f.contactPhone ?? ''} onChange={(e) => setF({ ...f, contactPhone: e.target.value })} /></Field>
         <Field label="Address"><input style={ui.input} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>

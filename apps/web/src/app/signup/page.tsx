@@ -18,6 +18,10 @@ interface PublicPlan {
 const money = (cents: number, currency = 'USD') =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
 
+function detectTz(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; }
+}
+
 export default function SignupPage() {
   const mobile = useIsMobile();
   const [plans, setPlans] = useState<PublicPlan[]>([]);
@@ -56,7 +60,7 @@ export default function SignupPage() {
       const res = await fetch(`${API_URL}/public/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, planId: plan.id, interval, provider }),
+        body: JSON.stringify({ ...form, planId: plan.id, interval, provider, timezone: detectTz() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Sign up failed');

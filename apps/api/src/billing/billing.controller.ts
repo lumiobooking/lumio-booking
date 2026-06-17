@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Headers, Post, Req } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
 import { BillingService } from './billing.service';
 
@@ -14,6 +14,7 @@ class SignupDto {
   @IsString() planId!: string;
   @IsIn(['month', 'year']) interval!: 'month' | 'year';
   @IsIn(['stripe', 'paypal']) provider!: 'stripe' | 'paypal';
+  @IsOptional() @IsString() @MaxLength(64) timezone?: string;
 }
 
 @Controller()

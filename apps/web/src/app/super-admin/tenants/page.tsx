@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { TimezonePicker } from '../../../components/TimezonePicker';
 
 interface Tenant {
   id: string;
@@ -331,7 +332,7 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <Field label="Salon name"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <Field label="Contact email"><input style={inp} value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></Field>
-        <Field label="Timezone"><input style={inp} value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} /></Field>
+        <Field label="Timezone"><TimezonePicker value={form.timezone} onChange={(tz) => setForm({ ...form, timezone: tz })} selectStyle={inp} /></Field>
       </div>
       <div><button onClick={saveInfo} disabled={busy} style={primaryBtn}>Save salon info</button></div>
 
@@ -422,11 +423,7 @@ function CreateTenantForm({
           <input style={inp} value={form.name} onChange={(e) => update('name', e.target.value)} required />
         </Field>
         <Field label="Timezone">
-          <input
-            style={inp}
-            value={form.timezone}
-            onChange={(e) => update('timezone', e.target.value)}
-          />
+          <TimezonePicker value={form.timezone} onChange={(tz) => update('timezone', tz)} selectStyle={inp} />
         </Field>
         <Field label="Salon admin email">
           <input

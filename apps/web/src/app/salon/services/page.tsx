@@ -148,11 +148,11 @@ function ServicesInner() {
             <thead>
               <tr style={{ background: '#1e293b' }}>
                 <th style={ui.th}>Name</th>
-                <th style={ui.th}>Category</th>
-                <th style={ui.th}>Duration</th>
-                <th style={ui.th}>Price</th>
-                <th style={ui.th}>Status</th>
-                <th style={ui.th}>Actions</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Category</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Duration</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Price</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Status</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -204,33 +204,33 @@ function FragmentRow({ service: s, token, categories, catName, onToggle, onDelet
             formatPrice(s.priceCents, s.currency)
           )}
         </td>
-        <td style={ui.td}>
-          <button onClick={onToggle} style={{ cursor: 'pointer', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : '#64748b'}`, color: s.isActive ? '#22c55e' : '#94a3b8', borderRadius: 999, padding: '2px 10px', fontSize: 12 }}>
+        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
+          <button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : '#64748b'}`, color: s.isActive ? '#22c55e' : '#94a3b8', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>
             {s.isActive ? 'Active' : 'Inactive'}
           </button>
         </td>
-        <td style={ui.td}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button onClick={() => setEditing((e) => !e)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editing ? '#475569' : '#0ea5e9' }}>
+        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'inline-flex', gap: 6 }}>
+            <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? '#475569' : '#0ea5e9')}>
               {editing ? 'Close' : 'Edit'}
             </button>
-            <button onClick={() => setOpen((o) => !o)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: open ? '#475569' : '#6366f1' }}>
-              {open ? 'Hide add-ons' : 'Add-ons'}
+            <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? '#475569' : '#6366f1')}>
+              {open ? 'Hide' : 'Add-ons'}
             </button>
-            <button onClick={onDelete} style={ui.dangerBtn}>Delete</button>
+            <button onClick={onDelete} style={actBtn('#b91c1c')}>Delete</button>
           </div>
         </td>
       </tr>
       {editing && (
         <tr>
-          <td colSpan={5} style={{ padding: 0, background: '#0f172a' }}>
+          <td colSpan={6} style={{ padding: 0, background: '#0f172a' }}>
             <EditServicePanel service={s} token={token} categories={categories} onSaved={onSaved} />
           </td>
         </tr>
       )}
       {open && (
         <tr>
-          <td colSpan={5} style={{ padding: 0, background: '#0f172a' }}>
+          <td colSpan={6} style={{ padding: 0, background: '#0f172a' }}>
             <AddonsPanel serviceId={s.id} token={token} />
           </td>
         </tr>
@@ -587,3 +587,6 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
 }
 
 const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };
+function actBtn(bg: string): React.CSSProperties {
+  return { padding: '6px 12px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 64 };
+}

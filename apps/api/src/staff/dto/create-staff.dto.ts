@@ -50,7 +50,7 @@ export class CreateStaffDto {
   // Public avatar image URL shown to customers on the booking page.
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(700000) // allows a small uploaded image stored as a data: URL
   avatarUrl?: string;
 
   @IsOptional()

@@ -35,7 +35,7 @@ export class UpdateStaffDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(700000) // allows a small uploaded image stored as a data: URL
   avatarUrl?: string;
 
   @IsOptional()

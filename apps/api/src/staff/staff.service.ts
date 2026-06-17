@@ -11,6 +11,7 @@ import { hashSecret } from '../auth/password.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateStaffDto, WorkingHourDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { CreateStaffLoginDto } from './dto/create-staff-login.dto';
 
 const STAFF_INCLUDE = {
@@ -59,6 +60,37 @@ export class StaffService {
       include: STAFF_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /** The signed-in staff user's OWN profile (linked via userId). */
+  private async myStaffRecord(user: AuthenticatedUser) {
+    const staff = await this.prisma.staffMember.findFirst({
+      where: { tenantId: this.tenantId(user), userId: user.userId },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatarUrl: true },
+    });
+    if (!staff) throw new NotFoundException('No staff profile is linked to your account');
+    return staff;
+  }
+
+  getMyProfile(user: AuthenticatedUser) {
+    return this.myStaffRecord(user);
+  }
+
+  /** A staff member updates their own name/phone/photo (nothing else). */
+  async updateMyProfile(user: AuthenticatedUser, dto: UpdateMyProfileDto) {
+    const me = await this.myStaffRecord(user);
+    const updated = await this.prisma.staffMember.update({
+      where: { id: me.id },
+      data: {
+        firstName: dto.firstName ?? undefined,
+        lastName: dto.lastName ?? undefined,
+        phone: dto.phone ?? undefined,
+        avatarUrl: dto.avatarUrl === undefined ? undefined : (dto.avatarUrl || null),
+      },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatarUrl: true },
+    });
+    await this.audit.log({ tenantId: this.tenantId(user), userId: user.userId, action: 'staff.self_profile_updated', resourceType: 'staff', resourceId: me.id });
+    return updated;
   }
 
   async getById(user: AuthenticatedUser, id: string) {

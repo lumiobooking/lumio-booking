@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 
 /** Layout + auth guard for the Staff (technician) portal. */
-export function StaffShell({ children }: { children: ReactNode }) {
+export function StaffShell({ children, title = 'My Bookings' }: { children: ReactNode; title?: string }) {
   const { token, user, ready, logout } = useAuth();
   const router = useRouter();
 
@@ -39,25 +39,29 @@ export function StaffShell({ children }: { children: ReactNode }) {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>My Bookings</h1>
+          <h1 style={{ fontSize: 22, margin: 0 }}>{title}</h1>
           <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 13 }}>
             Technician · {user.email}
           </p>
         </div>
-        <button
-          onClick={logout}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 8,
-            border: '1px solid #475569',
-            background: 'transparent',
-            color: '#e2e8f0',
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
-          Log out
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <a href="/staff/bookings" style={navBtn}>My bookings</a>
+          <a href="/staff/profile" style={navBtn}>My profile</a>
+          <button
+            onClick={logout}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: '1px solid #475569',
+              background: 'transparent',
+              color: '#e2e8f0',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            Log out
+          </button>
+        </div>
       </header>
       {children}
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
@@ -67,3 +71,8 @@ export function StaffShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+const navBtn: React.CSSProperties = {
+  padding: '8px 14px', borderRadius: 8, border: '1px solid #475569',
+  background: 'transparent', color: '#e2e8f0', fontSize: 13, textDecoration: 'none',
+};

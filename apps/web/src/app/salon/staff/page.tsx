@@ -40,6 +40,70 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
   );
 }
 
+/**
+ * Reads an image file, crops it to a square and resizes it to <=256px, then
+ * returns a compact JPEG data URL — small enough to store in the DB and show
+ * directly on the booking page. No external storage needed.
+ */
+function fileToAvatarDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Could not load image'));
+      img.onload = () => {
+        const SIZE = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = SIZE; canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas not supported'));
+        // Center-crop to a square, then draw scaled into the canvas.
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Round avatar preview + "Upload photo" button used in the staff forms. */
+function AvatarPicker({ value, name, onChange }: { value: string; name: string; onChange: (dataUrl: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setErr('Please choose an image file'); return; }
+    setBusy(true); setErr(null);
+    try { onChange(await fileToAvatarDataUrl(file)); }
+    catch { setErr('Could not process that image'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      {value
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={value} alt="avatar" width={64} height={64} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid #334155' }} />
+        : <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#334155', color: '#cbd5e1', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>{(name || '?').charAt(0).toUpperCase()}</span>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ ...ui.input, padding: '8px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          📷 {busy ? 'Processing…' : value ? 'Change photo' : 'Upload photo'}
+          <input type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
+        </label>
+        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>Remove photo</button>}
+        {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
+        <span style={{ color: '#64748b', fontSize: 11 }}>Square photo works best — clients see this when booking.</span>
+      </div>
+    </div>
+  );
+}
+
 export default function StaffPage() {
   return (
     <SalonShell>
@@ -355,6 +419,12 @@ function StaffEditPanel({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>Edit {member.firstName}</div>
 
+      {/* Profile photo */}
+      <div>
+        <span style={ui.label}>Profile photo</span>
+        <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => up('avatarUrl', v)} />
+      </div>
+
       {/* Profile */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <label><span style={ui.label}>First name</span>
@@ -365,8 +435,6 @@ function StaffEditPanel({
           <input style={ui.input} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} /></label>
         <label><span style={ui.label}>Phone</span>
           <input style={ui.input} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
-        <label><span style={ui.label}>Avatar image URL</span>
-          <input style={ui.input} value={form.avatarUrl} onChange={(e) => up('avatarUrl', e.target.value)} placeholder="https://…" /></label>
         <label><span style={ui.label}>Commission % (POS services)</span>
           <input style={ui.input} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 22 }}>
@@ -517,20 +585,9 @@ function CreateStaffForm({
         </label>
       </div>
 
-      <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'end' }}>
-        <label style={{ flex: 1 }}>
-          <span style={ui.label}>Avatar image URL (optional)</span>
-          <input
-            style={ui.input}
-            value={form.avatarUrl}
-            onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })}
-            placeholder="https://… (paste an image link)"
-          />
-        </label>
-        {form.avatarUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={form.avatarUrl} alt="preview" width={44} height={44} style={{ borderRadius: '50%', objectFit: 'cover' }} />
-        )}
+      <div style={{ marginTop: 12 }}>
+        <span style={ui.label}>Profile photo (optional)</span>
+        <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => setForm({ ...form, avatarUrl: v })} />
       </div>
 
       <div style={{ marginTop: 14 }}>

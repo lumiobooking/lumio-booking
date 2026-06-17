@@ -8,6 +8,7 @@ import { uniqueSlug } from '../tenants/slug.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
+import { PlatformConfigService } from './platform-config.service';
 
 export interface SignupInput {
   salonName: string;
@@ -31,7 +32,38 @@ export class BillingService {
     private readonly config: ConfigService,
     private readonly stripe: StripeService,
     private readonly paypal: PaypalService,
+    private readonly platform: PlatformConfigService,
   ) {}
+
+  /** Super Admin: gateway connection status + webhook URLs for the UI. */
+  async gatewayStatus() {
+    const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv] = await Promise.all([
+      this.platform.get('stripe_secret_key'), this.platform.get('stripe_webhook_secret'),
+      this.platform.get('paypal_client_id'), this.platform.get('paypal_secret'),
+      this.platform.get('paypal_webhook_id'), this.platform.get('paypal_env'),
+    ]);
+    const apiBase = (this.config.get<string>('RENDER_EXTERNAL_URL') ?? this.config.get<string>('KEEPALIVE_SELF_URL') ?? '').replace(/\/$/, '');
+    return {
+      stripe: { hasKey: !!stripeKey, hasWebhook: !!stripeHook, live: (stripeKey ?? '').startsWith('sk_live') },
+      paypal: { hasClient: !!(ppId && ppSecret), hasWebhook: !!ppHook, env: ppEnv ?? 'live' },
+      webhookStripeUrl: apiBase ? `${apiBase}/api/billing/webhook/stripe` : '/api/billing/webhook/stripe',
+      webhookPaypalUrl: apiBase ? `${apiBase}/api/billing/webhook/paypal` : '/api/billing/webhook/paypal',
+    };
+  }
+
+  /** Super Admin: save gateway keys (blank fields are left unchanged). */
+  async saveGateways(dto: Record<string, string | undefined>) {
+    await this.platform.setMany({
+      stripe_secret_key: dto.stripeSecretKey,
+      stripe_webhook_secret: dto.stripeWebhookSecret,
+      paypal_client_id: dto.paypalClientId,
+      paypal_secret: dto.paypalSecret,
+      paypal_webhook_id: dto.paypalWebhookId,
+      paypal_env: dto.paypalEnv,
+      app_url: dto.appUrl,
+    });
+    return this.gatewayStatus();
+  }
 
   private appUrl(): string {
     return (this.config.get<string>('APP_URL') ?? 'https://lumiobooking.com').replace(/\/$/, '');
@@ -50,17 +82,13 @@ export class BillingService {
         onlinePaymentEnabled: true, multiLocationEnabled: true,
       },
     });
-    // Prices are now derived from the plan's amounts (Stripe inline price_data;
-    // PayPal plans auto-created on first use), so a provider is usable whenever
-    // its account keys are configured — no per-plan IDs needed.
+    // A provider is usable whenever its keys are configured (no per-plan IDs).
+    const [stripeOn, paypalOn] = await Promise.all([this.stripe.isEnabled(), this.paypal.isEnabled()]);
     return plans.map((p) => ({
       ...p,
       features: Array.isArray(p.featuresJson) ? (p.featuresJson as string[]) : [],
       featuresJson: undefined,
-      providers: {
-        stripe: this.stripe.enabled,
-        paypal: this.paypal.enabled,
-      },
+      providers: { stripe: stripeOn, paypal: paypalOn },
     }));
   }
 
@@ -124,7 +152,7 @@ export class BillingService {
     if (!amountCents || amountCents <= 0) throw new BadRequestException(`This plan has no ${isYearly ? 'yearly' : 'monthly'} price set`);
 
     if (dto.provider === 'paypal') {
-      if (!this.paypal.enabled) throw new BadRequestException('PayPal is not configured');
+      if (!(await this.paypal.isEnabled())) throw new BadRequestException('PayPal is not configured');
       // Reuse the cached billing plan if present; otherwise auto-create + persist it.
       let planRef = isYearly ? plan.paypalPlanYearlyId : plan.paypalPlanMonthlyId;
       if (!planRef) {
@@ -142,7 +170,7 @@ export class BillingService {
     }
 
     // Default: Stripe — inline price from the plan amount (no pre-created price).
-    if (!this.stripe.enabled) throw new BadRequestException('Card payment is not configured');
+    if (!(await this.stripe.isEnabled())) throw new BadRequestException('Card payment is not configured');
     const { url } = await this.stripe.createCheckoutSession({
       amountCents, currency: plan.currency, interval: dto.interval,
       productName: `${plan.name} — ${isYearly ? 'Yearly' : 'Monthly'}`,
@@ -227,7 +255,7 @@ export class BillingService {
   // --------------------------- Stripe webhook ---------------------------
 
   async handleStripeWebhook(rawBody: Buffer, signature: string): Promise<void> {
-    const event = this.stripe.constructEvent(rawBody, signature);
+    const event = await this.stripe.constructEvent(rawBody, signature);
     switch (event.type) {
       case 'checkout.session.completed': {
         const s = event.data.object as any;

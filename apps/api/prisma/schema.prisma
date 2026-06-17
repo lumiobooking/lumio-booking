@@ -370,6 +370,16 @@ model Service {
   @@map("services")
 }
 
+/// Platform-level key/value config (e.g. the Lumio Stripe/PayPal API keys set
+/// by the Super Admin). NOT tenant-scoped. Values may be secrets.
+model PlatformConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_config")
+}
+
 /// Menu groups (e.g. "Hand & Feet Care", "Artificial Nails"). Tenant-scoped.
 model ServiceCategory {
   id       String @id @default(uuid())

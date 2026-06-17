@@ -6,11 +6,12 @@ import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
+import { PlatformConfigService } from './platform-config.service';
 
 @Module({
   imports: [ConfigModule, PrismaModule, AuditModule],
   controllers: [BillingController],
-  providers: [BillingService, StripeService, PaypalService],
+  providers: [BillingService, StripeService, PaypalService, PlatformConfigService],
   exports: [BillingService, StripeService],
 })
 export class BillingModule {}

@@ -39,6 +39,20 @@ export class BillingController {
     return this.billing.signup(dto);
   }
 
+  /** Super Admin: payment gateway connection status + webhook URLs. */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Get('billing/config')
+  gatewayStatus() {
+    return this.billing.gatewayStatus();
+  }
+
+  /** Super Admin: save Stripe/PayPal keys (blank fields kept). */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Post('billing/config')
+  saveGateways(@Body() dto: Record<string, string | undefined>) {
+    return this.billing.saveGateways(dto);
+  }
+
   /** Salon admin: open the Stripe Billing Portal to upgrade/cancel/update card. */
   @Roles(UserRole.SALON_ADMIN)
   @Post('billing/portal')

@@ -55,8 +55,14 @@ function Inner() {
     setBusy(true); setError(null);
     try {
       const r = await apiFetch<{ checkoutUrl: string }>('/billing/subscribe', { method: 'POST', token, body: { planId, interval: yearly ? 'year' : 'month', provider } });
+      if (!r?.checkoutUrl) throw new Error('No checkout URL returned — check the payment gateway keys.');
       window.location.href = r.checkoutUrl;
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not start checkout'); setBusy(false); }
+    } catch (e) {
+      const m = e instanceof Error ? e.message : 'Could not start checkout';
+      setError(m);
+      alert(`Payment couldn't start:\n\n${m}\n\nCheck Super Admin → Payment gateways (keys must be valid — use "Test connection").`);
+      setBusy(false);
+    }
   }
 
   async function portal() {

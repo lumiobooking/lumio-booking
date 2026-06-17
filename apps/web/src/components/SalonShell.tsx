@@ -29,6 +29,18 @@ const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
   { href: '/salon/settings', label: 'Settings', icon: '⚙' },
 ];
 
+// Remember the salon's POS entitlement between page loads so the nav renders
+// the correct items immediately (no flash of locked items).
+const POS_CACHE_KEY = 'lumio_pos_enabled';
+function readCachedPos(): boolean | null {
+  if (typeof window === 'undefined') return null;
+  const v = window.localStorage.getItem(POS_CACHE_KEY);
+  return v === null ? null : v === '1';
+}
+function writeCachedPos(on: boolean) {
+  if (typeof window !== 'undefined') window.localStorage.setItem(POS_CACHE_KEY, on ? '1' : '0');
+}
+
 /**
  * Salon Admin layout. Desktop: fixed left sidebar. Mobile: a sticky top bar
  * with a hamburger that opens a slide-in drawer. Auth-guarded.
@@ -39,7 +51,10 @@ export function SalonShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [posEnabled, setPosEnabled] = useState(true); // assume on until plan loads (avoids fl/hide)
+  // Start from the last-known plan (cached) so the sidebar doesn't flash all
+  // items then hide them on every reload/navigation. null = unknown (first ever
+  // load) → gated items stay hidden until the plan resolves (no "show all" flash).
+  const [posEnabled, setPosEnabled] = useState<boolean | null>(() => readCachedPos());
 
   useEffect(() => {
     if (!ready) return;
@@ -47,15 +62,15 @@ export function SalonShell({ children }: { children: ReactNode }) {
     else if (user && user.role !== 'SALON_ADMIN') router.replace('/');
   }, [ready, token, user, router]);
 
-  // Load the salon's plan to gate plan-locked features.
+  // Load the salon's plan to gate plan-locked features, and cache the result.
   useEffect(() => {
     if (!token || user?.role !== 'SALON_ADMIN') return;
     apiFetch<{ posEnabled: boolean }>('/me/plan', { token })
-      .then((p) => setPosEnabled(p?.posEnabled ?? true))
-      .catch(() => setPosEnabled(true));
+      .then((p) => { const on = p?.posEnabled ?? true; setPosEnabled(on); writeCachedPos(on); })
+      .catch(() => {});
   }, [token, user]);
 
-  const visibleNav = NAV.filter((item) => item.feature !== 'pos' || posEnabled);
+  const visibleNav = NAV.filter((item) => item.feature !== 'pos' || posEnabled === true);
 
   // Close the drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);

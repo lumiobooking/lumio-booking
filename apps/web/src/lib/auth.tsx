@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('lumio_pos_enabled'); // clear cached plan gating
   }
 
   return (

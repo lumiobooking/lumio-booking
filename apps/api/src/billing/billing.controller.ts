@@ -53,6 +53,20 @@ export class BillingController {
     return this.billing.saveGateways(dto);
   }
 
+  /** Super Admin: live-test the configured gateways. */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Get('billing/config/test')
+  testGateways() {
+    return this.billing.testGateways();
+  }
+
+  /** Salon admin: active plans available to upgrade to. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('billing/plans')
+  upgradePlans() {
+    return this.billing.upgradePlans();
+  }
+
   /** Salon admin: subscribe to / upgrade to a plan (checkout for this salon). */
   @Roles(UserRole.SALON_ADMIN)
   @Post('billing/subscribe')

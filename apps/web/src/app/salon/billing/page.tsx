@@ -33,7 +33,7 @@ function Inner() {
     try {
       const [p, list] = await Promise.all([
         apiFetch<PlanFlags>('/me/plan', { token }),
-        apiFetch<PublicPlan[]>('/public/plans', { token }).catch(() => [] as PublicPlan[]),
+        apiFetch<PublicPlan[]>('/billing/plans', { token }).catch(() => [] as PublicPlan[]),
       ]);
       setCurrent(p);
       setPlans(Array.isArray(list) ? list : []);
@@ -60,7 +60,7 @@ function Inner() {
     try {
       const r = await apiFetch<{ url: string }>('/billing/portal', { method: 'POST', token });
       window.location.href = r.url;
-    } catch (e) { setError(e instanceof Error ? e.message : 'No active card subscription to manage yet.'); setBusy(false); }
+    } catch { setMsg('You don’t have a card subscription yet — pick a plan below to get started.'); setBusy(false); }
   }
 
   const currentName = (current?.planName ?? '').toLowerCase();

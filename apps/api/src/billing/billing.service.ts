@@ -51,6 +51,34 @@ export class BillingService {
     };
   }
 
+  /** Active plans a logged-in salon can upgrade to (regardless of publicVisible). */
+  async upgradePlans() {
+    const plans = await this.prisma.plan.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { priceMonthlyCents: 'asc' }],
+      select: { id: true, name: true, tagline: true, currency: true, priceMonthlyCents: true, priceYearlyCents: true, featuresJson: true, highlighted: true },
+    });
+    const [stripeOn, paypalOn] = await Promise.all([this.stripe.isEnabled(), this.paypal.isEnabled()]);
+    return plans.map((p) => ({
+      id: p.id, name: p.name, tagline: p.tagline, currency: p.currency,
+      priceMonthlyCents: p.priceMonthlyCents, priceYearlyCents: p.priceYearlyCents, highlighted: p.highlighted,
+      features: Array.isArray(p.featuresJson) ? (p.featuresJson as string[]) : [],
+      providers: { stripe: stripeOn, paypal: paypalOn },
+    }));
+  }
+
+  /** Super Admin: actually call Stripe/PayPal to confirm the keys work. */
+  async testGateways() {
+    const result: { stripe: string; paypal: string } = { stripe: 'not configured', paypal: 'not configured' };
+    if (await this.stripe.isEnabled()) {
+      try { await this.stripe.ping(); result.stripe = 'ok'; } catch (e) { result.stripe = e instanceof Error ? e.message : 'failed'; }
+    }
+    if (await this.paypal.isEnabled()) {
+      try { await this.paypal.ping(); result.paypal = 'ok'; } catch (e) { result.paypal = e instanceof Error ? e.message : 'failed'; }
+    }
+    return result;
+  }
+
   /** Super Admin: save gateway keys (blank fields are left unchanged). */
   async saveGateways(dto: Record<string, string | undefined>) {
     await this.platform.setMany({

@@ -62,6 +62,12 @@ export class StripeService {
     return stripe.webhooks.constructEvent(rawBody, signature, secret);
   }
 
+  /** Validates the secret key by making a trivial authenticated call. */
+  async ping(): Promise<void> {
+    const stripe = await this.client();
+    await stripe.balance.retrieve();
+  }
+
   async getSubscription(id: string): Promise<Stripe.Subscription> {
     const stripe = await this.client();
     return stripe.subscriptions.retrieve(id);

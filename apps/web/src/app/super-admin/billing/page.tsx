@@ -42,6 +42,16 @@ export default function GatewaysPage() {
   }, [token]);
   useEffect(() => { if (ready && token && user?.role === 'SUPER_ADMIN') load(); }, [ready, token, user, load]);
 
+  async function testNow() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ stripe: string; paypal: string }>('/billing/config/test', { token });
+      const fmt = (v: string) => v === 'ok' ? '✓ working' : v === 'not configured' ? 'not set' : `✗ ${v}`;
+      setMsg(`Test — Stripe: ${fmt(r.stripe)}  ·  PayPal: ${fmt(r.paypal)}`);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Test failed'); }
+    finally { setBusy(false); }
+  }
+
   async function save(body: Record<string, string>) {
     setBusy(true); setErr(null); setMsg(null);
     try {
@@ -67,7 +77,10 @@ export default function GatewaysPage() {
           <h1 style={{ fontSize: 24, margin: 0 }}>Payment gateways</h1>
           <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>Connect Stripe / PayPal so salons can pay you. Money goes to the account these keys belong to.</p>
         </div>
-        <a href="/super-admin/tenants" style={ghost}>← Salons</a>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={testNow} disabled={busy} style={ghost}>Test connection</button>
+          <a href="/super-admin/tenants" style={ghost}>← Salons</a>
+        </div>
       </header>
 
       {err && <Banner color="#fecaca" bg="#7f1d1d">{err}</Banner>}

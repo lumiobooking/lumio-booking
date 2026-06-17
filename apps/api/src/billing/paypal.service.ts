@@ -38,6 +38,11 @@ export class PaypalService {
     return { access: json.access_token, base };
   }
 
+  /** Validates the credentials by fetching an OAuth token. */
+  async ping(): Promise<void> {
+    await this.token();
+  }
+
   /** Create a PayPal product + billing plan from an amount; returns the plan id. */
   async createPlan(params: { name: string; amountCents: number; currency: string; interval: 'month' | 'year' }): Promise<string> {
     const { access, base } = await this.token();

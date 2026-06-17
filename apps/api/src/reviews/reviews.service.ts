@@ -6,6 +6,22 @@ import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
+/** Resolve a 'YYYY-MM' string (or now) to its [start, end) date range + label. */
+function monthRange(month?: string): { start: Date; end: Date; ym: string; label: string } {
+  const now = new Date();
+  let y = now.getFullYear();
+  let m = now.getMonth(); // 0-based
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const [yy, mm] = month.split('-').map(Number);
+    y = yy; m = mm - 1;
+  }
+  const start = new Date(y, m, 1);
+  const end = new Date(y, m + 1, 1);
+  const ym = `${y}-${String(m + 1).padStart(2, '0')}`;
+  const label = start.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  return { start, end, ym, label };
+}
+
 @Injectable()
 export class ReviewsService {
   constructor(
@@ -315,47 +331,104 @@ export class ReviewsService {
 
   // ---------------------------- Admin ----------------------------
 
-  /** Staff leaderboard by reward points, with feedback count + average rating. */
-  async leaderboard(user: AuthenticatedUser) {
+  /**
+   * Staff leaderboard for a given month (default = current month). The lifetime
+   * point *balance* is always shown (that's what gets redeemed), alongside what
+   * each tech earned/sent/was-rated within the selected month.
+   */
+  async leaderboard(user: AuthenticatedUser, month?: string) {
     const tenantId = this.tenantId(user);
+    const { start, end, ym, label } = monthRange(month);
+    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+
     const staff = await this.prisma.staffMember.findMany({
       where: { tenantId },
-      select: { id: true, firstName: true, lastName: true, avatarUrl: true, rewardPoints: true, _count: { select: { feedbacks: true } } },
-      orderBy: { rewardPoints: 'desc' },
+      select: { id: true, firstName: true, lastName: true, avatarUrl: true, rewardPoints: true },
     });
-    // Average rating per staff.
-    const grouped = await this.prisma.feedback.groupBy({ by: ['staffId'], where: { tenantId }, _avg: { rating: true } });
-    const avgById = new Map(grouped.map((g) => [g.staffId, g._avg.rating ?? 0]));
-    // "Sends to Google" per staff — total and last 30 days.
-    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-    const since30 = new Date(Date.now() - 30 * 86400 * 1000);
-    const [sendsTotal, sends30, sendsToday, blockedToday] = await Promise.all([
-      this.prisma.reviewClick.groupBy({ by: ['staffId'], where: { tenantId }, _count: { _all: true } }),
-      this.prisma.reviewClick.groupBy({ by: ['staffId'], where: { tenantId, createdAt: { gte: since30 } }, _count: { _all: true } }),
-      this.prisma.reviewClick.groupBy({ by: ['staffId'], where: { tenantId, createdAt: { gte: startOfDay } }, _count: { _all: true } }),
-      // Today's *rejected* sends (failed a fraud check) — a spike signals farming.
+
+    const inMonth = { gte: start, lt: end };
+    const [earned, sendsM, blockedM, fbM, blockedToday] = await Promise.all([
+      this.prisma.staffRewardTransaction.groupBy({ by: ['staffId'], where: { tenantId, points: { gt: 0 }, createdAt: inMonth }, _sum: { points: true } }),
+      this.prisma.reviewClick.groupBy({ by: ['staffId'], where: { tenantId, createdAt: inMonth }, _count: { _all: true } }),
+      this.prisma.reviewClick.groupBy({ by: ['staffId'], where: { tenantId, counted: false, createdAt: inMonth }, _count: { _all: true } }),
+      this.prisma.feedback.groupBy({ by: ['staffId'], where: { tenantId, createdAt: inMonth }, _avg: { rating: true }, _count: { _all: true } }),
+      // Today's rejected sends — a spike signals self-farming.
       this.prisma.reviewClick.groupBy({ by: ['staffId'], where: { tenantId, counted: false, createdAt: { gte: startOfDay } }, _count: { _all: true } }),
     ]);
-    const cnt = (rows: { staffId: string | null; _count: { _all: number } }[]) =>
-      new Map(rows.map((r) => [r.staffId, r._count._all]));
-    const totalById = cnt(sendsTotal); const m30 = cnt(sends30); const todayById = cnt(sendsToday); const blockedById = cnt(blockedToday);
-    return staff.map((s) => {
-      const rejectedToday = blockedById.get(s.id) ?? 0;
+    const cnt = (rows: { staffId: string | null; _count: { _all: number } }[]) => new Map(rows.map((r) => [r.staffId, r._count._all]));
+    const earnedById = new Map(earned.map((r) => [r.staffId, r._sum.points ?? 0]));
+    const sendsById = cnt(sendsM); const blockedById = cnt(blockedM); const blockedTodayById = cnt(blockedToday);
+    const fbCountById = cnt(fbM);
+    const avgById = new Map(fbM.map((r) => [r.staffId, r._avg.rating ?? 0]));
+
+    const rows = staff.map((s) => {
+      const blockedTodayN = blockedTodayById.get(s.id) ?? 0;
       return {
         id: s.id,
         name: `${s.firstName} ${s.lastName ?? ''}`.trim(),
         avatarUrl: s.avatarUrl,
-        rewardPoints: s.rewardPoints,
-        feedbackCount: s._count.feedbacks,
-        avgRating: Math.round((avgById.get(s.id) ?? 0) * 10) / 10,
-        sendsTotal: totalById.get(s.id) ?? 0,
-        sends30: m30.get(s.id) ?? 0,
-        sendsToday: todayById.get(s.id) ?? 0,
-        rejectedToday,
-        // Anomaly flag: many blocked attempts today = likely self-farming.
-        flagged: rejectedToday >= 5,
+        balance: s.rewardPoints, // lifetime, redeemable
+        earnedMonth: earnedById.get(s.id) ?? 0,
+        sendsMonth: sendsById.get(s.id) ?? 0,
+        blockedMonth: blockedById.get(s.id) ?? 0,
+        feedbackMonth: fbCountById.get(s.id) ?? 0,
+        avgMonth: Math.round((avgById.get(s.id) ?? 0) * 10) / 10,
+        flagged: blockedTodayN >= 5,
       };
+    }).sort((a, b) => b.earnedMonth - a.earnedMonth || b.balance - a.balance);
+
+    return { ym, label, rows };
+  }
+
+  /** Reset one technician's point balance to 0 (logged in the ledger). */
+  async resetStaffPoints(user: AuthenticatedUser, staffId: string) {
+    const tenantId = this.tenantId(user);
+    const staff = await this.prisma.staffMember.findFirst({ where: { id: staffId, tenantId }, select: { rewardPoints: true } });
+    if (!staff) throw new NotFoundException('Staff not found');
+    if (staff.rewardPoints !== 0) {
+      await this.prisma.$transaction([
+        this.prisma.staffMember.update({ where: { id: staffId }, data: { rewardPoints: 0 } }),
+        this.prisma.staffRewardTransaction.create({ data: { tenantId, staffId, points: -staff.rewardPoints, balanceAfter: 0, reason: 'Reset to 0' } }),
+      ]);
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'staff_reward.reset', resourceType: 'staff', resourceId: staffId });
+    return { ok: true };
+  }
+
+  /** Wipe ALL review/reward data for the salon and zero every balance (start fresh). */
+  async wipeAll(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    await this.prisma.$transaction([
+      this.prisma.feedback.deleteMany({ where: { tenantId } }),
+      this.prisma.reviewClick.deleteMany({ where: { tenantId } }),
+      this.prisma.staffRewardTransaction.deleteMany({ where: { tenantId } }),
+      this.prisma.staffMember.updateMany({ where: { tenantId }, data: { rewardPoints: 0 } }),
+    ]);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'review.wipe_all', resourceType: 'tenant', resourceId: tenantId });
+    return { ok: true };
+  }
+
+  /** Delete review/reward data within a date range (e.g. clean up test days). */
+  async cleanupRange(user: AuthenticatedUser, from: string, to: string) {
+    const tenantId = this.tenantId(user);
+    const start = new Date(from); start.setHours(0, 0, 0, 0);
+    const end = new Date(to); end.setHours(23, 59, 59, 999);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) throw new BadRequestException('Invalid date range');
+    const range = { gte: start, lte: end };
+    // Remove the points those transactions granted, then delete the rows.
+    const txns = await this.prisma.staffRewardTransaction.findMany({ where: { tenantId, createdAt: range }, select: { staffId: true, points: true } });
+    const perStaff = new Map<string, number>();
+    for (const t of txns) perStaff.set(t.staffId, (perStaff.get(t.staffId) ?? 0) + t.points);
+    await this.prisma.$transaction(async (tx) => {
+      for (const [sid, sum] of perStaff) {
+        if (sum !== 0) await tx.staffMember.update({ where: { id: sid }, data: { rewardPoints: { decrement: sum } } });
+      }
+      await tx.staffRewardTransaction.deleteMany({ where: { tenantId, createdAt: range } });
+      await tx.feedback.deleteMany({ where: { tenantId, createdAt: range } });
+      await tx.reviewClick.deleteMany({ where: { tenantId, createdAt: range } });
     });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'review.cleanup_range', resourceType: 'tenant', resourceId: tenantId, metadata: { from, to } });
+    return { ok: true, removedTransactions: txns.length };
   }
 
   /** Recent feedback for the salon dashboard. */

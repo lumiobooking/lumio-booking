@@ -8,7 +8,7 @@ import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean }
-interface LeaderRow { id: string; name: string; avatarUrl: string | null; rewardPoints: number; feedbackCount: number; avgRating: number; sendsTotal: number; sends30: number; sendsToday: number; rejectedToday: number; flagged: boolean }
+interface LeaderRow { id: string; name: string; avatarUrl: string | null; balance: number; earnedMonth: number; sendsMonth: number; blockedMonth: number; feedbackMonth: number; avgMonth: number; flagged: boolean }
 interface SendRow { id: string; createdAt: string; counted: boolean; reason: string | null; staff: string; device: string }
 interface FeedbackRow { id: string; rating: number; comment: string | null; createdAt: string; invitedToGoogle: boolean; verified: boolean; staff: { firstName: string; lastName: string | null } | null; customer: { firstName: string; phone: string | null } | null }
 
@@ -20,23 +20,31 @@ function Inner() {
   const { token } = useAuth();
   const [settings, setSettings] = useState<ReviewSettings | null>(null);
   const [board, setBoard] = useState<LeaderRow[]>([]);
+  const [boardLabel, setBoardLabel] = useState('');
+  const [ym, setYm] = useState<string>(currentYm());
   const [feedback, setFeedback] = useState<FeedbackRow[]>([]);
   const [sends, setSends] = useState<SendRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const loadBoard = useCallback(async (m: string) => {
+    if (!token) return;
+    try {
+      const r = await apiFetch<{ ym: string; label: string; rows: LeaderRow[] }>(`/reviews/leaderboard?month=${m}`, { token });
+      setBoard(r.rows); setBoardLabel(r.label);
+    } catch { /* ignore */ }
+  }, [token]);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const [s, b, f, sn] = await Promise.all([
+      const [s, f, sn] = await Promise.all([
         apiFetch<{ review: ReviewSettings }>('/settings', { token }),
-        apiFetch<LeaderRow[]>('/reviews/leaderboard', { token }),
         apiFetch<FeedbackRow[]>('/reviews/feedback', { token }),
         apiFetch<SendRow[]>('/reviews/sends', { token }).catch(() => [] as SendRow[]),
       ]);
       setSettings(s.review);
-      setBoard(b);
       setFeedback(f);
       setSends(sn);
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load'); }
@@ -44,10 +52,31 @@ function Inner() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadBoard(ym); }, [ym, loadBoard]);
 
   async function adjust(id: string, delta: number) {
     const reason = delta < 0 ? (prompt('Redeem reason (e.g. cash bonus, gift)') ?? 'Redeemed') : 'Manual add';
-    try { await apiFetch(`/reviews/staff/${id}/adjust`, { method: 'POST', token, body: { delta, reason } }); await load(); }
+    try { await apiFetch(`/reviews/staff/${id}/adjust`, { method: 'POST', token, body: { delta, reason } }); await loadBoard(ym); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Failed'); }
+  }
+
+  async function resetStaff(id: string, name: string) {
+    if (!confirm(`Reset ${name}'s points to 0? (Their send/feedback history stays.)`)) return;
+    try { await apiFetch(`/reviews/staff/${id}/reset`, { method: 'POST', token }); await loadBoard(ym); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Failed'); }
+  }
+
+  async function wipeAll() {
+    if (!confirm('Delete ALL review & reward data (feedback, Google sends, point history) and reset every balance to 0?\n\nThis is for clearing test data and cannot be undone.')) return;
+    if (!confirm('Final check — wipe the whole salon’s review data now?')) return;
+    try { await apiFetch('/reviews/reset-all', { method: 'POST', token }); await load(); await loadBoard(ym); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Failed'); }
+  }
+
+  async function cleanupRange(from: string, to: string) {
+    if (!from || !to) { setError('Pick both dates for the cleanup range.'); return; }
+    if (!confirm(`Delete review/reward data created from ${from} to ${to}? This cannot be undone.`)) return;
+    try { await apiFetch('/reviews/cleanup', { method: 'POST', token, body: { from, to } }); await load(); await loadBoard(ym); }
     catch (err) { setError(err instanceof Error ? err.message : 'Failed'); }
   }
 
@@ -65,26 +94,43 @@ function Inner() {
 
       {settings && <SettingsCard token={token!} initial={settings} onSaved={load} />}
 
-      <h2 style={{ fontSize: 16, margin: '24px 0 10px' }}>Staff leaderboard</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, margin: '24px 0 10px' }}>
+        <h2 style={{ fontSize: 16, margin: 0 }}>Staff leaderboard</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setYm(shiftYm(ym, -1))} style={monthNavBtn} aria-label="Previous month">‹</button>
+          <span style={{ minWidth: 130, textAlign: 'center', fontWeight: 600, fontSize: 14 }}>{boardLabel || '—'}</span>
+          <button onClick={() => setYm(shiftYm(ym, 1))} disabled={ym >= currentYm()} style={{ ...monthNavBtn, opacity: ym >= currentYm() ? 0.4 : 1 }} aria-label="Next month">›</button>
+          {ym !== currentYm() && <button onClick={() => setYm(currentYm())} style={{ ...miniBtn, marginLeft: 4 }}>This month</button>}
+        </div>
+      </div>
       <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead><tr style={{ background: '#1e293b' }}>
-            <th style={ui.th}>Technician</th><th style={ui.th}>Points</th><th style={ui.th}>Sends (30d)</th><th style={ui.th}>Sends total</th><th style={ui.th}>Feedbacks</th><th style={ui.th}>Avg ★</th><th style={ui.th}>Adjust</th>
+            <th style={{ ...ui.th, width: 44 }}>#</th>
+            <th style={ui.th}>Technician</th>
+            <th style={ui.th} title="Points earned in this month">Earned</th>
+            <th style={ui.th} title="Lifetime balance available to redeem">Balance</th>
+            <th style={ui.th}>Sends</th>
+            <th style={ui.th}>Feedbacks</th>
+            <th style={ui.th}>Avg ★</th>
+            <th style={ui.th}>Manage</th>
           </tr></thead>
           <tbody>
-            {board.length === 0 && <tr><td style={ui.td} colSpan={7}>No staff yet.</td></tr>}
-            {board.map((s) => (
+            {board.length === 0 && <tr><td style={ui.td} colSpan={8}>No staff yet.</td></tr>}
+            {board.map((s, i) => (
               <tr key={s.id} style={{ borderTop: '1px solid #334155' }}>
-                <td style={ui.td}>{s.name}{s.flagged && <span title={`${s.rejectedToday} blocked attempts today — possible self-farming`} style={{ marginLeft: 6, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>⚠ CHECK</span>}</td>
-                <td style={ui.td}><strong style={{ color: '#eab308' }}>{s.rewardPoints}</strong></td>
-                <td style={ui.td}><strong style={{ color: '#22c55e' }}>{s.sends30}</strong>{s.sendsToday ? <span style={{ color: '#64748b', fontSize: 12 }}> · {s.sendsToday} today</span> : null}{s.rejectedToday ? <span style={{ color: '#f97316', fontSize: 12 }}> · {s.rejectedToday} blocked</span> : null}</td>
-                <td style={ui.td}>{s.sendsTotal}</td>
-                <td style={ui.td}>{s.feedbackCount}</td>
-                <td style={ui.td}>{s.avgRating ? `${s.avgRating}★` : '—'}</td>
+                <td style={{ ...ui.td, textAlign: 'center' }}>{s.earnedMonth > 0 ? medal(i) : '—'}</td>
+                <td style={ui.td}>{s.name}{s.flagged && <span title="Many blocked send attempts today — possible self-farming" style={{ marginLeft: 6, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>⚠ CHECK</span>}</td>
+                <td style={ui.td}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: '#64748b', fontSize: 12 }}>pts</span></td>
+                <td style={ui.td}>{s.balance}</td>
+                <td style={ui.td}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {s.blockedMonth} blocked</span> : null}</td>
+                <td style={ui.td}>{s.feedbackMonth}</td>
+                <td style={ui.td}>{s.avgMonth ? `${s.avgMonth}★` : '—'}</td>
                 <td style={ui.td}>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => adjust(s.id, 10)} style={miniBtn}>+10</button>
                     <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: '#ef4444' }}>Redeem 50</button>
+                    <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: '#64748b', color: '#94a3b8' }}>Reset</button>
                   </div>
                 </td>
               </tr>
@@ -92,6 +138,7 @@ function Inner() {
           </tbody>
         </table>
       </div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}><strong>Earned</strong> = points gained in {boardLabel || 'this month'}; <strong>Balance</strong> = lifetime points available to redeem. Switch months with the arrows above.</p>
 
       <h2 style={{ fontSize: 16, margin: '24px 0 10px' }}>Recent feedback</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -136,7 +183,35 @@ function Inner() {
         </table>
         <div style={{ padding: '0 14px 12px' }}><Pager paged={sendsPage} /></div>
       </div>
+
+      <CleanupTools onWipe={wipeAll} onCleanup={cleanupRange} />
     </section>
+  );
+}
+
+function CleanupTools({ onWipe, onCleanup }: { onWipe: () => void; onCleanup: (from: string, to: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  return (
+    <div style={{ marginTop: 24, border: '1px solid #7f1d1d', borderRadius: 12, padding: 16, background: '#1f1416' }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+        {open ? '▾' : '▸'} Cleanup &amp; test data
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px' }}>Use these to clear data you created while testing. <strong style={{ color: '#fca5a5' }}>These permanently delete data and cannot be undone.</strong></p>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <label><span style={ui.label}>From</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
+            <label><span style={ui.label}>To</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
+            <button onClick={() => onCleanup(from, to)} style={{ ...miniBtn, borderColor: '#f97316', color: '#f97316', padding: '9px 14px' }}>Delete in range</button>
+          </div>
+          <button onClick={onWipe} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#b91c1c', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+            Wipe ALL review data &amp; reset every balance
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -302,6 +377,14 @@ const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, bor
 function modeCard(active: boolean): React.CSSProperties {
   return { textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', background: active ? '#312e81' : 'transparent', border: `1px solid ${active ? '#6366f1' : '#334155'}`, color: '#e2e8f0' };
 }
+const monthNavBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 8, border: '1px solid #475569', background: '#1e293b', color: '#e2e8f0', fontSize: 16, cursor: 'pointer', lineHeight: 1 };
+function currentYm(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+function shiftYm(ym: string, delta: number): string {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, (m - 1) + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function medal(rank: number): string { return rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : String(rank + 1); }
 function reasonLabel(r: string | null): React.ReactNode {
   const map: Record<string, { t: string; c: string }> = {
     ok: { t: 'Counted', c: '#22c55e' },

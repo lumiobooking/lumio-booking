@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Ip, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsInt, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -48,8 +48,29 @@ export class ReviewsController {
   // ---- Salon Admin ----
   @Roles(UserRole.SALON_ADMIN)
   @Get('reviews/leaderboard')
-  leaderboard(@CurrentUser() user: AuthenticatedUser) {
-    return this.reviews.leaderboard(user);
+  leaderboard(@CurrentUser() user: AuthenticatedUser, @Query('month') month?: string) {
+    return this.reviews.leaderboard(user, month);
+  }
+
+  /** Reset one technician's point balance to 0. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('reviews/staff/:id/reset')
+  resetStaff(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.reviews.resetStaffPoints(user, id);
+  }
+
+  /** Wipe ALL review/reward data and zero balances (post-testing cleanup). */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('reviews/reset-all')
+  wipeAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.reviews.wipeAll(user);
+  }
+
+  /** Delete review/reward data within a date range. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('reviews/cleanup')
+  cleanup(@CurrentUser() user: AuthenticatedUser, @Body() dto: { from: string; to: string }) {
+    return this.reviews.cleanupRange(user, dto.from, dto.to);
   }
 
   @Roles(UserRole.SALON_ADMIN)

@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Product {
   id: string; name: string; sku: string | null; priceCents: number; discountPercent?: number; currency: string;
@@ -79,6 +79,7 @@ function Inner() {
     products.filter((p) => matchesQuery(`${p.name} ${p.sku ?? ''}`, q)),
     (p) => p.createdAt,
   );
+  const pg = usePaged(visible, 25);
 
   return (
     <section>
@@ -118,7 +119,7 @@ function Inner() {
             </tr></thead>
             <tbody>
               {visible.length === 0 && <tr><td style={ui.td} colSpan={6}>No products in this range.</td></tr>}
-              {visible.map((p) => (
+              {pg.paged.map((p) => (
                 <Fragment key={p.id}>
                   <tr style={{ borderTop: '1px solid #334155' }}>
                     <td style={ui.td}>{p.name}{p.sku ? <span style={{ color: '#64748b', fontSize: 12 }}> · {p.sku}</span> : null}</td>
@@ -150,6 +151,7 @@ function Inner() {
               ))}
             </tbody>
           </table>
+          <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
         </div>
       )}
     </section>

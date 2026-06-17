@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Payment {
   id: string;
@@ -63,6 +63,7 @@ function Inner() {
     (p) => p.createdAt,
   );
   const totalPaid = visible.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
+  const pg = usePaged(visible, 20);
 
   return (
     <section>
@@ -97,7 +98,7 @@ function Inner() {
               {visible.length === 0 && (
                 <tr><td style={ui.td} colSpan={6}>No payments in this range.</td></tr>
               )}
-              {visible.map((p) => (
+              {pg.paged.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid #334155' }}>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString()}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
@@ -111,6 +112,7 @@ function Inner() {
               ))}
             </tbody>
           </table>
+          <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
         </div>
       )}
     </section>

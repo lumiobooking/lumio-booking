@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface NamedRef {
   id: string;
@@ -174,6 +174,7 @@ function BookingsInner() {
     ),
     (b) => b.startTime,
   );
+  const pg = usePaged(visible, 20);
 
   return (
     <section>
@@ -233,7 +234,7 @@ function BookingsInner() {
                   </td>
                 </tr>
               )}
-              {visible.map((b) => (
+              {pg.paged.map((b) => (
                 <tr key={b.id} style={{ borderTop: '1px solid #334155' }}>
                   <td style={ui.td}>{new Date(b.startTime).toLocaleString()}</td>
                   <td style={ui.td}>
@@ -323,6 +324,7 @@ function BookingsInner() {
               ))}
             </tbody>
           </table>
+          <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
         </div>
       )}
     </section>

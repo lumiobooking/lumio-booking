@@ -5,7 +5,7 @@ import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
-import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface NamedRef {
   firstName?: string;
@@ -78,6 +78,7 @@ function Inner() {
     bookings.filter((b) => range.inRange(b.startTime)),
     (b) => b.startTime,
   );
+  const pg = usePaged(visible, 20);
 
   return (
     <section>
@@ -96,7 +97,7 @@ function Inner() {
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
-          {visible.map((b) => (
+          {pg.paged.map((b) => (
             <div
               key={b.id}
               style={{
@@ -139,6 +140,7 @@ function Inner() {
               )}
             </div>
           ))}
+          <Pager paged={pg} />
         </div>
       )}
     </section>

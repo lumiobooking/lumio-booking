@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface ReviewSettings { enabled: boolean; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number }
 interface LeaderRow { id: string; name: string; avatarUrl: string | null; rewardPoints: number; feedbackCount: number; avgRating: number }
@@ -46,6 +47,8 @@ function Inner() {
     catch (err) { setError(err instanceof Error ? err.message : 'Failed'); }
   }
 
+  const fbPage = usePaged(feedback, 20);
+
   if (loading) return <SalonShellLoading />;
 
   return (
@@ -86,7 +89,7 @@ function Inner() {
       <h2 style={{ fontSize: 16, margin: '24px 0 10px' }}>Recent feedback</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {feedback.length === 0 && <p style={{ color: '#94a3b8', fontSize: 14 }}>No feedback yet.</p>}
-        {feedback.map((f) => (
+        {fbPage.paged.map((f) => (
           <div key={f.id} style={{ ...ui.card, padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
               <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: '#334155' }}>{'★'.repeat(5 - f.rating)}</span></span>
@@ -102,6 +105,7 @@ function Inner() {
             {f.comment && <div style={{ fontSize: 14, marginTop: 6, color: '#e2e8f0' }}>“{f.comment}”</div>}
           </div>
         ))}
+        <Pager paged={fbPage} />
       </div>
     </section>
   );

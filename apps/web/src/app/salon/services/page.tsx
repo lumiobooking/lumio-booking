@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Service {
   id: string;
@@ -98,6 +98,7 @@ function ServicesInner() {
       (catFilter === 'all' || (catFilter === 'none' ? !s.categoryId : s.categoryId === catFilter))),
     (s) => s.createdAt,
   );
+  const pg = usePaged(visible, 25);
 
   return (
     <section>
@@ -161,11 +162,12 @@ function ServicesInner() {
                   </td>
                 </tr>
               )}
-              {visible.map((s) => (
+              {pg.paged.map((s) => (
                 <FragmentRow key={s.id} service={s} token={token!} categories={categories} catName={catName} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
               ))}
             </tbody>
           </table>
+          <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
         </div>
       )}
     </section>

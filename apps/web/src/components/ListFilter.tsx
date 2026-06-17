@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Shared list filtering: a date-range bar (quick presets + two date inputs) and
@@ -152,6 +152,70 @@ export function SearchBox({
         >
           ×
         </button>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------------
+ * Pagination — long lists page instead of scrolling forever. Newest is already
+ * first (callers sort with sortNewest), so page 1 always shows the latest rows.
+ * -------------------------------------------------------------------------- */
+
+export interface Paged<T> {
+  paged: T[];
+  page: number;
+  setPage: (p: number) => void;
+  totalPages: number;
+  total: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * Slices an already-sorted array into pages. When the underlying list shrinks
+ * (e.g. the user filters/searches), the page auto-clamps back into range so the
+ * view never ends up on an empty page.
+ */
+export function usePaged<T>(items: T[], pageSize = 20): Paged<T> {
+  const [page, setPage] = useState(1);
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(page, totalPages);
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+  const start = (current - 1) * pageSize;
+  const end = Math.min(start + pageSize, total);
+  return { paged: items.slice(start, end), page: current, setPage, totalPages, total, start, end };
+}
+
+const pagerBtn = (disabled: boolean): React.CSSProperties => ({
+  padding: '7px 14px',
+  borderRadius: 8,
+  border: '1px solid #475569',
+  background: disabled ? 'transparent' : '#1e293b',
+  color: disabled ? '#475569' : '#e2e8f0',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: disabled ? 'default' : 'pointer',
+});
+
+/** Prev / page-indicator / Next bar. Renders nothing when there's only one page. */
+export function Pager({ paged }: { paged: Pick<Paged<unknown>, 'page' | 'totalPages' | 'setPage' | 'total' | 'start' | 'end'> }) {
+  const { page, totalPages, setPage, total, start, end } = paged;
+  if (total === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14 }}>
+      <span style={{ color: '#64748b', fontSize: 12 }}>
+        {total === 0 ? 'No items' : `Showing ${start + 1}–${end} of ${total}`}
+      </span>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button disabled={page <= 1} onClick={() => setPage(page - 1)} style={pagerBtn(page <= 1)}>‹ Prev</button>
+          <span style={{ color: '#94a3b8', fontSize: 13 }}>Page {page} / {totalPages}</span>
+          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} style={pagerBtn(page >= totalPages)}>Next ›</button>
+        </div>
       )}
     </div>
   );

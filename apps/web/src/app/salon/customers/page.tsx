@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
-import { DateRangeBar, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Customer {
   id: string;
@@ -69,6 +69,7 @@ function Inner() {
     }),
     (c) => c.createdAt,
   );
+  const pg = usePaged(filtered, 20);
 
   return (
     <section>
@@ -111,7 +112,7 @@ function Inner() {
               {filtered.length === 0 && (
                 <tr><td style={ui.td} colSpan={7}>No customers found.</td></tr>
               )}
-              {filtered.map((c) => (
+              {pg.paged.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid #334155' }}>
                   <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a></td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.email ?? '—'}</td>
@@ -124,6 +125,7 @@ function Inner() {
               ))}
             </tbody>
           </table>
+          <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
         </div>
       )}
     </section>

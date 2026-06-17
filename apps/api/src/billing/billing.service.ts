@@ -71,15 +71,28 @@ export class BillingService {
     }));
   }
 
-  /** The salon's current subscription dates/status (null if none). */
+  /** Full billing summary for the salon: plan, dates, and manual-access info. */
   async subscriptionStatus(user: AuthenticatedUser) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return null;
-    return this.prisma.subscription.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      select: { status: true, provider: true, interval: true, currentPeriodStart: true, currentPeriodEnd: true, trialEndsAt: true, createdAt: true },
-    });
+    const [tenant, subscription] = await Promise.all([
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { status: true, billingExempt: true, accessUntil: true, plan: { select: { name: true } } },
+      }),
+      this.prisma.subscription.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        select: { status: true, provider: true, interval: true, currentPeriodStart: true, currentPeriodEnd: true, trialEndsAt: true, createdAt: true },
+      }),
+    ]);
+    return {
+      planName: tenant?.plan?.name ?? null,
+      tenantStatus: tenant?.status ?? null,
+      billingExempt: tenant?.billingExempt ?? false,
+      accessUntil: tenant?.accessUntil ?? null,
+      subscription, // null when the salon has never paid (manual/free access)
+    };
   }
 
   /** Super Admin: actually call Stripe/PayPal to confirm the keys work. */

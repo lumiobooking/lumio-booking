@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface OrderItem {
   id: string; kind: 'SERVICE' | 'PRODUCT'; name: string; quantity: number;
@@ -119,6 +119,7 @@ function Inner() {
     (o) => o.createdAt,
   );
   const paidTotal = visible.filter((o) => o.status === 'PAID').reduce((s, o) => s + o.totalCents, 0);
+  const pg = usePaged(visible, 20);
 
   return (
     <section>
@@ -153,7 +154,7 @@ function Inner() {
             </tr></thead>
             <tbody>
               {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>No orders in this range.</td></tr>}
-              {visible.map((o) => (
+              {pg.paged.map((o) => (
                 <Fragment key={o.id}>
                   <tr style={{ borderTop: '1px solid #334155', cursor: 'pointer' }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
                     <td style={ui.td}>#{o.orderNumber}</td>
@@ -192,6 +193,7 @@ function Inner() {
               ))}
             </tbody>
           </table>
+          <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
         </div>
       )}
     </section>

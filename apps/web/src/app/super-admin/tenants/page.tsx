@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest } from '../../../components/ListFilter';
+import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { TimezonePicker } from '../../../components/TimezonePicker';
 
 interface Tenant {
@@ -106,18 +106,20 @@ export default function TenantsPage() {
     }
   }
 
+  // Filter by signup date + search, then newest first. (Computed before the
+  // early returns below so the pagination hook runs on every render.)
+  const visible = sortNewest(
+    tenants.filter((t) => range.inRange(t.createdAt) && matchesQuery(`${t.name} ${t.slug} ${t.contactEmail ?? ''} ${t.status}`, q)),
+    (t) => t.createdAt,
+  );
+  const pg = usePaged(visible, 20);
+
   if (!ready || (token && user?.role === 'SUPER_ADMIN' && loading)) {
     return <Centered>Loading...</Centered>;
   }
   if (!token || user?.role !== 'SUPER_ADMIN') {
     return <Centered>Redirecting...</Centered>;
   }
-
-  // Filter by signup date + search, then newest first.
-  const visible = sortNewest(
-    tenants.filter((t) => range.inRange(t.createdAt) && matchesQuery(`${t.name} ${t.slug} ${t.contactEmail ?? ''} ${t.status}`, q)),
-    (t) => t.createdAt,
-  );
 
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px' }}>
@@ -198,7 +200,7 @@ export default function TenantsPage() {
                 </td>
               </tr>
             )}
-            {visible.map((t) => (
+            {pg.paged.map((t) => (
               <Fragment key={t.id}>
               <tr style={{ borderTop: '1px solid #334155' }}>
                 <td style={td}>{t.name}</td>
@@ -245,6 +247,7 @@ export default function TenantsPage() {
             ))}
           </tbody>
         </table>
+        <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
       </div>
 
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"

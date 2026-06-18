@@ -67,6 +67,15 @@ export class ServicesController {
     return this.servicesService.create(user, dto);
   }
 
+  /** Bulk import a whole menu (categories + services) in one call. */
+  @Post('import')
+  bulkImport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string }> },
+  ) {
+    return this.servicesService.bulkImport(user, dto?.items ?? []);
+  }
+
   @Patch(':id')
   update(
     @CurrentUser() user: AuthenticatedUser,

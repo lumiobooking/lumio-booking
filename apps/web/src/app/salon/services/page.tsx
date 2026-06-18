@@ -41,6 +41,7 @@ function ServicesInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
 
   const load = useCallback(async () => {
@@ -102,11 +103,16 @@ function ServicesInner() {
 
   return (
     <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>Services</h2>
-        <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
-          {showForm ? 'Close' : '+ New service'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>
+            {showImport ? 'Close' : '⇪ Import menu'}
+          </button>
+          <button onClick={() => { setShowForm((s) => !s); setShowImport(false); }} style={ui.primaryBtn}>
+            {showForm ? 'Close' : '+ New service'}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
@@ -115,6 +121,8 @@ function ServicesInner() {
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
+
+      {showImport && <ImportPanel token={token!} onDone={async () => { setShowImport(false); await load(); }} />}
 
       <CategoryManager token={token!} categories={categories} onChanged={load} />
 
@@ -589,4 +597,79 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
 const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };
 function actBtn(bg: string): React.CSSProperties {
   return { padding: '6px 12px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 64 };
+}
+
+// ---- Bulk menu import ------------------------------------------------------
+const IMPORT_EXAMPLE = `# Acrylic
+New Set | 62+ | 60
+Refill | 50 | 45
+
+# Waxing
+Eyebrows | 10+
+Full Legs | 45+ | 40`;
+
+interface ParsedItem { category: string; name: string; priceCents: number; durationMinutes: number; priceFrom: boolean }
+
+/** Parse a pasted menu: "# Category" lines + "Name | price | minutes" rows. */
+function parseMenu(text: string): ParsedItem[] {
+  const items: ParsedItem[] = [];
+  let category = '';
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('#')) { category = line.replace(/^#+/, '').trim(); continue; }
+    const parts = line.split('|').map((p) => p.trim());
+    const name = parts[0];
+    if (!name) continue;
+    const priceStr = parts[1] || '';
+    const priceFrom = priceStr.includes('+');
+    const dollars = parseFloat((priceStr.match(/[\d.]+/) || ['0'])[0]) || 0;
+    const dur = parseInt((((parts[2] || '').match(/\d+/)) || ['30'])[0], 10) || 30;
+    items.push({ category, name, priceCents: Math.round(dollars * 100), durationMinutes: dur, priceFrom });
+  }
+  return items;
+}
+
+function ImportPanel({ token, onDone }: { token: string; onDone: () => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const items = parseMenu(text);
+  const ok = msg?.startsWith('✓');
+
+  async function run() {
+    if (items.length === 0) { setMsg('Paste your menu first.'); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch<{ createdCategories: number; createdServices: number; skipped: number }>(
+        '/services/import', { method: 'POST', token, body: { items } },
+      );
+      setMsg(`✓ Imported ${r.createdServices} services in ${r.createdCategories} new categor${r.createdCategories === 1 ? 'y' : 'ies'} (${r.skipped} skipped).`);
+      setTimeout(onDone, 1000);
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Import failed'); setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>⇪ Import menu</div>
+      <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>
+        Paste your price list below. Start a group with <code style={{ color: '#cbd5e1' }}># Category</code>, then one service per line:
+        {' '}<code style={{ color: '#cbd5e1' }}>Name | price | minutes</code>. A <code style={{ color: '#cbd5e1' }}>+</code> after the price = &ldquo;from&rdquo; pricing; minutes is optional (defaults to 30).
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={12}
+        placeholder={IMPORT_EXAMPLE}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 14, fontFamily: 'ui-monospace, Menlo, monospace', resize: 'vertical' }}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+        <button onClick={run} disabled={busy || items.length === 0} style={ui.primaryBtn}>
+          {busy ? 'Importing…' : `Import ${items.length || ''} service${items.length === 1 ? '' : 's'}`}
+        </button>
+        {items.length > 0 && !msg && <span style={{ color: '#94a3b8', fontSize: 13 }}>{items.length} rows detected — review then import.</span>}
+        {msg && <span style={{ color: ok ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+      </div>
+    </div>
+  );
 }

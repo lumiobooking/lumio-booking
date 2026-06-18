@@ -1,0 +1,90 @@
+# Acrylic
+Acrylic New Set | 62+ | 60
+Acrylic Refill | 50 | 45
+
+# UV Gel
+UV Gel New Set | 62+ | 60
+UV Gel Refill | 50 | 45
+
+# Crystal
+Crystal New Set | 62+ | 60
+Crystal Refill | 50 | 45
+
+# Bio Gel
+Bio Gel New Set | 55+ | 60
+Bio Gel Refill | 48+ | 45
+
+# Shellac
+Shellac Color | 30 | 30
+Shellac French | 37 | 40
+Shellac Manicure | 35 | 40
+Shellac Pedicure | 46 | 50
+Shellac French Manicure | 42 | 45
+Shellac Manicure & Regular Pedicure | 65 | 75
+Shellac Manicure & Shellac Pedicure | 75 | 80
+Shellac Take Off (with Manicure) | 10+ | 30
+
+# Natural Nails
+Manicure | 22 | 30
+Pedicure | 35 | 45
+Pedicure & Manicure | 55 | 75
+
+# Luxury Mani & Pedi
+Luxury Manicure | 45 | 45
+Luxury Pedicure | 65 | 60
+Luxury Mani & Pedi | 95 | 90
+
+# Eyelash Extension
+Single Lash | 80 | 90
+Triple Lash | 95 | 120
+
+# Waxing
+Eyebrows Wax | 10+ | 15
+Upper Lip Wax | 12+ | 10
+Chin Wax | 8+ | 10
+Side of Face Wax | 15+ | 15
+Full Face Wax | 40 | 30
+Back Wax | 45+ | 30
+Full Back Wax | 45+ | 30
+Chest Wax | 35+ | 30
+Stomach Wax | 20+ | 20
+Full Arms Wax | 40+ | 30
+Half Arms Wax | 25 | 20
+Under Arms Wax | 20 | 15
+Fingers Wax | 7 | 10
+Full Legs Wax | 45+ | 40
+Half Legs (Upper) Wax | 30 | 25
+Half Legs (Lower) Wax | 25 | 25
+Full Legs + Bikini Line Wax | 60+ | 45
+Bikini Line Wax | 25+ | 20
+Brazilian Wax | 50+ | 30
+Eyebrows & Lash Tinting | 30+ | 30
+Eyebrows Tinting | 20 | 20
+Eyebrows Tinting & Wax | 30 | 30
+
+# Princess (Under 10)
+Princess Manicure | 22 | 30
+Princess Pedicure | 35 | 40
+Princess Pedicure & Manicure | 55 | 60
+Princess Fingers & Toe Polish | 20 | 30
+
+# Facial
+Mini Facial | 65 | 45
+Refresh Facial | 75 | 60
+
+# Body Massage
+Full Body Massage (1hr) | 85 | 60
+Half Body Massage (30 mins) | 60 | 30
+Hot Stone Massage (30 mins) | 60 | 30
+Hot Stone Massage (1hr) | 85 | 60
+
+# Add-ons
+Colour (add-on) | 30 | 15
+Shellac (add-on) | 30 | 15
+French / Ombre (add-on) | 15 | 15
+Take Off | 20 | 15
+Take Off & Manicure | 35+ | 30
+Nail Repair | 7+ | 10
+Nail Art | 7+ | 10
+Finger Nail Polish | 7+ | 10
+Toe Nail Polish | 30 | 20

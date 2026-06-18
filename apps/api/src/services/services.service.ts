@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -172,6 +172,66 @@ export class ServicesService {
       resourceId: id,
     });
     return { id, deleted: true };
+  }
+
+  /**
+   * Bulk-create a whole menu in one call (used by the in-app "Import menu" tool).
+   * Categories are created on demand (matched by name), services are deduped by
+   * name within the tenant so re-running is safe. Tenant-scoped throughout.
+   */
+  async bulkImport(
+    user: AuthenticatedUser,
+    items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string }>,
+  ) {
+    const tenantId = this.tenantId(user);
+    if (!Array.isArray(items) || items.length === 0) throw new BadRequestException('Nothing to import');
+    if (items.length > 500) throw new BadRequestException('Too many rows (max 500)');
+
+    const [cats, svcs] = await Promise.all([
+      this.prisma.serviceCategory.findMany({ where: { tenantId }, select: { id: true, name: true } }),
+      this.prisma.service.findMany({ where: { tenantId }, select: { name: true } }),
+    ]);
+    const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
+    const have = new Set(svcs.map((s) => s.name.toLowerCase()));
+    let sort = cats.length;
+    let createdCategories = 0, createdServices = 0, skipped = 0;
+    const orderByCat = new Map<string, number>();
+
+    for (const raw of items) {
+      const name = (raw?.name ?? '').trim();
+      if (!name) { skipped++; continue; }
+      if (have.has(name.toLowerCase())) { skipped++; continue; }
+
+      let categoryId: string | null = null;
+      const catName = (raw.category ?? '').trim();
+      if (catName) {
+        const key = catName.toLowerCase();
+        let id = catByName.get(key);
+        if (!id) {
+          const cat = await this.prisma.serviceCategory.create({ data: { tenantId, name: catName.slice(0, 60), sortOrder: sort++ } });
+          id = cat.id; catByName.set(key, id); createdCategories++;
+        }
+        categoryId = id;
+      }
+      const order = orderByCat.get(categoryId ?? '') ?? 0;
+      orderByCat.set(categoryId ?? '', order + 1);
+
+      await this.prisma.service.create({
+        data: {
+          tenantId,
+          name: name.slice(0, 120),
+          description: raw.description?.slice(0, 500) || null,
+          durationMinutes: Math.min(600, Math.max(5, Math.round(Number(raw.durationMinutes) || 30))),
+          priceCents: Math.max(0, Math.round(Number(raw.priceCents) || 0)),
+          priceFrom: !!raw.priceFrom,
+          categoryId, sortOrder: order, isActive: true, currency: 'USD',
+        },
+      });
+      have.add(name.toLowerCase());
+      createdServices++;
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'service.bulk_import', resourceType: 'tenant', resourceId: tenantId, metadata: { createdCategories, createdServices, skipped } });
+    return { createdCategories, createdServices, skipped };
   }
 
   // ---- Service add-ons (extras) ------------------------------------------

@@ -84,6 +84,14 @@ export class SettingsController {
     return this.settings.updateReview(user, dto);
   }
 
+  @Patch('weekday-discounts')
+  updateWeekdayDiscounts(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { enabled?: boolean; message?: string; rules?: Array<{ day: number; categoryId: string | null; percent: number }> },
+  ) {
+    return this.settings.updateWeekdayDiscounts(user, dto);
+  }
+
   // POS settings: retail tax rate + receipt footer.
   @Patch('pos')
   updatePos(

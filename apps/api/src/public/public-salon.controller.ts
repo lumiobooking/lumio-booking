@@ -59,6 +59,7 @@ export class PublicSalonController {
       timezone: tenant.timezone,
       branding: this.settings.brandingFrom(tenant.branding),
       booking: await this.settings.getBookingRules(tenant.id),
+      weekdayDiscounts: await this.settings.getWeekdayDiscounts(tenant.id),
     };
   }
 

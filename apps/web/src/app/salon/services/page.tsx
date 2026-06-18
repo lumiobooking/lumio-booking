@@ -126,6 +126,8 @@ function ServicesInner() {
 
       <CategoryManager token={token!} categories={categories} onChanged={load} />
 
+      <WeekdayDiscountCard token={token!} categories={categories} />
+
       {categories.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
           <FilterChip active={catFilter === 'all'} onClick={() => setCatFilter('all')}>All</FilterChip>
@@ -597,6 +599,82 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
 const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };
 function actBtn(bg: string): React.CSSProperties {
   return { padding: '6px 12px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 64 };
+}
+
+// ---- Weekday auto-discounts ------------------------------------------------
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+interface DiscRule { day: number; categoryId: string | null; percent: number }
+
+function WeekdayDiscountCard({ token, categories }: { token: string; categories: Category[] }) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [message, setMessage] = useState('');
+  const [rules, setRules] = useState<DiscRule[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    apiFetch<{ weekdayDiscounts?: { enabled: boolean; message: string; rules: DiscRule[] } }>('/settings', { token })
+      .then((s) => {
+        const w = s.weekdayDiscounts;
+        if (w) { setEnabled(!!w.enabled); setMessage(w.message || ''); setRules(Array.isArray(w.rules) ? w.rules : []); }
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, [open, loaded, token]);
+
+  function upd(i: number, patch: Partial<DiscRule>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg('✓ Saved'); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+        {open ? '▾' : '▸'} 💸 Weekday auto-discounts
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>Give a % off on quieter weekdays to spread bookings evenly. Shown prominently on the booking page; the discount is applied automatically to the customer&apos;s price.</p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <span style={{ fontSize: 14 }}>Enable weekday discounts</span>
+          </label>
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <span style={ui.label}>Headline shown to customers</span>
+            <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Book on a quieter day and save!" />
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rules.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No rules yet — add one below (e.g. Tuesday · Waxing · 15%).</p>}
+            {rules.map((r, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={r.day} onChange={(e) => upd(i, { day: parseInt(e.target.value, 10) })} style={{ ...ui.input, width: 'auto' }}>
+                  {DOW.map((d, idx) => <option key={idx} value={idx}>{d}</option>)}
+                </select>
+                <select value={r.categoryId ?? ''} onChange={(e) => upd(i, { categoryId: e.target.value || null })} style={{ ...ui.input, width: 'auto' }}>
+                  <option value="">All categories</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 90 }} />
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>% off</span>
+                <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>Remove</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>+ Add rule</button>
+            <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? 'Saving…' : 'Save discounts'}</button>
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---- Bulk menu import ------------------------------------------------------

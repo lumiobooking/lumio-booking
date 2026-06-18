@@ -35,6 +35,10 @@ import {
   REVIEW_SETTINGS_KEY,
   ReviewSettings,
   DEFAULT_REVIEW_SETTINGS,
+  WEEKDAY_DISCOUNTS_KEY,
+  WeekdayDiscounts,
+  WeekdayDiscountRule,
+  DEFAULT_WEEKDAY_DISCOUNTS,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -543,8 +547,32 @@ export class SettingsService {
       pos: await this.getPosSettings(tenantId),
       loyalty: await this.getLoyaltySettings(tenantId),
       review: await this.getReviewSettings(tenantId),
+      weekdayDiscounts: await this.getWeekdayDiscounts(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
+  }
+
+  async getWeekdayDiscounts(tenantId: string): Promise<WeekdayDiscounts> {
+    return this.readKey<WeekdayDiscounts>(tenantId, WEEKDAY_DISCOUNTS_KEY, DEFAULT_WEEKDAY_DISCOUNTS);
+  }
+
+  async updateWeekdayDiscounts(user: AuthenticatedUser, dto: { enabled?: boolean; message?: string; rules?: WeekdayDiscountRule[] }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getWeekdayDiscounts(tenantId);
+    const rules = Array.isArray(dto.rules)
+      ? dto.rules
+          .filter((r) => typeof r?.day === 'number' && r.day >= 0 && r.day <= 6 && typeof r.percent === 'number' && r.percent > 0)
+          .map((r) => ({ day: Math.round(r.day), categoryId: r.categoryId || null, percent: Math.min(90, Math.max(1, Math.round(r.percent))) }))
+          .slice(0, 100)
+      : cur.rules;
+    const next: WeekdayDiscounts = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      message: typeof dto.message === 'string' ? dto.message.slice(0, 160) : cur.message,
+      rules,
+    };
+    await this.writeKey(tenantId, WEEKDAY_DISCOUNTS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.weekday_discounts_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
   }
 
   /**

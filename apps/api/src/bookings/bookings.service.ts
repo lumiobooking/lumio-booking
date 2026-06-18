@@ -106,6 +106,34 @@ export class BookingsService {
     }
   }
 
+  /**
+   * Quiet-day promo: the % off a service gets on the booking's weekday, based on
+   * the tenant's weekday-discount rules (matched by salon-local weekday + the
+   * service's category). Returns 0 when disabled or no rule matches. Read straight
+   * from the settings row to avoid a cross-module dependency.
+   */
+  private async weekdayDiscountPercent(tenantId: string, start: Date, categoryId: string | null): Promise<number> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'weekday_discounts' } } });
+      const cfg = row?.value as { enabled?: boolean; rules?: Array<{ day: number; categoryId: string | null; percent: number }> } | undefined;
+      if (!cfg?.enabled || !Array.isArray(cfg.rules) || cfg.rules.length === 0) return 0;
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+      const tz = tenant?.timezone || 'UTC';
+      const wdName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(start);
+      const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const weekday = map[wdName] ?? start.getDay();
+      let best = 0;
+      for (const r of cfg.rules) {
+        if (r.day !== weekday) continue;
+        if (r.categoryId && r.categoryId !== categoryId) continue;
+        if (r.percent > best) best = r.percent;
+      }
+      return Math.min(90, Math.max(0, best));
+    } catch {
+      return 0;
+    }
+  }
+
   private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto) {
     if (dto.customerEmail) {
       const email = dto.customerEmail.toLowerCase();
@@ -170,10 +198,13 @@ export class BookingsService {
     const addonDuration = addons.reduce((s, a) => s + a.durationMinutes, 0);
     const discountPct = Math.min(90, Math.max(0, service.discountPercent ?? 0));
     const discountedServiceCents = Math.round((service.priceCents * (100 - discountPct)) / 100);
-    const totalPrice = discountedServiceCents + addonPrice;
     const totalDuration = service.durationMinutes + addonDuration;
 
     const start = parseStartTime(dto.startTime);
+    // Weekday auto-discount (quiet-day promo): applied to the service price only.
+    const weekdayPct = await this.weekdayDiscountPercent(tenantId, start, service.categoryId);
+    const afterWeekday = Math.round((discountedServiceCents * (100 - weekdayPct)) / 100);
+    const totalPrice = afterWeekday + addonPrice;
     if (start.getTime() < Date.now()) {
       throw new BadRequestException('startTime is in the past');
     }

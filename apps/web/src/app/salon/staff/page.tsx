@@ -448,7 +448,7 @@ function StaffEditPanel({
 
       {/* Skills */}
       <div>
-        <span style={ui.label}>Skills (services this technician can do)</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>Skills (services this technician can do)</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
         {services.length === 0 ? (
           <p style={{ color: '#94a3b8', fontSize: 13 }}>No services yet.</p>
         ) : (
@@ -594,7 +594,7 @@ function CreateStaffForm({
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <span style={ui.label}>Skills (services this technician can do)</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>Skills (services this technician can do)</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
         {services.length === 0 ? (
           <p style={{ color: '#94a3b8', fontSize: 13 }}>
             No services yet — create services first to assign skills.
@@ -632,5 +632,20 @@ function CreateStaffForm({
         {submitting ? 'Creating...' : 'Create staff'}
       </button>
     </form>
+  );
+}
+
+/** Small "Select all / Clear all" toggle for the skills checkbox grid. */
+function SkillBar({ all, ids, set }: { all: { id: string }[]; ids: string[]; set: (v: string[]) => void }) {
+  if (all.length === 0) return null;
+  const allOn = ids.length >= all.length;
+  return (
+    <button
+      type="button"
+      onClick={() => set(allOn ? [] : all.map((s) => s.id))}
+      style={{ fontSize: 12, padding: '3px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}
+    >
+      {allOn ? 'Clear all' : 'Select all'}
+    </button>
   );
 }

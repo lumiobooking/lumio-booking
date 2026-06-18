@@ -22,6 +22,29 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
   minRedeemPoints: 100,
 };
 
+// Weekday auto-discounts: encourage bookings on quieter days. Each rule applies
+// a % off services in a category (or all categories) on a given weekday. Shown
+// prominently on the booking page and applied to the price the customer pays.
+export const WEEKDAY_DISCOUNTS_KEY = 'weekday_discounts';
+
+export interface WeekdayDiscountRule {
+  day: number; // 0 = Sunday … 6 = Saturday (salon-local weekday)
+  categoryId: string | null; // null = all categories
+  percent: number; // 1–90
+}
+
+export interface WeekdayDiscounts {
+  enabled: boolean;
+  message: string; // optional headline shown on the booking page
+  rules: WeekdayDiscountRule[];
+}
+
+export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
+  enabled: false,
+  message: 'Book on a quieter day and save!',
+  rules: [],
+};
+
 export const REVIEW_SETTINGS_KEY = 'review_settings';
 
 // Review-reward program: customer rates on our page, then is invited to Google.

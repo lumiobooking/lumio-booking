@@ -39,7 +39,44 @@ function fmtMoney(cents: number, r: BookingRules): string {
   return r.symbolPosition === 'after' ? `${n}${s}` : `${s}${n}`;
 }
 
-interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules }
+interface WdRule { day: number; categoryId: string | null; percent: number }
+interface WeekdayDiscounts { enabled: boolean; message: string; rules: WdRule[] }
+interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules; weekdayDiscounts?: WeekdayDiscounts }
+
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Highest weekday-discount % that applies to a (date, category). 0 if none. */
+function weekdayPctFor(wd: WeekdayDiscounts | undefined, date: Date | null, categoryId: string | null | undefined): number {
+  if (!wd?.enabled || !date || !Array.isArray(wd.rules)) return 0;
+  const day = date.getDay();
+  let best = 0;
+  for (const r of wd.rules) {
+    if (r.day !== day) continue;
+    if (r.categoryId && r.categoryId !== categoryId) continue;
+    if (r.percent > best) best = r.percent;
+  }
+  return Math.min(90, Math.max(0, best));
+}
+
+/** Prominent banner listing the salon's quiet-day deals (shown while picking a date). */
+function DealsBanner({ wd, categories }: { wd?: WeekdayDiscounts; categories: { id: string; name: string }[] }) {
+  if (!wd?.enabled || !wd.rules?.length) return null;
+  const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'select services') : 'everything');
+  const sorted = [...wd.rules].sort((a, b) => a.day - b.day || b.percent - a.percent);
+  return (
+    <div style={{ marginBottom: 16, padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7' }}>
+      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 15 }}>💸 {wd.message || 'Save on quieter days!'}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {sorted.map((r, i) => (
+          <span key={i} style={{ background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 13, color: '#065f46', fontWeight: 600 }}>
+            {WEEKDAY_NAMES[r.day]}: −{r.percent}% off {catName(r.categoryId)}
+          </span>
+        ))}
+      </div>
+      <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>Pick a highlighted day below and the discount applies automatically.</div>
+    </div>
+  );
+}
 
 /**
  * Treats the wall-clock digits of `local` (year/month/day/hour/minute) as a time
@@ -105,8 +142,13 @@ export default function PublicBookingPage() {
   const selectedAddons = serviceAddons.filter((a) => addonIds.includes(a.id));
   const serviceNetCents = svcNetCents(service);
   const serviceDiscount = svcDiscount(service);
-  const totalCents = serviceNetCents + selectedAddons.reduce((s, a) => s + a.priceCents, 0);
-  const savingsCents = (service?.priceCents ?? 0) - serviceNetCents;
+  // Quiet-day discount applies on top of any service discount, once a date is picked.
+  const weekdayPct = weekdayPctFor(salon?.weekdayDiscounts, selectedDate, service?.categoryId ?? null);
+  const serviceFinalCents = Math.round((serviceNetCents * (100 - weekdayPct)) / 100);
+  const addonsCents = selectedAddons.reduce((s, a) => s + a.priceCents, 0);
+  const totalCents = serviceFinalCents + addonsCents;
+  const savingsCents = (service?.priceCents ?? 0) + addonsCents - totalCents;
+  const anyDiscount = serviceDiscount > 0 || weekdayPct > 0;
   const totalDuration = (service?.durationMinutes ?? 0) + selectedAddons.reduce((s, a) => s + a.durationMinutes, 0);
   const fmt = (c: number) => fmtMoney(c, rules);
 
@@ -230,10 +272,13 @@ export default function PublicBookingPage() {
 
         <section style={isMobile ? contentMobile : content}>
           {step === 1 && (
-            <StepDateTime rules={rules} selectedDate={selectedDate} slot={slot}
-              onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
-              onPickSlot={setSlot}
-              onContinue={() => slot && setStep(2)} />
+            <>
+              <DealsBanner wd={salon?.weekdayDiscounts} categories={categories} />
+              <StepDateTime rules={rules} selectedDate={selectedDate} slot={slot}
+                onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
+                onPickSlot={setSlot}
+                onContinue={() => slot && setStep(2)} />
+            </>
           )}
 
           {step === 2 && (
@@ -268,17 +313,21 @@ export default function PublicBookingPage() {
               {service && serviceDiscount > 0 && (
                 <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'linear-gradient(90deg,#fee2e2,#fef3c7)', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ background: '#ef4444', color: '#fff', borderRadius: 8, padding: '3px 9px', fontSize: 14, fontWeight: 800 }}>-{serviceDiscount}%</span>
-                  <span style={{ color: '#9a3412', fontSize: 13, fontWeight: 600 }}>
-                    Special offer! You save {fmt(savingsCents)} on {service.name} 🎉
-                  </span>
+                  <span style={{ color: '#9a3412', fontSize: 13, fontWeight: 600 }}>Special offer on {service.name} 🎉</span>
+                </div>
+              )}
+              {service && weekdayPct > 0 && selectedDate && (
+                <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'linear-gradient(90deg,#dcfce7,#d1fae5)', border: '1px solid #6ee7b7', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ background: '#16a34a', color: '#fff', borderRadius: 8, padding: '3px 9px', fontSize: 14, fontWeight: 800 }}>-{weekdayPct}%</span>
+                  <span style={{ color: '#065f46', fontSize: 13, fontWeight: 600 }}>{WEEKDAY_NAMES[selectedDate.getDay()]} deal applied — you save {fmt(savingsCents)} 🎉</span>
                 </div>
               )}
               {service && (
                 <div style={{ marginTop: 12, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14 }}>
                   <span style={{ color: '#64748b' }}>Total ({totalDuration} min)</span>
                   <span>
-                    {serviceDiscount > 0 && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 8 }}>{fmt(service.priceCents + selectedAddons.reduce((s, a) => s + a.priceCents, 0))}</span>}
-                    <strong style={{ color: serviceDiscount > 0 ? '#dc2626' : '#1e293b', fontSize: 16 }}>{fmt(totalCents)}</strong>
+                    {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 8 }}>{fmt(service.priceCents + addonsCents)}</span>}
+                    <strong style={{ color: anyDiscount ? '#dc2626' : '#1e293b', fontSize: 16 }}>{fmt(totalCents)}</strong>
                   </span>
                 </div>
               )}
@@ -449,14 +498,18 @@ function StepTechnician({ rules, staff, avail, slot, durationMinutes, staffId, a
   const overflow = endMins > close;
 
   const loading = avail === null;
+  const noStaff = staff.length === 0; // salon hasn't added any technicians yet
   const eligible = avail ? staff.filter((s) => avail.eligibleStaffIds.includes(s.id)) : [];
   const isBusy = (id: string) => overlaps(checkSlot, avail?.staffBusy[id] ?? []);
   const anyFree = avail ? avail.eligibleStaffIds.some((id) => !isBusy(id)) : false;
 
   const selectedBusy = !!staffId && isBusy(staffId);
-  const canContinue = !loading && !overflow && (allowChoose
-    ? (staffId ? !selectedBusy : anyFree)
-    : anyFree);
+  // With no technicians configured, the salon assigns later — let the customer through.
+  const canContinue = !loading && !overflow && (noStaff
+    ? true
+    : allowChoose
+      ? (staffId ? !selectedBusy : anyFree)
+      : anyFree);
 
   return (
     <StepFrame title="Choose a technician" canContinue={canContinue} onContinue={onContinue} onBack={onBack}>
@@ -472,6 +525,10 @@ function StepTechnician({ rules, staff, avail, slot, durationMinutes, staffId, a
 
       {loading ? (
         <p style={{ color: '#94a3b8', fontSize: 14 }}>Checking availability…</p>
+      ) : noStaff ? (
+        <div style={{ fontSize: 14, color: '#334155', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '12px 14px' }}>
+          The salon will assign a technician for your appointment. Just tap <strong>Continue</strong>.
+        </div>
       ) : eligible.length === 0 ? (
         <p style={{ color: '#94a3b8', fontSize: 14 }}>No technician offers this service yet.</p>
       ) : !allowChoose ? (

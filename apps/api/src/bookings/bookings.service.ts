@@ -20,6 +20,7 @@ import {
   renderTemplatedEmailHtml,
 } from '../notifications/email-template';
 import { SettingsService } from '../settings/settings.service';
+import { PaymentsService } from '../payments/payments.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
@@ -48,6 +49,7 @@ export class BookingsService {
     private readonly assignment: AssignmentService,
     private readonly notifications: NotificationsService,
     private readonly settings: SettingsService,
+    private readonly payments: PaymentsService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -760,8 +762,11 @@ export class BookingsService {
     return this.getById(user, id);
   }
 
-  complete(user: AuthenticatedUser, id: string) {
-    return this.transition(user, id, AppointmentStatus.COMPLETED, 'booking.completed', 'completedAt');
+  async complete(user: AuthenticatedUser, id: string) {
+    const result = await this.transition(user, id, AppointmentStatus.COMPLETED, 'booking.completed', 'completedAt');
+    // Completing a visit means the money was collected — settle payment automatically.
+    await this.payments.settleOnComplete(this.tenantId(user), id, user.userId);
+    return result;
   }
 
   noShow(user: AuthenticatedUser, id: string) {

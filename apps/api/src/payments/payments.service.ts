@@ -130,6 +130,49 @@ export class PaymentsService {
     return this.prisma.payment.findFirst({ where: { id, tenantId } });
   }
 
+  /**
+   * Auto-settle money when a booking is marked Complete (fewer clicks for the salon):
+   *  - already PAID or REFUNDED → leave alone
+   *  - a PENDING payment → mark PAID (+ loyalty)
+   *  - no usable payment → record a PAID "at salon" payment for the booking price
+   *    (+ loyalty), UNLESS a paid POS order already covers this booking.
+   * Never charges No-show/Cancel — those don't call this.
+   */
+  async settleOnComplete(tenantId: string, appointmentId: string, actorUserId: string | null) {
+    const latest = await this.prisma.payment.findFirst({
+      where: { tenantId, appointmentId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, status: true, amountCents: true, appointment: { select: { customerId: true } } },
+    });
+
+    if (latest && (latest.status === PaymentStatus.PAID || latest.status === PaymentStatus.REFUNDED)) return;
+
+    if (latest && latest.status === PaymentStatus.PENDING) {
+      await this.prisma.payment.updateMany({ where: { id: latest.id, tenantId }, data: { status: PaymentStatus.PAID, paidAt: new Date() } });
+      await this.audit.log({ tenantId, userId: actorUserId, action: 'payment.marked_paid', resourceType: 'payment', resourceId: latest.id, metadata: { via: 'complete' } });
+      if (latest.appointment?.customerId) await this.loyalty.award(this.prisma, tenantId, latest.appointment.customerId, latest.amountCents, 'appointment', latest.id);
+      return;
+    }
+
+    // No usable payment (none, or a prior FAILED attempt). Don't double up on a POS sale.
+    const paidOrder = await this.prisma.order.count({ where: { tenantId, appointmentId, status: 'PAID' } });
+    if (paidOrder > 0) return;
+
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: { id: true, priceCents: true, currency: true, customerId: true },
+    });
+    if (!appt) return;
+    const payment = await this.prisma.payment.create({
+      data: {
+        tenantId, appointmentId: appt.id, amountCents: appt.priceCents, currency: appt.currency,
+        type: PaymentType.PAY_LATER, status: PaymentStatus.PAID, provider: this.provider.name, paidAt: new Date(),
+      },
+    });
+    await this.audit.log({ tenantId, userId: actorUserId, action: 'payment.created', resourceType: 'payment', resourceId: payment.id, metadata: { appointmentId: appt.id, status: 'PAID', source: 'complete' } });
+    if (appt.customerId) await this.loyalty.award(this.prisma, tenantId, appt.customerId, appt.priceCents, 'appointment', payment.id);
+  }
+
   /** Permanently delete a payment record (admin cleanup of stray/orphaned rows). */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);

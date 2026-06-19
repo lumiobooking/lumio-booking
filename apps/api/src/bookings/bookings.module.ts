@@ -4,9 +4,10 @@ import { BookingsService } from './bookings.service';
 import { AssignmentModule } from '../assignment/assignment.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
-  imports: [AssignmentModule, NotificationsModule, SettingsModule],
+  imports: [AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule],
   controllers: [BookingsController],
   providers: [BookingsService],
   exports: [BookingsService], // reused by PublicModule (WordPress plugin flow)

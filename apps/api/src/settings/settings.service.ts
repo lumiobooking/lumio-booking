@@ -51,6 +51,20 @@ import {
   UpdatePaymentsDto,
 } from './dto/update-settings.dto';
 
+/**
+ * Returns a usable secret (trimmed) from incoming input, or null when the field
+ * is blank or just the masked UI placeholder (•••• / **** / dots). Used so that
+ * re-saving settings never overwrites a stored secret with the mask, and so
+ * pasted whitespace can't corrupt it (a common cause of Google "invalid_client").
+ */
+function cleanSecret(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  if (!t) return null;
+  if (/^[•*•.\s]+$/.test(t)) return null; // only mask characters
+  return t;
+}
+
 @Injectable()
 export class SettingsService {
   constructor(
@@ -281,9 +295,13 @@ export class SettingsService {
         apiKey: incBrevo.apiKey ? String(incBrevo.apiKey) : cur.brevo.apiKey,
       },
       gmail: {
-        clientId: typeof incGmail.clientId === 'string' ? incGmail.clientId : cur.gmail.clientId,
-        // Blank client secret keeps the stored one.
-        clientSecret: incGmail.clientSecret ? String(incGmail.clientSecret) : cur.gmail.clientSecret,
+        // Trim to defeat copy-paste whitespace/newlines (a common cause of
+        // Google's "invalid_client").
+        clientId: typeof incGmail.clientId === 'string' && incGmail.clientId.trim() ? incGmail.clientId.trim() : cur.gmail.clientId,
+        // A blank OR masked secret (the UI placeholder ••••) keeps the stored
+        // one — so re-saving settings can never overwrite the real secret with
+        // dots. Real values are trimmed.
+        clientSecret: cleanSecret(incGmail.clientSecret) ?? cur.gmail.clientSecret,
         // refreshToken + senderEmail are set only by the OAuth callback.
         refreshToken: cur.gmail.refreshToken,
         senderEmail: cur.gmail.senderEmail,
@@ -397,9 +415,12 @@ export class SettingsService {
           grant_type: 'authorization_code',
         }).toString(),
       });
-      const tokenData = (await tokenRes.json().catch(() => ({}))) as { refresh_token?: string; access_token?: string };
+      const tokenData = (await tokenRes.json().catch(() => ({}))) as { refresh_token?: string; access_token?: string; error?: string };
       if (!tokenRes.ok || !tokenData.refresh_token) {
-        return back('gmail=error&msg=no_refresh_token');
+        // Surface Google's real reason (e.g. invalid_client = wrong secret) instead
+        // of a generic message, so the salon knows exactly what to fix.
+        const why = tokenData.error ? tokenData.error : 'no_refresh_token';
+        return back(`gmail=error&msg=${encodeURIComponent(why)}`);
       }
       let senderEmail = n.gmail.senderEmail;
       if (tokenData.access_token) {

@@ -580,14 +580,24 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     if (p.get('gmail') === 'connected') setGmailMsg('✓ Gmail connected! Click “Send test email” to confirm.');
-    else if (p.get('gmail') === 'error') setGmailMsg(`Gmail connect failed (${p.get('msg') || 'unknown'}). Re-check Client ID/secret and that the redirect URI is added in Google.`);
+    else if (p.get('gmail') === 'error') {
+      const why = p.get('msg') || 'unknown';
+      const friendly = why === 'invalid_client'
+        ? 'Google rejected the Client secret. Re-copy the GOCSPX-… secret from the SAME OAuth client as your Client ID (no spaces), paste it, Save, then Reconnect.'
+        : why === 'redirect_uri_mismatch'
+          ? 'The redirect URI is not added in Google. Copy the URI above into your OAuth client’s “Authorized redirect URIs”, then Reconnect.'
+          : why === 'missing_client'
+            ? 'Enter your Client ID and Client secret first, then Reconnect.'
+            : 'Re-check the Client ID/secret and that the redirect URI is added in Google, then Reconnect.';
+      setGmailMsg(`Gmail connect failed (${why}). ${friendly}`);
+    }
   }, []);
 
   const connectGmail = async () => {
     setGmailMsg(null);
     try {
       // Save Client ID/secret first so the server can build the consent URL.
-      await apiFetch('/settings/notifications', { method: 'PATCH', token, body: { mailService: 'gmail', gmail: { clientId: gmail.clientId, clientSecret: gmail.clientSecret || undefined } } });
+      await apiFetch('/settings/notifications', { method: 'PATCH', token, body: { mailService: 'gmail', gmail: { clientId: gmail.clientId.trim(), clientSecret: gmail.clientSecret.trim() || undefined } } });
       const r = await apiFetch<{ url: string }>('/settings/gmail/auth-url', { token });
       window.location.href = r.url;
     } catch (e) {

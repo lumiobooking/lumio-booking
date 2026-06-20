@@ -37,6 +37,7 @@ interface SettingsData {
   };
   pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
+  reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   gmailRedirectUri?: string;
 }
 
@@ -62,6 +63,7 @@ const SECTIONS = [
   { id: 'rules', label: 'Booking rules', icon: '⚙️', desc: 'Slots & limits' },
   { id: 'payments', label: 'Payments', icon: '💳', desc: 'Currency & methods' },
   { id: 'notifications', label: 'Notifications', icon: '🔔', desc: 'Email & SMS alerts' },
+  { id: 'reminders', label: 'Reminders', icon: '⏰', desc: 'Auto no-show reminders' },
   { id: 'branding', label: 'Branding', icon: '🎨', desc: 'Colors & logo' },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]['id'];
@@ -143,6 +145,7 @@ function Inner() {
           {tab === 'rules' && <RulesSection data={data} onSave={save} />}
           {tab === 'payments' && <PaymentsSection data={data} onSave={save} />}
           {tab === 'notifications' && <NotificationsSection data={data} onSave={save} />}
+          {tab === 'reminders' && <RemindersSection data={data} onSave={save} />}
           {tab === 'branding' && <BrandingSection data={data} onSave={save} />}
         </div>
       </div>
@@ -542,6 +545,28 @@ function LoyaltyConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn })
         Save loyalty
       </button>
     </div>
+  );
+}
+
+function RemindersSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const r = data.reminders ?? { enabled: false, hoursBefore1: 24, hoursBefore2: 3, channelEmail: true, channelSms: true };
+  const [f, setF] = useState(r);
+  return (
+    <Card title="Appointment reminders" desc="Automatically remind customers before their visit to cut no-shows. Off by default — turn on once your email/SMS is set up (Notifications tab).">
+      <Toggle on={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label="Send automatic reminders" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
+        <Field label="First reminder — hours before"><input style={ui.input} type="number" min={1} max={168} value={f.hoursBefore1} onChange={(e) => setF({ ...f, hoursBefore1: parseInt(e.target.value, 10) || 0 })} /></Field>
+        <Field label="Second reminder — hours before (0 = off)"><input style={ui.input} type="number" min={0} max={48} value={f.hoursBefore2} onChange={(e) => setF({ ...f, hoursBefore2: parseInt(e.target.value, 10) || 0 })} /></Field>
+      </div>
+      <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
+        <Toggle on={f.channelEmail} onChange={(v) => setF({ ...f, channelEmail: v })} label="By email" />
+        <Toggle on={f.channelSms} onChange={(v) => setF({ ...f, channelSms: v })} label="By SMS" />
+      </div>
+      <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>
+        Email uses your configured email; SMS requires Twilio connected (Notifications tab). Each reminder is sent once. Tip: 24h + ~3h before works best.
+      </p>
+      <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={() => onSave('reminders', f, 'Reminders')}>Save reminders</button>
+    </Card>
   );
 }
 

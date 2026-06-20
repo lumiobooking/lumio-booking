@@ -20,6 +20,7 @@ import {
   renderTemplatedEmailHtml,
 } from '../notifications/email-template';
 import { SettingsService } from '../settings/settings.service';
+import { ReminderSettings } from '../settings/settings.constants';
 import { PaymentsService } from '../payments/payments.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -440,6 +441,99 @@ export class BookingsService {
    * template). Fire-and-forget; safe no-op when the staff has no email or the
    * template is disabled. Uses the salon's SMTP connection.
    */
+  /**
+   * Scan upcoming appointments and send any due automated reminders (no-show
+   * reduction). Safe to call repeatedly: each window's reminder fires at most
+   * once (guarded by remind1SentAt / remind2SentAt). Only runs for salons that
+   * have turned reminders ON. Called on an interval by ReminderService.
+   */
+  async processDueReminders(): Promise<{ sent: number }> {
+    const now = new Date();
+    const maxAhead = new Date(now.getTime() + 26 * 3600 * 1000);
+    const appts = await this.prisma.appointment.findMany({
+      where: {
+        status: { in: [AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.PENDING] },
+        startTime: { gt: now, lt: maxAhead },
+        OR: [{ remind1SentAt: null }, { remind2SentAt: null }],
+      },
+      include: {
+        customer: { select: { firstName: true, email: true, phone: true } },
+        service: { select: { name: true } },
+        assignedStaff: { select: { firstName: true, lastName: true } },
+      },
+      take: 300,
+    });
+    if (appts.length === 0) return { sent: 0 };
+
+    const cache = new Map<string, ReminderSettings>();
+    let sent = 0;
+    for (const a of appts) {
+      let rs = cache.get(a.tenantId);
+      if (!rs) { rs = await this.settings.getReminderSettings(a.tenantId); cache.set(a.tenantId, rs); }
+      if (!rs.enabled) continue;
+      const hoursToStart = (a.startTime.getTime() - now.getTime()) / 3_600_000;
+      // Earlier reminder: between the two windows (so a last-minute booking gets
+      // only the later one, not both at once).
+      if (!a.remind1SentAt && rs.hoursBefore1 > 0 && hoursToStart <= rs.hoursBefore1 && hoursToStart > rs.hoursBefore2) {
+        await this.sendReminderFor(a.tenantId, a, rs).catch(() => undefined);
+        await this.prisma.appointment.update({ where: { id: a.id }, data: { remind1SentAt: new Date() } });
+        sent++;
+      } else if (!a.remind2SentAt && rs.hoursBefore2 > 0 && hoursToStart <= rs.hoursBefore2) {
+        await this.sendReminderFor(a.tenantId, a, rs).catch(() => undefined);
+        await this.prisma.appointment.update({ where: { id: a.id }, data: { remind2SentAt: new Date() } });
+        sent++;
+      }
+    }
+    return { sent };
+  }
+
+  /** Send a single reminder (email + SMS, per the salon's reminder channels). */
+  private async sendReminderFor(
+    tenantId: string,
+    appt: { id: string; startTime: Date; customer: { firstName: string | null; email: string | null; phone: string | null } | null; service: { name: string } | null },
+    rs: ReminderSettings,
+  ) {
+    const custEmail = appt.customer?.email;
+    const custPhone = appt.customer?.phone;
+    if (!custEmail && !custPhone) return;
+    const n = await this.settings.getNotificationSettings(tenantId);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true, contactPhone: true, timezone: true } });
+    const tz = tenant?.timezone || 'America/New_York';
+    const fmtT = (dd: Date) => dd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    const fmtD = (dd: Date) => dd.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', timeZone: tz });
+    const salon = tenant?.name ?? 'Our salon';
+    const cust = appt.customer?.firstName ?? 'there';
+    const svc = appt.service?.name ?? 'your appointment';
+    const when = `${fmtD(appt.startTime)} at ${fmtT(appt.startTime)}`;
+    const contact = tenant?.contactPhone || tenant?.contactEmail || '';
+    const subject = `Reminder: your ${svc} at ${salon} — ${when}`;
+    const text = `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}.` + (contact ? ` Need to reschedule or cancel? Call ${contact}.` : '') + ' See you soon!';
+    const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>` + (contact ? `<p>Need to reschedule or cancel? Please call ${contact}.</p>` : '') + '<p>See you soon! 💅</p>';
+    const smsText = `${salon}: reminder — ${svc} on ${when}.` + (contact ? ` Change? ${contact}` : '');
+
+    const senderName = n.senderName || salon;
+    const replyTo = n.replyTo || n.senderEmail || undefined;
+    const smtp = n.smtp.user && n.smtp.pass
+      ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
+      : undefined;
+    const brevo = n.brevo.apiKey && n.senderEmail
+      ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || senderName }
+      : undefined;
+    const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+      ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+      : undefined;
+    const related = { relatedType: 'appointment', relatedId: appt.id };
+
+    const jobs: Promise<unknown>[] = [];
+    if (rs.channelEmail && custEmail) {
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text, html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
+    }
+    if (rs.channelSms && custPhone) {
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, ...related }));
+    }
+    await Promise.allSettled(jobs);
+  }
+
   private async sendStaffAssignmentEmail(tenantId: string, appointmentId: string) {
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, tenantId },

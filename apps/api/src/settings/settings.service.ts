@@ -39,6 +39,9 @@ import {
   WeekdayDiscounts,
   WeekdayDiscountRule,
   DEFAULT_WEEKDAY_DISCOUNTS,
+  REMINDER_SETTINGS_KEY,
+  ReminderSettings,
+  DEFAULT_REMINDER_SETTINGS,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -569,8 +572,29 @@ export class SettingsService {
       loyalty: await this.getLoyaltySettings(tenantId),
       review: await this.getReviewSettings(tenantId),
       weekdayDiscounts: await this.getWeekdayDiscounts(tenantId),
+      reminders: await this.getReminderSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
+  }
+
+  async getReminderSettings(tenantId: string): Promise<ReminderSettings> {
+    return this.readKey<ReminderSettings>(tenantId, REMINDER_SETTINGS_KEY, DEFAULT_REMINDER_SETTINGS);
+  }
+
+  async updateReminderSettings(user: AuthenticatedUser, dto: { enabled?: boolean; hoursBefore1?: number; hoursBefore2?: number; channelEmail?: boolean; channelSms?: boolean }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getReminderSettings(tenantId);
+    const clampH = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 && v <= 168 ? Math.round(v) : d);
+    const next: ReminderSettings = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      hoursBefore1: clampH(dto.hoursBefore1, cur.hoursBefore1 ?? 24),
+      hoursBefore2: clampH(dto.hoursBefore2, cur.hoursBefore2 ?? 3),
+      channelEmail: typeof dto.channelEmail === 'boolean' ? dto.channelEmail : (cur.channelEmail ?? true),
+      channelSms: typeof dto.channelSms === 'boolean' ? dto.channelSms : (cur.channelSms ?? true),
+    };
+    await this.writeKey(tenantId, REMINDER_SETTINGS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.reminders_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
   }
 
   async getWeekdayDiscounts(tenantId: string): Promise<WeekdayDiscounts> {

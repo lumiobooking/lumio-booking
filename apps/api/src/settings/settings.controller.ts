@@ -84,6 +84,14 @@ export class SettingsController {
     return this.settings.updateReview(user, dto);
   }
 
+  @Patch('reminders')
+  updateReminders(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { enabled?: boolean; hoursBefore1?: number; hoursBefore2?: number; channelEmail?: boolean; channelSms?: boolean },
+  ) {
+    return this.settings.updateReminderSettings(user, dto);
+  }
+
   @Patch('weekday-discounts')
   updateWeekdayDiscounts(
     @CurrentUser() user: AuthenticatedUser,

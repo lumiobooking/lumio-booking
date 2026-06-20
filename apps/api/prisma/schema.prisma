@@ -666,6 +666,11 @@ model Appointment {
   cancelledAt DateTime?
   completedAt DateTime?
 
+  // No-show reduction: timestamps so each automated reminder fires at most once.
+  remind1SentAt DateTime? // earlier reminder (e.g. 24h before) sent
+  remind2SentAt DateTime? // later reminder (e.g. ~2-3h before) sent
+  customerConfirmedAt DateTime? // customer tapped "Confirm" in a reminder
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

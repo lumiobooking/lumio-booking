@@ -45,6 +45,26 @@ export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
   rules: [],
 };
 
+// Automated appointment reminders (no-show reduction). OFF by default so a salon
+// must opt in before any message is sent.
+export const REMINDER_SETTINGS_KEY = 'reminder_settings';
+
+export interface ReminderSettings {
+  enabled: boolean;
+  hoursBefore1: number; // earlier reminder, e.g. 24 (0 = off)
+  hoursBefore2: number; // later reminder, e.g. 3 (0 = off)
+  channelEmail: boolean;
+  channelSms: boolean;
+}
+
+export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
+  enabled: false,
+  hoursBefore1: 24,
+  hoursBefore2: 3,
+  channelEmail: true,
+  channelSms: true,
+};
+
 export const REVIEW_SETTINGS_KEY = 'review_settings';
 
 // Review-reward program: customer rates on our page, then is invited to Google.

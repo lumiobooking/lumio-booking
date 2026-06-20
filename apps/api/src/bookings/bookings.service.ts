@@ -5,6 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
+import { createHmac } from 'crypto';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -506,10 +507,15 @@ export class BookingsService {
     const svc = appt.service?.name ?? 'your appointment';
     const when = `${fmtD(appt.startTime)} at ${fmtT(appt.startTime)}`;
     const contact = tenant?.contactPhone || tenant?.contactEmail || '';
+    // One-tap self-service link (Confirm / Cancel) — no login needed.
+    const webBase = (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
+    const actionUrl = `${webBase}/appt/${this.apptToken(appt.id)}`;
     const subject = `Reminder: your ${svc} at ${salon} — ${when}`;
-    const text = `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}.` + (contact ? ` Need to reschedule or cancel? Call ${contact}.` : '') + ' See you soon!';
-    const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>` + (contact ? `<p>Need to reschedule or cancel? Please call ${contact}.</p>` : '') + '<p>See you soon! 💅</p>';
-    const smsText = `${salon}: reminder — ${svc} on ${when}.` + (contact ? ` Change? ${contact}` : '');
+    const text = `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}. Confirm or cancel: ${actionUrl}` + (contact ? ` — or call ${contact}.` : '') + ' See you soon!';
+    const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>`
+      + `<p style="margin:18px 0"><a href="${actionUrl}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;margin-right:8px">✓ Confirm</a> <a href="${actionUrl}" style="background:#fff;color:#dc2626;border:1px solid #dc2626;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Can't make it?</a></p>`
+      + (contact ? `<p style="color:#64748b;font-size:13px">Or call us at ${contact}.</p>` : '') + '<p>See you soon! 💅</p>';
+    const smsText = `${salon}: reminder — ${svc} on ${when}. Confirm/cancel: ${actionUrl}`;
 
     const senderName = n.senderName || salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;
@@ -852,7 +858,12 @@ export class BookingsService {
    */
   async cancel(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    await this.getById(user, id);
+    await this.getById(user, id); // enforces tenant ownership / 404
+    return this.cancelForTenant(tenantId, id, user.userId);
+  }
+
+  /** Cancel + settle money, scoped to a tenant (admin or token-based customer cancel). */
+  async cancelForTenant(tenantId: string, id: string, actorUserId: string | null) {
     await this.prisma.$transaction(async (tx) => {
       await tx.appointment.updateMany({
         where: { id, tenantId },
@@ -867,14 +878,78 @@ export class BookingsService {
         data: { status: PaymentStatus.FAILED },
       });
     });
-    await this.audit.log({
-      tenantId,
-      userId: user.userId,
-      action: 'booking.cancelled',
-      resourceType: 'appointment',
-      resourceId: id,
+    await this.audit.log({ tenantId, userId: actorUserId, action: 'booking.cancelled', resourceType: 'appointment', resourceId: id });
+    return this.prisma.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+  }
+
+  // ---- Customer self-service via signed reminder links (no login) ----------
+
+  private apptToken(appointmentId: string): string {
+    const payload = Buffer.from(JSON.stringify({ a: appointmentId, exp: Date.now() + 30 * 86400 * 1000 })).toString('base64url');
+    const sig = createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    return `${payload}.${sig}`;
+  }
+
+  private verifyApptToken(token: string): string | null {
+    const [payload, sig] = (token || '').split('.');
+    if (!payload || !sig) return null;
+    const expect = createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    if (sig !== expect) return null;
+    try {
+      const d = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { a: string; exp: number };
+      if (!d.exp || Date.now() > d.exp) return null;
+      return d.a;
+    } catch {
+      return null;
+    }
+  }
+
+  private static readonly ACTIONABLE = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED];
+
+  /** Appointment summary for the customer self-service page (token-authenticated). */
+  async apptSummaryByToken(token: string) {
+    const id = this.verifyApptToken(token);
+    if (!id) throw new NotFoundException('This link has expired or is invalid.');
+    const a = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: { service: { select: { name: true } }, tenant: { select: { name: true, slug: true, timezone: true, branding: true } }, customer: { select: { firstName: true } } },
     });
-    return this.getById(user, id);
+    if (!a) throw new NotFoundException('Appointment not found');
+    const tz = a.tenant?.timezone || 'America/New_York';
+    return {
+      salon: a.tenant?.name ?? 'Our salon',
+      slug: a.tenant?.slug ?? '',
+      service: a.service?.name ?? 'your appointment',
+      customer: a.customer?.firstName ?? 'there',
+      date: a.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz }),
+      time: a.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }),
+      status: a.status,
+      confirmed: !!a.customerConfirmedAt,
+      canAct: BookingsService.ACTIONABLE.includes(a.status),
+    };
+  }
+
+  /** Customer taps "Confirm" in a reminder. */
+  async confirmByToken(token: string) {
+    const id = this.verifyApptToken(token);
+    if (!id) throw new NotFoundException('This link has expired or is invalid.');
+    const a = await this.prisma.appointment.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true } });
+    if (!a) throw new NotFoundException('Appointment not found');
+    if (!BookingsService.ACTIONABLE.includes(a.status)) return { ok: false, status: a.status };
+    await this.prisma.appointment.update({ where: { id }, data: { customerConfirmedAt: new Date(), status: AppointmentStatus.CONFIRMED, confirmedAt: new Date() } });
+    await this.audit.log({ tenantId: a.tenantId, userId: null, action: 'booking.customer_confirmed', resourceType: 'appointment', resourceId: id });
+    return { ok: true, status: AppointmentStatus.CONFIRMED };
+  }
+
+  /** Customer taps "Cancel" in a reminder. */
+  async cancelByToken(token: string) {
+    const id = this.verifyApptToken(token);
+    if (!id) throw new NotFoundException('This link has expired or is invalid.');
+    const a = await this.prisma.appointment.findUnique({ where: { id }, select: { id: true, tenantId: true, status: true } });
+    if (!a) throw new NotFoundException('Appointment not found');
+    if (!BookingsService.ACTIONABLE.includes(a.status)) return { ok: false, status: a.status };
+    await this.cancelForTenant(a.tenantId, id, null);
+    return { ok: true, status: AppointmentStatus.CANCELLED };
   }
 
   async complete(user: AuthenticatedUser, id: string) {

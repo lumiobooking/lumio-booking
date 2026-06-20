@@ -208,6 +208,7 @@ model Tenant {
   feedbacks         Feedback[]
   staffRewardTransactions StaffRewardTransaction[]
   reviewClicks      ReviewClick[]
+  waitlistEntries   WaitlistEntry[]
   products          Product[]
   orders            Order[]
   orderItems        OrderItem[]
@@ -364,6 +365,7 @@ model Service {
   staffServices StaffService[]
   appointments  Appointment[]
   addons        ServiceAddon[]
+  waitlistEntries WaitlistEntry[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -544,6 +546,38 @@ model ReviewClick {
   @@index([tenantId, staffId])
   @@index([tenantId, staffId, createdAt])
   @@map("review_clicks")
+}
+
+enum WaitlistStatus {
+  WAITING // still hoping for a slot
+  NOTIFIED // salon told them a slot opened
+  CONVERTED // turned into a booking
+  CANCELLED // no longer interested / removed
+}
+
+/// A customer waiting for a slot. When a booking is cancelled the salon can
+/// notify matching entries to fill the gap (and win back demand).
+model WaitlistEntry {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  customerName  String
+  phone         String?
+  email         String?
+  preferredDate String? // 'YYYY-MM-DD' the customer would like (optional)
+  note          String?
+  status        WaitlistStatus @default(WAITING)
+
+  createdAt  DateTime  @default(now())
+  notifiedAt DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("waitlist_entries")
 }
 
 /// Weekly recurring working hours for a staff member.

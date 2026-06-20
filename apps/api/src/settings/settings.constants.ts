@@ -45,6 +45,34 @@ export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
   rules: [],
 };
 
+// Deposit-to-hold-the-slot (no-show deterrent). OFF by default. The deposit is
+// taken as a partial online payment at booking time, kept on no-show, refunded
+// on cancel, and credited toward the final bill at checkout. It runs on the
+// PaymentProvider abstraction, so adding a real gateway later "just works".
+export const DEPOSIT_SETTINGS_KEY = 'deposit_settings';
+
+export interface DepositSettings {
+  enabled: boolean;
+  type: 'percent' | 'fixed';
+  percent: number; // when type=percent (1–100)
+  fixedCents: number; // when type=fixed
+  // Who must pay a deposit:
+  //  'all'           = every online booking
+  //  'new'           = customers with no prior completed visit
+  //  'repeat_noshow' = customers at/above the no-show threshold
+  scope: 'all' | 'new' | 'repeat_noshow';
+  noShowThreshold: number; // used when scope = repeat_noshow
+}
+
+export const DEFAULT_DEPOSIT_SETTINGS: DepositSettings = {
+  enabled: false,
+  type: 'percent',
+  percent: 30,
+  fixedCents: 1000,
+  scope: 'all',
+  noShowThreshold: 2,
+};
+
 // Automated appointment reminders (no-show reduction). OFF by default so a salon
 // must opt in before any message is sent.
 export const REMINDER_SETTINGS_KEY = 'reminder_settings';

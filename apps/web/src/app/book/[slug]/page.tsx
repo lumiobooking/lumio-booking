@@ -41,7 +41,8 @@ function fmtMoney(cents: number, r: BookingRules): string {
 
 interface WdRule { day: number; categoryId: string | null; percent: number }
 interface WeekdayDiscounts { enabled: boolean; message: string; rules: WdRule[] }
-interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules; weekdayDiscounts?: WeekdayDiscounts }
+interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
+interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules; weekdayDiscounts?: WeekdayDiscounts; deposit?: DepositPolicy }
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -57,6 +58,61 @@ function weekdayPctFor(wd: WeekdayDiscounts | undefined, date: Date | null, cate
   }
   return Math.min(90, Math.max(0, best));
 }
+
+/** "Can't find a time? Join the waitlist" — captures contact so the salon can
+ *  invite the customer when a slot frees up. */
+function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: string; preferredDate: Date | null; serviceId?: string; fmtAccent: string }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ customerName: '', phone: '', email: '' });
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!f.customerName.trim() || (!f.phone.trim() && !f.email.trim())) { setErr('Please enter your name and a phone or email.'); return; }
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`${base}/waitlist`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerName: f.customerName, phone: f.phone || undefined, email: f.email || undefined, preferredDate: preferredDate ? ymd(preferredDate) : undefined, serviceId: serviceId || undefined }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || 'Could not join'); }
+      setDone(true);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not join'); }
+    finally { setBusy(false); }
+  }
+
+  if (done) return (
+    <div style={{ marginTop: 12, background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 12, padding: '12px 14px', color: '#065f46', fontSize: 14, textAlign: 'center' }}>
+      ✓ You&apos;re on the waitlist! We&apos;ll reach out if a spot opens up.
+    </div>
+  );
+
+  return (
+    <div style={{ marginTop: 12, border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', color: fmtAccent, fontSize: 14, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+          Can&apos;t find a time? Join the waitlist →
+        </button>
+      ) : (
+        <div>
+          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Join the waitlist</div>
+          <p style={{ color: '#64748b', fontSize: 13, margin: '0 0 10px' }}>Leave your contact and we&apos;ll let you know the moment a spot opens{preferredDate ? ` around ${preferredDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}.</p>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <input placeholder="Your name" value={f.customerName} onChange={(e) => setF({ ...f, customerName: e.target.value })} style={wlInput} />
+            <input placeholder="Phone" value={f.phone} inputMode="tel" onChange={(e) => setF({ ...f, phone: e.target.value })} style={wlInput} />
+            <input placeholder="Email (optional)" value={f.email} type="email" onChange={(e) => setF({ ...f, email: e.target.value })} style={wlInput} />
+          </div>
+          {err && <p style={{ color: '#dc2626', fontSize: 13, margin: '8px 0 0' }}>{err}</p>}
+          <button onClick={submit} disabled={busy} style={{ marginTop: 10, width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: fmtAccent, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+            {busy ? 'Joining…' : 'Join waitlist'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+const wlInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', color: '#1e293b', fontSize: 14 };
 
 /** Prominent banner listing the salon's quiet-day deals (shown while picking a date). */
 function DealsBanner({ wd, categories }: { wd?: WeekdayDiscounts; categories: { id: string; name: string }[] }) {
@@ -167,6 +223,13 @@ export default function PublicBookingPage() {
   const anyDiscount = serviceDiscount > 0 || weekdayPct > 0 || extrasFull > extrasCents;
   const totalDuration = (service?.durationMinutes ?? 0) + selectedAddons.reduce((s, a) => s + a.durationMinutes, 0) + extrasDuration;
   const fmt = (c: number) => fmtMoney(c, rules);
+
+  // Deposit shown on the payment step (display only; the server computes & takes
+  // the authoritative deposit, including for new/repeat-no-show scopes it can't know here).
+  const dep = salon?.deposit;
+  const depositCents = dep?.enabled && dep.scope === 'all' && service && totalCents > 0
+    ? Math.min(totalCents, dep.type === 'fixed' ? dep.fixedCents : Math.round((totalCents * dep.percent) / 100))
+    : 0;
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError(null);
@@ -309,6 +372,7 @@ export default function PublicBookingPage() {
                 onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                 onPickSlot={setSlot}
                 onContinue={() => slot && setStep(2)} />
+              <WaitlistCta base={base} preferredDate={selectedDate} serviceId={serviceId || undefined} fmtAccent={accent} />
             </>
           )}
 
@@ -420,7 +484,7 @@ export default function PublicBookingPage() {
           })()}
 
           {step === 5 && service && slot && (
-            <StepPayment service={service} employee={employee} slot={slot} addons={paymentItems} totalCents={totalCents}
+            <StepPayment service={service} employee={employee} slot={slot} addons={paymentItems} totalCents={totalCents} depositCents={depositCents}
               fmt={fmt} onlineEnabled={rules.onlinePaymentEnabled} payLaterEnabled={rules.payLaterEnabled}
               paymentType={paymentType} setPaymentType={setPaymentType} error={error} submitting={submitting}
               onBack={() => setStep(4)} onConfirm={submit} />
@@ -626,8 +690,8 @@ function StepTechnician({ rules, staff, avail, slot, durationMinutes, staffId, a
 // ---------------------------------------------------------------------------
 // Step 5: Payment
 // ---------------------------------------------------------------------------
-function StepPayment({ service, employee, slot, addons, totalCents, fmt, onlineEnabled, payLaterEnabled, paymentType, setPaymentType, error, submitting, onBack, onConfirm }: {
-  service: Service; employee: Staff | null; slot: Slot; addons: Addon[]; totalCents: number; fmt: (c: number) => string;
+function StepPayment({ service, employee, slot, addons, totalCents, depositCents, fmt, onlineEnabled, payLaterEnabled, paymentType, setPaymentType, error, submitting, onBack, onConfirm }: {
+  service: Service; employee: Staff | null; slot: Slot; addons: Addon[]; totalCents: number; depositCents: number; fmt: (c: number) => string;
   onlineEnabled: boolean; payLaterEnabled: boolean; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (t: 'PAY_ONLINE' | 'PAY_LATER') => void;
   error: string | null; submitting: boolean; onBack: () => void; onConfirm: () => void;
 }) {
@@ -648,6 +712,11 @@ function StepPayment({ service, employee, slot, addons, totalCents, fmt, onlineE
           <Row k="When" v={`${slot.start.toLocaleDateString()} · ${fmtTime(slot.start)} – ${fmtTime(slot.end)}`} />
           <div style={{ borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
           <Row k="Total" v={fmt(totalCents)} bold />
+          {depositCents > 0 && (
+            <div style={{ marginTop: 10, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#1e3a8a' }}>
+              💳 Deposit to hold your spot: <strong>{fmt(depositCents)}</strong> now · the rest ({fmt(totalCents - depositCents)}) at the salon.
+            </div>
+          )}
         </div>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 8 }}>Choose payment</div>
         <div style={{ display: 'grid', gap: 10 }}>

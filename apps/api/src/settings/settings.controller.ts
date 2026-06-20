@@ -84,6 +84,14 @@ export class SettingsController {
     return this.settings.updateReview(user, dto);
   }
 
+  @Patch('deposit')
+  updateDeposit(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { enabled?: boolean; type?: string; percent?: number; fixedCents?: number; scope?: string; noShowThreshold?: number },
+  ) {
+    return this.settings.updateDepositSettings(user, dto as never);
+  }
+
   @Patch('reminders')
   updateReminders(
     @CurrentUser() user: AuthenticatedUser,

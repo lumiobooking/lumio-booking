@@ -60,6 +60,7 @@ export class PublicSalonController {
       branding: this.settings.brandingFrom(tenant.branding),
       booking: await this.settings.getBookingRules(tenant.id),
       weekdayDiscounts: await this.settings.getWeekdayDiscounts(tenant.id),
+      deposit: await this.settings.getDepositSettings(tenant.id),
     };
   }
 
@@ -105,16 +106,20 @@ export class PublicSalonController {
       if (result?.booking) booking = result.booking;
     }
 
+    // Deposit-to-hold: if the salon requires a deposit (and this customer is in
+    // scope), take it as a partial online payment; otherwise honour the chosen
+    // pay-online/pay-later option. Runs through the PaymentProvider, so a real
+    // gateway added later charges for real with no code change here.
+    const deposit = await this.settings.getDepositSettings(tenantId);
+    const depositCents = await this.payments.requiredDeposit(tenantId, booking.customerId, booking.priceCents, deposit);
+
     let payment = null;
-    if (dto.paymentType) {
-      payment = await this.payments.createForBookingTenant(
-        tenantId,
-        booking.id,
-        dto.paymentType,
-        null,
-      );
+    if (depositCents > 0) {
+      payment = await this.payments.createDepositForBookingTenant(tenantId, booking.id, depositCents, null);
+    } else if (dto.paymentType) {
+      payment = await this.payments.createForBookingTenant(tenantId, booking.id, dto.paymentType, null);
     }
 
-    return { booking, payment };
+    return { booking, payment, depositCents };
   }
 }

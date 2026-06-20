@@ -42,6 +42,9 @@ import {
   REMINDER_SETTINGS_KEY,
   ReminderSettings,
   DEFAULT_REMINDER_SETTINGS,
+  DEPOSIT_SETTINGS_KEY,
+  DepositSettings,
+  DEFAULT_DEPOSIT_SETTINGS,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -573,8 +576,30 @@ export class SettingsService {
       review: await this.getReviewSettings(tenantId),
       weekdayDiscounts: await this.getWeekdayDiscounts(tenantId),
       reminders: await this.getReminderSettings(tenantId),
+      deposit: await this.getDepositSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
+  }
+
+  async getDepositSettings(tenantId: string): Promise<DepositSettings> {
+    return this.readKey<DepositSettings>(tenantId, DEPOSIT_SETTINGS_KEY, DEFAULT_DEPOSIT_SETTINGS);
+  }
+
+  async updateDepositSettings(user: AuthenticatedUser, dto: Partial<DepositSettings>) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getDepositSettings(tenantId);
+    const num = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 ? Math.round(v) : d);
+    const next: DepositSettings = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      type: dto.type === 'fixed' || dto.type === 'percent' ? dto.type : (cur.type ?? 'percent'),
+      percent: Math.min(100, Math.max(1, num(dto.percent, cur.percent ?? 30))),
+      fixedCents: num(dto.fixedCents, cur.fixedCents ?? 1000),
+      scope: dto.scope === 'new' || dto.scope === 'repeat_noshow' || dto.scope === 'all' ? dto.scope : (cur.scope ?? 'all'),
+      noShowThreshold: Math.max(1, num(dto.noShowThreshold, cur.noShowThreshold ?? 2)),
+    };
+    await this.writeKey(tenantId, DEPOSIT_SETTINGS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.deposit_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
   }
 
   async getReminderSettings(tenantId: string): Promise<ReminderSettings> {

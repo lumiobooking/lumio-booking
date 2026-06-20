@@ -38,6 +38,7 @@ interface SettingsData {
   pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
+  deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number };
   gmailRedirectUri?: string;
 }
 
@@ -64,6 +65,7 @@ const SECTIONS = [
   { id: 'payments', label: 'Payments', icon: '💳', desc: 'Currency & methods' },
   { id: 'notifications', label: 'Notifications', icon: '🔔', desc: 'Email & SMS alerts' },
   { id: 'reminders', label: 'Reminders', icon: '⏰', desc: 'Auto no-show reminders' },
+  { id: 'deposit', label: 'Deposits', icon: '💰', desc: 'Hold slots / no-show' },
   { id: 'branding', label: 'Branding', icon: '🎨', desc: 'Colors & logo' },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]['id'];
@@ -146,6 +148,7 @@ function Inner() {
           {tab === 'payments' && <PaymentsSection data={data} onSave={save} />}
           {tab === 'notifications' && <NotificationsSection data={data} onSave={save} />}
           {tab === 'reminders' && <RemindersSection data={data} onSave={save} />}
+          {tab === 'deposit' && <DepositSection data={data} onSave={save} />}
           {tab === 'branding' && <BrandingSection data={data} onSave={save} />}
         </div>
       </div>
@@ -545,6 +548,49 @@ function LoyaltyConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn })
         Save loyalty
       </button>
     </div>
+  );
+}
+
+function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const d = data.deposit ?? { enabled: false, type: 'percent' as const, percent: 30, fixedCents: 1000, scope: 'all' as const, noShowThreshold: 2 };
+  const [f, setF] = useState({ ...d, fixed: ((d.fixedCents ?? 0) / 100).toFixed(2), percentStr: String(d.percent ?? 30), thr: String(d.noShowThreshold ?? 2) });
+  function save() {
+    onSave('deposit', {
+      enabled: f.enabled, type: f.type,
+      percent: Math.min(100, Math.max(1, parseInt(f.percentStr, 10) || 30)),
+      fixedCents: Math.max(0, Math.round((parseFloat(f.fixed) || 0) * 100)),
+      scope: f.scope, noShowThreshold: Math.max(1, parseInt(f.thr, 10) || 2),
+    }, 'Deposits');
+  }
+  return (
+    <Card title="Deposits (hold the slot)" desc="Require a deposit at booking to cut no-shows. Kept if the customer no-shows, refunded if they cancel, and credited toward the final bill at checkout.">
+      <Toggle on={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label="Require a deposit" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
+        <Field label="Deposit type">
+          <select style={ui.input} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as 'percent' | 'fixed' })}>
+            <option value="percent">Percent of price</option>
+            <option value="fixed">Fixed amount</option>
+          </select>
+        </Field>
+        {f.type === 'percent'
+          ? <Field label="Percent (%)"><input style={ui.input} type="number" min={1} max={100} value={f.percentStr} onChange={(e) => setF({ ...f, percentStr: e.target.value })} /></Field>
+          : <Field label="Fixed amount"><input style={ui.input} type="number" min={0} step="0.01" value={f.fixed} onChange={(e) => setF({ ...f, fixed: e.target.value })} /></Field>}
+        <Field label="Who pays a deposit">
+          <select style={ui.input} value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value as 'all' | 'new' | 'repeat_noshow' })}>
+            <option value="all">Everyone</option>
+            <option value="new">New customers only</option>
+            <option value="repeat_noshow">Repeat no-show customers only</option>
+          </select>
+        </Field>
+        {f.scope === 'repeat_noshow' && (
+          <Field label="No-show threshold"><input style={ui.input} type="number" min={1} value={f.thr} onChange={(e) => setF({ ...f, thr: e.target.value })} /></Field>
+        )}
+      </div>
+      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
+        ⚠ Deposits only collect real money once you connect a payment gateway for customer cards. Until then the system records the deposit (so the whole flow works), but no card is charged.
+      </div>
+      <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={save}>Save deposits</button>
+    </Card>
   );
 }
 

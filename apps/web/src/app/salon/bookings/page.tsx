@@ -66,6 +66,7 @@ function BookingsInner() {
   const { token } = useAuth();
   const range = useDateRange('all', true); // bookings are future-oriented
   const [q, setQ] = useState('');
+  const [needsConfirm, setNeedsConfirm] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -165,15 +166,23 @@ function BookingsInner() {
   const staffName = (s: NamedRef | null) =>
     s ? `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() : '—';
 
+  // "Needs confirmation" = upcoming booking the customer hasn't confirmed yet
+  // (still PENDING/ASSIGNED/ACCEPTED, not CONFIRMED) → salon can call to remind.
+  const now = Date.now();
+  const isUnconfirmed = (b: Booking) =>
+    new Date(b.startTime).getTime() > now && ['PENDING', 'ASSIGNED', 'ACCEPTED'].includes(b.status);
+
   // Filter by appointment date + search text, then show newest first.
   const visible = sortNewest(
     bookings.filter(
       (b) =>
         range.inRange(b.startTime) &&
+        (!needsConfirm || isUnconfirmed(b)) &&
         matchesQuery(`${staffName(b.customer)} ${b.service?.name ?? ''} ${staffName(b.assignedStaff)} ${b.status}`, q),
     ),
     (b) => b.startTime,
   );
+  const unconfirmedCount = bookings.filter(isUnconfirmed).length;
   const pg = usePaged(visible, 20);
 
   return (
@@ -192,6 +201,13 @@ function BookingsInner() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder="Search customer, service, staff, status…" />
+        <button
+          onClick={() => setNeedsConfirm((v) => !v)}
+          title="Upcoming bookings the customer hasn't confirmed yet"
+          style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${needsConfirm ? '#f59e0b' : '#475569'}`, background: needsConfirm ? '#78350f' : 'transparent', color: needsConfirm ? '#fde68a' : '#cbd5e1', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+        >
+          ● Needs confirmation{unconfirmedCount > 0 ? ` (${unconfirmedCount})` : ''}
+        </button>
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} booking{visible.length === 1 ? '' : 's'}</span>
         <DateRangeBar range={range} />
       </div>

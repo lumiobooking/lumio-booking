@@ -19,6 +19,7 @@ import { SettingsModule } from './settings/settings.module';
 import { PosModule } from './pos/pos.module';
 import { BillingModule } from './billing/billing.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { WaitlistModule } from './waitlist/waitlist.module';
 
 @Module({
   imports: [
@@ -58,6 +59,8 @@ import { ReviewsModule } from './reviews/reviews.module';
     BillingModule,
     // Review-reward program: customer feedback → staff & customer points.
     ReviewsModule,
+    // Waitlist: fill slots freed by cancellations.
+    WaitlistModule,
   ],
 })
 export class AppModule {}

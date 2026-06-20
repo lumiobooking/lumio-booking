@@ -904,7 +904,7 @@ export class BookingsService {
     }
   }
 
-  private static readonly ACTIONABLE = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED];
+  private static readonly ACTIONABLE: AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED];
 
   /** Appointment summary for the customer self-service page (token-authenticated). */
   async apptSummaryByToken(token: string) {

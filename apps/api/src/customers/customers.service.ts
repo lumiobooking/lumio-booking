@@ -16,10 +16,11 @@ export class CustomersService {
     return id;
   }
 
-  /** List the salon's customers, newest first, with their booking counts. */
-  list(user: AuthenticatedUser) {
-    return this.prisma.customer.findMany({
-      where: { tenantId: this.tenantId(user) },
+  /** List the salon's customers, newest first, with booking + no-show counts. */
+  async list(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const customers = await this.prisma.customer.findMany({
+      where: { tenantId },
       select: {
         id: true,
         firstName: true,
@@ -33,6 +34,14 @@ export class CustomersService {
       orderBy: { createdAt: 'desc' },
       take: 500,
     });
+    // No-show count per customer (drives the "repeat no-show" risk flag).
+    const grouped = await this.prisma.appointment.groupBy({
+      by: ['customerId'],
+      where: { tenantId, status: 'NO_SHOW' },
+      _count: { _all: true },
+    });
+    const noShowById = new Map(grouped.map((g) => [g.customerId, g._count._all]));
+    return customers.map((c) => ({ ...c, noShowCount: noShowById.get(c.id) ?? 0 }));
   }
 
   /** A single customer with their full history: bookings + payments + totals. */
@@ -77,11 +86,13 @@ export class CustomersService {
       .filter((p) => p.status === 'PAID')
       .reduce((s, p) => s + p.amountCents, 0);
     const completed = customer.appointments.filter((a) => a.status === 'COMPLETED').length;
+    const noShows = customer.appointments.filter((a) => a.status === 'NO_SHOW').length;
     return {
       ...customer,
       stats: {
         bookings: customer.appointments.length,
         completed,
+        noShows,
         totalSpentCents,
         lastVisit: customer.appointments[0]?.startTime ?? null,
       },

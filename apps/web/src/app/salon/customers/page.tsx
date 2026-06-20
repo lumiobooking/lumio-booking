@@ -15,6 +15,7 @@ interface Customer {
   phone: string | null;
   createdAt: string;
   loyaltyPoints?: number;
+  noShowCount?: number;
   _count: { appointments: number };
 }
 
@@ -103,6 +104,7 @@ function Inner() {
                 <th style={ui.th}>Email</th>
                 <th style={ui.th}>Phone</th>
                 <th style={ui.th}>Bookings</th>
+                <th style={ui.th}>No-shows</th>
                 <th style={ui.th}>Points</th>
                 <th style={ui.th}>Since</th>
                 <th style={ui.th}>Actions</th>
@@ -110,7 +112,7 @@ function Inner() {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td style={ui.td} colSpan={7}>No customers found.</td></tr>
+                <tr><td style={ui.td} colSpan={8}>No customers found.</td></tr>
               )}
               {pg.paged.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid #334155' }}>
@@ -118,6 +120,12 @@ function Inner() {
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.email ?? '—'}</td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.phone ?? '—'}</td>
                   <td style={ui.td}>{c._count.appointments}</td>
+                  <td style={ui.td}>
+                    {(c.noShowCount ?? 0) === 0 ? <span style={{ color: '#94a3b8' }}>0</span>
+                      : (c.noShowCount ?? 0) >= 2
+                        ? <span title="Repeat no-show — consider asking for a deposit" style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
+                        : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
+                  </td>
                   <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} pts</span> : '—'}</td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(c.createdAt).toLocaleDateString()}</td>
                   <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>Delete</button></td>

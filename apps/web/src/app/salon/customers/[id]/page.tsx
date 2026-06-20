@@ -21,7 +21,7 @@ interface CustomerDetail {
   loyaltyPoints?: number;
   loyaltyTransactions?: LoyaltyTxn[];
   appointments: Appt[];
-  stats: { bookings: number; completed: number; totalSpentCents: number; lastVisit: string | null };
+  stats: { bookings: number; completed: number; noShows?: number; totalSpentCents: number; lastVisit: string | null };
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -94,6 +94,7 @@ function Inner() {
         <Kpi label="Loyalty points" value={`${c.loyaltyPoints ?? 0} pts`} accent="#eab308" />
         <Kpi label="Bookings" value={String(c.stats.bookings)} accent="#3b82f6" />
         <Kpi label="Completed" value={String(c.stats.completed)} accent="#a855f7" />
+        <Kpi label="No-shows" value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : '#64748b'} />
         <Kpi label="Last visit" value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString() : '—'} accent="#06b6d4" />
       </div>
 

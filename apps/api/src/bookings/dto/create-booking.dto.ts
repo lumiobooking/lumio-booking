@@ -18,6 +18,14 @@ export class CreateBookingDto {
   @IsString()
   serviceId!: string;
 
+  // Optional: book several services in ONE visit. The first is the primary
+  // (kept in serviceId); the rest are stored as service line items. When omitted
+  // or length ≤ 1, the booking behaves exactly like a single-service booking.
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  serviceIds?: string[];
+
   // Optional add-on (extra) ids selected for this service.
   @IsOptional()
   @IsArray()

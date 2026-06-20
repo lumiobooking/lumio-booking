@@ -6,7 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 
-interface Addon { id: string; name: string; priceCents: number }
+interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
   id: string;
   status: string;
@@ -165,8 +165,11 @@ function BookingDetail({ booking: b, onClose, onAction }: {
         <DetailRow label="Duration" value={`${duration} min`} />
         <DetailRow label="Technician" value={tech} />
         <DetailRow label="Price" value={formatPrice(b.priceCents, b.currency)} />
-        {b.addons && b.addons.length > 0 && (
-          <DetailRow label="Add-ons" value={b.addons.map((a) => a.name).join(', ')} />
+        {b.addons && b.addons.some((a) => a.kind === 'service') && (
+          <DetailRow label="Also booked" value={b.addons.filter((a) => a.kind === 'service').map((a) => a.name).join(', ')} />
+        )}
+        {b.addons && b.addons.some((a) => a.kind !== 'service') && (
+          <DetailRow label="Add-ons" value={b.addons.filter((a) => a.kind !== 'service').map((a) => a.name).join(', ')} />
         )}
 
         <div style={{ borderTop: '1px solid #1f2937', margin: '16px 0 12px' }} />

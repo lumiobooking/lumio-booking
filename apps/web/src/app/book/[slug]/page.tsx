@@ -8,7 +8,7 @@
 // (busy ones are greyed out) so the same tech can't be double-booked.
 // ===========================================================================
 
-import { useCallback, useEffect, useMemo, useState, FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
@@ -124,6 +124,7 @@ export default function PublicBookingPage() {
   const [step, setStep] = useState<Step>(1);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [serviceId, setServiceId] = useState('');
+  const [extraServiceIds, setExtraServiceIds] = useState<string[]>([]); // additional services in the same visit
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [staffId, setStaffId] = useState('');
   const [slot, setSlot] = useState<Slot | null>(null);
@@ -146,10 +147,25 @@ export default function PublicBookingPage() {
   const weekdayPct = weekdayPctFor(salon?.weekdayDiscounts, selectedDate, service?.categoryId ?? null);
   const serviceFinalCents = Math.round((serviceNetCents * (100 - weekdayPct)) / 100);
   const addonsCents = selectedAddons.reduce((s, a) => s + a.priceCents, 0);
-  const totalCents = serviceFinalCents + addonsCents;
-  const savingsCents = (service?.priceCents ?? 0) + addonsCents - totalCents;
-  const anyDiscount = serviceDiscount > 0 || weekdayPct > 0;
-  const totalDuration = (service?.durationMinutes ?? 0) + selectedAddons.reduce((s, a) => s + a.durationMinutes, 0);
+
+  // Extra services chosen for the SAME visit. Each gets its own discount + the
+  // weekday promo for its own category. (Excludes the primary service.)
+  const extraServices = services.filter((s) => s.id !== serviceId && extraServiceIds.includes(s.id));
+  const extraLines = extraServices.map((s) => {
+    const net = svcNetCents(s);
+    const wd = weekdayPctFor(salon?.weekdayDiscounts, selectedDate, s.categoryId ?? null);
+    return { id: s.id, name: s.name, priceCents: Math.round((net * (100 - wd)) / 100), durationMinutes: s.durationMinutes, fullCents: s.priceCents };
+  });
+  const extrasCents = extraLines.reduce((a, x) => a + x.priceCents, 0);
+  const extrasDuration = extraLines.reduce((a, x) => a + x.durationMinutes, 0);
+  const extrasFull = extraLines.reduce((a, x) => a + x.fullCents, 0);
+  // Line items passed to the payment summary so every service shows.
+  const paymentItems: Addon[] = [...extraLines.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents, durationMinutes: x.durationMinutes })), ...selectedAddons];
+
+  const totalCents = serviceFinalCents + addonsCents + extrasCents;
+  const savingsCents = (service?.priceCents ?? 0) + addonsCents + extrasFull - totalCents;
+  const anyDiscount = serviceDiscount > 0 || weekdayPct > 0 || extrasFull > extrasCents;
+  const totalDuration = (service?.durationMinutes ?? 0) + selectedAddons.reduce((s, a) => s + a.durationMinutes, 0) + extrasDuration;
   const fmt = (c: number) => fmtMoney(c, rules);
 
   const load = useCallback(async () => {
@@ -178,12 +194,24 @@ export default function PublicBookingPage() {
   }, [salon]);
 
   // Load real availability when we know the date + service (for greying slots).
+  // With multiple services, a technician must be able to do ALL of them, so we
+  // intersect the eligible staff across each service and merge their busy times.
   useEffect(() => {
     if (!selectedDate || !serviceId) { setAvail(null); return; }
     const d = ymd(selectedDate);
-    fetch(`${base}/availability?serviceId=${encodeURIComponent(serviceId)}&date=${d}`)
-      .then((r) => r.json()).then(setAvail).catch(() => setAvail(null));
-  }, [base, selectedDate, serviceId]);
+    const ids = [serviceId, ...extraServiceIds.filter((x) => x !== serviceId)];
+    Promise.all(ids.map((sid) =>
+      fetch(`${base}/availability?serviceId=${encodeURIComponent(sid)}&date=${d}`).then((r) => r.json()).catch(() => null),
+    )).then((results) => {
+      const valid = results.filter(Boolean) as Availability[];
+      if (valid.length === 0) { setAvail(null); return; }
+      let eligible = valid[0].eligibleStaffIds;
+      for (const r of valid.slice(1)) eligible = eligible.filter((id) => r.eligibleStaffIds.includes(id));
+      const staffBusy: Record<string, { start: string; end: string }[]> = {};
+      for (const r of valid) for (const [id, arr] of Object.entries(r.staffBusy)) (staffBusy[id] ||= []).push(...arr);
+      setAvail({ eligibleStaffIds: eligible, staffBusy });
+    }).catch(() => setAvail(null));
+  }, [base, selectedDate, serviceId, extraServiceIds]);
 
   async function submit() {
     if (!slot) return;
@@ -192,7 +220,10 @@ export default function PublicBookingPage() {
       const res = await fetch(`${base}/bookings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceId, addonIds, preferredStaffId: staffId || undefined,
+          serviceId,
+          // All services for this visit (primary first). Backend prices each.
+          serviceIds: [serviceId, ...extraServiceIds.filter((x) => x !== serviceId)],
+          addonIds, preferredStaffId: staffId || undefined,
           // The picked time means "this wall-clock time AT THE SALON". Convert it
           // to the correct UTC instant using the salon's timezone, so the time
           // stored (and shown in admin emails) matches what the customer chose,
@@ -310,6 +341,27 @@ export default function PublicBookingPage() {
                   </div>
                 </div>
               )}
+              {service && services.filter((s) => s.id !== serviceId).length > 0 && (
+                <details style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                    ➕ Add more services{extraServices.length > 0 ? ` (${extraServices.length} added)` : ' (optional)'}
+                  </summary>
+                  <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                    {services.filter((s) => s.id !== serviceId).map((s) => {
+                      const on = extraServiceIds.includes(s.id);
+                      return (
+                        <button key={s.id} type="button" onClick={() => { setExtraServiceIds((p) => p.includes(s.id) ? p.filter((x) => x !== s.id) : [...p, s.id]); setStaffId(''); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, cursor: 'pointer', textAlign: 'left', border: `1px solid ${on ? ACCENT : '#e2e8f0'}`, background: on ? '#eef2ff' : 'white' }}>
+                          <span style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${on ? ACCENT : '#cbd5e1'}`, background: on ? ACCENT : 'white', color: 'white', display: 'grid', placeItems: 'center', fontSize: 12 }}>{on ? '✓' : ''}</span>
+                          <span style={{ flex: 1, color: '#1e293b', fontSize: 14 }}>{s.name}</span>
+                          <span style={{ color: '#64748b', fontSize: 13 }}>{s.durationMinutes}m</span>
+                          <span style={{ color: '#16a34a', fontSize: 14, fontWeight: 600 }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
               {service && serviceDiscount > 0 && (
                 <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'linear-gradient(90deg,#fee2e2,#fef3c7)', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ background: '#ef4444', color: '#fff', borderRadius: 8, padding: '3px 9px', fontSize: 14, fontWeight: 800 }}>-{serviceDiscount}%</span>
@@ -324,9 +376,9 @@ export default function PublicBookingPage() {
               )}
               {service && (
                 <div style={{ marginTop: 12, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14 }}>
-                  <span style={{ color: '#64748b' }}>Total ({totalDuration} min)</span>
+                  <span style={{ color: '#64748b' }}>Total ({totalDuration} min){extraServices.length > 0 ? ` · ${1 + extraServices.length} services` : ''}</span>
                   <span>
-                    {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 8 }}>{fmt(service.priceCents + addonsCents)}</span>}
+                    {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 8 }}>{fmt(service.priceCents + addonsCents + extrasFull)}</span>}
                     <strong style={{ color: anyDiscount ? '#dc2626' : '#1e293b', fontSize: 16 }}>{fmt(totalCents)}</strong>
                   </span>
                 </div>
@@ -368,7 +420,7 @@ export default function PublicBookingPage() {
           })()}
 
           {step === 5 && service && slot && (
-            <StepPayment service={service} employee={employee} slot={slot} addons={selectedAddons} totalCents={totalCents}
+            <StepPayment service={service} employee={employee} slot={slot} addons={paymentItems} totalCents={totalCents}
               fmt={fmt} onlineEnabled={rules.onlinePaymentEnabled} payLaterEnabled={rules.payLaterEnabled}
               paymentType={paymentType} setPaymentType={setPaymentType} error={error} submitting={submitting}
               onBack={() => setStep(4)} onConfirm={submit} />
@@ -420,6 +472,15 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
     [selectedDate, rules],
   );
 
+  // After a date is chosen, scroll the time list into view so customers don't
+  // miss it (the time picker sits below the calendar fold).
+  const slotsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!selectedDate || !slotsRef.current) return;
+    const t = setTimeout(() => slotsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 90);
+    return () => clearTimeout(t);
+  }, [selectedDate]);
+
   return (
     <StepFrame title="Pick a date & time" canContinue={!!slot} onContinue={onContinue}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -451,9 +512,9 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
       )}
 
       {selectedDate && (
-        <div style={{ marginTop: 18 }}>
+        <div ref={slotsRef} style={{ marginTop: 18, scrollMarginTop: 16 }}>
           <div style={{ fontSize: 13, color: '#475569', marginBottom: 8, fontWeight: 600 }}>
-            {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} — choose a time
+            {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} — choose a time ↓
           </div>
           {times.length === 0 ? (
             <p style={{ color: '#94a3b8', fontSize: 14 }}>No available times on this day.</p>

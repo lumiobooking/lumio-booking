@@ -195,21 +195,42 @@ export class BookingsService {
       throw new BadRequestException('One or more add-ons are invalid for this service');
     }
 
-    // Totals = discounted service price + add-ons (add-ons are not discounted).
-    const addonPrice = addons.reduce((s, a) => s + a.priceCents, 0);
-    const addonDuration = addons.reduce((s, a) => s + a.durationMinutes, 0);
-    const discountPct = Math.min(90, Math.max(0, service.discountPercent ?? 0));
-    const discountedServiceCents = Math.round((service.priceCents * (100 - discountPct)) / 100);
-    const totalDuration = service.durationMinutes + addonDuration;
-
     const start = parseStartTime(dto.startTime);
-    // Weekday auto-discount (quiet-day promo): applied to the service price only.
-    const weekdayPct = await this.weekdayDiscountPercent(tenantId, start, service.categoryId);
-    const afterWeekday = Math.round((discountedServiceCents * (100 - weekdayPct)) / 100);
-    const totalPrice = afterWeekday + addonPrice;
     if (start.getTime() < Date.now()) {
       throw new BadRequestException('startTime is in the past');
     }
+
+    // ---- Pricing ----
+    const addonPrice = addons.reduce((s, a) => s + a.priceCents, 0);
+    const addonDuration = addons.reduce((s, a) => s + a.durationMinutes, 0);
+
+    // Primary service: its own discount, then the weekday promo for its category.
+    const primaryDisc = Math.min(90, Math.max(0, service.discountPercent ?? 0));
+    const primaryNet = Math.round((service.priceCents * (100 - primaryDisc)) / 100);
+    const primaryWd = await this.weekdayDiscountPercent(tenantId, start, service.categoryId);
+    const primaryFinal = Math.round((primaryNet * (100 - primaryWd)) / 100);
+
+    // Extra services in the SAME visit (multi-service). The first service stays
+    // the primary (in serviceId); the rest become priced line items. Each gets
+    // its own service discount + the weekday promo for its own category.
+    const extraIds = [...new Set(dto.serviceIds ?? [])].filter((id) => id && id !== service.id);
+    const extraServices = extraIds.length
+      ? await this.prisma.service.findMany({ where: { id: { in: extraIds }, tenantId, isActive: true } })
+      : [];
+    const extraItems: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
+    for (const s of extraServices) {
+      const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
+      const net = Math.round((s.priceCents * (100 - disc)) / 100);
+      const wd = await this.weekdayDiscountPercent(tenantId, start, s.categoryId);
+      extraItems.push({ id: s.id, name: s.name, priceCents: Math.round((net * (100 - wd)) / 100), durationMinutes: s.durationMinutes, kind: 'service' });
+    }
+    const extraPrice = extraItems.reduce((sum, x) => sum + x.priceCents, 0);
+    const extraDuration = extraItems.reduce((sum, x) => sum + x.durationMinutes, 0);
+
+    const totalDuration = service.durationMinutes + extraDuration + addonDuration;
+    const totalPrice = primaryFinal + extraPrice + addonPrice;
+    // Snapshot stored on the appointment: extra services first, then add-ons.
+    const lineItems = [...extraItems, ...addons];
     const end = addMinutes(start, totalDuration);
 
     if (dto.staffId) {
@@ -236,7 +257,7 @@ export class BookingsService {
           endTime: end,
           priceCents: totalPrice,
           currency: service.currency,
-          addons: addons as unknown as Prisma.InputJsonValue,
+          addons: lineItems as unknown as Prisma.InputJsonValue,
           notes: dto.notes ?? null,
           assignedAt: dto.staffId ? new Date() : null,
           responseDeadline: dto.staffId ? addMinutes(new Date(), 30) : null,

@@ -779,13 +779,18 @@ function PayOption({ selected, onClick, title, desc }: { selected: boolean; onCl
 // Shared frame + small components
 // ---------------------------------------------------------------------------
 function StepFrame({ title, children, canContinue, onContinue, onBack }: { title: string; children: React.ReactNode; canContinue: boolean; onContinue: () => void; onBack?: () => void }) {
+  const isMobile = useIsMobile();
   return (
     <div style={frameRoot}>
       <h2 style={stepTitle}>{title}</h2>
-      <div style={scrollArea}>{children}</div>
-      <div style={footer}>
-        {onBack ? <button onClick={onBack} style={ghostBtn}>Back</button> : <span />}
-        <button onClick={onContinue} disabled={!canContinue} style={{ ...primaryBtn, opacity: canContinue ? 1 : 0.5, cursor: canContinue ? 'pointer' : 'not-allowed' }}>Continue</button>
+      {/* On mobile, pad the bottom so content clears the fixed action bar. */}
+      <div style={isMobile ? { ...scrollArea, paddingBottom: 88 } : scrollArea}>{children}</div>
+      <div style={isMobile ? footerMobile : footer}>
+        {onBack ? <button onClick={onBack} style={{ ...ghostBtn, ...(isMobile ? { flexShrink: 0 } : {}) }}>Back</button> : (isMobile ? null : <span />)}
+        <button onClick={onContinue} disabled={!canContinue}
+          style={{ ...primaryBtn, ...(isMobile ? { flex: 1, padding: '13px 22px', fontSize: 15 } : {}), opacity: canContinue ? 1 : 0.5, cursor: canContinue ? 'pointer' : 'not-allowed' }}>
+          Continue
+        </button>
       </div>
     </div>
   );
@@ -975,6 +980,9 @@ const stepTitle: React.CSSProperties = { fontSize: 20, margin: '0 0 16px', color
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 14, color: '#334155', marginBottom: 6, fontWeight: 500 };
 const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', color: '#1e293b', fontSize: 14 };
 const footer: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: 16, marginTop: 12 };
+// Mobile: a fixed bottom action bar so Continue is always reachable without
+// scrolling to the end of a long service list.
+const footerMobile: React.CSSProperties = { position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 50, display: 'flex', alignItems: 'center', gap: 12, background: 'white', borderTop: '1px solid #e2e8f0', padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -4px 16px rgba(15,23,42,0.08)' };
 const primaryBtn: React.CSSProperties = { padding: '11px 22px', borderRadius: 8, border: 'none', background: ACCENT, color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' };
 const ghostBtn: React.CSSProperties = { padding: '11px 18px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontSize: 14, cursor: 'pointer' };
 const navBtn: React.CSSProperties = { width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: ACCENT, fontSize: 16, cursor: 'pointer' };

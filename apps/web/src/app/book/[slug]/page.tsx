@@ -535,11 +535,22 @@ export default function PublicBookingPage() {
                   <strong>{slot && `${slot.start.toLocaleDateString()} at ${fmtTime(slot.start)}`}</strong> is received.
                 </p>
                 <p style={{ color: '#475569' }}>Payment: <strong>{result?.paymentStatus === 'PAID' ? 'Paid online ✓' : 'Pay at the salon'}</strong></p>
+                <p style={{ color: '#64748b', fontSize: 12.5, lineHeight: 1.55, margin: '8px 0 14px' }}>
+                  📱 You&rsquo;ll receive appointment confirmations and reminders by text. Reply STOP to opt out, HELP for help anytime.
+                </p>
                 <button onClick={reset} style={primaryBtn}>Book another</button>
               </div>
             </Center>
           )}
         </section>
+        {/* Always-visible SMS disclosure (A2P 10DLC) — shown on EVERY step, so the
+            messaging program is verifiable without completing all booking steps. */}
+        <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: isMobile ? '12px 16px 0' : '14px 24px 0', lineHeight: 1.55, maxWidth: 580, margin: '0 auto' }}>
+          By booking, you may receive appointment confirmation &amp; reminder texts{salon?.name ? ` from ${salon.name}` : ''} (up to ~6 msgs/mo).
+          Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.{' '}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'underline' }}>Privacy</a> ·{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'underline' }}>Messaging Terms</a>
+        </p>
         {isMobile && (
           <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #eef1f6', background: 'white' }}>
             <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>

@@ -9,8 +9,9 @@
 
 10DLC bị từ chối nhiều nhất vì reviewer **mở website lên không thấy** chính sách + opt-in. Trước khi nộp form:
 
-1. **Deploy bản mới** (chạy `deploy.bat`). Sau khi Render build xong, mở thử 3 link này, phải hiện ra trang:
+1. **Deploy bản mới** (chạy `deploy.bat`). Sau khi Render build xong, mở thử 4 link này, phải hiện ra trang:
    - `https://lumiobooking.com/sms-optin`  ← **trang form đăng ký SMS (dùng làm Opt-in policy proof)**
+   - `https://lumiobooking.com/support`  ← **trang HELP (link trong HELP message phải mở được)**
    - `https://lumiobooking.com/privacy`
    - `https://lumiobooking.com/terms`
 2. Mở 1 trang booking thật, ví dụ `https://lumiobooking.com/book/ten-tiem`, tới **bước "Your information"** — phải thấy ô tick SMS + dòng "Reply STOP to opt out" + link Privacy/Terms.
@@ -114,8 +115,13 @@ consent data is never shared with third parties.
 **HELP message** — copy:
 
 ```
-Lumio Booking: For help, contact your salon or email lumioagency.com@gmail.com. Msg & data rates may apply. Reply STOP to opt out.
+Lumio Booking: You are receiving appointment messages from Lumio Booking. For help, visit https://lumiobooking.com/support or email lumioagency.com@gmail.com. Msg & data rates may apply. Reply STOP to opt out.
 ```
+
+> ⚠️ **Email phải khớp nhau.** HELP message bạn đang điền dùng `support@lumioagency.com`, nhưng trang `/support` ghi `lumioagency.com@gmail.com`. Chọn 1 trong 2:
+> - Đổi email trong HELP message thành `lumioagency.com@gmail.com` (khớp trang support — khuyên dùng vì hộp thư này chắc chắn nhận được), **hoặc**
+> - Nếu `support@lumioagency.com` là hộp thư thật/đang nhận được mail, báo tôi để tôi sửa trang `/support` cho khớp.
+> Link `https://lumiobooking.com/support` thì đã tạo xong, deploy là mở được.
 
 **STOP / opt-out confirmation** — copy:
 

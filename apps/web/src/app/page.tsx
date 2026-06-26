@@ -190,6 +190,7 @@ export default function HomePage() {
             <Link href="/privacy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Privacy Policy</Link>
             <Link href="/terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Terms &amp; SMS Terms</Link>
             <Link href="/sms-optin" style={{ color: '#94a3b8', textDecoration: 'none' }}>Text Alerts</Link>
+            <Link href="/support" style={{ color: '#94a3b8', textDecoration: 'none' }}>Support</Link>
             <Link href="/login" style={{ color: '#94a3b8', textDecoration: 'none' }}>Sign in</Link>
           </div>
         </div>

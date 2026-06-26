@@ -537,7 +537,7 @@ export default function PublicBookingPage() {
         </section>
         {isMobile && (
           <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
-            style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', textDecoration: 'none', borderTop: '1px solid #eef1f6', background: 'white' }}>
+            style={{ textAlign: 'center', padding: '12px 0 calc(82px + env(safe-area-inset-bottom, 0px))', fontSize: 11, color: '#94a3b8', textDecoration: 'none', borderTop: '1px solid #eef1f6', background: 'white' }}>
             Powered by <span style={{ color: ACCENT, fontWeight: 700 }}>Lumio Booking</span>
           </a>
         )}

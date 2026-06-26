@@ -221,7 +221,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   emailSubjectAdmin: 'New booking — {service} for {customer}',
   emailIntroAdmin: 'A new booking has just come in. Details below:',
   emailFooter: 'We look forward to seeing you. If you need to make changes, just reply to this email.',
-  smsCustomer: '{salon}: your {service} on {date} at {time} is booked. See you soon!',
+  smsCustomer: '{salon}: your {service} on {date} at {time} is booked. See you soon! Reply STOP to opt out.',
   smsAdmin: 'New booking: {service} for {customer} on {date} at {time}.',
   smtp: { host: 'smtp.gmail.com', port: 465, user: '', pass: '', fromEmail: '', secure: 'ssl' },
   brevo: { apiKey: '', senderEmail: '', senderName: '' },
@@ -378,7 +378,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Total: %total_price%\n\n' +
       'We look forward to seeing you. Need to make a change? Just reply to this message.\n' +
       '%salon_name% — %salon_contact%',
-    smsBody: '%salon_name%: your %service_name% on %appointment_date% at %appointment_time% is confirmed. See you soon!',
+    smsBody: '%salon_name%: your %service_name% on %appointment_date% at %appointment_time% is confirmed. See you soon! Reply STOP to opt out.',
   }),
   customer_booking_pending: t({
     enabled: false,
@@ -387,7 +387,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Hi %customer_name%,\n\n' +
       "We've received your request for %service_name% on %appointment_date% at %appointment_time%. " +
       "We'll confirm it shortly.\n\n%salon_name%",
-    smsBody: "%salon_name%: we received your booking for %appointment_date% %appointment_time%. We'll confirm soon.",
+    smsBody: "%salon_name%: we received your booking for %appointment_date% %appointment_time%. We'll confirm soon. Reply STOP to opt out.",
   }),
   customer_booking_cancelled: t({
     subject: 'Your booking has been cancelled — %salon_name%',
@@ -395,7 +395,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Hi %customer_name%,\n\n' +
       'Your appointment for %service_name% on %appointment_date% at %appointment_time% has been cancelled. ' +
       'We hope to see you again soon — book anytime.\n\n%salon_name%',
-    smsBody: '%salon_name%: your booking on %appointment_date% %appointment_time% has been cancelled.',
+    smsBody: '%salon_name%: your booking on %appointment_date% %appointment_time% has been cancelled. Reply STOP to opt out.',
   }),
   customer_booking_rescheduled: t({
     subject: 'Your appointment has been rescheduled — %salon_name%',
@@ -403,7 +403,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Hi %customer_name%,\n\n' +
       'Your appointment for %service_name% has been moved to %appointment_date% at %appointment_time% ' +
       'with %staff_name%. See you then!\n\n%salon_name%',
-    smsBody: '%salon_name%: your appointment is now %appointment_date% at %appointment_time%.',
+    smsBody: '%salon_name%: your appointment is now %appointment_date% at %appointment_time%. Reply STOP to opt out.',
   }),
 
   // --- Customer · reminders & care (scheduled) ---
@@ -414,7 +414,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Hi %customer_name%,\n\n' +
       'This is a friendly reminder of your %service_name% appointment on %appointment_date% ' +
       'at %appointment_time% with %staff_name%.\n\nSee you soon!\n%salon_name% — %salon_contact%',
-    smsBody: 'Reminder: %service_name% at %salon_name% on %appointment_date% %appointment_time%. See you soon!',
+    smsBody: 'Reminder: %service_name% at %salon_name% on %appointment_date% %appointment_time%. See you soon! Reply STOP to opt out.',
   }),
   customer_followup: t({
     enabled: false,
@@ -424,7 +424,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Hi %customer_name%,\n\n' +
       'Thank you for visiting %salon_name%! We hope you love your nails. ' +
       "We'd love your feedback, and we can't wait to see you again.\n\n%salon_name%",
-    smsBody: 'Thanks for visiting %salon_name%! We hope you love your nails. Come back soon!',
+    smsBody: 'Thanks for visiting %salon_name%! We hope you love your nails. Come back soon! Reply STOP to unsubscribe.',
   }),
   customer_birthday: t({
     enabled: false,
@@ -433,7 +433,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Hi %customer_name%,\n\n' +
       'Happy birthday from all of us at %salon_name%! Treat yourself — book your next ' +
       'appointment and enjoy a special birthday touch on us.\n\n%salon_name%',
-    smsBody: 'Happy birthday from %salon_name%! Treat yourself to a visit on us.',
+    smsBody: 'Happy birthday from %salon_name%! Treat yourself to a visit on us. Reply STOP to unsubscribe.',
   }),
 
   // --- Customer · payment ---
@@ -444,7 +444,7 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       'Hi %customer_name%,\n\n' +
       'Thank you for your payment of %total_price% for %service_name% on %appointment_date%.\n\n' +
       'Booking reference: %booking_id%\n%salon_name%',
-    smsBody: '%salon_name%: payment of %total_price% received. Thank you!',
+    smsBody: '%salon_name%: payment of %total_price% received. Thank you! Reply STOP to opt out.',
   }),
 
   // --- Staff alerts ---

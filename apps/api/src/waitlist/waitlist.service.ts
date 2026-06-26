@@ -75,7 +75,7 @@ export class WaitlistService {
     const subject = `A spot just opened at ${salon}!`;
     const text = `Hi ${e.customerName}, good news — a spot${svc} just opened up at ${salon}. Book now: ${bookUrl}`;
     const html = `<p>Hi ${e.customerName},</p><p>Good news — a spot${svc} just opened up at <strong>${salon}</strong>.</p><p style="margin:16px 0"><a href="${bookUrl}" style="background:#16a34a;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600">Book your spot</a></p><p style="color:#64748b;font-size:13px">First to book gets it — these fill fast!</p>`;
-    const smsText = `${salon}: a spot${svc} just opened! Book now: ${bookUrl}`;
+    const smsText = `${salon}: a spot${svc} just opened! Book now: ${bookUrl}. Reply STOP to opt out.`;
 
     const senderName = n.senderName || salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;

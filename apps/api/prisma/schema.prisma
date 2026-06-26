@@ -639,6 +639,12 @@ model Customer {
   // Loyalty points balance (earned on paid visits, spent on rewards).
   loyaltyPoints Int @default(0)
 
+  // Explicit opt-in for promotional SMS (A2P 10DLC). Transactional reminders do
+  // not depend on this; marketing messages must respect it. smsConsentAt records
+  // when consent was captured, as proof.
+  smsConsent   Boolean   @default(false)
+  smsConsentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

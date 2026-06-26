@@ -186,6 +186,9 @@ export default function PublicBookingPage() {
   const [slot, setSlot] = useState<Slot | null>(null);
   const [avail, setAvail] = useState<Availability | null>(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  // Optional, explicit opt-in for promotional texts (A2P 10DLC: separate, OFF by
+  // default, never required to book). Transactional reminders use the disclosure.
+  const [smsConsent, setSmsConsent] = useState(false);
   const [paymentType, setPaymentType] = useState<'PAY_ONLINE' | 'PAY_LATER'>('PAY_LATER');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -294,6 +297,7 @@ export default function PublicBookingPage() {
           startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
+          smsConsent,
           paymentType,
         }),
       });
@@ -361,6 +365,10 @@ export default function PublicBookingPage() {
             <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, opacity: 0.85, paddingTop: 16, color: 'white', textDecoration: 'none' }}>
               Powered by <span style={{ fontWeight: 700 }}>Lumio Booking</span>
             </a>
+            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 8, display: 'flex', gap: 12 }}>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'none' }}>Privacy</a>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'none' }}>Messaging Terms</a>
+            </div>
           </aside>
         )}
 
@@ -478,6 +486,33 @@ export default function PublicBookingPage() {
                     {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}
                   </Field>
                 </div>
+                {/* SMS consent (A2P 10DLC). Transactional = disclosure; marketing = explicit opt-in. */}
+                <div style={{ marginTop: 16, padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                  <p style={{ fontSize: 12.5, color: '#475569', margin: 0, lineHeight: 1.55 }}>
+                    By providing your phone number, you agree to receive appointment confirmations and reminders by text
+                    from {salon?.name || 'this salon'}. Up to ~6 msgs/month. Msg &amp; data rates may apply. Reply STOP to
+                    opt out, HELP for help. Consent is not required to book.
+                  </p>
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 12, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={smsConsent}
+                      onChange={(e) => setSmsConsent(e.target.checked)}
+                      style={{ marginTop: 2, width: 16, height: 16, accentColor: accent, flexShrink: 0 }}
+                    />
+                    <span style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.55 }}>
+                      I&rsquo;d also like to receive special offers &amp; promotions by text from {salon?.name || 'this salon'}.{' '}
+                      <span style={{ color: '#94a3b8' }}>(optional — not required to book)</span>
+                    </span>
+                  </label>
+                  <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
+                    See our{' '}
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none' }}>Privacy Policy</a>{' '}
+                    and{' '}
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none' }}>Messaging Terms</a>.
+                    Your opt-in data is never shared with third parties.
+                  </p>
+                </div>
                 {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>First name and a valid phone number are required to continue.</p>}
               </StepFrame>
             );
@@ -506,10 +541,15 @@ export default function PublicBookingPage() {
           )}
         </section>
         {isMobile && (
-          <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
-            style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', textDecoration: 'none', borderTop: '1px solid #eef1f6', background: 'white' }}>
-            Powered by <span style={{ color: ACCENT, fontWeight: 700 }}>Lumio Booking</span>
-          </a>
+          <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #eef1f6', background: 'white' }}>
+            <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>
+              Powered by <span style={{ color: ACCENT, fontWeight: 700 }}>Lumio Booking</span>
+            </a>
+            <div style={{ marginTop: 6, display: 'flex', gap: 14, justifyContent: 'center' }}>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>Privacy</a>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>Messaging Terms</a>
+            </div>
+          </div>
         )}
       </div>
     </Shell>

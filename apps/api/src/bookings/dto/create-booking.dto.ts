@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsISO8601,
@@ -70,6 +71,13 @@ export class CreateBookingDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  // Explicit opt-in for promotional SMS (A2P 10DLC). Optional and OFF by default;
+  // never required to book. Stored on the Customer; transactional reminders do
+  // not depend on it.
+  @IsOptional()
+  @IsBoolean()
+  smsConsent?: boolean;
 
   // Optional: when set on the public booking flow, a payment is created right
   // after the booking (PAY_ONLINE charges via the mock provider; PAY_LATER is

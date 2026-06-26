@@ -184,11 +184,24 @@ export default function HomePage() {
             <div style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></div>
             <p style={{ fontSize: 13, margin: '6px 0 0' }}>Booking &amp; salon management software.</p>
           </div>
-          <div style={{ display: 'flex', gap: 20, fontSize: 14 }}>
+          <div style={{ display: 'flex', gap: 20, fontSize: 14, flexWrap: 'wrap' }}>
             <a href="#features" style={{ color: '#94a3b8', textDecoration: 'none' }}>Features</a>
             <a href="#pricing" style={{ color: '#94a3b8', textDecoration: 'none' }}>Pricing</a>
+            <Link href="/privacy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Privacy Policy</Link>
+            <Link href="/terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Terms &amp; SMS Terms</Link>
+            <Link href="/sms-optin" style={{ color: '#94a3b8', textDecoration: 'none' }}>Text Alerts</Link>
             <Link href="/login" style={{ color: '#94a3b8', textDecoration: 'none' }}>Sign in</Link>
           </div>
+        </div>
+        {/* SMS program disclosure — public & verifiable for A2P 10DLC review */}
+        <div style={{ borderTop: '1px solid #1f2937', padding: '18px 24px', maxWidth: 1120, margin: '0 auto', fontSize: 12.5, lineHeight: 1.6, color: '#64748b' }}>
+          <strong style={{ color: '#94a3b8' }}>Text messaging:</strong> When a client books with a salon using Lumio Booking and provides a
+          mobile number, the salon may send appointment confirmations and reminders by SMS, and — only with separate
+          opt-in — promotional offers. Up to ~6 msgs/month. Msg &amp; data rates may apply. Reply STOP to opt out,
+          HELP for help. Opt-in and consent data is never shared with third parties.{' '}
+          <Link href="/sms-optin" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Sign up for text alerts</Link> ·{' '}
+          <Link href="/privacy" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Privacy Policy</Link> ·{' '}
+          <Link href="/terms" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Messaging Terms</Link>.
         </div>
         <div style={{ borderTop: '1px solid #1f2937', padding: '18px 24px', textAlign: 'center', fontSize: 13 }}>
           © {new Date().getFullYear()} Lumio Booking · Developed by{' '}

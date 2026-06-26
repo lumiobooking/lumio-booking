@@ -139,6 +139,9 @@ export class BookingsService {
   }
 
   private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto) {
+    // Only ever upgrade consent to true (never silently revoke a prior opt-in
+    // just because a returning customer left the box unchecked this time).
+    const consent = dto.smsConsent === true ? { smsConsent: true, smsConsentAt: new Date() } : {};
     if (dto.customerEmail) {
       const email = dto.customerEmail.toLowerCase();
       return tx.customer.upsert({
@@ -147,6 +150,7 @@ export class BookingsService {
           firstName: dto.customerFirstName,
           lastName: dto.customerLastName ?? null,
           phone: dto.customerPhone ?? null,
+          ...consent,
         },
         create: {
           tenantId,
@@ -154,6 +158,7 @@ export class BookingsService {
           firstName: dto.customerFirstName,
           lastName: dto.customerLastName ?? null,
           phone: dto.customerPhone ?? null,
+          ...consent,
         },
       });
     }
@@ -163,6 +168,7 @@ export class BookingsService {
         firstName: dto.customerFirstName,
         lastName: dto.customerLastName ?? null,
         phone: dto.customerPhone ?? null,
+        ...consent,
       },
     });
   }
@@ -515,7 +521,7 @@ export class BookingsService {
     const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>`
       + `<p style="margin:18px 0"><a href="${actionUrl}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;margin-right:8px">✓ Confirm</a> <a href="${actionUrl}" style="background:#fff;color:#dc2626;border:1px solid #dc2626;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Can't make it?</a></p>`
       + (contact ? `<p style="color:#64748b;font-size:13px">Or call us at ${contact}.</p>` : '') + '<p>See you soon! 💅</p>';
-    const smsText = `${salon}: reminder — ${svc} on ${when}. Confirm/cancel: ${actionUrl}`;
+    const smsText = `${salon}: reminder — ${svc} on ${when}. Confirm/cancel: ${actionUrl}. Reply STOP to opt out.`;
 
     const senderName = n.senderName || salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;

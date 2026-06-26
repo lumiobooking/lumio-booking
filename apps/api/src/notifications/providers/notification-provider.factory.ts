@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { EmailProvider, SmsProvider } from './notification-provider.interface';
 import { MockEmailProvider, MockSmsProvider } from './mock.providers';
+import { TwilioSmsProvider } from './twilio.provider';
 
 const logger = new Logger('NotificationProviderFactory');
 
@@ -22,13 +23,23 @@ export function createEmailProvider(): EmailProvider {
 }
 
 export function createSmsProvider(): SmsProvider {
-  const choice = (process.env.SMS_PROVIDER ?? 'mock').toLowerCase();
-  switch (choice) {
-    case 'mock':
-      return new MockSmsProvider();
-    // case 'twilio': return new TwilioSmsProvider(process.env.TWILIO_*);
-    default:
-      logger.warn(`Unknown SMS_PROVIDER "${choice}", falling back to mock`);
-      return new MockSmsProvider();
+  const accountSid = (process.env.TWILIO_ACCOUNT_SID ?? '').trim();
+  const authToken = (process.env.TWILIO_AUTH_TOKEN ?? '').trim();
+  const messagingServiceSid = (process.env.TWILIO_MESSAGING_SERVICE_SID ?? '').trim() || undefined;
+  const fromNumber = (process.env.TWILIO_FROM_NUMBER ?? '').trim() || undefined;
+
+  // Explicit override (SMS_PROVIDER=mock forces mock even if creds exist).
+  const choice = (process.env.SMS_PROVIDER ?? '').toLowerCase();
+  if (choice === 'mock') return new MockSmsProvider();
+
+  // Auto-enable Twilio as soon as platform credentials + a sender are present.
+  if (accountSid && authToken && (messagingServiceSid || fromNumber)) {
+    logger.log('SMS provider: Twilio (live)');
+    return new TwilioSmsProvider({ accountSid, authToken, messagingServiceSid, fromNumber });
   }
+
+  if (choice === 'twilio') {
+    logger.warn('SMS_PROVIDER=twilio but TWILIO_* env vars are incomplete — falling back to mock');
+  }
+  return new MockSmsProvider();
 }

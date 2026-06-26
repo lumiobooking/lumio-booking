@@ -545,12 +545,21 @@ export default function PublicBookingPage() {
         </section>
         {/* Always-visible SMS disclosure (A2P 10DLC) — shown on EVERY step, so the
             messaging program is verifiable without completing all booking steps. */}
-        <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: isMobile ? '12px 16px 0' : '14px 24px 0', lineHeight: 1.55, maxWidth: 580, margin: '0 auto' }}>
-          By booking, you may receive appointment confirmation &amp; reminder texts{salon?.name ? ` from ${salon.name}` : ''} (up to ~6 msgs/mo).
-          Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.{' '}
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'underline' }}>Privacy</a> ·{' '}
-          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'underline' }}>Messaging Terms</a>
-        </p>
+        <div style={{ maxWidth: 600, margin: '0 auto', padding: isMobile ? '12px 14px 2px' : '16px 24px 4px' }}>
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 9,
+            background: '#fff', border: '1px solid #eef1f6', borderRadius: 12,
+            padding: '11px 14px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+          }}>
+            <span aria-hidden style={{ fontSize: 14, lineHeight: '18px', flexShrink: 0 }}>💬</span>
+            <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.55, color: '#94a3b8' }}>
+              By booking you may receive appointment confirmation &amp; reminder texts{salon?.name ? ` from ${salon.name}` : ''} — up to ~6/mo. Msg &amp; data rates may apply. Reply <strong style={{ color: '#64748b', fontWeight: 600 }}>STOP</strong> to opt out, <strong style={{ color: '#64748b', fontWeight: 600 }}>HELP</strong> for help.{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Privacy</a>
+              <span style={{ margin: '0 6px', color: '#cbd5e1' }}>·</span>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Messaging Terms</a>
+            </p>
+          </div>
+        </div>
         {isMobile && (
           <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #eef1f6', background: 'white' }}>
             <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>

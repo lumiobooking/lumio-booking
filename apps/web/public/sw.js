@@ -8,7 +8,7 @@
  *    old caches are purged on activate.
  *
  * Bump CACHE on every meaningful change to force old caches out. */
-const CACHE = 'lumio-cache-v3';
+const CACHE = 'lumio-cache-v4';
 
 self.addEventListener('install', () => self.skipWaiting());
 

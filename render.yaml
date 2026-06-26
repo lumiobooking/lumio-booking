@@ -58,8 +58,20 @@ services:
         sync: false
       - key: GMAIL_SENDER_NAME
         value: Lumio Booking
+      # SMS: leave SMS_PROVIDER unset/blank — Twilio auto-enables once the
+      # TWILIO_* vars below are filled. Set to "mock" to force-disable real SMS.
       - key: SMS_PROVIDER
-        value: mock
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      # Use ONE sender: a Messaging Service (recommended, handles STOP/HELP) ...
+      - key: TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      # ... or a single toll-free/long-code number in E.164 (e.g. +18337195153).
+      - key: TWILIO_FROM_NUMBER
+        sync: false
       - key: PAYMENT_PROVIDER
         value: mock
       # ---- Self-serve SaaS billing (subscriptions) ----

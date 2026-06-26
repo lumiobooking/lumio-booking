@@ -187,6 +187,8 @@ export default function PublicBookingPage() {
   const [avail, setAvail] = useState<Availability | null>(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
   const [paymentType, setPaymentType] = useState<'PAY_ONLINE' | 'PAY_LATER'>('PAY_LATER');
+  // Optional marketing SMS opt-in (A2P 10DLC): off by default, never required to book.
+  const [smsConsent, setSmsConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ paymentStatus: string | null } | null>(null);
@@ -294,6 +296,7 @@ export default function PublicBookingPage() {
           startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
+          smsConsent,
           paymentType,
         }),
       });
@@ -361,6 +364,10 @@ export default function PublicBookingPage() {
             <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, opacity: 0.85, paddingTop: 16, color: 'white', textDecoration: 'none' }}>
               Powered by <span style={{ fontWeight: 700 }}>Lumio Booking</span>
             </a>
+            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 8, display: 'flex', gap: 12 }}>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'none' }}>Privacy</a>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'none' }}>Messaging Terms</a>
+            </div>
           </aside>
         )}
 
@@ -477,6 +484,29 @@ export default function PublicBookingPage() {
                     />
                     {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}
                   </Field>
+                </div>
+                {/* SMS consent — transactional disclosure + optional marketing opt-in (A2P 10DLC). */}
+                <div style={{ marginTop: 18, padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span aria-hidden style={{ fontSize: 15 }}>📱</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Appointment text updates</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: '#64748b' }}>
+                    We&rsquo;ll text you confirmations &amp; reminders for this appointment from {salon?.name || 'the salon'}. Up to ~6 msgs/month.
+                    Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.
+                  </p>
+                  <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 10, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={smsConsent} onChange={(e) => setSmsConsent(e.target.checked)} style={{ marginTop: 2, width: 16, height: 16, accentColor: accent, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+                      Also send me special offers &amp; promotions by text <span style={{ color: '#94a3b8' }}>(optional)</span>
+                    </span>
+                  </label>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 9 }}>
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Privacy</a>
+                    <span style={{ margin: '0 6px' }}>·</span>
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Messaging Terms</a>
+                    <span> · Opt-in data never shared.</span>
+                  </div>
                 </div>
                 {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>First name and a valid phone number are required to continue.</p>}
               </StepFrame>

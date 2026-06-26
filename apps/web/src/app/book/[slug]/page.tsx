@@ -330,7 +330,8 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div style={{ ...(isMobile ? wrapMobile : wrap), ['--accent' as string]: accent } as React.CSSProperties}>
+      <div style={{ width: '100%', maxWidth: isMobile ? 560 : 900, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ ...(isMobile ? wrapMobile : wrap), width: '100%', maxWidth: '100%', ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
           <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
@@ -543,23 +544,6 @@ export default function PublicBookingPage() {
             </Center>
           )}
         </section>
-        {/* Always-visible SMS disclosure (A2P 10DLC) — shown on EVERY step, so the
-            messaging program is verifiable without completing all booking steps. */}
-        <div style={{ maxWidth: 600, margin: '0 auto', padding: isMobile ? '12px 14px 2px' : '16px 24px 4px' }}>
-          <div style={{
-            display: 'flex', alignItems: 'flex-start', gap: 9,
-            background: '#fff', border: '1px solid #eef1f6', borderRadius: 12,
-            padding: '11px 14px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
-          }}>
-            <span aria-hidden style={{ fontSize: 14, lineHeight: '18px', flexShrink: 0 }}>💬</span>
-            <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.55, color: '#94a3b8' }}>
-              By booking you may receive appointment confirmation &amp; reminder texts{salon?.name ? ` from ${salon.name}` : ''} — up to ~6/mo. Msg &amp; data rates may apply. Reply <strong style={{ color: '#64748b', fontWeight: 600 }}>STOP</strong> to opt out, <strong style={{ color: '#64748b', fontWeight: 600 }}>HELP</strong> for help.{' '}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Privacy</a>
-              <span style={{ margin: '0 6px', color: '#cbd5e1' }}>·</span>
-              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Messaging Terms</a>
-            </p>
-          </div>
-        </div>
         {isMobile && (
           <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #eef1f6', background: 'white' }}>
             <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>
@@ -571,6 +555,18 @@ export default function PublicBookingPage() {
             </div>
           </div>
         )}
+      </div>
+        {/* Always-visible SMS disclosure (A2P 10DLC) — full-width bar under the card. */}
+        <div style={{ marginTop: 12, background: '#fff', border: '1px solid #eef1f6', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,23,42,0.04)', padding: isMobile ? '11px 14px' : '13px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span aria-hidden style={{ fontSize: 15, flexShrink: 0 }}>💬</span>
+          <p style={{ margin: 0, flex: '1 1 300px', fontSize: 12, lineHeight: 1.5, color: '#94a3b8' }}>
+            By booking you may receive appointment confirmation &amp; reminder texts{salon?.name ? ` from ${salon.name}` : ''} — up to ~6/mo. Msg &amp; data rates may apply. Reply <strong style={{ color: '#64748b', fontWeight: 600 }}>STOP</strong> to opt out, <strong style={{ color: '#64748b', fontWeight: 600 }}>HELP</strong> for help.
+          </p>
+          <div style={{ display: 'flex', gap: 16, fontSize: 12, flexShrink: 0 }}>
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Privacy</a>
+            <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Messaging Terms</a>
+          </div>
+        </div>
       </div>
     </Shell>
   );
@@ -588,6 +584,19 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const days = useMemo(() => buildMonth(view), [view]);
   const monthLabel = view.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  // The next bookable days, auto-detected from today (skipping closed days and
+  // anything past the booking window). Shown as a quick-pick row so customers
+  // see open dates immediately, without scrolling past greyed-out past days.
+  const upcoming = useMemo(() => {
+    const out: Date[] = [];
+    const d = new Date(today);
+    for (let guard = 0; out.length < 12 && guard < 160; guard++) {
+      if (d <= maxDate && !isClosedDay(d, rules)) out.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }, [today, maxDate, rules]);
 
   // Candidate start times for the day, spaced by the salon's slot step. The
   // real service duration is applied later (technician step + backend).
@@ -607,6 +616,28 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
 
   return (
     <StepFrame title="Pick a date & time" canContinue={!!slot} onContinue={onContinue}>
+      {upcoming.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 10 }}>Next available days</div>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }}>
+            {upcoming.map((d, i) => {
+              const sel = selectedDate && sameDay(d, selectedDate);
+              const isToday = sameDay(d, today);
+              return (
+                <button key={i} onClick={() => onPickDate(d)} style={{
+                  flex: '0 0 auto', width: 66, padding: '9px 0', borderRadius: 12, cursor: 'pointer',
+                  border: sel ? `2px solid ${ACCENT}` : '1px solid #e2e8f0',
+                  background: sel ? '#eef2ff' : 'white', textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: sel ? ACCENT : '#94a3b8' }}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', lineHeight: 1.2 }}>{d.getDate()}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: isToday ? ACCENT : '#94a3b8' }}>{isToday ? 'Today' : d.toLocaleDateString('en-US', { month: 'short' })}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <strong style={{ color: '#1e293b' }}>{monthLabel}</strong>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -620,11 +651,12 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
           if (!d) return <div key={i} />;
           const disabled = d < today || d > maxDate || isClosedDay(d, rules);
           const sel = selectedDate && sameDay(d, selectedDate);
+          const isToday = sameDay(d, today);
           return (
             <button key={i} disabled={disabled} onClick={() => onPickDate(d)}
-              style={{ padding: '10px 0', borderRadius: 8, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
-                border: sel ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: sel ? '#eef2ff' : disabled ? '#f8fafc' : 'white',
-                color: disabled ? '#cbd5e1' : '#1e293b', fontWeight: sel ? 700 : 400 }}>
+              style={{ padding: '11px 0', borderRadius: 8, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
+                border: sel ? `2px solid ${ACCENT}` : isToday ? `1.5px solid ${ACCENT}` : '1px solid #e2e8f0', background: sel ? '#eef2ff' : disabled ? '#f8fafc' : 'white',
+                color: disabled ? '#cbd5e1' : '#1e293b', fontWeight: sel || isToday ? 700 : 400 }}>
               {d.getDate()}
             </button>
           );
@@ -991,16 +1023,16 @@ function overlaps(slot: Slot, intervals: { start: string; end: string }[]): bool
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
-const wrap: React.CSSProperties = { width: '100%', maxWidth: 900, height: 620, display: 'grid', gridTemplateColumns: '280px 1fr', background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 48px rgba(15,23,42,0.18)' };
+const wrap: React.CSSProperties = { width: '100%', maxWidth: 900, minHeight: 560, display: 'grid', gridTemplateColumns: '280px 1fr', alignItems: 'stretch', background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 48px rgba(15,23,42,0.18)' };
 // Mobile: single column, natural height, narrower card.
 const wrapMobile: React.CSSProperties = { width: '100%', maxWidth: 560, display: 'flex', flexDirection: 'column', background: 'white', borderRadius: 14, overflow: 'hidden', boxShadow: '0 10px 36px rgba(15,23,42,0.16)' };
 const contentMobile: React.CSSProperties = { minHeight: 0, display: 'flex', flexDirection: 'column' };
 const sidebar: React.CSSProperties = { background: ACCENT, color: 'white', padding: 24, display: 'flex', flexDirection: 'column' };
 const sideStep: React.CSSProperties = { display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 10, marginBottom: 6 };
 const stepBadge: React.CSSProperties = { width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 };
-const content: React.CSSProperties = { minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' };
-const frameRoot: React.CSSProperties = { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', padding: 28 };
-const scrollArea: React.CSSProperties = { flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 };
+const content: React.CSSProperties = { minHeight: 0, overflow: 'visible', display: 'flex', flexDirection: 'column' };
+const frameRoot: React.CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', padding: 28 };
+const scrollArea: React.CSSProperties = { flex: 1, minHeight: 0, paddingRight: 4 };
 const stepTitle: React.CSSProperties = { fontSize: 20, margin: '0 0 16px', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: 14 };
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 14, color: '#334155', marginBottom: 6, fontWeight: 500 };
 const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', color: '#1e293b', fontSize: 14 };

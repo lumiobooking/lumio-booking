@@ -120,16 +120,22 @@ function DealsBanner({ wd, categories }: { wd?: WeekdayDiscounts; categories: { 
   const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'select services') : 'everything');
   const sorted = [...wd.rules].sort((a, b) => a.day - b.day || b.percent - a.percent);
   return (
-    <div style={{ marginBottom: 16, padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7' }}>
-      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 15 }}>💸 {wd.message || 'Save on quieter days!'}</div>
+    <div style={{ marginBottom: 18, padding: '16px 18px', borderRadius: 16, background: 'linear-gradient(135deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7', boxShadow: '0 2px 12px rgba(16,185,129,0.12)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
+        <span style={{ width: 30, height: 30, borderRadius: 10, background: '#10b981', color: 'white', display: 'grid', placeItems: 'center', fontSize: 16, flexShrink: 0 }} aria-hidden>💸</span>
+        <div style={{ fontWeight: 800, color: '#065f46', fontSize: 15.5 }}>{wd.message || 'Save on quieter days!'}</div>
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {sorted.map((r, i) => (
-          <span key={i} style={{ background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 13, color: '#065f46', fontWeight: 600 }}>
-            {WEEKDAY_NAMES[r.day]}: −{r.percent}% off {catName(r.categoryId)}
+          <span key={i} style={{ background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '5px 12px 5px 5px', fontSize: 13, color: '#065f46', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ background: '#10b981', color: 'white', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999 }}>−{r.percent}%</span>
+            {WEEKDAY_NAMES[r.day]} · {catName(r.categoryId)}
           </span>
         ))}
       </div>
-      <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>Pick a highlighted day below and the discount applies automatically.</div>
+      <div style={{ color: '#047857', fontSize: 12, marginTop: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span aria-hidden>✓</span> Pick a highlighted day below — the discount applies automatically.
+      </div>
     </div>
   );
 }
@@ -334,32 +340,60 @@ export default function PublicBookingPage() {
       <div style={{ ...(isMobile ? wrapMobile : wrap), width: '100%', maxWidth: '100%', ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
-          <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
-            <div style={{ fontSize: 17, fontWeight: 700 }}>{salon?.name}</div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
-              {steps.map((s) => (
-                <div key={s.n} style={{ flex: 1, height: 6, borderRadius: 999, background: step >= s.n ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.30)' }} />
-              ))}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <div style={{ fontSize: 12, opacity: 0.95 }}>
-                {step > 5 ? 'Done' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
-              </div>
+          <div style={{ background: ACCENT, color: 'white', padding: '15px 16px 17px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: -0.3 }}>{salon?.name}</div>
               <InstallAppButton label="Get the app" />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: 14 }}>
+              {steps.map((s, idx) => {
+                const active = step === s.n; const done = step > s.n; const isLast = idx === steps.length - 1;
+                return (
+                  <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: isLast ? '0 0 auto' : '1 1 0' }}>
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
+                      background: done ? '#22c55e' : active ? '#fff' : 'rgba(255,255,255,0.20)',
+                      color: done ? '#fff' : active ? ACCENT : 'rgba(255,255,255,0.9)',
+                      boxShadow: active ? '0 0 0 3px rgba(255,255,255,0.25)' : 'none',
+                    }}>{done ? '✓' : s.n}</div>
+                    {!isLast && <div style={{ flex: 1, height: 2, margin: '0 5px', borderRadius: 2, background: done ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.25)' }} />}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.97, marginTop: 11 }}>
+              {step > 5 ? 'All done 🎉' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
             </div>
           </div>
         ) : (
           <aside style={sidebar}>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>{salon?.name}</div>
-            {steps.map((s) => {
-              const active = step === s.n; const done = step > s.n;
-              return (
-                <div key={s.n} style={{ ...sideStep, background: active ? 'rgba(255,255,255,0.20)' : 'transparent' }}>
-                  <div style={{ ...stepBadge, background: done ? '#22c55e' : 'rgba(255,255,255,0.25)' }}>{done ? '✓' : s.n}</div>
-                  <div><div style={{ fontWeight: 600, fontSize: 14 }}>{s.label}</div>{s.summary && <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>{s.summary}</div>}</div>
-                </div>
-              );
-            })}
+            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}>{salon?.name}</div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 22, marginTop: 2 }}>Book your appointment</div>
+            <div>
+              {steps.map((s, idx) => {
+                const active = step === s.n; const done = step > s.n;
+                const isLast = idx === steps.length - 1;
+                return (
+                  <div key={s.n} style={{ display: 'flex', gap: 13, alignItems: 'stretch' }}>
+                    <div style={{ width: 32, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0,
+                        background: done ? '#22c55e' : active ? '#fff' : 'rgba(255,255,255,0.18)',
+                        color: done ? '#fff' : active ? ACCENT : 'rgba(255,255,255,0.95)',
+                        boxShadow: active ? '0 0 0 4px rgba(255,255,255,0.22)' : 'none',
+                      }}>{done ? '✓' : s.n}</div>
+                      {!isLast && <div style={{ flex: 1, width: 2, minHeight: 16, margin: '4px 0', borderRadius: 2, background: done ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.22)' }} />}
+                    </div>
+                    <div style={{ paddingBottom: isLast ? 4 : 16, paddingTop: 5 }}>
+                      <div style={{ fontWeight: active ? 800 : 600, fontSize: 14.5, color: active ? '#fff' : 'rgba(255,255,255,0.92)' }}>{s.label}</div>
+                      {s.summary
+                        ? <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{s.summary}</div>
+                        : active ? <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>In progress…</div> : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             <div style={{ marginTop: 'auto', paddingTop: 24 }}>
               <InstallAppButton label="Install this booking app" />
             </div>
@@ -377,7 +411,7 @@ export default function PublicBookingPage() {
           {step === 1 && (
             <>
               <DealsBanner wd={salon?.weekdayDiscounts} categories={categories} />
-              <StepDateTime rules={rules} selectedDate={selectedDate} slot={slot}
+              <StepDateTime rules={rules} wd={salon?.weekdayDiscounts} selectedDate={selectedDate} slot={slot}
                 onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                 onPickSlot={setSlot}
                 onContinue={() => slot && setStep(2)} />
@@ -575,8 +609,8 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 // Step 1: Date & time (the customer locks in a date AND a time slot first)
 // ---------------------------------------------------------------------------
-function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
-  rules: BookingRules; selectedDate: Date | null; slot: Slot | null;
+function StepDateTime({ rules, wd, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
+  rules: BookingRules; wd?: WeekdayDiscounts; selectedDate: Date | null; slot: Slot | null;
   onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void; onContinue: () => void;
 }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
@@ -597,6 +631,15 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
     }
     return out;
   }, [today, maxDate, rules]);
+
+  // Best discount % per weekday (0–6), so we can flag discounted days with a chip.
+  const dealPctByDay = useMemo(() => {
+    const m: Record<number, number> = {};
+    if (wd?.enabled && Array.isArray(wd.rules)) {
+      for (const r of wd.rules) m[r.day] = Math.max(m[r.day] || 0, r.percent);
+    }
+    return m;
+  }, [wd]);
 
   // Candidate start times for the day, spaced by the salon's slot step. The
   // real service duration is applied later (technician step + backend).
@@ -623,15 +666,20 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
             {upcoming.map((d, i) => {
               const sel = selectedDate && sameDay(d, selectedDate);
               const isToday = sameDay(d, today);
+              const pct = dealPctByDay[d.getDay()] || 0;
               return (
                 <button key={i} onClick={() => onPickDate(d)} style={{
-                  flex: '0 0 auto', width: 66, padding: '9px 0', borderRadius: 12, cursor: 'pointer',
+                  flex: '0 0 auto', width: 72, padding: '9px 0 8px', borderRadius: 14, cursor: 'pointer',
                   border: sel ? `2px solid ${ACCENT}` : '1px solid #e2e8f0',
                   background: sel ? '#eef2ff' : 'white', textAlign: 'center',
+                  boxShadow: sel ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
                 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: sel ? ACCENT : '#94a3b8' }}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
                   <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', lineHeight: 1.2 }}>{d.getDate()}</div>
                   <div style={{ fontSize: 10, fontWeight: 600, color: isToday ? ACCENT : '#94a3b8' }}>{isToday ? 'Today' : d.toLocaleDateString('en-US', { month: 'short' })}</div>
+                  {pct > 0 && (
+                    <div style={{ marginTop: 5, display: 'inline-block', background: '#ecfdf5', color: '#047857', fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 999, border: '1px solid #a7f3d0' }}>−{pct}%</div>
+                  )}
                 </button>
               );
             })}
@@ -652,12 +700,15 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
           const disabled = d < today || d > maxDate || isClosedDay(d, rules);
           const sel = selectedDate && sameDay(d, selectedDate);
           const isToday = sameDay(d, today);
+          const pct = dealPctByDay[d.getDay()] || 0;
           return (
             <button key={i} disabled={disabled} onClick={() => onPickDate(d)}
-              style={{ padding: '11px 0', borderRadius: 8, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
+              style={{ padding: '6px 0 5px', borderRadius: 9, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minHeight: 46,
                 border: sel ? `2px solid ${ACCENT}` : isToday ? `1.5px solid ${ACCENT}` : '1px solid #e2e8f0', background: sel ? '#eef2ff' : disabled ? '#f8fafc' : 'white',
                 color: disabled ? '#cbd5e1' : '#1e293b', fontWeight: sel || isToday ? 700 : 400 }}>
-              {d.getDate()}
+              <span style={{ lineHeight: 1.15 }}>{d.getDate()}</span>
+              {!disabled && pct > 0 && <span style={{ fontSize: 9, fontWeight: 800, color: '#059669', lineHeight: 1 }}>−{pct}%</span>}
             </button>
           );
         })}

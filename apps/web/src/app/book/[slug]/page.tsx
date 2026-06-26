@@ -120,22 +120,16 @@ function DealsBanner({ wd, categories }: { wd?: WeekdayDiscounts; categories: { 
   const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'select services') : 'everything');
   const sorted = [...wd.rules].sort((a, b) => a.day - b.day || b.percent - a.percent);
   return (
-    <div style={{ marginBottom: 18, padding: '16px 18px', borderRadius: 16, background: 'linear-gradient(135deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7', boxShadow: '0 2px 12px rgba(16,185,129,0.12)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
-        <span style={{ width: 30, height: 30, borderRadius: 10, background: '#10b981', color: 'white', display: 'grid', placeItems: 'center', fontSize: 16, flexShrink: 0 }} aria-hidden>💸</span>
-        <div style={{ fontWeight: 800, color: '#065f46', fontSize: 15.5 }}>{wd.message || 'Save on quieter days!'}</div>
-      </div>
+    <div style={{ marginBottom: 16, padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7' }}>
+      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 15 }}>💸 {wd.message || 'Save on quieter days!'}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {sorted.map((r, i) => (
-          <span key={i} style={{ background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '5px 12px 5px 5px', fontSize: 13, color: '#065f46', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ background: '#10b981', color: 'white', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999 }}>−{r.percent}%</span>
-            {WEEKDAY_NAMES[r.day]} · {catName(r.categoryId)}
+          <span key={i} style={{ background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 13, color: '#065f46', fontWeight: 600 }}>
+            {WEEKDAY_NAMES[r.day]}: −{r.percent}% off {catName(r.categoryId)}
           </span>
         ))}
       </div>
-      <div style={{ color: '#047857', fontSize: 12, marginTop: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span aria-hidden>✓</span> Pick a highlighted day below — the discount applies automatically.
-      </div>
+      <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>Pick a highlighted day below and the discount applies automatically.</div>
     </div>
   );
 }
@@ -192,9 +186,6 @@ export default function PublicBookingPage() {
   const [slot, setSlot] = useState<Slot | null>(null);
   const [avail, setAvail] = useState<Availability | null>(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
-  // Optional, explicit opt-in for promotional texts (A2P 10DLC: separate, OFF by
-  // default, never required to book). Transactional reminders use the disclosure.
-  const [smsConsent, setSmsConsent] = useState(false);
   const [paymentType, setPaymentType] = useState<'PAY_ONLINE' | 'PAY_LATER'>('PAY_LATER');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -303,7 +294,6 @@ export default function PublicBookingPage() {
           startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
-          smsConsent,
           paymentType,
         }),
       });
@@ -336,74 +326,41 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div style={{ width: '100%', maxWidth: isMobile ? 560 : 900, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ ...(isMobile ? wrapMobile : wrap), width: '100%', maxWidth: '100%', ['--accent' as string]: accent } as React.CSSProperties}>
+      <div style={{ ...(isMobile ? wrapMobile : wrap), ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
-          <div style={{ background: ACCENT, color: 'white', padding: '15px 16px 17px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 16.5, fontWeight: 800, letterSpacing: -0.3 }}>{salon?.name}</div>
+          <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
+            <div style={{ fontSize: 17, fontWeight: 700 }}>{salon?.name}</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+              {steps.map((s) => (
+                <div key={s.n} style={{ flex: 1, height: 6, borderRadius: 999, background: step >= s.n ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.30)' }} />
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <div style={{ fontSize: 12, opacity: 0.95 }}>
+                {step > 5 ? 'Done' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
+              </div>
               <InstallAppButton label="Get the app" />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', marginTop: 14 }}>
-              {steps.map((s, idx) => {
-                const active = step === s.n; const done = step > s.n; const isLast = idx === steps.length - 1;
-                return (
-                  <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: isLast ? '0 0 auto' : '1 1 0' }}>
-                    <div style={{
-                      width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
-                      background: done ? '#22c55e' : active ? '#fff' : 'rgba(255,255,255,0.20)',
-                      color: done ? '#fff' : active ? ACCENT : 'rgba(255,255,255,0.9)',
-                      boxShadow: active ? '0 0 0 3px rgba(255,255,255,0.25)' : 'none',
-                    }}>{done ? '✓' : s.n}</div>
-                    {!isLast && <div style={{ flex: 1, height: 2, margin: '0 5px', borderRadius: 2, background: done ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.25)' }} />}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.97, marginTop: 11 }}>
-              {step > 5 ? 'All done 🎉' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
             </div>
           </div>
         ) : (
           <aside style={sidebar}>
-            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}>{salon?.name}</div>
-            <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 22, marginTop: 2 }}>Book your appointment</div>
-            <div>
-              {steps.map((s, idx) => {
-                const active = step === s.n; const done = step > s.n;
-                const isLast = idx === steps.length - 1;
-                return (
-                  <div key={s.n} style={{ display: 'flex', gap: 13, alignItems: 'stretch' }}>
-                    <div style={{ width: 32, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div style={{
-                        width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0,
-                        background: done ? '#22c55e' : active ? '#fff' : 'rgba(255,255,255,0.18)',
-                        color: done ? '#fff' : active ? ACCENT : 'rgba(255,255,255,0.95)',
-                        boxShadow: active ? '0 0 0 4px rgba(255,255,255,0.22)' : 'none',
-                      }}>{done ? '✓' : s.n}</div>
-                      {!isLast && <div style={{ flex: 1, width: 2, minHeight: 16, margin: '4px 0', borderRadius: 2, background: done ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.22)' }} />}
-                    </div>
-                    <div style={{ paddingBottom: isLast ? 4 : 16, paddingTop: 5 }}>
-                      <div style={{ fontWeight: active ? 800 : 600, fontSize: 14.5, color: active ? '#fff' : 'rgba(255,255,255,0.92)' }}>{s.label}</div>
-                      {s.summary
-                        ? <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{s.summary}</div>
-                        : active ? <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>In progress…</div> : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>{salon?.name}</div>
+            {steps.map((s) => {
+              const active = step === s.n; const done = step > s.n;
+              return (
+                <div key={s.n} style={{ ...sideStep, background: active ? 'rgba(255,255,255,0.20)' : 'transparent' }}>
+                  <div style={{ ...stepBadge, background: done ? '#22c55e' : 'rgba(255,255,255,0.25)' }}>{done ? '✓' : s.n}</div>
+                  <div><div style={{ fontWeight: 600, fontSize: 14 }}>{s.label}</div>{s.summary && <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>{s.summary}</div>}</div>
+                </div>
+              );
+            })}
             <div style={{ marginTop: 'auto', paddingTop: 24 }}>
               <InstallAppButton label="Install this booking app" />
             </div>
             <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, opacity: 0.85, paddingTop: 16, color: 'white', textDecoration: 'none' }}>
               Powered by <span style={{ fontWeight: 700 }}>Lumio Booking</span>
             </a>
-            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 8, display: 'flex', gap: 12 }}>
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'none' }}>Privacy</a>
-              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'none' }}>Messaging Terms</a>
-            </div>
           </aside>
         )}
 
@@ -411,7 +368,7 @@ export default function PublicBookingPage() {
           {step === 1 && (
             <>
               <DealsBanner wd={salon?.weekdayDiscounts} categories={categories} />
-              <StepDateTime rules={rules} wd={salon?.weekdayDiscounts} selectedDate={selectedDate} slot={slot}
+              <StepDateTime rules={rules} selectedDate={selectedDate} slot={slot}
                 onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                 onPickSlot={setSlot}
                 onContinue={() => slot && setStep(2)} />
@@ -521,33 +478,6 @@ export default function PublicBookingPage() {
                     {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}
                   </Field>
                 </div>
-                {/* SMS consent (A2P 10DLC). Transactional = disclosure; marketing = explicit opt-in. */}
-                <div style={{ marginTop: 16, padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
-                  <p style={{ fontSize: 12.5, color: '#475569', margin: 0, lineHeight: 1.55 }}>
-                    By providing your phone number, you agree to receive appointment confirmations and reminders by text
-                    from {salon?.name || 'this salon'}. Up to ~6 msgs/month. Msg &amp; data rates may apply. Reply STOP to
-                    opt out, HELP for help. Consent is not required to book.
-                  </p>
-                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 12, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={smsConsent}
-                      onChange={(e) => setSmsConsent(e.target.checked)}
-                      style={{ marginTop: 2, width: 16, height: 16, accentColor: accent, flexShrink: 0 }}
-                    />
-                    <span style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.55 }}>
-                      I&rsquo;d also like to receive special offers &amp; promotions by text from {salon?.name || 'this salon'}.{' '}
-                      <span style={{ color: '#94a3b8' }}>(optional — not required to book)</span>
-                    </span>
-                  </label>
-                  <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
-                    See our{' '}
-                    <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none' }}>Privacy Policy</a>{' '}
-                    and{' '}
-                    <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none' }}>Messaging Terms</a>.
-                    Your opt-in data is never shared with third parties.
-                  </p>
-                </div>
                 {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>First name and a valid phone number are required to continue.</p>}
               </StepFrame>
             );
@@ -570,37 +500,17 @@ export default function PublicBookingPage() {
                   <strong>{slot && `${slot.start.toLocaleDateString()} at ${fmtTime(slot.start)}`}</strong> is received.
                 </p>
                 <p style={{ color: '#475569' }}>Payment: <strong>{result?.paymentStatus === 'PAID' ? 'Paid online ✓' : 'Pay at the salon'}</strong></p>
-                <p style={{ color: '#64748b', fontSize: 12.5, lineHeight: 1.55, margin: '8px 0 14px' }}>
-                  📱 You&rsquo;ll receive appointment confirmations and reminders by text. Reply STOP to opt out, HELP for help anytime.
-                </p>
                 <button onClick={reset} style={primaryBtn}>Book another</button>
               </div>
             </Center>
           )}
         </section>
         {isMobile && (
-          <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #eef1f6', background: 'white' }}>
-            <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>
-              Powered by <span style={{ color: ACCENT, fontWeight: 700 }}>Lumio Booking</span>
-            </a>
-            <div style={{ marginTop: 6, display: 'flex', gap: 14, justifyContent: 'center' }}>
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>Privacy</a>
-              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#94a3b8', textDecoration: 'none' }}>Messaging Terms</a>
-            </div>
-          </div>
+          <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
+            style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: '#94a3b8', textDecoration: 'none', borderTop: '1px solid #eef1f6', background: 'white' }}>
+            Powered by <span style={{ color: ACCENT, fontWeight: 700 }}>Lumio Booking</span>
+          </a>
         )}
-      </div>
-        {/* Always-visible SMS disclosure (A2P 10DLC) — full-width bar under the card. */}
-        <div style={{ marginTop: 12, background: '#fff', border: '1px solid #eef1f6', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,23,42,0.04)', padding: isMobile ? '11px 14px' : '13px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span aria-hidden style={{ fontSize: 15, flexShrink: 0 }}>💬</span>
-          <p style={{ margin: 0, flex: '1 1 300px', fontSize: 12, lineHeight: 1.5, color: '#94a3b8' }}>
-            By booking you may receive appointment confirmation &amp; reminder texts{salon?.name ? ` from ${salon.name}` : ''} — up to ~6/mo. Msg &amp; data rates may apply. Reply <strong style={{ color: '#64748b', fontWeight: 600 }}>STOP</strong> to opt out, <strong style={{ color: '#64748b', fontWeight: 600 }}>HELP</strong> for help.
-          </p>
-          <div style={{ display: 'flex', gap: 16, fontSize: 12, flexShrink: 0 }}>
-            <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Privacy</a>
-            <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Messaging Terms</a>
-          </div>
-        </div>
       </div>
     </Shell>
   );
@@ -609,8 +519,8 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 // Step 1: Date & time (the customer locks in a date AND a time slot first)
 // ---------------------------------------------------------------------------
-function StepDateTime({ rules, wd, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
-  rules: BookingRules; wd?: WeekdayDiscounts; selectedDate: Date | null; slot: Slot | null;
+function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
+  rules: BookingRules; selectedDate: Date | null; slot: Slot | null;
   onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void; onContinue: () => void;
 }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
@@ -618,28 +528,6 @@ function StepDateTime({ rules, wd, selectedDate, slot, onPickDate, onPickSlot, o
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const days = useMemo(() => buildMonth(view), [view]);
   const monthLabel = view.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-
-  // The next bookable days, auto-detected from today (skipping closed days and
-  // anything past the booking window). Shown as a quick-pick row so customers
-  // see open dates immediately, without scrolling past greyed-out past days.
-  const upcoming = useMemo(() => {
-    const out: Date[] = [];
-    const d = new Date(today);
-    for (let guard = 0; out.length < 12 && guard < 160; guard++) {
-      if (d <= maxDate && !isClosedDay(d, rules)) out.push(new Date(d));
-      d.setDate(d.getDate() + 1);
-    }
-    return out;
-  }, [today, maxDate, rules]);
-
-  // Best discount % per weekday (0–6), so we can flag discounted days with a chip.
-  const dealPctByDay = useMemo(() => {
-    const m: Record<number, number> = {};
-    if (wd?.enabled && Array.isArray(wd.rules)) {
-      for (const r of wd.rules) m[r.day] = Math.max(m[r.day] || 0, r.percent);
-    }
-    return m;
-  }, [wd]);
 
   // Candidate start times for the day, spaced by the salon's slot step. The
   // real service duration is applied later (technician step + backend).
@@ -659,33 +547,6 @@ function StepDateTime({ rules, wd, selectedDate, slot, onPickDate, onPickSlot, o
 
   return (
     <StepFrame title="Pick a date & time" canContinue={!!slot} onContinue={onContinue}>
-      {upcoming.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 10 }}>Next available days</div>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }}>
-            {upcoming.map((d, i) => {
-              const sel = selectedDate && sameDay(d, selectedDate);
-              const isToday = sameDay(d, today);
-              const pct = dealPctByDay[d.getDay()] || 0;
-              return (
-                <button key={i} onClick={() => onPickDate(d)} style={{
-                  flex: '0 0 auto', width: 72, padding: '9px 0 8px', borderRadius: 14, cursor: 'pointer',
-                  border: sel ? `2px solid ${ACCENT}` : '1px solid #e2e8f0',
-                  background: sel ? '#eef2ff' : 'white', textAlign: 'center',
-                  boxShadow: sel ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
-                }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: sel ? ACCENT : '#94a3b8' }}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', lineHeight: 1.2 }}>{d.getDate()}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: isToday ? ACCENT : '#94a3b8' }}>{isToday ? 'Today' : d.toLocaleDateString('en-US', { month: 'short' })}</div>
-                  {pct > 0 && (
-                    <div style={{ marginTop: 5, display: 'inline-block', background: '#ecfdf5', color: '#047857', fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 999, border: '1px solid #a7f3d0' }}>−{pct}%</div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <strong style={{ color: '#1e293b' }}>{monthLabel}</strong>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -699,16 +560,12 @@ function StepDateTime({ rules, wd, selectedDate, slot, onPickDate, onPickSlot, o
           if (!d) return <div key={i} />;
           const disabled = d < today || d > maxDate || isClosedDay(d, rules);
           const sel = selectedDate && sameDay(d, selectedDate);
-          const isToday = sameDay(d, today);
-          const pct = dealPctByDay[d.getDay()] || 0;
           return (
             <button key={i} disabled={disabled} onClick={() => onPickDate(d)}
-              style={{ padding: '6px 0 5px', borderRadius: 9, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minHeight: 46,
-                border: sel ? `2px solid ${ACCENT}` : isToday ? `1.5px solid ${ACCENT}` : '1px solid #e2e8f0', background: sel ? '#eef2ff' : disabled ? '#f8fafc' : 'white',
-                color: disabled ? '#cbd5e1' : '#1e293b', fontWeight: sel || isToday ? 700 : 400 }}>
-              <span style={{ lineHeight: 1.15 }}>{d.getDate()}</span>
-              {!disabled && pct > 0 && <span style={{ fontSize: 9, fontWeight: 800, color: '#059669', lineHeight: 1 }}>−{pct}%</span>}
+              style={{ padding: '10px 0', borderRadius: 8, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
+                border: sel ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: sel ? '#eef2ff' : disabled ? '#f8fafc' : 'white',
+                color: disabled ? '#cbd5e1' : '#1e293b', fontWeight: sel ? 700 : 400 }}>
+              {d.getDate()}
             </button>
           );
         })}
@@ -1074,16 +931,16 @@ function overlaps(slot: Slot, intervals: { start: string; end: string }[]): bool
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
-const wrap: React.CSSProperties = { width: '100%', maxWidth: 900, minHeight: 560, display: 'grid', gridTemplateColumns: '280px 1fr', alignItems: 'stretch', background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 48px rgba(15,23,42,0.18)' };
+const wrap: React.CSSProperties = { width: '100%', maxWidth: 900, height: 620, display: 'grid', gridTemplateColumns: '280px 1fr', background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 48px rgba(15,23,42,0.18)' };
 // Mobile: single column, natural height, narrower card.
 const wrapMobile: React.CSSProperties = { width: '100%', maxWidth: 560, display: 'flex', flexDirection: 'column', background: 'white', borderRadius: 14, overflow: 'hidden', boxShadow: '0 10px 36px rgba(15,23,42,0.16)' };
 const contentMobile: React.CSSProperties = { minHeight: 0, display: 'flex', flexDirection: 'column' };
 const sidebar: React.CSSProperties = { background: ACCENT, color: 'white', padding: 24, display: 'flex', flexDirection: 'column' };
 const sideStep: React.CSSProperties = { display: 'flex', gap: 12, alignItems: 'center', padding: 12, borderRadius: 10, marginBottom: 6 };
 const stepBadge: React.CSSProperties = { width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 };
-const content: React.CSSProperties = { minHeight: 0, overflow: 'visible', display: 'flex', flexDirection: 'column' };
-const frameRoot: React.CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', padding: 28 };
-const scrollArea: React.CSSProperties = { flex: 1, minHeight: 0, paddingRight: 4 };
+const content: React.CSSProperties = { minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' };
+const frameRoot: React.CSSProperties = { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', padding: 28 };
+const scrollArea: React.CSSProperties = { flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 };
 const stepTitle: React.CSSProperties = { fontSize: 20, margin: '0 0 16px', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: 14 };
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 14, color: '#334155', marginBottom: 6, fontWeight: 500 };
 const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', color: '#1e293b', fontSize: 14 };

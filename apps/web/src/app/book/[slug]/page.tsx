@@ -236,14 +236,16 @@ export default function PublicBookingPage() {
   const load = useCallback(async () => {
     setLoading(true); setLoadError(null);
     try {
-      const sRes = await fetch(base);
-      if (!sRes.ok) { setLoadError(sRes.status === 404 ? 'This salon booking page was not found.' : 'Could not load the salon.'); return; }
-      const [salonData, servicesData, staffData, catData] = await Promise.all([
-        sRes.json(),
-        fetch(`${base}/services`).then((r) => r.json()),
-        fetch(`${base}/staff`).then((r) => r.json()),
+      // Fire all four requests in parallel (was a waterfall: salon first, then
+      // the rest) — one round-trip instead of two, noticeably faster to load.
+      const [sRes, servicesData, staffData, catData] = await Promise.all([
+        fetch(base),
+        fetch(`${base}/services`).then((r) => r.json()).catch(() => []),
+        fetch(`${base}/staff`).then((r) => r.json()).catch(() => []),
         fetch(`${base}/categories`).then((r) => r.json()).catch(() => []),
       ]);
+      if (!sRes.ok) { setLoadError(sRes.status === 404 ? 'This salon booking page was not found.' : 'Could not load the salon.'); return; }
+      const salonData = await sRes.json();
       setSalon(salonData); setServices(servicesData ?? []); setStaff(staffData ?? []); setCategories(catData ?? []);
     } catch { setLoadError('Could not reach the booking service. Please try again later.'); }
     finally { setLoading(false); }

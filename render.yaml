@@ -11,7 +11,9 @@ services:
   - type: web
     name: lumio-api
     runtime: node
-    plan: free
+    # Starter ($7/mo) so the API never sleeps (no cold start). Keep this in the
+    # blueprint so a deploy never silently reverts it to free.
+    plan: starter
     rootDir: .
     # install whole workspace -> generate Prisma client -> build -> run migrations
     buildCommand: >-

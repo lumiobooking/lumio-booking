@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { DateRangeBar, useDateRange } from '../../../components/ListFilter';
+import { useLang, tr } from '../../../lib/i18n';
 
 interface Row {
   staffId: string; name: string; commissionPercent: number; serviceCount: number;
@@ -22,6 +23,8 @@ export default function PayrollPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const range = useDateRange('7d');
   const [data, setData] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,12 +50,12 @@ function Inner() {
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>Bảng lương thợ · Payroll</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>Lương phải trả mỗi thợ = hoa hồng (theo % cài ở Staff) + tip, trong kỳ đã chọn.</p>
+          <h1 style={{ fontSize: 22, margin: 0 }}>{t('pr.title')}</h1>
+          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{t('pr.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <DateRangeBar range={range} />
-          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>🖨 In</button>
+          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>🖨 {t('pr.print')}</button>
         </div>
       </div>
 
@@ -61,24 +64,24 @@ function Inner() {
       {loading || !data ? <p style={{ color: '#94a3b8' }}>Loading…</p> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 18 }}>
-            <Kpi label="TỔNG LƯƠNG PHẢI TRẢ" value={formatPrice(data.totals.payCents)} accent="#22c55e" big />
-            <Kpi label="Tổng hoa hồng" value={formatPrice(data.totals.commissionCents)} accent="#06b6d4" />
-            <Kpi label="Tổng tip" value={formatPrice(data.totals.tipsCents)} accent="#a855f7" />
-            <Kpi label="Doanh thu (đã trả)" value={formatPrice(data.totals.revenueCents)} accent="#3b82f6" />
+            <Kpi label={t('pr.kTotal')} value={formatPrice(data.totals.payCents)} accent="#22c55e" big />
+            <Kpi label={t('pr.kCommission')} value={formatPrice(data.totals.commissionCents)} accent="#06b6d4" />
+            <Kpi label={t('pr.kTips')} value={formatPrice(data.totals.tipsCents)} accent="#a855f7" />
+            <Kpi label={t('pr.kRevenue')} value={formatPrice(data.totals.revenueCents)} accent="#3b82f6" />
           </div>
 
           <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead><tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>Thợ</th>
-                <th style={ui.th}>Số DV</th>
-                <th style={ui.th}>Doanh thu DV</th>
-                <th style={ui.th}>Hoa hồng</th>
-                <th style={ui.th}>Tip</th>
-                <th style={{ ...ui.th, color: '#22c55e' }}>TỔNG LƯƠNG</th>
+                <th style={ui.th}>{t('pr.cTech')}</th>
+                <th style={ui.th}>{t('pr.cCount')}</th>
+                <th style={ui.th}>{t('pr.cRevenue')}</th>
+                <th style={ui.th}>{t('pr.cCommission')}</th>
+                <th style={ui.th}>{t('pr.cTips')}</th>
+                <th style={{ ...ui.th, color: '#22c55e' }}>{t('pr.cTotal')}</th>
               </tr></thead>
               <tbody>
-                {techs.length === 0 && <tr><td style={ui.td} colSpan={6}>Chưa có giao dịch trong kỳ này (lương tính từ đơn POS đã thanh toán).</td></tr>}
+                {techs.length === 0 && <tr><td style={ui.td} colSpan={6}>{t('pr.empty')}</td></tr>}
                 {techs.map((r) => (
                   <tr key={r.staffId} style={{ borderTop: '1px solid #334155' }}>
                     <td style={ui.td}>{r.name}</td>
@@ -92,9 +95,7 @@ function Inner() {
               </tbody>
             </table>
           </div>
-          <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
-            Hoa hồng = doanh thu dịch vụ × % của từng thợ (cài ở <strong>Staff → Edit → Commission %</strong>). Tip lấy từ ô tip lúc thanh toán POS. <strong>Tổng lương = hoa hồng + tip.</strong>
-          </p>
+          <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('pr.note')}</p>
         </>
       )}
     </section>

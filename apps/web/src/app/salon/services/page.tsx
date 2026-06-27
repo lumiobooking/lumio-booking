@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { ui, formatPrice } from '../../../lib/ui';
+import { ui } from '../../../lib/ui';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Service {
@@ -25,6 +25,8 @@ interface Service {
 
 interface Category { id: string; name: string; icon: string | null; sortOrder: number; isActive: boolean }
 
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', CAD: '$', AUD: '$', VND: '₫', JPY: '¥', SGD: '$' };
+
 export default function ServicesPage() {
   return (
     <SalonShell>
@@ -43,17 +45,31 @@ function ServicesInner() {
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
+  // Currency is a salon-level setting (Settings -> Payments). The whole Services
+  // screen formats prices with it, so changing the currency there is reflected here.
+  const [money, setMoney] = useState({ code: 'USD', symbol: '$', pos: 'before', decimals: 2 });
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const [svc, cats] = await Promise.all([
+      const [svc, cats, settings] = await Promise.all([
         apiFetch<Service[]>('/services', { token }),
         apiFetch<Category[]>('/services/categories', { token }),
+        apiFetch<{ booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }>('/settings', { token }).catch(() => ({})),
       ]);
-      setServices(svc);
+      const b = (settings as { booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }).booking ?? {};
+      const code = b.currency ?? 'USD';
+      setMoney({
+        code,
+        symbol: b.currencySymbol || CURRENCY_SYMBOLS[code] || '$',
+        pos: b.symbolPosition ?? 'before',
+        decimals: typeof b.priceDecimals === 'number' ? b.priceDecimals : 2,
+      });
+      // Show every service in the salon's current currency (a service's own
+      // stored currency may be older), so the menu always matches Settings.
+      setServices(svc.map((s) => ({ ...s, currency: code })));
       setCategories(cats);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
@@ -61,6 +77,11 @@ function ServicesInner() {
       setLoading(false);
     }
   }, [token]);
+
+  const fmt = useCallback((cents: number) => {
+    const v = (cents / 100).toFixed(money.decimals);
+    return money.pos === 'after' ? `${v}${money.symbol}` : `${money.symbol}${v}`;
+  }, [money]);
 
   useEffect(() => {
     load();
@@ -142,6 +163,7 @@ function ServicesInner() {
         <CreateServiceForm
           token={token!}
           categories={categories}
+          currency={money.code}
           onCreated={async () => {
             setShowForm(false);
             await load();
@@ -173,7 +195,7 @@ function ServicesInner() {
                 </tr>
               )}
               {pg.paged.map((s) => (
-                <FragmentRow key={s.id} service={s} token={token!} categories={categories} catName={catName} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
+                <FragmentRow key={s.id} service={s} token={token!} categories={categories} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
               ))}
             </tbody>
           </table>
@@ -186,8 +208,8 @@ function ServicesInner() {
 
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
 
-function FragmentRow({ service: s, token, categories, catName, onToggle, onDelete, onSaved }: {
-  service: Service; token: string; categories: Category[]; catName: (id?: string | null) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
+function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, onDelete, onSaved }: {
+  service: Service; token: string; categories: Category[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -206,12 +228,12 @@ function FragmentRow({ service: s, token, categories, catName, onToggle, onDelet
         <td style={ui.td}>
           {s.discountPercent && s.discountPercent > 0 ? (
             <span>
-              <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{formatPrice(s.priceCents, s.currency)}</span>
-              <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(Math.round((s.priceCents * (100 - s.discountPercent)) / 100), s.currency)}</span>
+              <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{fmt(s.priceCents)}</span>
+              <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
             </span>
           ) : (
-            formatPrice(s.priceCents, s.currency)
+            fmt(s.priceCents)
           )}
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
@@ -241,7 +263,7 @@ function FragmentRow({ service: s, token, categories, catName, onToggle, onDelet
       {open && (
         <tr>
           <td colSpan={6} style={{ padding: 0, background: '#0f172a' }}>
-            <AddonsPanel serviceId={s.id} token={token} />
+            <AddonsPanel serviceId={s.id} token={token} fmt={fmt} />
           </td>
         </tr>
       )}
@@ -311,7 +333,7 @@ function EditServicePanel({ service, token, categories, onSaved }: { service: Se
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10 }}>
         <label><span style={ui.label}>Name</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>Duration (min)</span><input style={ui.input} type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} required /></label>
-        <label><span style={ui.label}>Price (USD)</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
+        <label><span style={ui.label}>Price ({service.currency})</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
         <label><span style={ui.label}>Discount %</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginTop: 10, alignItems: 'end' }}>
@@ -340,7 +362,7 @@ function EditServicePanel({ service, token, categories, onSaved }: { service: Se
   );
 }
 
-function AddonsPanel({ serviceId, token }: { serviceId: string; token: string }) {
+function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: string; fmt: (cents: number) => string }) {
   const [addons, setAddons] = useState<Addon[]>([]);
   const [form, setForm] = useState({ name: '', duration: '15', price: '15' });
   const [error, setError] = useState<string | null>(null);
@@ -391,7 +413,7 @@ function AddonsPanel({ serviceId, token }: { serviceId: string; token: string })
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
               <span style={{ flex: 1 }}>{a.name}</span>
               <span style={{ color: '#94a3b8' }}>{a.durationMinutes} min</span>
-              <span style={{ color: '#22c55e' }}>{formatPrice(a.priceCents, a.currency)}</span>
+              <span style={{ color: '#22c55e' }}>{fmt(a.priceCents)}</span>
               <button onClick={() => remove(a.id)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>Remove</button>
             </div>
           ))}
@@ -416,7 +438,7 @@ function AddonsPanel({ serviceId, token }: { serviceId: string; token: string })
   );
 }
 
-function CreateServiceForm({ token, categories, onCreated }: { token: string; categories: Category[]; onCreated: () => void }) {
+function CreateServiceForm({ token, categories, currency, onCreated }: { token: string; categories: Category[]; currency: string; onCreated: () => void }) {
   const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -472,7 +494,7 @@ function CreateServiceForm({ token, categories, onCreated }: { token: string; ca
           />
         </label>
         <label>
-          <span style={ui.label}>Price (USD)</span>
+          <span style={ui.label}>Price ({currency})</span>
           <input
             style={ui.input}
             type="number"

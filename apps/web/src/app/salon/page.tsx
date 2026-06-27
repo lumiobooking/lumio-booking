@@ -5,6 +5,7 @@ import { SalonShell } from '../../components/SalonShell';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { ui, formatPrice } from '../../lib/ui';
+import { useLang, tr } from '../../lib/i18n';
 
 interface SeriesPoint { date: string; bookings: number; revenueCents: number }
 interface Ranked { name: string; bookings: number; revenueCents: number }
@@ -62,6 +63,8 @@ export default function DashboardPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const today = useMemo(() => new Date(), []);
   const [from, setFrom] = useState(() => isoDay(new Date(Date.now() - 29 * 86400000)));
   const [to, setTo] = useState(() => isoDay(new Date()));
@@ -101,9 +104,9 @@ function Inner() {
     <section>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Dashboard</h1>
+          <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('db.title')}</h1>
           <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
-            Performance overview for your salon.
+            {t('db.subtitle')}
           </p>
         </div>
 
@@ -113,7 +116,7 @@ function Inner() {
             {PRESETS.map((p) => (
               <button key={p.label} onClick={() => applyPreset(p.days)} style={presetBtn}>{p.label}</button>
             ))}
-            <button onClick={applyThisMonth} style={presetBtn}>Month</button>
+            <button onClick={applyThisMonth} style={presetBtn}>{t('db.month')}</button>
           </div>
           <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
           <span style={{ color: '#64748b' }}>→</span>
@@ -124,49 +127,49 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
 
       {loading || !data ? (
-        <p style={{ color: '#94a3b8', marginTop: 24 }}>Loading…</p>
+        <p style={{ color: '#94a3b8', marginTop: 24 }}>{t('db.loading')}</p>
       ) : (
         <>
           {/* KPI tiles */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, margin: '20px 0' }}>
-            <Kpi label="Revenue" value={formatPrice(data.kpis.revenueCents)} accent="#22c55e" hint={`Avg ${formatPrice(data.kpis.avgBookingValueCents)}/booking`} />
-            <Kpi label="Bookings" value={data.kpis.totalBookings} accent="#3b82f6" hint={`${data.kpis.completed} completed`} />
-            <Kpi label="New customers" value={data.kpis.newCustomers} accent="#a855f7" />
-            <Kpi label="Completion rate" value={pct(data.kpis.completionRate)} accent="#06b6d4" />
-            <Kpi label="No-show rate" value={pct(data.kpis.noShowRate)} accent="#f97316" hint={`${data.kpis.noShow} no-shows`} />
-            <Kpi label="Cancelled" value={data.kpis.cancelled} accent="#ef4444" />
+            <Kpi label={t('db.revenue')} value={formatPrice(data.kpis.revenueCents)} accent="#22c55e" hint={t('db.avgPerBooking').replace('{v}', formatPrice(data.kpis.avgBookingValueCents))} />
+            <Kpi label={t('db.bookings')} value={data.kpis.totalBookings} accent="#3b82f6" hint={`${data.kpis.completed} ${t('db.completed')}`} />
+            <Kpi label={t('db.newCustomers')} value={data.kpis.newCustomers} accent="#a855f7" />
+            <Kpi label={t('db.completionRate')} value={pct(data.kpis.completionRate)} accent="#06b6d4" />
+            <Kpi label={t('db.noShowRate')} value={pct(data.kpis.noShowRate)} accent="#f97316" hint={`${data.kpis.noShow} ${t('db.noShows')}`} />
+            <Kpi label={t('db.cancelled')} value={data.kpis.cancelled} accent="#ef4444" />
           </div>
 
           {/* Trend chart */}
-          <Card title="Revenue & bookings">
+          <Card title={t('db.revAndBookings')}>
             <TrendChart series={data.series} />
           </Card>
 
           {/* Status breakdown + Payment methods side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
-            <Card title="Booking status">
+            <Card title={t('db.bookingStatus')}>
               <StatusBreakdown breakdown={data.statusBreakdown} total={data.kpis.totalBookings} />
             </Card>
-            <Card title="Revenue by payment method">
+            <Card title={t('db.revByMethod')}>
               <PaymentMethods pm={data.paymentMethods} />
             </Card>
           </div>
 
           {/* Top services */}
           <div style={{ marginTop: 16 }}>
-            <Card title="Top services">
-              <RankedTable rows={data.topServices} firstCol="Service" empty="No bookings in this range." />
+            <Card title={t('db.topServices')}>
+              <RankedTable rows={data.topServices} firstCol={t('db.colService')} empty={t('db.noBookingsRange')} />
             </Card>
           </div>
 
           {/* Top staff + Upcoming */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 16 }}>
-            <Card title="Staff revenue">
-              <RankedTable rows={data.topStaff} firstCol="Staff" empty="No staff yet." />
+            <Card title={t('db.staffRevenue')}>
+              <RankedTable rows={data.topStaff} firstCol={t('db.colStaff')} empty={t('db.noStaff')} />
             </Card>
-            <Card title="Upcoming bookings">
+            <Card title={t('db.upcoming')}>
               {data.upcoming.length === 0 ? (
-                <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>No upcoming bookings.</p>
+                <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{t('db.noUpcoming')}</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {data.upcoming.map((b) => (
@@ -247,15 +250,17 @@ function RankedTable({ rows, firstCol, empty }: { rows: Ranked[]; firstCol: stri
 }
 
 function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: number; online: number; onsite: number } }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const rows: { label: string; value: number; color: string }[] = [
-    { label: 'Cash', value: pm.cash, color: '#22c55e' },
-    { label: 'Card', value: pm.card, color: '#3b82f6' },
-    { label: 'Bank transfer', value: pm.transfer, color: '#06b6d4' },
-    { label: 'Online', value: pm.online, color: '#a855f7' },
-    { label: 'At salon (other)', value: pm.onsite, color: '#eab308' },
+    { label: t('db.pmCash'), value: pm.cash, color: '#22c55e' },
+    { label: t('db.pmCard'), value: pm.card, color: '#3b82f6' },
+    { label: t('db.pmTransfer'), value: pm.transfer, color: '#06b6d4' },
+    { label: t('db.pmOnline'), value: pm.online, color: '#a855f7' },
+    { label: t('db.pmOnsite'), value: pm.onsite, color: '#eab308' },
   ];
   const total = rows.reduce((s, r) => s + r.value, 0);
-  if (total === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>No payments in this range.</p>;
+  if (total === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{t('db.noPayments')}</p>;
   return (
     <>
       <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', marginBottom: 14 }}>
@@ -278,8 +283,9 @@ function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: nu
 }
 
 function StatusBreakdown({ breakdown, total }: { breakdown: Record<string, number>; total: number }) {
+  const { lang } = useLang();
   const entries = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
-  if (total === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>No bookings in this range.</p>;
+  if (total === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{tr('db.noBookingsRange', lang)}</p>;
   return (
     <>
       <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', marginBottom: 14 }}>
@@ -302,6 +308,7 @@ function StatusBreakdown({ breakdown, total }: { breakdown: Record<string, numbe
 
 /** Inline SVG chart: revenue bars + bookings line. No external libraries. */
 function TrendChart({ series }: { series: SeriesPoint[] }) {
+  const { lang } = useLang();
   const W = 760;
   const H = 200;
   const padL = 8;
@@ -312,7 +319,7 @@ function TrendChart({ series }: { series: SeriesPoint[] }) {
   const innerH = H - padT - padB;
   const n = series.length;
 
-  if (n === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>No data.</p>;
+  if (n === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{tr('db.noData', lang)}</p>;
 
   const maxRev = Math.max(...series.map((s) => s.revenueCents), 1);
   const maxBook = Math.max(...series.map((s) => s.bookings), 1);

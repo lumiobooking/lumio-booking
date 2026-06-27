@@ -918,7 +918,15 @@ function Shell({ children }: { children: React.ReactNode }) {
   // showing a light panel around it. Standalone /book/:slug keeps the backdrop.
   const [embedded, setEmbedded] = useState(false);
   useEffect(() => {
-    try { setEmbedded(window.self !== window.top); } catch { setEmbedded(true); }
+    let emb = false;
+    try { emb = window.self !== window.top; } catch { emb = true; }
+    setEmbedded(emb);
+    if (emb) {
+      // Also clear the html/body backdrop (set in the root layout) so the embed
+      // is fully transparent and adapts to ANY host website's background.
+      document.documentElement.style.background = 'transparent';
+      document.body.style.background = 'transparent';
+    }
   }, []);
   return <div style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : '#eef1f6', display: 'grid', placeItems: 'center', padding: embedded ? 0 : 16 }}>{children}</div>;
 }

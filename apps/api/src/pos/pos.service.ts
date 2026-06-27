@@ -351,7 +351,7 @@ export class PosService {
     });
     const staffMap = new Map(staff.map((s) => [s.id, s]));
 
-    type Row = { staffId: string; name: string; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number };
+    type Row = { staffId: string; name: string; commissionPercent: number; serviceCount: number; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; totalPayCents: number };
     const rows = new Map<string, Row>();
     const ensure = (id: string | null) => {
       const key = id ?? 'unassigned';
@@ -360,10 +360,13 @@ export class PosService {
         rows.set(key, {
           staffId: key,
           name: s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : 'Unassigned',
+          commissionPercent: s?.commissionPercent ?? 0,
+          serviceCount: 0,
           serviceRevenueCents: 0,
           productRevenueCents: 0,
           tipsCents: 0,
           commissionCents: 0,
+          totalPayCents: 0,
         });
       }
       return rows.get(key)!;
@@ -372,27 +375,30 @@ export class PosService {
     let totalRevenue = 0;
     let totalTips = 0;
     let totalCommission = 0;
+    let totalPay = 0;
     for (const o of orders) {
       for (const l of o.items) {
         const row = ensure(l.staffMemberId);
-        if (l.kind === OrderItemKind.SERVICE) row.serviceRevenueCents += l.lineTotalCents;
+        if (l.kind === OrderItemKind.SERVICE) { row.serviceRevenueCents += l.lineTotalCents; row.serviceCount += l.quantity; }
         else row.productRevenueCents += l.lineTotalCents;
         row.tipsCents += l.tipCents;
         totalRevenue += l.lineTotalCents;
         totalTips += l.tipCents;
       }
     }
-    // Commission on service revenue using each tech's rate.
+    // Commission on service revenue using each tech's rate; pay = commission + tips.
     for (const row of rows.values()) {
       const s = row.staffId !== 'unassigned' ? staffMap.get(row.staffId) : null;
       const pct = s?.commissionPercent ?? 0;
       row.commissionCents = Math.round((row.serviceRevenueCents * pct) / 100);
+      row.totalPayCents = row.commissionCents + row.tipsCents;
       totalCommission += row.commissionCents;
+      totalPay += row.totalPayCents;
     }
 
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
-      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, orders: orders.length },
+      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, payCents: totalPay, orders: orders.length },
       staff: [...rows.values()].sort(
         (a, b) =>
           b.serviceRevenueCents + b.productRevenueCents - (a.serviceRevenueCents + a.productRevenueCents),

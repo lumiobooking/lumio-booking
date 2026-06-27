@@ -1,0 +1,111 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { SalonShell } from '../../../components/SalonShell';
+import { useAuth } from '../../../lib/auth';
+import { apiFetch } from '../../../lib/api';
+import { ui, formatPrice } from '../../../lib/ui';
+import { DateRangeBar, useDateRange } from '../../../components/ListFilter';
+
+interface Row {
+  staffId: string; name: string; commissionPercent: number; serviceCount: number;
+  serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; totalPayCents: number;
+}
+interface Report {
+  totals: { revenueCents: number; tipsCents: number; commissionCents: number; payCents: number; orders: number };
+  staff: Row[];
+}
+
+export default function PayrollPage() {
+  return <SalonShell><Inner /></SalonShell>;
+}
+
+function Inner() {
+  const { token } = useAuth();
+  const range = useDateRange('7d');
+  const [data, setData] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    setLoading(true); setError(null);
+    try {
+      const q = new URLSearchParams();
+      if (range.from) q.set('from', range.from);
+      if (range.to) q.set('to', range.to);
+      setData(await apiFetch<Report>(`/pos/report?${q.toString()}`, { token }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load');
+    } finally { setLoading(false); }
+  }, [token, range.from, range.to]);
+  useEffect(() => { load(); }, [load]);
+
+  const techs = (data?.staff ?? []).filter((r) => r.staffId !== 'unassigned' || r.totalPayCents > 0 || r.tipsCents > 0);
+
+  return (
+    <section>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 22, margin: 0 }}>Bảng lương thợ · Payroll</h1>
+          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>Lương phải trả mỗi thợ = hoa hồng (theo % cài ở Staff) + tip, trong kỳ đã chọn.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <DateRangeBar range={range} />
+          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>🖨 In</button>
+        </div>
+      </div>
+
+      {error && <div style={ui.banner}>{error}</div>}
+
+      {loading || !data ? <p style={{ color: '#94a3b8' }}>Loading…</p> : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 18 }}>
+            <Kpi label="TỔNG LƯƠNG PHẢI TRẢ" value={formatPrice(data.totals.payCents)} accent="#22c55e" big />
+            <Kpi label="Tổng hoa hồng" value={formatPrice(data.totals.commissionCents)} accent="#06b6d4" />
+            <Kpi label="Tổng tip" value={formatPrice(data.totals.tipsCents)} accent="#a855f7" />
+            <Kpi label="Doanh thu (đã trả)" value={formatPrice(data.totals.revenueCents)} accent="#3b82f6" />
+          </div>
+
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead><tr style={{ background: '#1e293b' }}>
+                <th style={ui.th}>Thợ</th>
+                <th style={ui.th}>Số DV</th>
+                <th style={ui.th}>Doanh thu DV</th>
+                <th style={ui.th}>Hoa hồng</th>
+                <th style={ui.th}>Tip</th>
+                <th style={{ ...ui.th, color: '#22c55e' }}>TỔNG LƯƠNG</th>
+              </tr></thead>
+              <tbody>
+                {techs.length === 0 && <tr><td style={ui.td} colSpan={6}>Chưa có giao dịch trong kỳ này (lương tính từ đơn POS đã thanh toán).</td></tr>}
+                {techs.map((r) => (
+                  <tr key={r.staffId} style={{ borderTop: '1px solid #334155' }}>
+                    <td style={ui.td}>{r.name}</td>
+                    <td style={ui.td}>{r.serviceCount}</td>
+                    <td style={ui.td}>{formatPrice(r.serviceRevenueCents)}</td>
+                    <td style={{ ...ui.td, color: '#06b6d4' }}>{formatPrice(r.commissionCents)} <span style={{ color: '#64748b', fontSize: 12 }}>({r.commissionPercent}%)</span></td>
+                    <td style={{ ...ui.td, color: '#a855f7' }}>{formatPrice(r.tipsCents)}</td>
+                    <td style={{ ...ui.td, fontWeight: 800, color: '#22c55e', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
+            Hoa hồng = doanh thu dịch vụ × % của từng thợ (cài ở <strong>Staff → Edit → Commission %</strong>). Tip lấy từ ô tip lúc thanh toán POS. <strong>Tổng lương = hoa hồng + tip.</strong>
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Kpi({ label, value, accent, big }: { label: string; value: string; accent: string; big?: boolean }) {
+  return (
+    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
+      <div style={{ fontSize: 12, color: '#94a3b8' }}>{label}</div>
+      <div style={{ fontSize: big ? 30 : 24, fontWeight: 800, marginTop: 4, color: big ? '#22c55e' : '#fff' }}>{value}</div>
+    </div>
+  );
+}

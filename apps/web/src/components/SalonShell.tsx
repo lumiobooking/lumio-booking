@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
+import { useLang, tr, NAV_KEY } from '../lib/i18n';
 import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 
@@ -53,6 +54,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isMobile = useIsMobile();
+  const { lang, setLang } = useLang();
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Start from the last-known plan (cached) so the sidebar doesn't flash all
   // items then hide them on every reload/navigation. null = unknown (first ever
@@ -105,7 +107,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
             }}
           >
             <span style={{ width: 18, textAlign: 'center', fontSize: 13 }}>{item.icon}</span>
-            {item.label}
+            {NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label}
           </Link>
         );
       })}
@@ -119,13 +121,13 @@ export function SalonShell({ children }: { children: ReactNode }) {
       </div>
       <div style={{ fontSize: 12, color: '#94a3b8', padding: '0 10px 8px', wordBreak: 'break-all' }}>{user.email}</div>
       <Link href="/salon/account" style={{ display: 'block', textAlign: 'center', marginBottom: 8, padding: '9px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, textDecoration: 'none' }}>
-        My account
+        {tr('shell.myAccount', lang)}
       </Link>
       <button onClick={logout} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>
-        Log out
+        {tr('shell.logout', lang)}
       </button>
       <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
-        <InstallAppButton label="Install app" />
+        <InstallAppButton label={tr('shell.installApp', lang)} />
       </div>
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
         style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 11, color: '#64748b', textDecoration: 'none' }}>
@@ -136,8 +138,19 @@ export function SalonShell({ children }: { children: ReactNode }) {
 
   const brand = (
     <div style={{ padding: '4px 10px 18px' }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0' }}>Lumio</div>
-      <div style={{ fontSize: 12, color: '#64748b' }}>Salon dashboard</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0' }}>Lumio</div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['en', 'vi'] as const).map((l) => (
+            <button key={l} onClick={() => setLang(l)} aria-label={l === 'en' ? 'English' : 'Tiếng Việt'}
+              style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                border: `1px solid ${lang === l ? '#6366f1' : '#334155'}`, background: lang === l ? '#6366f1' : 'transparent', color: lang === l ? '#fff' : '#94a3b8' }}>
+              {l === 'en' ? 'EN' : 'VI'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{tr('shell.subtitle', lang)}</div>
     </div>
   );
 

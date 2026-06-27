@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import './globals.css';
 import { AuthProvider } from '../lib/auth';
+import { LangProvider } from '../lib/i18n';
 import { PwaRegister } from '../components/PwaRegister';
 
 export const metadata = {
@@ -38,7 +39,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           color: '#e2e8f0',
         }}
       >
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider><LangProvider>{children}</LangProvider></AuthProvider>
         <PwaRegister />
       </body>
     </html>

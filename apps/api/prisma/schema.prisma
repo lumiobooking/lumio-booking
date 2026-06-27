@@ -209,6 +209,7 @@ model Tenant {
   staffRewardTransactions StaffRewardTransaction[]
   reviewClicks      ReviewClick[]
   waitlistEntries   WaitlistEntry[]
+  walkIns           WalkIn[]
   products          Product[]
   orders            Order[]
   orderItems        OrderItem[]
@@ -366,6 +367,7 @@ model Service {
   appointments  Appointment[]
   addons        ServiceAddon[]
   waitlistEntries WaitlistEntry[]
+  walkIns         WalkIn[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -470,6 +472,7 @@ model StaffMember {
   feedbacks          Feedback[]
   rewardTransactions StaffRewardTransaction[]
   reviewClicks       ReviewClick[]
+  walkIns            WalkIn[]               @relation("WalkInStaff")
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -578,6 +581,44 @@ model WaitlistEntry {
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("waitlist_entries")
+}
+
+/// Walk-in queue + fair turn rotation (nail-salon "lượt"). Each walk-in client
+/// is added to the queue and assigned to a technician; turns are counted per
+/// tech per day so the front desk can hand the next client to whoever is "up".
+enum WalkInStatus {
+  WAITING // in the queue, not yet handed to a tech
+  SERVING // assigned to a tech, in progress
+  DONE // finished (counts as a completed turn)
+  CANCELLED // left / removed
+}
+
+model WalkIn {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  assignedStaffId String?
+  assignedStaff   StaffMember? @relation("WalkInStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+
+  customerName String?
+  phone        String?
+  note         String?
+  partySize    Int     @default(1)
+
+  status WalkInStatus @default(WAITING)
+
+  createdAt  DateTime  @default(now())
+  assignedAt DateTime?
+  doneAt     DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedStaffId])
+  @@map("walk_ins")
 }
 
 /// Weekly recurring working hours for a staff member.

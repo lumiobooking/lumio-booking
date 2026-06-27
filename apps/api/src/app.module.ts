@@ -20,6 +20,7 @@ import { PosModule } from './pos/pos.module';
 import { BillingModule } from './billing/billing.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { WaitlistModule } from './waitlist/waitlist.module';
+import { WalkinsModule } from './walkins/walkins.module';
 
 @Module({
   imports: [
@@ -61,6 +62,8 @@ import { WaitlistModule } from './waitlist/waitlist.module';
     ReviewsModule,
     // Waitlist: fill slots freed by cancellations.
     WaitlistModule,
+    // Walk-in queue + fair turn rotation ("lượt").
+    WalkinsModule,
   ],
 })
 export class AppModule {}

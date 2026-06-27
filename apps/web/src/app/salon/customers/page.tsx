@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 import { DateRangeBar, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Customer {
@@ -29,6 +30,8 @@ export default function CustomersPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const range = useDateRange('all');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,8 +54,9 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
 
   async function remove(c: Customer) {
-    const extra = c._count.appointments > 0 ? `\n\nThis will also delete their ${c._count.appointments} booking(s).` : '';
-    if (!confirm(`Delete customer "${c.firstName} ${c.lastName ?? ''}"?${extra}\n\nThis cannot be undone.`)) return;
+    const name = `${c.firstName} ${c.lastName ?? ''}`;
+    const extra = c._count.appointments > 0 ? t('cu.confirmExtra').replace('{n}', String(c._count.appointments)) : '';
+    if (!confirm(t('cu.confirmDelete').replace('{name}', name) + extra + t('cu.cannotUndo'))) return;
     try {
       await apiFetch(`/customers/${c.id}`, { method: 'DELETE', token });
       await load();
@@ -76,11 +80,11 @@ function Inner() {
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h1 style={{ fontSize: 24, margin: 0 }}>Customers</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{filtered.length} of {customers.length}</p>
+          <h1 style={{ fontSize: 24, margin: 0 }}>{t('cu.title')}</h1>
+          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{filtered.length} {t('cu.of')} {customers.length}</p>
         </div>
         <input
-          placeholder="Search name / email / phone"
+          placeholder={t('cu.searchPh')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           style={{ ...ui.input, maxWidth: 280 }}
@@ -94,25 +98,25 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>Loading…</p>
+        <p style={{ color: '#94a3b8' }}>{t('cu.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>Name</th>
-                <th style={ui.th}>Email</th>
-                <th style={ui.th}>Phone</th>
-                <th style={ui.th}>Bookings</th>
-                <th style={ui.th}>No-shows</th>
-                <th style={ui.th}>Points</th>
-                <th style={ui.th}>Since</th>
-                <th style={ui.th}>Actions</th>
+                <th style={ui.th}>{t('cu.colName')}</th>
+                <th style={ui.th}>{t('cu.colEmail')}</th>
+                <th style={ui.th}>{t('cu.colPhone')}</th>
+                <th style={ui.th}>{t('cu.colBookings')}</th>
+                <th style={ui.th}>{t('cu.colNoShows')}</th>
+                <th style={ui.th}>{t('cu.colPoints')}</th>
+                <th style={ui.th}>{t('cu.colSince')}</th>
+                <th style={ui.th}>{t('cu.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td style={ui.td} colSpan={8}>No customers found.</td></tr>
+                <tr><td style={ui.td} colSpan={8}>{t('cu.empty')}</td></tr>
               )}
               {pg.paged.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid #334155' }}>
@@ -123,12 +127,12 @@ function Inner() {
                   <td style={ui.td}>
                     {(c.noShowCount ?? 0) === 0 ? <span style={{ color: '#94a3b8' }}>0</span>
                       : (c.noShowCount ?? 0) >= 2
-                        ? <span title="Repeat no-show — consider asking for a deposit" style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
+                        ? <span title={t('cu.repeatNoShow')} style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
                         : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                   </td>
-                  <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} pts</span> : '—'}</td>
+                  <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(c.createdAt).toLocaleDateString()}</td>
-                  <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>Delete</button></td>
+                  <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button></td>
                 </tr>
               ))}
             </tbody>

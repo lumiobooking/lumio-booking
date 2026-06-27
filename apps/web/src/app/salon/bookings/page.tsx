@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface NamedRef {
@@ -64,6 +65,8 @@ export default function BookingsPage() {
 
 function BookingsInner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const range = useDateRange('all', true); // bookings are future-oriented
   const [q, setQ] = useState('');
   const [needsConfirm, setNeedsConfirm] = useState(false);
@@ -188,27 +191,27 @@ function BookingsInner() {
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ fontSize: 18, margin: 0 }}>Bookings</h2>
+        <h2 style={{ fontSize: 18, margin: 0 }}>{t('bk.title')}</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={processTimeouts} style={ghostBtn} title="Reassign bookings whose staff did not respond in time">
-            Process timeouts
+          <button onClick={processTimeouts} style={ghostBtn} title={t('bk.processTimeoutsHint')}>
+            {t('bk.processTimeouts')}
           </button>
           <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
-            {showForm ? 'Close' : '+ New booking'}
+            {showForm ? t('bk.close') : t('bk.newBooking')}
           </button>
         </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search customer, service, staff, status…" />
+        <SearchBox value={q} onChange={setQ} placeholder={t('bk.searchPh')} />
         <button
           onClick={() => setNeedsConfirm((v) => !v)}
-          title="Upcoming bookings the customer hasn't confirmed yet"
+          title={t('bk.needsConfirmHint')}
           style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${needsConfirm ? '#f59e0b' : '#475569'}`, background: needsConfirm ? '#78350f' : 'transparent', color: needsConfirm ? '#fde68a' : '#cbd5e1', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
         >
-          ● Needs confirmation{unconfirmedCount > 0 ? ` (${unconfirmedCount})` : ''}
+          {t('bk.needsConfirm')}{unconfirmedCount > 0 ? ` (${unconfirmedCount})` : ''}
         </button>
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} booking{visible.length === 1 ? '' : 's'}</span>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('bk.bookingWord')}</span>
         <DateRangeBar range={range} />
       </div>
 
@@ -227,26 +230,26 @@ function BookingsInner() {
       )}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>Loading...</p>
+        <p style={{ color: '#94a3b8' }}>{t('bk.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>When</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Customer</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Service</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Staff</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Status</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Payment</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Actions</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colWhen')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colCustomer')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colService')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colStaff')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colStatus')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colPayment')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
                 <tr>
                   <td style={ui.td} colSpan={7}>
-                    No bookings in this range.
+                    {t('bk.noBookings')}
                   </td>
                 </tr>
               )}
@@ -290,9 +293,9 @@ function BookingsInner() {
                           <button
                             onClick={() => action(b.id, 'auto-assign')}
                             style={smallOk}
-                            title="Let the assignment engine pick the best technician"
+                            title={t('bk.autoAssignHint')}
                           >
-                            Auto-assign
+                            {t('bk.autoAssign')}
                           </button>
                           <AssignControl
                             staff={staff.filter((s) => s.isActive)}
@@ -305,34 +308,34 @@ function BookingsInner() {
                           <a
                             href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
                             style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}
-                            title="Ring up & take payment for this booking"
+                            title={t('bk.checkoutHint')}
                           >
-                            Checkout
+                            {t('bk.checkout')}
                           </a>
                           <button onClick={() => action(b.id, 'complete')} style={smallOk}>
-                            Complete
+                            {t('bk.complete')}
                           </button>
                           <button
-                            onClick={() => { if (confirm('Mark as NO-SHOW? Any deposit already paid is kept as revenue.')) action(b.id, 'no-show'); }}
+                            onClick={() => { if (confirm(t('bk.confirmNoShow'))) action(b.id, 'no-show'); }}
                             style={smallWarn}
-                            title="Customer did not show up (deposit kept)"
+                            title={t('bk.noShowHint')}
                           >
-                            No-show
+                            {t('bk.noShow')}
                           </button>
                           <button
-                            onClick={() => { if (confirm('Cancel this booking? Any payment will be refunded and removed from revenue.')) action(b.id, 'cancel'); }}
+                            onClick={() => { if (confirm(t('bk.confirmCancel'))) action(b.id, 'cancel'); }}
                             style={actBtnOutline('#ef4444')}
                           >
-                            Cancel
+                            {t('bk.cancel')}
                           </button>
                         </>
                       )}
                       <button
                         onClick={() => removeBooking(b.id)}
                         style={{ ...actBtnOutline('#94a3b8') }}
-                        title="Permanently delete this booking"
+                        title={t('bk.deleteHint')}
                       >
-                        Delete
+                        {t('bk.delete')}
                       </button>
                     </div>
                   </td>
@@ -354,11 +357,13 @@ function AssignControl({
   staff: Staff[];
   onAssign: (staffId: string) => void;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [staffId, setStaffId] = useState('');
   return (
     <span style={{ display: 'flex', gap: 4 }}>
       <select value={staffId} onChange={(e) => setStaffId(e.target.value)} style={{ ...ui.input, padding: '4px 8px', width: 'auto' }}>
-        <option value="">Assign to…</option>
+        <option value="">{t('bk.assignTo')}</option>
         {staff.map((s) => (
           <option key={s.id} value={s.id}>
             {s.firstName} {s.lastName ?? ''}
@@ -366,7 +371,7 @@ function AssignControl({
         ))}
       </select>
       <button disabled={!staffId} onClick={() => staffId && onAssign(staffId)} style={smallOk}>
-        Assign
+        {t('bk.assign')}
       </button>
     </span>
   );
@@ -383,6 +388,8 @@ function CreateBookingForm({
   staff: Staff[];
   onCreated: () => void;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({
     serviceId: '',
     startLocal: '',
@@ -430,9 +437,9 @@ function CreateBookingForm({
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <label>
-          <span style={ui.label}>Service</span>
+          <span style={ui.label}>{t('bk.fService')}</span>
           <select style={ui.input} value={form.serviceId} onChange={(e) => up('serviceId', e.target.value)} required>
-            <option value="">Select a service…</option>
+            <option value="">{t('bk.selectService')}</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name} ({s.durationMinutes} min)
@@ -441,7 +448,7 @@ function CreateBookingForm({
           </select>
         </label>
         <label>
-          <span style={ui.label}>Date &amp; time</span>
+          <span style={ui.label}>{t('bk.dateTime')}</span>
           <input
             style={ui.input}
             type="datetime-local"
@@ -451,9 +458,9 @@ function CreateBookingForm({
           />
         </label>
         <label>
-          <span style={ui.label}>Assign staff (optional)</span>
+          <span style={ui.label}>{t('bk.assignStaff')}</span>
           <select style={ui.input} value={form.staffId} onChange={(e) => up('staffId', e.target.value)}>
-            <option value="">— Leave unassigned (pending) —</option>
+            <option value="">{t('bk.leaveUnassigned')}</option>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.firstName} {s.lastName ?? ''}
@@ -462,21 +469,21 @@ function CreateBookingForm({
           </select>
         </label>
         <label>
-          <span style={ui.label}>Customer first name</span>
+          <span style={ui.label}>{t('bk.custFirstName')}</span>
           <input style={ui.input} value={form.customerFirstName} onChange={(e) => up('customerFirstName', e.target.value)} required />
         </label>
         <label>
-          <span style={ui.label}>Customer email (optional)</span>
+          <span style={ui.label}>{t('bk.custEmail')}</span>
           <input style={ui.input} type="email" value={form.customerEmail} onChange={(e) => up('customerEmail', e.target.value)} />
         </label>
         <label>
-          <span style={ui.label}>Customer phone (optional)</span>
+          <span style={ui.label}>{t('bk.custPhone')}</span>
           <input style={ui.input} value={form.customerPhone} onChange={(e) => up('customerPhone', e.target.value)} />
         </label>
       </div>
       {error && <div style={ui.banner}>{error}</div>}
       <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn, marginTop: 14 }}>
-        {submitting ? 'Creating...' : 'Create booking'}
+        {submitting ? t('bk.creating') : t('bk.createBooking')}
       </button>
     </form>
   );
@@ -491,14 +498,16 @@ function PaymentCell({
   onPay: (type: 'PAY_ONLINE' | 'PAY_LATER') => void;
   onMarkPaid: (paymentId: string) => void;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   if (!payment) {
     return (
       <div style={{ display: 'flex', gap: 4 }}>
-        <button onClick={() => onPay('PAY_ONLINE')} style={tinyBtn} title="Charge online (mock)">
-          Online
+        <button onClick={() => onPay('PAY_ONLINE')} style={tinyBtn} title={t('bk.chargeOnlineHint')}>
+          {t('bk.payOnline')}
         </button>
-        <button onClick={() => onPay('PAY_LATER')} style={tinyBtn} title="Pay at the salon">
-          Later
+        <button onClick={() => onPay('PAY_LATER')} style={tinyBtn} title={t('bk.payAtSalonHint')}>
+          {t('bk.payLater')}
         </button>
       </div>
     );
@@ -509,7 +518,7 @@ function PaymentCell({
       <span style={{ color, fontSize: 12, fontWeight: 600 }}>{payment.status}</span>
       {payment.status === 'PENDING' && (
         <button onClick={() => onMarkPaid(payment.id)} style={tinyBtn}>
-          Mark paid
+          {t('bk.markPaid')}
         </button>
       )}
     </div>

@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Service {
@@ -37,6 +38,8 @@ export default function ServicesPage() {
 
 function ServicesInner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [q, setQ] = useState('');
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -101,7 +104,7 @@ function ServicesInner() {
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this service?')) return;
+    if (!confirm(t('sv.confirmDelete'))) return;
     try {
       await apiFetch(`/services/${id}`, { method: 'DELETE', token });
       await load();
@@ -125,20 +128,20 @@ function ServicesInner() {
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <h2 style={{ fontSize: 18, margin: 0 }}>Services</h2>
+        <h2 style={{ fontSize: 18, margin: 0 }}>{t('sv.title')}</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>
-            {showImport ? 'Close' : '⇪ Import menu'}
+            {showImport ? t('sv.close') : t('sv.importMenu')}
           </button>
           <button onClick={() => { setShowForm((s) => !s); setShowImport(false); }} style={ui.primaryBtn}>
-            {showForm ? 'Close' : '+ New service'}
+            {showForm ? t('sv.close') : t('sv.newService')}
           </button>
         </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search service name…" />
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} service{visible.length === 1 ? '' : 's'}</span>
+        <SearchBox value={q} onChange={setQ} placeholder={t('sv.searchPh')} />
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('sv.serviceWord')}</span>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -151,11 +154,11 @@ function ServicesInner() {
 
       {categories.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
-          <FilterChip active={catFilter === 'all'} onClick={() => setCatFilter('all')}>All</FilterChip>
+          <FilterChip active={catFilter === 'all'} onClick={() => setCatFilter('all')}>{t('sv.all')}</FilterChip>
           {categories.map((c) => (
             <FilterChip key={c.id} active={catFilter === c.id} onClick={() => setCatFilter(c.id)}>{c.name}</FilterChip>
           ))}
-          <FilterChip active={catFilter === 'none'} onClick={() => setCatFilter('none')}>Uncategorised</FilterChip>
+          <FilterChip active={catFilter === 'none'} onClick={() => setCatFilter('none')}>{t('sv.uncategorised')}</FilterChip>
         </div>
       )}
 
@@ -172,25 +175,25 @@ function ServicesInner() {
       )}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>Loading...</p>
+        <p style={{ color: '#94a3b8' }}>{t('sv.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>Name</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Category</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Duration</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Price</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Status</th>
-                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>Actions</th>
+                <th style={ui.th}>{t('sv.colName')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colCategory')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colDuration')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colPrice')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colStatus')}</th>
+                <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
                 <tr>
                   <td style={ui.td} colSpan={6}>
-                    No services in this range.
+                    {t('sv.empty')}
                   </td>
                 </tr>
               )}
@@ -211,6 +214,8 @@ interface Addon { id: string; name: string; durationMinutes: number; priceCents:
 function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, onDelete, onSaved }: {
   service: Service; token: string; categories: Category[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   return (
@@ -219,12 +224,12 @@ function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, on
         <td style={ui.td}>
           <div>
             {s.name}
-            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>POPULAR</span>}
+            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
           </div>
           {s.description && <div style={{ color: '#94a3b8', fontSize: 12 }}>{s.description}</div>}
         </td>
         <td style={{ ...ui.td, color: '#94a3b8' }}>{catName(s.categoryId)}</td>
-        <td style={ui.td}>{s.durationMinutes} min</td>
+        <td style={ui.td}>{s.durationMinutes} {t('sv.min')}</td>
         <td style={ui.td}>
           {s.discountPercent && s.discountPercent > 0 ? (
             <span>
@@ -238,18 +243,18 @@ function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, on
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
           <button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : '#64748b'}`, color: s.isActive ? '#22c55e' : '#94a3b8', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>
-            {s.isActive ? 'Active' : 'Inactive'}
+            {s.isActive ? t('sv.active') : t('sv.inactive')}
           </button>
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
           <div style={{ display: 'inline-flex', gap: 6 }}>
             <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? '#475569' : '#0ea5e9')}>
-              {editing ? 'Close' : 'Edit'}
+              {editing ? t('sv.close') : t('sv.edit')}
             </button>
             <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? '#475569' : '#6366f1')}>
-              {open ? 'Hide' : 'Add-ons'}
+              {open ? t('sv.hide') : t('sv.addons')}
             </button>
-            <button onClick={onDelete} style={actBtn('#b91c1c')}>Delete</button>
+            <button onClick={onDelete} style={actBtn('#b91c1c')}>{t('sv.delete')}</button>
           </div>
         </td>
       </tr>
@@ -272,6 +277,8 @@ function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, on
 }
 
 function EditServicePanel({ service, token, categories, onSaved }: { service: Service; token: string; categories: Category[]; onSaved: () => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({
     name: service.name,
     description: service.description ?? '',
@@ -328,41 +335,43 @@ function EditServicePanel({ service, token, categories, onSaved }: { service: Se
 
   return (
     <form onSubmit={save} style={{ padding: 16 }}>
-      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>Edit service</div>
+      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{t('sv.editService')}</div>
       {error && <div style={ui.banner}>{error}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10 }}>
-        <label><span style={ui.label}>Name</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-        <label><span style={ui.label}>Duration (min)</span><input style={ui.input} type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} required /></label>
-        <label><span style={ui.label}>Price ({service.currency})</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
-        <label><span style={ui.label}>Discount %</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
+        <label><span style={ui.label}>{t('sv.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
+        <label><span style={ui.label}>{t('sv.fDuration')}</span><input style={ui.input} type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} required /></label>
+        <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
+        <label><span style={ui.label}>{t('sv.fDiscount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginTop: 10, alignItems: 'end' }}>
-        <label><span style={ui.label}>Category</span>
+        <label><span style={ui.label}>{t('sv.fCategory')}</span>
           <select style={ui.input} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-            <option value="">— Uncategorised —</option>
+            <option value="">{t('sv.optUncategorised')}</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
-          <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> Popular
+          <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> {t('sv.popularLabel')}
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
-          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> "From" price
+          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
       </div>
       <label style={{ display: 'block', marginTop: 10 }}>
-        <span style={ui.label}>Description (optional)</span>
+        <span style={ui.label}>{t('sv.fDescription')}</span>
         <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </label>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-        <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? 'Saving…' : 'Save changes'}</button>
-        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>✓ Saved — discount is now live on the booking page.</span>}
+        <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? t('sv.saving') : t('sv.saveChanges')}</button>
+        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('sv.savedLive')}</span>}
       </div>
     </form>
   );
 }
 
 function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: string; fmt: (cents: number) => string }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [addons, setAddons] = useState<Addon[]>([]);
   const [form, setForm] = useState({ name: '', duration: '15', price: '15' });
   const [error, setError] = useState<string | null>(null);
@@ -403,42 +412,44 @@ function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: stri
 
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>Add-ons (extras customers can add)</div>
+      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{t('sv.addonsTitle')}</div>
       {error && <div style={ui.banner}>{error}</div>}
       {addons.length === 0 ? (
-        <div style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>No add-ons yet.</div>
+        <div style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>{t('sv.noAddons')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {addons.map((a) => (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
               <span style={{ flex: 1 }}>{a.name}</span>
-              <span style={{ color: '#94a3b8' }}>{a.durationMinutes} min</span>
+              <span style={{ color: '#94a3b8' }}>{a.durationMinutes} {t('sv.min')}</span>
               <span style={{ color: '#22c55e' }}>{fmt(a.priceCents)}</span>
-              <button onClick={() => remove(a.id)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>Remove</button>
+              <button onClick={() => remove(a.id)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>{t('sv.remove')}</button>
             </div>
           ))}
         </div>
       )}
       <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
         <div style={{ flex: 2, minWidth: 160 }}>
-          <span style={ui.label}>Add-on name</span>
-          <input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Nail art" />
+          <span style={ui.label}>{t('sv.addonName')}</span>
+          <input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder={t('sv.addonNamePh')} />
         </div>
         <div style={{ width: 90 }}>
-          <span style={ui.label}>Min</span>
+          <span style={ui.label}>{t('sv.minLabel')}</span>
           <input style={ui.input} type="number" min={0} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} />
         </div>
         <div style={{ width: 100 }}>
-          <span style={ui.label}>Price $</span>
+          <span style={ui.label}>{t('sv.priceLabel')}</span>
           <input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
         </div>
-        <button type="submit" style={{ ...ui.primaryBtn, padding: '9px 14px' }}>+ Add</button>
+        <button type="submit" style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{t('sv.add')}</button>
       </form>
     </div>
   );
 }
 
 function CreateServiceForm({ token, categories, currency, onCreated }: { token: string; categories: Category[]; currency: string; onCreated: () => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -474,7 +485,7 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
         <label>
-          <span style={ui.label}>Service name</span>
+          <span style={ui.label}>{t('sv.serviceName')}</span>
           <input
             style={ui.input}
             value={form.name}
@@ -483,7 +494,7 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
           />
         </label>
         <label>
-          <span style={ui.label}>Duration (min)</span>
+          <span style={ui.label}>{t('sv.fDuration')}</span>
           <input
             style={ui.input}
             type="number"
@@ -494,7 +505,7 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
           />
         </label>
         <label>
-          <span style={ui.label}>Price ({currency})</span>
+          <span style={ui.label}>{t('sv.fPrice').replace('{c}', currency)}</span>
           <input
             style={ui.input}
             type="number"
@@ -506,7 +517,7 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
           />
         </label>
         <label>
-          <span style={ui.label}>Discount %</span>
+          <span style={ui.label}>{t('sv.fDiscount')}</span>
           <input
             style={ui.input}
             type="number"
@@ -518,21 +529,21 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
         </label>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginTop: 12, alignItems: 'end' }}>
-        <label><span style={ui.label}>Category</span>
+        <label><span style={ui.label}>{t('sv.fCategory')}</span>
           <select style={ui.input} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-            <option value="">— Uncategorised —</option>
+            <option value="">{t('sv.optUncategorised')}</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
-          <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> Popular
+          <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> {t('sv.popularLabel')}
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
-          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> "From" price
+          <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
       </div>
       <label style={{ display: 'block', marginTop: 12 }}>
-        <span style={ui.label}>Description (optional)</span>
+        <span style={ui.label}>{t('sv.fDescription')}</span>
         <input
           style={ui.input}
           value={form.description}
@@ -541,7 +552,7 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
       </label>
       {error && <div style={ui.banner}>{error}</div>}
       <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn, marginTop: 14 }}>
-        {submitting ? 'Creating...' : 'Create service'}
+        {submitting ? t('sv.creating') : t('sv.createService')}
       </button>
     </form>
   );
@@ -556,6 +567,8 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 }
 
 function CategoryManager({ token, categories, onChanged }: { token: string; categories: Category[]; onChanged: () => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -571,7 +584,7 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
     } catch (err) { setError(err instanceof Error ? err.message : 'Create failed'); }
   }
   async function rename(c: Category) {
-    const next = prompt('Rename category', c.name);
+    const next = prompt(t('sv.renamePrompt'), c.name);
     if (!next || next.trim() === c.name) return;
     try { await apiFetch(`/services/categories/${c.id}`, { method: 'PATCH', token, body: { name: next.trim() } }); onChanged(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Rename failed'); }
@@ -581,7 +594,7 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
     catch (err) { setError(err instanceof Error ? err.message : 'Reorder failed'); }
   }
   async function remove(c: Category) {
-    if (!confirm(`Delete category "${c.name}"? Services keep existing but become uncategorised.`)) return;
+    if (!confirm(t('sv.deleteCatConfirm').replace('{name}', c.name))) return;
     try { await apiFetch(`/services/categories/${c.id}`, { method: 'DELETE', token }); onChanged(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
   }
@@ -590,7 +603,7 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
         <span style={{ fontSize: 11, transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
-        Menu categories ({categories.length})
+        {t('sv.menuCategories')} ({categories.length})
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
@@ -600,17 +613,17 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
               {categories.map((c) => (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
                   <span style={{ flex: 1 }}>{c.name}</span>
-                  <button onClick={() => move(c, -1)} style={miniBtn} aria-label="Move up">↑</button>
-                  <button onClick={() => move(c, 1)} style={miniBtn} aria-label="Move down">↓</button>
-                  <button onClick={() => rename(c)} style={miniBtn}>Rename</button>
-                  <button onClick={() => remove(c)} style={{ ...miniBtn, color: '#ef4444', borderColor: '#ef4444' }}>Delete</button>
+                  <button onClick={() => move(c, -1)} style={miniBtn} aria-label={t('sv.moveUp')}>↑</button>
+                  <button onClick={() => move(c, 1)} style={miniBtn} aria-label={t('sv.moveDown')}>↓</button>
+                  <button onClick={() => rename(c)} style={miniBtn}>{t('sv.rename')}</button>
+                  <button onClick={() => remove(c)} style={{ ...miniBtn, color: '#ef4444', borderColor: '#ef4444' }}>{t('sv.delete')}</button>
                 </div>
               ))}
             </div>
           )}
           <form onSubmit={add} style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...ui.input, flex: 1 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="New category (e.g. Hand & Feet Care)" />
-            <button type="submit" style={ui.primaryBtn}>+ Add</button>
+            <input style={{ ...ui.input, flex: 1 }} value={name} onChange={(e) => setName(e.target.value)} placeholder={t('sv.newCatPh')} />
+            <button type="submit" style={ui.primaryBtn}>{t('sv.add')}</button>
           </form>
         </div>
       )}
@@ -625,9 +638,13 @@ function actBtn(bg: string): React.CSSProperties {
 
 // ---- Weekday auto-discounts ------------------------------------------------
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DOW_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 interface DiscRule { day: number; categoryId: string | null; percent: number }
 
 function WeekdayDiscountCard({ token, categories }: { token: string; categories: Category[] }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const dow = lang === 'vi' ? DOW_VI : DOW;
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -650,7 +667,7 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
   function upd(i: number, patch: Partial<DiscRule>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg('✓ Saved'); }
+    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -658,39 +675,39 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
-        {open ? '▾' : '▸'} 💸 Weekday auto-discounts
+        {open ? '▾' : '▸'} {t('sv.weekdayTitle')}
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>Give a % off on quieter weekdays to spread bookings evenly. Shown prominently on the booking page; the discount is applied automatically to the customer&apos;s price.</p>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.weekdayDesc')}</p>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-            <span style={{ fontSize: 14 }}>Enable weekday discounts</span>
+            <span style={{ fontSize: 14 }}>{t('sv.weekdayEnable')}</span>
           </label>
           <label style={{ display: 'block', marginBottom: 12 }}>
-            <span style={ui.label}>Headline shown to customers</span>
-            <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Book on a quieter day and save!" />
+            <span style={ui.label}>{t('sv.weekdayHeadline')}</span>
+            <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t('sv.weekdayHeadlinePh')} />
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {rules.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No rules yet — add one below (e.g. Tuesday · Waxing · 15%).</p>}
+            {rules.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.weekdayNoRules')}</p>}
             {rules.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={r.day} onChange={(e) => upd(i, { day: parseInt(e.target.value, 10) })} style={{ ...ui.input, width: 'auto' }}>
-                  {DOW.map((d, idx) => <option key={idx} value={idx}>{d}</option>)}
+                  {dow.map((d, idx) => <option key={idx} value={idx}>{d}</option>)}
                 </select>
                 <select value={r.categoryId ?? ''} onChange={(e) => upd(i, { categoryId: e.target.value || null })} style={{ ...ui.input, width: 'auto' }}>
-                  <option value="">All categories</option>
+                  <option value="">{t('sv.allCategories')}</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 90 }} />
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>% off</span>
-                <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>Remove</button>
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
               </div>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>+ Add rule</button>
-            <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? 'Saving…' : 'Save discounts'}</button>
+            <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.addRule')}</button>
+            <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
           </div>
         </div>
@@ -731,6 +748,8 @@ function parseMenu(text: string): ParsedItem[] {
 }
 
 function ImportPanel({ token, onDone }: { token: string; onDone: () => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -738,23 +757,28 @@ function ImportPanel({ token, onDone }: { token: string; onDone: () => void }) {
   const ok = msg?.startsWith('✓');
 
   async function run() {
-    if (items.length === 0) { setMsg('Paste your menu first.'); return; }
+    if (items.length === 0) { setMsg(t('sv.importPasteFirst')); return; }
     setBusy(true); setMsg(null);
     try {
       const r = await apiFetch<{ createdCategories: number; createdServices: number; skipped: number }>(
         '/services/import', { method: 'POST', token, body: { items } },
       );
-      setMsg(`✓ Imported ${r.createdServices} services in ${r.createdCategories} new categor${r.createdCategories === 1 ? 'y' : 'ies'} (${r.skipped} skipped).`);
+      setMsg(t('sv.importedMsg').replace('{svc}', String(r.createdServices)).replace('{cat}', String(r.createdCategories)).replace('{skip}', String(r.skipped)));
       setTimeout(onDone, 1000);
-    } catch (e) { setMsg(e instanceof Error ? e.message : 'Import failed'); setBusy(false); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : t('sv.importFailed')); setBusy(false); }
   }
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>⇪ Import menu</div>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('sv.importMenu')}</div>
       <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>
-        Paste your price list below. Start a group with <code style={{ color: '#cbd5e1' }}># Category</code>, then one service per line:
-        {' '}<code style={{ color: '#cbd5e1' }}>Name | price | minutes</code>. A <code style={{ color: '#cbd5e1' }}>+</code> after the price = &ldquo;from&rdquo; pricing; minutes is optional (defaults to 30).
+        {lang === 'vi' ? (
+          <>Dán bảng giá của bạn bên dưới. Bắt đầu một nhóm bằng <code style={{ color: '#cbd5e1' }}># Danh mục</code>, rồi mỗi dòng một dịch vụ:
+          {' '}<code style={{ color: '#cbd5e1' }}>Tên | giá | phút</code>. Dấu <code style={{ color: '#cbd5e1' }}>+</code> sau giá = giá &ldquo;từ&rdquo;; số phút không bắt buộc (mặc định 30).</>
+        ) : (
+          <>Paste your price list below. Start a group with <code style={{ color: '#cbd5e1' }}># Category</code>, then one service per line:
+          {' '}<code style={{ color: '#cbd5e1' }}>Name | price | minutes</code>. A <code style={{ color: '#cbd5e1' }}>+</code> after the price = &ldquo;from&rdquo; pricing; minutes is optional (defaults to 30).</>
+        )}
       </p>
       <textarea
         value={text}
@@ -765,9 +789,9 @@ function ImportPanel({ token, onDone }: { token: string; onDone: () => void }) {
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
         <button onClick={run} disabled={busy || items.length === 0} style={ui.primaryBtn}>
-          {busy ? 'Importing…' : `Import ${items.length || ''} service${items.length === 1 ? '' : 's'}`}
+          {busy ? t('sv.importing') : `${t('sv.importVerb')} ${items.length || ''} ${t('sv.serviceWord')}`}
         </button>
-        {items.length > 0 && !msg && <span style={{ color: '#94a3b8', fontSize: 13 }}>{items.length} rows detected — review then import.</span>}
+        {items.length > 0 && !msg && <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.rowsDetected').replace('{n}', String(items.length))}</span>}
         {msg && <span style={{ color: ok ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
       </div>
     </div>

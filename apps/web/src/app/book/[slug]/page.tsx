@@ -913,7 +913,14 @@ function TechCard({ selected, onClick, label, avatar, subtitle, disabled }: { se
   );
 }
 function Shell({ children }: { children: React.ReactNode }) {
-  return <div style={{ minHeight: '100vh', background: '#eef1f6', display: 'grid', placeItems: 'center', padding: 16 }}>{children}</div>;
+  // When shown inside an iframe (the WordPress plugin embed), drop the page
+  // background + padding so the form blends into the host site instead of
+  // showing a light panel around it. Standalone /book/:slug keeps the backdrop.
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => {
+    try { setEmbedded(window.self !== window.top); } catch { setEmbedded(true); }
+  }, []);
+  return <div style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : '#eef1f6', display: 'grid', placeItems: 'center', padding: embedded ? 0 : 16 }}>{children}</div>;
 }
 function Center({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#475569', padding: 24 }}>{children}</div>;

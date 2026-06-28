@@ -23,6 +23,7 @@ import {
 import { SettingsService } from '../settings/settings.service';
 import { ReminderSettings } from '../settings/settings.constants';
 import { PaymentsService } from '../payments/payments.service';
+import { ReferralService } from '../referral/referral.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
@@ -52,6 +53,7 @@ export class BookingsService {
     private readonly notifications: NotificationsService,
     private readonly settings: SettingsService,
     private readonly payments: PaymentsService,
+    private readonly referral: ReferralService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -142,6 +144,10 @@ export class BookingsService {
     // Only ever upgrade consent to true (never silently revoke a prior opt-in
     // just because a returning customer left the box unchecked this time).
     const consent = dto.smsConsent === true ? { smsConsent: true, smsConsentAt: new Date() } : {};
+    // Referral attribution applies to NEW customers only (the `create` branches),
+    // so a returning customer is never re-attributed.
+    const referredById = await this.referral.resolveReferrerId(tx, tenantId, dto.referralCode);
+    const referredBy = referredById ? { referredById } : {};
     if (dto.customerEmail) {
       const email = dto.customerEmail.toLowerCase();
       return tx.customer.upsert({
@@ -159,6 +165,7 @@ export class BookingsService {
           lastName: dto.customerLastName ?? null,
           phone: dto.customerPhone ?? null,
           ...consent,
+          ...referredBy,
         },
       });
     }
@@ -169,6 +176,7 @@ export class BookingsService {
         lastName: dto.customerLastName ?? null,
         phone: dto.customerPhone ?? null,
         ...consent,
+        ...referredBy,
       },
     });
   }
@@ -959,9 +967,14 @@ export class BookingsService {
   }
 
   async complete(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
     const result = await this.transition(user, id, AppointmentStatus.COMPLETED, 'booking.completed', 'completedAt');
     // Completing a visit means the money was collected — settle payment automatically.
-    await this.payments.settleOnComplete(this.tenantId(user), id, user.userId);
+    await this.payments.settleOnComplete(tenantId, id, user.userId);
+    // Referral reward: if this customer was referred, reward both on their first
+    // completed visit (no-op otherwise; never throws).
+    const appt = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { customerId: true } });
+    await this.referral.rewardOnCompletion(tenantId, appt?.customerId, id);
     return result;
   }
 

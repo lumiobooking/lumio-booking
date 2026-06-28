@@ -50,6 +50,8 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [bday, setBday] = useState('');
   const [bdaySaved, setBdaySaved] = useState(false);
+  const [refLink, setRefLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !id) return;
@@ -58,6 +60,9 @@ function Inner() {
       const data = await apiFetch<CustomerDetail>(`/customers/${id}`, { token });
       setC(data);
       setBday(data.birthDate ? data.birthDate.slice(0, 10) : '');
+      apiFetch<{ code: string; link: string }>(`/referral/customer/${id}`, { token })
+        .then((r) => setRefLink(r.link))
+        .catch(() => setRefLink(null));
     }
     catch (err) { setError(err instanceof Error ? err.message : 'Failed to load customer'); }
     finally { setLoading(false); }
@@ -123,6 +128,17 @@ function Inner() {
         {bdaySaved && <span style={{ color: '#22c55e', fontSize: 13, paddingBottom: 8 }}>{t('cu.bdSaved')}</span>}
         <span style={{ color: '#64748b', fontSize: 12, paddingBottom: 8 }}>{t('cu.birthdayHint')}</span>
       </div>
+
+      {refLink && (
+        <div style={{ ...ui.card, marginBottom: 18 }}>
+          <div style={{ fontSize: 14, color: '#cbd5e1', fontWeight: 600, marginBottom: 8 }}>🎁 {t('rf.linkTitle')}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <code style={{ flex: 1, minWidth: 220, padding: '10px 12px', background: '#0f172a', borderRadius: 8, wordBreak: 'break-all', fontSize: 13 }}>{refLink}</code>
+            <button onClick={() => { navigator.clipboard?.writeText(refLink); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={ui.primaryBtn}>{copied ? t('rf.copied') : t('rf.copy')}</button>
+          </div>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('rf.linkHint')}</p>
+        </div>
+      )}
 
       {c.loyaltyTransactions && c.loyaltyTransactions.length > 0 && (
         <div style={{ ...ui.card, marginBottom: 18 }}>

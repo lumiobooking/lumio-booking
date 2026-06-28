@@ -70,6 +70,48 @@ export class PublicSalonController {
     };
   }
 
+  // GET /api/public/salons/:slug/seo -> structured-data payload for the booking
+  // page's server-rendered metadata + JSON-LD (search & AI-assistant visibility).
+  @Get(':slug/seo')
+  async seo(@Param('slug') slug: string) {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { slug, deletedAt: null },
+      select: { id: true, name: true, slug: true, timezone: true, contactEmail: true, contactPhone: true, branding: true, status: true, billingExempt: true, accessUntil: true },
+    });
+    if (!tenant || !this.isOpen(tenant)) throw new NotFoundException('Salon not found');
+
+    const [extra, booking, services, agg] = await Promise.all([
+      this.settings.getCompanyExtra(tenant.id),
+      this.settings.getBookingRules(tenant.id),
+      this.bookings.publicServices(tenant.id).catch(() => [] as Array<{ priceCents?: number }>),
+      this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
+    ]);
+
+    const prices = (services ?? []).map((s) => s.priceCents ?? 0).filter((n) => n > 0);
+    const priceFromCents = prices.length ? Math.min(...prices) : null;
+    const branding = this.settings.brandingFrom(tenant.branding);
+    const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const hours = (booking.businessHours ?? []).map((h, i) => ({ day: i, closed: h.closed, open: hm(h.openMinutes), close: hm(h.closeMinutes) }));
+    const ratingCount = agg?._count?._all ?? 0;
+    const ratingValue = agg?._avg?.rating ?? 0;
+
+    return {
+      name: tenant.name,
+      slug: tenant.slug,
+      timezone: tenant.timezone,
+      contactPhone: tenant.contactPhone ?? null,
+      contactEmail: tenant.contactEmail ?? null,
+      address: extra.address || null,
+      website: extra.website || null,
+      accentColor: branding.accentColor,
+      logoUrl: branding.logoUrl || null,
+      currency: booking.currency,
+      priceFromCents,
+      hours,
+      rating: ratingCount > 0 ? { value: Math.round(ratingValue * 10) / 10, count: ratingCount } : null,
+    };
+  }
+
   @Get(':slug/services')
   async services(@Param('slug') slug: string) {
     return this.bookings.publicServices(await this.resolveTenantId(slug));

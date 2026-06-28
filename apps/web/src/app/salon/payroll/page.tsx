@@ -46,6 +46,26 @@ function Inner() {
 
   const techs = (data?.staff ?? []).filter((r) => r.staffId !== 'unassigned' || r.totalPayCents > 0 || r.tipsCents > 0);
 
+  // Export the period's payroll to an Excel/accounting-friendly CSV (plain decimal
+  // amounts, no currency symbol). Built from the already-loaded report — no extra fetch.
+  function exportCsv() {
+    if (!data) return;
+    const dollars = (c: number) => (c / 100).toFixed(2);
+    const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+    const header = ['Technician', '# Services', 'Service Revenue', 'Commission %', 'Commission', 'Tips', 'Total Pay'];
+    const body = techs.map((r) => [r.name, String(r.serviceCount), dollars(r.serviceRevenueCents), String(r.commissionPercent), dollars(r.commissionCents), dollars(r.tipsCents), dollars(r.totalPayCents)]);
+    const totals = [t('pr.csvTotal'), '', dollars(data.totals.revenueCents), '', dollars(data.totals.commissionCents), dollars(data.totals.tipsCents), dollars(data.totals.payCents)];
+    const period = `${t('pr.csvPeriod')}: ${range.from || 'all'} → ${range.to || 'today'}`;
+    const lines = [[period], [], header, ...body, totals].map((cols) => cols.map((c) => esc(String(c))).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + lines], { type: 'text/csv;charset=utf-8' }); // BOM so Excel reads UTF-8
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll_${range.from || 'all'}_${range.to || 'today'}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
@@ -55,6 +75,7 @@ function Inner() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <DateRangeBar range={range} />
+          <button onClick={exportCsv} disabled={!data} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>⬇ {t('pr.exportCsv')}</button>
           <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>🖨 {t('pr.print')}</button>
         </div>
       </div>

@@ -7,9 +7,10 @@ import { AssignmentModule } from '../assignment/assignment.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { ReferralModule } from '../referral/referral.module';
 
 @Module({
-  imports: [AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule],
+  imports: [AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule],
   controllers: [BookingsController, PublicAppointmentController],
   providers: [BookingsService, ReminderService],
   exports: [BookingsService], // reused by PublicModule (WordPress plugin flow)

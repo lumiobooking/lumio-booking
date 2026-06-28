@@ -548,6 +548,11 @@ export class SettingsService {
     return out;
   }
 
+  /** Company extra fields (address, website), merged over defaults. Used by the public SEO payload. */
+  async getCompanyExtra(tenantId: string): Promise<CompanyExtra> {
+    return this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA);
+  }
+
   async get(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const tenant = await this.prisma.tenant.findUnique({

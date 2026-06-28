@@ -79,6 +79,13 @@ export class CreateBookingDto {
   @IsBoolean()
   smsConsent?: boolean;
 
+  // Optional referral code (from a /book/:slug?ref=CODE link). Attributes a NEW
+  // customer to whoever referred them; ignored for returning customers.
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  referralCode?: string;
+
   // Optional: when set on the public booking flow, a payment is created right
   // after the booking (PAY_ONLINE charges via the mock provider; PAY_LATER is
   // recorded PENDING). Ignored by the admin create flow.

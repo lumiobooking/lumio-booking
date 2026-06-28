@@ -31,6 +31,21 @@ export class LoyaltyService {
     return points;
   }
 
+  /**
+   * Credit a fixed number of points with a custom reason (e.g. a referral bonus).
+   * Unlike `award`, this is not derived from a dollar amount and is not gated on
+   * the loyalty earn rate — the calling program (e.g. referrals) decides the amount.
+   */
+  async credit(db: Db, tenantId: string, customerId: string | null | undefined, points: number, reason: string, refType: string, refId: string): Promise<number> {
+    if (!customerId || points <= 0) return 0;
+    const c = await db.customer.findFirst({ where: { id: customerId, tenantId }, select: { loyaltyPoints: true } });
+    if (!c) return 0;
+    const balanceAfter = c.loyaltyPoints + points;
+    await db.customer.update({ where: { id: customerId }, data: { loyaltyPoints: balanceAfter } });
+    await db.loyaltyTransaction.create({ data: { tenantId, customerId, points, balanceAfter, reason, refType, refId } });
+    return points;
+  }
+
   /** Validate a redemption (no write) and return the discount it would give, in cents. */
   async previewRedeem(tenantId: string, customerId: string, points: number): Promise<{ discountCents: number }> {
     const s = await this.settings.getLoyaltySettings(tenantId);

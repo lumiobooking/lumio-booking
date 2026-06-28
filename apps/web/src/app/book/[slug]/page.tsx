@@ -299,6 +299,8 @@ export default function PublicBookingPage() {
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
           smsConsent,
+          // Referral attribution: forward the ?ref= code from the share link, if any.
+          referralCode: (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') : null) || undefined,
           paymentType,
         }),
       });

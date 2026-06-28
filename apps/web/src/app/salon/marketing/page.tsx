@@ -101,6 +101,8 @@ function Inner() {
       <CampaignCard t={t} title={t('mk.reactivation')} desc={t('mk.reactivationDesc')} sent={stats.reactivation} hasDays camp={f.reactivation} onChange={(p) => patchCamp('reactivation', p)} />
       <CampaignCard t={t} title={t('mk.birthday')} desc={t('mk.birthdayDesc')} sent={stats.birthday} camp={f.birthday} onChange={(p) => patchCamp('birthday', p)} />
 
+      <ReferralSection token={token} t={t} />
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 4 }}>
         {saved && <span style={{ color: '#22c55e', fontSize: 13, alignSelf: 'center' }}>{t('mk.saved')}</span>}
         <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
@@ -156,6 +158,72 @@ function CampaignCard({ t, title, desc, sent, camp, hasDays, onChange }: {
         </label>
       )}
       <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.placeholders')}</p>
+    </div>
+  );
+}
+
+interface RefSettings { enabled: boolean; referrerPoints: number; refereePoints: number; message: string }
+
+function ReferralSection({ token, t }: { token: string | null; t: (k: string) => string }) {
+  const [rf, setRf] = useState<RefSettings | null>(null);
+  const [stat, setStat] = useState({ totalReferred: 0, rewarded: 0 });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [s, st] = await Promise.all([
+        apiFetch<RefSettings>('/referral/settings', { token }),
+        apiFetch<{ totalReferred: number; rewarded: number }>('/referral/stats', { token }).catch(() => ({ totalReferred: 0, rewarded: 0 })),
+      ]);
+      setRf(s); setStat(st);
+    } catch { /* ignore */ }
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    if (!rf) return;
+    setSaving(true); setSaved(false);
+    try { await apiFetch('/referral/settings', { method: 'PATCH', token, body: rf }); setSaved(true); setTimeout(() => setSaved(false), 2500); }
+    catch { /* ignore */ }
+    finally { setSaving(false); }
+  }
+
+  if (!rf) return null;
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16, opacity: rf.enabled ? 1 : 0.85 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 16, margin: '0 0 2px' }}>🎁 {t('rf.title')}</h2>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('rf.desc')}</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{t('rf.stat').replace('{total}', String(stat.totalReferred)).replace('{rewarded}', String(stat.rewarded))}</span>
+          <Toggle on={rf.enabled} onChange={(v) => setRf({ ...rf, enabled: v })} label={t('mk.enable')} />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '14px 0' }}>
+        <label>
+          <span style={ui.label}>{t('rf.referrerPoints')}</span>
+          <input style={{ ...ui.input, width: 130 }} type="number" min={0} value={rf.referrerPoints} onChange={(e) => setRf({ ...rf, referrerPoints: Math.max(0, Number(e.target.value)) })} />
+        </label>
+        <label>
+          <span style={ui.label}>{t('rf.refereePoints')}</span>
+          <input style={{ ...ui.input, width: 130 }} type="number" min={0} value={rf.refereePoints} onChange={(e) => setRf({ ...rf, refereePoints: Math.max(0, Number(e.target.value)) })} />
+        </label>
+      </div>
+      <label style={{ display: 'block', marginBottom: 10 }}>
+        <span style={ui.label}>{t('rf.message')}</span>
+        <input style={ui.input} value={rf.message} onChange={(e) => setRf({ ...rf, message: e.target.value })} />
+      </label>
+      <p style={{ color: '#64748b', fontSize: 11.5, margin: '0 0 12px' }}>{t('rf.note')}</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
+        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('mk.saved')}</span>}
+      </div>
     </div>
   );
 }

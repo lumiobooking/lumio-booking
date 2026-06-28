@@ -690,6 +690,15 @@ model Customer {
   smsConsent   Boolean   @default(false)
   smsConsentAt DateTime?
 
+  // Referral program. referralCode is this customer's personal share code;
+  // referredById links a NEW customer to whoever referred them; referralRewardedAt
+  // marks that the referrer reward has been granted (so it happens once).
+  referralCode       String?
+  referredById       String?
+  referredBy         Customer?  @relation("CustomerReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals          Customer[] @relation("CustomerReferrals")
+  referralRewardedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -699,8 +708,11 @@ model Customer {
 
   // A customer email is unique within a tenant (not across the platform).
   @@unique([tenantId, email])
+  // A referral code is unique within a tenant.
+  @@unique([tenantId, referralCode])
   @@index([tenantId])
   @@index([tenantId, phone])
+  @@index([tenantId, referredById])
   @@map("customers")
 }
 

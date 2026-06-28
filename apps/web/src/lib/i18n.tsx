@@ -87,6 +87,9 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'pr.title': { en: 'Technician Payroll', vi: 'Bảng lương thợ · Payroll' },
   'pr.subtitle': { en: "Each tech's pay = commission (rate set in Staff) + tips, for the selected period.", vi: 'Lương phải trả mỗi thợ = hoa hồng (theo % cài ở Staff) + tip, trong kỳ đã chọn.' },
   'pr.print': { en: 'Print', vi: 'In' },
+  'pr.exportCsv': { en: 'Export CSV', vi: 'Xuất CSV' },
+  'pr.csvPeriod': { en: 'Period', vi: 'Kỳ' },
+  'pr.csvTotal': { en: 'TOTAL', vi: 'TỔNG' },
   'pr.kTotal': { en: 'TOTAL TO PAY', vi: 'TỔNG LƯƠNG PHẢI TRẢ' },
   'pr.kCommission': { en: 'Total commission', vi: 'Tổng hoa hồng' },
   'pr.kTips': { en: 'Total tips', vi: 'Tổng tip' },
@@ -786,6 +789,19 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'mk.birthday': { en: 'Birthday greeting', vi: 'Chúc sinh nhật' },
   'mk.birthdayDesc': { en: 'Sent on the customer’s birthday. Needs a birth date on the customer profile.', vi: 'Gửi vào sinh nhật khách. Cần có ngày sinh trong hồ sơ khách.' },
   'mk.loadFail': { en: 'Failed to load campaigns', vi: 'Không tải được chiến dịch' },
+  // Referral program
+  'rf.title': { en: 'Referral program', vi: 'Chương trình giới thiệu' },
+  'rf.desc': { en: 'Customers refer friends — both get reward points when the friend completes their first visit.', vi: 'Khách giới thiệu bạn bè — cả hai nhận điểm thưởng khi người bạn hoàn thành buổi đầu tiên.' },
+  'rf.referrerPoints': { en: 'Points to the referrer', vi: 'Điểm cho người giới thiệu' },
+  'rf.refereePoints': { en: 'Welcome points to the new customer', vi: 'Điểm chào mừng cho khách mới' },
+  'rf.message': { en: 'Share message (optional)', vi: 'Lời mời chia sẻ (tuỳ chọn)' },
+  'rf.stat': { en: '{total} referred · {rewarded} rewarded', vi: '{total} được giới thiệu · {rewarded} đã thưởng' },
+  'rf.note': { en: 'A new customer is attributed when they book with a referral link; the reward is granted on their first completed visit. Each customer’s referral link is on their profile page.', vi: 'Khách mới được ghi nhận khi đặt qua link giới thiệu; phần thưởng trao khi họ hoàn thành buổi đầu tiên. Link giới thiệu của từng khách nằm ở trang hồ sơ của họ.' },
+  'rf.linkTitle': { en: 'Referral link', vi: 'Link giới thiệu' },
+  'rf.copy': { en: 'Copy', vi: 'Sao chép' },
+  'rf.copied': { en: 'Copied!', vi: 'Đã sao chép!' },
+  'rf.linkHint': { en: 'Share this link. When a new customer books with it and completes a visit, this customer earns referral points.', vi: 'Chia sẻ link này. Khi một khách mới đặt qua nó và hoàn thành buổi làm, khách này nhận điểm giới thiệu.' },
+  'rf.off': { en: 'Referral program is off — enable it in Marketing.', vi: 'Chương trình giới thiệu đang tắt — bật ở mục Marketing.' },
 };
 
 // Monday-first weekday labels by language, keyed by JS getDay() (0=Sun…6=Sat).

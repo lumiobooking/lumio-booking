@@ -22,6 +22,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { WaitlistModule } from './waitlist/waitlist.module';
 import { WalkinsModule } from './walkins/walkins.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
+import { ReferralModule } from './referral/referral.module';
 
 @Module({
   imports: [
@@ -67,6 +68,8 @@ import { CampaignsModule } from './campaigns/campaigns.module';
     WalkinsModule,
     // Automated marketing campaigns: win-back, reactivation, birthday SMS/email.
     CampaignsModule,
+    // Customer referral program (refer-a-friend → both rewarded).
+    ReferralModule,
   ],
 })
 export class AppModule {}

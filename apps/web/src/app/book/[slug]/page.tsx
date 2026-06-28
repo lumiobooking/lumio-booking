@@ -69,7 +69,10 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
   const [err, setErr] = useState<string | null>(null);
 
   async function submit() {
-    if (!f.customerName.trim() || (!f.phone.trim() && !f.email.trim())) { setErr('Please enter your name and a phone or email.'); return; }
+    if (!f.customerName.trim()) { setErr('Please enter your name.'); return; }
+    if (f.phone.trim() && !isValidPhone(f.phone)) { setErr('Please enter a valid phone number (8–15 digits).'); return; }
+    if (f.email.trim() && !isValidEmail(f.email)) { setErr('Please enter a valid email address.'); return; }
+    if (!isValidPhone(f.phone) && !isValidEmail(f.email)) { setErr('Please enter a valid phone or email so we can reach you.'); return; }
     setBusy(true); setErr(null);
     try {
       const r = await fetch(`${base}/waitlist`, {
@@ -471,16 +474,29 @@ export default function PublicBookingPage() {
           )}
 
           {step === 4 && (() => {
+            const hasPhone = form.phone.trim().length > 0;
+            const hasEmail = form.email.trim().length > 0;
             const phoneValid = isValidPhone(form.phone);
-            const showPhoneError = form.phone.trim().length > 0 && !phoneValid;
-            const infoOk = form.firstName.trim().length > 0 && phoneValid;
+            const emailValid = isValidEmail(form.email);
+            const showPhoneError = hasPhone && !phoneValid;
+            const showEmailError = hasEmail && !emailValid;
+            // At least one VALID contact method is required (email or phone).
+            const hasValidContact = (hasPhone && phoneValid) || (hasEmail && emailValid);
+            const infoOk = form.firstName.trim().length > 0 && hasValidContact && !showPhoneError && !showEmailError;
             return (
               <StepFrame title="Your information" canContinue={infoOk} onContinue={() => setStep(5)} onBack={() => setStep(3)}>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
                   <Field label="First name" required><input style={field} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
                   <Field label="Last name"><input style={field} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
-                  <Field label="Email"><input style={field} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@email.com" /></Field>
-                  <Field label="Phone" required>
+                  <Field label="Email">
+                    <input
+                      style={{ ...field, borderColor: showEmailError ? '#ef4444' : '#cbd5e1' }}
+                      type="email" value={form.email} placeholder="you@email.com"
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    />
+                    {showEmailError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid email address.</div>}
+                  </Field>
+                  <Field label="Phone">
                     <input
                       style={{ ...field, borderColor: showPhoneError ? '#ef4444' : '#cbd5e1' }}
                       value={form.phone} inputMode="tel" placeholder="e.g. (201) 555-0123"
@@ -488,6 +504,9 @@ export default function PublicBookingPage() {
                     />
                     {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}
                   </Field>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 500, color: !hasValidContact ? '#ef4444' : '#64748b' }}>
+                  Please enter at least one — email or phone — so we can confirm your appointment.
                 </div>
                 {/* SMS consent — transactional disclosure + optional marketing opt-in (A2P 10DLC). */}
                 <div style={{ marginTop: 18, padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
@@ -512,7 +531,7 @@ export default function PublicBookingPage() {
                     <span> · Opt-in data never shared.</span>
                   </div>
                 </div>
-                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>First name and a valid phone number are required to continue.</p>}
+                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>Enter your first name and at least a valid email or phone to continue.</p>}
               </StepFrame>
             );
           })()}
@@ -959,6 +978,12 @@ function isValidPhone(v: string): boolean {
   if (!s) return false;
   const digits = s.replace(/\D/g, '');
   return /^\+?[0-9\s().-]+$/.test(s) && digits.length >= 8 && digits.length <= 15;
+}
+function isValidEmail(v: string): boolean {
+  const s = v.trim();
+  if (!s) return false;
+  // name@domain.tld — no spaces, a dot in the domain, 2+ char TLD.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
 }
 function sameDay(a: Date, b: Date) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }

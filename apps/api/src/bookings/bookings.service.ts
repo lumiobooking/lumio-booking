@@ -44,6 +44,12 @@ function fmtTimeOf(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+/** Same rule as the booking form: digits/()+-. only, 8–15 digits. */
+function isValidPhoneNumber(v: string): boolean {
+  const digits = v.replace(/\D/g, '');
+  return /^\+?[0-9\s().-]+$/.test(v) && digits.length >= 8 && digits.length <= 15;
+}
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -192,6 +198,18 @@ export class BookingsService {
    * from the API key, not a logged-in user). Race-safe when a staff is given.
    */
   async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null) {
+    // Every booking needs a way to reach the customer: a valid email OR phone.
+    // (Email format is enforced by @IsEmail on the DTO; we check phone shape and
+    // the at-least-one rule here so it holds for both the public and admin flows.)
+    const contactEmail = dto.customerEmail?.trim();
+    const contactPhone = dto.customerPhone?.trim();
+    if (!contactEmail && !contactPhone) {
+      throw new BadRequestException('Please provide an email address or a phone number.');
+    }
+    if (contactPhone && !isValidPhoneNumber(contactPhone)) {
+      throw new BadRequestException('Please enter a valid phone number (8–15 digits).');
+    }
+
     const service = await this.prisma.service.findFirst({
       where: { id: dto.serviceId, tenantId, isActive: true },
     });

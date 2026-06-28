@@ -387,6 +387,7 @@ function StaffEditPanel({
   }
 
   async function save() {
+    if (!form.firstName.trim()) { setError(t('st.firstNameRequired')); return; }
     setSaving(true);
     setError(null);
     try {
@@ -432,21 +433,23 @@ function StaffEditPanel({
 
       {/* Profile */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <label><span style={ui.label}>{t('st.fFirstName')}</span>
-          <input style={ui.input} value={form.firstName} onChange={(e) => up('firstName', e.target.value)} /></label>
-        <label><span style={ui.label}>{t('st.fLastName')}</span>
-          <input style={ui.input} value={form.lastName} onChange={(e) => up('lastName', e.target.value)} /></label>
-        <label><span style={ui.label}>{t('st.fEmail')}</span>
-          <input style={ui.input} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} /></label>
-        <label><span style={ui.label}>{t('st.fPhone')}</span>
-          <input style={ui.input} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
-        <label><span style={ui.label}>{t('st.commission')}</span>
-          <input style={ui.input} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
-        <label><span style={ui.label}>{t('st.priority')}</span>
-          <input style={ui.input} type="number" min={0} value={form.bookingPriority} onChange={(e) => up('bookingPriority', e.target.value)} /></label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 22 }}>
-          <input type="checkbox" checked={form.isActive} onChange={(e) => up('isActive', e.target.checked)} />
-          <span style={{ fontSize: 14, color: '#e2e8f0' }}>{t('st.activeBookings')}</span>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fFirstName')} <span style={{ color: '#ef4444' }}>*</span></span>
+          <input style={{ ...ui.input, marginTop: 'auto' }} value={form.firstName} onChange={(e) => up('firstName', e.target.value)} required /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fLastName')}</span>
+          <input style={{ ...ui.input, marginTop: 'auto' }} value={form.lastName} onChange={(e) => up('lastName', e.target.value)} /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fEmail')}</span>
+          <input style={{ ...ui.input, marginTop: 'auto' }} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fPhone')}</span>
+          <input style={{ ...ui.input, marginTop: 'auto' }} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.commission')}</span>
+          <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.priority')}</span>
+          <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} value={form.bookingPriority} onChange={(e) => up('bookingPriority', e.target.value)} /></label>
+        <label style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 9 }}>
+            <input type="checkbox" checked={form.isActive} onChange={(e) => up('isActive', e.target.checked)} />
+            <span style={{ fontSize: 14, color: '#e2e8f0' }}>{t('st.activeBookings')}</span>
+          </span>
         </label>
       </div>
 
@@ -542,7 +545,7 @@ function CreateStaffForm({
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <label>
-          <span style={ui.label}>{t('st.fFirstName')}</span>
+          <span style={ui.label}>{t('st.fFirstName')} <span style={{ color: '#ef4444' }}>*</span></span>
           <input
             style={ui.input}
             value={form.firstName}

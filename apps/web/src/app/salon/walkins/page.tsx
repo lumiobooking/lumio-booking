@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, FormEvent } from 'react';
+import { useCallback, useEffect, useState, FormEvent, CSSProperties } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -91,10 +91,7 @@ function Inner() {
         <label><span style={ui.label}>{t('wi.customer')}</span><input style={ui.input} value={form.customerName} placeholder={t('wi.namePh')} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
         <label><span style={ui.label}>{t('wi.phone')}</span><input style={ui.input} value={form.phone} inputMode="tel" onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
         <label><span style={ui.label}>{t('wi.service')}</span>
-          <select style={ui.input} value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
-            <option value="">—</option>
-            {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <ServiceSearchSelect services={services} value={form.serviceId} onChange={(id) => setForm({ ...form, serviceId: id })} placeholder={t('wi.serviceSearch')} />
         </label>
         <label><span style={ui.label}>{t('wi.partySize')}</span><input style={ui.input} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></label>
         <button type="submit" style={ui.primaryBtn}>{t('wi.addQueue')}</button>
@@ -173,3 +170,45 @@ function Inner() {
     </section>
   );
 }
+
+/**
+ * Type-to-search service picker for the walk-in form. A native <select> is hard
+ * to scan once a salon has many services; this filters the list as you type.
+ */
+function ServiceSearchSelect({ services, value, onChange, placeholder }: {
+  services: Service[]; value: string; onChange: (id: string) => void; placeholder: string;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const selected = services.find((s) => s.id === value) || null;
+  const q = query.trim().toLowerCase();
+  const filtered = q ? services.filter((s) => s.name.toLowerCase().includes(q)) : services;
+  return (
+    <div style={{ position: 'relative' }}>
+      <style>{`.svc-opt:hover{background:#1e293b !important}`}</style>
+      <input
+        style={ui.input}
+        value={open ? query : selected?.name ?? ''}
+        placeholder={placeholder}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+      />
+      {open && (
+        <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: 260, overflowY: 'auto', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
+          <button type="button" className="svc-opt" onMouseDown={(e) => { e.preventDefault(); onChange(''); setQuery(''); setOpen(false); }} style={svcOpt(!value)}>—</button>
+          {filtered.map((s) => (
+            <button key={s.id} type="button" className="svc-opt" onMouseDown={(e) => { e.preventDefault(); onChange(s.id); setQuery(s.name); setOpen(false); }} style={svcOpt(s.id === value)}>
+              {s.name}
+            </button>
+          ))}
+          {filtered.length === 0 && <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 13 }}>No match</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+const svcOpt = (active: boolean): CSSProperties => ({
+  display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none',
+  background: active ? '#312e81' : 'transparent', color: active ? '#c7d2fe' : '#e2e8f0', cursor: 'pointer', fontSize: 14,
+});

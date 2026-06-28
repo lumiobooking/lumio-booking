@@ -26,6 +26,7 @@ interface StaffMember {
   commissionPercent?: number;
   baseCents?: number;
   bookingPriority?: number;
+  staffRole?: 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
   staffServices: { serviceId: string }[];
   workingHours: { id: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
   user: { id: string; email: string } | null;
@@ -367,6 +368,7 @@ function StaffEditPanel({
     commissionPercent: String(member.commissionPercent ?? 0),
     basePay: String(((member.baseCents ?? 0) / 100) || 0),
     bookingPriority: String(member.bookingPriority ?? 0),
+    staffRole: member.staffRole ?? 'TECHNICIAN',
   });
   const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
   const [hours, setHours] = useState<DayRow[]>(
@@ -408,6 +410,7 @@ function StaffEditPanel({
           isActive: form.isActive,
           commissionPercent: Math.max(0, Math.min(100, parseInt(form.commissionPercent, 10) || 0)),
           baseCents: Math.max(0, Math.round((parseFloat(form.basePay) || 0) * 100)),
+          staffRole: form.staffRole,
           bookingPriority: Math.max(0, parseInt(form.bookingPriority, 10) || 0),
           serviceIds: skillIds,
           workingHours,
@@ -448,6 +451,12 @@ function StaffEditPanel({
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.basePay')}</span>
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} step="0.01" value={form.basePay} onChange={(e) => up('basePay', e.target.value)} /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.roleLabel')}</span>
+          <select style={{ ...ui.input, marginTop: 'auto' }} value={form.staffRole} onChange={(e) => up('staffRole', e.target.value)}>
+            <option value="TECHNICIAN">{t('st.roleTech')}</option>
+            <option value="RECEPTIONIST">{t('st.roleReception')}</option>
+            <option value="MANAGER">{t('st.roleManager')}</option>
+          </select></label>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.priority')}</span>
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} value={form.bookingPriority} onChange={(e) => up('bookingPriority', e.target.value)} /></label>
         <label style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>

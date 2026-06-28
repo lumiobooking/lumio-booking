@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { UserRole } from '@prisma/client';
+import { StaffRole, UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/tenant/tenant-context';
 
 /** Shape of the signed JWT payload. */
@@ -11,6 +11,7 @@ export interface JwtPayload {
   email: string;
   role: UserRole;
   tenantId: string | null;
+  staffRole?: StaffRole | null; // STAFF sub-role (optional; absent on older tokens)
 }
 
 @Injectable()
@@ -37,6 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       role: payload.role,
       tenantId: payload.tenantId ?? null,
+      staffRole: payload.staffRole ?? null,
     };
   }
 }

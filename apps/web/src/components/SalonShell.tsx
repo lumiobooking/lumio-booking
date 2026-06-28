@@ -35,6 +35,19 @@ const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
   { href: '/salon/settings', label: 'Settings', icon: '⚙' },
 ];
 
+// Each nav route → the feature capability needed to use it (RBAC). Routes not
+// listed need no capability. Must match the backend capability names.
+const HREF_CAP: Record<string, string> = {
+  '/salon': 'dashboard', '/salon/pos': 'pos', '/salon/orders': 'orders',
+  '/salon/calendar': 'calendar', '/salon/bookings': 'bookings', '/salon/walkins': 'walkins',
+  '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
+  '/salon/products': 'products', '/salon/staff': 'staff', '/salon/payroll': 'payroll',
+  '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/inventory': 'inventory',
+  '/salon/pos/report': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
+  '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/settings': 'settings',
+};
+const ALL_CAPS = Object.values(HREF_CAP);
+
 // Remember the salon's POS entitlement between page loads so the nav renders
 // the correct items immediately (no flash of locked items).
 const POS_CACHE_KEY = 'lumio_pos_enabled';
@@ -63,11 +76,24 @@ export function SalonShell({ children }: { children: ReactNode }) {
   // load) → gated items stay hidden until the plan resolves (no "show all" flash).
   const [posEnabled, setPosEnabled] = useState<boolean | null>(() => readCachedPos());
 
+  // Feature permissions. Older sessions carry no `capabilities` → owners fall
+  // back to "all" so upgrading never locks the owner out.
+  const caps: string[] = user?.capabilities ?? (user && (user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN') ? ALL_CAPS : []);
+  const hasSalonAccess = caps.length > 0;
+  const can = (href: string) => { const c = HREF_CAP[href]; return !c || caps.includes(c); };
+  // Staff with salon access are assumed POS-entitled (the owner's plan applies);
+  // only the owner's own view is gated by the cached plan flag.
+  const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
+  const visibleNav = NAV.filter((item) => (item.feature !== 'pos' || posOk) && can(item.href));
+  const firstAllowedHref = visibleNav[0]?.href ?? '/salon';
+
   useEffect(() => {
     if (!ready) return;
-    if (!token) router.replace('/login');
-    else if (user && user.role !== 'SALON_ADMIN') router.replace('/');
-  }, [ready, token, user, router]);
+    if (!token) { router.replace('/login'); return; }
+    if (!user) return;
+    if (!hasSalonAccess) { router.replace('/'); return; } // technicians → routed to their own portal
+    if (!can(pathname)) router.replace(firstAllowedHref); // on a page this role can't open
+  }, [ready, token, user, pathname, hasSalonAccess, firstAllowedHref]);
 
   // Load the salon's plan to gate plan-locked features, and cache the result.
   useEffect(() => {
@@ -77,12 +103,10 @@ export function SalonShell({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, [token, user]);
 
-  const visibleNav = NAV.filter((item) => item.feature !== 'pos' || posEnabled === true);
-
   // Close the drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
-  if (!ready || !token || user?.role !== 'SALON_ADMIN') {
+  if (!ready || !token || !user || !hasSalonAccess) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
         Loading...

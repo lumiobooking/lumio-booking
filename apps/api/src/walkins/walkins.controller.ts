@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { UserRole } from '@prisma/client';
 import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { WalkinsService } from './walkins.service';
@@ -20,7 +21,8 @@ class AssignDto {
 }
 
 /** Walk-in queue + turn rotation — Salon Admin (front desk) only. */
-@Roles(UserRole.SALON_ADMIN)
+@Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+@Caps('walkins')
 @Controller('walkins')
 export class WalkinsController {
   constructor(private readonly walkins: WalkinsService) {}

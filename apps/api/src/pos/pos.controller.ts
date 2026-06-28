@@ -13,10 +13,12 @@ import { UserRole } from '@prisma/client';
 import { PosService } from './pos.service';
 import { CreateOrderDto, CreateProductDto, UpdateProductDto } from './dto/pos.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
-@Roles(UserRole.SALON_ADMIN)
+@Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+@Caps('pos')
 @Controller('pos')
 export class PosController {
   constructor(private readonly pos: PosService) {}
@@ -27,22 +29,26 @@ export class PosController {
     return this.pos.listProducts(user);
   }
 
+  @Caps('products')
   @Post('products')
   createProduct(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProductDto) {
     return this.pos.createProduct(user, dto);
   }
 
+  @Caps('products')
   @Patch('products/:id')
   updateProduct(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.pos.updateProduct(user, id, dto);
   }
 
+  @Caps('products')
   @Delete('products/:id')
   removeProduct(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pos.removeProduct(user, id);
   }
 
-  // ---- Reports ----
+  // ---- Reports ---- (sales + payroll data → managers/owners only)
+  @Caps('reports')
   @Get('report')
   report(
     @CurrentUser() user: AuthenticatedUser,

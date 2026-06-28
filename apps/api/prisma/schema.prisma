@@ -23,6 +23,14 @@ datasource db {
 // ENUMS
 // ===========================================================================
 
+/// Sub-role for a STAFF user inside one salon, driving feature permissions.
+/// (The salon owner is a SALON_ADMIN user; SUPER_ADMIN is the platform team.)
+enum StaffRole {
+  MANAGER // Almost full access (no billing/integrations/settings)
+  RECEPTIONIST // Front desk + POS (cashier)
+  TECHNICIAN // Own schedule/work only (staff portal)
+}
+
 enum UserRole {
   SUPER_ADMIN // Lumio platform team (no tenantId)
   SALON_ADMIN // Salon owner/manager (scoped to one tenant)
@@ -460,6 +468,9 @@ model StaffMember {
   // Optional fixed base pay per pay period (cents). Added on top of commission +
   // tips when running payroll. 0 = commission-only (the default).
   baseCents Int @default(0)
+
+  // Feature-permission role for this staff member's login (if they have one).
+  staffRole StaffRole @default(TECHNICIAN)
 
   // Review-reward program: lifetime points balance.
   rewardPoints Int @default(0)

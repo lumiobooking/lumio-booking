@@ -165,6 +165,7 @@ export class StaffService {
           performanceScore: dto.performanceScore,
           commissionPercent: dto.commissionPercent,
           baseCents: dto.baseCents,
+          staffRole: dto.staffRole,
           bookingPriority: dto.bookingPriority,
         },
       });

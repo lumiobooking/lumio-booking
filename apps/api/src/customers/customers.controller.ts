@@ -3,6 +3,7 @@ import { UserRole } from '@prisma/client';
 import { IsEmail, IsISO8601, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { CustomersService } from './customers.service';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
@@ -16,7 +17,8 @@ class UpdateCustomerDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(2000) notes?: string | null;
 }
 
-@Roles(UserRole.SALON_ADMIN)
+@Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+@Caps('customers')
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}

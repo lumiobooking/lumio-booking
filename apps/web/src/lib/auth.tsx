@@ -5,6 +5,8 @@ import { apiFetch, setUnauthorizedHandler } from './api';
 
 export type UserRole = 'SUPER_ADMIN' | 'SALON_ADMIN' | 'STAFF';
 
+export type StaffRole = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -12,6 +14,8 @@ export interface AuthUser {
   tenantId: string | null;
   firstName?: string | null;
   lastName?: string | null;
+  staffRole?: StaffRole | null;
+  capabilities?: string[]; // feature permissions (absent on older sessions)
 }
 
 interface LoginResponse {

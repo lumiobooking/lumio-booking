@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -10,6 +11,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+import { StaffRole } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { WorkingHourDto } from './create-staff.dto';
 
@@ -61,6 +63,11 @@ export class UpdateStaffDto {
   @IsInt()
   @Min(0)
   baseCents?: number;
+
+  // Feature-permission role for this staff's login (MANAGER/RECEPTIONIST/TECHNICIAN).
+  @IsOptional()
+  @IsEnum(StaffRole)
+  staffRole?: StaffRole;
 
   // Booking-list priority: 0 = auto/fair ordering; higher = pinned to the top.
   @IsOptional()

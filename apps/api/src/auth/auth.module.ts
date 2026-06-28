@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { CapabilitiesGuard } from './guards/capabilities.guard';
 
 @Module({
   imports: [
@@ -19,9 +20,10 @@ import { RolesGuard } from './guards/roles.guard';
   providers: [
     AuthService,
     JwtStrategy,
-    // Global guards: authenticate first, then enforce roles. Order matters.
+    // Global guards: authenticate, enforce roles, then feature capabilities.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: CapabilitiesGuard },
   ],
 })
 export class AuthModule {}

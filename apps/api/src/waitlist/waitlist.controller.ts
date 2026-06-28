@@ -3,6 +3,7 @@ import { UserRole } from '@prisma/client';
 import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { WaitlistService } from './waitlist.service';
@@ -28,25 +29,29 @@ export class WaitlistController {
   }
 
   // ---- Salon admin ----
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('waitlist')
   @Get('waitlist')
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.waitlist.list(user);
   }
 
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('waitlist')
   @Post('waitlist/:id/notify')
   notify(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.waitlist.notify(user, id);
   }
 
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('waitlist')
   @Patch('waitlist/:id')
   setStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status: string }) {
     return this.waitlist.setStatus(user, id, dto?.status);
   }
 
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('waitlist')
   @Delete('waitlist/:id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.waitlist.remove(user, id);

@@ -1,10 +1,11 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { TenantStatus } from '@prisma/client';
+import { StaffRole, TenantStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifySecret } from './password.util';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { capabilitiesFor } from './capabilities';
 
 @Injectable()
 export class AuthService {
@@ -55,11 +56,19 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
+    // A STAFF login carries its feature-permission sub-role (cashier/tech/manager).
+    let staffRole: StaffRole | null = null;
+    if (user.role === UserRole.STAFF) {
+      const sm = await this.prisma.staffMember.findFirst({ where: { userId: user.id }, select: { staffRole: true } });
+      staffRole = sm?.staffRole ?? null;
+    }
+
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
       tenantId: user.tenantId,
+      staffRole,
     };
 
     const accessToken = await this.jwt.signAsync(payload, {
@@ -76,6 +85,8 @@ export class AuthService {
         tenantId: user.tenantId,
         firstName: user.firstName,
         lastName: user.lastName,
+        staffRole,
+        capabilities: capabilitiesFor(user.role, staffRole),
       },
     };
   }

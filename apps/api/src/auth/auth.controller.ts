@@ -4,6 +4,7 @@ import { LoginDto } from './dto/login.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { capabilitiesFor } from './capabilities';
 
 @Controller('auth')
 export class AuthController {
@@ -20,6 +21,6 @@ export class AuthController {
   // GET /api/auth/me -> requires a valid token; echoes the current principal.
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
-    return user;
+    return { ...user, capabilities: capabilitiesFor(user.role, user.staffRole) };
   }
 }

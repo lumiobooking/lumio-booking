@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { StaffRole, UserRole } from '@prisma/client';
 
 /**
  * The authenticated principal attached to every request after the JWT guard
@@ -10,6 +10,8 @@ export interface AuthenticatedUser {
   email: string;
   role: UserRole;
   tenantId: string | null;
+  // STAFF feature-permission sub-role (null for owners/super-admin = full access).
+  staffRole?: StaffRole | null;
 }
 
 /**

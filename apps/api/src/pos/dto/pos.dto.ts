@@ -65,6 +65,7 @@ export class CreateOrderDto {
   @IsOptional() @IsInt() @Min(0) discountCents?: number;
   @IsOptional() @IsInt() @Min(0) redeemPoints?: number; // loyalty points to redeem as a discount
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @IsString() @MaxLength(64) clientRef?: string; // offline-checkout idempotency key
 
   @IsArray()
   @ArrayMinSize(1)

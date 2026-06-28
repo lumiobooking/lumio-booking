@@ -1128,6 +1128,9 @@ model Order {
   customerId      String?
   appointmentId   String?
   createdByUserId String?
+  // Client-generated idempotency key for offline checkout: the same ref is never
+  // created twice, so re-syncing a queued offline sale cannot duplicate the order.
+  clientRef       String?
 
   // Money (all in minor units / cents).
   subtotalCents Int    @default(0) // sum of line totals before order discount/tax
@@ -1148,6 +1151,7 @@ model Order {
   updatedAt DateTime  @updatedAt
 
   @@unique([tenantId, orderNumber])
+  @@unique([tenantId, clientRef])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, createdAt])

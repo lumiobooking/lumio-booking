@@ -123,6 +123,15 @@ export class PosService {
    */
   async createOrder(user: AuthenticatedUser, dto: CreateOrderDto) {
     const tenantId = this.tenantId(user);
+    // Idempotency for offline checkout: a queued sale carries a client ref. If it
+    // was already synced, return the existing order instead of duplicating it.
+    if (dto.clientRef) {
+      const existing = await this.prisma.order.findFirst({
+        where: { tenantId, clientRef: dto.clientRef },
+        include: ORDER_INCLUDE,
+      });
+      if (existing) return existing;
+    }
     const pos = await this.settings.getPosSettings(tenantId);
     const taxRate = Math.max(0, pos.taxRatePercent || 0);
 
@@ -201,6 +210,7 @@ export class PosService {
           changeCents,
           currency,
           note: dto.note ?? null,
+          clientRef: dto.clientRef ?? null,
         },
       });
 

@@ -55,6 +55,17 @@ button {
   button {
     min-height: 40px;
   }
+
+  /* Wide data tables (bookings, payroll, payments, orders, reports…) scroll
+   * horizontally on phones instead of being clipped by the page overflow guard.
+   * `display:block` turns the table into its own scroll container while the rows
+   * keep their normal table layout inside. */
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 /* Nicer scrollbars for the many horizontal-scroll tables on desktop. */

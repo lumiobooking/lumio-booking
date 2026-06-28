@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { useIsMobile } from '../../../lib/responsive';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, ApiError } from '../../../lib/api';
+import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 
@@ -14,6 +15,11 @@ interface Product { id: string; name: string; priceCents: number; discountPercen
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; loyaltyPoints?: number }
+interface CatalogCache {
+  services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
+  taxRate: number; transferInfo: string; transferQr: string; currency: string;
+  loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
+}
 
 interface Line {
   uid: string;
@@ -88,6 +94,16 @@ function Register() {
     setPrintToReception(v);
     try { localStorage.setItem('lumio_print_to_reception', v ? '1' : '0'); } catch { /* ignore */ }
   };
+  // Offline support: `online` = we believe we can reach the server; `pendingSync`
+  // = how many offline sales are waiting to upload.
+  const [online, setOnline] = useState(true);
+  const [pendingSync, setPendingSync] = useState(0);
+
+  const applyCatalog = (c: CatalogCache) => {
+    setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
+    setTaxRate(c.taxRate); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
+    setLoyalty(c.loyalty);
+  };
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -100,17 +116,34 @@ function Register() {
         apiFetch<Staff[]>('/staff', { token }),
         apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number } }>('/settings', { token }),
       ]);
-      setServices(s.filter((x) => x.isActive));
-      setProducts(p.filter((x) => x.isActive));
-      setAddons(a);
-      setStaff(st.filter((x) => x.isActive));
-      setTaxRate(settings.pos?.taxRatePercent ?? 0);
-      setTransferInfo(settings.pos?.transferInstructions ?? '');
-      setTransferQr(settings.pos?.transferQrUrl ?? '');
-      setCurrency(settings.booking?.currency ?? 'USD');
-      if (settings.loyalty) setLoyalty({ enabled: settings.loyalty.enabled, redeemCentsPerPoint: settings.loyalty.redeemCentsPerPoint, minRedeemPoints: settings.loyalty.minRedeemPoints });
+      const cat: CatalogCache = {
+        services: s.filter((x) => x.isActive),
+        products: p.filter((x) => x.isActive),
+        addons: a,
+        staff: st.filter((x) => x.isActive),
+        taxRate: settings.pos?.taxRatePercent ?? 0,
+        transferInfo: settings.pos?.transferInstructions ?? '',
+        transferQr: settings.pos?.transferQrUrl ?? '',
+        currency: settings.booking?.currency ?? 'USD',
+        loyalty: settings.loyalty
+          ? { enabled: settings.loyalty.enabled, redeemCentsPerPoint: settings.loyalty.redeemCentsPerPoint, minRedeemPoints: settings.loyalty.minRedeemPoints }
+          : { enabled: false, redeemCentsPerPoint: 5, minRedeemPoints: 100 },
+      };
+      applyCatalog(cat);
+      cacheCatalog(cat);
+      setOnline(true);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('po.loadFail'));
+      // Offline (or server unreachable): fall back to the cached catalog so staff
+      // can keep checking out. Only show a hard error if there's no cache yet.
+      const cached = readCachedCatalog<CatalogCache>();
+      if (cached?.data) {
+        applyCatalog(cached.data);
+        setOnline(false);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : t('po.loadFail'));
+      }
     } finally {
       setLoading(false);
     }
@@ -118,6 +151,38 @@ function Register() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Upload any sales taken offline. Idempotent: re-sending an already-synced sale
+  // is a no-op (the clientRef returns the existing order — never a duplicate).
+  const syncPending = useCallback(async () => {
+    if (!token) return;
+    const post = async (payload: unknown): Promise<{ ok: boolean; permanent?: boolean }> => {
+      try { await apiFetch('/pos/orders', { method: 'POST', token, body: payload }); return { ok: true }; }
+      catch (e) {
+        if (e instanceof ApiError && e.status >= 400 && e.status < 500) return { ok: false, permanent: true };
+        throw e; // network / server-down → keep, retry later
+      }
+    };
+    await syncQueue(post);
+    setPendingSync(queueCount());
+  }, [token]);
+
+  // On mount: show the queued count and, if online, drain the queue.
+  useEffect(() => {
+    setPendingSync(queueCount());
+    if (typeof navigator === 'undefined' || navigator.onLine) syncPending();
+    else setOnline(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When connectivity returns, refresh the catalog + upload queued sales.
+  useEffect(() => {
+    const goOnline = () => { setOnline(true); load(); syncPending(); };
+    const goOffline = () => setOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
+  }, [load, syncPending]);
 
   // Refresh the attached customer's loyalty balance whenever it changes (URL
   // prefill from a booking/walk-in, or picked on the register) — without
@@ -190,7 +255,8 @@ function Register() {
     const tax = Math.round((productBase * taxRate) / 100);
     const tip = cart.reduce((s, l) => s + l.tipCents, 0);
     // Loyalty redemption (only when enabled, a customer is attached, and >= min).
-    const wantPts = loyalty.enabled && customerId ? Math.min(parseInt(redeemInput, 10) || 0, customerPoints) : 0;
+    // Redeeming points needs a live balance check, so it's only available online.
+    const wantPts = loyalty.enabled && customerId && online ? Math.min(parseInt(redeemInput, 10) || 0, customerPoints) : 0;
     const redeemValid = wantPts > 0 && wantPts >= loyalty.minRedeemPoints;
     const redeemDiscount = redeemValid ? Math.min(wantPts * loyalty.redeemCentsPerPoint, Math.max(0, subtotal - discount + tax)) : 0;
     const redeemPts = redeemDiscount > 0 ? wantPts : 0;
@@ -199,7 +265,7 @@ function Register() {
     const tenderedCents = Math.round((parseFloat(tendered) || 0) * 100);
     const change = payMethod === 'CASH' ? Math.max(0, tenderedCents - total) : 0;
     return { subtotal, itemSavings, discount, tax, tip, total, savings, tenderedCents, change, redeemDiscount, redeemPts };
-  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput]);
+  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput, online]);
 
   // ---- Catalog search + grouping ------------------------------------------
   const q = query.trim().toLowerCase();
@@ -243,41 +309,65 @@ function Register() {
       return;
     }
     const apiMethod = payMethod === 'CASH' ? 'CASH' : payMethod === 'CARD' ? 'CARD' : 'OTHER';
+    const clientRef = genClientRef();
+    const payload = {
+      clientRef,
+      appointmentId: appointmentId || undefined,
+      walkInId: walkInId || undefined,
+      customerId: customerId || undefined,
+      discountCents: money.discount,
+      redeemPoints: money.redeemPts || undefined,
+      items: cart.map((l) => ({
+        kind: l.kind,
+        serviceId: l.kind === 'SERVICE' && !l.isAddon ? l.refId : undefined,
+        productId: l.kind === 'PRODUCT' ? l.refId : undefined,
+        name: l.name,
+        unitPriceCents: l.unitPriceCents,
+        quantity: l.quantity,
+        tipCents: l.tipCents,
+        staffMemberId: l.staffMemberId || undefined,
+      })),
+      tenders: [{ method: apiMethod, amountCents: tenderCents }],
+    };
     setSubmitting(true); setError(null); setOkMsg(null);
-    try {
-      const order = await apiFetch<{ orderNumber: number }>('/pos/orders', {
-        method: 'POST', token,
-        body: {
-          appointmentId: appointmentId || undefined,
-          walkInId: walkInId || undefined,
-          customerId: customerId || undefined,
-          discountCents: money.discount,
-          redeemPoints: money.redeemPts || undefined,
-          items: cart.map((l) => ({
-            kind: l.kind,
-            serviceId: l.kind === 'SERVICE' && !l.isAddon ? l.refId : undefined,
-            productId: l.kind === 'PRODUCT' ? l.refId : undefined,
-            name: l.name,
-            unitPriceCents: l.unitPriceCents,
-            quantity: l.quantity,
-            tipCents: l.tipCents,
-            staffMemberId: l.staffMemberId || undefined,
-          })),
-          tenders: [{ method: apiMethod, amountCents: tenderCents }],
-        },
-      });
-      printReceipt(order.orderNumber);
-      setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
+
+    // Save the sale on this device + print, leaving it queued to upload later.
+    // Used when offline or if the network drops mid-checkout — the sale is never
+    // lost, and the clientRef means re-syncing can't duplicate it. Redeemed points
+    // are dropped offline (can't verify the balance) so a queued order is never
+    // rejected at sync time.
+    const saveOffline = () => {
+      queueOrder({ clientRef, payload: { ...payload, redeemPoints: undefined }, at: Date.now(), totalCents: money.total });
+      setPendingSync(queueCount());
+      printReceipt(`OFF-${clientRef.slice(0, 5).toUpperCase()}`);
+      setOkMsg(t('po.savedOffline'));
       clearCart();
-      load(); // refresh stock
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('po.payFail'));
+      setOnline(false);
+    };
+
+    try {
+      // Already offline → queue immediately instead of waiting on a doomed request.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) { saveOffline(); return; }
+      try {
+        const order = await apiFetch<{ orderNumber: number }>('/pos/orders', { method: 'POST', token, body: payload });
+        printReceipt(order.orderNumber);
+        setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
+        clearCart();
+        setOnline(true);
+        setPendingSync(queueCount());
+        load(); // refresh stock
+      } catch (err) {
+        // A real server rejection (bad data / auth) → show it. A network failure
+        // (no response) → save the sale offline so nothing is lost.
+        if (err instanceof ApiError) { setError(err.message || t('po.payFail')); return; }
+        saveOffline();
+      }
     } finally {
       setSubmitting(false);
     }
   }
 
-  function printReceipt(orderNumber: number) {
+  function printReceipt(orderNumber: number | string) {
     // Route to the reception-desk printer (via the print agent) when enabled on
     // this device; otherwise print locally on the phone. If sending to reception
     // fails (offline / agent down), fall back to local print so the receipt is
@@ -293,7 +383,7 @@ function Register() {
   }
 
   /** Plain-text receipt (≈32 cols) for the reception thermal printer. */
-  function buildReceiptText(orderNumber: number): string {
+  function buildReceiptText(orderNumber: number | string): string {
     const W = 32;
     const row = (l: string, r: string) => {
       const left = l.length > W - r.length - 1 ? l.slice(0, W - r.length - 1) : l;
@@ -322,7 +412,7 @@ function Register() {
     return o;
   }
 
-  function localPrint(orderNumber: number) {
+  function localPrint(orderNumber: number | string) {
     const rows = cart
       .map((l) => {
         const lt = formatPrice(l.unitPriceCents * l.quantity, currency);
@@ -409,6 +499,17 @@ function Register() {
       )}
       {error && <div style={ui.banner}>{error}</div>}
       {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
+      {!online && (
+        <div style={{ background: '#78350f', color: '#fde68a', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>📴</span> {t('po.offlineMode')}
+        </div>
+      )}
+      {pendingSync > 0 && (
+        <div style={{ background: '#1e293b', border: '1px solid #475569', color: '#cbd5e1', padding: '8px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span>⏳ {t('po.pendingSync').replace('{n}', String(pendingSync))}</span>
+          {online && <button onClick={syncPending} style={{ ...ghost, padding: '6px 12px', fontSize: 13 }}>{t('po.syncNow')}</button>}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : 16, alignItems: 'start' }}>
         {/* Catalog */}
@@ -584,7 +685,7 @@ function Register() {
             </div>
             {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
             {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
-            {loyalty.enabled && customerId && (
+            {loyalty.enabled && customerId && online && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: '#eab308' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
                 <input

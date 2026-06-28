@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
 
 interface Service {
@@ -74,16 +75,18 @@ function fileToAvatarDataUrl(file: File): Promise<string> {
 
 /** Round avatar preview + "Upload photo" button used in the staff forms. */
 function AvatarPicker({ value, name, onChange }: { value: string; name: string; onChange: (dataUrl: string) => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
     if (!file) return;
-    if (!file.type.startsWith('image/')) { setErr('Please choose an image file'); return; }
+    if (!file.type.startsWith('image/')) { setErr(t('st.pickImage')); return; }
     setBusy(true); setErr(null);
     try { onChange(await fileToAvatarDataUrl(file)); }
-    catch { setErr('Could not process that image'); }
+    catch { setErr(t('st.processFail')); }
     finally { setBusy(false); }
   }
   return (
@@ -94,12 +97,12 @@ function AvatarPicker({ value, name, onChange }: { value: string; name: string; 
         : <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#334155', color: '#cbd5e1', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>{(name || '?').charAt(0).toUpperCase()}</span>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label style={{ ...ui.input, padding: '8px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          📷 {busy ? 'Processing…' : value ? 'Change photo' : 'Upload photo'}
+          📷 {busy ? t('st.processing') : value ? t('st.changePhoto') : t('st.uploadPhoto')}
           <input type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
         </label>
-        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>Remove photo</button>}
+        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{t('st.removePhoto')}</button>}
         {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
-        <span style={{ color: '#64748b', fontSize: 11 }}>Square photo works best — clients see this when booking.</span>
+        <span style={{ color: '#64748b', fontSize: 11 }}>{t('st.photoHint')}</span>
       </div>
     </div>
   );
@@ -115,6 +118,8 @@ export default function StaffPage() {
 
 function StaffInner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [q, setQ] = useState('');
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -149,7 +154,7 @@ function StaffInner() {
   }, [load]);
 
   async function remove(id: string) {
-    if (!confirm('Delete this staff member?')) return;
+    if (!confirm(t('st.confirmDelete'))) return;
     try {
       await apiFetch(`/staff/${id}`, { method: 'DELETE', token });
       await load();
@@ -170,7 +175,7 @@ function StaffInner() {
     try {
       await apiFetch(`/staff/${staffId}/login`, { method: 'POST', token, body: loginForm });
       setLoginFor(null);
-      setCreatedMsg(`Login created for ${loginForm.email}. The technician can now sign in at the login page.`);
+      setCreatedMsg(t('st.loginCreated').replace('{email}', loginForm.email));
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create login');
@@ -188,15 +193,15 @@ function StaffInner() {
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ fontSize: 18, margin: 0 }}>Staff / Technicians</h2>
+        <h2 style={{ fontSize: 18, margin: 0 }}>{t('st.title')}</h2>
         <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
-          {showForm ? 'Close' : '+ New staff'}
+          {showForm ? t('st.close') : t('st.newStaff')}
         </button>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search name, email, phone…" />
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} staff</span>
+        <SearchBox value={q} onChange={setQ} placeholder={t('st.searchPh')} />
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('st.staffWord')}</span>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -214,25 +219,25 @@ function StaffInner() {
       )}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>Loading...</p>
+        <p style={{ color: '#94a3b8' }}>{t('st.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>Name</th>
-                <th style={ui.th}>Contact</th>
-                <th style={ui.th}>Skills</th>
-                <th style={ui.th}>Login</th>
-                <th style={ui.th}>Status</th>
-                <th style={ui.th}>Actions</th>
+                <th style={ui.th}>{t('st.colName')}</th>
+                <th style={ui.th}>{t('st.colContact')}</th>
+                <th style={ui.th}>{t('st.colSkills')}</th>
+                <th style={ui.th}>{t('st.colLogin')}</th>
+                <th style={ui.th}>{t('st.colStatus')}</th>
+                <th style={ui.th}>{t('st.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
                 <tr>
                   <td style={ui.td} colSpan={6}>
-                    No staff in this range.
+                    {t('st.empty')}
                   </td>
                 </tr>
               )}
@@ -259,13 +264,13 @@ function StaffInner() {
                       <span style={{ color: '#22c55e', fontSize: 13 }}>🔑 {m.user.email}</span>
                     ) : (
                       <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? '#475569' : '#6366f1' }}>
-                        {loginFor === m.id ? 'Cancel' : 'Create login'}
+                        {loginFor === m.id ? t('st.cancel') : t('st.createLogin')}
                       </button>
                     )}
                   </td>
                   <td style={ui.td}>
                     <span style={{ color: m.isActive ? '#22c55e' : '#94a3b8' }}>
-                      {m.isActive ? 'Active' : 'Inactive'}
+                      {m.isActive ? t('st.active') : t('st.inactive')}
                     </span>
                   </td>
                   <td style={ui.td}>
@@ -274,10 +279,10 @@ function StaffInner() {
                         onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }}
                         style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? '#475569' : '#6366f1' }}
                       >
-                        {editFor === m.id ? 'Close' : 'Edit'}
+                        {editFor === m.id ? t('st.close') : t('st.edit')}
                       </button>
                       <button onClick={() => remove(m.id)} style={ui.dangerBtn}>
-                        Delete
+                        {t('st.delete')}
                       </button>
                     </div>
                   </td>
@@ -298,18 +303,18 @@ function StaffInner() {
                   <tr>
                     <td colSpan={6} style={{ padding: 14, background: '#0f172a' }}>
                       <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>
-                        Create a login for {m.firstName} — they sign in to see their bookings.
+                        {t('st.createLoginFor').replace('{name}', m.firstName)}
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
                         <label style={{ flex: 1, minWidth: 200 }}>
-                          <span style={ui.label}>Login email</span>
+                          <span style={ui.label}>{t('st.loginEmail')}</span>
                           <input style={ui.input} type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} />
                         </label>
                         <label style={{ flex: 1, minWidth: 180 }}>
-                          <span style={ui.label}>Password (min 8)</span>
-                          <input style={ui.input} type="text" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="Set a password" />
+                          <span style={ui.label}>{t('st.password')}</span>
+                          <input style={ui.input} type="text" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder={t('st.passwordPh')} />
                         </label>
-                        <button onClick={() => submitLogin(m.id)} style={{ ...ui.primaryBtn, padding: '9px 14px' }}>Create login</button>
+                        <button onClick={() => submitLogin(m.id)} style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{t('st.createLogin')}</button>
                       </div>
                     </td>
                   </tr>
@@ -348,6 +353,8 @@ function StaffEditPanel({
   services: Service[];
   onSaved: () => void;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({
     firstName: member.firstName,
     lastName: member.lastName ?? '',
@@ -418,39 +425,39 @@ function StaffEditPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>Edit {member.firstName}</div>
+      <div style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>{t('st.editName').replace('{name}', member.firstName)}</div>
 
       {/* Profile photo */}
       <div>
-        <span style={ui.label}>Profile photo</span>
+        <span style={ui.label}>{t('st.profilePhoto')}</span>
         <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => up('avatarUrl', v)} />
       </div>
 
       {/* Profile */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <label><span style={ui.label}>First name</span>
+        <label><span style={ui.label}>{t('st.fFirstName')}</span>
           <input style={ui.input} value={form.firstName} onChange={(e) => up('firstName', e.target.value)} /></label>
-        <label><span style={ui.label}>Last name</span>
+        <label><span style={ui.label}>{t('st.fLastName')}</span>
           <input style={ui.input} value={form.lastName} onChange={(e) => up('lastName', e.target.value)} /></label>
-        <label><span style={ui.label}>Email</span>
+        <label><span style={ui.label}>{t('st.fEmail')}</span>
           <input style={ui.input} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} /></label>
-        <label><span style={ui.label}>Phone</span>
+        <label><span style={ui.label}>{t('st.fPhone')}</span>
           <input style={ui.input} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
-        <label><span style={ui.label}>Commission % (POS services)</span>
+        <label><span style={ui.label}>{t('st.commission')}</span>
           <input style={ui.input} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
-        <label><span style={ui.label}>Booking priority (0 = fair/auto, higher = pinned top)</span>
+        <label><span style={ui.label}>{t('st.priority')}</span>
           <input style={ui.input} type="number" min={0} value={form.bookingPriority} onChange={(e) => up('bookingPriority', e.target.value)} /></label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 22 }}>
           <input type="checkbox" checked={form.isActive} onChange={(e) => up('isActive', e.target.checked)} />
-          <span style={{ fontSize: 14, color: '#e2e8f0' }}>Active (can take bookings)</span>
+          <span style={{ fontSize: 14, color: '#e2e8f0' }}>{t('st.activeBookings')}</span>
         </label>
       </div>
 
       {/* Skills */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>Skills (services this technician can do)</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>{t('st.skills')}</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
         {services.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13 }}>No services yet.</p>
+          <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServices')}</p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {services.map((s) => (
@@ -465,10 +472,10 @@ function StaffEditPanel({
 
       {/* Working hours */}
       <div>
-        <span style={ui.label}>Working hours (when this technician can be auto-assigned)</span>
+        <span style={ui.label}>{t('st.workingHours')}</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 460 }}>
           {hours.map((d) => {
-            const label = DAYS.find((x) => x.dow === d.dow)?.label ?? '';
+            const label = DAY_LABEL[lang][d.dow] ?? '';
             return (
               <div key={d.dow} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, width: 64 }}>
@@ -482,25 +489,23 @@ function StaffEditPanel({
                     <input type="time" style={{ ...ui.input, width: 120 }} value={d.end} onChange={(e) => updDay(d.dow, { end: e.target.value })} />
                   </>
                 ) : (
-                  <span style={{ color: '#64748b', fontSize: 13 }}>Off</span>
+                  <span style={{ color: '#64748b', fontSize: 13 }}>{t('st.off')}</span>
                 )}
               </div>
             );
           })}
         </div>
         <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8 }}>
-          {anyEnabled
-            ? 'The technician is only auto-assigned inside these hours.'
-            : 'No hours set → available during the salon’s open hours (default).'}
+          {anyEnabled ? t('st.hoursSet') : t('st.hoursUnset')}
         </p>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={save} disabled={saving} style={ui.primaryBtn}>
-          {saving ? 'Saving…' : 'Save changes'}
+          {saving ? t('st.saving') : t('st.saveChanges')}
         </button>
-        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>✓ Saved</span>}
+        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('st.saved')}</span>}
       </div>
     </div>
   );
@@ -515,6 +520,8 @@ function CreateStaffForm({
   services: Service[];
   onCreated: () => void;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', avatarUrl: '' });
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -553,7 +560,7 @@ function CreateStaffForm({
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <label>
-          <span style={ui.label}>First name</span>
+          <span style={ui.label}>{t('st.fFirstName')}</span>
           <input
             style={ui.input}
             value={form.firstName}
@@ -562,7 +569,7 @@ function CreateStaffForm({
           />
         </label>
         <label>
-          <span style={ui.label}>Last name</span>
+          <span style={ui.label}>{t('st.fLastName')}</span>
           <input
             style={ui.input}
             value={form.lastName}
@@ -570,7 +577,7 @@ function CreateStaffForm({
           />
         </label>
         <label>
-          <span style={ui.label}>Email</span>
+          <span style={ui.label}>{t('st.fEmail')}</span>
           <input
             style={ui.input}
             type="email"
@@ -579,7 +586,7 @@ function CreateStaffForm({
           />
         </label>
         <label>
-          <span style={ui.label}>Phone</span>
+          <span style={ui.label}>{t('st.fPhone')}</span>
           <input
             style={ui.input}
             value={form.phone}
@@ -589,15 +596,15 @@ function CreateStaffForm({
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <span style={ui.label}>Profile photo (optional)</span>
+        <span style={ui.label}>{t('st.profilePhotoOpt')}</span>
         <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => setForm({ ...form, avatarUrl: v })} />
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>Skills (services this technician can do)</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>{t('st.skills')}</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
         {services.length === 0 ? (
           <p style={{ color: '#94a3b8', fontSize: 13 }}>
-            No services yet — create services first to assign skills.
+            {t('st.noServicesCreate')}
           </p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -629,7 +636,7 @@ function CreateStaffForm({
 
       {error && <div style={ui.banner}>{error}</div>}
       <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn, marginTop: 14 }}>
-        {submitting ? 'Creating...' : 'Create staff'}
+        {submitting ? t('st.creating') : t('st.createStaff')}
       </button>
     </form>
   );
@@ -637,6 +644,8 @@ function CreateStaffForm({
 
 /** Small "Select all / Clear all" toggle for the skills checkbox grid. */
 function SkillBar({ all, ids, set }: { all: { id: string }[]; ids: string[]; set: (v: string[]) => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   if (all.length === 0) return null;
   const allOn = ids.length >= all.length;
   return (
@@ -645,7 +654,7 @@ function SkillBar({ all, ids, set }: { all: { id: string }[]; ids: string[]; set
       onClick={() => set(allOn ? [] : all.map((s) => s.id))}
       style={{ fontSize: 12, padding: '3px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}
     >
-      {allOn ? 'Clear all' : 'Select all'}
+      {allOn ? t('st.clearAll') : t('st.selectAll')}
     </button>
   );
 }

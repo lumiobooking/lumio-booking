@@ -1,6 +1,19 @@
 // Thin client for the Lumio Booking backend API.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 
+// Multi-branch: the salon owner/manager's currently selected branch. Read fresh
+// from localStorage on every call so a switch takes effect immediately (and there
+// is no load-order race with the AuthProvider). Single-salon users never set it.
+export const ACTIVE_BRANCH_KEY = 'lumio_active_branch';
+function activeBranchId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(ACTIVE_BRANCH_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 // Global handler invoked when an authenticated request is rejected with 401
 // (i.e. the session/token expired). The AuthProvider registers a handler that
 // clears the session and redirects to /login.
@@ -28,11 +41,13 @@ interface ApiOptions {
 export async function apiFetch<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', token, body } = options;
 
+  const branch = activeBranchId();
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(branch ? { 'X-Branch-Id': branch } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });

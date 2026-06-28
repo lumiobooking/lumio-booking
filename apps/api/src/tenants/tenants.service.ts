@@ -25,6 +25,7 @@ const TENANT_PUBLIC_SELECT = {
   subscriptionStatus: true,
   billingExempt: true,
   accessUntil: true,
+  accountGroupId: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.TenantSelect;
@@ -35,6 +36,78 @@ export class TenantsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  // ---- Multi-branch (chain) account groups -------------------------------
+
+  /** All chain groups with their branches + linked chain users (grouping UI). */
+  async listGroups() {
+    return this.prisma.accountGroup.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        tenants: { where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } },
+        users: { select: { id: true, email: true, role: true }, orderBy: { email: 'asc' } },
+      },
+    });
+  }
+
+  /** Create a chain group. */
+  async createGroup(user: AuthenticatedUser, name: string) {
+    const clean = (name ?? '').trim();
+    if (!clean) throw new BadRequestException('Group name is required');
+    const group = await this.prisma.accountGroup.create({ data: { name: clean }, select: { id: true, name: true } });
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'group.created', resourceType: 'account_group', resourceId: group.id });
+    return group;
+  }
+
+  /** Rename a chain group. */
+  async renameGroup(user: AuthenticatedUser, groupId: string, name: string) {
+    const clean = (name ?? '').trim();
+    if (!clean) throw new BadRequestException('Group name is required');
+    const g = await this.prisma.accountGroup.findUnique({ where: { id: groupId }, select: { id: true } });
+    if (!g) throw new NotFoundException('Group not found');
+    await this.prisma.accountGroup.update({ where: { id: groupId }, data: { name: clean } });
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'group.renamed', resourceType: 'account_group', resourceId: groupId });
+    return { id: groupId, name: clean };
+  }
+
+  /** Assign (or clear, with null) a salon's chain group. */
+  async setTenantGroup(user: AuthenticatedUser, tenantId: string, accountGroupId: string | null) {
+    const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true } });
+    if (!tenant) throw new NotFoundException('Salon not found');
+    if (accountGroupId) {
+      const g = await this.prisma.accountGroup.findUnique({ where: { id: accountGroupId }, select: { id: true } });
+      if (!g) throw new NotFoundException('Group not found');
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { accountGroupId: accountGroupId || null } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'group.tenant_set', resourceType: 'tenant', resourceId: tenantId });
+    return { id: tenantId, accountGroupId: accountGroupId || null };
+  }
+
+  /** Link a user (by login email) to a chain group → that login can switch all its branches. */
+  async linkUserToGroup(user: AuthenticatedUser, groupId: string, email: string) {
+    const g = await this.prisma.accountGroup.findUnique({ where: { id: groupId }, select: { id: true } });
+    if (!g) throw new NotFoundException('Group not found');
+    const target = await this.prisma.user.findUnique({
+      where: { email: (email ?? '').trim().toLowerCase() },
+      select: { id: true, email: true },
+    });
+    if (!target) throw new NotFoundException('No user with that email');
+    await this.prisma.user.update({ where: { id: target.id }, data: { accountGroupId: groupId } });
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'group.user_linked', resourceType: 'user', resourceId: target.id });
+    return { userId: target.id, email: target.email, accountGroupId: groupId };
+  }
+
+  /** Remove a user from their chain group. */
+  async unlinkUserFromGroup(user: AuthenticatedUser, userId: string) {
+    const target = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!target) throw new NotFoundException('User not found');
+    await this.prisma.user.update({ where: { id: userId }, data: { accountGroupId: null } });
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'group.user_unlinked', resourceType: 'user', resourceId: userId });
+    return { userId, accountGroupId: null };
+  }
 
   /** List tenants (platform-wide). SUPER_ADMIN only. */
   async list(filters: ListTenantsDto) {

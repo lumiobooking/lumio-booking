@@ -24,6 +24,7 @@ import { WalkinsModule } from './walkins/walkins.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ReferralModule } from './referral/referral.module';
 import { SuppliesModule } from './supplies/supplies.module';
+import { BranchesModule } from './branches/branches.module';
 
 @Module({
   imports: [
@@ -73,6 +74,9 @@ import { SuppliesModule } from './supplies/supplies.module';
     ReferralModule,
     // Back-of-house supplies inventory (polish, tips, powder…).
     SuppliesModule,
+    // Multi-branch (chain) accounts: branch switcher + consolidated report +
+    // global active-branch interceptor.
+    BranchesModule,
   ],
 })
 export class AppModule {}

@@ -185,6 +185,12 @@ model Tenant {
   plan               Plan?              @relation(fields: [planId], references: [id])
   subscriptionStatus SubscriptionStatus @default(TRIALING)
 
+  // Multi-branch: when set, this tenant is one branch within a chain/owner group.
+  // Each branch is still a fully isolated tenant; the group only lets an owner
+  // login switch between, and report across, its branches.
+  accountGroupId String?
+  accountGroup   AccountGroup? @relation(fields: [accountGroupId], references: [id], onDelete: SetNull)
+
   // Super-admin access overrides (independent of billing):
   //  - billingExempt: free salon, always open, never needs payment.
   //  - accessUntil: hard expiry; past this the salon is locked until extended.
@@ -226,8 +232,10 @@ model Tenant {
   orderItems        OrderItem[]
   orderPayments     OrderPayment[]
   loyaltyTransactions LoyaltyTransaction[]
+  branchMemberships BranchMembership[]
 
   @@index([status])
+  @@index([accountGroupId])
   @@map("tenants")
 }
 
@@ -271,6 +279,10 @@ model User {
   id           String   @id @default(uuid())
   tenantId     String? // null only for SUPER_ADMIN
   tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Multi-branch: chain-level users (owner/manager) belong to an AccountGroup and
+  // can switch between its branches. Null = single-salon user (current behavior).
+  accountGroupId String?
+  accountGroup   AccountGroup? @relation(fields: [accountGroupId], references: [id], onDelete: SetNull)
   role         UserRole
   email        String   @unique
   passwordHash String
@@ -287,10 +299,47 @@ model User {
   updatedAt DateTime @updatedAt
 
   auditLogs AuditLog[]
+  branchMemberships BranchMembership[]
 
   @@index([tenantId])
   @@index([role])
+  @@index([accountGroupId])
   @@map("users")
+}
+
+/**
+ * A chain / owner group: links multiple Tenant "branches" under one owner account.
+ * Each branch remains a fully isolated tenant — this layer only lets an owner (and
+ * granted managers) switch between branches and view consolidated reporting.
+ */
+model AccountGroup {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenants Tenant[]
+  users   User[]
+
+  @@map("account_groups")
+}
+
+/**
+ * Grants a (manager) user access to an additional branch beyond their home tenant.
+ * Owners get all branches in their group implicitly; managers are explicit here.
+ */
+model BranchMembership {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("branch_memberships")
 }
 
 // ===========================================================================

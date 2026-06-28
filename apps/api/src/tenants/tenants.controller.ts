@@ -48,6 +48,34 @@ export class TenantsController {
     return this.tenantsService.updatePlan(user, id, dto);
   }
 
+  // ---- Multi-branch (chain) groups. Static 'groups' routes before ':id'. ----
+  @Get('groups')
+  listGroups() {
+    return this.tenantsService.listGroups();
+  }
+
+  @Post('groups')
+  createGroup(@CurrentUser() user: AuthenticatedUser, @Body() dto: { name: string }) {
+    return this.tenantsService.createGroup(user, dto.name);
+  }
+
+  @Patch('groups/:groupId')
+  renameGroup(@CurrentUser() user: AuthenticatedUser, @Param('groupId') groupId: string, @Body() dto: { name: string }) {
+    return this.tenantsService.renameGroup(user, groupId, dto.name);
+  }
+
+  @Post('groups/:groupId/link-user')
+  @HttpCode(200)
+  linkUser(@CurrentUser() user: AuthenticatedUser, @Param('groupId') groupId: string, @Body() dto: { email: string }) {
+    return this.tenantsService.linkUserToGroup(user, groupId, dto.email);
+  }
+
+  @Post('groups/:groupId/unlink-user')
+  @HttpCode(200)
+  unlinkUser(@CurrentUser() user: AuthenticatedUser, @Body() dto: { userId: string }) {
+    return this.tenantsService.unlinkUserFromGroup(user, dto.userId);
+  }
+
   @Post(':id/reset-admin-password')
   @HttpCode(200)
   resetAdminPassword(
@@ -95,6 +123,16 @@ export class TenantsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.tenantsService.update(id, dto, user);
+  }
+
+  @Post(':id/group')
+  @HttpCode(200)
+  setTenantGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: { accountGroupId: string | null },
+  ) {
+    return this.tenantsService.setTenantGroup(user, id, dto.accountGroupId ?? null);
   }
 
   @Post(':id/suspend')

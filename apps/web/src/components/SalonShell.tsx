@@ -45,6 +45,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
   '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/settings': 'settings',
+  '/salon/chain': 'reports', // multi-branch consolidated report
 };
 const ALL_CAPS = Object.values(HREF_CAP);
 
@@ -202,6 +203,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
                 {brand}
                 <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: '#94a3b8', fontSize: 22, cursor: 'pointer' }}>✕</button>
               </div>
+              <BranchSwitcher />
               {navList}
               {footer}
             </aside>
@@ -216,12 +218,66 @@ export function SalonShell({ children }: { children: ReactNode }) {
   // ---------------------------- Desktop ----------------------------
   return (
     <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: '230px 1fr', background: '#0b1120' }}>
-      <aside style={{ background: '#111827', borderRight: '1px solid #1f2937', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh' }}>
+      <aside style={{ background: '#111827', borderRight: '1px solid #1f2937', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
         {brand}
+        <BranchSwitcher />
         {navList}
         {footer}
       </aside>
       <main style={{ padding: '28px 32px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>
+    </div>
+  );
+}
+
+/**
+ * Branch switcher for multi-branch (chain) owners/managers. Renders nothing for
+ * single-salon users. Selecting a branch stores it (apiFetch then sends it as
+ * X-Branch-Id) and reloads so every page re-scopes to the chosen branch.
+ */
+function BranchSwitcher() {
+  const { token } = useAuth();
+  const { lang } = useLang();
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [home, setHome] = useState('');
+  const [active, setActive] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ canSwitch: boolean; homeTenantId: string | null; branches: { id: string; name: string }[] }>('/branches', { token })
+      .then((r) => {
+        if (!r.canSwitch) { setBranches([]); return; }
+        setBranches(r.branches);
+        setHome(r.homeTenantId || '');
+        let stored = '';
+        try { stored = localStorage.getItem('lumio_active_branch') || ''; } catch { /* ignore */ }
+        const valid = r.branches.some((b) => b.id === stored);
+        if (stored && !valid) { try { localStorage.removeItem('lumio_active_branch'); } catch { /* ignore */ } }
+        setActive(valid ? stored : (r.homeTenantId || ''));
+      })
+      .catch(() => setBranches([]));
+  }, [token]);
+
+  if (branches.length <= 1) return null;
+
+  function switchTo(id: string) {
+    if (!id || id === active) return;
+    try {
+      if (id !== home) localStorage.setItem('lumio_active_branch', id);
+      else localStorage.removeItem('lumio_active_branch');
+    } catch { /* ignore */ }
+    if (typeof window !== 'undefined') window.location.reload();
+  }
+
+  return (
+    <div style={{ padding: '0 10px 14px', marginBottom: 4, borderBottom: '1px solid #1f2937' }}>
+      <div style={{ fontSize: 11, color: '#818cf8', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>{tr('shell.branch', lang)}</div>
+      <select value={active} onChange={(e) => switchTo(e.target.value)}
+        style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #4f46e5', background: '#1e293b', color: '#e2e8f0', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+        {branches.map((b) => <option key={b.id} value={b.id}>{b.name}{b.id === home ? ' ★' : ''}</option>)}
+      </select>
+      <Link href="/salon/chain" style={{ display: 'block', textAlign: 'center', marginTop: 8, fontSize: 12, color: '#a5b4fc', textDecoration: 'none' }}>
+        {tr('shell.chainReport', lang)} →
+      </Link>
     </div>
   );
 }

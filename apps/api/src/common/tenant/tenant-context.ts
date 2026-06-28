@@ -9,7 +9,13 @@ export interface AuthenticatedUser {
   userId: string;
   email: string;
   role: UserRole;
+  // The ACTIVE tenant for this request. Normally the user's home salon, but for a
+  // multi-branch (chain) owner/manager it can be re-scoped to a selected branch by
+  // the BranchScopeInterceptor (validated against their allowed branches).
   tenantId: string | null;
+  // The user's permanent home salon (unchanged by branch switching). Set when the
+  // active branch differs, so chain features can still find the original.
+  homeTenantId?: string | null;
   // STAFF feature-permission sub-role (null for owners/super-admin = full access).
   staffRole?: StaffRole | null;
 }

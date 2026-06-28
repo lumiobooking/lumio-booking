@@ -79,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.accessToken);
     setUser(res.user);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(res));
+    localStorage.removeItem('lumio_active_branch'); // a fresh login starts at the home branch
     return res.user;
   }
 
@@ -87,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('lumio_pos_enabled'); // clear cached plan gating
+    localStorage.removeItem('lumio_active_branch');
   }
 
   return (

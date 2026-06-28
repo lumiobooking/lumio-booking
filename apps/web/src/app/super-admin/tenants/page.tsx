@@ -149,6 +149,9 @@ export default function TenantsPage() {
           <a href="/super-admin/billing" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Payment gateways
           </a>
+          <a href="/super-admin/chains" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            Chains
+          </a>
           <button onClick={() => setShowForm((s) => !s)} style={primaryBtn}>
             {showForm ? 'Close' : '+ New salon'}
           </button>

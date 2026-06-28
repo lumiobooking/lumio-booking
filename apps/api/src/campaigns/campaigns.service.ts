@@ -65,7 +65,10 @@ export class CampaignsService {
   }
 
   /** Salon Admin updates campaign settings. Validates + clamps, then persists. */
-  async updateSettings(user: AuthenticatedUser, dto: Partial<CampaignSettings>): Promise<CampaignSettings> {
+  async updateSettings(
+    user: AuthenticatedUser,
+    dto: { sendHour?: number; winBack?: Partial<LapsedCampaign>; reactivation?: Partial<LapsedCampaign>; birthday?: Partial<CampaignMessage> },
+  ): Promise<CampaignSettings> {
     const tenantId = this.tid(user);
     const cur = await this.getForTenant(tenantId);
     const msg = (c: CampaignMessage, p?: Partial<CampaignMessage>): CampaignMessage => ({

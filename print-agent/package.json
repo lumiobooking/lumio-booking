@@ -1,0 +1,10 @@
+{
+  "name": "lumio-print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lumio Booking — reception-desk receipt print agent (Windows). Polls the backend with the salon API key and prints receipts to the connected printer.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

@@ -233,6 +233,7 @@ model Tenant {
   orderPayments     OrderPayment[]
   loyaltyTransactions LoyaltyTransaction[]
   branchMemberships BranchMembership[]
+  printJobs         PrintJob[]
 
   @@index([status])
   @@index([accountGroupId])
@@ -1224,4 +1225,31 @@ model OrderPayment {
   @@index([tenantId])
   @@index([orderId])
   @@map("order_payments")
+}
+
+// Receipt print queue for the reception-desk print agent. The phone enqueues a
+// pre-rendered text receipt; a small agent on the salon's reception PC polls
+// (with the salon's API key), prints it, and reports the result.
+enum PrintJobStatus {
+  PENDING
+  PRINTED
+  FAILED
+}
+
+model PrintJob {
+  id          String         @id @default(uuid())
+  tenantId    String
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  status      PrintJobStatus @default(PENDING)
+  title       String?
+  text        String // pre-rendered plain-text receipt the agent prints
+  copies      Int            @default(1)
+  createdById String?
+  createdAt   DateTime       @default(now())
+  printedAt   DateTime?
+  error       String?
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("print_jobs")
 }

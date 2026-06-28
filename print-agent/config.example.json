@@ -1,0 +1,6 @@
+{
+  "apiBase": "https://YOUR-LUMIO-API.onrender.com/api",
+  "apiKey": "PASTE-YOUR-SALON-API-KEY-HERE",
+  "printer": "",
+  "pollMs": 4000
+}

@@ -25,6 +25,7 @@ import { CampaignsModule } from './campaigns/campaigns.module';
 import { ReferralModule } from './referral/referral.module';
 import { SuppliesModule } from './supplies/supplies.module';
 import { BranchesModule } from './branches/branches.module';
+import { PrintModule } from './print/print.module';
 
 @Module({
   imports: [
@@ -77,6 +78,8 @@ import { BranchesModule } from './branches/branches.module';
     // Multi-branch (chain) accounts: branch switcher + consolidated report +
     // global active-branch interceptor.
     BranchesModule,
+    // Receipt print queue + reception-desk print agent.
+    PrintModule,
   ],
 })
 export class AppModule {}

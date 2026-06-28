@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useIsMobile } from '../../../lib/responsive';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -45,6 +46,7 @@ function Register() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const params = useSearchParams();
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
@@ -77,6 +79,15 @@ function Register() {
   const [loyalty, setLoyalty] = useState({ enabled: false, redeemCentsPerPoint: 5, minRedeemPoints: 100 });
   const [customerPoints, setCustomerPoints] = useState(0);
   const [redeemInput, setRedeemInput] = useState('');
+  // Per-device: route receipts to the reception printer (via the print agent).
+  const [printToReception, setPrintToReception] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem('lumio_print_to_reception') === '1'; } catch { return false; }
+  });
+  const toggleReception = (v: boolean) => {
+    setPrintToReception(v);
+    try { localStorage.setItem('lumio_print_to_reception', v ? '1' : '0'); } catch { /* ignore */ }
+  };
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -267,6 +278,51 @@ function Register() {
   }
 
   function printReceipt(orderNumber: number) {
+    // Route to the reception-desk printer (via the print agent) when enabled on
+    // this device; otherwise print locally on the phone. If sending to reception
+    // fails (offline / agent down), fall back to local print so the receipt is
+    // never lost.
+    if (printToReception) {
+      const text = buildReceiptText(orderNumber);
+      apiFetch('/print-jobs', { method: 'POST', token, body: { title: `Receipt #${orderNumber}`, text } })
+        .then(() => setOkMsg(t('po.sentToReception').replace('{n}', String(orderNumber))))
+        .catch(() => localPrint(orderNumber));
+      return;
+    }
+    localPrint(orderNumber);
+  }
+
+  /** Plain-text receipt (≈32 cols) for the reception thermal printer. */
+  function buildReceiptText(orderNumber: number): string {
+    const W = 32;
+    const row = (l: string, r: string) => {
+      const left = l.length > W - r.length - 1 ? l.slice(0, W - r.length - 1) : l;
+      return left + ' '.repeat(Math.max(1, W - left.length - r.length)) + r;
+    };
+    const center = (s: string) => ' '.repeat(Math.max(0, Math.floor((W - s.length) / 2))) + s;
+    const sep = '-'.repeat(W);
+    const items = cart
+      .map((l) => {
+        let s = row(`${l.quantity}x ${l.name}`, formatPrice(l.unitPriceCents * l.quantity, currency));
+        if (l.staffMemberId) s += `\n  ${staffName(l.staffMemberId)}`;
+        if (l.tipCents) s += `\n  Tip: ${formatPrice(l.tipCents, currency)}`;
+        return s;
+      })
+      .join('\n');
+    let o = center('RECEIPT') + '\n' + center(`Order #${orderNumber}`) + '\n' + center(new Date().toLocaleString('en-US')) + '\n' + sep + '\n';
+    o += items + '\n' + sep + '\n';
+    o += row('Subtotal', formatPrice(money.subtotal, currency)) + '\n';
+    if (money.discount) o += row('Discount', '-' + formatPrice(money.discount, currency)) + '\n';
+    if (money.tax) o += row('Tax', formatPrice(money.tax, currency)) + '\n';
+    if (money.tip) o += row('Tip', formatPrice(money.tip, currency)) + '\n';
+    o += row('TOTAL', formatPrice(money.total, currency)) + '\n';
+    o += row(`Paid (${payMethod})`, formatPrice(money.tenderedCents || money.total, currency)) + '\n';
+    if (money.change) o += row('Change', formatPrice(money.change, currency)) + '\n';
+    o += sep + '\n' + center('Thank you!') + '\n';
+    return o;
+  }
+
+  function localPrint(orderNumber: number) {
     const rows = cart
       .map((l) => {
         const lt = formatPrice(l.unitPriceCents * l.quantity, currency);
@@ -300,10 +356,25 @@ function Register() {
         ${money.change ? line('Change', formatPrice(money.change, currency)) : ''}
       </table><hr>
       <div class="center">Thank you!</div>
-      <script>window.onload=function(){window.print();}</script>
       </body></html>`;
-    const w = window.open('', '_blank', 'width=360,height=640');
-    if (w) { w.document.write(html); w.document.close(); }
+    // Print via a hidden same-page iframe. Reliable on iOS Safari + Android Chrome
+    // (window.open popups are blocked on mobile) and uses the phone's built-in
+    // print (AirPrint / Android Print) — staff can print or save/share a PDF.
+    const prev = document.getElementById('lumio-print-frame');
+    if (prev) prev.remove();
+    const iframe = document.createElement('iframe');
+    iframe.id = 'lumio-print-frame';
+    Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0', opacity: '0' });
+    document.body.appendChild(iframe);
+    const win = iframe.contentWindow;
+    const doc = win?.document;
+    if (!win || !doc) return;
+    doc.open(); doc.write(html); doc.close();
+    let printed = false;
+    const fire = () => { if (printed) return; printed = true; try { win.focus(); win.print(); } catch { /* ignore */ } };
+    iframe.onload = () => setTimeout(fire, 60);
+    setTimeout(fire, 400); // fallback if onload doesn't fire (some mobile browsers)
+    setTimeout(() => iframe.remove(), 60000);
   }
 
   if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
@@ -317,7 +388,13 @@ function Register() {
       `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>{t('po.title')}</h1>
-        <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#cbd5e1', cursor: 'pointer' }}>
+            <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
+            🖨️ {t('po.printReception')}
+          </label>
+          <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
+        </div>
       </div>
 
       {appointmentId && (
@@ -333,9 +410,9 @@ function Register() {
       {error && <div style={ui.banner}>{error}</div>}
       {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : 16, alignItems: 'start' }}>
         {/* Catalog */}
-        <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 130px)' }}>
+        <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', maxHeight: isMobile ? 'none' : 'calc(100vh - 130px)' }}>
           {/* Tabs with counts */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
             <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>{t('po.tabServices')}<TabCount n={services.length} active={tab === 'SERVICE'} /></button>
@@ -440,7 +517,7 @@ function Register() {
         </div>
 
         {/* Ticket */}
-        <div style={{ ...ui.card, position: 'sticky', top: 12 }}>
+        <div style={{ ...ui.card, position: isMobile ? 'static' : 'sticky', top: 12 }}>
           <h2 style={{ fontSize: 15, margin: '0 0 12px' }}>{t('po.ticket')}</h2>
 
           <CustomerBox

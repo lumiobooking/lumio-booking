@@ -442,6 +442,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.loadingReg': { en: 'Loading register…', vi: 'Đang tải quầy thu ngân…' },
   'po.title': { en: 'Point of Sale', vi: 'Bán hàng (POS)' },
   'po.manageProducts': { en: 'Manage products', vi: 'Quản lý sản phẩm' },
+  'po.printReception': { en: 'Print at reception', vi: 'In tại quầy lễ tân' },
+  'po.sentToReception': { en: 'Receipt #{n} sent to the reception printer.', vi: 'Đã gửi hóa đơn #{n} tới máy in ở quầy.' },
   'po.checkoutBanner': { en: '🧾 Checking out a booking{for} — the booking will be marked Completed after payment.', vi: '🧾 Đang thanh toán một lịch đặt{for} — lịch sẽ được đánh dấu Hoàn thành sau khi trả tiền.' },
   'po.checkoutFor': { en: ' for {name}', vi: ' cho {name}' },
   'po.newSaleA': { en: '🛒 New sale for ', vi: '🛒 Bán mới cho ' },

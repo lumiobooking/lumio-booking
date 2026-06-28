@@ -9,7 +9,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 
 interface WalkIn {
-  id: string; customerName: string | null; phone: string | null; note: string | null;
+  id: string; customerId: string | null; customerName: string | null; phone: string | null; note: string | null;
   partySize: number; status: string; createdAt: string; assignedAt: string | null;
   service: { id: string; name: string } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
@@ -160,7 +160,7 @@ function Inner() {
               </div>
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <a
-                  href={`/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`}
+                  href={`/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`}
                   style={{ ...ui.primaryBtn, padding: '8px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
                 >{t('wi.checkout')}</a>
                 <button onClick={() => act(`${w.id}/done`)} style={{ ...ui.primaryBtn, background: '#334155', padding: '8px 14px' }}>{t('wi.done')}</button>

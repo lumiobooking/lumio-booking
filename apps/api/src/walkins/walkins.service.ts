@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CustomersService } from '../customers/customers.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 export interface AddWalkInDto {
@@ -25,7 +26,10 @@ const INCLUDE = {
  */
 @Injectable()
 export class WalkinsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly customers: CustomersService,
+  ) {}
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -49,10 +53,16 @@ export class WalkinsService {
       ? await this.prisma.staffMember.findFirst({ where: { id: dto.assignedStaffId, tenantId }, select: { id: true } })
       : null;
     const assigned = !!staff;
+    // Find-or-create a CRM customer by phone so the walk-in earns loyalty and is
+    // remarketable. Skips when no phone is given (no key to dedupe on).
+    const linked = dto.phone?.trim()
+      ? await this.customers.findOrCreateByContact(tenantId, { firstName: dto.customerName, phone: dto.phone })
+      : null;
     return this.prisma.walkIn.create({
       data: {
         tenantId,
         serviceId,
+        customerId: linked?.id ?? null,
         customerName: dto.customerName?.trim().slice(0, 80) || null,
         phone: dto.phone?.trim().slice(0, 40) || null,
         note: dto.note?.trim().slice(0, 300) || null,

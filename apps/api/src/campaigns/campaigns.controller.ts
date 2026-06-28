@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { CampaignsService } from './campaigns.service';
+import { CampaignKey } from './campaigns.constants';
 
 class CampaignMessageDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
@@ -25,6 +26,12 @@ class UpdateCampaignsDto {
   @IsOptional() @ValidateNested() @Type(() => LapsedCampaignDto) winBack?: LapsedCampaignDto;
   @IsOptional() @ValidateNested() @Type(() => LapsedCampaignDto) reactivation?: LapsedCampaignDto;
   @IsOptional() @ValidateNested() @Type(() => CampaignMessageDto) birthday?: CampaignMessageDto;
+}
+
+class TestSendDto {
+  @IsIn(['winBack', 'reactivation', 'birthday']) campaign!: CampaignKey;
+  @IsOptional() @ValidateIf((_o, v) => v !== '') @IsEmail() email?: string;
+  @IsOptional() @IsString() @MaxLength(40) phone?: string;
 }
 
 /** Automated marketing campaigns (win-back, reactivation, birthday) — Salon Admin only. */
@@ -52,5 +59,11 @@ export class CampaignsController {
   @Post('run-now')
   runNow(@CurrentUser() user: AuthenticatedUser) {
     return this.campaigns.runNow(user);
+  }
+
+  /** Send a sample of one campaign to the admin's own email/phone (template + delivery test). */
+  @Post('test')
+  test(@CurrentUser() user: AuthenticatedUser, @Body() dto: TestSendDto) {
+    return this.campaigns.testSend(user, dto);
   }
 }

@@ -12,6 +12,7 @@ interface Service { id: string; name: string; priceCents: number; discountPercen
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
+interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; loyaltyPoints?: number }
 
 interface Line {
   uid: string;
@@ -48,7 +49,10 @@ function Register() {
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
   const [walkInId] = useState<string | null>(() => params.get('walkInId'));
-  const [customerId] = useState<string | null>(() => params.get('customerId'));
+  // Attached CRM customer: pre-filled from a booking/walk-in checkout, or picked
+  // on the register via the customer box. Drives loyalty earn + redeem.
+  const [customerId, setCustomerId] = useState<string | null>(() => params.get('customerId') || null);
+  const [customerLabel, setCustomerLabel] = useState<string | null>(() => params.get('customer') || null);
   const [bookingCustomer] = useState<string | null>(() => params.get('customer'));
   const [prefilled, setPrefilled] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
@@ -94,19 +98,27 @@ function Register() {
       setTransferQr(settings.pos?.transferQrUrl ?? '');
       setCurrency(settings.booking?.currency ?? 'USD');
       if (settings.loyalty) setLoyalty({ enabled: settings.loyalty.enabled, redeemCentsPerPoint: settings.loyalty.redeemCentsPerPoint, minRedeemPoints: settings.loyalty.minRedeemPoints });
-      if (customerId) {
-        const cust = await apiFetch<{ loyaltyPoints?: number }>(`/customers/${customerId}`, { token }).catch(() => null);
-        setCustomerPoints(cust?.loyaltyPoints ?? 0);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('po.loadFail'));
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, customerId]);
+  }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Refresh the attached customer's loyalty balance whenever it changes (URL
+  // prefill from a booking/walk-in, or picked on the register) — without
+  // re-fetching the whole catalog.
+  useEffect(() => {
+    if (!token || !customerId) return;
+    let alive = true;
+    apiFetch<{ loyaltyPoints?: number }>(`/customers/${customerId}`, { token })
+      .then((c) => { if (alive) setCustomerPoints(c?.loyaltyPoints ?? 0); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [token, customerId]);
 
   // Pre-fill the ticket from a booking checkout (?serviceId=&staffId=).
   useEffect(() => {
@@ -430,6 +442,14 @@ function Register() {
         {/* Ticket */}
         <div style={{ ...ui.card, position: 'sticky', top: 12 }}>
           <h2 style={{ fontSize: 15, margin: '0 0 12px' }}>{t('po.ticket')}</h2>
+
+          <CustomerBox
+            token={token} t={t}
+            customerId={customerId} customerLabel={customerLabel} customerPoints={customerPoints}
+            onPick={(id, label, points) => { setCustomerId(id); setCustomerLabel(label); setCustomerPoints(points); }}
+            onClear={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }}
+          />
+
           {cart.length === 0 ? (
             <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('po.tapToAdd')}</p>
           ) : (
@@ -662,3 +682,110 @@ const chip: React.CSSProperties = {
 const ghost: React.CSSProperties = {
   padding: '10px 14px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer',
 };
+
+function hitLabel(c: CustomerHit): string {
+  const name = `${c.firstName}${c.lastName ? ' ' + c.lastName : ''}`.trim();
+  return c.phone ? `${name} · ${c.phone}` : name;
+}
+
+/**
+ * Attach a CRM customer to the sale so it earns loyalty + becomes remarketable.
+ * Search the salon's customers by name/phone, or quick-add a new one by phone.
+ */
+function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPick, onClear }: {
+  token: string | null; t: (k: string) => string;
+  customerId: string | null; customerLabel: string | null; customerPoints: number;
+  onPick: (id: string, label: string, points: number) => void;
+  onClear: () => void;
+}) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<CustomerHit[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [nf, setNf] = useState({ firstName: '', phone: '' });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (customerId) return; // already attached — no searching
+    const term = q.trim();
+    if (term.length < 2) { setResults(null); return; }
+    let alive = true;
+    const h = setTimeout(async () => {
+      try {
+        const r = await apiFetch<CustomerHit[]>(`/customers/search?q=${encodeURIComponent(term)}`, { token });
+        if (alive) setResults(r);
+      } catch { if (alive) setResults([]); }
+    }, 250);
+    return () => { alive = false; clearTimeout(h); };
+  }, [q, token, customerId]);
+
+  async function quickAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nf.phone.trim()) { setErr(t('po.custPhoneReq')); return; }
+    setBusy(true); setErr(null);
+    try {
+      const c = await apiFetch<CustomerHit>('/customers', { method: 'POST', token, body: { firstName: nf.firstName.trim() || undefined, phone: nf.phone.trim() } });
+      onPick(c.id, hitLabel(c), c.loyaltyPoints ?? 0);
+      setAdding(false); setNf({ firstName: '', phone: '' }); setQ('');
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    finally { setBusy(false); }
+  }
+
+  // Attached state — show who's on the ticket + points + clear.
+  if (customerId) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 8, padding: '8px 10px', marginBottom: 12 }}>
+        <span style={{ fontSize: 15 }}>👤</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customerLabel || t('po.custAttached')}</div>
+          <div style={{ fontSize: 11, color: '#eab308' }}>⭐ {t('po.custPoints').replace('{n}', String(customerPoints))}</div>
+        </div>
+        <button onClick={onClear} title={t('po.custRemove')} style={{ background: 'none', border: '1px solid #475569', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontSize: 13, padding: '3px 8px' }}>✕</button>
+      </div>
+    );
+  }
+
+  // Quick-add form.
+  if (adding) {
+    return (
+      <form onSubmit={quickAdd} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>{t('po.custNew')}</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+          <input value={nf.firstName} onChange={(e) => setNf({ ...nf, firstName: e.target.value })} placeholder={t('po.custName')} style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
+          <input value={nf.phone} onChange={(e) => setNf({ ...nf, phone: e.target.value })} placeholder={t('po.custPhone')} inputMode="tel" autoFocus style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
+        </div>
+        {err && <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 6 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 13 }}>{busy ? t('po.custSaving') : t('po.custSave')}</button>
+          <button type="button" onClick={() => { setAdding(false); setErr(null); }} style={{ ...ghost, padding: '7px 12px', fontSize: 13 }}>{t('po.custCancel')}</button>
+        </div>
+      </form>
+    );
+  }
+
+  // Search state.
+  return (
+    <div style={{ position: 'relative', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('po.custSearch')} style={{ ...ui.input, flex: 1, padding: '8px 10px', fontSize: 13 }} />
+        <button type="button" onClick={() => { setAdding(true); setErr(null); }} style={{ ...ghost, padding: '8px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>＋ {t('po.custAdd')}</button>
+      </div>
+      {results && results.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#1e293b', border: '1px solid #475569', borderRadius: 8, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {results.map((c) => (
+            <button key={c.id} type="button" onClick={() => { onPick(c.id, hitLabel(c), c.loyaltyPoints ?? 0); setResults(null); setQ(''); }}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 'none', borderBottom: '1px solid #334155', color: '#e2e8f0', cursor: 'pointer', fontSize: 13 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hitLabel(c)}</span>
+              <span style={{ color: '#eab308', fontSize: 11, whiteSpace: 'nowrap' }}>⭐ {c.loyaltyPoints ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {results && results.length === 0 && q.trim().length >= 2 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#1e293b', border: '1px solid #475569', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#94a3b8' }}>
+          {t('po.custNone')} <button type="button" onClick={() => { setAdding(true); setNf({ firstName: '', phone: q.replace(/[^\d+]/g, '') }); }} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 12, padding: 0 }}>＋ {t('po.custAdd')}</button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -42,6 +43,83 @@ export class CustomersService {
     });
     const noShowById = new Map(grouped.map((g) => [g.customerId, g._count._all]));
     return customers.map((c) => ({ ...c, noShowCount: noShowById.get(c.id) ?? 0 }));
+  }
+
+  /** Typeahead for the POS/front desk: match by name or phone. Tenant-scoped. */
+  async search(user: AuthenticatedUser, q: string) {
+    const tenantId = this.tenantId(user);
+    const term = (q ?? '').trim();
+    if (term.length < 2) return [];
+    const digits = term.replace(/[^\d]/g, '');
+    const or: Prisma.CustomerWhereInput[] = [
+      { firstName: { contains: term, mode: 'insensitive' } },
+      { lastName: { contains: term, mode: 'insensitive' } },
+    ];
+    if (digits.length >= 3) or.push({ phone: { contains: digits } });
+    return this.prisma.customer.findMany({
+      where: { tenantId, OR: or },
+      select: { id: true, firstName: true, lastName: true, phone: true, loyaltyPoints: true },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+    });
+  }
+
+  /** Front-desk quick-add (POS): find-or-create by phone/email, return a brief. */
+  async quickCreate(
+    user: AuthenticatedUser,
+    dto: { firstName?: string; lastName?: string; phone?: string; email?: string },
+  ) {
+    const tenantId = this.tenantId(user);
+    const c = await this.findOrCreateByContact(tenantId, dto);
+    if (!c) throw new BadRequestException('A phone number or email is required to add a customer.');
+    await this.audit.log({ tenantId, userId: user.userId, action: 'customer.created', resourceType: 'customer', resourceId: c.id });
+    return c;
+  }
+
+  private normPhone(p?: string | null): string | null {
+    const v = (p ?? '').replace(/[^\d+]/g, '');
+    return v.replace(/\D/g, '').length >= 7 ? v : null;
+  }
+
+  /**
+   * Find an existing customer by phone (the salon's natural key), else by email,
+   * else create one. Returns a brief, or null when there's nothing to key on
+   * (no phone and no email — we don't create anonymous duplicates). Backfills
+   * missing name/phone/email on an existing row without overwriting good data.
+   */
+  async findOrCreateByContact(
+    tenantId: string,
+    input: { firstName?: string | null; lastName?: string | null; phone?: string | null; email?: string | null },
+  ) {
+    const phone = this.normPhone(input.phone);
+    const email = (input.email ?? '').trim().toLowerCase() || null;
+    const firstName = (input.firstName ?? '').trim().slice(0, 80) || 'Walk-in';
+    const lastName = (input.lastName ?? '').trim().slice(0, 80) || null;
+
+    let existing = phone
+      ? await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true, firstName: true, email: true, phone: true } })
+      : null;
+    if (!existing && email) {
+      existing = await this.prisma.customer.findFirst({ where: { tenantId, email }, select: { id: true, firstName: true, email: true, phone: true } });
+    }
+    if (existing) {
+      const patch: Record<string, unknown> = {};
+      if (phone && !existing.phone) patch.phone = phone;
+      if (email && !existing.email) patch.email = email;
+      if ((!existing.firstName || existing.firstName === 'Walk-in') && firstName !== 'Walk-in') patch.firstName = firstName;
+      if (Object.keys(patch).length) await this.prisma.customer.updateMany({ where: { id: existing.id, tenantId }, data: patch });
+      return this.brief(tenantId, existing.id);
+    }
+    if (!phone && !email) return null; // nothing to dedupe on → skip
+    const created = await this.prisma.customer.create({ data: { tenantId, firstName, lastName, phone, email }, select: { id: true } });
+    return this.brief(tenantId, created.id);
+  }
+
+  private brief(tenantId: string, id: string) {
+    return this.prisma.customer.findFirst({
+      where: { id, tenantId },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true, loyaltyPoints: true },
+    });
   }
 
   /** A single customer with their full history: bookings + payments + totals. */

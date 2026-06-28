@@ -622,6 +622,11 @@ model WalkIn {
   assignedStaffId String?
   assignedStaff   StaffMember? @relation("WalkInStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
 
+  // Linked CRM customer (found/created by phone) so a walk-in earns loyalty and
+  // becomes remarketable. Optional: a walk-in with no phone has no linked record.
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
   customerName String?
   phone        String?
   note         String?
@@ -636,6 +641,7 @@ model WalkIn {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, assignedStaffId])
+  @@index([tenantId, customerId])
   @@map("walk_ins")
 }
 
@@ -778,6 +784,7 @@ model Customer {
   appointments        Appointment[]
   loyaltyTransactions LoyaltyTransaction[]
   feedbacks           Feedback[]
+  walkIns             WalkIn[]
 
   // A customer email is unique within a tenant (not across the platform).
   @@unique([tenantId, email])

@@ -116,6 +116,59 @@ export class CampaignsService {
     return this.runForTenant(this.tid(user), true);
   }
 
+  /**
+   * Send a SAMPLE of one campaign's message to the admin's own email/phone so they
+   * can see the template + confirm delivery works — without waiting for a real
+   * eligible customer. Ignores targeting/consent/dedup (it's a self-test). Returns
+   * a per-channel status ('sent' | 'skipped' | 'error: …') so the UI can show why.
+   */
+  async testSend(
+    user: AuthenticatedUser,
+    dto: { campaign: CampaignKey; email?: string; phone?: string },
+  ): Promise<{ email: string; sms: string }> {
+    const tenantId = this.tid(user);
+    const cs = await this.getForTenant(tenantId);
+    const msg = cs[dto.campaign] as CampaignMessage;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, slug: true, contactEmail: true, contactPhone: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    const n = await this.settings.getNotificationSettings(tenantId);
+    const transport = this.buildTransport(n, tenant.name);
+    const webBase = (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
+    const pct: Record<string, string> = {
+      salon_name: tenant.name,
+      salon_contact: tenant.contactPhone || tenant.contactEmail || '',
+      booking_link: tenant.slug ? `${webBase}/book/${tenant.slug}` : webBase,
+      customer_name: 'Test',
+    };
+    const out = { email: 'skipped', sms: 'skipped' };
+
+    const email = (dto.email ?? '').trim();
+    if (email) {
+      const bodyText = fillPct(msg.body, pct);
+      const rec = await this.notifications.send({
+        tenantId, channel: NotificationChannel.EMAIL, recipient: email,
+        subject: `[TEST] ${fillPct(msg.subject, pct)}`, body: bodyText, html: bodyToHtml(bodyText),
+        smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
+        mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo,
+        relatedType: 'campaign_test', relatedId: dto.campaign,
+      });
+      out.email = String(rec.status) === 'SENT' ? 'sent' : `error: ${rec.error || 'failed'}`;
+    }
+
+    const phone = (dto.phone ?? '').trim();
+    if (phone) {
+      const rec = await this.notifications.send({
+        tenantId, channel: NotificationChannel.SMS, recipient: phone,
+        body: `[TEST] ${fillPct(msg.smsBody, pct)}`, relatedType: 'campaign_test', relatedId: dto.campaign,
+      });
+      out.sms = String(rec.status) === 'SENT' ? 'sent' : `error: ${rec.error || 'failed'}`;
+    }
+    return out;
+  }
+
   /** Scheduler entry: run every tenant whose campaigns are enabled, respecting each tenant's send hour. */
   async runDue(): Promise<{ sent: number }> {
     const rows = await this.prisma.setting.findMany({ where: { key: CAMPAIGN_SETTINGS_KEY }, select: { tenantId: true } });

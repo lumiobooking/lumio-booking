@@ -18,9 +18,10 @@ export default function MarketingPage() {
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const adminEmail = user?.email;
   const [f, setF] = useState<CampaignSettings | null>(null);
   const [stats, setStats] = useState<Stats>({ winBack: 0, reactivation: 0, birthday: 0 });
   const [loading, setLoading] = useState(true);
@@ -97,9 +98,9 @@ function Inner() {
         </div>
       </div>
 
-      <CampaignCard t={t} title={t('mk.winBack')} desc={t('mk.winBackDesc')} sent={stats.winBack} hasDays camp={f.winBack} onChange={(p) => patchCamp('winBack', p)} />
-      <CampaignCard t={t} title={t('mk.reactivation')} desc={t('mk.reactivationDesc')} sent={stats.reactivation} hasDays camp={f.reactivation} onChange={(p) => patchCamp('reactivation', p)} />
-      <CampaignCard t={t} title={t('mk.birthday')} desc={t('mk.birthdayDesc')} sent={stats.birthday} camp={f.birthday} onChange={(p) => patchCamp('birthday', p)} />
+      <CampaignCard t={t} campKey="winBack" token={token} adminEmail={adminEmail} title={t('mk.winBack')} desc={t('mk.winBackDesc')} sent={stats.winBack} hasDays camp={f.winBack} onChange={(p) => patchCamp('winBack', p)} />
+      <CampaignCard t={t} campKey="reactivation" token={token} adminEmail={adminEmail} title={t('mk.reactivation')} desc={t('mk.reactivationDesc')} sent={stats.reactivation} hasDays camp={f.reactivation} onChange={(p) => patchCamp('reactivation', p)} />
+      <CampaignCard t={t} campKey="birthday" token={token} adminEmail={adminEmail} title={t('mk.birthday')} desc={t('mk.birthdayDesc')} sent={stats.birthday} camp={f.birthday} onChange={(p) => patchCamp('birthday', p)} />
 
       <ReferralSection token={token} t={t} />
 
@@ -111,10 +112,22 @@ function Inner() {
   );
 }
 
-function CampaignCard({ t, title, desc, sent, camp, hasDays, onChange }: {
-  t: (k: string) => string; title: string; desc: string; sent: number; camp: Lapsed | Msg; hasDays?: boolean; onChange: (p: Partial<Lapsed>) => void;
+function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, hasDays, onChange }: {
+  t: (k: string) => string; campKey: CampKey; token: string | null; adminEmail?: string; title: string; desc: string; sent: number; camp: Lapsed | Msg; hasDays?: boolean; onChange: (p: Partial<Lapsed>) => void;
 }) {
   const c = camp as Lapsed;
+  const [testing, setTesting] = useState(false);
+
+  async function sendTest() {
+    if (!adminEmail) { alert(t('mk.testNoEmail')); return; }
+    setTesting(true);
+    try {
+      const r = await apiFetch<{ email: string; sms: string }>('/campaigns/test', { method: 'POST', token, body: { campaign: campKey, email: adminEmail } });
+      const ok = r.email === 'sent';
+      alert(ok ? t('mk.testOk').replace('{email}', adminEmail) : t('mk.testErr').replace('{msg}', r.email.replace(/^error:\s*/, '')));
+    } catch (e) { alert(e instanceof Error ? e.message : 'Failed'); }
+    finally { setTesting(false); }
+  }
   return (
     <div style={{ ...ui.card, marginBottom: 16, opacity: camp.enabled ? 1 : 0.85 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
@@ -158,6 +171,14 @@ function CampaignCard({ t, title, desc, sent, camp, hasDays, onChange }: {
         </label>
       )}
       <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.placeholders')}</p>
+      {camp.email && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e293b' }}>
+          <button type="button" onClick={sendTest} disabled={testing} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>
+            {testing ? t('mk.testSending') : `🧪 ${t('mk.testSend')}`}
+          </button>
+          <span style={{ fontSize: 11.5, color: '#64748b' }}>{adminEmail ? t('mk.testHint').replace('{email}', adminEmail) : t('mk.testNoEmail')}</span>
+        </div>
+      )}
     </div>
   );
 }

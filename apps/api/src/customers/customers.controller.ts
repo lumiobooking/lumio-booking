@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { IsEmail, IsISO8601, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { CustomersService } from './customers.service';
@@ -17,6 +17,13 @@ class UpdateCustomerDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(2000) notes?: string | null;
 }
 
+class CreateCustomerDto {
+  @IsOptional() @IsString() @MaxLength(80) firstName?: string;
+  @IsOptional() @IsString() @MaxLength(80) lastName?: string;
+  @IsOptional() @ValidateIf((_o, v) => v !== '') @IsEmail() email?: string;
+  @IsOptional() @IsString() @MaxLength(40) phone?: string;
+}
+
 @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
 @Caps('customers')
 @Controller('customers')
@@ -26,6 +33,17 @@ export class CustomersController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.customers.list(user);
+  }
+
+  // NOTE: declared before ':id' so "/customers/search" isn't captured as an id.
+  @Get('search')
+  search(@CurrentUser() user: AuthenticatedUser, @Query('q') q: string) {
+    return this.customers.search(user, q ?? '');
+  }
+
+  @Post()
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateCustomerDto) {
+    return this.customers.quickCreate(user, dto);
   }
 
   @Get(':id')

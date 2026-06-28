@@ -244,12 +244,18 @@ function MovePanel({ token, item, dir, onDone, onCancel }: { token: string; item
             {reasons.map((r) => <option key={r.v} value={r.v}>{t(r.k)}</option>)}
           </select></label>
         {dir === 'IN' && (
-          <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mUnitCost')}</span>
-            <input style={ui.input} type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label>
+          <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mUnitCost')} (/{item.unit})</span>
+            <input style={ui.input} type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder={t('iv.mUnitCostPh')} /></label>
         )}
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mNote')}</span>
           <input style={ui.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('iv.mNotePh')} /></label>
       </div>
+      {dir === 'IN' && cost && (parseFloat(cost) > 0) && (
+        <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 10 }}>
+          {t('iv.mLineTotal')}: <strong style={{ color: '#e2e8f0' }}>${((Math.abs(parseInt(qty, 10) || 0)) * (parseFloat(cost) || 0)).toFixed(2)}</strong>
+          <span style={{ color: '#64748b' }}> ({Math.abs(parseInt(qty, 10) || 0)} {item.unit} × ${(parseFloat(cost) || 0).toFixed(2)})</span>
+        </div>
+      )}
       {err && <div style={{ ...ui.banner, marginTop: 10 }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, background: dir === 'IN' ? '#16a34a' : '#d97706' }}>{busy ? t('iv.saving') : t('iv.mConfirm')}</button>

@@ -109,6 +109,18 @@ export class TenantsService {
     return { userId, accountGroupId: null };
   }
 
+  /** Delete a chain group. Branches + linked users are simply unlinked (their own
+   * data is untouched). */
+  async deleteGroup(user: AuthenticatedUser, groupId: string) {
+    const g = await this.prisma.accountGroup.findUnique({ where: { id: groupId }, select: { id: true } });
+    if (!g) throw new NotFoundException('Group not found');
+    await this.prisma.tenant.updateMany({ where: { accountGroupId: groupId }, data: { accountGroupId: null } });
+    await this.prisma.user.updateMany({ where: { accountGroupId: groupId }, data: { accountGroupId: null } });
+    await this.prisma.accountGroup.delete({ where: { id: groupId } });
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'group.deleted', resourceType: 'account_group', resourceId: groupId });
+    return { id: groupId, deleted: true };
+  }
+
   /** List tenants (platform-wide). SUPER_ADMIN only. */
   async list(filters: ListTenantsDto) {
     const where: Prisma.TenantWhereInput = { deletedAt: null };

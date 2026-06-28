@@ -68,6 +68,16 @@ export default function ChainsPage() {
     try { await apiFetch(`/tenants/groups/${groupId}/unlink-user`, { method: 'POST', token, body: { userId } }); await load(); }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
   }
+  async function renameGroup(id: string, name: string) {
+    if (!name.trim()) return;
+    try { await apiFetch(`/tenants/groups/${id}`, { method: 'PATCH', token, body: { name: name.trim() } }); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+  }
+  async function deleteGroup(id: string) {
+    if (typeof window !== 'undefined' && !window.confirm('Xoá chuỗi này? Các tiệm sẽ được gỡ khỏi chuỗi (dữ liệu mỗi tiệm vẫn giữ nguyên).')) return;
+    try { await apiFetch(`/tenants/groups/${id}`, { method: 'DELETE', token }); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+  }
 
   const ungrouped = tenants.filter((t) => !t.accountGroupId);
 
@@ -96,7 +106,7 @@ export default function ChainsPage() {
           <p style={{ color: '#64748b' }}>Chưa có chuỗi nào. Tạo một chuỗi ở trên để bắt đầu.</p>
         ) : groups.map((g) => (
           <div key={g.id} style={{ ...card, marginBottom: 16 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>🏢 {g.name}</div>
+            <GroupHeader name={g.name} onRename={(n) => renameGroup(g.id, n)} onDelete={() => deleteGroup(g.id)} />
 
             <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700, marginBottom: 6 }}>CHI NHÁNH ({g.tenants.length})</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
@@ -130,6 +140,29 @@ export default function ChainsPage() {
         ))}
       </div>
     </main>
+  );
+}
+
+function GroupHeader({ name, onRename, onDelete }: { name: string; onRename: (name: string) => void; onDelete: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(name);
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+        <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} style={{ ...input, flex: 1, maxWidth: 360 }} />
+        <button onClick={() => { onRename(val); setEditing(false); }} style={btn}>Lưu</button>
+        <button onClick={() => { setVal(name); setEditing(false); }} style={ghost}>Huỷ</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 10 }}>
+      <div style={{ fontSize: 17, fontWeight: 700 }}>🏢 {name}</div>
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <button onClick={() => { setVal(name); setEditing(true); }} style={ghost}>Sửa tên</button>
+        <button onClick={onDelete} style={{ ...ghost, borderColor: '#7f1d1d', color: '#fca5a5' }}>Xoá</button>
+      </div>
+    </div>
   );
 }
 

@@ -76,6 +76,11 @@ export class TenantsController {
     return this.tenantsService.unlinkUserFromGroup(user, dto.userId);
   }
 
+  @Delete('groups/:groupId')
+  deleteGroup(@CurrentUser() user: AuthenticatedUser, @Param('groupId') groupId: string) {
+    return this.tenantsService.deleteGroup(user, groupId);
+  }
+
   @Post(':id/reset-admin-password')
   @HttpCode(200)
   resetAdminPassword(

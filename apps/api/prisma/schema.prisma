@@ -210,6 +210,7 @@ model Tenant {
   reviewClicks      ReviewClick[]
   waitlistEntries   WaitlistEntry[]
   walkIns           WalkIn[]
+  supplyItems       SupplyItem[]
   products          Product[]
   orders            Order[]
   orderItems        OrderItem[]
@@ -619,6 +620,29 @@ model WalkIn {
   @@index([tenantId, status])
   @@index([tenantId, assignedStaffId])
   @@map("walk_ins")
+}
+
+// Back-of-house supplies/consumables a salon stocks (nail polish, tips, powder,
+// acetone…). Distinct from `Product` (retail items sold to customers). Tracks the
+// current quantity and a low-stock threshold for reorder alerts.
+model SupplyItem {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name              String
+  unit              String  @default("unit") // bottle, box, pack…
+  stockQty          Int     @default(0)
+  lowStockThreshold Int     @default(0) // stockQty <= this → low-stock alert
+  costCents         Int? // optional unit cost (for inventory value)
+  supplier          String?
+  isActive          Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("supply_items")
 }
 
 /// Weekly recurring working hours for a staff member.

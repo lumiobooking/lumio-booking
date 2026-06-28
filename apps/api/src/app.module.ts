@@ -23,6 +23,7 @@ import { WaitlistModule } from './waitlist/waitlist.module';
 import { WalkinsModule } from './walkins/walkins.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ReferralModule } from './referral/referral.module';
+import { SuppliesModule } from './supplies/supplies.module';
 
 @Module({
   imports: [
@@ -70,6 +71,8 @@ import { ReferralModule } from './referral/referral.module';
     CampaignsModule,
     // Customer referral program (refer-a-friend → both rewarded).
     ReferralModule,
+    // Back-of-house supplies inventory (polish, tips, powder…).
+    SuppliesModule,
   ],
 })
 export class AppModule {}

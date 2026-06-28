@@ -103,8 +103,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'pr.cCommission': { en: 'Commission', vi: 'Hoa hồng' },
   'pr.cTips': { en: 'Tips', vi: 'Tip' },
   'pr.cTotal': { en: 'TOTAL PAY', vi: 'TỔNG LƯƠNG' },
-  'pr.empty': { en: 'No transactions in this period (pay is from paid POS orders).', vi: 'Chưa có giao dịch trong kỳ này (lương tính từ đơn POS đã thanh toán).' },
-  'pr.note': { en: "Commission = service revenue × each tech's %, set in Staff → Edit. Tips come from the tip entered at POS checkout. Total pay = commission + tips.", vi: 'Hoa hồng = doanh thu dịch vụ × % của từng thợ (cài ở Staff → Edit → Commission %). Tip lấy từ ô tip lúc thanh toán POS. Tổng lương = hoa hồng + tip.' },
+  'pr.empty': { en: 'No transactions in this period (from paid POS orders + completed bookings).', vi: 'Chưa có giao dịch trong kỳ này (tính từ đơn POS + lịch đã Hoàn thành).' },
+  'pr.note': { en: "Commission = service revenue × each tech's %, set in Staff → Edit. Tips come from POS checkout. Completed bookings also count toward the assigned tech's commission (no tips). Total pay = commission + tips.", vi: 'Hoa hồng = doanh thu dịch vụ × % của từng thợ (cài ở Staff → Edit). Tip lấy từ ô tip lúc thanh toán POS. Lịch đã Hoàn thành cũng tính hoa hồng cho thợ phụ trách (không có tip). Tổng lương = hoa hồng + tip.' },
   // Dashboard
   'db.title': { en: 'Dashboard', vi: 'Tổng quan' },
   'db.subtitle': { en: 'Performance overview for your salon.', vi: 'Tổng quan hiệu quả kinh doanh của tiệm.' },

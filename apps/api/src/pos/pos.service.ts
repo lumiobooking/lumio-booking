@@ -351,7 +351,7 @@ export class PosService {
 
     const orders = await this.prisma.order.findMany({
       where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: from, lte: to } },
-      select: { id: true, items: true },
+      select: { id: true, items: true, appointmentId: true },
     });
     const staff = await this.prisma.staffMember.findMany({
       where: { tenantId },
@@ -394,6 +394,26 @@ export class PosService {
         totalTips += l.tipCents;
       }
     }
+    // Completed bookings NOT collected through POS still count toward revenue
+    // and the assigned tech's commission (tips only come from POS). Skip any
+    // booking already paid via a POS order so nothing is double-counted.
+    const posPaidApptIds = new Set(
+      orders.map((o) => o.appointmentId).filter((x): x is string => !!x),
+    );
+    const completedAppts = await this.prisma.appointment.findMany({
+      where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: from, lte: to } },
+      select: { id: true, priceCents: true, assignedStaffId: true },
+    });
+    let extraTxns = 0;
+    for (const a of completedAppts) {
+      if (posPaidApptIds.has(a.id)) continue;
+      const row = ensure(a.assignedStaffId);
+      row.serviceRevenueCents += a.priceCents;
+      row.serviceCount += 1;
+      totalRevenue += a.priceCents;
+      extraTxns += 1;
+    }
+
     // Commission on service revenue using each tech's rate; pay = commission + tips.
     for (const row of rows.values()) {
       const s = row.staffId !== 'unassigned' ? staffMap.get(row.staffId) : null;
@@ -406,7 +426,7 @@ export class PosService {
 
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
-      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, payCents: totalPay, orders: orders.length },
+      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, payCents: totalPay, orders: orders.length + extraTxns },
       staff: [...rows.values()].sort(
         (a, b) =>
           b.serviceRevenueCents + b.productRevenueCents - (a.serviceRevenueCents + a.productRevenueCents),

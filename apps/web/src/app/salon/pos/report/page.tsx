@@ -77,7 +77,7 @@ function Inner() {
                 <th style={ui.th}>Commission</th>
               </tr></thead>
               <tbody>
-                {data.staff.length === 0 && <tr><td style={ui.td} colSpan={5}>No paid sales in this range.</td></tr>}
+                {data.staff.length === 0 && <tr><td style={ui.td} colSpan={5}>No paid POS sales or completed bookings in this range.</td></tr>}
                 {data.staff.map((r) => (
                   <tr key={r.staffId} style={{ borderTop: '1px solid #334155' }}>
                     <td style={ui.td}>{r.name}</td>
@@ -91,7 +91,7 @@ function Inner() {
             </table>
           </div>
           <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
-            Commission = each technician’s service revenue × their commission %. Set the rate per technician in Staff → Edit.
+            Revenue & commission include paid POS sales and completed bookings. Commission = each technician’s service revenue × their commission % (set per technician in Staff → Edit). Tips come from POS checkout only.
           </p>
         </>
       )}

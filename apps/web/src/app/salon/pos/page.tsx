@@ -6,6 +6,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number }
@@ -29,9 +30,10 @@ interface Line {
 let uidSeq = 1;
 
 export default function PosPage() {
+  const { lang } = useLang();
   return (
     <SalonShell>
-      <Suspense fallback={<p style={{ color: '#94a3b8' }}>Loading register…</p>}>
+      <Suspense fallback={<p style={{ color: '#94a3b8' }}>{tr('po.loadingReg', lang)}</p>}>
         <Register />
       </Suspense>
     </SalonShell>
@@ -40,6 +42,8 @@ export default function PosPage() {
 
 function Register() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const params = useSearchParams();
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
@@ -92,10 +96,11 @@ function Register() {
         setCustomerPoints(cust?.loyaltyPoints ?? 0);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load POS data');
+      setError(err instanceof Error ? err.message : t('po.loadFail'));
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, customerId]);
 
   useEffect(() => { load(); }, [load]);
@@ -172,15 +177,15 @@ function Register() {
 
   const staffName = (id: string) => {
     const s = staff.find((x) => x.id === id);
-    return s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : 'Unassigned';
+    return s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : t('po.unassigned');
   };
 
   async function pay() {
-    if (cart.length === 0) { setError('Add at least one item.'); return; }
+    if (cart.length === 0) { setError(t('po.addItem')); return; }
     // Cash needs the amount received; Card & Transfer are paid in full at the terminal/bank.
     const tenderCents = payMethod === 'CASH' ? money.tenderedCents : money.total;
     if (payMethod === 'CASH' && tenderCents < money.total) {
-      setError('Cash received is less than the total due. Enter the amount the customer handed over (or tap “Exact”).');
+      setError(t('po.cashShort'));
       return;
     }
     const apiMethod = payMethod === 'CASH' ? 'CASH' : payMethod === 'CARD' ? 'CARD' : 'OTHER';
@@ -207,11 +212,11 @@ function Register() {
         },
       });
       printReceipt(order.orderNumber);
-      setOkMsg(`Paid ✓ Order #${order.orderNumber} — receipt sent to printer.`);
+      setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
       clearCart();
       load(); // refresh stock
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Payment failed');
+      setError(err instanceof Error ? err.message : t('po.payFail'));
     } finally {
       setSubmitting(false);
     }
@@ -257,23 +262,23 @@ function Register() {
     if (w) { w.document.write(html); w.document.close(); }
   }
 
-  if (loading) return <p style={{ color: '#94a3b8' }}>Loading register…</p>;
+  if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
 
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, margin: 0 }}>Point of Sale</h1>
-        <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>Manage products</a>
+        <h1 style={{ fontSize: 22, margin: 0 }}>{t('po.title')}</h1>
+        <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
       </div>
 
       {appointmentId && (
         <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
-          🧾 Checking out a booking{bookingCustomer ? ` for ${bookingCustomer}` : ''} — the booking will be marked Completed after payment.
+          {t('po.checkoutBanner').replace('{for}', bookingCustomer ? t('po.checkoutFor').replace('{name}', bookingCustomer) : '')}
         </div>
       )}
       {!appointmentId && customerId && bookingCustomer && (
         <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
-          🛒 New sale for <strong>{bookingCustomer}</strong> — this sale will be linked to their profile.
+          {t('po.newSaleA')}<strong>{bookingCustomer}</strong>{t('po.newSaleB')}
         </div>
       )}
       {error && <div style={ui.banner}>{error}</div>}
@@ -283,9 +288,9 @@ function Register() {
         {/* Catalog */}
         <div style={{ ...ui.card }}>
           <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-            <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>Services</button>
-            <button onClick={() => setTab('ADDON')} style={tabBtn(tab === 'ADDON')}>Add-ons</button>
-            <button onClick={() => setTab('PRODUCT')} style={tabBtn(tab === 'PRODUCT')}>Products</button>
+            <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>{t('po.tabServices')}</button>
+            <button onClick={() => setTab('ADDON')} style={tabBtn(tab === 'ADDON')}>{t('po.tabAddons')}</button>
+            <button onClick={() => setTab('PRODUCT')} style={tabBtn(tab === 'PRODUCT')}>{t('po.tabProducts')}</button>
           </div>
 
           {/* Services */}
@@ -297,14 +302,14 @@ function Register() {
                   <CatPrice priceCents={s.priceCents} discountPercent={s.discountPercent} currency={currency} />
                 </button>
               ))}
-              {services.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No active services.</p>}
+              {services.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('po.noServices')}</p>}
             </div>
           )}
 
           {/* Add-ons, grouped by parent service */}
           {tab === 'ADDON' && (
             addons.length === 0 ? (
-              <p style={{ color: '#94a3b8', fontSize: 13 }}>No add-ons yet. Create them under a service in <a href="/salon/services" style={{ color: '#818cf8' }}>Services</a>.</p>
+              <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: '#818cf8' }}>{t('po.servicesLink')}</a>.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {groupAddons(addons).map((grp) => (
@@ -333,26 +338,26 @@ function Register() {
                 <button key={p.id} onClick={() => addProduct(p)} style={catBtn}>
                   <span style={{ fontWeight: 600 }}>{p.name}</span>
                   <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
-                  {p.trackStock && <span style={{ fontSize: 11, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>Stock: {p.stockQty}</span>}
+                  {p.trackStock && <span style={{ fontSize: 11, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>{t('po.stock')}: {p.stockQty}</span>}
                 </button>
               ))}
-              {products.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>No products yet. <a href="/salon/products" style={{ color: '#818cf8' }}>Add some →</a></p>}
+              {products.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: '#818cf8' }}>{t('po.addSome')}</a></p>}
             </div>
           )}
         </div>
 
         {/* Ticket */}
         <div style={{ ...ui.card, position: 'sticky', top: 12 }}>
-          <h2 style={{ fontSize: 15, margin: '0 0 12px' }}>Current ticket</h2>
+          <h2 style={{ fontSize: 15, margin: '0 0 12px' }}>{t('po.ticket')}</h2>
           {cart.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 14 }}>Tap a service or product to add it.</p>
+            <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('po.tapToAdd')}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
               {cart.map((l) => (
                 <div key={l.uid} style={{ borderBottom: '1px solid #334155', paddingBottom: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>
-                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>ADD-ON</span>}
+                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>{t('po.addonBadge')}</span>}
                       {l.name}
                     </div>
                     <button onClick={() => removeLine(l.uid)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16 }}>×</button>
@@ -377,11 +382,11 @@ function Register() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                     <select value={l.staffMemberId} onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })} style={{ ...ui.input, padding: '5px 8px', fontSize: 13, flex: 1, minWidth: 120 }}>
-                      <option value="">Technician…</option>
+                      <option value="">{t('po.technician')}</option>
                       {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
                     </select>
                     <input
-                      type="number" min={0} step="0.01" placeholder="Tip $"
+                      type="number" min={0} step="0.01" placeholder={t('po.tipPh')}
                       value={l.tipCents ? (l.tipCents / 100).toString() : ''}
                       onChange={(e) => updateLine(l.uid, { tipCents: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100)) })}
                       style={{ ...ui.input, padding: '5px 8px', fontSize: 13, width: 80 }}
@@ -394,91 +399,91 @@ function Register() {
 
           {/* Totals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, marginBottom: 12 }}>
-            <Row label="Subtotal" value={formatPrice(money.subtotal, currency)} />
+            <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#94a3b8' }}>Discount $</span>
+              <span style={{ color: '#94a3b8' }}>{t('po.discountD')}</span>
               <input type="number" min={0} step="0.01" value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} style={{ ...ui.input, width: 100, padding: '5px 8px', textAlign: 'right' }} />
             </div>
-            {money.tax > 0 && <Row label={`Tax (${taxRate}% retail)`} value={formatPrice(money.tax, currency)} />}
-            {money.tip > 0 && <Row label="Tips" value={formatPrice(money.tip, currency)} />}
+            {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
+            {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
             {loyalty.enabled && customerId && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#eab308' }}>Redeem points ({customerPoints} avail)</span>
+                <span style={{ color: '#eab308' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
                 <input
                   type="number" min={0} value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)}
-                  placeholder={`min ${loyalty.minRedeemPoints}`}
+                  placeholder={t('po.minPts').replace('{n}', String(loyalty.minRedeemPoints))}
                   style={{ ...ui.input, width: 110, padding: '5px 8px', textAlign: 'right' }}
                 />
               </div>
             )}
             {money.redeemDiscount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308' }}>
-                <span>Points discount ({money.redeemPts} pts)</span><span>−{formatPrice(money.redeemDiscount, currency)}</span>
+                <span>{t('po.pointsDiscount').replace('{n}', String(money.redeemPts))}</span><span>−{formatPrice(money.redeemDiscount, currency)}</span>
               </div>
             )}
             {money.savings > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#22c55e', fontWeight: 600 }}>
-                <span>You saved</span><span>−{formatPrice(money.savings, currency)}</span>
+                <span>{t('po.youSaved')}</span><span>−{formatPrice(money.savings, currency)}</span>
               </div>
             )}
             <div style={{ borderTop: '1px solid #334155', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700 }}>
-              <span>Total</span><span style={{ color: '#22c55e' }}>{formatPrice(money.total, currency)}</span>
+              <span>{t('po.total')}</span><span style={{ color: '#22c55e' }}>{formatPrice(money.total, currency)}</span>
             </div>
           </div>
 
           {/* Payment method */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>💵 Cash</button>
-            <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>💳 Card</button>
-            <button onClick={() => setPayMethod('TRANSFER')} style={tabBtn(payMethod === 'TRANSFER')}>🏦 Transfer</button>
+            <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>{t('po.cash')}</button>
+            <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>{t('po.card')}</button>
+            <button onClick={() => setPayMethod('TRANSFER')} style={tabBtn(payMethod === 'TRANSFER')}>{t('po.transfer')}</button>
           </div>
 
           {payMethod === 'CASH' && (
             <>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setTendered((money.total / 100).toFixed(2))} style={chip}>Exact</button>
+                <button onClick={() => setTendered((money.total / 100).toFixed(2))} style={chip}>{t('po.exact')}</button>
                 {quickCash(money.total).map((amt) => (
                   <button key={amt} onClick={() => setTendered((amt / 100).toFixed(2))} style={chip}>{formatPrice(amt, currency)}</button>
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: '#94a3b8' }}>Cash received $</span>
+                <span style={{ color: '#94a3b8' }}>{t('po.cashReceived')}</span>
                 <input type="number" min={0} step="0.01" value={tendered} onChange={(e) => setTendered(e.target.value)} style={{ ...ui.input, width: 120, padding: '6px 8px', textAlign: 'right' }} />
               </div>
               {money.tenderedCents > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontWeight: 600 }}>
-                  <span>Change</span><span style={{ color: money.change >= 0 ? '#22c55e' : '#ef4444' }}>{formatPrice(money.change, currency)}</span>
+                  <span>{t('po.change')}</span><span style={{ color: money.change >= 0 ? '#22c55e' : '#ef4444' }}>{formatPrice(money.change, currency)}</span>
                 </div>
               )}
             </>
           )}
           {payMethod === 'CARD' && (
-            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>Charge {formatPrice(money.total, currency)} on the card reader, then press Pay &amp; Print to record &amp; print.</p>
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>{t('po.cardHint').replace('{x}', formatPrice(money.total, currency))}</p>
           )}
           {payMethod === 'TRANSFER' && (
             <div style={{ marginBottom: 10 }}>
               {transferInfo || transferQr ? (
                 <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Show this to the customer to transfer {formatPrice(money.total, currency)}:</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('po.transferShow').replace('{x}', formatPrice(money.total, currency))}</div>
                   {transferInfo && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#e2e8f0', margin: 0 }}>{transferInfo}</pre>}
                   {transferQr && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={transferQr} alt="Transfer QR" style={{ width: 140, height: 140, objectFit: 'contain', marginTop: 10, background: '#fff', borderRadius: 8, padding: 4 }} />
                   )}
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>After the money arrives, press Pay &amp; Print.</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>{t('po.transferAfter')}</div>
                 </div>
               ) : (
                 <p style={{ color: '#94a3b8', fontSize: 13 }}>
-                  No transfer details set. Add them in <a href="/salon/settings" style={{ color: '#818cf8' }}>Settings → Payments → Bank transfer</a>. Confirm receipt then press Pay &amp; Print.
+                  {t('po.transferNoneA')}<a href="/salon/settings" style={{ color: '#818cf8' }}>{t('po.transferSettingsLink')}</a>{t('po.transferNoneB')}
                 </p>
               )}
             </div>
           )}
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>Clear</button>
+            <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>
             <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>
-              {submitting ? 'Processing…' : `Pay & Print · ${formatPrice(money.total, currency)}`}
+              {submitting ? t('po.processing') : t('po.payPrint').replace('{x}', formatPrice(money.total, currency))}
             </button>
           </div>
         </div>

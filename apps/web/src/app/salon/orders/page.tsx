@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface OrderItem {
@@ -34,6 +35,9 @@ export default function OrdersPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const ML: Record<string, string> = { CASH: t('or.mCash'), CARD: t('or.mCard'), OTHER: t('or.mTransfer') };
   const range = useDateRange('all');
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -67,13 +71,13 @@ function Inner() {
   };
 
   async function voidOrder(id: string) {
-    if (!confirm('Void this order? Revenue will be reversed and stock restored.')) return;
+    if (!confirm(t('or.confirmVoid'))) return;
     try { await apiFetch(`/pos/orders/${id}/void`, { method: 'POST', token }); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Void failed'); }
   }
 
   async function removeOrder(o: Order) {
-    if (!confirm(`Delete order #${o.orderNumber} permanently? This removes it and its revenue${o.status === 'PAID' ? ' (stock is restored)' : ''}. Cannot be undone.\n\nTo keep the record, use Void instead.`)) return;
+    if (!confirm(t('or.delConfirmA').replace('{n}', String(o.orderNumber)) + (o.status === 'PAID' ? t('or.delStock') : '') + t('or.delConfirmB'))) return;
     try { await apiFetch(`/pos/orders/${o.id}`, { method: 'DELETE', token }); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
   }
@@ -125,49 +129,49 @@ function Inner() {
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>Orders</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{visible.length} orders · {formatPrice(paidTotal, 'USD')} collected</p>
+          <h1 style={{ fontSize: 22, margin: 0 }}>{t('or.title')}</h1>
+          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{visible.length} {t('or.ordersWord')} · {formatPrice(paidTotal, 'USD')} {t('or.collected')}</p>
         </div>
-        <a href="/salon/pos" style={{ ...ui.primaryBtn, textDecoration: 'none' }}>+ New sale (POS)</a>
+        <a href="/salon/pos" style={{ ...ui.primaryBtn, textDecoration: 'none' }}>{t('or.newSale')}</a>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search order #, item, method…" />
+        <SearchBox value={q} onChange={setQ} placeholder={t('or.searchPh')} />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...ui.input, width: 'auto' }}>
-          <option value="">All statuses</option>
-          <option value="PAID">Paid</option>
-          <option value="OPEN">Open</option>
-          <option value="VOID">Void</option>
-          <option value="REFUNDED">Refunded</option>
+          <option value="">{t('or.allStatuses')}</option>
+          <option value="PAID">{t('or.paid')}</option>
+          <option value="OPEN">{t('or.open')}</option>
+          <option value="VOID">{t('or.void')}</option>
+          <option value="REFUNDED">{t('or.refunded')}</option>
         </select>
         <DateRangeBar range={range} />
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>Loading…</p> : (
+      {loading ? <p style={{ color: '#94a3b8' }}>{t('or.loading')}</p> : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>
-              <th style={ui.th}>#</th><th style={ui.th}>Date</th><th style={ui.th}>Items</th>
-              <th style={ui.th}>Total</th><th style={ui.th}>Method</th><th style={ui.th}>Status</th><th style={ui.th}>Actions</th>
+              <th style={ui.th}>#</th><th style={ui.th}>{t('or.colDate')}</th><th style={ui.th}>{t('or.colItems')}</th>
+              <th style={ui.th}>{t('or.colTotal')}</th><th style={ui.th}>{t('or.colMethod')}</th><th style={ui.th}>{t('or.colStatus')}</th><th style={ui.th}>{t('or.colActions')}</th>
             </tr></thead>
             <tbody>
-              {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>No orders in this range.</td></tr>}
+              {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('or.empty')}</td></tr>}
               {pg.paged.map((o) => (
                 <Fragment key={o.id}>
                   <tr style={{ borderTop: '1px solid #334155', cursor: 'pointer' }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
                     <td style={ui.td}>#{o.orderNumber}</td>
                     <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(o.createdAt).toLocaleString()}</td>
-                    <td style={{ ...ui.td, color: '#cbd5e1' }}>{o.items.length} item{o.items.length === 1 ? '' : 's'}{o.appointmentId ? <span style={{ marginLeft: 6, fontSize: 11, color: '#818cf8' }}>· from booking</span> : null}</td>
+                    <td style={{ ...ui.td, color: '#cbd5e1' }}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? <span style={{ marginLeft: 6, fontSize: 11, color: '#818cf8' }}>{t('or.fromBooking')}</span> : null}</td>
                     <td style={ui.td}>{formatPrice(o.totalCents, o.currency)}</td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{o.tenders.map((t) => METHOD_LABEL[t.method] ?? t.method).join(', ') || '—'}</td>
+                    <td style={{ ...ui.td, color: '#94a3b8' }}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</td>
                     <td style={ui.td}><span style={{ color: STATUS_COLORS[o.status], border: `1px solid ${STATUS_COLORS[o.status]}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{o.status}</span></td>
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => reprint(o)} style={tiny}>Reprint</button>
-                        {o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>Void</button>}
-                        <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }} title="Permanently delete this order">Delete</button>
+                        <button onClick={() => reprint(o)} style={tiny}>{t('or.reprint')}</button>
+                        {o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>{t('or.void')}</button>}
+                        <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }} title={t('or.deleteTitle')}>{t('or.delete')}</button>
                       </div>
                     </td>
                   </tr>
@@ -176,16 +180,16 @@ function Inner() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 520 }}>
                         {o.items.map((l) => (
                           <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
-                            <span>{l.quantity}× {l.name}<span style={{ color: '#64748b' }}> · {staffName(l.staffMemberId)}</span>{l.tipCents ? <span style={{ color: '#a855f7' }}> · tip {formatPrice(l.tipCents, o.currency)}</span> : null}</span>
+                            <span>{l.quantity}× {l.name}<span style={{ color: '#64748b' }}> · {staffName(l.staffMemberId)}</span>{l.tipCents ? <span style={{ color: '#a855f7' }}> · {t('or.tip')} {formatPrice(l.tipCents, o.currency)}</span> : null}</span>
                             <span>{formatPrice(l.lineTotalCents, o.currency)}</span>
                           </div>
                         ))}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>Subtotal</span><span>{formatPrice(o.subtotalCents, o.currency)}</span></div>
-                        {o.discountCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>Discount</span><span>-{formatPrice(o.discountCents, o.currency)}</span></div>}
-                        {o.taxCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>Tax</span><span>{formatPrice(o.taxCents, o.currency)}</span></div>}
-                        {o.tipCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>Tips</span><span>{formatPrice(o.tipCents, o.currency)}</span></div>}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>Total</span><span style={{ color: '#22c55e' }}>{formatPrice(o.totalCents, o.currency)}</span></div>
-                        {o.changeCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>Change</span><span>{formatPrice(o.changeCents, o.currency)}</span></div>}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.subtotal')}</span><span>{formatPrice(o.subtotalCents, o.currency)}</span></div>
+                        {o.discountCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.discount')}</span><span>-{formatPrice(o.discountCents, o.currency)}</span></div>}
+                        {o.taxCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.tax')}</span><span>{formatPrice(o.taxCents, o.currency)}</span></div>}
+                        {o.tipCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.tips')}</span><span>{formatPrice(o.tipCents, o.currency)}</span></div>}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>{t('or.total')}</span><span style={{ color: '#22c55e' }}>{formatPrice(o.totalCents, o.currency)}</span></div>
+                        {o.changeCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.change')}</span><span>{formatPrice(o.changeCents, o.currency)}</span></div>}
                       </div>
                     </td></tr>
                   )}

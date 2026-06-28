@@ -677,6 +677,10 @@ model Customer {
   phone     String?
   notes     String?
 
+  // Date of birth (optional) — drives the automated birthday campaign. Only the
+  // month/day are used for matching; the year is informational.
+  birthDate DateTime?
+
   // Loyalty points balance (earned on paid visits, spent on rewards).
   loyaltyPoints Int @default(0)
 

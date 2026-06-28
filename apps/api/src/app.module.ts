@@ -21,6 +21,7 @@ import { BillingModule } from './billing/billing.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { WaitlistModule } from './waitlist/waitlist.module';
 import { WalkinsModule } from './walkins/walkins.module';
+import { CampaignsModule } from './campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -64,6 +65,8 @@ import { WalkinsModule } from './walkins/walkins.module';
     WaitlistModule,
     // Walk-in queue + fair turn rotation ("lượt").
     WalkinsModule,
+    // Automated marketing campaigns: win-back, reactivation, birthday SMS/email.
+    CampaignsModule,
   ],
 })
 export class AppModule {}

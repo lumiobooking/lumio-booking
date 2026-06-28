@@ -6,6 +6,7 @@ import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
+import { useLang, tr } from '../../../../lib/i18n';
 
 interface Pay { id: string; amountCents: number; currency: string; status: string; type: string; createdAt: string }
 interface Appt {
@@ -17,7 +18,7 @@ interface Appt {
 interface LoyaltyTxn { id: string; points: number; balanceAfter: number; reason: string; createdAt: string }
 interface CustomerDetail {
   id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null;
-  notes: string | null; createdAt: string;
+  notes: string | null; birthDate: string | null; createdAt: string;
   loyaltyPoints?: number;
   loyaltyTransactions?: LoyaltyTxn[];
   appointments: Appt[];
@@ -40,21 +41,36 @@ export default function CustomerDetailPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const params = useParams();
   const id = String(params?.id ?? '');
   const [c, setC] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bday, setBday] = useState('');
+  const [bdaySaved, setBdaySaved] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !id) return;
     setLoading(true); setError(null);
-    try { setC(await apiFetch<CustomerDetail>(`/customers/${id}`, { token })); }
+    try {
+      const data = await apiFetch<CustomerDetail>(`/customers/${id}`, { token });
+      setC(data);
+      setBday(data.birthDate ? data.birthDate.slice(0, 10) : '');
+    }
     catch (err) { setError(err instanceof Error ? err.message : 'Failed to load customer'); }
     finally { setLoading(false); }
   }, [token, id]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function saveBirthday() {
+    try {
+      await apiFetch(`/customers/${id}`, { method: 'PATCH', token, body: { birthDate: bday || null } });
+      setBdaySaved(true); setTimeout(() => setBdaySaved(false), 2500);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Save failed'); }
+  }
 
   async function markPaid(paymentId: string) {
     try { await apiFetch(`/payments/${paymentId}/mark-paid`, { method: 'POST', token }); await load(); }
@@ -96,6 +112,16 @@ function Inner() {
         <Kpi label="Completed" value={String(c.stats.completed)} accent="#a855f7" />
         <Kpi label="No-shows" value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : '#64748b'} />
         <Kpi label="Last visit" value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString() : '—'} accent="#06b6d4" />
+      </div>
+
+      <div style={{ ...ui.card, marginBottom: 18, display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+        <label>
+          <span style={ui.label}>🎂 {t('cu.birthday')}</span>
+          <input type="date" value={bday} onChange={(e) => setBday(e.target.value)} style={{ ...ui.input, width: 190, colorScheme: 'dark' }} />
+        </label>
+        <button onClick={saveBirthday} style={ui.primaryBtn}>{t('cu.bdSave')}</button>
+        {bdaySaved && <span style={{ color: '#22c55e', fontSize: 13, paddingBottom: 8 }}>{t('cu.bdSaved')}</span>}
+        <span style={{ color: '#64748b', fontSize: 12, paddingBottom: 8 }}>{t('cu.birthdayHint')}</span>
       </div>
 
       {c.loyaltyTransactions && c.loyaltyTransactions.length > 0 && (

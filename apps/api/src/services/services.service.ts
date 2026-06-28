@@ -36,10 +36,22 @@ export class ServicesService {
     return cat ? cat.id : null;
   }
 
+  /** Guards that every staffId belongs to this tenant before we link them. */
+  private async assertStaffBelongToTenant(tenantId: string, staffIds: string[]) {
+    if (staffIds.length === 0) return;
+    const count = await this.prisma.staffMember.count({ where: { tenantId, id: { in: staffIds } } });
+    if (count !== new Set(staffIds).size) {
+      throw new BadRequestException('One or more staffIds are invalid for this tenant');
+    }
+  }
+
   list(user: AuthenticatedUser) {
     return this.prisma.service.findMany({
       where: { tenantId: this.tenantId(user) },
-      include: { category: { select: { id: true, name: true } } },
+      include: {
+        category: { select: { id: true, name: true } },
+        staffServices: { select: { staffMemberId: true } },
+      },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     });
   }
@@ -87,6 +99,7 @@ export class ServicesService {
     // Filtering by BOTH id and tenantId means another tenant's id returns 404.
     const service = await this.prisma.service.findFirst({
       where: { id, tenantId: this.tenantId(user) },
+      include: { staffServices: { select: { staffMemberId: true } } },
     });
     if (!service) {
       throw new NotFoundException('Service not found');
@@ -96,21 +109,33 @@ export class ServicesService {
 
   async create(user: AuthenticatedUser, dto: CreateServiceDto) {
     const tenantId = this.tenantId(user);
-    const service = await this.prisma.service.create({
-      data: {
-        tenantId,
-        name: dto.name,
-        description: dto.description ?? null,
-        durationMinutes: dto.durationMinutes,
-        priceCents: dto.priceCents,
-        discountPercent: dto.discountPercent ?? 0,
-        currency: dto.currency ?? 'USD',
-        isActive: dto.isActive ?? true,
-        categoryId: await this.validCategoryId(tenantId, dto.categoryId),
-        sortOrder: dto.sortOrder ?? 0,
-        isFeatured: dto.isFeatured ?? false,
-        priceFrom: dto.priceFrom ?? false,
-      },
+    const staffIds = dto.staffIds ?? [];
+    await this.assertStaffBelongToTenant(tenantId, staffIds);
+    const categoryId = await this.validCategoryId(tenantId, dto.categoryId);
+    const service = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.service.create({
+        data: {
+          tenantId,
+          name: dto.name,
+          description: dto.description ?? null,
+          durationMinutes: dto.durationMinutes,
+          priceCents: dto.priceCents,
+          discountPercent: dto.discountPercent ?? 0,
+          currency: dto.currency ?? 'USD',
+          isActive: dto.isActive ?? true,
+          categoryId,
+          sortOrder: dto.sortOrder ?? 0,
+          isFeatured: dto.isFeatured ?? false,
+          priceFrom: dto.priceFrom ?? false,
+        },
+      });
+      if (staffIds.length > 0) {
+        await tx.staffService.createMany({
+          data: staffIds.map((staffMemberId) => ({ tenantId, staffMemberId, serviceId: created.id })),
+          skipDuplicates: true,
+        });
+      }
+      return created;
     });
     await this.audit.log({
       tenantId,
@@ -126,6 +151,10 @@ export class ServicesService {
   async update(user: AuthenticatedUser, id: string, dto: UpdateServiceDto) {
     const tenantId = this.tenantId(user);
     await this.getById(user, id); // enforces tenant ownership / 404
+
+    if (dto.staffIds !== undefined) {
+      await this.assertStaffBelongToTenant(tenantId, dto.staffIds);
+    }
 
     const data: Prisma.ServiceUncheckedUpdateInput = {
       name: dto.name,
@@ -145,8 +174,20 @@ export class ServicesService {
     }
 
     // updateMany with tenantId in the filter is a second safety net so a forged
-    // id can never update another tenant's row.
-    await this.prisma.service.updateMany({ where: { id, tenantId }, data });
+    // id can never update another tenant's row. The staff sync runs in the same
+    // transaction so the service and its team always change together.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.service.updateMany({ where: { id, tenantId }, data });
+      if (dto.staffIds !== undefined) {
+        await tx.staffService.deleteMany({ where: { tenantId, serviceId: id } });
+        if (dto.staffIds.length > 0) {
+          await tx.staffService.createMany({
+            data: dto.staffIds.map((staffMemberId) => ({ tenantId, staffMemberId, serviceId: id })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    });
 
     await this.audit.log({
       tenantId,

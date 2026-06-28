@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -62,4 +63,11 @@ export class CreateServiceDto {
   @IsOptional()
   @IsBoolean()
   priceFrom?: boolean;
+
+  // Technicians who can perform this service (staff_services join). Lets the
+  // salon pick the team right when creating the service.
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  staffIds?: string[];
 }

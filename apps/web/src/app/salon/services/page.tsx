@@ -22,9 +22,11 @@ interface Service {
   isFeatured?: boolean;
   priceFrom?: boolean;
   sortOrder?: number;
+  staffServices?: { staffMemberId: string }[];
 }
 
 interface Category { id: string; name: string; icon: string | null; sortOrder: number; isActive: boolean }
+interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
 
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', CAD: '$', AUD: '$', VND: '₫', JPY: '¥', SGD: '$' };
 
@@ -43,6 +45,7 @@ function ServicesInner() {
   const [q, setQ] = useState('');
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -57,11 +60,13 @@ function ServicesInner() {
     setLoading(true);
     setError(null);
     try {
-      const [svc, cats, settings] = await Promise.all([
+      const [svc, cats, staffList, settings] = await Promise.all([
         apiFetch<Service[]>('/services', { token }),
         apiFetch<Category[]>('/services/categories', { token }),
+        apiFetch<Staff[]>('/staff', { token }).catch(() => [] as Staff[]),
         apiFetch<{ booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }>('/settings', { token }).catch(() => ({})),
       ]);
+      setStaff(staffList);
       const b = (settings as { booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }).booking ?? {};
       const code = b.currency ?? 'USD';
       setMoney({
@@ -166,6 +171,7 @@ function ServicesInner() {
         <CreateServiceForm
           token={token!}
           categories={categories}
+          staff={staff}
           currency={money.code}
           onCreated={async () => {
             setShowForm(false);
@@ -198,7 +204,7 @@ function ServicesInner() {
                 </tr>
               )}
               {pg.paged.map((s) => (
-                <FragmentRow key={s.id} service={s} token={token!} categories={categories} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
+                <FragmentRow key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
               ))}
             </tbody>
           </table>
@@ -211,8 +217,8 @@ function ServicesInner() {
 
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
 
-function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, onDelete, onSaved }: {
-  service: Service; token: string; categories: Category[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
+function FragmentRow({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved }: {
+  service: Service; token: string; categories: Category[]; staff: Staff[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -261,7 +267,7 @@ function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, on
       {editing && (
         <tr>
           <td colSpan={6} style={{ padding: 0, background: '#0f172a' }}>
-            <EditServicePanel service={s} token={token} categories={categories} onSaved={onSaved} />
+            <EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} />
           </td>
         </tr>
       )}
@@ -276,7 +282,7 @@ function FragmentRow({ service: s, token, categories, catName, fmt, onToggle, on
   );
 }
 
-function EditServicePanel({ service, token, categories, onSaved }: { service: Service; token: string; categories: Category[]; onSaved: () => void }) {
+function EditServicePanel({ service, token, categories, staff, onSaved }: { service: Service; token: string; categories: Category[]; staff: Staff[]; onSaved: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({
@@ -289,6 +295,7 @@ function EditServicePanel({ service, token, categories, onSaved }: { service: Se
     isFeatured: service.isFeatured ?? false,
     priceFrom: service.priceFrom ?? false,
   });
+  const [staffIds, setStaffIds] = useState<string[]>(service.staffServices?.map((x) => x.staffMemberId) ?? []);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -310,6 +317,7 @@ function EditServicePanel({ service, token, categories, onSaved }: { service: Se
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
+          staffIds,
         },
       });
       if (updated && typeof updated === 'object') {
@@ -361,6 +369,12 @@ function EditServicePanel({ service, token, categories, onSaved }: { service: Se
         <span style={ui.label}>{t('sv.fDescription')}</span>
         <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </label>
+
+      <div style={{ marginTop: 12 }}>
+        <span style={ui.label}>{t('sv.staffWhoDo')}</span>
+        <StaffPicker all={staff} ids={staffIds} set={(v) => { setStaffIds(v); setSaved(false); }} />
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
         <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? t('sv.saving') : t('sv.saveChanges')}</button>
         {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('sv.savedLive')}</span>}
@@ -447,10 +461,11 @@ function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: stri
   );
 }
 
-function CreateServiceForm({ token, categories, currency, onCreated }: { token: string; categories: Category[]; currency: string; onCreated: () => void }) {
+function CreateServiceForm({ token, categories, staff, currency, onCreated }: { token: string; categories: Category[]; staff: Staff[]; currency: string; onCreated: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false });
+  const [staffIds, setStaffIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -471,6 +486,7 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
+          staffIds,
         },
       });
       onCreated();
@@ -550,11 +566,57 @@ function CreateServiceForm({ token, categories, currency, onCreated }: { token: 
           onChange={(e) => setForm({ ...form, description: e.target.value })}
         />
       </label>
+
+      <div style={{ marginTop: 12 }}>
+        <span style={ui.label}>{t('sv.staffWhoDo')}</span>
+        <StaffPicker all={staff} ids={staffIds} set={setStaffIds} />
+      </div>
+
       {error && <div style={ui.banner}>{error}</div>}
       <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn, marginTop: 14 }}>
         {submitting ? t('sv.creating') : t('sv.createService')}
       </button>
     </form>
+  );
+}
+
+/**
+ * Staff multi-select shown on the service form: which technicians can perform
+ * this service. Active techs first; inactive shown dimmed so they aren't
+ * silently dropped. Writes to the same staff_services join as the Staff page.
+ */
+function StaffPicker({ all, ids, set }: { all: Staff[]; ids: string[]; set: (v: string[]) => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  if (all.length === 0) {
+    return <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.noStaff')} <a href="/salon/staff" style={{ color: '#818cf8' }}>{t('sv.staffLink')}</a></p>;
+  }
+  const has = (id: string) => ids.includes(id);
+  const toggle = (id: string) => set(has(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  const ordered = [...all].sort((a, b) => Number(b.isActive) - Number(a.isActive));
+  const allOn = ids.length >= all.length;
+  const fullName = (s: Staff) => `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`;
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>{t('sv.staffHint')}</span>
+        <span style={{ fontSize: 12, color: '#64748b' }}>· {ids.length}/{all.length}</span>
+        <button type="button" onClick={() => set(allOn ? [] : all.map((s) => s.id))} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}>
+          {allOn ? t('sv.staffClear') : t('sv.staffAll')}
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {ordered.map((s) => {
+          const on = has(s.id);
+          return (
+            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#475569'}`, background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontSize: 13, cursor: 'pointer', opacity: s.isActive ? 1 : 0.6 }}>
+              <input type="checkbox" checked={on} onChange={() => toggle(s.id)} />
+              {fullName(s)}{!s.isActive && <span style={{ fontSize: 10, color: '#64748b' }}> ({t('sv.staffOff')})</span>}
+            </label>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

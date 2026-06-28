@@ -8,7 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 
-interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean }
+interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
@@ -60,6 +60,8 @@ function Register() {
   const [transferInfo, setTransferInfo] = useState('');
   const [transferQr, setTransferQr] = useState('');
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
+  const [query, setQuery] = useState('');
+  const [catFilter, setCatFilter] = useState<string | null>(null); // service category id, null = all
   const [cart, setCart] = useState<Line[]>([]);
   const [orderDiscount, setOrderDiscount] = useState('');
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
@@ -176,6 +178,34 @@ function Register() {
     return { subtotal, itemSavings, discount, tax, tip, total, savings, tenderedCents, change, redeemDiscount, redeemPts };
   }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput]);
 
+  // ---- Catalog search + grouping ------------------------------------------
+  const q = query.trim().toLowerCase();
+  const otherLabel = t('po.other');
+
+  // Unique service categories for the quick-filter chips (first-seen order).
+  const serviceCats = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of services) if (s.category) seen.set(s.category.id, s.category.name);
+    return [...seen.entries()].map(([id, name]) => ({ id, name }));
+  }, [services]);
+
+  // Services after search + chip filter, grouped by category.
+  const serviceGroups = useMemo(() => {
+    const filtered = services.filter(
+      (s) => (!q || s.name.toLowerCase().includes(q)) && (!catFilter || s.category?.id === catFilter),
+    );
+    const map = new Map<string, { id: string | null; name: string; items: Service[] }>();
+    for (const s of filtered) {
+      const key = s.category?.id ?? '__none__';
+      if (!map.has(key)) map.set(key, { id: s.category?.id ?? null, name: s.category?.name ?? otherLabel, items: [] });
+      map.get(key)!.items.push(s);
+    }
+    return [...map.values()];
+  }, [services, q, catFilter, otherLabel]);
+
+  const addonGroups = useMemo(() => groupAddons(addons.filter((a) => !q || a.name.toLowerCase().includes(q))), [addons, q]);
+  const productsF = useMemo(() => products.filter((p) => !q || p.name.toLowerCase().includes(q)), [products, q]);
+
   const staffName = (id: string) => {
     const s = staff.find((x) => x.id === id);
     return s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : t('po.unassigned');
@@ -268,6 +298,11 @@ function Register() {
 
   return (
     <section>
+      <style>{`
+        .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
+        .pos-card:hover { border-color: #6366f1 !important; background: #1e293b !important; }
+        .pos-card:active { transform: scale(.97); }
+      `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>{t('po.title')}</h1>
         <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
@@ -288,64 +323,108 @@ function Register() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* Catalog */}
-        <div style={{ ...ui.card }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-            <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>{t('po.tabServices')}</button>
-            <button onClick={() => setTab('ADDON')} style={tabBtn(tab === 'ADDON')}>{t('po.tabAddons')}</button>
-            <button onClick={() => setTab('PRODUCT')} style={tabBtn(tab === 'PRODUCT')}>{t('po.tabProducts')}</button>
+        <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 130px)' }}>
+          {/* Tabs with counts */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>{t('po.tabServices')}<TabCount n={services.length} active={tab === 'SERVICE'} /></button>
+            <button onClick={() => setTab('ADDON')} style={tabBtn(tab === 'ADDON')}>{t('po.tabAddons')}<TabCount n={addons.length} active={tab === 'ADDON'} /></button>
+            <button onClick={() => setTab('PRODUCT')} style={tabBtn(tab === 'PRODUCT')}>{t('po.tabProducts')}<TabCount n={products.length} active={tab === 'PRODUCT'} /></button>
           </div>
 
-          {/* Services */}
-          {tab === 'SERVICE' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
-              {services.map((s) => (
-                <button key={s.id} onClick={() => addService(s)} style={catBtn}>
-                  <span style={{ fontWeight: 600 }}>{s.name}</span>
-                  <CatPrice priceCents={s.priceCents} discountPercent={s.discountPercent} currency={currency} />
-                </button>
+          {/* Search */}
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#64748b', pointerEvents: 'none' }}>🔍</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('po.searchPh')}
+              style={{ ...ui.input, width: '100%', padding: '10px 34px', fontSize: 14, boxSizing: 'border-box' }}
+            />
+            {query && (
+              <button onClick={() => setQuery('')} aria-label="clear" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+            )}
+          </div>
+
+          {/* Category quick-filter chips (services tab) */}
+          {tab === 'SERVICE' && serviceCats.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              <button onClick={() => setCatFilter(null)} style={chipSel(catFilter === null)}>{t('po.allCats')}</button>
+              {serviceCats.map((c) => (
+                <button key={c.id} onClick={() => setCatFilter(catFilter === c.id ? null : c.id)} style={chipSel(catFilter === c.id)}>{c.name}</button>
               ))}
-              {services.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('po.noServices')}</p>}
             </div>
           )}
 
-          {/* Add-ons, grouped by parent service */}
-          {tab === 'ADDON' && (
-            addons.length === 0 ? (
-              <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: '#818cf8' }}>{t('po.servicesLink')}</a>.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {groupAddons(addons).map((grp) => (
-                  <div key={grp.service}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
-                      {grp.service}
+          {/* Scrollable results */}
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 220, paddingRight: 4 }}>
+            {/* Services, grouped by category */}
+            {tab === 'SERVICE' && (
+              serviceGroups.length === 0 ? (
+                <EmptyState text={services.length === 0 ? t('po.noServices') : `${t('po.noMatch')} "${query}"`} />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {serviceGroups.map((grp) => (
+                    <div key={grp.id ?? '__none__'}>
+                      {(serviceCats.length > 0) && <GroupHeader label={grp.name} count={grp.items.length} />}
+                      <div style={catGrid}>
+                        {grp.items.map((s) => (
+                          <button key={s.id} onClick={() => addService(s)} className="pos-card" style={catBtn}>
+                            <span style={cardTitle}>{s.name}</span>
+                            <CatPrice priceCents={s.priceCents} discountPercent={s.discountPercent} currency={currency} />
+                            {s.durationMinutes > 0 && <span style={cardMeta}>⏱ {s.durationMinutes} {t('po.min')}</span>}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
-                      {grp.items.map((a) => (
-                        <button key={a.id} onClick={() => addAddon(a)} style={{ ...catBtn, borderStyle: 'dashed' }}>
-                          <span style={{ fontWeight: 600 }}>+ {a.name}</span>
-                          <span style={{ color: '#22c55e' }}>{formatPrice(a.priceCents, currency)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          )}
+                  ))}
+                </div>
+              )
+            )}
 
-          {/* Products */}
-          {tab === 'PRODUCT' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
-              {products.map((p) => (
-                <button key={p.id} onClick={() => addProduct(p)} style={catBtn}>
-                  <span style={{ fontWeight: 600 }}>{p.name}</span>
-                  <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
-                  {p.trackStock && <span style={{ fontSize: 11, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>{t('po.stock')}: {p.stockQty}</span>}
-                </button>
-              ))}
-              {products.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: '#818cf8' }}>{t('po.addSome')}</a></p>}
-            </div>
-          )}
+            {/* Add-ons, grouped by parent service */}
+            {tab === 'ADDON' && (
+              addons.length === 0 ? (
+                <p style={mutedP}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: '#818cf8' }}>{t('po.servicesLink')}</a>.</p>
+              ) : addonGroups.length === 0 ? (
+                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {addonGroups.map((grp) => (
+                    <div key={grp.service}>
+                      <GroupHeader label={grp.service} count={grp.items.length} />
+                      <div style={catGrid}>
+                        {grp.items.map((a) => (
+                          <button key={a.id} onClick={() => addAddon(a)} className="pos-card" style={{ ...catBtn, borderStyle: 'dashed' }}>
+                            <span style={cardTitle}>+ {a.name}</span>
+                            <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(a.priceCents, currency)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* Products */}
+            {tab === 'PRODUCT' && (
+              products.length === 0 ? (
+                <p style={mutedP}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: '#818cf8' }}>{t('po.addSome')}</a></p>
+              ) : productsF.length === 0 ? (
+                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
+              ) : (
+                <div style={catGrid}>
+                  {productsF.map((p) => (
+                    <button key={p.id} onClick={() => addProduct(p)} className="pos-card" style={catBtn}>
+                      <span style={cardTitle}>{p.name}</span>
+                      <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
+                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>{t('po.stock')}: {p.stockQty}</span>}
+                    </button>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
         </div>
 
         {/* Ticket */}
@@ -547,9 +626,33 @@ const tabBtn = (active: boolean): React.CSSProperties => ({
   background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#cbd5e1', fontSize: 14, fontWeight: 600, cursor: 'pointer',
 });
 const catBtn: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', textAlign: 'left',
-  padding: '12px', borderRadius: 10, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', cursor: 'pointer', fontSize: 13,
+  display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-start', textAlign: 'left', justifyContent: 'space-between',
+  minHeight: 74, padding: '12px', borderRadius: 10, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', cursor: 'pointer', fontSize: 13,
 };
+const catGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(142px, 1fr))', gap: 10 };
+const cardTitle: React.CSSProperties = { fontWeight: 600, fontSize: 13, lineHeight: 1.3, color: '#f1f5f9' };
+const cardMeta: React.CSSProperties = { fontSize: 11, color: '#64748b' };
+const mutedP: React.CSSProperties = { color: '#94a3b8', fontSize: 13 };
+const chipSel = (active: boolean): React.CSSProperties => ({
+  padding: '5px 12px', borderRadius: 999, border: '1px solid ' + (active ? '#6366f1' : '#334155'),
+  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#cbd5e1', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+});
+
+function TabCount({ n, active }: { n: number; active: boolean }) {
+  return <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.22)' : '#1e293b', color: active ? '#fff' : '#94a3b8' }}>{n}</span>;
+}
+function GroupHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontSize: 11, color: '#64748b' }}>· {count}</span>
+      <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
+    </div>
+  );
+}
+function EmptyState({ text }: { text: string }) {
+  return <div style={{ color: '#64748b', fontSize: 14, textAlign: 'center', padding: '36px 12px' }}>{text}</div>;
+}
 const qtyBtn: React.CSSProperties = {
   width: 28, height: 28, borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 16,
 };

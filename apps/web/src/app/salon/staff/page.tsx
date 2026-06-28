@@ -11,6 +11,7 @@ import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFil
 interface Service {
   id: string;
   name: string;
+  category?: { id: string; name: string } | null;
 }
 
 interface StaffMember {
@@ -380,10 +381,6 @@ function StaffEditPanel({
     setForm((f) => ({ ...f, [key]: v }));
     setSaved(false);
   }
-  function toggleSkill(id: string) {
-    setSkillIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-    setSaved(false);
-  }
   function updDay(dow: number, patch: Partial<DayRow>) {
     setHours((prev) => prev.map((d) => (d.dow === dow ? { ...d, ...patch } : d)));
     setSaved(false);
@@ -455,19 +452,8 @@ function StaffEditPanel({
 
       {/* Skills */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>{t('st.skills')}</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
-        {services.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServices')}</p>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {services.map((s) => (
-              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: '1px solid #475569', fontSize: 13, cursor: 'pointer' }}>
-                <input type="checkbox" checked={skillIds.includes(s.id)} onChange={() => toggleSkill(s.id)} />
-                {s.name}
-              </label>
-            ))}
-          </div>
-        )}
+        <span style={ui.label}>{t('st.skills')}</span>
+        <SkillPicker all={services} ids={skillIds} set={(v) => { setSkillIds(v); setSaved(false); }} />
       </div>
 
       {/* Working hours */}
@@ -526,10 +512,6 @@ function CreateStaffForm({
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  function toggleSkill(id: string) {
-    setSkillIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -601,36 +583,11 @@ function CreateStaffForm({
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span style={ui.label}>{t('st.skills')}</span><SkillBar all={services} ids={skillIds} set={setSkillIds} /></div>
+        <span style={ui.label}>{t('st.skills')}</span>
         {services.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13 }}>
-            {t('st.noServicesCreate')}
-          </p>
+          <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServicesCreate')}</p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {services.map((s) => (
-              <label
-                key={s.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 10px',
-                  borderRadius: 8,
-                  border: '1px solid #475569',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={skillIds.includes(s.id)}
-                  onChange={() => toggleSkill(s.id)}
-                />
-                {s.name}
-              </label>
-            ))}
-          </div>
+          <SkillPicker all={services} ids={skillIds} set={setSkillIds} />
         )}
       </div>
 
@@ -642,19 +599,77 @@ function CreateStaffForm({
   );
 }
 
-/** Small "Select all / Clear all" toggle for the skills checkbox grid. */
-function SkillBar({ all, ids, set }: { all: { id: string }[]; ids: string[]; set: (v: string[]) => void }) {
+/**
+ * Skills picker: services grouped by category, with a search box, a per-group
+ * select-all, and a running count. Replaces the old flat 60-checkbox wall so a
+ * tech's skills are quick to find and set.
+ */
+function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v: string[]) => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  if (all.length === 0) return null;
+  const [q, setQ] = useState('');
+  if (all.length === 0) return <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServices')}</p>;
+
+  const ql = q.trim().toLowerCase();
+  const has = (id: string) => ids.includes(id);
+  const toggle = (id: string) => set(has(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+
+  const groups: { name: string; items: Service[] }[] = [];
+  const byKey = new Map<string, { name: string; items: Service[] }>();
+  for (const s of all) {
+    if (ql && !s.name.toLowerCase().includes(ql)) continue;
+    const key = s.category?.id ?? '__none__';
+    let g = byKey.get(key);
+    if (!g) { g = { name: s.category?.name ?? t('st.skOther'), items: [] }; byKey.set(key, g); groups.push(g); }
+    g.items.push(s);
+  }
   const allOn = ids.length >= all.length;
+
   return (
-    <button
-      type="button"
-      onClick={() => set(allOn ? [] : all.map((s) => s.id))}
-      style={{ fontSize: 12, padding: '3px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}
-    >
-      {allOn ? t('st.clearAll') : t('st.selectAll')}
-    </button>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('st.skSearchPh')} style={{ ...ui.input, width: '100%', paddingLeft: 30, boxSizing: 'border-box' }} />
+        </div>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>{t('st.skSelected').replace('{n}', String(ids.length)).replace('{m}', String(all.length))}</span>
+        <button type="button" onClick={() => set(allOn ? [] : all.map((s) => s.id))} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}>
+          {allOn ? t('st.clearAll') : t('st.selectAll')}
+        </button>
+      </div>
+
+      {groups.length === 0 ? (
+        <p style={{ color: '#64748b', fontSize: 13 }}>{t('st.skNoMatch')} &quot;{q}&quot;</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {groups.map((g) => {
+            const gids = g.items.map((s) => s.id);
+            const gAllOn = gids.every((id) => has(id));
+            return (
+              <div key={g.name}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>{g.name}</span>
+                  <button type="button" onClick={() => set(gAllOn ? ids.filter((id) => !gids.includes(id)) : [...new Set([...ids, ...gids])])} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
+                    {gAllOn ? t('st.skNone') : t('st.skAll')}
+                  </button>
+                  <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {g.items.map((s) => {
+                    const on = has(s.id);
+                    return (
+                      <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#475569'}`, background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontSize: 13, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={on} onChange={() => toggle(s.id)} />
+                        {s.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

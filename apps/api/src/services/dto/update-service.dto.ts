@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -63,4 +64,11 @@ export class UpdateServiceDto {
   @IsOptional()
   @IsBoolean()
   priceFrom?: boolean;
+
+  // Technicians who can perform this service. When provided, replaces the full
+  // set (empty array clears all). Omit to leave staff assignments untouched.
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  staffIds?: string[];
 }

@@ -99,7 +99,7 @@ function Inner() {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 24, margin: 0 }}>{c.firstName} {c.lastName ?? ''}</h1>
           <div style={{ color: '#94a3b8', fontSize: 14 }}>
-            {c.email ?? t('cu.noEmail')} · {c.phone ?? t('cu.noPhone')} · {t('cu.since')} {new Date(c.createdAt).toLocaleDateString()}
+            {c.email ?? t('cu.noEmail')} · {c.phone ?? t('cu.noPhone')} · {t('cu.since')} {new Date(c.createdAt).toLocaleDateString('en-US')}
           </div>
         </div>
         <a
@@ -116,7 +116,7 @@ function Inner() {
         <Kpi label={t('cu.kBookings')} value={String(c.stats.bookings)} accent="#3b82f6" />
         <Kpi label={t('cu.kCompleted')} value={String(c.stats.completed)} accent="#a855f7" />
         <Kpi label={t('cu.kNoShows')} value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : '#64748b'} />
-        <Kpi label={t('cu.kLastVisit')} value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString() : '—'} accent="#06b6d4" />
+        <Kpi label={t('cu.kLastVisit')} value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString('en-US') : '—'} accent="#06b6d4" />
       </div>
 
       <div style={{ ...ui.card, marginBottom: 18, display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
@@ -146,7 +146,7 @@ function Inner() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {c.loyaltyTransactions.map((tx) => (
               <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
-                <span style={{ color: '#cbd5e1' }}>{new Date(tx.createdAt).toLocaleDateString()} · {tx.reason}</span>
+                <span style={{ color: '#cbd5e1' }}>{new Date(tx.createdAt).toLocaleDateString('en-US')} · {tx.reason}</span>
                 <span style={{ color: tx.points >= 0 ? '#22c55e' : '#f97316', fontWeight: 600 }}>{tx.points >= 0 ? '+' : ''}{tx.points} {t('cu.pts')} <span style={{ color: '#64748b', fontWeight: 400 }}>({t('cu.bal')} {tx.balanceAfter})</span></span>
               </div>
             ))}
@@ -173,7 +173,7 @@ function Inner() {
               const pay = a.payments[0];
               return (
                 <tr key={a.id} style={{ borderTop: '1px solid #334155' }}>
-                  <td style={ui.td}>{new Date(a.startTime).toLocaleString()}</td>
+                  <td style={ui.td}>{new Date(a.startTime).toLocaleString('en-US')}</td>
                   <td style={ui.td}>{a.service?.name ?? '—'}</td>
                   <td style={ui.td}>{a.assignedStaff ? `${a.assignedStaff.firstName} ${a.assignedStaff.lastName ?? ''}`.trim() : '—'}</td>
                   <td style={ui.td}><span style={{ color: STATUS_COLORS[a.status] ?? '#94a3b8', fontWeight: 600 }}>{a.status}</span></td>

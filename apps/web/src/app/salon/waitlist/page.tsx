@@ -77,7 +77,7 @@ function Inner() {
               {rows.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('wl.empty')}</td></tr>}
               {pg.paged.map((e) => (
                 <tr key={e.id} style={{ borderTop: '1px solid #334155' }}>
-                  <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(e.createdAt).toLocaleDateString()}</td>
+                  <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(e.createdAt).toLocaleDateString('en-US')}</td>
                   <td style={ui.td}>{e.customerName}{e.note ? <div style={{ color: '#64748b', fontSize: 12 }}>{e.note}</div> : null}</td>
                   <td style={{ ...ui.td, color: '#cbd5e1' }}>{e.phone || e.email || '—'}</td>
                   <td style={{ ...ui.td, color: '#cbd5e1' }}>{e.service?.name || t('wl.any')}</td>

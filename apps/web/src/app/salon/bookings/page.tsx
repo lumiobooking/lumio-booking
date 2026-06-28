@@ -239,7 +239,7 @@ function BookingsInner() {
               )}
               {pg.paged.map((b) => (
                 <tr key={b.id} style={{ borderTop: '1px solid #334155' }}>
-                  <td style={ui.td}>{new Date(b.startTime).toLocaleString()}</td>
+                  <td style={ui.td}>{new Date(b.startTime).toLocaleString('en-US')}</td>
                   <td style={ui.td}>
                     {b.customer?.id
                       ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>

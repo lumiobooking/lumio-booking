@@ -325,7 +325,7 @@ export default function PublicBookingPage() {
   if (loadError) return <Shell><Center>{loadError}</Center></Shell>;
 
   const steps = [
-    { n: 1, label: 'Date & time', summary: slot ? `${selectedDate?.toLocaleDateString()} · ${fmtTime(slot.start)}` : selectedDate ? selectedDate.toLocaleDateString() : '' },
+    { n: 1, label: 'Date & time', summary: slot ? `${selectedDate?.toLocaleDateString('en-US')} · ${fmtTime(slot.start)}` : selectedDate ? selectedDate.toLocaleDateString('en-US') : '' },
     { n: 2, label: 'Service', summary: service ? service.name : '' },
     { n: 3, label: 'Technician', summary: step > 3 ? (employee ? `${employee.firstName} ${employee.lastName ?? ''}`.trim() : 'Any available') : '' },
     { n: 4, label: 'Your information', summary: form.firstName || '' },
@@ -550,7 +550,7 @@ export default function PublicBookingPage() {
                 <h2 style={{ color: '#16a34a', margin: '4px 0' }}>Booking received</h2>
                 <p style={{ color: '#475569', lineHeight: 1.6 }}>
                   Thanks {form.firstName}! Your booking for <strong>{service?.name}</strong> on{' '}
-                  <strong>{slot && `${slot.start.toLocaleDateString()} at ${fmtTime(slot.start)}`}</strong> is received.
+                  <strong>{slot && `${slot.start.toLocaleDateString('en-US')} at ${fmtTime(slot.start)}`}</strong> is received.
                 </p>
                 <p style={{ color: '#475569' }}>Payment: <strong>{result?.paymentStatus === 'PAID' ? 'Paid online ✓' : 'Pay at the salon'}</strong></p>
                 <button onClick={reset} style={primaryBtn}>Book another</button>
@@ -765,7 +765,7 @@ function StepPayment({ service, employee, slot, addons, totalCents, depositCents
           {svcDiscount(service) > 0 && <Row k={`Discount −${svcDiscount(service)}%`} v={`− ${fmt(service.priceCents - svcNetCents(service))}`} />}
           {addons.map((a) => <Row key={a.id} k={`+ ${a.name}`} v={fmt(a.priceCents)} />)}
           <Row k="Technician" v={employee ? `${employee.firstName} ${employee.lastName ?? ''}` : 'Any available'} />
-          <Row k="When" v={`${slot.start.toLocaleDateString()} · ${fmtTime(slot.start)} – ${fmtTime(slot.end)}`} />
+          <Row k="When" v={`${slot.start.toLocaleDateString('en-US')} · ${fmtTime(slot.start)} – ${fmtTime(slot.end)}`} />
           <div style={{ borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
           <Row k="Total" v={fmt(totalCents)} bold />
           {depositCents > 0 && (

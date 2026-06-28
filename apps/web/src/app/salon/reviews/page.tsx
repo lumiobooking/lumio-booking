@@ -154,7 +154,7 @@ function Inner() {
           <div key={f.id} style={{ ...ui.card, padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
               <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: '#334155' }}>{'★'.repeat(5 - f.rating)}</span></span>
-              <span style={{ color: '#64748b' }}>{new Date(f.createdAt).toLocaleString()}</span>
+              <span style={{ color: '#64748b' }}>{new Date(f.createdAt).toLocaleString('en-US')}</span>
             </div>
             <div style={{ fontSize: 13, color: '#cbd5e1', marginTop: 4 }}>
               {f.staff ? `${f.staff.firstName} ${f.staff.lastName ?? ''}`.trim() : t('rv.salon')} · {f.customer?.phone ?? f.customer?.firstName ?? t('rv.anonymous')}
@@ -179,7 +179,7 @@ function Inner() {
             {sends.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('rv.noSends')}</td></tr>}
             {sendsPage.paged.map((r) => (
               <tr key={r.id} style={{ borderTop: '1px solid #334155' }}>
-                <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(r.createdAt).toLocaleString()}</td>
+                <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(r.createdAt).toLocaleString('en-US')}</td>
                 <td style={ui.td}>{r.staff}</td>
                 <td style={{ ...ui.td, color: '#64748b' }}>{r.device}</td>
                 <td style={ui.td}>{r.counted ? <span style={{ color: '#22c55e', fontWeight: 600 }}>{t('rv.plusPts')}</span> : <span style={{ color: '#94a3b8' }}>—</span>}</td>

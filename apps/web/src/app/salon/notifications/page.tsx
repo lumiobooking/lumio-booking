@@ -436,7 +436,7 @@ function HistoryView({ token }: { token: string | null }) {
           {items.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('nt.noMessages')}</td></tr>}
           {items.map((n) => (
             <tr key={n.id} style={{ borderTop: '1px solid #334155' }}>
-              <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString()}</td>
+              <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString('en-US')}</td>
               <td style={ui.td}>{n.channel}</td>
               <td style={{ ...ui.td, color: '#94a3b8' }}>{n.recipient}</td>
               <td style={ui.td}>

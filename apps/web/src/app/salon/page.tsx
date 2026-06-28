@@ -185,9 +185,9 @@ function Inner() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontSize: 13 }}>{new Date(b.startTime).toLocaleDateString()}</div>
+                        <div style={{ fontSize: 13 }}>{new Date(b.startTime).toLocaleDateString('en-US')}</div>
                         <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                          {new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
                     </div>

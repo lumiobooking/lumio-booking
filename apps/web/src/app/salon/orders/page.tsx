@@ -97,7 +97,7 @@ function Inner() {
       <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color:#000}
       h2{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse;font-size:13px}td{padding:2px 0;vertical-align:top}
       hr{border:none;border-top:1px dashed #999;margin:8px 0}.center{text-align:center;font-size:12px;color:#333}</style></head><body>
-      <h2>Receipt</h2><div class="center">Order #${o.orderNumber} · ${new Date(o.paidAt ?? o.createdAt).toLocaleString()}${o.status === 'VOID' ? ' · VOID' : ''}</div><hr>
+      <h2>Receipt</h2><div class="center">Order #${o.orderNumber} · ${new Date(o.paidAt ?? o.createdAt).toLocaleString('en-US')}${o.status === 'VOID' ? ' · VOID' : ''}</div><hr>
       <table>${rows}</table><hr><table>
       ${line('Subtotal', formatPrice(o.subtotalCents, o.currency))}
       ${o.discountCents ? line('Discount', '-' + formatPrice(o.discountCents, o.currency)) : ''}
@@ -164,7 +164,7 @@ function Inner() {
                 <Fragment key={o.id}>
                   <tr style={{ borderTop: '1px solid #334155', cursor: 'pointer' }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
                     <td style={ui.td}>#{o.orderNumber}</td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(o.createdAt).toLocaleString()}</td>
+                    <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(o.createdAt).toLocaleString('en-US')}</td>
                     <td style={{ ...ui.td, color: '#cbd5e1' }}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? <span style={{ marginLeft: 6, fontSize: 11, color: '#818cf8' }}>{t('or.fromBooking')}</span> : null}</td>
                     <td style={ui.td}>{formatPrice(o.totalCents, o.currency)}</td>
                     <td style={{ ...ui.td, color: '#94a3b8' }}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</td>

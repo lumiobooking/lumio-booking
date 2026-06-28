@@ -55,7 +55,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const locale = lang === 'vi' ? 'vi-VN' : 'en-US';
+  const locale = 'en-US'; // dates always render US month/day/year
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
@@ -191,7 +191,7 @@ function BookingDetail({ booking: b, onClose, onAction }: {
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const locale = lang === 'vi' ? 'vi-VN' : 'en-US';
+  const locale = 'en-US'; // dates always render US month/day/year
   const start = new Date(b.startTime);
   const end = new Date(b.endTime);
   const duration = Math.round((end.getTime() - start.getTime()) / 60000);

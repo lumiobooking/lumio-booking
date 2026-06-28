@@ -111,7 +111,7 @@ function Inner() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{b.service?.name ?? 'Service'}</div>
                 <div style={{ color: '#cbd5e1', fontSize: 14, marginTop: 2 }}>
-                  {new Date(b.startTime).toLocaleString()} · {name(b.customer)}
+                  {new Date(b.startTime).toLocaleString('en-US')} · {name(b.customer)}
                 </div>
                 <span
                   style={{

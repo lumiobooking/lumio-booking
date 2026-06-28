@@ -221,7 +221,7 @@ function Inner() {
                     </span>
                   </td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>
-                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : t('in.never')}
+                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('en-US') : t('in.never')}
                   </td>
                   <td style={ui.td}>
                     {k.status === 'ACTIVE' && (

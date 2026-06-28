@@ -220,7 +220,7 @@ export default function TenantsPage() {
                 </td>
                 <td style={td}>{t._count?.users ?? '-'}</td>
                 <td style={{ ...td, color: '#94a3b8' }}>
-                  {new Date(t.createdAt).toLocaleDateString()}
+                  {new Date(t.createdAt).toLocaleDateString('en-US')}
                 </td>
                 <td style={td}>
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -382,7 +382,7 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
           <button onClick={saveAccess} disabled={busy} style={primaryBtn}>Save access</button>
         </div>
         <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>
-          Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString()}` : 'billing-controlled'} · status {tenant.status}
+          Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString('en-US')}` : 'billing-controlled'} · status {tenant.status}
         </p>
       </div>
 

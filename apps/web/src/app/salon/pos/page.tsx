@@ -275,7 +275,7 @@ function Register() {
       td{padding:2px 0;vertical-align:top}hr{border:none;border-top:1px dashed #999;margin:8px 0}
       .center{text-align:center;font-size:12px;color:#333}</style></head><body>
       <h2>Receipt</h2>
-      <div class="center">Order #${orderNumber} · ${new Date().toLocaleString()}</div><hr>
+      <div class="center">Order #${orderNumber} · ${new Date().toLocaleString('en-US')}</div><hr>
       <table>${rows}</table><hr>
       <table>
         ${line('Subtotal', formatPrice(money.subtotal, currency))}

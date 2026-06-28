@@ -103,7 +103,7 @@ function Inner() {
               )}
               {pg.paged.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid #334155' }}>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString()}</td>
+                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString('en-US')}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
                   <td style={ui.td}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</td>
                   <td style={ui.td}>

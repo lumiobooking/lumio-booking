@@ -282,6 +282,34 @@ export class SettingsService {
     const incBrevo = (dto.brevo ?? {}) as Record<string, unknown>;
     const incGmail = (dto.gmail ?? {}) as Record<string, unknown>;
     const incTwilio = (dto.twilio ?? {}) as Record<string, unknown>;
+
+    // ---- Gmail credentials: guard the #1 cause of recurring "invalid_client" ----
+    // A new Client ID must come with the matching new Client secret. If the admin
+    // changes the Client ID but leaves the secret box blank (it shows "saved"),
+    // the new ID would pair with the OLD secret → Google rejects it as
+    // invalid_client. We refuse that save and tell them exactly what to do.
+    const gmailClientId =
+      typeof incGmail.clientId === 'string' && incGmail.clientId.trim() ? incGmail.clientId.trim() : cur.gmail.clientId;
+    const gmailNewSecret = cleanSecret(incGmail.clientSecret);
+    const gmailClientIdChanged = gmailClientId !== cur.gmail.clientId;
+    if (gmailClientIdChanged && cur.gmail.clientId && !gmailNewSecret) {
+      throw new BadRequestException(
+        'Bạn vừa đổi Client ID — hãy dán lại Client secret của đúng OAuth client đó rồi Lưu. ' +
+          '(You changed the Client ID — paste the matching Client secret from the same OAuth client.)',
+      );
+    }
+    const mergedGmail = {
+      clientId: gmailClientId,
+      // Blank/masked secret keeps the stored one (so re-saving never wipes it);
+      // a real new secret replaces it.
+      clientSecret: gmailNewSecret ?? cur.gmail.clientSecret,
+      // The refresh token + sender belong to the OAuth client that minted them.
+      // When the Client ID changes, the old refresh token can't work with the new
+      // client, so we drop it and require a fresh "Connect with Google".
+      refreshToken: gmailClientIdChanged ? '' : cur.gmail.refreshToken,
+      senderEmail: gmailClientIdChanged ? '' : cur.gmail.senderEmail,
+    };
+
     const merged: NotificationSettings = {
       ...cur,
       ...stripUndefined(dto as Record<string, unknown>),
@@ -300,18 +328,7 @@ export class SettingsService {
         // Blank API key keeps the stored one.
         apiKey: incBrevo.apiKey ? String(incBrevo.apiKey) : cur.brevo.apiKey,
       },
-      gmail: {
-        // Trim to defeat copy-paste whitespace/newlines (a common cause of
-        // Google's "invalid_client").
-        clientId: typeof incGmail.clientId === 'string' && incGmail.clientId.trim() ? incGmail.clientId.trim() : cur.gmail.clientId,
-        // A blank OR masked secret (the UI placeholder ••••) keeps the stored
-        // one — so re-saving settings can never overwrite the real secret with
-        // dots. Real values are trimmed.
-        clientSecret: cleanSecret(incGmail.clientSecret) ?? cur.gmail.clientSecret,
-        // refreshToken + senderEmail are set only by the OAuth callback.
-        refreshToken: cur.gmail.refreshToken,
-        senderEmail: cur.gmail.senderEmail,
-      },
+      gmail: mergedGmail,
       twilio: {
         accountSid: typeof incTwilio.accountSid === 'string' ? incTwilio.accountSid : cur.twilio.accountSid,
         fromNumber: typeof incTwilio.fromNumber === 'string' ? incTwilio.fromNumber : cur.twilio.fromNumber,
@@ -535,7 +552,21 @@ export class SettingsService {
       ),
     );
     const result = await Promise.race([sendPromise, timeout]);
-    return result.success ? { ok: true, to } : { ok: false, error: result.error || 'Send failed' };
+    if (result.success) return { ok: true, to };
+    let error = result.error || 'Send failed';
+    // Translate Google's cryptic OAuth errors into a clear next step.
+    if (/invalid_client/i.test(error)) {
+      error =
+        'Google từ chối: Client ID và Client secret không khớp (invalid_client). ' +
+        'Vào Google Cloud → Credentials lấy Client secret MỚI của đúng client, dán CẢ Client ID + Secret vào đây, bấm Lưu, rồi bấm “Reconnect with Google”. ' +
+        '(Client ID and secret don’t match — paste a fresh matching pair, save, then reconnect.)';
+    } else if (/invalid_grant/i.test(error)) {
+      error =
+        'Kết nối Google đã hết hạn/bị thu hồi (invalid_grant) — thường do OAuth consent screen còn ở chế độ Testing (token hết hạn sau 7 ngày). ' +
+        'Trên Google bấm Publish app, rồi quay lại bấm “Reconnect with Google”. ' +
+        '(Refresh token expired/revoked — publish the app, then reconnect.)';
+    }
+    return { ok: false, error };
   }
 
   /** Gateway view for the frontend — NEVER includes the secret value. */

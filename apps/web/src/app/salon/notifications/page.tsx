@@ -14,6 +14,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 
 interface Tpl {
@@ -66,17 +67,19 @@ export default function NotificationsPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [tab, setTab] = useState<'templates' | 'history'>('templates');
   return (
     <section>
-      <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Notifications</h1>
+      <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('nt.title')}</h1>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
-        Customize the email &amp; SMS messages your salon sends — and review what’s been delivered.
+        {t('nt.subtitle')}
       </p>
 
       <div style={{ display: 'flex', gap: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 4, width: 'fit-content', margin: '16px 0 18px' }}>
-        <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')}>Templates</TabBtn>
-        <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>History</TabBtn>
+        <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')}>{t('nt.tabTemplates')}</TabBtn>
+        <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>{t('nt.tabHistory')}</TabBtn>
       </div>
 
       {tab === 'templates' ? <TemplatesView token={token} /> : <HistoryView token={token} />}
@@ -86,7 +89,11 @@ function Inner() {
 
 /* ----------------------------- Templates ----------------------------- */
 
+const GROUP_KEY: Record<string, string> = { 'Booking': 'nt.grpBooking', 'Reminders & care': 'nt.grpReminders', 'Payment': 'nt.grpPayment', 'Staff alerts': 'nt.grpStaff' };
+
 function TemplatesView({ token }: { token: string | null }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [templates, setTemplates] = useState<Templates | null>(null);
   const [accent, setAccent] = useState('#6366f1');
   const [audience, setAudience] = useState<Audience>('customer');
@@ -160,7 +167,7 @@ function TemplatesView({ token }: { token: string | null }) {
     } finally { setSaving(false); }
   };
 
-  if (loading || !templates) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (loading || !templates) return <p style={{ color: '#94a3b8' }}>{t('nt.loading')}</p>;
 
   return (
     <div>
@@ -169,12 +176,12 @@ function TemplatesView({ token }: { token: string | null }) {
       {/* audience tabs + save */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
         <div style={{ display: 'flex', gap: 4, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
-          <SubTab active={audience === 'customer'} onClick={() => { setAudience('customer'); setSelectedId('customer_booking_confirmed'); }}>To customer</SubTab>
-          <SubTab active={audience === 'staff'} onClick={() => { setAudience('staff'); setSelectedId('staff_new_booking'); }}>To staff</SubTab>
+          <SubTab active={audience === 'customer'} onClick={() => { setAudience('customer'); setSelectedId('customer_booking_confirmed'); }}>{t('nt.toCustomer')}</SubTab>
+          <SubTab active={audience === 'staff'} onClick={() => { setAudience('staff'); setSelectedId('staff_new_booking'); }}>{t('nt.toStaff')}</SubTab>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>✓ Saved</span>}
-          <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? 'Saving…' : 'Save changes'}</button>
+          {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('nt.saved')}</span>}
+          <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('nt.saving') : t('nt.saveChanges')}</button>
         </div>
       </div>
 
@@ -183,7 +190,7 @@ function TemplatesView({ token }: { token: string | null }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {groups.map((g) => (
             <div key={g}>
-              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', margin: '0 0 6px 2px', fontWeight: 700 }}>{g}</div>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', margin: '0 0 6px 2px', fontWeight: 700 }}>{t(GROUP_KEY[g] ?? g)}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {items.filter((i) => i.group === g).map((i) => {
                   const it = templates[i.id];
@@ -193,13 +200,13 @@ function TemplatesView({ token }: { token: string | null }) {
                       style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                         border: `1px solid ${active ? '#6366f1' : '#334155'}`, background: active ? '#312e81' : '#1e293b' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{i.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{t('nt.lbl.' + i.id)}</span>
                         <Dot on={!!it?.enabled} />
                       </div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
-                        {it?.email && <Badge>✉ Email</Badge>}
-                        {it?.sms && <Badge>💬 SMS</Badge>}
-                        {i.scheduled && <Badge>⏱ Scheduled</Badge>}
+                        {it?.email && <Badge>{t('nt.bEmail')}</Badge>}
+                        {it?.sms && <Badge>{t('nt.bSms')}</Badge>}
+                        {i.scheduled && <Badge>{t('nt.bScheduled')}</Badge>}
                       </div>
                     </button>
                   );
@@ -215,23 +222,23 @@ function TemplatesView({ token }: { token: string | null }) {
             <div style={{ ...ui.card, padding: 18 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <div>
-                  <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>{meta.label}</h2>
-                  <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{meta.desc}</p>
+                  <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>{t('nt.lbl.' + meta.id)}</h2>
+                  <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('nt.desc.' + meta.id)}</p>
                 </div>
                 <Switch on={tpl.enabled} onChange={(v) => patch('enabled', v)} />
               </div>
 
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '16px 0' }}>
-                <Check label="Send Email" checked={tpl.email} onChange={(v) => patch('email', v)} />
-                <Check label="Send SMS" checked={tpl.sms} onChange={(v) => patch('sms', v)} />
+                <Check label={t('nt.sendEmail')} checked={tpl.email} onChange={(v) => patch('email', v)} />
+                <Check label={t('nt.sendSms')} checked={tpl.sms} onChange={(v) => patch('sms', v)} />
                 {meta.scheduled && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-                    <span style={{ fontSize: 13, color: '#cbd5e1' }}>Send</span>
+                    <span style={{ fontSize: 13, color: '#cbd5e1' }}>{t('nt.send')}</span>
                     <input type="number" min={0} value={tpl.offsetHours}
                       onChange={(e) => patch('offsetHours', Math.max(0, Number(e.target.value)))}
                       style={{ ...ui.input, width: 70, padding: '6px 8px' }} />
                     <span style={{ fontSize: 13, color: '#cbd5e1' }}>
-                      hours {meta.scheduled === 'after' ? 'after' : meta.scheduled === 'day' ? '(on the day)' : 'before'}
+                      {t('nt.hours')} {meta.scheduled === 'after' ? t('nt.after') : meta.scheduled === 'day' ? t('nt.onDay') : t('nt.before')}
                     </span>
                   </div>
                 )}
@@ -239,7 +246,7 @@ function TemplatesView({ token }: { token: string | null }) {
 
               {/* Placeholder chips */}
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Click a placeholder to insert it into the focused field:</div>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('nt.clickPlaceholder')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {PLACEHOLDERS.map((p) => (
                     <button key={p} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(p)}
@@ -252,12 +259,12 @@ function TemplatesView({ token }: { token: string | null }) {
 
               {tpl.email && (
                 <>
-                  <label style={ui.label}>Email subject</label>
+                  <label style={ui.label}>{t('nt.emailSubject')}</label>
                   <input ref={subjectRef} onFocus={() => (focusedRef.current = 'subject')}
                     value={tpl.subject} onChange={(e) => patch('subject', e.target.value)}
                     style={{ ...ui.input, marginBottom: 14 }} />
 
-                  <label style={ui.label}>Email body</label>
+                  <label style={ui.label}>{t('nt.emailBody')}</label>
                   <RichTextEditor editorRef={bodyRef} value={tpl.body}
                     onFocus={() => (focusedRef.current = 'body')}
                     onChange={(html) => patch('body', html)} />
@@ -266,23 +273,23 @@ function TemplatesView({ token }: { token: string | null }) {
 
               {tpl.sms && (
                 <>
-                  <label style={ui.label}>SMS text</label>
+                  <label style={ui.label}>{t('nt.smsText')}</label>
                   <textarea ref={smsRef} onFocus={() => (focusedRef.current = 'smsBody')}
                     value={tpl.smsBody} onChange={(e) => patch('smsBody', e.target.value)} rows={3}
                     style={{ ...ui.input, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
                   <div style={{ fontSize: 11, color: fillPct(tpl.smsBody).length > 160 ? '#f97316' : '#64748b', marginTop: 4 }}>
-                    {fillPct(tpl.smsBody).length} characters {fillPct(tpl.smsBody).length > 160 ? '(over 1 SMS segment)' : ''}
+                    {fillPct(tpl.smsBody).length} {t('nt.chars')} {fillPct(tpl.smsBody).length > 160 ? t('nt.overSegment') : ''}
                   </div>
                 </>
               )}
               {!tpl.email && !tpl.sms && (
-                <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>Enable Email or SMS above to edit this message.</p>
+                <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('nt.enableToEdit')}</p>
               )}
             </div>
 
             {/* Live preview */}
             <div>
-              <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', margin: '0 0 8px 2px', fontWeight: 700 }}>Preview (sample data)</div>
+              <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', margin: '0 0 8px 2px', fontWeight: 700 }}>{t('nt.preview')}</div>
               {tpl.email && <EmailPreview accent={accent} subject={fillPct(tpl.subject)} body={fillPct(tpl.body)} salon={SAMPLE.salon_name} contact={SAMPLE.salon_contact} />}
               {tpl.sms && <SmsPreview text={fillPct(tpl.smsBody)} salon={SAMPLE.salon_name} />}
             </div>
@@ -294,16 +301,18 @@ function TemplatesView({ token }: { token: string | null }) {
 }
 
 function EmailPreview({ accent, subject, body, salon, contact }: { accent: string; subject: string; body: string; salon: string; contact: string }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   return (
     <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #334155', maxWidth: 520 }}>
       <div style={{ background: '#0f172a', padding: '8px 12px', borderBottom: '1px solid #334155' }}>
-        <div style={{ fontSize: 11, color: '#94a3b8' }}>Subject</div>
-        <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>{subject || '(empty subject)'}</div>
+        <div style={{ fontSize: 11, color: '#94a3b8' }}>{t('nt.pSubject')}</div>
+        <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>{subject || t('nt.emptySubject')}</div>
       </div>
       <div style={{ background: accent, padding: '18px 22px' }}>
         <div style={{ color: '#fff', fontSize: 17, fontWeight: 800 }}>{salon}</div>
       </div>
-      <div style={{ padding: 22, color: '#374151', fontSize: 14, lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: body || '<em>(empty body)</em>' }} />
+      <div style={{ padding: 22, color: '#374151', fontSize: 14, lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: body || `<em>${t('nt.emptyBody')}</em>` }} />
       <div style={{ background: '#f9fafb', padding: '12px 22px', color: '#9aa4b2', fontSize: 12, borderTop: '1px solid #eef0f4' }}>
         {salon} · {contact}
       </div>
@@ -312,11 +321,13 @@ function EmailPreview({ accent, subject, body, salon, contact }: { accent: strin
 }
 
 function SmsPreview({ text, salon }: { text: string; salon: string }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   return (
     <div style={{ marginTop: 12, maxWidth: 520 }}>
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>SMS from {salon}</div>
+      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>{t('nt.smsFrom').replace('{salon}', salon)}</div>
       <div style={{ display: 'inline-block', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', padding: '10px 14px', borderRadius: '14px 14px 14px 4px', fontSize: 13, lineHeight: 1.5, maxWidth: '90%', whiteSpace: 'pre-wrap' }}>
-        {text || '(empty message)'}
+        {text || t('nt.emptyMsg')}
       </div>
     </div>
   );
@@ -327,6 +338,8 @@ function SmsPreview({ text, salon }: { text: string; salon: string }) {
 function RichTextEditor({ editorRef, value, onChange, onFocus }: {
   editorRef: React.RefObject<HTMLDivElement>; value: string; onChange: (html: string) => void; onFocus: () => void;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   // Sync external value → editor only when it differs (e.g. switching templates),
   // so typing isn't interrupted. Plain-text (legacy) values are shown with breaks.
   useEffect(() => {
@@ -353,20 +366,20 @@ function RichTextEditor({ editorRef, value, onChange, onFocus }: {
   return (
     <div style={{ border: '1px solid #475569', borderRadius: 8, overflow: 'hidden', background: '#0f172a' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, padding: 6, borderBottom: '1px solid #334155', background: '#1e293b' }}>
-        <Btn cmd="bold" title="Bold"><b>B</b></Btn>
-        <Btn cmd="italic" title="Italic"><i>I</i></Btn>
-        <Btn cmd="underline" title="Underline"><u>U</u></Btn>
-        <Btn cmd="strikeThrough" title="Strikethrough"><s>S</s></Btn>
+        <Btn cmd="bold" title={t('nt.tBold')}><b>B</b></Btn>
+        <Btn cmd="italic" title={t('nt.tItalic')}><i>I</i></Btn>
+        <Btn cmd="underline" title={t('nt.tUnderline')}><u>U</u></Btn>
+        <Btn cmd="strikeThrough" title={t('nt.tStrike')}><s>S</s></Btn>
         <Sep />
-        <Btn cmd="formatBlock" arg="h3" title="Heading">H</Btn>
-        <Btn cmd="formatBlock" arg="p" title="Normal text">¶</Btn>
+        <Btn cmd="formatBlock" arg="h3" title={t('nt.tHeading')}>H</Btn>
+        <Btn cmd="formatBlock" arg="p" title={t('nt.tNormal')}>¶</Btn>
         <Sep />
-        <Btn cmd="insertUnorderedList" title="Bullet list">• List</Btn>
-        <Btn cmd="insertOrderedList" title="Numbered list">1. List</Btn>
+        <Btn cmd="insertUnorderedList" title={t('nt.tBullet')}>• List</Btn>
+        <Btn cmd="insertOrderedList" title={t('nt.tNumbered')}>1. List</Btn>
         <Sep />
-        <button type="button" title="Insert link" onMouseDown={(e) => e.preventDefault()}
-          onClick={() => { const url = prompt('Link URL (https://…)'); if (url) exec('createLink', url); }} style={tbBtn}>🔗</button>
-        <Btn cmd="removeFormat" title="Clear formatting">⨯</Btn>
+        <button type="button" title={t('nt.tLink')} onMouseDown={(e) => e.preventDefault()}
+          onClick={() => { const url = prompt(t('nt.linkPrompt')); if (url) exec('createLink', url); }} style={tbBtn}>🔗</button>
+        <Btn cmd="removeFormat" title={t('nt.tClear')}>⨯</Btn>
       </div>
       <div
         ref={editorRef}
@@ -393,6 +406,8 @@ interface NotificationRow {
 const COLORS: Record<string, string> = { SENT: '#22c55e', PENDING: '#eab308', FAILED: '#ef4444' };
 
 function HistoryView({ token }: { token: string | null }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [items, setItems] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -407,18 +422,18 @@ function HistoryView({ token }: { token: string | null }) {
   }, [token]);
 
   if (error) return <div style={ui.banner}>{error}</div>;
-  if (loading) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (loading) return <p style={{ color: '#94a3b8' }}>{t('nt.loading')}</p>;
 
   return (
     <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
           <tr style={{ background: '#1e293b' }}>
-            <th style={ui.th}>Sent</th><th style={ui.th}>Channel</th><th style={ui.th}>Recipient</th><th style={ui.th}>Message</th><th style={ui.th}>Status</th>
+            <th style={ui.th}>{t('nt.hSent')}</th><th style={ui.th}>{t('nt.hChannel')}</th><th style={ui.th}>{t('nt.hRecipient')}</th><th style={ui.th}>{t('nt.hMessage')}</th><th style={ui.th}>{t('nt.hStatus')}</th>
           </tr>
         </thead>
         <tbody>
-          {items.length === 0 && <tr><td style={ui.td} colSpan={5}>No messages sent yet.</td></tr>}
+          {items.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('nt.noMessages')}</td></tr>}
           {items.map((n) => (
             <tr key={n.id} style={{ borderTop: '1px solid #334155' }}>
               <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString()}</td>

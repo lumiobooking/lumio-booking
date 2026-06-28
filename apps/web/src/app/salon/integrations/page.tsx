@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 
 interface ApiKey {
   id: string;
@@ -26,6 +27,8 @@ export default function IntegrationsPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,7 +86,7 @@ function Inner() {
   }
 
   async function revoke(id: string) {
-    if (!confirm('Revoke this key? Any WordPress site using it will stop working.')) return;
+    if (!confirm(t('in.confirmRevoke'))) return;
     try {
       await apiFetch(`/api-keys/${id}`, { method: 'DELETE', token });
       await load();
@@ -98,10 +101,9 @@ function Inner() {
 
       {/* Option 1: hosted online booking link (no WordPress needed) */}
       <div style={{ ...ui.card, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>Your online booking link</h2>
+        <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>{t('in.bookingLinkTitle')}</h2>
         <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
-          Share this link anywhere (Instagram bio, Google profile, SMS). Customers book directly —
-          no WordPress required.
+          {t('in.bookingLinkDesc')}
         </p>
         {bookingLink ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -119,22 +121,21 @@ function Inner() {
               {bookingLink}
             </code>
             <button onClick={() => navigator.clipboard?.writeText(bookingLink)} style={ui.primaryBtn}>
-              Copy
+              {t('in.copy')}
             </button>
             <a href={bookingLink} target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid #475569', color: '#e2e8f0' }}>
-              Open
+              {t('in.open')}
             </a>
           </div>
         ) : (
-          <p style={{ color: '#64748b', fontSize: 13 }}>Loading…</p>
+          <p style={{ color: '#64748b', fontSize: 13 }}>{t('in.loadingLink')}</p>
         )}
       </div>
 
       {/* Option 2: WordPress plugin via API key */}
-      <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>WordPress plugin (API key)</h2>
+      <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>{t('in.wpTitle')}</h2>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
-        Prefer to embed booking inside your own WordPress site? Create an API key and paste it into
-        the Lumio Booking plugin settings (Settings &rarr; Lumio Booking).
+        {t('in.wpDesc')}
       </p>
 
       {newKey && (
@@ -145,9 +146,9 @@ function Inner() {
             marginBottom: 16,
           }}
         >
-          <strong style={{ color: '#22c55e' }}>Copy your new API key now</strong>
+          <strong style={{ color: '#22c55e' }}>{t('in.copyNow')}</strong>
           <p style={{ color: '#cbd5e1', fontSize: 13, margin: '6px 0' }}>
-            This is the only time it will be shown. Store it somewhere safe.
+            {t('in.onlyOnce')}
           </p>
           <code
             style={{
@@ -165,7 +166,7 @@ function Inner() {
             onClick={() => navigator.clipboard?.writeText(newKey)}
             style={{ ...ui.primaryBtn, marginTop: 10 }}
           >
-            Copy to clipboard
+            {t('in.copyClipboard')}
           </button>
         </div>
       )}
@@ -173,38 +174,38 @@ function Inner() {
       <form onSubmit={create} style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <label>
-            <span style={ui.label}>Key name (optional)</span>
-            <input style={ui.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Main website" />
+            <span style={ui.label}>{t('in.keyName')}</span>
+            <input style={ui.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={t('in.keyNamePh')} />
           </label>
           <label>
-            <span style={ui.label}>WordPress site URL (optional)</span>
+            <span style={ui.label}>{t('in.siteUrl')}</span>
             <input style={ui.input} value={siteUrl} onChange={(e) => setSiteUrl(e.target.value)} placeholder="https://mysalon.com" />
           </label>
         </div>
         <button type="submit" disabled={creating} style={{ ...ui.primaryBtn, marginTop: 14 }}>
-          {creating ? 'Generating...' : '+ Generate API key'}
+          {creating ? t('in.generating') : t('in.generate')}
         </button>
       </form>
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>Loading...</p>
+        <p style={{ color: '#94a3b8' }}>{t('in.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>Name</th>
-                <th style={ui.th}>Key</th>
-                <th style={ui.th}>Status</th>
-                <th style={ui.th}>Last used</th>
-                <th style={ui.th}>Actions</th>
+                <th style={ui.th}>{t('in.colName')}</th>
+                <th style={ui.th}>{t('in.colKey')}</th>
+                <th style={ui.th}>{t('in.colStatus')}</th>
+                <th style={ui.th}>{t('in.colLastUsed')}</th>
+                <th style={ui.th}>{t('in.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {keys.length === 0 && (
                 <tr>
                   <td style={ui.td} colSpan={5}>
-                    No API keys yet.
+                    {t('in.empty')}
                   </td>
                 </tr>
               )}
@@ -220,12 +221,12 @@ function Inner() {
                     </span>
                   </td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>
-                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'never'}
+                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : t('in.never')}
                   </td>
                   <td style={ui.td}>
                     {k.status === 'ACTIVE' && (
                       <button onClick={() => revoke(k.id)} style={ui.dangerBtn}>
-                        Revoke
+                        {t('in.revoke')}
                       </button>
                     )}
                   </td>

@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
+import { useLang, tr } from '../../../lib/i18n';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Payment {
@@ -30,6 +31,8 @@ export default function PaymentsPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const range = useDateRange('all');
   const [q, setQ] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -52,7 +55,7 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
 
   async function removePayment(p: Payment) {
-    if (!confirm(`Delete this ${formatPrice(p.amountCents, p.currency)} payment record? It will be removed from revenue reports. Cannot be undone.`)) return;
+    if (!confirm(t('pm.confirmDelete').replace('{amt}', formatPrice(p.amountCents, p.currency)))) return;
     try { await apiFetch(`/payments/${p.id}`, { method: 'DELETE', token }); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
   }
@@ -67,47 +70,47 @@ function Inner() {
 
   return (
     <section>
-      <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Payments</h1>
+      <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('pm.title')}</h1>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
-        {visible.length} payments · {formatPrice(totalPaid)} collected
+        {visible.length} {t('pm.paymentsWord')} · {formatPrice(totalPaid)} {t('pm.collected')}
       </p>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-        <SearchBox value={q} onChange={setQ} placeholder="Search status, type, provider…" />
+        <SearchBox value={q} onChange={setQ} placeholder={t('pm.searchPh')} />
         <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>Loading…</p>
+        <p style={{ color: '#94a3b8' }}>{t('pm.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto', marginTop: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>Date</th>
-                <th style={ui.th}>Amount</th>
-                <th style={ui.th}>Type</th>
-                <th style={ui.th}>Status</th>
-                <th style={ui.th}>Provider</th>
-                <th style={ui.th}>Actions</th>
+                <th style={ui.th}>{t('pm.colDate')}</th>
+                <th style={ui.th}>{t('pm.colAmount')}</th>
+                <th style={ui.th}>{t('pm.colType')}</th>
+                <th style={ui.th}>{t('pm.colStatus')}</th>
+                <th style={ui.th}>{t('pm.colProvider')}</th>
+                <th style={ui.th}>{t('pm.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
-                <tr><td style={ui.td} colSpan={6}>No payments in this range.</td></tr>
+                <tr><td style={ui.td} colSpan={6}>{t('pm.empty')}</td></tr>
               )}
               {pg.paged.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid #334155' }}>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString()}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
-                  <td style={ui.td}>{p.type === 'PAY_ONLINE' ? 'Online' : 'At salon'}</td>
+                  <td style={ui.td}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</td>
                   <td style={ui.td}>
                     <span style={{ color: COLORS[p.status] ?? '#94a3b8', fontWeight: 600 }}>{p.status}</span>
                   </td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{p.provider}</td>
-                  <td style={ui.td}><button onClick={() => removePayment(p)} style={ui.dangerBtn}>Delete</button></td>
+                  <td style={ui.td}><button onClick={() => removePayment(p)} style={ui.dangerBtn}>{t('pm.delete')}</button></td>
                 </tr>
               ))}
             </tbody>

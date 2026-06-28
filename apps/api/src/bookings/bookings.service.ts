@@ -1000,6 +1000,17 @@ export class BookingsService {
     return this.transition(user, id, AppointmentStatus.NO_SHOW, 'booking.no_show', 'updatedAt');
   }
 
+  /** Front desk marks the customer as checked-in (in the salon). */
+  async arrive(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const a = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true } });
+    if (!a) throw new NotFoundException('Booking not found');
+    if (!BookingsService.ACTIONABLE.includes(a.status)) {
+      throw new BadRequestException('Only an upcoming booking can be checked in.');
+    }
+    return this.transition(user, id, AppointmentStatus.ARRIVED, 'booking.arrived', 'arrivedAt');
+  }
+
   /**
    * Permanently delete a booking (admin cleanup). Its payments are deleted too so
    * the booking's revenue is removed from reports (no orphaned PAID rows left).

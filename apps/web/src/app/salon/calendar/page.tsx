@@ -22,10 +22,28 @@ interface Booking {
   assignedStaff: { firstName: string; lastName: string | null } | null;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  PENDING: '#eab308', ASSIGNED: '#3b82f6', ACCEPTED: '#22c55e', CONFIRMED: '#22c55e',
-  REJECTED: '#ef4444', CANCELLED: '#64748b', COMPLETED: '#a855f7', NO_SHOW: '#ef4444',
-};
+// Six operational buckets the front desk actually tracks. The 8 raw enum values
+// fold into these so the calendar reads at a glance (key → bilingual label via
+// `cal.st<Key>`; color → dot/stripe).
+const STATUS_BUCKETS: { key: string; color: string }[] = [
+  { key: 'Pending', color: '#f59e0b' },
+  { key: 'Confirmed', color: '#3b82f6' },
+  { key: 'Arrived', color: '#10b981' },
+  { key: 'Completed', color: '#8b5cf6' },
+  { key: 'NoShow', color: '#ef4444' },
+  { key: 'Cancelled', color: '#64748b' },
+];
+function statusBucket(status: string): { key: string; color: string } {
+  switch (status) {
+    case 'PENDING': case 'ASSIGNED': case 'REJECTED': return STATUS_BUCKETS[0];
+    case 'ACCEPTED': case 'CONFIRMED': return STATUS_BUCKETS[1];
+    case 'ARRIVED': return STATUS_BUCKETS[2];
+    case 'COMPLETED': return STATUS_BUCKETS[3];
+    case 'NO_SHOW': return STATUS_BUCKETS[4];
+    case 'CANCELLED': return STATUS_BUCKETS[5];
+    default: return STATUS_BUCKETS[0];
+  }
+}
 
 export default function CalendarPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -71,6 +89,12 @@ function Inner() {
     return map;
   }, [bookings]);
 
+  const todayStats = useMemo(() => {
+    const list = byDay.get(today.toDateString()) ?? [];
+    const count = (k: string) => list.filter((b) => statusBucket(b.status).key === k).length;
+    return { total: list.length, pending: count('Pending'), arrived: count('Arrived') };
+  }, [byDay, today]);
+
   const monthLabel = view.toLocaleString(locale, { month: 'long', year: 'numeric' });
   const name = (c: { firstName: string; lastName?: string | null } | null) => (c ? c.firstName : '');
 
@@ -98,6 +122,22 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {STATUS_BUCKETS.map((s) => (
+            <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#cbd5e1' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+              {t('cal.st' + s.key)}
+            </span>
+          ))}
+        </div>
+        <div style={{ fontSize: 13, color: '#94a3b8' }}>
+          {t('cal.todayLabel')}: <strong style={{ color: '#e2e8f0' }}>{todayStats.total}</strong> {t('cal.apptWord')}
+          {todayStats.pending > 0 && <> · <span style={{ color: '#f59e0b' }}>{todayStats.pending} {t('cal.stPending')}</span></>}
+          {todayStats.arrived > 0 && <> · <span style={{ color: '#10b981' }}>{todayStats.arrived} {t('cal.stArrived')}</span></>}
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, background: '#334155', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' }}>
         {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
           <div key={dow} style={{ background: '#1e293b', textAlign: 'center', padding: '8px 0', fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{DAY_LABEL[lang][dow]}</div>
@@ -113,13 +153,20 @@ function Inner() {
                     {d.getDate()}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {items.slice(0, 4).map((b) => (
-                      <div key={b.id} title={`${b.service?.name ?? ''} · ${name(b.customer)}`}
-                        onClick={() => setSelected(b)}
-                        style={{ fontSize: 11, padding: '2px 5px', borderRadius: 4, background: '#1e293b', borderLeft: `3px solid ${STATUS_COLORS[b.status] ?? '#64748b'}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>
-                        {new Date(b.startTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })} {name(b.customer)}
-                      </div>
-                    ))}
+                    {items.slice(0, 4).map((b) => {
+                      const m = statusBucket(b.status);
+                      const dim = m.key === 'Cancelled' || m.key === 'NoShow';
+                      const strike = m.key === 'Cancelled' ? 'line-through' : 'none';
+                      return (
+                        <div key={b.id} title={`${t('cal.st' + m.key)} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
+                          onClick={() => setSelected(b)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '3px 6px', borderRadius: 4, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.5 : 1 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', textDecoration: strike }}>{new Date(b.startTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: strike }}>{name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}</span>
+                        </div>
+                      );
+                    })}
                     {items.length > 4 && <div style={{ fontSize: 11, color: '#94a3b8' }}>{t('cal.more').replace('{n}', String(items.length - 4))}</div>}
                   </div>
                 </>
@@ -147,7 +194,8 @@ function BookingDetail({ booking: b, onClose, onAction }: {
   const duration = Math.round((end.getTime() - start.getTime()) / 60000);
   const fullName = b.customer ? `${b.customer.firstName} ${b.customer.lastName ?? ''}`.trim() : '—';
   const tech = b.assignedStaff ? `${b.assignedStaff.firstName} ${b.assignedStaff.lastName ?? ''}`.trim() : t('cal.unassigned');
-  const active = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'].includes(b.status);
+  const canArrive = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'].includes(b.status);
+  const active = canArrive || b.status === 'ARRIVED';
 
   return (
     <>
@@ -187,9 +235,14 @@ function BookingDetail({ booking: b, onClose, onAction }: {
         {b.notes && <DetailRow label={t('cal.dNote')} value={b.notes} />}
 
         {active && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
-            <button onClick={() => onAction(b.id, 'complete')} style={{ ...ui.primaryBtn, background: '#22c55e', flex: 1 }}>{t('cal.complete')}</button>
-            <button onClick={() => onAction(b.id, 'cancel')} style={{ ...ui.dangerBtn, flex: 1 }}>{t('cal.cancel')}</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
+            {canArrive && (
+              <button onClick={() => onAction(b.id, 'arrive')} style={{ ...ui.primaryBtn, background: '#10b981', width: '100%', padding: '11px' }}>{t('cal.arrive')}</button>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => onAction(b.id, 'complete')} style={{ ...ui.primaryBtn, background: '#22c55e', flex: 1 }}>{t('cal.complete')}</button>
+              <button onClick={() => onAction(b.id, 'cancel')} style={{ ...ui.dangerBtn, flex: 1 }}>{t('cal.cancel')}</button>
+            </div>
           </div>
         )}
       </div>
@@ -207,8 +260,9 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const c = STATUS_COLORS[status] ?? '#64748b';
-  return <span style={{ color: c, border: `1px solid ${c}`, borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 600 }}>{status}</span>;
+  const { lang } = useLang();
+  const m = statusBucket(status);
+  return <span style={{ color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 600 }}>{tr('cal.st' + m.key, lang)}</span>;
 }
 
 function fmtTime(d: Date) {

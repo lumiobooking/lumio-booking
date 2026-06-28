@@ -59,6 +59,7 @@ enum AppointmentStatus {
   ACCEPTED // Staff accepted the assignment
   REJECTED // Staff rejected; needs re-assignment
   CONFIRMED // Confirmed (e.g. after payment / admin confirm)
+  ARRIVED // Customer has checked in / is in the salon
   CANCELLED // Cancelled by customer or salon
   COMPLETED // Service delivered
   NO_SHOW // Customer did not show up
@@ -784,6 +785,7 @@ model Appointment {
   acceptedAt  DateTime?
   rejectedAt  DateTime?
   confirmedAt DateTime?
+  arrivedAt   DateTime? // customer checked in at the salon
   cancelledAt DateTime?
   completedAt DateTime?
 

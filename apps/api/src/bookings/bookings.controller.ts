@@ -109,6 +109,13 @@ export class BookingsController {
   }
 
   @Roles(UserRole.SALON_ADMIN)
+  @Post(':id/arrive')
+  @HttpCode(200)
+  arrive(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.bookings.arrive(user, id);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
   @Post(':id/complete')
   @HttpCode(200)
   complete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

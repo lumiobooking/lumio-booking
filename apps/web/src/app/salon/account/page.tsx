@@ -63,7 +63,7 @@ function Inner() {
         </label>
 
         <div style={{ borderTop: '1px solid #334155', margin: '6px 0 12px', paddingTop: 12, fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>Change password (optional)</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <label><span style={ui.label}>New password</span>
             <input style={ui.input} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="min 8 chars — leave blank to keep" /></label>
           <label><span style={ui.label}>Confirm new password</span>

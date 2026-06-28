@@ -141,7 +141,10 @@ function Inner() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, background: '#334155', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' }}>
+      {/* On phones the 7-day month is too narrow to read, so let it scroll
+          horizontally at a legible width (swipe across the week). */}
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, minWidth: 600, background: '#334155', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' }}>
         {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
           <div key={dow} style={{ background: '#1e293b', textAlign: 'center', padding: '8px 0', fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{DAY_LABEL[lang][dow]}</div>
         ))}
@@ -177,6 +180,7 @@ function Inner() {
             </div>
           );
         })}
+      </div>
       </div>
 
       {selected && (

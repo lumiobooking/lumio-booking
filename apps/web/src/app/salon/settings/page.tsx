@@ -225,7 +225,7 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
   const [f, setF] = useState(data.company);
   return (
     <Card title={t('se.co.title')} desc={t('se.co.desc')}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <Field label={t('se.co.name')}><input style={ui.input} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label={t('se.co.tz')}><TimezonePicker value={f.timezone} onChange={(tz) => setF({ ...f, timezone: tz })} selectStyle={ui.input} /></Field>
         <Field label={t('se.co.email')}><input style={ui.input} value={f.contactEmail ?? ''} onChange={(e) => setF({ ...f, contactEmail: e.target.value })} /></Field>
@@ -305,7 +305,7 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
   const [f, setF] = useState(data.booking);
   return (
     <Card title={t('se.ru.title')} desc={t('se.ru.desc')}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <Field label={t('se.ru.slotStep')}>
           <select style={ui.input} value={f.slotStepMinutes} onChange={(e) => setF({ ...f, slotStepMinutes: Number(e.target.value) })}>
             {[10, 15, 20, 30, 60].map((m) => <option key={m} value={m}>{m} {t('se.ru.min')}</option>)}
@@ -444,7 +444,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
                   <Toggle on={e.enabled} onChange={(v) => upd(g.id, { enabled: v })} label="" />
                 </div>
                 {e.enabled && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 12 }}>
                     <Field label={g.apiLabel}>
                       <input style={ui.input} value={e.apiKey} onChange={(ev) => upd(g.id, { apiKey: ev.target.value })} placeholder={g.apiLabel} />
                     </Field>
@@ -588,7 +588,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
   return (
     <Card title={t('se.dep.title')} desc={t('se.dep.desc')}>
       <Toggle on={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={t('se.dep.require')} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
         <Field label={t('se.dep.type')}>
           <select style={ui.input} value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as 'percent' | 'fixed' })}>
             <option value="percent">{t('se.dep.percentOpt')}</option>
@@ -625,7 +625,7 @@ function RemindersSection({ data, onSave }: { data: SettingsData; onSave: SaveFn
   return (
     <Card title={t('se.rem.title')} desc={t('se.rem.desc')}>
       <Toggle on={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={t('se.rem.send')} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
         <Field label={t('se.rem.first')}><input style={ui.input} type="number" min={1} max={168} value={f.hoursBefore1} onChange={(e) => setF({ ...f, hoursBefore1: parseInt(e.target.value, 10) || 0 })} /></Field>
         <Field label={t('se.rem.second')}><input style={ui.input} type="number" min={0} max={48} value={f.hoursBefore2} onChange={(e) => setF({ ...f, hoursBefore2: parseInt(e.target.value, 10) || 0 })} /></Field>
       </div>
@@ -707,14 +707,14 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   return (
     <Card title={t('se.no.title')} desc={t('se.no.desc')}>
       <div style={{ marginTop: 0, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.no.whenBooked')}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginTop: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 4, marginTop: 6 }}>
         <Toggle on={f.emailCustomerOnBooking} onChange={(v) => setF({ ...f, emailCustomerOnBooking: v })} label={t('se.no.emailCustomer')} />
         <Toggle on={f.emailAdminOnBooking} onChange={(v) => setF({ ...f, emailAdminOnBooking: v })} label={t('se.no.emailAdmin')} />
         <Toggle on={f.smsCustomerOnBooking} onChange={(v) => setF({ ...f, smsCustomerOnBooking: v })} label={t('se.no.smsCustomer')} />
         <Toggle on={f.smsAdminOnBooking} onChange={(v) => setF({ ...f, smsAdminOnBooking: v })} label={t('se.no.smsAdmin')} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12 }}>
         <Field label={t('se.no.adminEmail')}><input style={ui.input} value={f.adminEmail} onChange={(e) => setF({ ...f, adminEmail: e.target.value })} placeholder="owner@salon.com" /></Field>
         <Field label={t('se.no.adminPhone')}><input style={ui.input} value={f.adminPhone} onChange={(e) => setF({ ...f, adminPhone: e.target.value })} placeholder="+1…" /></Field>
       </div>
@@ -775,7 +775,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           </div>
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 10 }}>
         <Field label={t('se.no.senderName')}><input style={ui.input} value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} placeholder={t('se.no.senderNamePh')} /></Field>
         <Field label={t('se.no.senderEmail')}><input style={ui.input} value={f.senderEmail} onChange={(e) => setF({ ...f, senderEmail: e.target.value })} placeholder="bookings@yoursalon.com" /></Field>
       </div>
@@ -805,7 +805,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.gmailHelp')}
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
         <Field label={t('se.no.clientId')}><input style={ui.input} value={gmail.clientId} onChange={(e) => setGmail({ ...gmail, clientId: e.target.value })} placeholder="…apps.googleusercontent.com" /></Field>
         <Field label={t('se.no.clientSecret')}><input style={ui.input} type="password" value={gmail.clientSecret} onChange={(e) => setGmail({ ...gmail, clientSecret: e.target.value })} placeholder={n.gmail?.connected ? t('se.no.saved') : 'GOCSPX-…'} /></Field>
       </div>
@@ -846,7 +846,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       >
         {t('se.no.smtpPreset')}
       </button>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
         <Field label={t('se.no.smtpHost')}><input style={ui.input} value={smtp.host} onChange={(e) => setSmtp({ ...smtp, host: e.target.value })} placeholder="smtp.gmail.com" /></Field>
         <Field label={t('se.no.smtpPort')}><input style={ui.input} type="number" value={smtp.port} onChange={(e) => setSmtp({ ...smtp, port: Number(e.target.value) })} placeholder="465" /></Field>
         <Field label={t('se.no.smtpUser')}><input style={ui.input} value={smtp.user} onChange={(e) => setSmtp({ ...smtp, user: e.target.value })} placeholder="you@yoursalon.com" /></Field>
@@ -881,7 +881,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.twilioHelp')}
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         <Field label={t('se.no.accountSid')}><input style={ui.input} value={tw.accountSid} onChange={(e) => setTw({ ...tw, accountSid: e.target.value })} placeholder="AC…" /></Field>
         <Field label={t('se.no.authToken')}><input style={ui.input} type="password" value={tw.authToken} onChange={(e) => setTw({ ...tw, authToken: e.target.value })} placeholder={n.twilio.connected ? t('se.no.saved') : t('se.no.authToken')} /></Field>
         <Field label={t('se.no.fromNumber')}><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
@@ -898,7 +898,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
   const [f, setF] = useState(data.branding);
   return (
     <Card title={t('se.br.title')} desc={t('se.br.desc')}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
         <Field label={t('se.br.accent')}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="color" value={f.accentColor} onChange={(e) => setF({ ...f, accentColor: e.target.value })} style={{ width: 44, height: 38, border: 'none', background: 'transparent', cursor: 'pointer' }} />

@@ -415,7 +415,7 @@ function CreateBookingForm({
 
   return (
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <label>
           <span style={ui.label}>{t('bk.fService')}</span>
           <select style={ui.input} value={form.serviceId} onChange={(e) => up('serviceId', e.target.value)} required>

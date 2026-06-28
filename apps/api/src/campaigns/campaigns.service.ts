@@ -198,15 +198,15 @@ export class CampaignsService {
     const lower = new Date(now - (daysSince + 1) * DAY); // …and after this (a 1-day band, so each customer fires once)
     const grouped = await this.prisma.appointment.groupBy({
       by: ['customerId'],
-      where: { tenantId, status: AppointmentStatus.COMPLETED, customerId: { not: null } },
+      where: { tenantId, status: AppointmentStatus.COMPLETED },
       _max: { startTime: true },
     });
     const ids = grouped
       .filter((g) => {
         const last = g._max?.startTime;
-        return !!g.customerId && !!last && last >= lower && last < upper;
+        return !!last && last >= lower && last < upper;
       })
-      .map((g) => g.customerId as string);
+      .map((g) => g.customerId);
     if (ids.length === 0) return [];
     // Drop anyone with a later visit or an upcoming booking (they're already returning).
     const later = await this.prisma.appointment.findMany({

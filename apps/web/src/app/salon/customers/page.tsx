@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { DateRangeBar, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Customer {
@@ -52,6 +53,7 @@ function Inner() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
 
   async function remove(c: Customer) {
     const name = `${c.firstName} ${c.lastName ?? ''}`;
@@ -97,7 +99,7 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {loading ? (
+      {loading && customers.length === 0 ? (
         <p style={{ color: '#94a3b8' }}>{t('cu.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>

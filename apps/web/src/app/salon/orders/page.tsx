@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface OrderItem {
@@ -63,6 +64,7 @@ function Inner() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
 
   const staffName = (id: string | null) => {
     if (!id) return '—';
@@ -149,7 +151,7 @@ function Inner() {
         <DateRangeBar range={range} />
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{t('or.loading')}</p> : (
+      {loading && orders.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('or.loading')}</p> : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>

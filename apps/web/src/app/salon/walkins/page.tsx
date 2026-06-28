@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 
 interface WalkIn {
   id: string; customerName: string | null; phone: string | null; note: string | null;
@@ -51,7 +52,8 @@ function Inner() {
     finally { setLoading(false); }
   }, [token]);
 
-  useEffect(() => { load(); const i = setInterval(load, 20000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load, 15000);
 
   async function add(e: FormEvent) {
     e.preventDefault(); setError(null);
@@ -75,7 +77,7 @@ function Inner() {
     catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
 
-  if (loading) return <section><h2 style={{ fontSize: 18 }}>{t('wi.title')}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
+  if (loading && !board) return <section><h2 style={{ fontSize: 18 }}>{t('wi.title')}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
 
   const staff = board?.staff ?? [];
   const nextUp = board?.nextUpStaffId ?? null;

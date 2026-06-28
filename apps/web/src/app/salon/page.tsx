@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { ui, formatPrice } from '../../lib/ui';
 import { useLang, tr } from '../../lib/i18n';
+import { useLiveRefresh } from '../../lib/useLiveRefresh';
 
 interface SeriesPoint { date: string; bookings: number; revenueCents: number }
 interface Ranked { name: string; bookings: number; revenueCents: number }
@@ -86,6 +87,7 @@ function Inner() {
   }, [token, from, to]);
 
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load, 30000);
 
   const applyPreset = (days: number) => {
     setFrom(isoDay(new Date(Date.now() - (days - 1) * 86400000)));
@@ -126,7 +128,7 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {loading || !data ? (
+      {!data ? (
         <p style={{ color: '#94a3b8', marginTop: 24 }}>{t('db.loading')}</p>
       ) : (
         <>

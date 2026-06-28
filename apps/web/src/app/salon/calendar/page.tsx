@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
+import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -17,9 +18,10 @@ interface Booking {
   currency: string;
   notes: string | null;
   addons?: Addon[];
-  customer: { firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
-  service: { name: string; durationMinutes: number } | null;
-  assignedStaff: { firstName: string; lastName: string | null } | null;
+  payments?: { status: string; amountCents: number }[];
+  customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
+  service: { id: string; name: string; durationMinutes: number } | null;
+  assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
 }
 
 // Six operational buckets the front desk actually tracks. The 8 raw enum values
@@ -75,6 +77,7 @@ function Inner() {
   }, [token, view]);
 
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load, 15000); // new bookings appear within ~15s, no reload needed
 
   const days = useMemo(() => buildMonth(view), [view]);
   const byDay = useMemo(() => {
@@ -196,6 +199,8 @@ function BookingDetail({ booking: b, onClose, onAction }: {
   const tech = b.assignedStaff ? `${b.assignedStaff.firstName} ${b.assignedStaff.lastName ?? ''}`.trim() : t('cal.unassigned');
   const canArrive = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'].includes(b.status);
   const active = canArrive || b.status === 'ARRIVED';
+  const paidCents = (b.payments ?? []).filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
+  const posUrl = `/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(fullName)}`;
 
   return (
     <>
@@ -220,6 +225,12 @@ function BookingDetail({ booking: b, onClose, onAction }: {
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         <DetailRow label={t('cal.dTechnician')} value={tech} />
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
+          <span style={{ color: '#94a3b8' }}>{t('cal.dPaid')}</span>
+          <span style={{ textAlign: 'right', fontWeight: 600, color: paidCents > 0 ? '#22c55e' : '#f59e0b' }}>
+            {paidCents > 0 ? `✓ ${formatPrice(paidCents, b.currency)}` : t('cal.unpaid')}
+          </span>
+        </div>
         {b.addons && b.addons.some((a) => a.kind === 'service') && (
           <DetailRow label={t('cal.dAlsoBooked')} value={b.addons.filter((a) => a.kind === 'service').map((a) => a.name).join(', ')} />
         )}
@@ -236,6 +247,7 @@ function BookingDetail({ booking: b, onClose, onAction }: {
 
         {active && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
+            <a href={posUrl} style={{ ...ui.primaryBtn, background: '#6366f1', width: '100%', padding: 12, textAlign: 'center', textDecoration: 'none', display: 'block', boxSizing: 'border-box' }}>{t('cal.checkout')}</a>
             {canArrive && (
               <button onClick={() => onAction(b.id, 'arrive')} style={{ ...ui.primaryBtn, background: '#10b981', width: '100%', padding: '11px' }}>{t('cal.arrive')}</button>
             )}

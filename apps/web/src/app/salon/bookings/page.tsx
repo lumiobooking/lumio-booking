@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface NamedRef {
@@ -111,6 +112,7 @@ function BookingsInner() {
   useEffect(() => {
     load();
   }, [load]);
+  useLiveRefresh(load);
 
   async function action(id: string, path: string, body?: unknown) {
     try {
@@ -211,7 +213,7 @@ function BookingsInner() {
         />
       )}
 
-      {loading ? (
+      {loading && bookings.length === 0 ? (
         <p style={{ color: '#94a3b8' }}>{t('bk.loading')}</p>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>

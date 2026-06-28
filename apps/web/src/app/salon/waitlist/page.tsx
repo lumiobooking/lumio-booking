@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface Entry {
@@ -37,6 +38,7 @@ function Inner() {
     finally { setLoading(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
 
   async function notify(e: Entry) {
     if (!e.phone && !e.email) { setError(t('wl.noContact')); return; }
@@ -64,7 +66,7 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{t('wl.loading')}</p> : (
+      {loading && rows.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('wl.loading')}</p> : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>

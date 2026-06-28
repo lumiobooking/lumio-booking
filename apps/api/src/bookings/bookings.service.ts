@@ -34,6 +34,8 @@ const BOOKING_INCLUDE = {
   service: { select: { id: true, name: true, durationMinutes: true } },
   assignedStaff: { select: { id: true, firstName: true, lastName: true } },
   preferredStaff: { select: { id: true, firstName: true, lastName: true } },
+  // Lightweight payment summary so the calendar/list can show "paid / unpaid".
+  payments: { select: { status: true, amountCents: true } },
 } satisfies Prisma.AppointmentInclude;
 
 // Minimal shape of the Prisma transaction client we rely on (keeps the file

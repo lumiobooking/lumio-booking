@@ -202,7 +202,10 @@ export class CampaignsService {
       _max: { startTime: true },
     });
     const ids = grouped
-      .filter((g) => g.customerId && g._max.startTime && g._max.startTime >= lower && g._max.startTime < upper)
+      .filter((g) => {
+        const last = g._max?.startTime;
+        return !!g.customerId && !!last && last >= lower && last < upper;
+      })
       .map((g) => g.customerId as string);
     if (ids.length === 0) return [];
     // Drop anyone with a later visit or an upcoming booking (they're already returning).

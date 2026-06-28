@@ -307,11 +307,9 @@ model User {
   @@map("users")
 }
 
-/**
- * A chain / owner group: links multiple Tenant "branches" under one owner account.
- * Each branch remains a fully isolated tenant — this layer only lets an owner (and
- * granted managers) switch between branches and view consolidated reporting.
- */
+// A chain / owner group: links multiple Tenant "branches" under one owner account.
+// Each branch remains a fully isolated tenant — this layer only lets an owner (and
+// granted managers) switch between branches and view consolidated reporting.
 model AccountGroup {
   id        String   @id @default(uuid())
   name      String
@@ -324,10 +322,8 @@ model AccountGroup {
   @@map("account_groups")
 }
 
-/**
- * Grants a (manager) user access to an additional branch beyond their home tenant.
- * Owners get all branches in their group implicitly; managers are explicit here.
- */
+// Grants a (manager) user access to an additional branch beyond their home tenant.
+// Owners get all branches in their group implicitly; managers are explicit here.
 model BranchMembership {
   id        String   @id @default(uuid())
   userId    String

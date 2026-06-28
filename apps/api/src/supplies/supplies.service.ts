@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { StockMoveReason } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
@@ -71,6 +72,48 @@ export class SuppliesService {
     const next = Math.max(0, item.stockQty + Math.round(delta || 0));
     await this.prisma.supplyItem.updateMany({ where: { id, tenantId }, data: { stockQty: next } });
     return this.getOne(tenantId, id);
+  }
+
+  /**
+   * Record a stock movement (sổ nhập/xuất kho): logs why stock moved and updates
+   * the running quantity in one transaction. delta is signed (+in / −out).
+   */
+  async move(
+    user: AuthenticatedUser,
+    id: string,
+    dto: { delta: number; reason: StockMoveReason; note?: string; unitCostCents?: number },
+  ) {
+    const tenantId = this.tid(user);
+    const item = await this.ensure(tenantId, id);
+    const delta = Math.round(dto.delta || 0);
+    if (!delta) throw new BadRequestException('Quantity must be a non-zero number.');
+    const next = Math.max(0, item.stockQty + delta);
+    await this.prisma.$transaction([
+      this.prisma.supplyItem.updateMany({ where: { id, tenantId }, data: { stockQty: next } }),
+      this.prisma.supplyMovement.create({
+        data: {
+          tenantId,
+          supplyItemId: id,
+          delta,
+          reason: dto.reason,
+          note: dto.note?.trim().slice(0, 300) || null,
+          unitCostCents: dto.unitCostCents != null && dto.unitCostCents >= 0 ? Math.round(dto.unitCostCents) : null,
+          createdById: user.userId,
+        },
+      }),
+    ]);
+    return this.getOne(tenantId, id);
+  }
+
+  /** Recent movement history for one supply item (newest first). */
+  async movements(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tid(user);
+    await this.ensure(tenantId, id);
+    return this.prisma.supplyMovement.findMany({
+      where: { tenantId, supplyItemId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
   }
 
   async remove(user: AuthenticatedUser, id: string) {

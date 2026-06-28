@@ -220,6 +220,7 @@ model Tenant {
   waitlistEntries   WaitlistEntry[]
   walkIns           WalkIn[]
   supplyItems       SupplyItem[]
+  supplyMovements   SupplyMovement[]
   products          Product[]
   orders            Order[]
   orderItems        OrderItem[]
@@ -657,8 +658,40 @@ model SupplyItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  movements SupplyMovement[]
+
   @@index([tenantId])
   @@map("supply_items")
+}
+
+/// Why stock moved in/out — drives the inventory in/out log ("sổ nhập/xuất kho").
+enum StockMoveReason {
+  PURCHASE // received / bought in (IN)
+  USE // consumed for services (OUT)
+  DAMAGE // damaged / wasted / lost (OUT)
+  RETURN // returned to supplier (OUT)
+  ADJUST // stock-count correction (IN or OUT)
+}
+
+/// One stock movement for a supply item. `delta` is signed (+in / -out). The
+/// running stockQty on SupplyItem is derived by applying these.
+model SupplyMovement {
+  id           String @id @default(uuid())
+  tenantId     String
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplyItemId String
+  supplyItem   SupplyItem @relation(fields: [supplyItemId], references: [id], onDelete: Cascade)
+
+  delta         Int // signed quantity: positive = stock in, negative = stock out
+  reason        StockMoveReason
+  note          String?
+  unitCostCents Int? // optional, for PURCHASE (cost per unit)
+  createdById   String? // the staff/admin who recorded it
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, supplyItemId])
+  @@map("supply_movements")
 }
 
 /// Weekly recurring working hours for a staff member.

@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { StockMoveReason, UserRole } from '@prisma/client';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -30,6 +30,13 @@ class AdjustDto {
   @IsInt() @Min(-1_000_000) @Max(1_000_000) delta!: number;
 }
 
+class MoveDto {
+  @IsInt() @Min(-1_000_000) @Max(1_000_000) delta!: number; // signed: +in / −out
+  @IsEnum(StockMoveReason) reason!: StockMoveReason;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
+  @IsOptional() @IsInt() @Min(0) unitCostCents?: number;
+}
+
 /** Back-of-house supplies inventory (polish, tips, powder…) — Salon Admin only. */
 @Roles(UserRole.SALON_ADMIN)
 @Controller('supplies')
@@ -54,6 +61,16 @@ export class SuppliesController {
   @Patch(':id/adjust')
   adjust(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AdjustDto) {
     return this.supplies.adjust(user, id, dto.delta);
+  }
+
+  @Post(':id/move')
+  move(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: MoveDto) {
+    return this.supplies.move(user, id, dto);
+  }
+
+  @Get(':id/movements')
+  movements(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.supplies.movements(user, id);
   }
 
   @Delete(':id')

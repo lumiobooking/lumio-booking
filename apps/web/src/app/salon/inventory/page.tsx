@@ -28,6 +28,8 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [moveFor, setMoveFor] = useState<{ id: string; dir: 'IN' | 'OUT' } | null>(null);
+  const [histFor, setHistFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -39,7 +41,7 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
 
   async function adjust(id: string, delta: number) {
-    try { await apiFetch(`/supplies/${id}/adjust`, { method: 'PATCH', token, body: { delta } }); await load(); }
+    try { await apiFetch(`/supplies/${id}/move`, { method: 'POST', token, body: { delta, reason: 'ADJUST' } }); await load(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Failed'); }
   }
   async function remove(id: string) {
@@ -110,7 +112,10 @@ function Inner() {
                     <td style={{ ...ui.td, color: '#94a3b8' }}>{i.costCents != null ? formatPrice(i.costCents) : '—'}</td>
                     <td style={{ ...ui.td, color: '#94a3b8' }}>{i.supplier || '—'}</td>
                     <td style={ui.td}>
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
+                        <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
+                        <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? '#475569' : '#334155' }}>{t('iv.history')}</button>
                         <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? '#475569' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
                         <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                       </div>
@@ -119,6 +124,16 @@ function Inner() {
                   {editId === i.id && (
                     <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
                       <SupplyForm token={token!} item={i} onDone={async () => { setEditId(null); await load(); }} />
+                    </td></tr>
+                  )}
+                  {moveFor?.id === i.id && (
+                    <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                      <MovePanel token={token!} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} />
+                    </td></tr>
+                  )}
+                  {histFor === i.id && (
+                    <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                      <HistoryPanel token={token!} item={i} />
                     </td></tr>
                   )}
                 </Fragment>
@@ -184,3 +199,91 @@ function SupplyForm({ token, item, onDone }: { token: string; item?: Supply; onD
 const qtyBtn: React.CSSProperties = {
   width: 28, height: 28, borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 16, lineHeight: 1,
 };
+
+interface Movement { id: string; delta: number; reason: string; note: string | null; unitCostCents: number | null; createdAt: string }
+const REASON_KEY: Record<string, string> = { PURCHASE: 'iv.rPurchase', USE: 'iv.rUse', DAMAGE: 'iv.rDamage', RETURN: 'iv.rReturn', ADJUST: 'iv.rAdjust' };
+
+/** Record a documented stock-in (purchase) or stock-out (use/damage/return). */
+function MovePanel({ token, item, dir, onDone, onCancel }: { token: string; item: Supply; dir: 'IN' | 'OUT'; onDone: () => void; onCancel: () => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const reasons = dir === 'IN'
+    ? [{ v: 'PURCHASE', k: 'iv.rPurchase' }, { v: 'ADJUST', k: 'iv.rAdjust' }]
+    : [{ v: 'USE', k: 'iv.rUse' }, { v: 'DAMAGE', k: 'iv.rDamage' }, { v: 'RETURN', k: 'iv.rReturn' }, { v: 'ADJUST', k: 'iv.rAdjust' }];
+  const [qty, setQty] = useState('1');
+  const [reason, setReason] = useState(reasons[0].v);
+  const [note, setNote] = useState('');
+  const [cost, setCost] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const n = Math.abs(parseInt(qty, 10) || 0);
+    if (!n) { setErr(t('iv.qtyErr')); return; }
+    setBusy(true); setErr(null);
+    try {
+      await apiFetch(`/supplies/${item.id}/move`, {
+        method: 'POST', token,
+        body: { delta: dir === 'IN' ? n : -n, reason, note: note.trim() || undefined, unitCostCents: dir === 'IN' && cost ? Math.round(parseFloat(cost) * 100) : undefined },
+      });
+      onDone();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } finally { setBusy(false); }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: dir === 'IN' ? '#22c55e' : '#f59e0b', marginBottom: 10 }}>
+        {dir === 'IN' ? t('iv.stockIn') : t('iv.stockOut')} — {item.name} <span style={{ color: '#64748b', fontWeight: 400 }}>({t('iv.mNow')}: {item.stockQty} {item.unit})</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mQty')} ({item.unit})</span>
+          <input style={ui.input} type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} autoFocus /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mReason')}</span>
+          <select style={ui.input} value={reason} onChange={(e) => setReason(e.target.value)}>
+            {reasons.map((r) => <option key={r.v} value={r.v}>{t(r.k)}</option>)}
+          </select></label>
+        {dir === 'IN' && (
+          <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mUnitCost')}</span>
+            <input style={ui.input} type="number" min={0} step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} /></label>
+        )}
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mNote')}</span>
+          <input style={ui.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('iv.mNotePh')} /></label>
+      </div>
+      {err && <div style={{ ...ui.banner, marginTop: 10 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, background: dir === 'IN' ? '#16a34a' : '#d97706' }}>{busy ? t('iv.saving') : t('iv.mConfirm')}</button>
+        <button type="button" onClick={onCancel} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>{t('iv.close')}</button>
+      </div>
+    </form>
+  );
+}
+
+/** Movement history (newest first) for one supply item. */
+function HistoryPanel({ token, item }: { token: string; item: Supply }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [rows, setRows] = useState<Movement[] | null>(null);
+  useEffect(() => {
+    apiFetch<Movement[]>(`/supplies/${item.id}/movements`, { token }).then(setRows).catch(() => setRows([]));
+  }, [item.id, token]);
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>{t('iv.history')} — {item.name}</div>
+      {rows === null ? <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('iv.loading')}</p>
+        : rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>{t('iv.noHistory')}</p>
+        : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 280, overflowY: 'auto' }}>
+            {rows.map((m) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#1e293b', borderRadius: 6 }}>
+                <span style={{ width: 56, fontWeight: 700, textAlign: 'right', color: m.delta >= 0 ? '#22c55e' : '#f59e0b' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
+                <span style={{ color: '#cbd5e1', minWidth: 120 }}>{t(REASON_KEY[m.reason] ?? 'iv.rAdjust')}</span>
+                <span style={{ color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.note || ''}</span>
+                <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(m.createdAt).toLocaleString('en-US')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+    </div>
+  );
+}

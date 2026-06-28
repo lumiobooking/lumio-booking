@@ -56,6 +56,12 @@ export class UpdateStaffDto {
   @Max(100)
   commissionPercent?: number;
 
+  // Optional fixed base pay per pay period (cents). Added to commission + tips.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  baseCents?: number;
+
   // Booking-list priority: 0 = auto/fair ordering; higher = pinned to the top.
   @IsOptional()
   @IsInt()

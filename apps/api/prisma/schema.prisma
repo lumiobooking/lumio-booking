@@ -457,6 +457,10 @@ model StaffMember {
   // POS service commission rate (percent of service revenue this tech earns).
   commissionPercent Int @default(0)
 
+  // Optional fixed base pay per pay period (cents). Added on top of commission +
+  // tips when running payroll. 0 = commission-only (the default).
+  baseCents Int @default(0)
+
   // Review-reward program: lifetime points balance.
   rewardPoints Int @default(0)
 

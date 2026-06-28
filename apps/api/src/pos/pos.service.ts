@@ -355,11 +355,11 @@ export class PosService {
     });
     const staff = await this.prisma.staffMember.findMany({
       where: { tenantId },
-      select: { id: true, firstName: true, lastName: true, commissionPercent: true },
+      select: { id: true, firstName: true, lastName: true, commissionPercent: true, baseCents: true },
     });
     const staffMap = new Map(staff.map((s) => [s.id, s]));
 
-    type Row = { staffId: string; name: string; commissionPercent: number; serviceCount: number; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; totalPayCents: number };
+    type Row = { staffId: string; name: string; commissionPercent: number; serviceCount: number; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; totalPayCents: number };
     const rows = new Map<string, Row>();
     const ensure = (id: string | null) => {
       const key = id ?? 'unassigned';
@@ -374,6 +374,7 @@ export class PosService {
           productRevenueCents: 0,
           tipsCents: 0,
           commissionCents: 0,
+          baseCents: 0,
           totalPayCents: 0,
         });
       }
@@ -424,9 +425,22 @@ export class PosService {
       totalPay += row.totalPayCents;
     }
 
+    // Fixed base pay per period: every tech with a base gets it (even with no
+    // sales this period). Total pay = base + commission + tips.
+    let totalBase = 0;
+    for (const s of staff) {
+      const base = s.baseCents ?? 0;
+      if (base <= 0) continue;
+      const row = ensure(s.id);
+      row.baseCents = base;
+      row.totalPayCents += base;
+      totalBase += base;
+      totalPay += base;
+    }
+
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
-      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, payCents: totalPay, orders: orders.length + extraTxns },
+      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, baseCents: totalBase, payCents: totalPay, orders: orders.length + extraTxns },
       staff: [...rows.values()].sort(
         (a, b) =>
           b.serviceRevenueCents + b.productRevenueCents - (a.serviceRevenueCents + a.productRevenueCents),

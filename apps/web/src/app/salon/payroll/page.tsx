@@ -10,10 +10,10 @@ import { useLang, tr } from '../../../lib/i18n';
 
 interface Row {
   staffId: string; name: string; commissionPercent: number; serviceCount: number;
-  serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; totalPayCents: number;
+  serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; totalPayCents: number;
 }
 interface Report {
-  totals: { revenueCents: number; tipsCents: number; commissionCents: number; payCents: number; orders: number };
+  totals: { revenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; payCents: number; orders: number };
   staff: Row[];
 }
 
@@ -52,9 +52,9 @@ function Inner() {
     if (!data) return;
     const dollars = (c: number) => (c / 100).toFixed(2);
     const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-    const header = ['Technician', '# Services', 'Service Revenue', 'Commission %', 'Commission', 'Tips', 'Total Pay'];
-    const body = techs.map((r) => [r.name, String(r.serviceCount), dollars(r.serviceRevenueCents), String(r.commissionPercent), dollars(r.commissionCents), dollars(r.tipsCents), dollars(r.totalPayCents)]);
-    const totals = [t('pr.csvTotal'), '', dollars(data.totals.revenueCents), '', dollars(data.totals.commissionCents), dollars(data.totals.tipsCents), dollars(data.totals.payCents)];
+    const header = ['Technician', '# Services', 'Service Revenue', 'Commission %', 'Commission', 'Base Pay', 'Tips', 'Total Pay'];
+    const body = techs.map((r) => [r.name, String(r.serviceCount), dollars(r.serviceRevenueCents), String(r.commissionPercent), dollars(r.commissionCents), dollars(r.baseCents), dollars(r.tipsCents), dollars(r.totalPayCents)]);
+    const totals = [t('pr.csvTotal'), '', dollars(data.totals.revenueCents), '', dollars(data.totals.commissionCents), dollars(data.totals.baseCents), dollars(data.totals.tipsCents), dollars(data.totals.payCents)];
     const period = `${t('pr.csvPeriod')}: ${range.from || 'all'} → ${range.to || 'today'}`;
     const lines = [[period], [], header, ...body, totals].map((cols) => cols.map((c) => esc(String(c))).join(',')).join('\r\n');
     const blob = new Blob(['﻿' + lines], { type: 'text/csv;charset=utf-8' }); // BOM so Excel reads UTF-8
@@ -98,6 +98,7 @@ function Inner() {
                 <th style={ui.th}>{t('pr.cCount')}</th>
                 <th style={ui.th}>{t('pr.cRevenue')}</th>
                 <th style={ui.th}>{t('pr.cCommission')}</th>
+                <th style={ui.th}>{t('pr.cBase')}</th>
                 <th style={ui.th}>{t('pr.cTips')}</th>
                 <th style={{ ...ui.th, color: '#22c55e' }}>{t('pr.cTotal')}</th>
               </tr></thead>
@@ -109,6 +110,7 @@ function Inner() {
                     <td style={ui.td}>{r.serviceCount}</td>
                     <td style={ui.td}>{formatPrice(r.serviceRevenueCents)}</td>
                     <td style={{ ...ui.td, color: '#06b6d4' }}>{formatPrice(r.commissionCents)} <span style={{ color: '#64748b', fontSize: 12 }}>({r.commissionPercent}%)</span></td>
+                    <td style={{ ...ui.td, color: '#cbd5e1' }}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</td>
                     <td style={{ ...ui.td, color: '#a855f7' }}>{formatPrice(r.tipsCents)}</td>
                     <td style={{ ...ui.td, fontWeight: 800, color: '#22c55e', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
                   </tr>

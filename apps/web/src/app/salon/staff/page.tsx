@@ -24,6 +24,7 @@ interface StaffMember {
   isActive: boolean;
   performanceScore: number;
   commissionPercent?: number;
+  baseCents?: number;
   bookingPriority?: number;
   staffServices: { serviceId: string }[];
   workingHours: { id: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
@@ -364,6 +365,7 @@ function StaffEditPanel({
     avatarUrl: member.avatarUrl ?? '',
     isActive: member.isActive,
     commissionPercent: String(member.commissionPercent ?? 0),
+    basePay: String(((member.baseCents ?? 0) / 100) || 0),
     bookingPriority: String(member.bookingPriority ?? 0),
   });
   const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
@@ -405,6 +407,7 @@ function StaffEditPanel({
           avatarUrl: form.avatarUrl || undefined,
           isActive: form.isActive,
           commissionPercent: Math.max(0, Math.min(100, parseInt(form.commissionPercent, 10) || 0)),
+          baseCents: Math.max(0, Math.round((parseFloat(form.basePay) || 0) * 100)),
           bookingPriority: Math.max(0, parseInt(form.bookingPriority, 10) || 0),
           serviceIds: skillIds,
           workingHours,
@@ -443,6 +446,8 @@ function StaffEditPanel({
           <input style={{ ...ui.input, marginTop: 'auto' }} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.commission')}</span>
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.basePay')}</span>
+          <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} step="0.01" value={form.basePay} onChange={(e) => up('basePay', e.target.value)} /></label>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.priority')}</span>
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} value={form.bookingPriority} onChange={(e) => up('bookingPriority', e.target.value)} /></label>
         <label style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>

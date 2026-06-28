@@ -108,24 +108,6 @@ function BookingsInner() {
     }
   }
 
-  async function takePayment(appointmentId: string, type: 'PAY_ONLINE' | 'PAY_LATER') {
-    try {
-      await apiFetch('/payments', { method: 'POST', token, body: { appointmentId, type } });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Payment failed');
-    }
-  }
-
-  async function markPaid(paymentId: string) {
-    try {
-      await apiFetch(`/payments/${paymentId}/mark-paid`, { method: 'POST', token });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
-    }
-  }
-
   useEffect(() => {
     load();
   }, [load]);
@@ -280,11 +262,7 @@ function BookingsInner() {
                     </span>
                   </td>
                   <td style={ui.td}>
-                    <PaymentCell
-                      payment={paymentByBooking.get(b.id)}
-                      onPay={(type) => takePayment(b.id, type)}
-                      onMarkPaid={(pid) => markPaid(pid)}
-                    />
+                    <PaymentCell payment={paymentByBooking.get(b.id)} />
                   </td>
                   <td style={ui.td}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', maxWidth: 360 }}>
@@ -489,51 +467,18 @@ function CreateBookingForm({
   );
 }
 
-function PaymentCell({
-  payment,
-  onPay,
-  onMarkPaid,
-}: {
-  payment?: Payment;
-  onPay: (type: 'PAY_ONLINE' | 'PAY_LATER') => void;
-  onMarkPaid: (paymentId: string) => void;
-}) {
+// Read-only payment status. Money is collected only through POS / Checkout
+// (single source of truth) so a booking can never be paid twice — once here
+// and once in the register. If unpaid, we point staff to the Checkout button.
+function PaymentCell({ payment }: { payment?: Payment }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   if (!payment) {
-    return (
-      <div style={{ display: 'flex', gap: 4 }}>
-        <button onClick={() => onPay('PAY_ONLINE')} style={tinyBtn} title={t('bk.chargeOnlineHint')}>
-          {t('bk.payOnline')}
-        </button>
-        <button onClick={() => onPay('PAY_LATER')} style={tinyBtn} title={t('bk.payAtSalonHint')}>
-          {t('bk.payLater')}
-        </button>
-      </div>
-    );
+    return <span style={{ color: '#64748b', fontSize: 12 }}>{t('bk.collectAtCheckout')}</span>;
   }
   const color = payment.status === 'PAID' ? '#22c55e' : payment.status === 'FAILED' ? '#ef4444' : '#eab308';
-  return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      <span style={{ color, fontSize: 12, fontWeight: 600 }}>{payment.status}</span>
-      {payment.status === 'PENDING' && (
-        <button onClick={() => onMarkPaid(payment.id)} style={tinyBtn}>
-          {t('bk.markPaid')}
-        </button>
-      )}
-    </div>
-  );
+  return <span style={{ color, fontSize: 12, fontWeight: 600 }}>{payment.status}</span>;
 }
-
-const tinyBtn: React.CSSProperties = {
-  padding: '4px 8px',
-  borderRadius: 6,
-  border: '1px solid #475569',
-  background: 'transparent',
-  color: '#cbd5e1',
-  fontSize: 12,
-  cursor: 'pointer',
-};
 
 // Uniform compact action-button styles so the Actions cell stays tidy.
 function actBtnOutline(color: string): React.CSSProperties {

@@ -60,6 +60,8 @@ export class TenderDto {
 export class CreateOrderDto {
   @IsOptional() @IsString() customerId?: string;
   @IsOptional() @IsString() appointmentId?: string;
+  // When checking out a walk-in, its id — the walk-in is marked Done on payment.
+  @IsOptional() @IsString() walkInId?: string;
   @IsOptional() @IsInt() @Min(0) discountCents?: number;
   @IsOptional() @IsInt() @Min(0) redeemPoints?: number; // loyalty points to redeem as a discount
   @IsOptional() @IsString() @MaxLength(500) note?: string;

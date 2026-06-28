@@ -13,7 +13,7 @@ export interface AddWalkInDto {
 }
 
 const INCLUDE = {
-  service: { select: { name: true } },
+  service: { select: { id: true, name: true } },
   assignedStaff: { select: { id: true, firstName: true, lastName: true } },
 };
 

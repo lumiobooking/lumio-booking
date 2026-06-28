@@ -10,7 +10,7 @@ import { useLang, tr } from '../../../lib/i18n';
 interface WalkIn {
   id: string; customerName: string | null; phone: string | null; note: string | null;
   partySize: number; status: string; createdAt: string; assignedAt: string | null;
-  service: { name: string } | null;
+  service: { id: string; name: string } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
 }
 interface StaffTurn { id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean }
@@ -159,7 +159,13 @@ function Inner() {
                 <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
                 <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>{w.service?.name ?? '—'} · {t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff)}</strong></div>
               </div>
-              <button onClick={() => act(`${w.id}/done`)} style={{ ...ui.primaryBtn, background: '#22c55e', padding: '8px 16px' }}>{t('wi.done')}</button>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <a
+                  href={`/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`}
+                  style={{ ...ui.primaryBtn, padding: '8px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                >{t('wi.checkout')}</a>
+                <button onClick={() => act(`${w.id}/done`)} style={{ ...ui.primaryBtn, background: '#334155', padding: '8px 14px' }}>{t('wi.done')}</button>
+              </div>
             </div>
           ))}
         </div>

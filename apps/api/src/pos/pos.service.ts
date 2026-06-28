@@ -6,6 +6,7 @@ import {
   PaymentStatus,
   PaymentType,
   Prisma,
+  WalkInStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -245,6 +246,13 @@ export class PosService {
           await tx.appointment.updateMany({
             where: { id: dto.appointmentId, tenantId },
             data: { status: AppointmentStatus.COMPLETED, completedAt: new Date() },
+          });
+        }
+        // Checking out a walk-in marks it Done (front desk doesn't need a second step).
+        if (dto.walkInId) {
+          await tx.walkIn.updateMany({
+            where: { id: dto.walkInId, tenantId },
+            data: { status: WalkInStatus.DONE, doneAt: new Date() },
           });
         }
         // Loyalty: redeem the points used, then award points on the amount paid.

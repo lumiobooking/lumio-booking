@@ -82,15 +82,15 @@ function Inner() {
     catch (err) { setError(err instanceof Error ? err.message : 'Action failed'); }
   }
 
-  if (loading) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (loading) return <p style={{ color: '#94a3b8' }}>{t('cu.loading')}</p>;
   if (error) return <div style={ui.banner}>{error}</div>;
-  if (!c) return <p style={{ color: '#94a3b8' }}>Customer not found.</p>;
+  if (!c) return <p style={{ color: '#94a3b8' }}>{t('cu.notFound')}</p>;
 
   const currency = c.appointments.flatMap((a) => a.payments)[0]?.currency ?? 'USD';
 
   return (
     <section>
-      <a href="/salon/customers" style={{ color: '#818cf8', fontSize: 13, textDecoration: 'none' }}>← Back to customers</a>
+      <a href="/salon/customers" style={{ color: '#818cf8', fontSize: 13, textDecoration: 'none' }}>{t('cu.back')}</a>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '12px 0 18px' }}>
         <span style={{ width: 52, height: 52, borderRadius: '50%', background: '#334155', color: '#e2e8f0', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>
@@ -99,24 +99,24 @@ function Inner() {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 24, margin: 0 }}>{c.firstName} {c.lastName ?? ''}</h1>
           <div style={{ color: '#94a3b8', fontSize: 14 }}>
-            {c.email ?? 'no email'} · {c.phone ?? 'no phone'} · since {new Date(c.createdAt).toLocaleDateString()}
+            {c.email ?? t('cu.noEmail')} · {c.phone ?? t('cu.noPhone')} · {t('cu.since')} {new Date(c.createdAt).toLocaleDateString()}
           </div>
         </div>
         <a
           href={`/salon/pos?customerId=${c.id}&customer=${encodeURIComponent(`${c.firstName} ${c.lastName ?? ''}`.trim())}`}
           style={{ ...ui.primaryBtn, textDecoration: 'none', whiteSpace: 'nowrap' }}
         >
-          + New sale (POS)
+          {t('cu.newSale')}
         </a>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 18 }}>
-        <Kpi label="Total spent" value={formatPrice(c.stats.totalSpentCents, currency)} accent="#22c55e" />
-        <Kpi label="Loyalty points" value={`${c.loyaltyPoints ?? 0} pts`} accent="#eab308" />
-        <Kpi label="Bookings" value={String(c.stats.bookings)} accent="#3b82f6" />
-        <Kpi label="Completed" value={String(c.stats.completed)} accent="#a855f7" />
-        <Kpi label="No-shows" value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : '#64748b'} />
-        <Kpi label="Last visit" value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString() : '—'} accent="#06b6d4" />
+        <Kpi label={t('cu.kSpent')} value={formatPrice(c.stats.totalSpentCents, currency)} accent="#22c55e" />
+        <Kpi label={t('cu.kPoints')} value={`${c.loyaltyPoints ?? 0} ${t('cu.pts')}`} accent="#eab308" />
+        <Kpi label={t('cu.kBookings')} value={String(c.stats.bookings)} accent="#3b82f6" />
+        <Kpi label={t('cu.kCompleted')} value={String(c.stats.completed)} accent="#a855f7" />
+        <Kpi label={t('cu.kNoShows')} value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : '#64748b'} />
+        <Kpi label={t('cu.kLastVisit')} value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString() : '—'} accent="#06b6d4" />
       </div>
 
       <div style={{ ...ui.card, marginBottom: 18, display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
@@ -142,12 +142,12 @@ function Inner() {
 
       {c.loyaltyTransactions && c.loyaltyTransactions.length > 0 && (
         <div style={{ ...ui.card, marginBottom: 18 }}>
-          <div style={{ fontSize: 14, color: '#cbd5e1', fontWeight: 600, marginBottom: 8 }}>Loyalty history</div>
+          <div style={{ fontSize: 14, color: '#cbd5e1', fontWeight: 600, marginBottom: 8 }}>{t('cu.loyaltyHistory')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {c.loyaltyTransactions.map((t) => (
-              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
-                <span style={{ color: '#cbd5e1' }}>{new Date(t.createdAt).toLocaleDateString()} · {t.reason}</span>
-                <span style={{ color: t.points >= 0 ? '#22c55e' : '#f97316', fontWeight: 600 }}>{t.points >= 0 ? '+' : ''}{t.points} pts <span style={{ color: '#64748b', fontWeight: 400 }}>(bal {t.balanceAfter})</span></span>
+            {c.loyaltyTransactions.map((tx) => (
+              <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
+                <span style={{ color: '#cbd5e1' }}>{new Date(tx.createdAt).toLocaleDateString()} · {tx.reason}</span>
+                <span style={{ color: tx.points >= 0 ? '#22c55e' : '#f97316', fontWeight: 600 }}>{tx.points >= 0 ? '+' : ''}{tx.points} {t('cu.pts')} <span style={{ color: '#64748b', fontWeight: 400 }}>({t('cu.bal')} {tx.balanceAfter})</span></span>
               </div>
             ))}
           </div>
@@ -156,19 +156,19 @@ function Inner() {
 
       {c.notes && (
         <div style={{ ...ui.card, marginBottom: 18 }}>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>Notes</div>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>{t('cu.notesLabel')}</div>
           <div style={{ fontSize: 14 }}>{c.notes}</div>
         </div>
       )}
 
-      <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>Booking history</h2>
+      <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>{t('cu.bookingHistory')}</h2>
       <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead><tr style={{ background: '#1e293b' }}>
-            <th style={ui.th}>When</th><th style={ui.th}>Service</th><th style={ui.th}>Staff</th><th style={ui.th}>Status</th><th style={ui.th}>Payment</th>
+            <th style={ui.th}>{t('cu.bhWhen')}</th><th style={ui.th}>{t('cu.bhService')}</th><th style={ui.th}>{t('cu.bhStaff')}</th><th style={ui.th}>{t('cu.bhStatus')}</th><th style={ui.th}>{t('cu.bhPayment')}</th>
           </tr></thead>
           <tbody>
-            {c.appointments.length === 0 && <tr><td style={ui.td} colSpan={5}>No bookings yet.</td></tr>}
+            {c.appointments.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('cu.noBookingsYet')}</td></tr>}
             {c.appointments.map((a) => {
               const pay = a.payments[0];
               return (
@@ -182,7 +182,7 @@ function Inner() {
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ color: PAY_COLORS[pay.status] ?? '#94a3b8' }}>{formatPrice(pay.amountCents, pay.currency)} · {pay.status}</span>
                         {pay.status === 'PENDING' && (
-                          <button onClick={() => markPaid(pay.id)} style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #22c55e', background: 'transparent', color: '#22c55e', fontSize: 12, cursor: 'pointer' }}>Mark paid</button>
+                          <button onClick={() => markPaid(pay.id)} style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #22c55e', background: 'transparent', color: '#22c55e', fontSize: 12, cursor: 'pointer' }}>{t('cu.markPaid')}</button>
                         )}
                       </span>
                     ) : '—'}

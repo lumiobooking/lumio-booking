@@ -47,6 +47,7 @@ function Register() {
   const params = useSearchParams();
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
+  const [walkInId] = useState<string | null>(() => params.get('walkInId'));
   const [customerId] = useState<string | null>(() => params.get('customerId'));
   const [bookingCustomer] = useState<string | null>(() => params.get('customer'));
   const [prefilled, setPrefilled] = useState(false);
@@ -195,6 +196,7 @@ function Register() {
         method: 'POST', token,
         body: {
           appointmentId: appointmentId || undefined,
+          walkInId: walkInId || undefined,
           customerId: customerId || undefined,
           discountCents: money.discount,
           redeemPoints: money.redeemPts || undefined,

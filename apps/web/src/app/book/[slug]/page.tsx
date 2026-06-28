@@ -734,6 +734,9 @@ function StepPayment({ service, employee, slot, addons, totalCents, depositCents
     else if (!payLaterEnabled && paymentType === 'PAY_LATER' && onlineEnabled) setPaymentType('PAY_ONLINE');
   }, [onlineEnabled, payLaterEnabled]);
 
+  // Pay-at-salon is the only path and nothing is due now → no choice to make.
+  const onlyPayAtSalon = payLaterEnabled && !onlineEnabled && depositCents === 0;
+
   return (
     <div style={frameRoot}>
       <h2 style={stepTitle}>Payment</h2>
@@ -752,11 +755,21 @@ function StepPayment({ service, employee, slot, addons, totalCents, depositCents
             </div>
           )}
         </div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 8 }}>Choose payment</div>
-        <div style={{ display: 'grid', gap: 10 }}>
-          {onlineEnabled && <PayOption selected={paymentType === 'PAY_ONLINE'} onClick={() => setPaymentType('PAY_ONLINE')} title="Pay online now" desc="Pay securely now (demo: mock payment)." />}
-          {payLaterEnabled && <PayOption selected={paymentType === 'PAY_LATER'} onClick={() => setPaymentType('PAY_LATER')} title="Pay at the salon" desc="Reserve now, pay when you arrive." />}
-        </div>
+        {onlyPayAtSalon ? (
+          // Only one way to pay and nothing due now — skip the choice entirely so
+          // the customer isn't asked to "pick" from a single option.
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 14px', fontSize: 14, color: '#166534' }}>
+            💵 Nothing to pay now — just reserve your spot and pay at the salon after your appointment.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 8 }}>Choose payment</div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {onlineEnabled && <PayOption selected={paymentType === 'PAY_ONLINE'} onClick={() => setPaymentType('PAY_ONLINE')} title="Pay online now" desc="Pay securely now (demo: mock payment)." />}
+              {payLaterEnabled && <PayOption selected={paymentType === 'PAY_LATER'} onClick={() => setPaymentType('PAY_LATER')} title="Pay at the salon" desc="Reserve now, pay when you arrive." />}
+            </div>
+          </>
+        )}
         {error && <div style={{ background: '#fee2e2', color: '#b91c1c', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginTop: 14 }}>{error}</div>}
       </div>
       <div style={footer}>

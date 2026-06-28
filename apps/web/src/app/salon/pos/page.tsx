@@ -98,6 +98,9 @@ function Register() {
   // = how many offline sales are waiting to upload.
   const [online, setOnline] = useState(true);
   const [pendingSync, setPendingSync] = useState(0);
+  // Mobile only: which half of the register is showing (one long scroll is hard
+  // to use, so we split into a "pick items" view and a "ticket / pay" view).
+  const [mobileView, setMobileView] = useState<'catalog' | 'ticket'>('catalog');
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
@@ -244,6 +247,7 @@ function Register() {
   }
   function clearCart() {
     setCart([]); setOrderDiscount(''); setTendered(''); setRedeemInput(''); setError(null);
+    setMobileView('catalog');
   }
 
   const money = useMemo(() => {
@@ -470,7 +474,7 @@ function Register() {
   if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
 
   return (
-    <section>
+    <section style={{ paddingBottom: isMobile && mobileView === 'catalog' ? 84 : undefined }}>
       <style>{`
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
         .pos-card:hover { border-color: #6366f1 !important; background: #1e293b !important; }
@@ -513,6 +517,7 @@ function Register() {
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : 16, alignItems: 'start' }}>
         {/* Catalog */}
+        {(!isMobile || mobileView === 'catalog') && (
         <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', maxHeight: isMobile ? 'none' : 'calc(100vh - 130px)' }}>
           {/* Tabs with counts */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
@@ -616,9 +621,14 @@ function Register() {
             )}
           </div>
         </div>
+        )}
 
         {/* Ticket */}
+        {(!isMobile || mobileView === 'ticket') && (
         <div style={{ ...ui.card, position: isMobile ? 'static' : 'sticky', top: 12 }}>
+          {isMobile && (
+            <button onClick={() => setMobileView('catalog')} style={{ ...ghost, marginBottom: 12, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
+          )}
           <h2 style={{ fontSize: 15, margin: '0 0 12px' }}>{t('po.ticket')}</h2>
 
           <CustomerBox
@@ -766,7 +776,19 @@ function Register() {
             </button>
           </div>
         </div>
+        )}
       </div>
+
+      {/* Mobile: sticky total + go-to-ticket bar so checkout is one tap away. */}
+      {isMobile && mobileView === 'catalog' && (
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, background: '#111827', borderTop: '1px solid #334155', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>{cart.length} {t('po.itemsWord')}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: '#22c55e' }}>{formatPrice(money.total, currency)}</div>
+          </div>
+          <button onClick={() => setMobileView('ticket')} style={{ ...ui.primaryBtn, padding: '12px 20px', fontSize: 15, whiteSpace: 'nowrap' }}>{t('po.viewTicket')} →</button>
+        </div>
+      )}
     </section>
   );
 }

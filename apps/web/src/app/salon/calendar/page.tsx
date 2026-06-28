@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useIsMobile } from '../../../lib/responsive';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -54,6 +55,7 @@ export default function CalendarPage() {
 function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
+  const isMobile = useIsMobile();
   const t = (k: string) => tr(k, lang);
   const locale = 'en-US'; // dates always render US month/day/year
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -141,8 +143,39 @@ function Inner() {
         </div>
       </div>
 
-      {/* On phones the 7-day month is too narrow to read, so let it scroll
-          horizontally at a legible width (swipe across the week). */}
+      {isMobile ? (
+        /* Phones: a clean day-by-day agenda (only days that have appointments). */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(() => {
+            const withItems = days.filter((d): d is Date => !!d && (byDay.get(d.toDateString())?.length ?? 0) > 0);
+            if (withItems.length === 0) return <p style={{ color: '#64748b', fontSize: 14, padding: '20px 0', textAlign: 'center' }}>{t('cal.noneThisMonth')}</p>;
+            return withItems.map((d) => {
+              const items = byDay.get(d.toDateString()) ?? [];
+              const isToday = d.getTime() === today.getTime();
+              return (
+                <div key={d.toDateString()} style={{ ...ui.card, padding: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#818cf8' : '#e2e8f0', marginBottom: 8 }}>
+                    {d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' })}{isToday ? ' · ' + t('cal.todayLabel') : ''}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {items.map((b) => {
+                      const m = statusBucket(b.status);
+                      return (
+                        <div key={b.id} onClick={() => setSelected(b)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
+                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{new Date(b.startTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{b.service?.name ? ' · ' + b.service.name : ''}</span>
+                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      ) : (
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, minWidth: 600, background: '#334155', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' }}>
         {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
@@ -182,6 +215,7 @@ function Inner() {
         })}
       </div>
       </div>
+      )}
 
       {selected && (
         <BookingDetail booking={selected} onClose={() => setSelected(null)} onAction={action} />

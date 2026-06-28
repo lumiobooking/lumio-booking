@@ -89,7 +89,7 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      <form onSubmit={add} style={{ ...ui.card, display: 'grid', gridTemplateColumns: '1.4fr 1fr 1.4fr 0.7fr auto', gap: 10, alignItems: 'end', marginBottom: 16 }}>
+      <form onSubmit={add} style={{ ...ui.card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end', marginBottom: 16 }}>
         <label><span style={ui.label}>{t('wi.customer')}</span><input style={ui.input} value={form.customerName} placeholder={t('wi.namePh')} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
         <label><span style={ui.label}>{t('wi.phone')}</span><input style={ui.input} value={form.phone} inputMode="tel" onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
         <label><span style={ui.label}>{t('wi.service')}</span>

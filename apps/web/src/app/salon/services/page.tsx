@@ -345,13 +345,13 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
     <form onSubmit={save} style={{ padding: 16 }}>
       <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{t('sv.editService')}</div>
       {error && <div style={ui.banner}>{error}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         <label><span style={ui.label}>{t('sv.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fDuration')}</span><input style={ui.input} type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fDiscount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginTop: 10, alignItems: 'end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10, alignItems: 'end' }}>
         <label><span style={ui.label}>{t('sv.fCategory')}</span>
           <select style={ui.input} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
             <option value="">{t('sv.optUncategorised')}</option>
@@ -499,7 +499,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
 
   return (
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
         <label>
           <span style={ui.label}>{t('sv.serviceName')}</span>
           <input

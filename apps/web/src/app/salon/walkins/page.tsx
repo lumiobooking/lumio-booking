@@ -180,6 +180,8 @@ function Inner() {
 function ServiceSearchSelect({ services, value, onChange, placeholder }: {
   services: Service[]; value: string; onChange: (id: string) => void; placeholder: string;
 }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const selected = services.find((s) => s.id === value) || null;

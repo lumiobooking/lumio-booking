@@ -86,12 +86,13 @@ export class AssignmentService {
     // service, every active technician is treated as able to perform it (mirrors
     // the public availability rule so an unconfigured service still gets assigned).
     const linkedCount = await this.prisma.staffMember.count({
-      where: { tenantId, isActive: true, staffServices: { some: { serviceId: appt.serviceId } } },
+      where: { tenantId, isActive: true, takesAppointments: true, staffServices: { some: { serviceId: appt.serviceId } } },
     });
     const staff = await this.prisma.staffMember.findMany({
       where: {
         tenantId,
         isActive: true,
+        takesAppointments: true,
         ...(linkedCount > 0 ? { staffServices: { some: { serviceId: appt.serviceId } } } : {}),
         id: exclude.size ? { notIn: [...exclude] } : undefined,
       },

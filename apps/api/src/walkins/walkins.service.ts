@@ -50,7 +50,7 @@ export class WalkinsService {
       ? (await this.prisma.service.findFirst({ where: { id: dto.serviceId, tenantId }, select: { id: true } }))?.id ?? null
       : null;
     const staff = dto.assignedStaffId
-      ? await this.prisma.staffMember.findFirst({ where: { id: dto.assignedStaffId, tenantId }, select: { id: true } })
+      ? await this.prisma.staffMember.findFirst({ where: { id: dto.assignedStaffId, tenantId, takesAppointments: true }, select: { id: true } })
       : null;
     const assigned = !!staff;
     // Find-or-create a CRM customer by phone so the walk-in earns loyalty and is
@@ -83,7 +83,7 @@ export class WalkinsService {
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.WAITING }, include: INCLUDE, orderBy: { createdAt: 'asc' } }),
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING }, include: INCLUDE, orderBy: { assignedAt: 'asc' } }),
       this.prisma.staffMember.findMany({
-        where: { tenantId, isActive: true },
+        where: { tenantId, isActive: true, takesAppointments: true },
         select: { id: true, firstName: true, lastName: true, avatarUrl: true, bookingPriority: true },
         orderBy: [{ bookingPriority: 'desc' }, { firstName: 'asc' }],
       }),
@@ -123,7 +123,7 @@ export class WalkinsService {
   /** Hand a waiting walk-in to a technician (→ SERVING). */
   async assign(user: AuthenticatedUser, id: string, staffId: string) {
     const w = await this.mine(user, id);
-    const staff = await this.prisma.staffMember.findFirst({ where: { id: staffId, tenantId: w.tenantId }, select: { id: true } });
+    const staff = await this.prisma.staffMember.findFirst({ where: { id: staffId, tenantId: w.tenantId, takesAppointments: true }, select: { id: true } });
     if (!staff) throw new BadRequestException('Technician not found');
     return this.prisma.walkIn.update({
       where: { id: w.id },

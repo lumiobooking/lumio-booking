@@ -54,3 +54,61 @@ describe('StaffService tenant isolation', () => {
     await expect(svc.getById(salonA, 's-b')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+/**
+ * Role drives whether a new staff member is a bookable technician. Receptionists
+ * and managers must NOT default into the booking/assignment lists (the bug this
+ * feature fixes), while an owner/manager who also does nails can opt in.
+ */
+function makeCreatePrisma() {
+  const captured: any = {};
+  const created = { id: 's-new', tenantId: 'tenant-a', firstName: 'Le' };
+  const tx = {
+    staffMember: {
+      create: jest.fn(async ({ data }: any) => { Object.assign(captured, data); return created; }),
+      update: jest.fn(async () => created),
+    },
+    staffService: { createMany: jest.fn(async () => ({})) },
+    staffWorkingHour: { createMany: jest.fn(async () => ({})) },
+    user: { create: jest.fn(async ({ data }: any) => ({ id: 'u-new', email: data.email })) },
+  };
+  const prisma = {
+    service: { count: jest.fn(async () => 0) },
+    user: { findUnique: jest.fn(async () => null) },
+    $transaction: jest.fn(async (cb: any) => cb(tx)),
+    staffMember: { findFirst: jest.fn(async () => ({ ...created, ...captured })) },
+  };
+  return { prisma, tx, captured };
+}
+
+describe('StaffService role → bookable derivation', () => {
+  it('a receptionist is NOT bookable by default', async () => {
+    const { prisma, captured } = makeCreatePrisma();
+    const svc = new StaffService(prisma as any, audit as any);
+    await svc.create(salonA, { firstName: 'Le', staffRole: 'RECEPTIONIST' } as any);
+    expect(captured.staffRole).toBe('RECEPTIONIST');
+    expect(captured.takesAppointments).toBe(false);
+  });
+
+  it('a technician (default role) IS bookable', async () => {
+    const { prisma, captured } = makeCreatePrisma();
+    const svc = new StaffService(prisma as any, audit as any);
+    await svc.create(salonA, { firstName: 'Mai' } as any);
+    expect(captured.takesAppointments).toBe(true);
+  });
+
+  it('a manager who also does nails can opt in', async () => {
+    const { prisma, captured } = makeCreatePrisma();
+    const svc = new StaffService(prisma as any, audit as any);
+    await svc.create(salonA, { firstName: 'Owner', staffRole: 'MANAGER', takesAppointments: true } as any);
+    expect(captured.takesAppointments).toBe(true);
+  });
+
+  it('creates a linked login only when both email and password are given', async () => {
+    const { prisma, tx } = makeCreatePrisma();
+    const svc = new StaffService(prisma as any, audit as any);
+    await svc.create(salonA, { firstName: 'Front', staffRole: 'RECEPTIONIST', loginEmail: 'front@a.test', loginPassword: 'secret12' } as any);
+    expect(tx.user.create).toHaveBeenCalled();
+    expect(tx.staffMember.update).toHaveBeenCalled();
+  });
+});

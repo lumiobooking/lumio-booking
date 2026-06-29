@@ -69,6 +69,11 @@ export class UpdateStaffDto {
   @IsEnum(StaffRole)
   staffRole?: StaffRole;
 
+  // Bookable technician? Controls visibility in booking / calendar / assignment.
+  @IsOptional()
+  @IsBoolean()
+  takesAppointments?: boolean;
+
   // Booking-list priority: 0 = auto/fair ordering; higher = pinned to the top.
   @IsOptional()
   @IsInt()

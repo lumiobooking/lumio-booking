@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -11,6 +12,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { StaffRole } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 /** One recurring weekly working-hours slot for a staff member. */
@@ -56,6 +58,30 @@ export class CreateStaffDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // Feature-permission role (MANAGER / RECEPTIONIST / TECHNICIAN). Drives RBAC
+  // and the default of takesAppointments. Defaults to TECHNICIAN when omitted.
+  @IsOptional()
+  @IsEnum(StaffRole)
+  staffRole?: StaffRole;
+
+  // Bookable technician? If omitted, derived from staffRole (TECHNICIAN = true,
+  // MANAGER / RECEPTIONIST = false). Lets an owner/manager who also does nails opt in.
+  @IsOptional()
+  @IsBoolean()
+  takesAppointments?: boolean;
+
+  // Optional: create a login for this person in the same step. Both must be set.
+  // Receptionists/managers need this to sign in (POS / management).
+  @IsOptional()
+  @IsEmail()
+  loginEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72) // bcrypt max input
+  loginPassword?: string;
 
   // Services this staff member can perform (skills). Must belong to the tenant.
   @IsOptional()

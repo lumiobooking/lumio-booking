@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, UserRole, StaffRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashSecret } from '../auth/password.util';
@@ -109,6 +109,28 @@ export class StaffService {
     const serviceIds = dto.serviceIds ?? [];
     await this.assertServicesBelongToTenant(tenantId, serviceIds);
 
+    // Role drives RBAC; bookable visibility defaults from role but can be set
+    // explicitly (e.g. an owner/manager who also takes appointments).
+    const role = dto.staffRole ?? StaffRole.TECHNICIAN;
+    const takesAppointments = dto.takesAppointments ?? role === StaffRole.TECHNICIAN;
+
+    // Optional inline login. Validate intent + uniqueness before the txn, and
+    // hash outside it so the transaction stays short.
+    const wantsLogin = !!(dto.loginEmail || dto.loginPassword);
+    let loginEmail: string | null = null;
+    let passwordHash: string | null = null;
+    if (wantsLogin) {
+      if (!dto.loginEmail || !dto.loginPassword) {
+        throw new BadRequestException('Provide both a login email and password, or leave both blank.');
+      }
+      loginEmail = dto.loginEmail.toLowerCase();
+      const existing = await this.prisma.user.findUnique({ where: { email: loginEmail } });
+      if (existing) {
+        throw new ConflictException('A user with this login email already exists');
+      }
+      passwordHash = await hashSecret(dto.loginPassword);
+    }
+
     const staff = await this.prisma.$transaction(async (tx) => {
       const created = await tx.staffMember.create({
         data: {
@@ -119,6 +141,8 @@ export class StaffService {
           phone: dto.phone ?? null,
           avatarUrl: dto.avatarUrl ?? null,
           isActive: dto.isActive ?? true,
+          staffRole: role,
+          takesAppointments,
         },
       });
 
@@ -129,6 +153,23 @@ export class StaffService {
       }
 
       await this.createWorkingHours(tx, tenantId, created.id, dto.workingHours ?? []);
+
+      // Link a new STAFF login if requested. Caps for this user are later
+      // derived from staffRole, so a receptionist gets cashier-only access.
+      if (loginEmail && passwordHash) {
+        const newUser = await tx.user.create({
+          data: {
+            tenantId,
+            role: UserRole.STAFF,
+            email: loginEmail,
+            passwordHash,
+            firstName: dto.firstName,
+            lastName: dto.lastName ?? null,
+          },
+        });
+        await tx.staffMember.update({ where: { id: created.id }, data: { userId: newUser.id } });
+      }
+
       return created;
     });
 
@@ -138,7 +179,7 @@ export class StaffService {
       action: 'staff.created',
       resourceType: 'staff_member',
       resourceId: staff.id,
-      metadata: { name: `${dto.firstName} ${dto.lastName ?? ''}`.trim() },
+      metadata: { name: `${dto.firstName} ${dto.lastName ?? ''}`.trim(), staffRole: role, loginCreated: !!loginEmail },
     });
 
     return this.getById(user, staff.id);
@@ -166,6 +207,7 @@ export class StaffService {
           commissionPercent: dto.commissionPercent,
           baseCents: dto.baseCents,
           staffRole: dto.staffRole,
+          takesAppointments: dto.takesAppointments,
           bookingPriority: dto.bookingPriority,
         },
       });

@@ -519,6 +519,12 @@ model StaffMember {
   // Feature-permission role for this staff member's login (if they have one).
   staffRole StaffRole @default(TECHNICIAN)
 
+  // Whether this person is a bookable technician: shows in the booking page,
+  // calendar, walk-in assignment and the auto-assign engine. Receptionists and
+  // managers default to false (front-desk/management only), but an owner who
+  // also does nails can be flipped back on. Decoupled from staffRole on purpose.
+  takesAppointments Boolean @default(true)
+
   // Review-reward program: lifetime points balance.
   rewardPoints Int @default(0)
 

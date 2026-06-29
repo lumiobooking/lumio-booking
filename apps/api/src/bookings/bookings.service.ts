@@ -112,11 +112,11 @@ export class BookingsService {
 
   private async assertStaffActive(tenantId: string, staffId: string) {
     const staff = await this.prisma.staffMember.findFirst({
-      where: { id: staffId, tenantId, isActive: true },
+      where: { id: staffId, tenantId, isActive: true, takesAppointments: true },
       select: { id: true },
     });
     if (!staff) {
-      throw new BadRequestException('Staff member not found or inactive for this tenant');
+      throw new BadRequestException('Staff member not found or not bookable for this tenant');
     }
   }
 
@@ -713,12 +713,13 @@ export class BookingsService {
     // left unconfigured), every active technician can perform it — otherwise an
     // unconfigured service would block all bookings.
     const linkedCount = await this.prisma.staffMember.count({
-      where: { tenantId, isActive: true, staffServices: { some: { serviceId } } },
+      where: { tenantId, isActive: true, takesAppointments: true, staffServices: { some: { serviceId } } },
     });
     const eligible = await this.prisma.staffMember.findMany({
       where: {
         tenantId,
         isActive: true,
+        takesAppointments: true,
         ...(linkedCount > 0 ? { staffServices: { some: { serviceId } } } : {}),
       },
       select: { id: true },
@@ -766,7 +767,7 @@ export class BookingsService {
    */
   async publicStaff(tenantId: string) {
     const staff = await this.prisma.staffMember.findMany({
-      where: { tenantId, isActive: true },
+      where: { tenantId, isActive: true, takesAppointments: true },
       select: {
         id: true,
         firstName: true,

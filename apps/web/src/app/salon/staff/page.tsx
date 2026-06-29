@@ -14,6 +14,8 @@ interface Service {
   category?: { id: string; name: string } | null;
 }
 
+type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
+
 interface StaffMember {
   id: string;
   firstName: string;
@@ -26,11 +28,91 @@ interface StaffMember {
   commissionPercent?: number;
   baseCents?: number;
   bookingPriority?: number;
-  staffRole?: 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
+  staffRole?: Role;
+  takesAppointments?: boolean;
   staffServices: { serviceId: string }[];
   workingHours: { id: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
   user: { id: string; email: string } | null;
   createdAt?: string;
+}
+
+/**
+ * Role chooser + "takes appointments" toggle, shared by the create and edit
+ * forms. Picking a role resets the bookable default (Technician = yes; Reception
+ * / Manager = no), then the checkbox lets an owner who also does nails opt in.
+ */
+function RolePicker({
+  role,
+  takesAppointments,
+  onChange,
+}: {
+  role: Role;
+  takesAppointments: boolean;
+  onChange: (role: Role, takesAppointments: boolean) => void;
+}) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const roles: { v: Role; label: string; emoji: string }[] = [
+    { v: 'TECHNICIAN', label: t('st.roleTech'), emoji: '💅' },
+    { v: 'RECEPTIONIST', label: t('st.roleReception'), emoji: '💵' },
+    { v: 'MANAGER', label: t('st.roleManager'), emoji: '👔' },
+  ];
+  return (
+    <div>
+      <span style={ui.label}>{t('st.roleLabel')}</span>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {roles.map((r) => {
+          const on = role === r.v;
+          return (
+            <button
+              type="button"
+              key={r.v}
+              onClick={() => onChange(r.v, r.v === 'TECHNICIAN')}
+              style={{
+                padding: '9px 16px', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                border: `1px solid ${on ? '#6366f1' : '#475569'}`,
+                background: on ? '#312e81' : 'transparent',
+                color: on ? '#c7d2fe' : '#cbd5e1',
+              }}
+            >
+              {r.emoji} {r.label}
+            </button>
+          );
+        })}
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer' }}>
+        <input type="checkbox" checked={takesAppointments} onChange={(e) => onChange(role, e.target.checked)} />
+        <span style={{ fontSize: 14, color: '#e2e8f0', fontWeight: 600 }}>{t('st.takesAppts')}</span>
+      </label>
+      <p style={{ color: takesAppointments ? '#64748b' : '#f59e0b', fontSize: 12, marginTop: 6 }}>
+        {takesAppointments ? t('st.bookableHint') : t('st.notBookableHint')}
+      </p>
+    </div>
+  );
+}
+
+/** Small colored pill showing a staff member's role in the list. */
+function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const r: Role = role ?? 'TECHNICIAN';
+  const map: Record<Role, { label: string; bg: string; fg: string }> = {
+    TECHNICIAN: { label: t('st.roleTech'), bg: '#312e81', fg: '#c7d2fe' },
+    RECEPTIONIST: { label: t('st.roleReception'), bg: '#78350f', fg: '#fcd34d' },
+    MANAGER: { label: t('st.roleManager'), bg: '#155e75', fg: '#a5f3fc' },
+  };
+  const m = map[r];
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg }}>{m.label}</span>
+      {takes === false && r === 'TECHNICIAN' && (
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>· {t('st.notBookableTag')}</span>
+      )}
+      {takes === true && r !== 'TECHNICIAN' && (
+        <span style={{ fontSize: 11, color: '#22c55e' }}>· {t('st.bookableTag')}</span>
+      )}
+    </span>
+  );
 }
 
 function Avatar({ url, name }: { url: string | null; name: string }) {
@@ -250,7 +332,10 @@ function StaffInner() {
                   <td style={ui.td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <Avatar url={m.avatarUrl} name={m.firstName} />
-                      <span>{m.firstName} {m.lastName ?? ''}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span>{m.firstName} {m.lastName ?? ''}</span>
+                        <RoleBadge role={m.staffRole} takes={m.takesAppointments} />
+                      </div>
                     </div>
                   </td>
                   <td style={{ ...ui.td, color: '#94a3b8', fontSize: 13 }}>
@@ -368,7 +453,8 @@ function StaffEditPanel({
     commissionPercent: String(member.commissionPercent ?? 0),
     basePay: String(((member.baseCents ?? 0) / 100) || 0),
     bookingPriority: String(member.bookingPriority ?? 0),
-    staffRole: member.staffRole ?? 'TECHNICIAN',
+    staffRole: (member.staffRole ?? 'TECHNICIAN') as Role,
+    takesAppointments: member.takesAppointments ?? (member.staffRole ?? 'TECHNICIAN') === 'TECHNICIAN',
   });
   const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
   const [hours, setHours] = useState<DayRow[]>(
@@ -411,8 +497,9 @@ function StaffEditPanel({
           commissionPercent: Math.max(0, Math.min(100, parseInt(form.commissionPercent, 10) || 0)),
           baseCents: Math.max(0, Math.round((parseFloat(form.basePay) || 0) * 100)),
           staffRole: form.staffRole,
+          takesAppointments: form.takesAppointments,
           bookingPriority: Math.max(0, parseInt(form.bookingPriority, 10) || 0),
-          serviceIds: skillIds,
+          serviceIds: form.takesAppointments ? skillIds : [],
           workingHours,
         },
       });
@@ -437,6 +524,13 @@ function StaffEditPanel({
         <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => up('avatarUrl', v)} />
       </div>
 
+      {/* Role + bookable */}
+      <RolePicker
+        role={form.staffRole}
+        takesAppointments={form.takesAppointments}
+        onChange={(staffRole, takesAppointments) => { up('staffRole', staffRole); up('takesAppointments', takesAppointments); }}
+      />
+
       {/* Profile */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fFirstName')} <span style={{ color: '#ef4444' }}>*</span></span>
@@ -451,12 +545,6 @@ function StaffEditPanel({
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.basePay')}</span>
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} step="0.01" value={form.basePay} onChange={(e) => up('basePay', e.target.value)} /></label>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.roleLabel')}</span>
-          <select style={{ ...ui.input, marginTop: 'auto' }} value={form.staffRole} onChange={(e) => up('staffRole', e.target.value)}>
-            <option value="TECHNICIAN">{t('st.roleTech')}</option>
-            <option value="RECEPTIONIST">{t('st.roleReception')}</option>
-            <option value="MANAGER">{t('st.roleManager')}</option>
-          </select></label>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.priority')}</span>
           <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} value={form.bookingPriority} onChange={(e) => up('bookingPriority', e.target.value)} /></label>
         <label style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
@@ -467,11 +555,15 @@ function StaffEditPanel({
         </label>
       </div>
 
-      {/* Skills */}
-      <div>
-        <span style={ui.label}>{t('st.skills')}</span>
-        <SkillPicker all={services} ids={skillIds} set={(v) => { setSkillIds(v); setSaved(false); }} />
-      </div>
+      {/* Skills (bookable technicians only) */}
+      {form.takesAppointments ? (
+        <div>
+          <span style={ui.label}>{t('st.skills')}</span>
+          <SkillPicker all={services} ids={skillIds} set={(v) => { setSkillIds(v); setSaved(false); }} />
+        </div>
+      ) : (
+        <p style={{ color: '#64748b', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
+      )}
 
       {/* Working hours */}
       <div>
@@ -525,7 +617,11 @@ function CreateStaffForm({
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', avatarUrl: '' });
+  const [form, setForm] = useState({
+    firstName: '', lastName: '', email: '', phone: '', avatarUrl: '',
+    staffRole: 'TECHNICIAN' as Role, takesAppointments: true,
+    loginEmail: '', loginPassword: '',
+  });
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -533,6 +629,9 @@ function CreateStaffForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    // Both login fields, or neither.
+    if (!!form.loginEmail !== !!form.loginPassword) { setError(t('st.loginBoth')); return; }
+    if (form.loginPassword && form.loginPassword.length < 8) { setError(t('st.loginPwShort')); return; }
     setSubmitting(true);
     try {
       await apiFetch('/staff', {
@@ -544,7 +643,12 @@ function CreateStaffForm({
           email: form.email || undefined,
           phone: form.phone || undefined,
           avatarUrl: form.avatarUrl || undefined,
-          serviceIds: skillIds,
+          staffRole: form.staffRole,
+          takesAppointments: form.takesAppointments,
+          loginEmail: form.loginEmail || undefined,
+          loginPassword: form.loginPassword || undefined,
+          // Skills only matter for bookable technicians.
+          serviceIds: form.takesAppointments ? skillIds : [],
         },
       });
       onCreated();
@@ -556,7 +660,7 @@ function CreateStaffForm({
   }
 
   return (
-    <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
+    <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <label>
           <span style={ui.label}>{t('st.fFirstName')} <span style={{ color: '#ef4444' }}>*</span></span>
@@ -594,22 +698,51 @@ function CreateStaffForm({
         </label>
       </div>
 
-      <div style={{ marginTop: 12 }}>
+      {/* Role + bookable: the heart of this form — picks permissions and whether
+          this person shows in booking/assignment. */}
+      <RolePicker
+        role={form.staffRole}
+        takesAppointments={form.takesAppointments}
+        onChange={(staffRole, takesAppointments) => setForm({ ...form, staffRole, takesAppointments })}
+      />
+
+      <div>
         <span style={ui.label}>{t('st.profilePhotoOpt')}</span>
         <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => setForm({ ...form, avatarUrl: v })} />
       </div>
 
-      <div style={{ marginTop: 14 }}>
-        <span style={ui.label}>{t('st.skills')}</span>
-        {services.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServicesCreate')}</p>
-        ) : (
-          <SkillPicker all={services} ids={skillIds} set={setSkillIds} />
-        )}
+      {/* Inline login. Required for receptionists/managers to actually sign in. */}
+      <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14 }}>
+        <span style={ui.label}>{t('st.loginOptional')}</span>
+        <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 10px' }}>{t('st.loginHint')}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <label>
+            <span style={ui.label}>{t('st.loginEmail')}</span>
+            <input style={ui.input} type="email" value={form.loginEmail} onChange={(e) => setForm({ ...form, loginEmail: e.target.value })} placeholder={t('st.loginEmailPh')} />
+          </label>
+          <label>
+            <span style={ui.label}>{t('st.password')}</span>
+            <input style={ui.input} type="text" value={form.loginPassword} onChange={(e) => setForm({ ...form, loginPassword: e.target.value })} placeholder={t('st.passwordPh')} />
+          </label>
+        </div>
       </div>
 
+      {/* Skills only for bookable technicians. */}
+      {form.takesAppointments ? (
+        <div>
+          <span style={ui.label}>{t('st.skills')}</span>
+          {services.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServicesCreate')}</p>
+          ) : (
+            <SkillPicker all={services} ids={skillIds} set={setSkillIds} />
+          )}
+        </div>
+      ) : (
+        <p style={{ color: '#64748b', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
+      )}
+
       {error && <div style={ui.banner}>{error}</div>}
-      <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn, marginTop: 14 }}>
+      <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn }}>
         {submitting ? t('st.creating') : t('st.createStaff')}
       </button>
     </form>

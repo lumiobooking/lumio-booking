@@ -7,6 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface Entry {
@@ -25,6 +27,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +69,31 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
-      {loading && rows.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('wl.loading')}</p> : (
+      {loading && rows.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('wl.loading')}</p> : isMobile ? (
+        <>
+          <MList>
+            {rows.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('wl.empty')}</p>}
+            {pg.paged.map((e) => (
+              <MCard key={e.id}>
+                <MHead right={<span style={{ color: STATUS_COLORS[e.status] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[e.status] ?? '#94a3b8'}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{e.status}</span>}>
+                  {e.customerName}
+                </MHead>
+                {e.note && <div style={{ color: '#64748b', fontSize: 12 }}>{e.note}</div>}
+                <MRow label={t('wl.colContact')}>{e.phone || e.email || '—'}</MRow>
+                <MRow label={t('wl.colService')}>{e.service?.name || t('wl.any')}</MRow>
+                <MRow label={t('wl.colWants')}>{e.preferredDate || t('wl.anyDay')}</MRow>
+                <MRow label={t('wl.colAdded')}>{new Date(e.createdAt).toLocaleDateString('en-US')}</MRow>
+                <MActions>
+                  <button onClick={() => notify(e)} style={mini('#22c55e')}>{t('wl.notify')}</button>
+                  {e.status !== 'CONVERTED' && <button onClick={() => setStatus(e, 'CONVERTED')} style={mini('#6366f1')}>{t('wl.booked')}</button>}
+                  <button onClick={() => remove(e)} style={mini('#ef4444')}>{t('wl.remove')}</button>
+                </MActions>
+              </MCard>
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
+      ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>

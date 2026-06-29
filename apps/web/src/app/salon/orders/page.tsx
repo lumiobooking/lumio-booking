@@ -7,6 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface OrderItem {
@@ -39,6 +41,7 @@ function Inner() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const ML: Record<string, string> = { CASH: t('or.mCash'), CARD: t('or.mCard'), OTHER: t('or.mTransfer') };
+  const isMobile = useIsMobile();
   const range = useDateRange('all');
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -151,7 +154,29 @@ function Inner() {
         <DateRangeBar range={range} />
       </div>
 
-      {loading && orders.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('or.loading')}</p> : (
+      {loading && orders.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('or.loading')}</p> : isMobile ? (
+        <>
+          <MList>
+            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('or.empty')}</p>}
+            {pg.paged.map((o) => (
+              <MCard key={o.id}>
+                <MHead right={<span style={{ color: STATUS_COLORS[o.status], border: `1px solid ${STATUS_COLORS[o.status]}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{o.status}</span>}>
+                  #{o.orderNumber} · {formatPrice(o.totalCents, o.currency)}
+                </MHead>
+                <MRow label={t('or.colDate')}>{new Date(o.createdAt).toLocaleString('en-US')}</MRow>
+                <MRow label={t('or.colItems')}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? ' · ' + t('or.fromBooking') : ''}</MRow>
+                <MRow label={t('or.colMethod')}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</MRow>
+                <MActions>
+                  <button onClick={() => reprint(o)} style={tiny}>{t('or.reprint')}</button>
+                  {o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>{t('or.void')}</button>}
+                  <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }}>{t('or.delete')}</button>
+                </MActions>
+              </MCard>
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
+      ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>

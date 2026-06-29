@@ -6,6 +6,8 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Supply {
@@ -21,6 +23,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
   const [items, setItems] = useState<Supply[]>([]);
@@ -81,7 +84,43 @@ function Inner() {
         </div>
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{t('iv.loading')}</p> : (
+      {loading ? <p style={{ color: '#94a3b8' }}>{t('iv.loading')}</p> : isMobile ? (
+        <>
+          <MList>
+            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('iv.empty')}</p>}
+            {pg.paged.map((i) => (
+              <Fragment key={i.id}>
+                <MCard>
+                  <MHead right={i.lowStock ? <span style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span> : null}>
+                    <span style={{ opacity: i.isActive ? 1 : 0.5 }}>{i.name}</span>
+                  </MHead>
+                  <MRow label={t('iv.colStock')}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <button onClick={() => adjust(i.id, -1)} style={qtyBtn}>−</button>
+                      <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? '#f59e0b' : '#e2e8f0' }}>{i.stockQty} <span style={{ color: '#64748b', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
+                      <button onClick={() => adjust(i.id, 1)} style={qtyBtn}>+</button>
+                    </span>
+                  </MRow>
+                  <MRow label={t('iv.colThreshold')}>{i.lowStockThreshold}</MRow>
+                  <MRow label={t('iv.colCost')}>{i.costCents != null ? formatPrice(i.costCents) : '—'}</MRow>
+                  <MRow label={t('iv.colSupplier')}>{i.supplier || '—'}</MRow>
+                  <MActions>
+                    <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
+                    <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
+                    <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? '#475569' : '#334155' }}>{t('iv.history')}</button>
+                    <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? '#475569' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
+                    <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
+                  </MActions>
+                </MCard>
+                {editId === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><SupplyForm token={token!} item={i} onDone={async () => { setEditId(null); await load(); }} /></div>}
+                {moveFor?.id === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><MovePanel token={token!} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} /></div>}
+                {histFor === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><HistoryPanel token={token!} item={i} /></div>}
+              </Fragment>
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
+      ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>

@@ -6,6 +6,8 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Payment {
@@ -33,6 +35,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const range = useDateRange('all');
   const [q, setQ] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -84,6 +87,26 @@ function Inner() {
 
       {loading ? (
         <p style={{ color: '#94a3b8' }}>{t('pm.loading')}</p>
+      ) : isMobile ? (
+        <>
+          <MList>
+            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('pm.empty')}</p>}
+            {pg.paged.map((p) => (
+              <MCard key={p.id}>
+                <MHead right={<span style={{ color: COLORS[p.status] ?? '#94a3b8', fontWeight: 700, fontSize: 13 }}>{p.status}</span>}>
+                  {formatPrice(p.amountCents, p.currency)}
+                </MHead>
+                <MRow label={t('pm.colDate')}>{new Date(p.createdAt).toLocaleString('en-US')}</MRow>
+                <MRow label={t('pm.colType')}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</MRow>
+                <MRow label={t('pm.colProvider')}>{p.provider || '—'}</MRow>
+                <MActions>
+                  <button onClick={() => removePayment(p)} style={ui.dangerBtn}>{t('pm.delete')}</button>
+                </MActions>
+              </MCard>
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto', marginTop: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>

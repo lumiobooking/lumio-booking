@@ -7,6 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Customer {
@@ -33,6 +35,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const range = useDateRange('all');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,6 +104,33 @@ function Inner() {
 
       {loading && customers.length === 0 ? (
         <p style={{ color: '#94a3b8' }}>{t('cu.loading')}</p>
+      ) : isMobile ? (
+        <>
+          <MList>
+            {filtered.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('cu.empty')}</p>}
+            {pg.paged.map((c) => (
+              <MCard key={c.id}>
+                <MHead>
+                  <a href={`/salon/customers/${c.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{c.firstName} {c.lastName ?? ''}</a>
+                </MHead>
+                <MRow label={t('cu.colEmail')}>{c.email ?? '—'}</MRow>
+                <MRow label={t('cu.colPhone')}>{c.phone ?? '—'}</MRow>
+                <MRow label={t('cu.colBookings')}>{c._count.appointments}</MRow>
+                <MRow label={t('cu.colNoShows')}>
+                  {(c.noShowCount ?? 0) === 0 ? '0' : (c.noShowCount ?? 0) >= 2
+                    ? <span style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
+                    : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
+                </MRow>
+                <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
+                <MRow label={t('cu.colSince')}>{new Date(c.createdAt).toLocaleDateString('en-US')}</MRow>
+                <MActions>
+                  <button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button>
+                </MActions>
+              </MCard>
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>

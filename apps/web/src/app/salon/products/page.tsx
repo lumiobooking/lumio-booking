@@ -6,6 +6,8 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Product {
@@ -31,6 +33,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [taxRate, setTaxRate] = useState('');
@@ -114,7 +117,39 @@ function Inner() {
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('pd.productsWord')}</span>
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{t('pd.loading')}</p> : (
+      {loading ? <p style={{ color: '#94a3b8' }}>{t('pd.loading')}</p> : isMobile ? (
+        <>
+          <MList>
+            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('pd.empty')}</p>}
+            {pg.paged.map((p) => (
+              <Fragment key={p.id}>
+                <MCard>
+                  <MHead right={<span style={{ color: p.isActive ? '#22c55e' : '#94a3b8', fontSize: 12, fontWeight: 600 }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span>}>
+                    {p.name}{p.sku ? <span style={{ color: '#64748b', fontSize: 12 }}> · {p.sku}</span> : null}
+                  </MHead>
+                  <MRow label={t('pd.colPrice')}>
+                    {p.discountPercent && p.discountPercent > 0 ? (
+                      <span>
+                        <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
+                        <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
+                        <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
+                      </span>
+                    ) : formatPrice(p.priceCents, p.currency)}
+                  </MRow>
+                  <MRow label={t('pd.colTaxable')}>{p.taxable ? t('pd.yes') : t('pd.no')}</MRow>
+                  <MRow label={t('pd.colStock')}>{p.trackStock ? p.stockQty : '—'}</MRow>
+                  <MActions>
+                    <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? '#475569' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
+                    <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
+                  </MActions>
+                </MCard>
+                {editId === p.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><ProductForm token={token!} product={p} onDone={async () => { setEditId(null); await load(); }} /></div>}
+              </Fragment>
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
+      ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>

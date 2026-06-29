@@ -7,6 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface NamedRef {
@@ -68,6 +70,7 @@ function BookingsInner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const range = useDateRange('all', true); // bookings are future-oriented
   const [q, setQ] = useState('');
   const [needsConfirm, setNeedsConfirm] = useState(false);
@@ -215,6 +218,43 @@ function BookingsInner() {
 
       {loading && bookings.length === 0 ? (
         <p style={{ color: '#94a3b8' }}>{t('bk.loading')}</p>
+      ) : isMobile ? (
+        <>
+          <MList>
+            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('bk.noBookings')}</p>}
+            {pg.paged.map((b) => (
+              <MCard key={b.id}>
+                <MHead right={<span style={{ color: STATUS_COLORS[b.status] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[b.status] ?? '#94a3b8'}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{b.status}</span>}>
+                  {b.customer?.id
+                    ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(b.customer)}</a>
+                    : staffName(b.customer)}
+                </MHead>
+                <MRow label={t('bk.colWhen')}>{new Date(b.startTime).toLocaleString('en-US')}</MRow>
+                <MRow label={t('bk.colService')}>{b.service?.name ?? '—'}</MRow>
+                <MRow label={t('bk.colStaff')}>{staffName(b.assignedStaff)}</MRow>
+                <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(b.id)} /></MRow>
+                <MActions>
+                  {b.status === 'PENDING' && (
+                    <>
+                      <button onClick={() => action(b.id, 'auto-assign')} style={smallOk}>{t('bk.autoAssign')}</button>
+                      <AssignControl staff={staff.filter((s) => s.isActive)} onAssign={(staffId) => action(b.id, 'assign', { staffId })} />
+                    </>
+                  )}
+                  {ACTIVE_STATUSES.includes(b.status) && (
+                    <>
+                      <a href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`} style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}>{t('bk.checkout')}</a>
+                      <button onClick={() => action(b.id, 'complete')} style={smallOk}>{t('bk.complete')}</button>
+                      <button onClick={() => { if (confirm(t('bk.confirmNoShow'))) action(b.id, 'no-show'); }} style={smallWarn}>{t('bk.noShow')}</button>
+                      <button onClick={() => { if (confirm(t('bk.confirmCancel'))) action(b.id, 'cancel'); }} style={actBtnOutline('#ef4444')}>{t('bk.cancel')}</button>
+                    </>
+                  )}
+                  <button onClick={() => removeBooking(b.id)} style={actBtnOutline('#94a3b8')}>{t('bk.delete')}</button>
+                </MActions>
+              </MCard>
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>

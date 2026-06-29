@@ -9,9 +9,10 @@ import { apiFetch, ApiError } from '../../../lib/api';
 import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { BarcodeScanner } from '../../../components/BarcodeScanner';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; category?: { id: string; name: string } | null }
-interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number }
+interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; loyaltyPoints?: number }
@@ -101,6 +102,14 @@ function Register() {
   // Mobile only: which half of the register is showing (one long scroll is hard
   // to use, so we split into a "pick items" view and a "ticket / pay" view).
   const [mobileView, setMobileView] = useState<'catalog' | 'ticket'>('catalog');
+  // Barcode scanning: a USB scanner types into scanInput; the camera button opens
+  // a live scanner. Both resolve a product by its barcode and add it to the cart.
+  const [scanInput, setScanInput] = useState('');
+  const [scanMsg, setScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  // Gift card redeemed toward this ticket (online-only — needs a live balance check).
+  const [giftCard, setGiftCard] = useState<{ code: string; balanceCents: number } | null>(null);
+  const [giftInput, setGiftInput] = useState('');
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
@@ -247,7 +256,36 @@ function Register() {
   }
   function clearCart() {
     setCart([]); setOrderDiscount(''); setTendered(''); setRedeemInput(''); setError(null);
+    setGiftCard(null); setGiftInput(''); setScanInput(''); setScanMsg(null);
     setMobileView('catalog');
+  }
+
+  // Resolve a scanned/typed barcode to a product and add it. Matches the full
+  // product list (any tab) and works offline against the cached catalog.
+  function scanLookup(raw: string) {
+    const code = raw.trim();
+    setScanInput('');
+    if (!code) return;
+    const hit = products.find((p) => (p.barcode ?? '').trim().toLowerCase() === code.toLowerCase());
+    if (hit) { addProduct(hit); setScanMsg({ ok: true, text: t('po.scanAdded').replace('{name}', hit.name) }); }
+    else setScanMsg({ ok: false, text: t('po.scanNotFound').replace('{code}', code) });
+    setTimeout(() => setScanMsg(null), 2500);
+  }
+
+  // Look up a gift card by code and apply its balance toward the ticket (online).
+  async function applyGift() {
+    const code = giftInput.trim();
+    if (!code) return;
+    try {
+      const card = await apiFetch<{ code: string; balanceCents: number; status: string }>(
+        `/gift-cards/lookup/${encodeURIComponent(code)}`, { token },
+      );
+      if (card.status !== 'ACTIVE' || card.balanceCents <= 0) { setError(t('po.gcEmpty')); return; }
+      setGiftCard({ code: card.code, balanceCents: card.balanceCents });
+      setGiftInput(''); setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? t('po.gcNotFound') : e instanceof Error ? e.message : t('po.gcNotFound'));
+    }
   }
 
   const money = useMemo(() => {
@@ -266,10 +304,14 @@ function Register() {
     const redeemPts = redeemDiscount > 0 ? wantPts : 0;
     const total = Math.max(0, subtotal - discount + tax + tip - redeemDiscount);
     const savings = itemSavings + discount + redeemDiscount;
+    // Gift card applied toward the ticket (online-only). Reduces the amount due,
+    // never below 0; the order total still reflects full value.
+    const giftApplied = giftCard && online ? Math.min(giftCard.balanceCents, total) : 0;
+    const due = Math.max(0, total - giftApplied);
     const tenderedCents = Math.round((parseFloat(tendered) || 0) * 100);
-    const change = payMethod === 'CASH' ? Math.max(0, tenderedCents - total) : 0;
-    return { subtotal, itemSavings, discount, tax, tip, total, savings, tenderedCents, change, redeemDiscount, redeemPts };
-  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput, online]);
+    const change = payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0;
+    return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts };
+  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput, online, giftCard]);
 
   // ---- Catalog search + grouping ------------------------------------------
   const q = query.trim().toLowerCase();
@@ -306,9 +348,11 @@ function Register() {
 
   async function pay() {
     if (cart.length === 0) { setError(t('po.addItem')); return; }
-    // Cash needs the amount received; Card & Transfer are paid in full at the terminal/bank.
-    const tenderCents = payMethod === 'CASH' ? money.tenderedCents : money.total;
-    if (payMethod === 'CASH' && tenderCents < money.total) {
+    // The gift card (if any) covers part/all of the ticket; tenders cover the rest.
+    const dueCents = money.due;
+    // Cash needs the amount received; Card & Transfer pay the due in full at the terminal/bank.
+    const tenderCents = payMethod === 'CASH' ? money.tenderedCents : dueCents;
+    if (dueCents > 0 && payMethod === 'CASH' && tenderCents < dueCents) {
       setError(t('po.cashShort'));
       return;
     }
@@ -321,6 +365,7 @@ function Register() {
       customerId: customerId || undefined,
       discountCents: money.discount,
       redeemPoints: money.redeemPts || undefined,
+      giftCardCode: giftCard?.code || undefined,
       items: cart.map((l) => ({
         kind: l.kind,
         serviceId: l.kind === 'SERVICE' && !l.isAddon ? l.refId : undefined,
@@ -331,7 +376,7 @@ function Register() {
         tipCents: l.tipCents,
         staffMemberId: l.staffMemberId || undefined,
       })),
-      tenders: [{ method: apiMethod, amountCents: tenderCents }],
+      tenders: dueCents > 0 ? [{ method: apiMethod, amountCents: tenderCents }] : [],
     };
     setSubmitting(true); setError(null); setOkMsg(null);
 
@@ -350,8 +395,12 @@ function Register() {
     };
 
     try {
-      // Already offline → queue immediately instead of waiting on a doomed request.
-      if (typeof navigator !== 'undefined' && !navigator.onLine) { saveOffline(); return; }
+      // Already offline → queue immediately. Gift-card sales need a live balance
+      // check, so they can't be queued — ask the cashier to retry when back online.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        if (giftCard) { setError(t('po.gcOffline')); return; }
+        saveOffline(); return;
+      }
       try {
         const order = await apiFetch<{ orderNumber: number }>('/pos/orders', { method: 'POST', token, body: payload });
         printReceipt(order.orderNumber);
@@ -364,6 +413,7 @@ function Register() {
         // A real server rejection (bad data / auth) → show it. A network failure
         // (no response) → save the sale offline so nothing is lost.
         if (err instanceof ApiError) { setError(err.message || t('po.payFail')); return; }
+        if (giftCard) { setError(t('po.gcOffline')); return; }
         saveOffline();
       }
     } finally {
@@ -525,6 +575,22 @@ function Register() {
             <button onClick={() => setTab('ADDON')} style={tabBtn(tab === 'ADDON')}>{t('po.tabAddons')}<TabCount n={addons.length} active={tab === 'ADDON'} /></button>
             <button onClick={() => setTab('PRODUCT')} style={tabBtn(tab === 'PRODUCT')}>{t('po.tabProducts')}<TabCount n={products.length} active={tab === 'PRODUCT'} /></button>
           </div>
+
+          {/* Barcode scan: a USB scanner types the code + Enter; the camera button
+              opens a live scanner. Both match a product by barcode and add it. */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: scanMsg ? 6 : 12 }}>
+            <input
+              value={scanInput}
+              onChange={(e) => setScanInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); scanLookup(scanInput); } }}
+              placeholder={t('po.scanPlaceholder')}
+              style={{ ...ui.input, flex: 1, padding: '8px 10px' }}
+            />
+            <button type="button" onClick={() => setShowScanner(true)} style={{ ...ghost, padding: '8px 12px', whiteSpace: 'nowrap' }}>📷 {t('po.scanCamera')}</button>
+          </div>
+          {scanMsg && (
+            <div style={{ fontSize: 12, color: scanMsg.ok ? '#22c55e' : '#f59e0b', marginBottom: 10 }}>{scanMsg.text}</div>
+          )}
 
           {/* Search */}
           <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -720,6 +786,34 @@ function Register() {
             </div>
           </div>
 
+          {/* Gift card redemption (online only — needs a live balance check) */}
+          {online && (
+            <div style={{ marginBottom: 10 }}>
+              {giftCard ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
+                  <span style={{ fontSize: 13, color: '#a5f3fc' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
+                  <button onClick={() => setGiftCard(null)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{t('po.gcRemove')}</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={giftInput}
+                    onChange={(e) => setGiftInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyGift(); } }}
+                    placeholder={t('po.gcPlaceholder')}
+                    style={{ ...ui.input, flex: 1, padding: '7px 9px' }}
+                  />
+                  <button type="button" onClick={applyGift} style={{ ...ghost, padding: '7px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>🎁 {t('po.gcApply')}</button>
+                </div>
+              )}
+            </div>
+          )}
+          {giftCard && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 16, fontWeight: 700 }}>
+              <span>{t('po.gcDue')}</span><span style={{ color: '#22c55e' }}>{formatPrice(money.due, currency)}</span>
+            </div>
+          )}
+
           {/* Payment method */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>{t('po.cash')}</button>
@@ -730,8 +824,8 @@ function Register() {
           {payMethod === 'CASH' && (
             <>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setTendered((money.total / 100).toFixed(2))} style={chip}>{t('po.exact')}</button>
-                {quickCash(money.total).map((amt) => (
+                <button onClick={() => setTendered((money.due / 100).toFixed(2))} style={chip}>{t('po.exact')}</button>
+                {quickCash(money.due).map((amt) => (
                   <button key={amt} onClick={() => setTendered((amt / 100).toFixed(2))} style={chip}>{formatPrice(amt, currency)}</button>
                 ))}
               </div>
@@ -747,13 +841,13 @@ function Register() {
             </>
           )}
           {payMethod === 'CARD' && (
-            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>{t('po.cardHint').replace('{x}', formatPrice(money.total, currency))}</p>
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>{t('po.cardHint').replace('{x}', formatPrice(money.due, currency))}</p>
           )}
           {payMethod === 'TRANSFER' && (
             <div style={{ marginBottom: 10 }}>
               {transferInfo || transferQr ? (
                 <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('po.transferShow').replace('{x}', formatPrice(money.total, currency))}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('po.transferShow').replace('{x}', formatPrice(money.due, currency))}</div>
                   {transferInfo && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#e2e8f0', margin: 0 }}>{transferInfo}</pre>}
                   {transferQr && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -772,7 +866,7 @@ function Register() {
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>
             <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>
-              {submitting ? t('po.processing') : t('po.payPrint').replace('{x}', formatPrice(money.total, currency))}
+              {submitting ? t('po.processing') : t('po.payPrint').replace('{x}', formatPrice(money.due, currency))}
             </button>
           </div>
         </div>
@@ -788,6 +882,16 @@ function Register() {
           </div>
           <button onClick={() => setMobileView('ticket')} style={{ ...ui.primaryBtn, padding: '12px 20px', fontSize: 15, whiteSpace: 'nowrap' }}>{t('po.viewTicket')} →</button>
         </div>
+      )}
+
+      {showScanner && (
+        <BarcodeScanner
+          title={t('po.scanTitle')}
+          hint={t('po.scanHint')}
+          errorText={t('po.scanError')}
+          onDetect={(code) => { setShowScanner(false); scanLookup(code); }}
+          onClose={() => setShowScanner(false)}
+        />
       )}
     </section>
   );

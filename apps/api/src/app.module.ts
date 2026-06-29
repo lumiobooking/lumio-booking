@@ -26,6 +26,7 @@ import { ReferralModule } from './referral/referral.module';
 import { SuppliesModule } from './supplies/supplies.module';
 import { BranchesModule } from './branches/branches.module';
 import { PrintModule } from './print/print.module';
+import { GiftCardsModule } from './gift-cards/gift-cards.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { PrintModule } from './print/print.module';
     SettingsModule,
     // Point of sale: counter checkout (tickets, products, tips, receipts).
     PosModule,
+    GiftCardsModule,
     // Self-serve SaaS billing: public signup, Stripe/PayPal checkout + webhooks.
     BillingModule,
     // Review-reward program: customer feedback → staff & customer points.

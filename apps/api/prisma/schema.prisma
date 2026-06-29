@@ -234,6 +234,8 @@ model Tenant {
   loyaltyTransactions LoyaltyTransaction[]
   branchMemberships BranchMembership[]
   printJobs         PrintJob[]
+  giftCards            GiftCard[]
+  giftCardTransactions GiftCardTransaction[]
 
   @@index([status])
   @@index([accountGroupId])
@@ -1106,6 +1108,7 @@ model Product {
 
   name            String
   sku             String?
+  barcode         String? // scannable barcode / UPC for POS (unique per tenant)
   priceCents      Int
   discountPercent Int     @default(0) // promo % off shown on the ticket/receipt
   currency        String  @default("USD")
@@ -1117,6 +1120,7 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tenantId, barcode])
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@map("products")
@@ -1147,6 +1151,12 @@ model Order {
   paidCents     Int    @default(0) // amount tendered
   changeCents   Int    @default(0) // change returned (cash)
   currency      String @default("USD")
+
+  // Gift card applied to this ticket (redemption). The applied amount is NOT new
+  // revenue (it was counted when the card was sold), so the Payment mirror
+  // excludes it to avoid double-counting.
+  giftCardCode         String?
+  giftCardAppliedCents Int     @default(0)
 
   note   String?
   items  OrderItem[]
@@ -1235,6 +1245,64 @@ model OrderPayment {
   @@index([tenantId])
   @@index([orderId])
   @@map("order_payments")
+}
+
+enum GiftCardStatus {
+  ACTIVE // has balance, usable
+  REDEEMED // fully used (zero balance)
+  VOID // cancelled by the salon
+}
+
+/// Prepaid gift cards sold by a salon. Balance is decremented on redemption at
+/// the POS. Belongs to exactly one tenant; codes are unique within the tenant.
+model GiftCard {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  code         String // shown to the customer; unique within the tenant
+  initialCents Int
+  balanceCents Int
+  currency     String         @default("USD")
+  status       GiftCardStatus @default(ACTIVE)
+
+  purchaserName    String?
+  recipientName    String?
+  recipientContact String?
+  note             String?
+  expiresAt        DateTime?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transactions GiftCardTransaction[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("gift_cards")
+}
+
+/// Ledger of every balance change on a gift card (issue, redeem, adjust, void).
+model GiftCardTransaction {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  giftCardId String
+  giftCard   GiftCard @relation(fields: [giftCardId], references: [id], onDelete: Cascade)
+
+  kind        String // ISSUE | REDEEM | ADJUST | VOID
+  amountCents Int // + for issue/top-up, - for redemption
+  orderId     String?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([giftCardId])
+  @@map("gift_card_transactions")
 }
 
 // Receipt print queue for the reception-desk print agent. The phone enqueues a

@@ -18,6 +18,7 @@ import { OrderItemKind, PaymentMethod } from '@prisma/client';
 export class CreateProductDto {
   @IsString() @MaxLength(120) name!: string;
   @IsOptional() @IsString() @MaxLength(60) sku?: string;
+  @IsOptional() @IsString() @MaxLength(80) barcode?: string;
   @IsInt() @Min(0) priceCents!: number;
   @IsOptional() @IsInt() @Min(0) @Max(90) discountPercent?: number;
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
@@ -30,6 +31,7 @@ export class CreateProductDto {
 export class UpdateProductDto {
   @IsOptional() @IsString() @MaxLength(120) name?: string;
   @IsOptional() @IsString() @MaxLength(60) sku?: string;
+  @IsOptional() @IsString() @MaxLength(80) barcode?: string;
   @IsOptional() @IsInt() @Min(0) priceCents?: number;
   @IsOptional() @IsInt() @Min(0) @Max(90) discountPercent?: number;
   @IsOptional() @IsString() @MaxLength(8) currency?: string;
@@ -66,6 +68,7 @@ export class CreateOrderDto {
   @IsOptional() @IsInt() @Min(0) redeemPoints?: number; // loyalty points to redeem as a discount
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @IsOptional() @IsString() @MaxLength(64) clientRef?: string; // offline-checkout idempotency key
+  @IsOptional() @IsString() @MaxLength(40) giftCardCode?: string; // redeem a gift card toward this ticket
 
   @IsArray()
   @ArrayMinSize(1)

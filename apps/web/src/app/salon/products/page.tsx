@@ -9,7 +9,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Product {
-  id: string; name: string; sku: string | null; priceCents: number; discountPercent?: number; currency: string;
+  id: string; name: string; sku: string | null; barcode?: string | null; priceCents: number; discountPercent?: number; currency: string;
   taxable: boolean; trackStock: boolean; stockQty: number; isActive: boolean; createdAt?: string;
 }
 
@@ -167,6 +167,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
   const [form, setForm] = useState({
     name: product?.name ?? '',
     sku: product?.sku ?? '',
+    barcode: product?.barcode ?? '',
     price: product ? (product.priceCents / 100).toString() : '',
     discountPercent: product ? String(product.discountPercent ?? 0) : '0',
     taxable: product?.taxable ?? true,
@@ -184,6 +185,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
       const body = {
         name: form.name,
         sku: form.sku || undefined,
+        barcode: form.barcode || undefined,
         priceCents: Math.round((parseFloat(form.price) || 0) * 100),
         discountPercent: Math.max(0, Math.min(90, parseInt(form.discountPercent, 10) || 0)),
         taxable: form.taxable,
@@ -204,6 +206,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <label><span style={ui.label}>{t('pd.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('pd.sku')}</span><input style={ui.input} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label>
+        <label><span style={ui.label}>{t('pd.barcode')}</span><input style={ui.input} value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder={t('pd.barcodePh')} /></label>
         <label><span style={ui.label}>{t('pd.price')}</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('pd.discount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></label>
         <label><span style={ui.label}>{t('pd.stockQty')}</span><input style={ui.input} type="number" min={0} value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} disabled={!form.trackStock} /></label>

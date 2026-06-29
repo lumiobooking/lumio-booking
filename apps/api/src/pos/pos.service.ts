@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateOrderDto, CreateProductDto, UpdateProductDto } from './dto/pos.dto';
 
@@ -27,6 +28,7 @@ export class PosService {
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
     private readonly loyalty: LoyaltyService,
+    private readonly giftCards: GiftCardsService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -51,6 +53,7 @@ export class PosService {
         tenantId,
         name: dto.name,
         sku: dto.sku ?? null,
+        barcode: dto.barcode?.trim() || null,
         priceCents: dto.priceCents,
         discountPercent: dto.discountPercent ?? 0,
         currency: dto.currency ?? 'USD',
@@ -73,6 +76,7 @@ export class PosService {
       data: {
         name: dto.name,
         sku: dto.sku,
+        barcode: dto.barcode === undefined ? undefined : (dto.barcode.trim() || null),
         priceCents: dto.priceCents,
         discountPercent: dto.discountPercent,
         currency: dto.currency,
@@ -174,13 +178,27 @@ export class PosService {
     const orderDiscount = manualDiscount + redeemDiscount;
     const totalCents = Math.max(0, subtotal - orderDiscount + taxCents + tipCents);
 
-    const paidCents = (dto.tenders ?? []).reduce((s, t) => s + t.amountCents, 0);
-    const hasTenders = (dto.tenders ?? []).length > 0;
-    if (hasTenders && paidCents < totalCents) {
-      throw new BadRequestException('Tendered amount is less than the total due');
+    // Gift card redemption: read the usable balance now to size the amount due;
+    // the authoritative, race-safe deduction happens inside the transaction.
+    let giftApplied = 0;
+    const giftCode = dto.giftCardCode?.trim();
+    if (giftCode) {
+      const gp = await this.giftCards.redeemableBalance(tenantId, giftCode);
+      if (!gp) throw new BadRequestException('Gift card not found');
+      if (gp.applicable <= 0) throw new BadRequestException('Gift card has no usable balance');
+      giftApplied = Math.min(gp.applicable, totalCents);
     }
-    const paid = hasTenders && paidCents >= totalCents;
-    const changeCents = paid ? paidCents - totalCents : 0;
+    const amountDue = Math.max(0, totalCents - giftApplied);
+
+    const tenderSum = (dto.tenders ?? []).reduce((s, t) => s + t.amountCents, 0);
+    const hasTenders = (dto.tenders ?? []).length > 0;
+    if (hasTenders && tenderSum < amountDue) {
+      throw new BadRequestException('Tendered amount is less than the amount due');
+    }
+    // A gift card can close the ticket on its own; otherwise the tenders must
+    // cover the remaining amount due.
+    const paid = (giftApplied > 0 || hasTenders) && giftApplied + tenderSum >= totalCents;
+    const changeCents = paid ? Math.max(0, tenderSum - amountDue) : 0;
     const rules = await this.settings.getBookingRules(tenantId);
     const currency = rules.currency || 'USD';
 
@@ -206,9 +224,11 @@ export class PosService {
           taxCents,
           tipCents,
           totalCents,
-          paidCents: paid ? paidCents : 0,
+          paidCents: paid ? giftApplied + tenderSum : 0,
           changeCents,
           currency,
+          giftCardCode: paid && giftApplied > 0 ? giftCode ?? null : null,
+          giftCardAppliedCents: paid ? giftApplied : 0,
           note: dto.note ?? null,
           clientRef: dto.clientRef ?? null,
         },
@@ -234,23 +254,32 @@ export class PosService {
             });
           }
         }
-        // Mirror into the Payment ledger so dashboard revenue includes POS sales.
-        // Encode the tender method in `provider` so reports can split Cash/Card/Transfer.
-        const m = dto.tenders?.[0]?.method;
-        const provider = m === 'CASH' ? 'pos-cash' : m === 'CARD' ? 'pos-card' : 'pos-transfer';
-        await tx.payment.create({
-          data: {
-            tenantId,
-            appointmentId: dto.appointmentId ?? null,
-            amountCents: totalCents,
-            currency: created.currency,
-            type: PaymentType.PAY_LATER,
-            status: PaymentStatus.PAID,
-            provider,
-            providerReference: `order:${created.id}`,
-            paidAt: new Date(),
-          },
-        });
+        // Redeem the gift card (authoritative, race-safe) now that we have an
+        // order id. Throws and rolls the whole sale back if the balance changed.
+        if (giftApplied > 0 && giftCode) {
+          const applied = await this.giftCards.redeemInTx(tx, tenantId, giftCode, giftApplied, created.id, user.userId);
+          if (applied !== giftApplied) throw new BadRequestException('Gift card balance changed, please retry');
+        }
+        // Mirror NEW cash into the Payment ledger so dashboard revenue includes POS
+        // sales. The gift-card portion is excluded — it was already counted as
+        // revenue when the card was sold, so counting it again would double-count.
+        if (amountDue > 0) {
+          const m = dto.tenders?.[0]?.method;
+          const provider = m === 'CASH' ? 'pos-cash' : m === 'CARD' ? 'pos-card' : 'pos-transfer';
+          await tx.payment.create({
+            data: {
+              tenantId,
+              appointmentId: dto.appointmentId ?? null,
+              amountCents: amountDue,
+              currency: created.currency,
+              type: PaymentType.PAY_LATER,
+              status: PaymentStatus.PAID,
+              provider,
+              providerReference: `order:${created.id}`,
+              paidAt: new Date(),
+            },
+          });
+        }
         // Checking out a booking completes it.
         if (dto.appointmentId) {
           await tx.appointment.updateMany({
@@ -303,7 +332,7 @@ export class PosService {
         where: { tenantId, providerReference: `order:${id}`, status: PaymentStatus.PAID },
         data: { status: PaymentStatus.REFUNDED },
       });
-      // Restock if it had been paid.
+      // Restock + re-credit any redeemed gift card if it had been a live paid sale.
       if (order.status === OrderStatus.PAID) {
         for (const l of order.items) {
           if (l.kind === OrderItemKind.PRODUCT && l.productId) {
@@ -313,6 +342,7 @@ export class PosService {
             });
           }
         }
+        await this.recreditGiftCards(tx, tenantId, id, user.userId);
       }
     });
 
@@ -328,7 +358,8 @@ export class PosService {
     if (!order) throw new NotFoundException('Order not found');
 
     await this.prisma.$transaction(async (tx) => {
-      // Restock only if it was still a live PAID sale (a VOID order was already restocked).
+      // Restock + re-credit gift cards only if it was still a live PAID sale
+      // (a VOID order was already restocked/re-credited).
       if (order.status === OrderStatus.PAID) {
         for (const l of order.items) {
           if (l.kind === OrderItemKind.PRODUCT && l.productId) {
@@ -338,6 +369,7 @@ export class PosService {
             });
           }
         }
+        await this.recreditGiftCards(tx, tenantId, id, user.userId);
       }
       // Remove the revenue mirror so the deleted sale never counts.
       await tx.payment.deleteMany({ where: { tenantId, providerReference: `order:${id}` } });
@@ -347,6 +379,34 @@ export class PosService {
 
     await this.audit.log({ tenantId, userId: user.userId, action: 'order.deleted', resourceType: 'order', resourceId: id });
     return { id, deleted: true };
+  }
+
+  /**
+   * Reverse any gift-card redemptions made on an order (called on void/delete of
+   * a paid sale) so the customer's balance is restored. Writes a compensating
+   * ADJUST ledger entry per card. Guarded by the caller to a live PAID sale so it
+   * runs at most once per order.
+   */
+  private async recreditGiftCards(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    orderId: string,
+    userId?: string,
+  ): Promise<void> {
+    const redemptions = await tx.giftCardTransaction.findMany({
+      where: { tenantId, orderId, kind: 'REDEEM' },
+    });
+    for (const r of redemptions) {
+      const credit = -r.amountCents; // REDEEM amounts are stored negative
+      if (credit <= 0) continue;
+      await tx.giftCard.updateMany({
+        where: { id: r.giftCardId, tenantId },
+        data: { balanceCents: { increment: credit }, status: 'ACTIVE' },
+      });
+      await tx.giftCardTransaction.create({
+        data: { tenantId, giftCardId: r.giftCardId, kind: 'ADJUST', amountCents: credit, orderId, createdByUserId: userId ?? null },
+      });
+    }
   }
 
   /**

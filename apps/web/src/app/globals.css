@@ -65,6 +65,15 @@ button {
     width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    /* Keep every cell on ONE line. Without this the browser squeezes the columns
+       to fit the screen and long words wrap one character per line ("D-e-l-e-t-e"),
+       which also makes rows very tall. With nowrap the table scrolls sideways. */
+    white-space: nowrap;
+  }
+  /* Be explicit — display:block tables don't always inherit white-space reliably. */
+  th,
+  td {
+    white-space: nowrap;
   }
 }
 

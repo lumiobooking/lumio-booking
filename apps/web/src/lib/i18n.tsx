@@ -40,6 +40,17 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'nav.services': { en: 'Services', vi: 'Dịch vụ' },
   'nav.products': { en: 'Products', vi: 'Sản phẩm' },
   'nav.giftCards': { en: 'Gift cards', vi: 'Thẻ quà tặng' },
+  // Shared list filter / pager / search (used on every list page)
+  'lf.all': { en: 'All', vi: 'Tất cả' },
+  'lf.month': { en: 'Month', vi: 'Tháng' },
+  'lf.prev': { en: '‹ Prev', vi: '‹ Trước' },
+  'lf.next': { en: 'Next ›', vi: 'Sau ›' },
+  'lf.page': { en: 'Page {p} / {t}', vi: 'Trang {p} / {t}' },
+  'lf.showing': { en: 'Showing {a}–{b} of {n}', vi: 'Hiển thị {a}–{b} / {n}' },
+  'lf.noItems': { en: 'No items', vi: 'Không có mục' },
+  'lf.search': { en: 'Search…', vi: 'Tìm kiếm…' },
+  'shell.loading': { en: 'Loading…', vi: 'Đang tải…' },
+  'wi.noMatch': { en: 'No match', vi: 'Không khớp' },
   'nav.staff': { en: 'Staff', vi: 'Nhân viên' },
 
   // --- Barcode scanning + gift cards ---

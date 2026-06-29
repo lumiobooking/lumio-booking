@@ -111,7 +111,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
-        Loading...
+        {tr('shell.loading', lang)}
       </div>
     );
   }
@@ -199,7 +199,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
         {drawerOpen && (
           <>
             <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 40 }} />
-            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: '#111827', borderRight: '1px solid #1f2937', padding: '18px 14px', display: 'flex', flexDirection: 'column', zIndex: 50, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
+            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: '#111827', borderRight: '1px solid #1f2937', padding: '18px 14px', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 50, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 {brand}
                 <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: '#94a3b8', fontSize: 22, cursor: 'pointer' }}>✕</button>

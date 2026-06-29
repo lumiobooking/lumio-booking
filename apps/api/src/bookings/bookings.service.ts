@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { createHmac } from 'crypto';
+import { signingSecret } from '../common/secret.util';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -511,11 +512,11 @@ export class BookingsService {
       // only the later one, not both at once).
       if (!a.remind1SentAt && rs.hoursBefore1 > 0 && hoursToStart <= rs.hoursBefore1 && hoursToStart > rs.hoursBefore2) {
         await this.sendReminderFor(a.tenantId, a, rs).catch(() => undefined);
-        await this.prisma.appointment.update({ where: { id: a.id }, data: { remind1SentAt: new Date() } });
+        await this.prisma.appointment.updateMany({ where: { id: a.id, tenantId: a.tenantId }, data: { remind1SentAt: new Date() } });
         sent++;
       } else if (!a.remind2SentAt && rs.hoursBefore2 > 0 && hoursToStart <= rs.hoursBefore2) {
         await this.sendReminderFor(a.tenantId, a, rs).catch(() => undefined);
-        await this.prisma.appointment.update({ where: { id: a.id }, data: { remind2SentAt: new Date() } });
+        await this.prisma.appointment.updateMany({ where: { id: a.id, tenantId: a.tenantId }, data: { remind2SentAt: new Date() } });
         sent++;
       }
     }
@@ -921,14 +922,14 @@ export class BookingsService {
 
   private apptToken(appointmentId: string): string {
     const payload = Buffer.from(JSON.stringify({ a: appointmentId, exp: Date.now() + 30 * 86400 * 1000 })).toString('base64url');
-    const sig = createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    const sig = createHmac('sha256', signingSecret()).update(payload).digest('base64url');
     return `${payload}.${sig}`;
   }
 
   private verifyApptToken(token: string): string | null {
     const [payload, sig] = (token || '').split('.');
     if (!payload || !sig) return null;
-    const expect = createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    const expect = createHmac('sha256', signingSecret()).update(payload).digest('base64url');
     if (sig !== expect) return null;
     try {
       const d = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { a: string; exp: number };

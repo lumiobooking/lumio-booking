@@ -299,7 +299,11 @@ export class PosService {
           await this.loyalty.redeem(tx, tenantId, dto.customerId, redeemPoints, 'order', created.id);
         }
         if (dto.customerId) {
-          await this.loyalty.award(tx, tenantId, dto.customerId, totalCents, 'order', created.id);
+          // Earn on NET service/product spend (subtotal minus discounts), EXCLUDING
+          // tax and tips — the standard for salon/retail loyalty. Tips belong to
+          // staff, and payment method (cash/card/gift card) doesn't change what's
+          // earned. Buying a gift card earns nothing (handled in its own endpoint).
+          await this.loyalty.award(tx, tenantId, dto.customerId, Math.max(0, subtotal - orderDiscount), 'order', created.id);
         }
       }
 
@@ -343,6 +347,7 @@ export class PosService {
           }
         }
         await this.recreditGiftCards(tx, tenantId, id, user.userId);
+        await this.loyalty.reverseForRef(tx, tenantId, 'order', id, 'Order reversed');
       }
     });
 
@@ -370,6 +375,7 @@ export class PosService {
           }
         }
         await this.recreditGiftCards(tx, tenantId, id, user.userId);
+        await this.loyalty.reverseForRef(tx, tenantId, 'order', id, 'Order reversed');
       }
       // Remove the revenue mirror so the deleted sale never counts.
       await tx.payment.deleteMany({ where: { tenantId, providerReference: `order:${id}` } });

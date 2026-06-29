@@ -69,6 +69,32 @@ export class LoyaltyService {
     return points * s.redeemCentsPerPoint;
   }
 
+  /**
+   * Reverse every loyalty effect of one reference (e.g. a voided/deleted order):
+   * undo the points EARNED and restore the points REDEEMED, per customer, with a
+   * compensating ledger entry. Idempotent against itself — reversal entries are
+   * written under `${refType}-reversal`, so re-running finds nothing to undo (the
+   * caller also guards this to a live PAID sale). Balance is clamped at 0.
+   */
+  async reverseForRef(db: Db, tenantId: string, refType: string, refId: string, reason = 'Sale reversed'): Promise<void> {
+    const txns = await db.loyaltyTransaction.findMany({ where: { tenantId, refType, refId } });
+    if (txns.length === 0) return;
+    // Net points each customer gained from this ref (earned positive, redeemed negative).
+    const byCustomer = new Map<string, number>();
+    for (const t of txns) byCustomer.set(t.customerId, (byCustomer.get(t.customerId) ?? 0) + t.points);
+    for (const [customerId, net] of byCustomer) {
+      if (net === 0) continue;
+      const c = await db.customer.findFirst({ where: { id: customerId, tenantId }, select: { loyaltyPoints: true } });
+      if (!c) continue;
+      const balanceAfter = Math.max(0, c.loyaltyPoints - net); // undo the net effect
+      const applied = balanceAfter - c.loyaltyPoints; // actual delta written (may be clamped)
+      await db.customer.update({ where: { id: customerId }, data: { loyaltyPoints: balanceAfter } });
+      await db.loyaltyTransaction.create({
+        data: { tenantId, customerId, points: applied, balanceAfter, reason, refType: `${refType}-reversal`, refId },
+      });
+    }
+  }
+
   history(tenantId: string, customerId: string) {
     return this.prisma.loyaltyTransaction.findMany({
       where: { tenantId, customerId },

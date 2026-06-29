@@ -95,7 +95,7 @@ export class WaitlistService {
     if (e.phone) jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: e.phone, body: smsText, ...related }));
     await Promise.allSettled(jobs);
 
-    await this.prisma.waitlistEntry.update({ where: { id }, data: { status: WaitlistStatus.NOTIFIED, notifiedAt: new Date() } });
+    await this.prisma.waitlistEntry.updateMany({ where: { id, tenantId }, data: { status: WaitlistStatus.NOTIFIED, notifiedAt: new Date() } });
     await this.audit.log({ tenantId, userId: user.userId, action: 'waitlist.notified', resourceType: 'waitlist', resourceId: id });
     return { ok: true };
   }
@@ -107,7 +107,7 @@ export class WaitlistService {
     if (!valid.includes(status)) throw new BadRequestException('Invalid status');
     const e = await this.prisma.waitlistEntry.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!e) throw new NotFoundException('Waitlist entry not found');
-    await this.prisma.waitlistEntry.update({ where: { id }, data: { status: status as WaitlistStatus } });
+    await this.prisma.waitlistEntry.updateMany({ where: { id, tenantId }, data: { status: status as WaitlistStatus } });
     return { ok: true };
   }
 

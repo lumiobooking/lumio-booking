@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useLang, tr } from '../lib/i18n';
 
 /**
  * Shared list filtering: a date-range bar (quick presets + two date inputs) and
@@ -126,19 +127,21 @@ export function matchesQuery(haystack: string, query: string): boolean {
 export function SearchBox({
   value,
   onChange,
-  placeholder = 'Search…',
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
+  const { lang } = useLang();
+  const ph = placeholder ?? tr('lf.search', lang);
   return (
     <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
       <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={ph}
         style={{
           width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 30px', borderRadius: 8,
           border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 14, colorScheme: 'dark',
@@ -204,17 +207,19 @@ const pagerBtn = (disabled: boolean): React.CSSProperties => ({
 /** Prev / page-indicator / Next bar. Renders nothing when there's only one page. */
 export function Pager({ paged }: { paged: Pick<Paged<unknown>, 'page' | 'totalPages' | 'setPage' | 'total' | 'start' | 'end'> }) {
   const { page, totalPages, setPage, total, start, end } = paged;
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   if (total === 0) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14 }}>
       <span style={{ color: '#64748b', fontSize: 12 }}>
-        {total === 0 ? 'No items' : `Showing ${start + 1}–${end} of ${total}`}
+        {t('lf.showing').replace('{a}', String(start + 1)).replace('{b}', String(end)).replace('{n}', String(total))}
       </span>
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)} style={pagerBtn(page <= 1)}>‹ Prev</button>
-          <span style={{ color: '#94a3b8', fontSize: 13 }}>Page {page} / {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} style={pagerBtn(page >= totalPages)}>Next ›</button>
+          <button disabled={page <= 1} onClick={() => setPage(page - 1)} style={pagerBtn(page <= 1)}>{t('lf.prev')}</button>
+          <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('lf.page').replace('{p}', String(page)).replace('{t}', String(totalPages))}</span>
+          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} style={pagerBtn(page >= totalPages)}>{t('lf.next')}</button>
         </div>
       )}
     </div>
@@ -224,13 +229,15 @@ export function Pager({ paged }: { paged: Pick<Paged<unknown>, 'page' | 'totalPa
 /** The visual date-range control. Pass it the object returned by useDateRange. */
 export function DateRangeBar({ range }: { range: DateRange }) {
   const { from, to, preset, applyPreset, setFrom, setTo } = range;
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
   const today = isoDay(new Date());
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
       <div style={{ display: 'flex', gap: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
         {PRESETS.map((p) => (
           <button key={p.key} onClick={() => applyPreset(p.key)} style={presetBtn(preset === p.key)}>
-            {p.label}
+            {p.key === 'all' ? t('lf.all') : p.key === 'month' ? t('lf.month') : p.label}
           </button>
         ))}
       </div>

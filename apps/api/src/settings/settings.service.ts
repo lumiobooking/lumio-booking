@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { signingSecret } from '../common/secret.util';
 import {
   BOOKING_RULES_KEY,
   BookingRules,
@@ -381,13 +382,13 @@ export class SettingsService {
   }
   private signState(tenantId: string): string {
     const payload = Buffer.from(JSON.stringify({ t: tenantId, exp: Date.now() + 600_000 })).toString('base64url');
-    const sig = crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    const sig = crypto.createHmac('sha256', signingSecret()).update(payload).digest('base64url');
     return `${payload}.${sig}`;
   }
   private verifyState(state: string): string | null {
     const [payload, sig] = (state || '').split('.');
     if (!payload || !sig) return null;
-    const expect = crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev').update(payload).digest('base64url');
+    const expect = crypto.createHmac('sha256', signingSecret()).update(payload).digest('base64url');
     if (sig !== expect) return null;
     try {
       const data = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { t: string; exp: number };

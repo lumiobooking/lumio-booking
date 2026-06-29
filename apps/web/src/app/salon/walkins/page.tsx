@@ -204,7 +204,7 @@ function ServiceSearchSelect({ services, value, onChange, placeholder }: {
               {s.name}
             </button>
           ))}
-          {filtered.length === 0 && <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 13 }}>No match</div>}
+          {filtered.length === 0 && <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 13 }}>{t('wi.noMatch')}</div>}
         </div>
       )}
     </div>

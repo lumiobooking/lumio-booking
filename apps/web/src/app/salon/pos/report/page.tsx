@@ -43,7 +43,7 @@ function Inner() {
       if (range.to) q.set('to', range.to);
       setData(await apiFetch<Report>(`/pos/report?${q.toString()}`, { token }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('pr.loadFail'));
+      setError(err instanceof Error ? err.message : t('sr.loadFail'));
     } finally { setLoading(false); }
   }, [token, range.from, range.to]);
 
@@ -53,34 +53,34 @@ function Inner() {
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>{t('pr.title')}</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{t('pr.subtitle')}</p>
+          <h1 style={{ fontSize: 22, margin: 0 }}>{t('sr.title')}</h1>
+          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{t('sr.subtitle')}</p>
         </div>
         <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {loading || !data ? <p style={{ color: '#94a3b8' }}>{t('pr.loading')}</p> : (
+      {loading || !data ? <p style={{ color: '#94a3b8' }}>{t('sr.loading')}</p> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 18 }}>
-            <Kpi label={t('pr.kpiSales')} value={formatPrice(data.totals.revenueCents)} accent="#22c55e" />
-            <Kpi label={t('pr.kpiTips')} value={formatPrice(data.totals.tipsCents)} accent="#a855f7" />
-            <Kpi label={t('pr.kpiCommission')} value={formatPrice(data.totals.commissionCents)} accent="#06b6d4" />
-            <Kpi label={t('pr.kpiOrders')} value={String(data.totals.orders)} accent="#3b82f6" />
+            <Kpi label={t('sr.kpiSales')} value={formatPrice(data.totals.revenueCents)} accent="#22c55e" />
+            <Kpi label={t('sr.kpiTips')} value={formatPrice(data.totals.tipsCents)} accent="#a855f7" />
+            <Kpi label={t('sr.kpiCommission')} value={formatPrice(data.totals.commissionCents)} accent="#06b6d4" />
+            <Kpi label={t('sr.kpiOrders')} value={String(data.totals.orders)} accent="#3b82f6" />
           </div>
 
           <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead><tr style={{ background: '#1e293b' }}>
-                <th style={ui.th}>{t('pr.colTech')}</th>
-                <th style={ui.th}>{t('pr.colService')}</th>
-                <th style={ui.th}>{t('pr.colProduct')}</th>
-                <th style={ui.th}>{t('pr.colTips')}</th>
-                <th style={ui.th}>{t('pr.colCommission')}</th>
+                <th style={ui.th}>{t('sr.colTech')}</th>
+                <th style={ui.th}>{t('sr.colService')}</th>
+                <th style={ui.th}>{t('sr.colProduct')}</th>
+                <th style={ui.th}>{t('sr.colTips')}</th>
+                <th style={ui.th}>{t('sr.colCommission')}</th>
               </tr></thead>
               <tbody>
-                {data.staff.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('pr.empty')}</td></tr>}
+                {data.staff.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('sr.empty')}</td></tr>}
                 {data.staff.map((r) => (
                   <tr key={r.staffId} style={{ borderTop: '1px solid #334155' }}>
                     <td style={ui.td}>{r.name}</td>
@@ -94,7 +94,7 @@ function Inner() {
             </table>
           </div>
           <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
-            {t('pr.footnote')}
+            {t('sr.footnote')}
           </p>
         </>
       )}

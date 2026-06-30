@@ -67,7 +67,7 @@ export class CustomersService {
   /** Front-desk quick-add (POS): find-or-create by phone/email, return a brief. */
   async quickCreate(
     user: AuthenticatedUser,
-    dto: { firstName?: string; lastName?: string; phone?: string; email?: string },
+    dto: { firstName?: string; lastName?: string; phone?: string; email?: string; birthDate?: string },
   ) {
     const tenantId = this.tenantId(user);
     const c = await this.findOrCreateByContact(tenantId, dto);
@@ -89,29 +89,37 @@ export class CustomersService {
    */
   async findOrCreateByContact(
     tenantId: string,
-    input: { firstName?: string | null; lastName?: string | null; phone?: string | null; email?: string | null },
+    input: { firstName?: string | null; lastName?: string | null; phone?: string | null; email?: string | null; birthDate?: string | null },
   ) {
     const phone = this.normPhone(input.phone);
     const email = (input.email ?? '').trim().toLowerCase() || null;
     const firstName = (input.firstName ?? '').trim().slice(0, 80) || 'Walk-in';
     const lastName = (input.lastName ?? '').trim().slice(0, 80) || null;
+    // Optional birthday — only used if valid. Saved on create; backfilled onto an
+    // existing customer only when they don't already have one (never overwrite).
+    const birth = (() => {
+      if (!input.birthDate) return null;
+      const d = new Date(input.birthDate);
+      return isNaN(d.getTime()) ? null : d;
+    })();
 
     let existing = phone
-      ? await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true, firstName: true, email: true, phone: true } })
+      ? await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true, firstName: true, email: true, phone: true, birthDate: true } })
       : null;
     if (!existing && email) {
-      existing = await this.prisma.customer.findFirst({ where: { tenantId, email }, select: { id: true, firstName: true, email: true, phone: true } });
+      existing = await this.prisma.customer.findFirst({ where: { tenantId, email }, select: { id: true, firstName: true, email: true, phone: true, birthDate: true } });
     }
     if (existing) {
       const patch: Record<string, unknown> = {};
       if (phone && !existing.phone) patch.phone = phone;
       if (email && !existing.email) patch.email = email;
       if ((!existing.firstName || existing.firstName === 'Walk-in') && firstName !== 'Walk-in') patch.firstName = firstName;
+      if (birth && !existing.birthDate) patch.birthDate = birth;
       if (Object.keys(patch).length) await this.prisma.customer.updateMany({ where: { id: existing.id, tenantId }, data: patch });
       return this.brief(tenantId, existing.id);
     }
     if (!phone && !email) return null; // nothing to dedupe on → skip
-    const created = await this.prisma.customer.create({ data: { tenantId, firstName, lastName, phone, email }, select: { id: true } });
+    const created = await this.prisma.customer.create({ data: { tenantId, firstName, lastName, phone, email, birthDate: birth }, select: { id: true } });
     return this.brief(tenantId, created.id);
   }
 

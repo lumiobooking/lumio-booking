@@ -1077,7 +1077,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
   const [q, setQ] = useState('');
   const [results, setResults] = useState<CustomerHit[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [nf, setNf] = useState({ firstName: '', phone: '' });
+  const [nf, setNf] = useState({ firstName: '', phone: '', birthDate: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1100,9 +1100,9 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
     if (!nf.phone.trim()) { setErr(t('po.custPhoneReq')); return; }
     setBusy(true); setErr(null);
     try {
-      const c = await apiFetch<CustomerHit>('/customers', { method: 'POST', token, body: { firstName: nf.firstName.trim() || undefined, phone: nf.phone.trim() } });
+      const c = await apiFetch<CustomerHit>('/customers', { method: 'POST', token, body: { firstName: nf.firstName.trim() || undefined, phone: nf.phone.trim(), birthDate: nf.birthDate || undefined } });
       onPick(c.id, hitLabel(c), c.loyaltyPoints ?? 0);
-      setAdding(false); setNf({ firstName: '', phone: '' }); setQ('');
+      setAdding(false); setNf({ firstName: '', phone: '', birthDate: '' }); setQ('');
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusy(false); }
   }
@@ -1129,6 +1129,10 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
           <input value={nf.firstName} onChange={(e) => setNf({ ...nf, firstName: e.target.value })} placeholder={t('po.custName')} style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
           <input value={nf.phone} onChange={(e) => setNf({ ...nf, phone: e.target.value })} placeholder={t('po.custPhone')} inputMode="tel" autoFocus style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>🎂 {t('po.custBirthday')}</span>
+          <input type="date" value={nf.birthDate} onChange={(e) => setNf({ ...nf, birthDate: e.target.value })} style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
         </div>
         {err && <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 6 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 6 }}>
@@ -1159,7 +1163,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
       )}
       {results && results.length === 0 && q.trim().length >= 2 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#1e293b', border: '1px solid #475569', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#94a3b8' }}>
-          {t('po.custNone')} <button type="button" onClick={() => { setAdding(true); setNf({ firstName: '', phone: q.replace(/[^\d+]/g, '') }); }} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 12, padding: 0 }}>＋ {t('po.custAdd')}</button>
+          {t('po.custNone')} <button type="button" onClick={() => { setAdding(true); setNf({ firstName: '', phone: q.replace(/[^\d+]/g, ''), birthDate: '' }); }} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 12, padding: 0 }}>＋ {t('po.custAdd')}</button>
         </div>
       )}
     </div>

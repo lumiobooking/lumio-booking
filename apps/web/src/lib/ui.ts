@@ -28,6 +28,7 @@ export const ui = {
     fontWeight: 600,
     fontSize: 13,
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
   } as CSSProperties,
   dangerBtn: {
     padding: '6px 12px',
@@ -37,8 +38,9 @@ export const ui = {
     color: '#ef4444',
     fontSize: 13,
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
   } as CSSProperties,
-  th: { padding: '12px 14px', fontWeight: 600, color: '#cbd5e1', textAlign: 'left' } as CSSProperties,
+  th: { padding: '12px 14px', fontWeight: 600, color: '#cbd5e1', textAlign: 'left', whiteSpace: 'nowrap' } as CSSProperties,
   td: { padding: '12px 14px' } as CSSProperties,
   banner: {
     background: '#7f1d1d',

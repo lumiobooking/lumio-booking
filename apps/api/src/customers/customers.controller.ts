@@ -22,6 +22,8 @@ class CreateCustomerDto {
   @IsOptional() @IsString() @MaxLength(80) lastName?: string;
   @IsOptional() @ValidateIf((_o, v) => v !== '') @IsEmail() email?: string;
   @IsOptional() @IsString() @MaxLength(40) phone?: string;
+  // Optional birthday (YYYY-MM-DD) for remarketing. Never required.
+  @IsOptional() @ValidateIf((_o, v) => v !== '') @IsISO8601() birthDate?: string;
 }
 
 @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

@@ -609,6 +609,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.custNew': { en: 'New customer', vi: 'Khách mới' },
   'po.custName': { en: 'Name (optional)', vi: 'Tên (tuỳ chọn)' },
   'po.custPhone': { en: 'Phone number', vi: 'Số điện thoại' },
+  'po.custBirthday': { en: 'Birthday (optional)', vi: 'Ngày sinh (tuỳ chọn)' },
   'po.custPhoneReq': { en: 'Enter a phone number.', vi: 'Vui lòng nhập số điện thoại.' },
   'po.custSave': { en: 'Save customer', vi: 'Lưu khách' },
   'po.custSaving': { en: 'Saving…', vi: 'Đang lưu…' },

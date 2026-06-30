@@ -108,7 +108,7 @@ function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
   const m = map[r];
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg }}>{m.label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg, whiteSpace: 'nowrap' }}>{m.label}</span>
       {takes === false && r === 'TECHNICIAN' && (
         <span style={{ fontSize: 11, color: '#94a3b8' }}>· {t('st.notBookableTag')}</span>
       )}

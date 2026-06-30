@@ -13,6 +13,7 @@ import { CreateStaffDto, WorkingHourDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { CreateStaffLoginDto } from './dto/create-staff-login.dto';
+import { ResetStaffPasswordDto } from './dto/reset-staff-password.dto';
 
 const STAFF_INCLUDE = {
   staffServices: { select: { serviceId: true } },
@@ -205,7 +206,7 @@ export class StaffService {
           phone: dto.phone,
           avatarUrl: dto.avatarUrl,
           tipQrUrl: dto.tipQrUrl === undefined ? undefined : (dto.tipQrUrl || null),
-          tipHandle: dto.tipHandle === undefined ? undefined : (dto.tipHandle.trim() || null),
+          tipHandle: dto.tipHandle === undefined ? undefined : (dto.tipHandle?.trim() || null),
           isActive: dto.isActive,
           performanceScore: dto.performanceScore,
           commissionPercent: dto.commissionPercent,
@@ -310,6 +311,47 @@ export class StaffService {
     });
 
     return { staffMemberId: staffId, email: created.email };
+  }
+
+  /**
+   * Resets the password on a staff member's EXISTING login. Admin-initiated — the
+   * salon owner can hand a tech a new password without involving support. Scoped to
+   * this tenant: only this salon's staff, and only their linked user, can be changed.
+   */
+  async resetLogin(user: AuthenticatedUser, staffId: string, dto: ResetStaffPasswordDto) {
+    const tenantId = this.tenantId(user);
+    const staff = await this.prisma.staffMember.findFirst({
+      where: { id: staffId, tenantId },
+      select: { id: true, userId: true },
+    });
+    if (!staff) {
+      throw new NotFoundException('Staff member not found');
+    }
+    if (!staff.userId) {
+      throw new BadRequestException('This staff member has no login yet — create one first.');
+    }
+    // Defence in depth: confirm the linked user belongs to THIS tenant before touching it.
+    const account = await this.prisma.user.findFirst({
+      where: { id: staff.userId, tenantId },
+      select: { id: true, email: true },
+    });
+    if (!account) {
+      throw new NotFoundException('Login account not found');
+    }
+
+    const passwordHash = await hashSecret(dto.password);
+    await this.prisma.user.update({ where: { id: account.id }, data: { passwordHash } });
+
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'staff.password_reset',
+      resourceType: 'staff_member',
+      resourceId: staffId,
+      metadata: { email: account.email },
+    });
+
+    return { staffMemberId: staffId, email: account.email, reset: true };
   }
 
   private async createWorkingHours(

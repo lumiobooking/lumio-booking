@@ -154,6 +154,14 @@ export class BookingsService {
     // Only ever upgrade consent to true (never silently revoke a prior opt-in
     // just because a returning customer left the box unchecked this time).
     const consent = dto.smsConsent === true ? { smsConsent: true, smsConsentAt: new Date() } : {};
+    // Optional birthday the customer shared. Only set it when given (and valid) —
+    // a returning customer who leaves it blank keeps the birthday we already have.
+    const birth = (() => {
+      if (!dto.customerBirthDate) return undefined;
+      const d = new Date(dto.customerBirthDate);
+      return isNaN(d.getTime()) ? undefined : d;
+    })();
+    const birthData = birth ? { birthDate: birth } : {};
     // Referral attribution applies to NEW customers only (the `create` branches),
     // so a returning customer is never re-attributed.
     const referredById = await this.referral.resolveReferrerId(tx, tenantId, dto.referralCode);
@@ -167,6 +175,7 @@ export class BookingsService {
           lastName: dto.customerLastName ?? null,
           phone: dto.customerPhone ?? null,
           ...consent,
+          ...birthData,
         },
         create: {
           tenantId,
@@ -175,6 +184,7 @@ export class BookingsService {
           lastName: dto.customerLastName ?? null,
           phone: dto.customerPhone ?? null,
           ...consent,
+          ...birthData,
           ...referredBy,
         },
       });
@@ -186,6 +196,7 @@ export class BookingsService {
         lastName: dto.customerLastName ?? null,
         phone: dto.customerPhone ?? null,
         ...consent,
+        ...birthData,
         ...referredBy,
       },
     });

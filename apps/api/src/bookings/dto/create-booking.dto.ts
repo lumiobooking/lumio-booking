@@ -67,6 +67,13 @@ export class CreateBookingDto {
   @MaxLength(40)
   customerPhone?: string;
 
+  // Optional birthday (YYYY-MM-DD) the customer may share when booking — used only
+  // to send a birthday greeting/offer later. Never required to book.
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  customerBirthDate?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(500)

@@ -247,6 +247,7 @@ function StaffInner() {
   const [showForm, setShowForm] = useState(false);
   const [editFor, setEditFor] = useState<string | null>(null);
   const [loginFor, setLoginFor] = useState<string | null>(null);
+  const [loginMode, setLoginMode] = useState<'create' | 'reset'>('create');
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [createdMsg, setCreatedMsg] = useState<string | null>(null);
 
@@ -283,21 +284,39 @@ function StaffInner() {
   }
 
   function openLogin(m: StaffMember) {
+    setLoginMode('create');
     setLoginFor(m.id);
     setLoginForm({ email: m.email ?? '', password: '' });
     setCreatedMsg(null);
     setError(null);
   }
 
+  // Reset the password on an EXISTING staff login (toggles open/closed).
+  function openReset(m: StaffMember) {
+    const close = loginFor === m.id && loginMode === 'reset';
+    setLoginMode('reset');
+    setLoginFor(close ? null : m.id);
+    setLoginForm({ email: m.user?.email ?? '', password: '' });
+    setCreatedMsg(null);
+    setError(null);
+  }
+
   async function submitLogin(staffId: string) {
     setError(null);
+    if (!loginForm.password || loginForm.password.length < 8) { setError(t('st.loginPwShort')); return; }
     try {
-      await apiFetch(`/staff/${staffId}/login`, { method: 'POST', token, body: loginForm });
-      setLoginFor(null);
-      setCreatedMsg(t('st.loginCreated').replace('{email}', loginForm.email));
+      if (loginMode === 'reset') {
+        await apiFetch(`/staff/${staffId}/password`, { method: 'POST', token, body: { password: loginForm.password } });
+        setLoginFor(null);
+        setCreatedMsg(t('st.pwReset').replace('{email}', loginForm.email));
+      } else {
+        await apiFetch(`/staff/${staffId}/login`, { method: 'POST', token, body: loginForm });
+        setLoginFor(null);
+        setCreatedMsg(t('st.loginCreated').replace('{email}', loginForm.email));
+      }
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create login');
+      setError(err instanceof Error ? err.message : 'Could not save');
     }
   }
 
@@ -357,7 +376,14 @@ function StaffInner() {
                 <MRow label={t('st.colContact')}>{m.email || '—'}{m.phone ? ' · ' + m.phone : ''}</MRow>
                 <MRow label={t('st.colSkills')}>{m.staffServices.length === 0 ? '—' : m.staffServices.map((ss) => serviceName(ss.serviceId)).join(', ')}</MRow>
                 <MRow label={t('st.colLogin')}>
-                  {m.user ? <span style={{ color: '#22c55e' }}>🔑 {m.user.email}</span> : <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? '#475569' : '#6366f1' }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>}
+                  {m.user ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ color: '#22c55e' }}>🔑 {m.user.email}</span>
+                      <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? '#475569' : '#334155' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? '#475569' : '#6366f1' }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>
+                  )}
                 </MRow>
                 <MActions>
                   <button onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? '#475569' : '#6366f1' }}>{editFor === m.id ? t('st.close') : t('st.edit')}</button>
@@ -367,17 +393,17 @@ function StaffInner() {
               {editFor === m.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><StaffEditPanel token={token!} member={m} services={services} onSaved={load} /></div>}
               {loginFor === m.id && (
                 <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}>
-                  <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{t('st.createLoginFor').replace('{name}', m.firstName)}</div>
+                  <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}</div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
                     <label style={{ flex: 1, minWidth: 160 }}>
                       <span style={ui.label}>{t('st.loginEmail')}</span>
-                      <input style={ui.input} type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} />
+                      <input style={{ ...ui.input, ...(loginMode === 'reset' ? { opacity: 0.6 } : {}) }} type="email" value={loginForm.email} readOnly={loginMode === 'reset'} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} />
                     </label>
                     <label style={{ flex: 1, minWidth: 140 }}>
-                      <span style={ui.label}>{t('st.password')}</span>
+                      <span style={ui.label}>{loginMode === 'reset' ? t('st.newPassword') : t('st.password')}</span>
                       <input style={ui.input} type="text" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder={t('st.passwordPh')} />
                     </label>
-                    <button onClick={() => submitLogin(m.id)} style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{t('st.createLogin')}</button>
+                    <button onClick={() => submitLogin(m.id)} style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{loginMode === 'reset' ? t('st.savePassword') : t('st.createLogin')}</button>
                   </div>
                 </div>
               )}
@@ -428,7 +454,12 @@ function StaffInner() {
                   </td>
                   <td style={ui.td}>
                     {m.user ? (
-                      <span style={{ color: '#22c55e', fontSize: 13 }}>🔑 {m.user.email}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ color: '#22c55e', fontSize: 13 }}>🔑 {m.user.email}</span>
+                        <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? '#475569' : '#334155' }}>
+                          {loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}
+                        </button>
+                      </div>
                     ) : (
                       <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? '#475569' : '#6366f1' }}>
                         {loginFor === m.id ? t('st.cancel') : t('st.createLogin')}
@@ -470,18 +501,18 @@ function StaffInner() {
                   <tr>
                     <td colSpan={6} style={{ padding: 14, background: '#0f172a' }}>
                       <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>
-                        {t('st.createLoginFor').replace('{name}', m.firstName)}
+                        {(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
                         <label style={{ flex: 1, minWidth: 200 }}>
                           <span style={ui.label}>{t('st.loginEmail')}</span>
-                          <input style={ui.input} type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} />
+                          <input style={{ ...ui.input, ...(loginMode === 'reset' ? { opacity: 0.6 } : {}) }} type="email" value={loginForm.email} readOnly={loginMode === 'reset'} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} />
                         </label>
                         <label style={{ flex: 1, minWidth: 180 }}>
-                          <span style={ui.label}>{t('st.password')}</span>
+                          <span style={ui.label}>{loginMode === 'reset' ? t('st.newPassword') : t('st.password')}</span>
                           <input style={ui.input} type="text" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder={t('st.passwordPh')} />
                         </label>
-                        <button onClick={() => submitLogin(m.id)} style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{t('st.createLogin')}</button>
+                        <button onClick={() => submitLogin(m.id)} style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{loginMode === 'reset' ? t('st.savePassword') : t('st.createLogin')}</button>
                       </div>
                     </td>
                   </tr>

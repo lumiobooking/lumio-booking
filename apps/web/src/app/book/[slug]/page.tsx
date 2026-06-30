@@ -188,7 +188,7 @@ export default function PublicBookingPage() {
   const [staffId, setStaffId] = useState('');
   const [slot, setSlot] = useState<Slot | null>(null);
   const [avail, setAvail] = useState<Availability | null>(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', birthDate: '' });
   const [paymentType, setPaymentType] = useState<'PAY_ONLINE' | 'PAY_LATER'>('PAY_LATER');
   // Optional marketing SMS opt-in (A2P 10DLC): off by default, never required to book.
   const [smsConsent, setSmsConsent] = useState(false);
@@ -301,6 +301,7 @@ export default function PublicBookingPage() {
           startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
+          customerBirthDate: form.birthDate || undefined,
           smsConsent,
           // Referral attribution: forward the ?ref= code from the share link, if any.
           referralCode: (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') : null) || undefined,
@@ -310,14 +311,14 @@ export default function PublicBookingPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) { setError((body && body.message) || `Booking failed (${res.status})`); return; }
       setResult({ paymentStatus: body?.payment?.status ?? null });
-      setStep(6);
+      setStep(5);
     } catch { setError('Network error. Please try again.'); }
     finally { setSubmitting(false); }
   }
 
   function reset() {
     setStep(1); setSelectedDate(null); setServiceId(''); setAddonIds([]); setStaffId(''); setSlot(null);
-    setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '' });
+    setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '' });
     setPaymentType('PAY_LATER'); setResult(null); setError(null);
   }
 
@@ -328,11 +329,10 @@ export default function PublicBookingPage() {
     { n: 1, label: 'Date & time', summary: slot ? `${selectedDate?.toLocaleDateString('en-US')} · ${fmtTime(slot.start)}` : selectedDate ? selectedDate.toLocaleDateString('en-US') : '' },
     { n: 2, label: 'Service', summary: service ? service.name : '' },
     { n: 3, label: 'Technician', summary: step > 3 ? (employee ? `${employee.firstName} ${employee.lastName ?? ''}`.trim() : 'Any available') : '' },
-    { n: 4, label: 'Your information', summary: form.firstName || '' },
-    { n: 5, label: 'Payment', summary: step > 5 ? (paymentType === 'PAY_ONLINE' ? 'Online' : 'At salon') : '' },
+    { n: 4, label: 'Your details & payment', summary: step > 4 ? (paymentType === 'PAY_ONLINE' ? 'Online' : 'At salon') : (form.firstName || '') },
   ];
 
-  const currentLabel = steps.find((s) => s.n === Math.min(step, 5))?.label ?? '';
+  const currentLabel = steps.find((s) => s.n === Math.min(step, 4))?.label ?? '';
 
   return (
     <Shell>
@@ -348,7 +348,7 @@ export default function PublicBookingPage() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8 }}>
               <div style={{ fontSize: 12, opacity: 0.95 }}>
-                {step > 5 ? 'Done' : `Step ${Math.min(step, 5)} of 5 · ${currentLabel}`}
+                {step > 4 ? 'Done' : `Step ${Math.min(step, 4)} of 4 · ${currentLabel}`}
               </div>
               <InstallAppButton label="Get the app" />
             </div>
@@ -473,7 +473,7 @@ export default function PublicBookingPage() {
               onBack={() => setStep(2)} onContinue={() => setStep(4)} />
           )}
 
-          {step === 4 && (() => {
+          {step === 4 && service && slot && (() => {
             const hasPhone = form.phone.trim().length > 0;
             const hasEmail = form.email.trim().length > 0;
             const phoneValid = isValidPhone(form.phone);
@@ -483,8 +483,12 @@ export default function PublicBookingPage() {
             // At least one VALID contact method is required (email or phone).
             const hasValidContact = (hasPhone && phoneValid) || (hasEmail && emailValid);
             const infoOk = form.firstName.trim().length > 0 && hasValidContact && !showPhoneError && !showEmailError;
-            return (
-              <StepFrame title="Your information" canContinue={infoOk} onContinue={() => setStep(5)} onBack={() => setStep(3)}>
+            // Customer details + birthday are collected HERE on the final step so the
+            // booking flow is shorter (no separate "Your information" step). This block
+            // renders at the top of the payment step.
+            const infoForm = (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 12 }}>Your details</div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
                   <Field label="First name" required><input style={field} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
                   <Field label="Last name"><input style={field} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
@@ -507,6 +511,12 @@ export default function PublicBookingPage() {
                 </div>
                 <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 500, color: !hasValidContact ? '#ef4444' : '#64748b' }}>
                   Please enter at least one — email or phone — so we can confirm your appointment.
+                </div>
+                <div style={{ marginTop: 14, maxWidth: isMobile ? '100%' : 300 }}>
+                  <Field label="🎂 Birthday (optional)">
+                    <input style={field} type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+                  </Field>
+                  <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>Share it and we&rsquo;ll send you a birthday treat 🎁</div>
                 </div>
                 {/* SMS consent — transactional disclosure + optional marketing opt-in (A2P 10DLC). */}
                 <div style={{ marginTop: 18, padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
@@ -531,19 +541,20 @@ export default function PublicBookingPage() {
                     <span> · Opt-in data never shared.</span>
                   </div>
                 </div>
-                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>Enter your first name and at least a valid email or phone to continue.</p>}
-              </StepFrame>
+                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>Enter your first name and at least a valid email or phone to confirm.</p>}
+                <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 20 }} />
+              </div>
+            );
+            return (
+              <StepPayment service={service} employee={employee} slot={slot} addons={paymentItems} totalCents={totalCents} depositCents={depositCents}
+                fmt={fmt} onlineEnabled={rules.onlinePaymentEnabled} payLaterEnabled={rules.payLaterEnabled}
+                paymentType={paymentType} setPaymentType={setPaymentType} error={error} submitting={submitting}
+                header={infoForm} canConfirm={infoOk}
+                onBack={() => setStep(3)} onConfirm={submit} />
             );
           })()}
 
-          {step === 5 && service && slot && (
-            <StepPayment service={service} employee={employee} slot={slot} addons={paymentItems} totalCents={totalCents} depositCents={depositCents}
-              fmt={fmt} onlineEnabled={rules.onlinePaymentEnabled} payLaterEnabled={rules.payLaterEnabled}
-              paymentType={paymentType} setPaymentType={setPaymentType} error={error} submitting={submitting}
-              onBack={() => setStep(4)} onConfirm={submit} />
-          )}
-
-          {step === 6 && (
+          {step === 5 && (
             <Center>
               <div style={{ textAlign: 'center', maxWidth: 360 }}>
                 <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 34, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>✓</div>
@@ -743,10 +754,11 @@ function StepTechnician({ rules, staff, avail, slot, durationMinutes, staffId, a
 // ---------------------------------------------------------------------------
 // Step 5: Payment
 // ---------------------------------------------------------------------------
-function StepPayment({ service, employee, slot, addons, totalCents, depositCents, fmt, onlineEnabled, payLaterEnabled, paymentType, setPaymentType, error, submitting, onBack, onConfirm }: {
+function StepPayment({ service, employee, slot, addons, totalCents, depositCents, fmt, onlineEnabled, payLaterEnabled, paymentType, setPaymentType, error, submitting, onBack, onConfirm, header, canConfirm = true }: {
   service: Service; employee: Staff | null; slot: Slot; addons: Addon[]; totalCents: number; depositCents: number; fmt: (c: number) => string;
   onlineEnabled: boolean; payLaterEnabled: boolean; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (t: 'PAY_ONLINE' | 'PAY_LATER') => void;
   error: string | null; submitting: boolean; onBack: () => void; onConfirm: () => void;
+  header?: React.ReactNode; canConfirm?: boolean;
 }) {
   useEffect(() => {
     if (!onlineEnabled && paymentType === 'PAY_ONLINE' && payLaterEnabled) setPaymentType('PAY_LATER');
@@ -758,8 +770,9 @@ function StepPayment({ service, employee, slot, addons, totalCents, depositCents
 
   return (
     <div style={frameRoot}>
-      <h2 style={stepTitle}>Payment</h2>
+      <h2 style={stepTitle}>{header ? 'Your details & payment' : 'Payment'}</h2>
       <div style={scrollArea}>
+        {header}
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 18 }}>
           <Row k="Service" v={`${service.name} (${fmt(svcNetCents(service))})`} />
           {svcDiscount(service) > 0 && <Row k={`Discount −${svcDiscount(service)}%`} v={`− ${fmt(service.priceCents - svcNetCents(service))}`} />}
@@ -793,7 +806,7 @@ function StepPayment({ service, employee, slot, addons, totalCents, depositCents
       </div>
       <div style={footer}>
         <button onClick={onBack} style={ghostBtn}>Back</button>
-        <button onClick={onConfirm} disabled={submitting} style={primaryBtn}>{submitting ? 'Booking…' : paymentType === 'PAY_ONLINE' ? 'Pay & book' : 'Confirm booking'}</button>
+        <button onClick={onConfirm} disabled={submitting || !canConfirm} style={{ ...primaryBtn, opacity: submitting || !canConfirm ? 0.5 : 1, cursor: submitting || !canConfirm ? 'not-allowed' : 'pointer' }}>{submitting ? 'Booking…' : paymentType === 'PAY_ONLINE' ? 'Pay & book' : 'Confirm booking'}</button>
       </div>
     </div>
   );

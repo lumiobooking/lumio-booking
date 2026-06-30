@@ -13,6 +13,7 @@ import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { CreateStaffLoginDto } from './dto/create-staff-login.dto';
+import { ResetStaffPasswordDto } from './dto/reset-staff-password.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -74,5 +75,15 @@ export class StaffController {
     @Body() dto: CreateStaffLoginDto,
   ) {
     return this.staffService.createLogin(user, id, dto);
+  }
+
+  // Reset the password on this staff member's EXISTING login.
+  @Post(':id/password')
+  resetLogin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ResetStaffPasswordDto,
+  ) {
+    return this.staffService.resetLogin(user, id, dto);
   }
 }

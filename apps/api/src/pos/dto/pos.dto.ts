@@ -82,3 +82,12 @@ export class CreateOrderDto {
   @Type(() => TenderDto)
   tenders?: TenderDto[];
 }
+
+// ----- Direct tip log ------------------------------------------------------
+export class RecordTipDto {
+  @IsString() staffMemberId!: string;
+  @IsInt() @Min(1) amountCents!: number;
+  @IsOptional() @IsString() @MaxLength(20) method?: string; // DIRECT | CASH | OTHER
+  @IsOptional() @IsString() @MaxLength(200) note?: string;
+  @IsOptional() @IsString() orderId?: string;
+}

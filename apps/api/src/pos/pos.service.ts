@@ -14,7 +14,7 @@ import { SettingsService } from '../settings/settings.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { CreateOrderDto, CreateProductDto, UpdateProductDto } from './dto/pos.dto';
+import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 
 const ORDER_INCLUDE = {
   items: { orderBy: { createdAt: 'asc' as const } },
@@ -419,6 +419,40 @@ export class PosService {
    * Per-technician POS report over a date range: service revenue, product
    * revenue, tips and commission (service revenue × the tech's commission %).
    */
+  // ===================== Direct tips (paid straight to the tech) =====================
+  // Customer tips the technician directly (scans the tech's QR, hands cash, etc.).
+  // The salon never holds this money — we only log it so payroll/reports show it.
+  async recordTip(user: AuthenticatedUser, dto: RecordTipDto) {
+    const tenantId = this.tenantId(user);
+    const staff = await this.prisma.staffMember.findFirst({
+      where: { id: dto.staffMemberId, tenantId },
+      select: { id: true },
+    });
+    if (!staff) throw new NotFoundException('Staff member not found');
+    const amountCents = Math.round(dto.amountCents);
+    if (amountCents <= 0) throw new BadRequestException('Tip amount must be positive');
+    const tip = await this.prisma.tipLog.create({
+      data: {
+        tenantId,
+        staffMemberId: dto.staffMemberId,
+        amountCents,
+        method: (dto.method || 'DIRECT').toUpperCase(),
+        note: dto.note?.trim() || null,
+        orderId: dto.orderId ?? null,
+        createdByUserId: user.userId,
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'tip.logged',
+      resourceType: 'tip',
+      resourceId: tip.id,
+      metadata: { staffMemberId: dto.staffMemberId, amountCents, method: tip.method },
+    });
+    return tip;
+  }
+
   async report(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
     const tenantId = this.tenantId(user);
     const now = new Date();
@@ -435,7 +469,7 @@ export class PosService {
     });
     const staffMap = new Map(staff.map((s) => [s.id, s]));
 
-    type Row = { staffId: string; name: string; commissionPercent: number; serviceCount: number; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; totalPayCents: number };
+    type Row = { staffId: string; name: string; commissionPercent: number; serviceCount: number; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; totalPayCents: number; directTipsCents: number };
     const rows = new Map<string, Row>();
     const ensure = (id: string | null) => {
       const key = id ?? 'unassigned';
@@ -452,6 +486,7 @@ export class PosService {
           commissionCents: 0,
           baseCents: 0,
           totalPayCents: 0,
+          directTipsCents: 0,
         });
       }
       return rows.get(key)!;
@@ -514,9 +549,25 @@ export class PosService {
       totalPay += base;
     }
 
+    // Direct tips (paid straight to the tech via QR/cash — logged for visibility
+    // only). NOT added to totalPay: the salon never holds this money.
+    const directTipGroups = await this.prisma.tipLog.groupBy({
+      by: ['staffMemberId'],
+      where: { tenantId, createdAt: { gte: from, lte: to } },
+      _sum: { amountCents: true },
+    });
+    let totalDirectTips = 0;
+    for (const g of directTipGroups) {
+      const amt = g._sum.amountCents ?? 0;
+      if (amt === 0) continue;
+      const row = ensure(g.staffMemberId);
+      row.directTipsCents += amt;
+      totalDirectTips += amt;
+    }
+
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
-      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, baseCents: totalBase, payCents: totalPay, orders: orders.length + extraTxns },
+      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, baseCents: totalBase, payCents: totalPay, directTipsCents: totalDirectTips, orders: orders.length + extraTxns },
       staff: [...rows.values()].sort(
         (a, b) =>
           b.serviceRevenueCents + b.productRevenueCents - (a.serviceRevenueCents + a.productRevenueCents),

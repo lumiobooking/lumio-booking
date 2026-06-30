@@ -13,9 +13,10 @@ import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
 interface Row {
   staffId: string; name: string; commissionPercent: number; serviceCount: number;
   serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; totalPayCents: number;
+  directTipsCents?: number;
 }
 interface Report {
-  totals: { revenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; payCents: number; orders: number };
+  totals: { revenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; payCents: number; orders: number; directTipsCents?: number };
   staff: Row[];
 }
 
@@ -55,9 +56,9 @@ function Inner() {
     if (!data) return;
     const dollars = (c: number) => (c / 100).toFixed(2);
     const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-    const header = ['Technician', '# Services', 'Service Revenue', 'Commission %', 'Commission', 'Base Pay', 'Tips', 'Total Pay'];
-    const body = techs.map((r) => [r.name, String(r.serviceCount), dollars(r.serviceRevenueCents), String(r.commissionPercent), dollars(r.commissionCents), dollars(r.baseCents), dollars(r.tipsCents), dollars(r.totalPayCents)]);
-    const totals = [t('pr.csvTotal'), '', dollars(data.totals.revenueCents), '', dollars(data.totals.commissionCents), dollars(data.totals.baseCents), dollars(data.totals.tipsCents), dollars(data.totals.payCents)];
+    const header = ['Technician', '# Services', 'Service Revenue', 'Commission %', 'Commission', 'Base Pay', 'Tips', 'Direct Tips', 'Total Pay'];
+    const body = techs.map((r) => [r.name, String(r.serviceCount), dollars(r.serviceRevenueCents), String(r.commissionPercent), dollars(r.commissionCents), dollars(r.baseCents), dollars(r.tipsCents), dollars(r.directTipsCents ?? 0), dollars(r.totalPayCents)]);
+    const totals = [t('pr.csvTotal'), '', dollars(data.totals.revenueCents), '', dollars(data.totals.commissionCents), dollars(data.totals.baseCents), dollars(data.totals.tipsCents), dollars(data.totals.directTipsCents ?? 0), dollars(data.totals.payCents)];
     const period = `${t('pr.csvPeriod')}: ${range.from || 'all'} → ${range.to || 'today'}`;
     const lines = [[period], [], header, ...body, totals].map((cols) => cols.map((c) => esc(String(c))).join(',')).join('\r\n');
     const blob = new Blob(['﻿' + lines], { type: 'text/csv;charset=utf-8' }); // BOM so Excel reads UTF-8
@@ -91,6 +92,7 @@ function Inner() {
             <Kpi label={t('pr.kTotal')} value={formatPrice(data.totals.payCents)} accent="#22c55e" big />
             <Kpi label={t('pr.kCommission')} value={formatPrice(data.totals.commissionCents)} accent="#06b6d4" />
             <Kpi label={t('pr.kTips')} value={formatPrice(data.totals.tipsCents)} accent="#a855f7" />
+            {(data.totals.directTipsCents ?? 0) > 0 && <Kpi label={t('pr.kDirectTips')} value={formatPrice(data.totals.directTipsCents!)} accent="#34d399" />}
             <Kpi label={t('pr.kRevenue')} value={formatPrice(data.totals.revenueCents)} accent="#3b82f6" />
           </div>
 
@@ -107,6 +109,7 @@ function Inner() {
                   <MRow label={t('pr.cCommission')}>{formatPrice(r.commissionCents)} <span style={{ color: '#64748b', fontSize: 12 }}>({r.commissionPercent}%)</span></MRow>
                   <MRow label={t('pr.cBase')}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</MRow>
                   <MRow label={t('pr.cTips')}>{formatPrice(r.tipsCents)}</MRow>
+                  {(r.directTipsCents ?? 0) > 0 && <MRow label={t('pr.cDirectTips')}>{formatPrice(r.directTipsCents!)}</MRow>}
                 </MCard>
               ))}
             </MList>
@@ -120,10 +123,11 @@ function Inner() {
                 <th style={ui.th}>{t('pr.cCommission')}</th>
                 <th style={ui.th}>{t('pr.cBase')}</th>
                 <th style={ui.th}>{t('pr.cTips')}</th>
+                <th style={{ ...ui.th, color: '#34d399' }}>{t('pr.cDirectTips')}</th>
                 <th style={{ ...ui.th, color: '#22c55e' }}>{t('pr.cTotal')}</th>
               </tr></thead>
               <tbody>
-                {techs.length === 0 && <tr><td style={ui.td} colSpan={6}>{t('pr.empty')}</td></tr>}
+                {techs.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('pr.empty')}</td></tr>}
                 {techs.map((r) => (
                   <tr key={r.staffId} style={{ borderTop: '1px solid #334155' }}>
                     <td style={ui.td}>{r.name}</td>
@@ -132,6 +136,7 @@ function Inner() {
                     <td style={{ ...ui.td, color: '#06b6d4' }}>{formatPrice(r.commissionCents)} <span style={{ color: '#64748b', fontSize: 12 }}>({r.commissionPercent}%)</span></td>
                     <td style={{ ...ui.td, color: '#cbd5e1' }}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</td>
                     <td style={{ ...ui.td, color: '#a855f7' }}>{formatPrice(r.tipsCents)}</td>
+                    <td style={{ ...ui.td, color: '#34d399' }}>{(r.directTipsCents ?? 0) > 0 ? formatPrice(r.directTipsCents!) : '—'}</td>
                     <td style={{ ...ui.td, fontWeight: 800, color: '#22c55e', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
                   </tr>
                 ))}
@@ -140,6 +145,7 @@ function Inner() {
             </div>
           )}
           <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('pr.note')}</p>
+          {(data.totals.directTipsCents ?? 0) > 0 && <p style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>{t('pr.directNote')}</p>}
         </>
       )}
     </section>

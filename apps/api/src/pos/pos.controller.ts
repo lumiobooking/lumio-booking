@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PosService } from './pos.service';
-import { CreateOrderDto, CreateProductDto, UpdateProductDto } from './dto/pos.dto';
+import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -88,5 +88,11 @@ export class PosController {
   @Delete('orders/:id')
   removeOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pos.removeOrder(user, id);
+  }
+
+  // ---- Direct tips (logged only; money goes straight to the tech) ----
+  @Post('tips')
+  recordTip(@CurrentUser() user: AuthenticatedUser, @Body() dto: RecordTipDto) {
+    return this.pos.recordTip(user, dto);
   }
 }

@@ -112,6 +112,11 @@ function Register() {
   const [giftInput, setGiftInput] = useState('');
   // Enlarge a tech's tip QR full-screen so the customer can scan it easily.
   const [zoomQr, setZoomQr] = useState<string | null>(null);
+  // Direct-tip logging: the customer tipped the tech directly (QR/cash) — we only
+  // record the amount so payroll shows it. The salon never holds this money.
+  const [tipLogInput, setTipLogInput] = useState<Record<string, string>>({});
+  const [tipLogged, setTipLogged] = useState<Record<string, number>>({});
+  const [tipBusy, setTipBusy] = useState<string | null>(null);
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
@@ -259,6 +264,7 @@ function Register() {
   function clearCart() {
     setCart([]); setOrderDiscount(''); setTendered(''); setRedeemInput(''); setError(null);
     setGiftCard(null); setGiftInput(''); setScanInput(''); setScanMsg(null);
+    setTipLogInput({}); setTipLogged({});
     setMobileView('catalog');
   }
 
@@ -350,6 +356,23 @@ function Register() {
   // Technicians on this ticket who set up a tip QR/handle — shown at checkout so
   // the customer can scan and tip them directly (money goes straight to the tech).
   const tipTechs = staff.filter((s) => (s.tipQrUrl || s.tipHandle) && cart.some((l) => l.staffMemberId === s.id));
+
+  async function logDirectTip(staffId: string) {
+    const raw = (tipLogInput[staffId] || '').trim();
+    const dollars = Number(raw);
+    if (!raw || !Number.isFinite(dollars) || dollars <= 0) { setError(t('po.tipLogInvalid')); return; }
+    const amountCents = Math.round(dollars * 100);
+    setTipBusy(staffId); setError(null);
+    try {
+      await apiFetch('/pos/tips', { method: 'POST', token, body: { staffMemberId: staffId, amountCents, method: 'DIRECT' } });
+      setTipLogged((m) => ({ ...m, [staffId]: (m[staffId] || 0) + amountCents }));
+      setTipLogInput((m) => ({ ...m, [staffId]: '' }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('po.tipLogFail'));
+    } finally {
+      setTipBusy(null);
+    }
+  }
 
   async function pay() {
     if (cart.length === 0) { setError(t('po.addItem')); return; }
@@ -828,16 +851,31 @@ function Register() {
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 {tipTechs.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, width: 132 }}>
                     {s.tipQrUrl
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={s.tipQrUrl} alt="tip QR" width={92} height={92} onClick={() => setZoomQr(s.tipQrUrl!)} style={{ borderRadius: 8, background: '#fff', cursor: 'pointer', border: '1px solid #334155' }} />
                       : <span style={{ width: 92, height: 92, borderRadius: 8, background: '#1e293b', display: 'grid', placeItems: 'center', fontSize: 11, color: '#64748b', textAlign: 'center', padding: 6 }}>{t('po.tipNoQr')}</span>}
-                    <span style={{ fontSize: 12, color: '#cbd5e1' }}>{s.firstName} {s.lastName ?? ''}</span>
+                    <span style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center' }}>{s.firstName} {s.lastName ?? ''}</span>
                     {s.tipHandle && <span style={{ fontSize: 11, color: '#64748b' }}>{s.tipHandle}</span>}
+                    <div style={{ display: 'flex', gap: 4, marginTop: 4, width: '100%' }}>
+                      <input
+                        type="number" min={0} step="0.01" placeholder="$"
+                        value={tipLogInput[s.id] || ''}
+                        onChange={(e) => setTipLogInput((m) => ({ ...m, [s.id]: e.target.value }))}
+                        style={{ ...ui.input, width: 60, padding: '4px 6px', fontSize: 12, textAlign: 'right' }}
+                      />
+                      <button onClick={() => logDirectTip(s.id)} disabled={tipBusy === s.id} style={{ flex: 1, padding: '4px 6px', fontSize: 11, borderRadius: 6, border: '1px solid #0e7490', background: '#155e75', color: '#e0f2fe', cursor: 'pointer', fontWeight: 600 }}>
+                        {tipBusy === s.id ? '…' : t('po.tipLogBtn')}
+                      </button>
+                    </div>
+                    {tipLogged[s.id] > 0 && (
+                      <span style={{ fontSize: 11, color: '#34d399', fontWeight: 600 }}>✓ {formatPrice(tipLogged[s.id], currency)}</span>
+                    )}
                   </div>
                 ))}
               </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>{t('po.tipLogHint')}</div>
             </div>
           )}
 

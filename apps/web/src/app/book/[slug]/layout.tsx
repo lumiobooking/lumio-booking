@@ -54,7 +54,7 @@ function buildDescription(s: Seo): string {
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function buildJsonLd(s: Seo): Record<string, unknown> {
-  const url = `${WEB_URL}/book/${s.slug}`;
+  const url = `${WEB_URL}/${s.slug}`;
   const openingHoursSpecification = (s.hours ?? [])
     .filter((h) => !h.closed)
     .map((h) => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: DAY_NAMES[h.day], opens: h.open, closes: h.close }));
@@ -80,7 +80,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   if (!s) return { title: 'Book an appointment online' };
   const title = `${s.name} — Book a Nail Appointment Online`;
   const description = buildDescription(s);
-  const url = `${WEB_URL}/book/${s.slug}`;
+  const url = `${WEB_URL}/${s.slug}`;
   return {
     title,
     description,

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { bookingUrl } from '../common/public-url.util';
 import {
   CAMPAIGN_SETTINGS_KEY,
   CampaignKey,
@@ -136,11 +137,10 @@ export class CampaignsService {
     if (!tenant) throw new NotFoundException('Tenant not found');
     const n = await this.settings.getNotificationSettings(tenantId);
     const transport = this.buildTransport(n, tenant.name);
-    const webBase = (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
     const pct: Record<string, string> = {
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
-      booking_link: tenant.slug ? `${webBase}/book/${tenant.slug}` : webBase,
+      booking_link: bookingUrl(tenant.slug),
       customer_name: 'Test',
     };
     const out = { email: 'skipped', sms: 'skipped' };
@@ -205,11 +205,10 @@ export class CampaignsService {
 
     const n = await this.settings.getNotificationSettings(tenantId);
     const transport = this.buildTransport(n, tenant.name);
-    const webBase = (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
     const basePct: Record<string, string> = {
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
-      booking_link: tenant.slug ? `${webBase}/book/${tenant.slug}` : webBase,
+      booking_link: bookingUrl(tenant.slug),
     };
     let used = 0;
 

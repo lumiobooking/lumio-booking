@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { referralBookingUrl } from '../common/public-url.util';
 import {
   REFERRAL_SETTINGS_KEY,
   ReferralSettings,
@@ -75,8 +76,7 @@ export class ReferralService {
       await this.prisma.customer.updateMany({ where: { id: customerId, tenantId }, data: { referralCode: code } });
     }
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
-    const webBase = (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
-    const link = tenant?.slug ? `${webBase}/book/${tenant.slug}?ref=${encodeURIComponent(code)}` : webBase;
+    const link = referralBookingUrl(tenant?.slug, code);
     return { code, link };
   }
 

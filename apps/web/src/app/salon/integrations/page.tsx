@@ -56,8 +56,10 @@ function Inner() {
     }
   }, [token]);
 
-  const bookingLink =
-    slug && typeof window !== 'undefined' ? `${window.location.origin}/book/${slug}` : null;
+  // Always show the branded, clean booking link (lumiobooking.com/<slug>) — not
+  // whatever host the admin happens to be on. The web app rewrites /<slug> → /book/<slug>.
+  const WEB_BASE = (process.env.NEXT_PUBLIC_WEB_URL ?? 'https://lumiobooking.com').replace(/\/+$/, '');
+  const bookingLink = slug ? `${WEB_BASE}/${slug}` : null;
 
   useEffect(() => {
     load();

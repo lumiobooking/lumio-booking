@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { bookingUrl } from '../common/public-url.util';
 
 interface JoinDto { customerName: string; phone?: string; email?: string; serviceId?: string; preferredDate?: string; note?: string }
 
@@ -69,8 +70,7 @@ export class WaitlistService {
     const n = await this.settings.getNotificationSettings(tenantId);
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, contactPhone: true, contactEmail: true } });
     const salon = tenant?.name ?? 'Our salon';
-    const webBase = (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
-    const bookUrl = `${webBase}/book/${tenant?.slug ?? ''}`;
+    const bookUrl = bookingUrl(tenant?.slug);
     const svc = e.service?.name ? ` for ${e.service.name}` : '';
     const subject = `A spot just opened at ${salon}!`;
     const text = `Hi ${e.customerName}, good news — a spot${svc} just opened up at ${salon}. Book now: ${bookUrl}`;

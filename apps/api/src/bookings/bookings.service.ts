@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { signingSecret } from '../common/secret.util';
+import { publicWebBase } from '../common/public-url.util';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -543,8 +544,7 @@ export class BookingsService {
     const when = `${fmtD(appt.startTime)} at ${fmtT(appt.startTime)}`;
     const contact = tenant?.contactPhone || tenant?.contactEmail || '';
     // One-tap self-service link (Confirm / Cancel) — no login needed.
-    const webBase = (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
-    const actionUrl = `${webBase}/appt/${this.apptToken(appt.id)}`;
+    const actionUrl = `${publicWebBase()}/appt/${this.apptToken(appt.id)}`;
     const subject = `Reminder: your ${svc} at ${salon} — ${when}`;
     const text = `Hi ${cust}, a friendly reminder of your ${svc} at ${salon} on ${when}. Confirm or cancel: ${actionUrl}` + (contact ? ` — or call ${contact}.` : '') + ' See you soon!';
     const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>`

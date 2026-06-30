@@ -374,7 +374,7 @@ export class SettingsService {
   }
   private webBase(): string {
     const cors = (process.env.CORS_ORIGINS || '').split(',')[0].trim();
-    return (process.env.PUBLIC_WEB_URL || process.env.KEEPALIVE_WEB_URL || cors || 'https://lumio-web-1xqk.onrender.com').replace(/\/$/, '');
+    return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
   }
   /** Redirect URI the salon must add to their Google OAuth client. */
   gmailRedirectUri(): string {

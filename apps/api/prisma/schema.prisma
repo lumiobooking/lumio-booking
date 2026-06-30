@@ -533,6 +533,12 @@ model StaffMember {
   // Booking-list ordering: admin priority (0 = auto/fair; higher = pinned first).
   bookingPriority Int @default(0)
 
+  // Direct tipping: the tech's own payment QR (uploaded image) + an optional
+  // handle/link (Venmo / Zelle / Cash App / PayPal) shown to customers. Tips paid
+  // this way go straight to the tech — the salon only logs them, never holds the money.
+  tipQrUrl  String?
+  tipHandle String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

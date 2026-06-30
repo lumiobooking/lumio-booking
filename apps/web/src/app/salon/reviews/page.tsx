@@ -6,6 +6,8 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, Lang } from '../../../lib/i18n';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean }
@@ -21,6 +23,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const [settings, setSettings] = useState<ReviewSettings | null>(null);
   const [board, setBoard] = useState<LeaderRow[]>([]);
   const [boardLabel, setBoardLabel] = useState('');
@@ -106,7 +109,29 @@ function Inner() {
           {ym !== currentYm() && <button onClick={() => setYm(currentYm())} style={{ ...miniBtn, marginLeft: 4 }}>{t('rv.thisMonth')}</button>}
         </div>
       </div>
-      <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+      {isMobile ? (
+        <MList>
+          {board.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('rv.noStaff')}</p>}
+          {board.map((s, i) => (
+            <MCard key={s.id}>
+              <MHead right={s.earnedMonth > 0 ? <span style={{ fontSize: 18 }}>{medal(i)}</span> : null}>
+                {s.name}{s.flagged && <span style={{ marginLeft: 6, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}
+              </MHead>
+              <MRow label={t('rv.colEarned')}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: '#64748b', fontSize: 12 }}>{t('rv.pts')}</span></MRow>
+              <MRow label={t('rv.colBalance')}>{s.balance}</MRow>
+              <MRow label={t('rv.colSends')}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</MRow>
+              <MRow label={t('rv.colFeedbacks')}>{s.feedbackMonth}</MRow>
+              <MRow label={t('rv.colAvg')}>{s.avgMonth ? `${s.avgMonth}★` : '—'}</MRow>
+              <MActions>
+                <button onClick={() => adjust(s.id, 10)} style={miniBtn}>+10</button>
+                <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: '#ef4444' }}>{t('rv.redeem50')}</button>
+                <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: '#64748b', color: '#94a3b8' }}>{t('rv.reset')}</button>
+              </MActions>
+            </MCard>
+          ))}
+        </MList>
+      ) : (
+        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead><tr style={{ background: '#1e293b' }}>
             <th style={{ ...ui.th, width: 44 }}>#</th>
@@ -140,7 +165,8 @@ function Inner() {
             ))}
           </tbody>
         </table>
-      </div>
+        </div>
+      )}
       <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>
         {lang === 'vi'
           ? <><strong>Đã kiếm</strong> = điểm nhận trong {boardLabel || 'tháng này'}; <strong>Số dư</strong> = điểm tích luỹ có thể đổi. Đổi tháng bằng mũi tên ở trên.</>

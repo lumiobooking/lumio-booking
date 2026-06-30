@@ -7,6 +7,8 @@ import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { DateRangeBar, useDateRange } from '../../../../components/ListFilter';
 import { useLang, tr } from '../../../../lib/i18n';
+import { useIsMobile } from '../../../../lib/responsive';
+import { MList, MCard, MHead, MRow } from '../../../../components/MobileCard';
 
 interface StaffRow {
   staffId: string; name: string;
@@ -29,6 +31,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const range = useDateRange('30d');
   const [data, setData] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +73,21 @@ function Inner() {
             <Kpi label={t('sr.kpiOrders')} value={String(data.totals.orders)} accent="#3b82f6" />
           </div>
 
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          {isMobile ? (
+            <MList>
+              {data.staff.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('sr.empty')}</p>}
+              {data.staff.map((r) => (
+                <MCard key={r.staffId}>
+                  <MHead>{r.name}</MHead>
+                  <MRow label={t('sr.colService')}>{formatPrice(r.serviceRevenueCents)}</MRow>
+                  <MRow label={t('sr.colProduct')}>{formatPrice(r.productRevenueCents)}</MRow>
+                  <MRow label={t('sr.colTips')}>{formatPrice(r.tipsCents)}</MRow>
+                  <MRow label={t('sr.colCommission')}>{formatPrice(r.commissionCents)}</MRow>
+                </MCard>
+              ))}
+            </MList>
+          ) : (
+            <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead><tr style={{ background: '#1e293b' }}>
                 <th style={ui.th}>{t('sr.colTech')}</th>
@@ -92,7 +109,8 @@ function Inner() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          )}
           <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
             {t('sr.footnote')}
           </p>

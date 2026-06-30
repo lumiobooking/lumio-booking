@@ -6,6 +6,8 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Service {
@@ -42,6 +44,7 @@ function ServicesInner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -182,6 +185,16 @@ function ServicesInner() {
 
       {loading ? (
         <p style={{ color: '#94a3b8' }}>{t('sv.loading')}</p>
+      ) : isMobile ? (
+        <>
+          <MList>
+            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('sv.empty')}</p>}
+            {pg.paged.map((s) => (
+              <ServiceCard key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
+            ))}
+          </MList>
+          <Pager paged={pg} />
+        </>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -278,6 +291,44 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
           </td>
         </tr>
       )}
+    </>
+  );
+}
+
+/** Mobile card equivalent of FragmentRow (the table renders <tr>; this renders a card). */
+function ServiceCard({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved }: {
+  service: Service; token: string; categories: Category[]; staff: Staff[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
+}) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  return (
+    <>
+      <MCard>
+        <MHead right={<button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : '#64748b'}`, color: s.isActive ? '#22c55e' : '#94a3b8', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>{s.isActive ? t('sv.active') : t('sv.inactive')}</button>}>
+          {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
+        </MHead>
+        {s.description && <div style={{ color: '#94a3b8', fontSize: 12 }}>{s.description}</div>}
+        <MRow label={t('sv.colCategory')}>{catName(s.categoryId)}</MRow>
+        <MRow label={t('sv.colDuration')}>{s.durationMinutes} {t('sv.min')}</MRow>
+        <MRow label={t('sv.colPrice')}>
+          {s.discountPercent && s.discountPercent > 0 ? (
+            <span>
+              <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{fmt(s.priceCents)}</span>
+              <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
+              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
+            </span>
+          ) : fmt(s.priceCents)}
+        </MRow>
+        <MActions>
+          <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? '#475569' : '#0ea5e9')}>{editing ? t('sv.close') : t('sv.edit')}</button>
+          <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? '#475569' : '#6366f1')}>{open ? t('sv.hide') : t('sv.addons')}</button>
+          <button onClick={onDelete} style={actBtn('#b91c1c')}>{t('sv.delete')}</button>
+        </MActions>
+      </MCard>
+      {editing && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} /></div>}
+      {open && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><AddonsPanel serviceId={s.id} token={token} fmt={fmt} /></div>}
     </>
   );
 }

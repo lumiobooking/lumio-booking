@@ -14,7 +14,7 @@ import { BarcodeScanner } from '../../../components/BarcodeScanner';
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
-interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean }
+interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean; tipQrUrl?: string | null; tipHandle?: string | null }
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; loyaltyPoints?: number }
 interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
@@ -110,6 +110,8 @@ function Register() {
   // Gift card redeemed toward this ticket (online-only — needs a live balance check).
   const [giftCard, setGiftCard] = useState<{ code: string; balanceCents: number } | null>(null);
   const [giftInput, setGiftInput] = useState('');
+  // Enlarge a tech's tip QR full-screen so the customer can scan it easily.
+  const [zoomQr, setZoomQr] = useState<string | null>(null);
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
@@ -345,6 +347,9 @@ function Register() {
     const s = staff.find((x) => x.id === id);
     return s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : t('po.unassigned');
   };
+  // Technicians on this ticket who set up a tip QR/handle — shown at checkout so
+  // the customer can scan and tip them directly (money goes straight to the tech).
+  const tipTechs = staff.filter((s) => (s.tipQrUrl || s.tipHandle) && cart.some((l) => l.staffMemberId === s.id));
 
   async function pay() {
     if (cart.length === 0) { setError(t('po.addItem')); return; }
@@ -814,6 +819,28 @@ function Register() {
             </div>
           )}
 
+          {/* Direct tip to the tech(s) on this ticket — scan their QR. */}
+          {tipTechs.length > 0 && (
+            <div style={{ marginBottom: 12, border: '1px solid #155e75', borderRadius: 10, padding: 10, background: '#0f172a' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#a5f3fc', marginBottom: 6 }}>💸 {t('po.tipTitle')}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
+                {t('po.tipSuggest')}: 15% {formatPrice(Math.round(money.subtotal * 0.15), currency)} · 18% {formatPrice(Math.round(money.subtotal * 0.18), currency)} · 20% {formatPrice(Math.round(money.subtotal * 0.2), currency)}
+              </div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {tipTechs.map((s) => (
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    {s.tipQrUrl
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={s.tipQrUrl} alt="tip QR" width={92} height={92} onClick={() => setZoomQr(s.tipQrUrl!)} style={{ borderRadius: 8, background: '#fff', cursor: 'pointer', border: '1px solid #334155' }} />
+                      : <span style={{ width: 92, height: 92, borderRadius: 8, background: '#1e293b', display: 'grid', placeItems: 'center', fontSize: 11, color: '#64748b', textAlign: 'center', padding: 6 }}>{t('po.tipNoQr')}</span>}
+                    <span style={{ fontSize: 12, color: '#cbd5e1' }}>{s.firstName} {s.lastName ?? ''}</span>
+                    {s.tipHandle && <span style={{ fontSize: 11, color: '#64748b' }}>{s.tipHandle}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Payment method */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>{t('po.cash')}</button>
@@ -881,6 +908,13 @@ function Register() {
             <div style={{ fontSize: 19, fontWeight: 800, color: '#22c55e' }}>{formatPrice(money.total, currency)}</div>
           </div>
           <button onClick={() => setMobileView('ticket')} style={{ ...ui.primaryBtn, padding: '12px 20px', fontSize: 15, whiteSpace: 'nowrap' }}>{t('po.viewTicket')} →</button>
+        </div>
+      )}
+
+      {zoomQr && (
+        <div onClick={() => setZoomQr(null)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.9)', display: 'grid', placeItems: 'center', padding: 20 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={zoomQr} alt="tip QR" style={{ width: 'min(82vw, 360px)', height: 'auto', borderRadius: 12, background: '#fff', padding: 10 }} />
         </div>
       )}
 

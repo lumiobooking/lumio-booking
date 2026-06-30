@@ -40,6 +40,17 @@ export class UpdateStaffDto {
   @MaxLength(700000) // allows a small uploaded image stored as a data: URL
   avatarUrl?: string;
 
+  // Direct-tip QR image (data URL) + optional handle/link shown to customers.
+  @IsOptional()
+  @IsString()
+  @MaxLength(700000)
+  tipQrUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  tipHandle?: string;
+
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;

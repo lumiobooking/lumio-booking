@@ -6,6 +6,8 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
+import { useIsMobile } from '../../../lib/responsive';
+import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
 
 interface Service {
@@ -30,6 +32,8 @@ interface StaffMember {
   bookingPriority?: number;
   staffRole?: Role;
   takesAppointments?: boolean;
+  tipQrUrl?: string | null;
+  tipHandle?: string | null;
   staffServices: { serviceId: string }[];
   workingHours: { id: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
   user: { id: string; email: string } | null;
@@ -193,6 +197,35 @@ function AvatarPicker({ value, name, onChange }: { value: string; name: string; 
   );
 }
 
+/** Square picker for a technician's tip QR image (reuses the avatar resizer). */
+function QrPicker({ value, onChange }: { value: string; onChange: (dataUrl: string) => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [busy, setBusy] = useState(false);
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    setBusy(true);
+    try { onChange(await fileToAvatarDataUrl(file)); } catch { /* ignore */ } finally { setBusy(false); }
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      {value
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={value} alt="tip QR" width={84} height={84} style={{ borderRadius: 10, objectFit: 'cover', border: '1px solid #334155', background: '#fff' }} />
+        : <span style={{ width: 84, height: 84, borderRadius: 10, background: '#0f172a', border: '1px dashed #475569', display: 'grid', placeItems: 'center', fontSize: 26 }}>📱</span>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ ...ui.input, padding: '8px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          📷 {busy ? t('st.processing') : value ? t('st.changePhoto') : t('st.tipQrUpload')}
+          <input type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
+        </label>
+        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{t('st.removePhoto')}</button>}
+      </div>
+    </div>
+  );
+}
+
 export default function StaffPage() {
   return (
     <SalonShell>
@@ -205,6 +238,7 @@ function StaffInner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const isMobile = useIsMobile();
   const [q, setQ] = useState('');
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -305,6 +339,51 @@ function StaffInner() {
 
       {loading ? (
         <p style={{ color: '#94a3b8' }}>{t('st.loading')}</p>
+      ) : isMobile ? (
+        <MList>
+          {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('st.empty')}</p>}
+          {visible.map((m) => (
+            <Fragment key={m.id}>
+              <MCard>
+                <MHead right={<span style={{ color: m.isActive ? '#22c55e' : '#94a3b8', fontSize: 12, fontWeight: 600 }}>{m.isActive ? t('st.active') : t('st.inactive')}</span>}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Avatar url={m.avatarUrl} name={m.firstName} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <span>{m.firstName} {m.lastName ?? ''}</span>
+                      <RoleBadge role={m.staffRole} takes={m.takesAppointments} />
+                    </div>
+                  </div>
+                </MHead>
+                <MRow label={t('st.colContact')}>{m.email || '—'}{m.phone ? ' · ' + m.phone : ''}</MRow>
+                <MRow label={t('st.colSkills')}>{m.staffServices.length === 0 ? '—' : m.staffServices.map((ss) => serviceName(ss.serviceId)).join(', ')}</MRow>
+                <MRow label={t('st.colLogin')}>
+                  {m.user ? <span style={{ color: '#22c55e' }}>🔑 {m.user.email}</span> : <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? '#475569' : '#6366f1' }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>}
+                </MRow>
+                <MActions>
+                  <button onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? '#475569' : '#6366f1' }}>{editFor === m.id ? t('st.close') : t('st.edit')}</button>
+                  <button onClick={() => remove(m.id)} style={ui.dangerBtn}>{t('st.delete')}</button>
+                </MActions>
+              </MCard>
+              {editFor === m.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><StaffEditPanel token={token!} member={m} services={services} onSaved={load} /></div>}
+              {loginFor === m.id && (
+                <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}>
+                  <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{t('st.createLoginFor').replace('{name}', m.firstName)}</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
+                    <label style={{ flex: 1, minWidth: 160 }}>
+                      <span style={ui.label}>{t('st.loginEmail')}</span>
+                      <input style={ui.input} type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} />
+                    </label>
+                    <label style={{ flex: 1, minWidth: 140 }}>
+                      <span style={ui.label}>{t('st.password')}</span>
+                      <input style={ui.input} type="text" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder={t('st.passwordPh')} />
+                    </label>
+                    <button onClick={() => submitLogin(m.id)} style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{t('st.createLogin')}</button>
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          ))}
+        </MList>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -455,6 +534,8 @@ function StaffEditPanel({
     bookingPriority: String(member.bookingPriority ?? 0),
     staffRole: (member.staffRole ?? 'TECHNICIAN') as Role,
     takesAppointments: member.takesAppointments ?? (member.staffRole ?? 'TECHNICIAN') === 'TECHNICIAN',
+    tipQrUrl: member.tipQrUrl ?? '',
+    tipHandle: member.tipHandle ?? '',
   });
   const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
   const [hours, setHours] = useState<DayRow[]>(
@@ -499,6 +580,8 @@ function StaffEditPanel({
           staffRole: form.staffRole,
           takesAppointments: form.takesAppointments,
           bookingPriority: Math.max(0, parseInt(form.bookingPriority, 10) || 0),
+          tipQrUrl: form.tipQrUrl || null,
+          tipHandle: form.tipHandle.trim() || null,
           serviceIds: form.takesAppointments ? skillIds : [],
           workingHours,
         },
@@ -593,6 +676,17 @@ function StaffEditPanel({
         <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8 }}>
           {anyEnabled ? t('st.hoursSet') : t('st.hoursUnset')}
         </p>
+      </div>
+
+      {/* Direct tip: this tech's payment QR (Venmo/Zelle/Cash App) + handle. */}
+      <div>
+        <span style={ui.label}>💸 {t('st.tipSection')}</span>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>{t('st.tipHint')}</p>
+        <QrPicker value={form.tipQrUrl} onChange={(v) => up('tipQrUrl', v)} />
+        <label style={{ display: 'block', marginTop: 10, maxWidth: 360 }}>
+          <span style={ui.label}>{t('st.tipHandle')}</span>
+          <input style={ui.input} value={form.tipHandle} onChange={(e) => up('tipHandle', e.target.value)} placeholder={t('st.tipHandlePh')} />
+        </label>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

@@ -601,6 +601,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.noProductsA': { en: 'No products yet. ', vi: 'Chưa có sản phẩm. ' },
   'po.addSome': { en: 'Add some →', vi: 'Thêm sản phẩm →' },
   'po.ticket': { en: 'Current ticket', vi: 'Hoá đơn hiện tại' },
+  'po.custScreen': { en: 'Customer screen', vi: 'Màn hình khách' },
+  'po.custScreenHint': { en: 'Open the customer-facing display (drag it to a second screen facing the customer).', vi: 'Mở màn hình hiển thị cho khách (kéo sang màn hình thứ 2 quay về phía khách).' },
   'po.itemsWord': { en: 'item(s)', vi: 'món' },
   'po.viewTicket': { en: 'Ticket / Pay', vi: 'Hóa đơn / Tính tiền' },
   'po.backToCatalog': { en: 'Add more items', vi: 'Thêm món' },

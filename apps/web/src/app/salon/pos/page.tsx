@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useIsMobile } from '../../../lib/responsive';
 import { SalonShell } from '../../../components/SalonShell';
@@ -20,6 +20,7 @@ interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
   taxRate: number; transferInfo: string; transferQr: string; currency: string;
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
+  salonName?: string; salonLogo?: string; salonAccent?: string;
 }
 
 interface Line {
@@ -70,6 +71,9 @@ function Register() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [taxRate, setTaxRate] = useState(0);
   const [currency, setCurrency] = useState('USD');
+  const [salonName, setSalonName] = useState('');
+  const [salonLogo, setSalonLogo] = useState('');
+  const [salonAccent, setSalonAccent] = useState('#6366f1');
   const [transferInfo, setTransferInfo] = useState('');
   const [transferQr, setTransferQr] = useState('');
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
@@ -122,6 +126,7 @@ function Register() {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
     setTaxRate(c.taxRate); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
     setLoyalty(c.loyalty);
+    setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1');
   };
 
   const load = useCallback(async () => {
@@ -133,7 +138,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string }; branding?: { logoUrl?: string; accentColor?: string } }>('/settings', { token }),
       ]);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
@@ -147,6 +152,9 @@ function Register() {
         loyalty: settings.loyalty
           ? { enabled: settings.loyalty.enabled, redeemCentsPerPoint: settings.loyalty.redeemCentsPerPoint, minRedeemPoints: settings.loyalty.minRedeemPoints }
           : { enabled: false, redeemCentsPerPoint: 5, minRedeemPoints: 100 },
+        salonName: settings.company?.name ?? '',
+        salonLogo: settings.branding?.logoUrl ?? '',
+        salonAccent: settings.branding?.accentColor ?? '#6366f1',
       };
       applyCatalog(cat);
       cacheCatalog(cat);
@@ -321,6 +329,77 @@ function Register() {
     return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts };
   }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput, online, giftCard]);
 
+  // ---- Customer-facing display (2nd monitor). Mirrors the live cart to the
+  // /pos-display page via BroadcastChannel — same browser, no server, no internet. ----
+  const displayPayload = useMemo(() => ({
+    type: 'state' as const,
+    state: {
+      status: (cart.length ? 'active' : 'idle') as 'active' | 'idle',
+      currency,
+      salonName, salonLogo, salonAccent,
+      lines: cart.map((l) => {
+        const st = l.staffMemberId ? staff.find((x) => x.id === l.staffMemberId) : null;
+        return { name: l.name, qty: l.quantity, lineCents: l.unitPriceCents * l.quantity, staff: st ? `${st.firstName} ${st.lastName ?? ''}`.trim() : undefined };
+      }),
+      subtotalCents: money.subtotal,
+      savingsCents: money.savings,
+      tipCents: money.tip,
+      taxCents: money.tax,
+      giftCents: money.giftApplied,
+      dueCents: money.due,
+      // Tip prompt for the customer screen: tippable only when there's a service
+      // line, and the % is computed off the service subtotal.
+      tippable: cart.some((l) => l.kind === 'SERVICE'),
+      tipBaseCents: cart.filter((l) => l.kind === 'SERVICE').reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
+    },
+  }), [cart, currency, money, staff, salonName, salonLogo, salonAccent]);
+  const displayChRef = useRef<BroadcastChannel | null>(null);
+  const displayPayloadRef = useRef(displayPayload);
+  displayPayloadRef.current = displayPayload;
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const ch = new BroadcastChannel('lumio-pos-display');
+    displayChRef.current = ch;
+    ch.onmessage = (e) => {
+      const d = e.data;
+      // A freshly-opened display asks the register to replay the current ticket.
+      if (d?.type === 'request') ch.postMessage(displayPayloadRef.current);
+      // The customer tapped a tip on their screen → apply it to the ticket.
+      else if (d?.type === 'tip' && typeof d.amountCents === 'number') applyCustomerTip(d.amountCents);
+    };
+    return () => { ch.close(); displayChRef.current = null; };
+  }, []);
+  // Distribute a customer-chosen tip across the service lines (by value), so each
+  // technician gets their share and the existing per-line tip plumbing carries it
+  // through to checkout, receipt and payroll. Products never receive a tip.
+  function applyCustomerTip(totalTipCents: number) {
+    const amt = Math.max(0, Math.round(totalTipCents));
+    setCart((c) => {
+      const svc = c.filter((l) => l.kind === 'SERVICE');
+      if (svc.length === 0) return c.map((l, i) => ({ ...l, tipCents: i === 0 ? amt : 0 }));
+      const base = svc.reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
+      const lastUid = svc[svc.length - 1].uid;
+      let assigned = 0;
+      return c.map((l) => {
+        if (l.kind !== 'SERVICE') return { ...l, tipCents: 0 };
+        if (l.uid === lastUid) return { ...l, tipCents: Math.max(0, amt - assigned) };
+        const share = base > 0 ? Math.round((amt * (l.unitPriceCents * l.quantity)) / base) : 0;
+        assigned += share;
+        return { ...l, tipCents: share };
+      });
+    });
+  }
+  useEffect(() => { displayChRef.current?.postMessage(displayPayload); }, [displayPayload]);
+  function broadcastPaid() {
+    displayChRef.current?.postMessage({
+      type: 'state',
+      state: { status: 'paid', currency, salonName, salonLogo, salonAccent, lines: [], subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: money.due, paidCents: money.tenderedCents || money.due, changeCents: money.change },
+    });
+  }
+  function openCustomerScreen() {
+    if (typeof window !== 'undefined') window.open('/pos-display', 'lumioCustomerDisplay', 'width=1100,height=760');
+  }
+
   // ---- Catalog search + grouping ------------------------------------------
   const q = query.trim().toLowerCase();
   const otherLabel = t('po.other');
@@ -418,6 +497,7 @@ function Register() {
       setPendingSync(queueCount());
       printReceipt(`OFF-${clientRef.slice(0, 5).toUpperCase()}`);
       setOkMsg(t('po.savedOffline'));
+      broadcastPaid();
       clearCart();
       setOnline(false);
     };
@@ -433,6 +513,7 @@ function Register() {
         const order = await apiFetch<{ orderNumber: number }>('/pos/orders', { method: 'POST', token, body: payload });
         printReceipt(order.orderNumber);
         setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
+        broadcastPaid();
         clearCart();
         setOnline(true);
         setPendingSync(queueCount());
@@ -723,7 +804,10 @@ function Register() {
           {isMobile && (
             <button onClick={() => setMobileView('catalog')} style={{ ...ghost, marginBottom: 12, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
           )}
-          <h2 style={{ fontSize: 15, margin: '0 0 12px' }}>{t('po.ticket')}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px' }}>
+            <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
+            <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
+          </div>
 
           <CustomerBox
             token={token} t={t}

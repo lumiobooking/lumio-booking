@@ -522,7 +522,7 @@ export default function PublicBookingPage() {
                 </div>
                 <div style={{ marginTop: 14, maxWidth: isMobile ? '100%' : 300 }}>
                   <Field label="🎂 Birthday (optional)">
-                    <input lang="en-US" style={field} type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+                    <BirthdayInput value={form.birthDate} onChange={(iso) => setForm({ ...form, birthDate: iso })} />
                   </Field>
                   <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>Share it and we&rsquo;ll send you a birthday treat 🎁</div>
                 </div>
@@ -854,6 +854,67 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
 }
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return <label style={{ display: 'block', marginBottom: 16 }}><span style={fieldLabel}>{required && <span style={{ color: '#ef4444' }}>* </span>}{label}:</span>{children}</label>;
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/**
+ * Birthday entry as three dropdowns (Month name / Day / Year), always English and
+ * in M/D/Y order — independent of the browser's locale (the native <input type=date>
+ * calendar followed the OS language). Value in/out is ISO 'YYYY-MM-DD' so nothing
+ * downstream changes. Day list adapts to the chosen month/year.
+ */
+function BirthdayInput({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+  const init = value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value.split('-') : ['', '', ''];
+  const [yy, setYy] = useState(init[0]);
+  const [mm, setMm] = useState(init[1] ? String(parseInt(init[1], 10)) : '');
+  const [dd, setDd] = useState(init[2] ? String(parseInt(init[2], 10)) : '');
+
+  const daysInMonth = (m: string, y: string) => {
+    const mi = parseInt(m, 10);
+    if (!mi) return 31;
+    return new Date(parseInt(y, 10) || 2000, mi, 0).getDate();
+  };
+  const emit = (m: string, d: string, y: string) => {
+    if (m && d && y) {
+      const dNum = Math.min(parseInt(d, 10), daysInMonth(m, y));
+      onChange(`${y}-${m.padStart(2, '0')}-${String(dNum).padStart(2, '0')}`);
+    } else {
+      onChange('');
+    }
+  };
+  const clampDay = (m: string, y: string, d: string) => {
+    if (d && parseInt(d, 10) > daysInMonth(m, y)) { const nd = String(daysInMonth(m, y)); setDd(nd); return nd; }
+    return d;
+  };
+  const onMonth = (m: string) => { setMm(m); emit(m, clampDay(m, yy, dd), yy); };
+  const onDay = (d: string) => { setDd(d); emit(mm, d, yy); };
+  const onYear = (y: string) => { setYy(y); emit(mm, clampDay(mm, y, dd), y); };
+
+  const now = new Date().getFullYear();
+  const years: number[] = [];
+  for (let y = now; y >= 1920; y--) years.push(y);
+  const maxDay = daysInMonth(mm, yy);
+  const days: number[] = [];
+  for (let d = 1; d <= maxDay; d++) days.push(d);
+  const sel: React.CSSProperties = { ...field, appearance: 'auto', cursor: 'pointer' };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1.1fr', gap: 8 }}>
+      <select style={sel} value={mm} onChange={(e) => onMonth(e.target.value)} aria-label="Birth month">
+        <option value="">Month</option>
+        {MONTH_NAMES.map((name, i) => <option key={i} value={String(i + 1)}>{name}</option>)}
+      </select>
+      <select style={sel} value={dd} onChange={(e) => onDay(e.target.value)} aria-label="Birth day">
+        <option value="">Day</option>
+        {days.map((d) => <option key={d} value={String(d)}>{d}</option>)}
+      </select>
+      <select style={sel} value={yy} onChange={(e) => onYear(e.target.value)} aria-label="Birth year">
+        <option value="">Year</option>
+        {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+      </select>
+    </div>
+  );
 }
 function Row({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
   return <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 14 }}><span style={{ color: '#64748b' }}>{k}</span><span style={{ color: '#1e293b', fontWeight: bold ? 700 : 500 }}>{v}</span></div>;

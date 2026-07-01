@@ -53,7 +53,7 @@ export default function PosDisplayPage() {
   const [keypad, setKeypad] = useState(false);
   const [pad, setPad] = useState(''); // custom-tip dollars being typed
   const [tipped, setTipped] = useState(false); // customer recorded an after-payment tip
-  const [revealTip, setRevealTip] = useState(false); // customer opted in to see the (optional) tip panel
+  const [tipDismissed, setTipDismissed] = useState(false); // customer chose to hide the (optional) tip panel
   const [chosenTip, setChosenTip] = useState<number | null>(null); // amount selected but NOT yet confirmed as sent
   const chRef = useRef<BroadcastChannel | null>(null);
 
@@ -72,12 +72,12 @@ export default function PosDisplayPage() {
       if (!d || d.type !== 'state' || !d.state) return;
       const stt = d.state.status;
       if (stt === 'active' && (d.state.lines?.length ?? 0) > 0) {
-        mode = 'mirror'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false);
+        mode = 'mirror'; setTipped(false); setTipDismissed(false); setChosenTip(null); setKeypad(false);
         setS({ ...EMPTY, ...d.state }); return;
       }
       if (stt === 'paid') {
         // Reset tip state only when FIRST entering paid (a new sale) — never on a re-broadcast.
-        if (mode !== 'paid') { mode = 'paid'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false); }
+        if (mode !== 'paid') { mode = 'paid'; setTipped(false); setTipDismissed(false); setChosenTip(null); setKeypad(false); }
         setS({ ...EMPTY, ...d.state }); return;
       }
       if (mode === 'paid') return; // hold the thank-you + tip up until a new ticket
@@ -126,21 +126,16 @@ export default function PosDisplayPage() {
           )}
           {tipped ? (
             <div style={{ marginTop: 20, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
-          ) : (s.tipTechs?.length ?? 0) > 0 && revealTip ? (
+          ) : (s.tipTechs?.length ?? 0) > 0 && !tipDismissed ? (
+            // Shown directly (not behind a tap) so the customer can simply scan the
+            // QR with their phone — no click on this screen is needed to tip.
             <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
               onChoose={setChosenTip}
               onCustom={() => { setPad(''); setKeypad(true); }}
               onConfirm={() => { if (chosenTip != null) sendTipDirect(chosenTip); }}
-              onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
+              onSkip={() => { setTipDismissed(true); setChosenTip(null); }} />
           ) : (
-            <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-              <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
-              {(s.tipTechs?.length ?? 0) > 0 && (
-                <button onClick={() => setRevealTip(true)} style={softTipLink(accent)}>
-                  Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
-                </button>
-              )}
-            </div>
+            <div style={{ marginTop: 20, fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
           )}
         </div>
       ) : (
@@ -198,6 +193,9 @@ export default function PosDisplayPage() {
           </div>
         </div>
       )}
+      {/* Tiny build marker — lets the salon confirm the display reloaded fresh code
+          after a deploy (a long-lived kiosk window can otherwise run stale JS). */}
+      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>tips v2</div>
     </div>
   );
 }
@@ -262,15 +260,6 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
 }
 
 const skipBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
-
-// A small, understated tip link on the paid screen (opt-in — never forced).
-function softTipLink(accent: string): React.CSSProperties {
-  return {
-    border: `1.5px solid ${accent}44`, background: `${accent}0d`, color: accent,
-    borderRadius: 999, padding: 'clamp(8px, 1.2vw, 12px) clamp(16px, 2.4vw, 24px)',
-    fontSize: 'clamp(14px, 1.7vw, 18px)', fontWeight: 700, cursor: 'pointer',
-  };
-}
 
 // A calm outline chip for the (optional) suggested tip amounts.
 function quietChip(accent: string): React.CSSProperties {

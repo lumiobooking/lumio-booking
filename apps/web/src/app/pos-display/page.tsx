@@ -54,6 +54,7 @@ export default function PosDisplayPage() {
   const [pad, setPad] = useState(''); // custom-tip dollars being typed
   const [tipped, setTipped] = useState(false); // customer recorded an after-payment tip
   const [revealTip, setRevealTip] = useState(false); // customer opted in to see the (optional) tip panel
+  const [chosenTip, setChosenTip] = useState<number | null>(null); // amount selected but NOT yet confirmed as sent
   const chRef = useRef<BroadcastChannel | null>(null);
 
   useEffect(() => {
@@ -65,12 +66,12 @@ export default function PosDisplayPage() {
       const d = e.data;
       if (!d || d.type !== 'state' || !d.state) return;
       // A new ticket (active with items) always takes over — even during a paid hold.
-      if (d.state.status === 'active' && (d.state.lines?.length ?? 0) > 0) { holdUntil = 0; setTipped(false); setRevealTip(false); setKeypad(false); setS({ ...EMPTY, ...d.state }); return; }
+      if (d.state.status === 'active' && (d.state.lines?.length ?? 0) > 0) { holdUntil = 0; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false); setS({ ...EMPTY, ...d.state }); return; }
       if (d.state.status === 'paid') {
         // Hold the thank-you 5s normally; much longer when we're inviting an
         // after-payment tip so the customer has time to scan the QR.
         holdUntil = Date.now() + (((d.state.tipTechs?.length ?? 0) > 0) ? 5 * 60 * 1000 : 5000);
-        setTipped(false); setRevealTip(false); setKeypad(false); setS({ ...EMPTY, ...d.state }); return;
+        setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false); setS({ ...EMPTY, ...d.state }); return;
       }
       if (Date.now() < holdUntil) return; // still showing the thank-you
       setS({ ...EMPTY, ...d.state });
@@ -119,7 +120,11 @@ export default function PosDisplayPage() {
           {tipped ? (
             <div style={{ marginTop: 20, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
           ) : (s.tipTechs?.length ?? 0) > 0 && revealTip ? (
-            <AfterTip s={s} cur={cur} accent={accent} onPick={sendTipDirect} onCustom={() => { setPad(''); setKeypad(true); }} onSkip={() => setRevealTip(false)} />
+            <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
+              onChoose={setChosenTip}
+              onCustom={() => { setPad(''); setKeypad(true); }}
+              onConfirm={() => { if (chosenTip != null) sendTipDirect(chosenTip); }}
+              onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
           ) : (
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
               <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
@@ -181,7 +186,7 @@ export default function PosDisplayPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
               <button onClick={() => { setKeypad(false); setPad(''); }} style={{ ...keypadKey, background: '#f1f5f9', color: '#475569', fontWeight: 700 }}>Cancel</button>
-              <button onClick={() => { const v = Math.round((parseFloat(pad) || 0) * 100); if (v > 0) sendTipDirect(v); }} style={{ ...keypadKey, background: accent, color: 'white', fontWeight: 800 }}>Add tip</button>
+              <button onClick={() => { const v = Math.round((parseFloat(pad) || 0) * 100); if (v > 0) { setChosenTip(v); setKeypad(false); setPad(''); } }} style={{ ...keypadKey, background: accent, color: 'white', fontWeight: 800 }}>Use this amount</button>
             </div>
           </div>
         </div>
@@ -196,21 +201,24 @@ export default function PosDisplayPage() {
  * calm, entirely-optional thank-you that goes STRAIGHT to the tech via their QR.
  * Design goal: never make a customer feel pressured — soft visuals, easy to skip.
  */
-function AfterTip({ s, cur, accent, onPick, onCustom, onSkip }: {
-  s: DisplayState; cur: string; accent: string; onPick: (cents: number) => void; onCustom: () => void; onSkip: () => void;
+function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSkip }: {
+  s: DisplayState; cur: string; accent: string; chosen: number | null;
+  onChoose: (cents: number | null) => void; onCustom: () => void; onConfirm: () => void; onSkip: () => void;
 }) {
   const base = s.tipBaseCents ?? 0;
+  const techName = s.tipTechs && s.tipTechs.length === 1 ? s.tipTechs[0].name : 'your tech';
   return (
     <div style={afterTipCard}>
       <div style={{ fontSize: 'clamp(16px, 2.1vw, 21px)', fontWeight: 700, color: '#334155' }}>A little thank-you for your tech</div>
       <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#94a3b8', margin: '4px 0 14px' }}>Totally optional 💛 100% goes straight to them.</div>
 
+      {/* The QR stays visible the whole time — this is how the customer actually pays. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, justifyContent: 'center' }}>
         {s.tipTechs!.map((t, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
             {t.qr
               // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={t.qr} alt={`${t.name} tip QR`} style={{ width: 'clamp(108px, 17vw, 144px)', height: 'auto', borderRadius: 12, background: '#fff', padding: 7, border: '1px solid #eef2f7' }} />
+              ? <img src={t.qr} alt={`${t.name} tip QR`} style={{ width: 'clamp(120px, 20vw, 168px)', height: 'auto', borderRadius: 12, background: '#fff', padding: 7, border: chosen != null ? `2px solid ${accent}` : '1px solid #eef2f7' }} />
               : <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', padding: '18px 8px' }}>Ask {t.name} for their tip QR</div>}
             <div style={{ fontSize: 'clamp(13px, 1.6vw, 16px)', fontWeight: 600, color: '#475569' }}>{t.name}</div>
             {t.handle && <div style={{ fontSize: 'clamp(11px, 1.4vw, 14px)', color: '#94a3b8' }}>{t.handle}</div>}
@@ -218,19 +226,35 @@ function AfterTip({ s, cur, accent, onPick, onCustom, onSkip }: {
         ))}
       </div>
 
-      {base > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 }}>
-          {TIP_PERCENTS.map((pct) => (
-            <button key={pct} onClick={() => onPick(Math.round((base * pct) / 100))} style={quietChip(accent)}>{money(Math.round((base * pct) / 100), cur)}</button>
-          ))}
-          <button onClick={onCustom} style={quietChip(accent)}>Other</button>
-        </div>
+      {chosen == null ? (
+        <>
+          {base > 0 && <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#64748b', margin: '14px 0 8px' }}>Scan the QR to tip any amount — or pick one:</div>}
+          {base > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              {TIP_PERCENTS.map((pct) => (
+                <button key={pct} onClick={() => onChoose(Math.round((base * pct) / 100))} style={quietChip(accent)}>{money(Math.round((base * pct) / 100), cur)}</button>
+              ))}
+              <button onClick={onCustom} style={quietChip(accent)}>Other</button>
+            </div>
+          )}
+          <button onClick={onSkip} style={{ ...skipBtn, marginTop: 14 }}>No thanks</button>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 'clamp(15px, 1.9vw, 20px)', color: '#334155', margin: '14px 0 3px' }}>Scan to send <strong style={{ color: accent }}>{money(chosen, cur)}</strong> to {techName}</div>
+          <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#94a3b8', marginBottom: 14 }}>Open your camera or payment app, scan &amp; send — <strong>then</strong> tap below.</div>
+          <button onClick={onConfirm} style={{ width: '100%', maxWidth: 320, boxSizing: 'border-box', padding: 'clamp(11px, 1.6vw, 15px)', borderRadius: 12, border: 'none', background: accent, color: '#fff', fontSize: 'clamp(15px, 1.8vw, 19px)', fontWeight: 800, cursor: 'pointer' }}>✓ I&rsquo;ve sent it</button>
+          <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 14 }}>
+            <button onClick={() => onChoose(null)} style={skipBtn}>Change amount</button>
+            <button onClick={onSkip} style={skipBtn}>No thanks</button>
+          </div>
+        </>
       )}
-
-      <button onClick={onSkip} style={{ marginTop: 14, background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>No thanks</button>
     </div>
   );
 }
+
+const skipBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
 
 // A small, understated tip link on the paid screen (opt-in — never forced).
 function softTipLink(accent: string): React.CSSProperties {

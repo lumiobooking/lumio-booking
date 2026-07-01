@@ -99,7 +99,10 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
         </button>
       ) : (
         <div>
-          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Join the waitlist</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 }}>
+            <div style={{ fontWeight: 700, color: '#0f172a' }}>Join the waitlist</div>
+            <button onClick={() => { setOpen(false); setErr(null); }} aria-label="Close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: '0 4px', flexShrink: 0 }}>×</button>
+          </div>
           <p style={{ color: '#64748b', fontSize: 13, margin: '0 0 10px' }}>Leave your contact and we&apos;ll let you know the moment a spot opens{preferredDate ? ` around ${preferredDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}.</p>
           <div style={{ display: 'grid', gap: 8 }}>
             <input placeholder="Your name" value={f.customerName} onChange={(e) => setF({ ...f, customerName: e.target.value })} style={wlInput} />

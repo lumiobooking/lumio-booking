@@ -20,6 +20,7 @@ import {
   fillPct,
   htmlToText,
   referralBlockHtml,
+  referralBlockText,
   renderBookingEmailHtml,
   renderBookingEmailText,
   renderTemplatedEmailHtml,

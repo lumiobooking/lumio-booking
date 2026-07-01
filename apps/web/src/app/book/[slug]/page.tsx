@@ -480,9 +480,10 @@ export default function PublicBookingPage() {
             const emailValid = isValidEmail(form.email);
             const showPhoneError = hasPhone && !phoneValid;
             const showEmailError = hasEmail && !emailValid;
-            // At least one VALID contact method is required (email or phone).
-            const hasValidContact = (hasPhone && phoneValid) || (hasEmail && emailValid);
-            const infoOk = form.firstName.trim().length > 0 && hasValidContact && !showPhoneError && !showEmailError;
+            // Phone is the contact we confirm with (SMS); email is OPTIONAL — for
+            // receipts + remarketing only, just like the birthday field below.
+            const phoneOk = hasPhone && phoneValid;
+            const infoOk = form.firstName.trim().length > 0 && phoneOk && !showEmailError;
             // Customer details + birthday are collected HERE on the final step so the
             // booking flow is shorter (no separate "Your information" step). This block
             // renders at the top of the payment step.
@@ -502,7 +503,7 @@ export default function PublicBookingPage() {
                       ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid email address.</div>
                       : <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>We&rsquo;ll email your receipt &amp; members-only offers 💌</div>}
                   </Field>
-                  <Field label="Phone">
+                  <Field label="Phone" required>
                     <input
                       style={{ ...field, borderColor: showPhoneError ? '#ef4444' : '#cbd5e1' }}
                       value={form.phone} inputMode="tel" placeholder="e.g. (201) 555-0123"
@@ -511,8 +512,8 @@ export default function PublicBookingPage() {
                     {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}
                   </Field>
                 </div>
-                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 500, color: !hasValidContact ? '#ef4444' : '#64748b' }}>
-                  Please enter at least one — email or phone — so we can confirm your appointment.
+                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 500, color: !phoneOk ? '#ef4444' : '#64748b' }}>
+                  We&rsquo;ll text your confirmation &amp; reminders, so a phone number is required. Email is optional.
                 </div>
                 <div style={{ marginTop: 14, maxWidth: isMobile ? '100%' : 300 }}>
                   <Field label="🎂 Birthday (optional)">
@@ -543,7 +544,7 @@ export default function PublicBookingPage() {
                     <span> · Opt-in data never shared.</span>
                   </div>
                 </div>
-                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>Enter your first name and at least a valid email or phone to confirm.</p>}
+                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>Enter your first name and a valid phone number to confirm. Email is optional.</p>}
                 <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 20 }} />
               </div>
             );

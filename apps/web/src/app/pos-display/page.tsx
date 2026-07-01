@@ -32,6 +32,8 @@ type DisplayState = {
   changeCents?: number;
   tippable?: boolean;
   tipBaseCents?: number;
+  // Channel 3 — tech(s) whose QR is offered on the AFTER-PAYMENT screen.
+  tipTechs?: { name: string; qr?: string; handle?: string }[];
 };
 
 const TIP_PERCENTS = [15, 18, 20];
@@ -50,6 +52,8 @@ export default function PosDisplayPage() {
   const [s, setS] = useState<DisplayState>(EMPTY);
   const [keypad, setKeypad] = useState(false);
   const [pad, setPad] = useState(''); // custom-tip dollars being typed
+  const [tipped, setTipped] = useState(false); // customer recorded an after-payment tip
+  const [revealTip, setRevealTip] = useState(false); // customer opted in to see the (optional) tip panel
   const chRef = useRef<BroadcastChannel | null>(null);
 
   useEffect(() => {
@@ -60,7 +64,14 @@ export default function PosDisplayPage() {
     ch.onmessage = (e) => {
       const d = e.data;
       if (!d || d.type !== 'state' || !d.state) return;
-      if (d.state.status === 'paid') { holdUntil = Date.now() + 5000; setKeypad(false); setS({ ...EMPTY, ...d.state }); return; }
+      // A new ticket (active with items) always takes over — even during a paid hold.
+      if (d.state.status === 'active' && (d.state.lines?.length ?? 0) > 0) { holdUntil = 0; setTipped(false); setRevealTip(false); setKeypad(false); setS({ ...EMPTY, ...d.state }); return; }
+      if (d.state.status === 'paid') {
+        // Hold the thank-you 5s normally; much longer when we're inviting an
+        // after-payment tip so the customer has time to scan the QR.
+        holdUntil = Date.now() + (((d.state.tipTechs?.length ?? 0) > 0) ? 5 * 60 * 1000 : 5000);
+        setTipped(false); setRevealTip(false); setKeypad(false); setS({ ...EMPTY, ...d.state }); return;
+      }
       if (Date.now() < holdUntil) return; // still showing the thank-you
       setS({ ...EMPTY, ...d.state });
     };
@@ -69,8 +80,11 @@ export default function PosDisplayPage() {
     return () => { ch.close(); chRef.current = null; };
   }, []);
 
-  // Send the customer's chosen tip back to the register (it applies + rebroadcasts).
-  const sendTip = (amountCents: number) => { chRef.current?.postMessage({ type: 'tip', amountCents: Math.max(0, Math.round(amountCents)) }); setKeypad(false); setPad(''); };
+  // Optional tip AFTER payment: record the amount, then the customer scans the
+  // tech's QR to pay them directly (the bill is already settled to the salon).
+  // There is deliberately NO tip prompt during checkout — asking before paying
+  // feels pushy and hurts repeat visits; a gentle, opt-in thank-you comes after.
+  const sendTipDirect = (amountCents: number) => { chRef.current?.postMessage({ type: 'tipDirect', amountCents: Math.max(0, Math.round(amountCents)) }); setTipped(true); setKeypad(false); setPad(''); };
 
   const cur = s.currency;
   const accent = s.salonAccent || '#6366f1';
@@ -96,13 +110,26 @@ export default function PosDisplayPage() {
         </div>
       ) : s.status === 'paid' ? (
         <div style={centerBox}>
-          <div style={{ width: 120, height: 120, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 70, display: 'grid', placeItems: 'center', margin: '0 auto 18px' }}>✓</div>
-          <div style={{ fontSize: 'clamp(34px, 6vw, 58px)', fontWeight: 800, color: '#16a34a' }}>Thank you!</div>
-          <div style={{ fontSize: 'clamp(20px, 3vw, 30px)', color: '#1e293b', marginTop: 14 }}>Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong></div>
+          <div style={{ width: 'clamp(84px, 13vh, 116px)', height: 'clamp(84px, 13vh, 116px)', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 'clamp(46px, 8vh, 66px)', display: 'grid', placeItems: 'center', margin: '0 auto 16px' }}>✓</div>
+          <div style={{ fontSize: 'clamp(32px, 6vw, 54px)', fontWeight: 800, color: '#16a34a' }}>Thank you!</div>
+          <div style={{ fontSize: 'clamp(18px, 2.8vw, 28px)', color: '#1e293b', marginTop: 12 }}>Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong></div>
           {(s.changeCents ?? 0) > 0 && (
-            <div style={{ fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#64748b', marginTop: 6 }}>Change {money(s.changeCents!, cur)}</div>
+            <div style={{ fontSize: 'clamp(15px, 2.2vw, 22px)', color: '#64748b', marginTop: 6 }}>Change {money(s.changeCents!, cur)}</div>
           )}
-          <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8', marginTop: 18 }}>See you again soon 💕</div>
+          {tipped ? (
+            <div style={{ marginTop: 20, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
+          ) : (s.tipTechs?.length ?? 0) > 0 && revealTip ? (
+            <AfterTip s={s} cur={cur} accent={accent} onPick={sendTipDirect} onCustom={() => { setPad(''); setKeypad(true); }} onSkip={() => setRevealTip(false)} />
+          ) : (
+            <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+              <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
+              {(s.tipTechs?.length ?? 0) > 0 && (
+                <button onClick={() => setRevealTip(true)} style={softTipLink(accent)}>
+                  Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div style={twoCol}>
@@ -132,29 +159,6 @@ export default function PosDisplayPage() {
             {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
             {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
 
-            {/* Customer-tap tip — % of the service subtotal. Tap sends it back to the register. */}
-            {s.tippable && (s.tipBaseCents ?? 0) > 0 && (
-              <div style={{ margin: '16px 0 4px' }}>
-                <div style={{ fontSize: 'clamp(14px, 1.9vw, 19px)', fontWeight: 700, color: 'white', marginBottom: 10, textAlign: 'center' }}>Add a tip for your tech 💕</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                  {TIP_PERCENTS.map((pct) => {
-                    const amt = Math.round((s.tipBaseCents! * pct) / 100);
-                    const sel = (s.tipCents || 0) > 0 && Math.abs((s.tipCents || 0) - amt) <= 1;
-                    return (
-                      <button key={pct} onClick={() => sendTip(amt)} style={tipBtn(sel)}>
-                        <span style={{ fontSize: 'clamp(16px, 2.2vw, 22px)', fontWeight: 800 }}>{pct}%</span>
-                        <span style={{ fontSize: 'clamp(11px, 1.4vw, 14px)', opacity: 0.85 }}>{money(amt, cur)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-                  <button onClick={() => { setPad(''); setKeypad(true); }} style={tipBtn(false)}>Custom</button>
-                  <button onClick={() => sendTip(0)} style={tipBtn((s.tipCents || 0) === 0)}>No tip</button>
-                </div>
-              </div>
-            )}
-
             <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '18px 0' }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
               <span style={{ fontSize: 'clamp(18px, 2.4vw, 26px)', fontWeight: 700, color: 'rgba(255,255,255,0.92)' }}>Amount due</span>
@@ -177,7 +181,7 @@ export default function PosDisplayPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
               <button onClick={() => { setKeypad(false); setPad(''); }} style={{ ...keypadKey, background: '#f1f5f9', color: '#475569', fontWeight: 700 }}>Cancel</button>
-              <button onClick={() => { const v = Math.round((parseFloat(pad) || 0) * 100); if (v > 0) sendTip(v); }} style={{ ...keypadKey, background: accent, color: 'white', fontWeight: 800 }}>Add tip</button>
+              <button onClick={() => { const v = Math.round((parseFloat(pad) || 0) * 100); if (v > 0) sendTipDirect(v); }} style={{ ...keypadKey, background: accent, color: 'white', fontWeight: 800 }}>Add tip</button>
             </div>
           </div>
         </div>
@@ -186,16 +190,71 @@ export default function PosDisplayPage() {
   );
 }
 
-function tipBtn(sel: boolean): React.CSSProperties {
+/**
+ * Gentle, OPT-IN tip panel shown only after the bill is paid, and only once the
+ * customer chooses to see it. The bill is already settled to the salon; this is a
+ * calm, entirely-optional thank-you that goes STRAIGHT to the tech via their QR.
+ * Design goal: never make a customer feel pressured — soft visuals, easy to skip.
+ */
+function AfterTip({ s, cur, accent, onPick, onCustom, onSkip }: {
+  s: DisplayState; cur: string; accent: string; onPick: (cents: number) => void; onCustom: () => void; onSkip: () => void;
+}) {
+  const base = s.tipBaseCents ?? 0;
+  return (
+    <div style={afterTipCard}>
+      <div style={{ fontSize: 'clamp(16px, 2.1vw, 21px)', fontWeight: 700, color: '#334155' }}>A little thank-you for your tech</div>
+      <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#94a3b8', margin: '4px 0 14px' }}>Totally optional 💛 100% goes straight to them.</div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, justifyContent: 'center' }}>
+        {s.tipTechs!.map((t, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+            {t.qr
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={t.qr} alt={`${t.name} tip QR`} style={{ width: 'clamp(108px, 17vw, 144px)', height: 'auto', borderRadius: 12, background: '#fff', padding: 7, border: '1px solid #eef2f7' }} />
+              : <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', padding: '18px 8px' }}>Ask {t.name} for their tip QR</div>}
+            <div style={{ fontSize: 'clamp(13px, 1.6vw, 16px)', fontWeight: 600, color: '#475569' }}>{t.name}</div>
+            {t.handle && <div style={{ fontSize: 'clamp(11px, 1.4vw, 14px)', color: '#94a3b8' }}>{t.handle}</div>}
+          </div>
+        ))}
+      </div>
+
+      {base > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 }}>
+          {TIP_PERCENTS.map((pct) => (
+            <button key={pct} onClick={() => onPick(Math.round((base * pct) / 100))} style={quietChip(accent)}>{money(Math.round((base * pct) / 100), cur)}</button>
+          ))}
+          <button onClick={onCustom} style={quietChip(accent)}>Other</button>
+        </div>
+      )}
+
+      <button onClick={onSkip} style={{ marginTop: 14, background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>No thanks</button>
+    </div>
+  );
+}
+
+// A small, understated tip link on the paid screen (opt-in — never forced).
+function softTipLink(accent: string): React.CSSProperties {
   return {
-    border: sel ? '2px solid white' : '2px solid rgba(255,255,255,0.45)',
-    background: sel ? 'white' : 'rgba(255,255,255,0.12)',
-    color: sel ? '#1e293b' : 'white',
-    borderRadius: 14, padding: 'clamp(9px, 1.4vw, 15px)', cursor: 'pointer',
-    fontSize: 'clamp(14px, 1.8vw, 18px)', fontWeight: 700, lineHeight: 1.15,
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+    border: `1.5px solid ${accent}44`, background: `${accent}0d`, color: accent,
+    borderRadius: 999, padding: 'clamp(8px, 1.2vw, 12px) clamp(16px, 2.4vw, 24px)',
+    fontSize: 'clamp(14px, 1.7vw, 18px)', fontWeight: 700, cursor: 'pointer',
   };
 }
+
+// A calm outline chip for the (optional) suggested tip amounts.
+function quietChip(accent: string): React.CSSProperties {
+  return {
+    border: `1.5px solid ${accent}55`, background: '#fff', color: accent, borderRadius: 999,
+    padding: 'clamp(8px, 1.2vw, 12px) clamp(14px, 2vw, 20px)', cursor: 'pointer',
+    fontSize: 'clamp(14px, 1.7vw, 18px)', fontWeight: 700,
+  };
+}
+
+const afterTipCard: React.CSSProperties = {
+  marginTop: 22, width: 'min(94vw, 500px)', background: '#fff', borderRadius: 20,
+  padding: 'clamp(18px, 3vw, 28px)', border: '1px solid #eef2f7',
+  boxShadow: '0 12px 40px rgba(15,23,42,0.08)', textAlign: 'center',
+};
 
 // Build up a dollar string from keypad taps: one dot, max 2 decimals, capped length.
 function padPress(p: string, k: string): string {

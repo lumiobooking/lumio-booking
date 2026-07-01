@@ -114,13 +114,18 @@ function Register() {
   // Gift card redeemed toward this ticket (online-only — needs a live balance check).
   const [giftCard, setGiftCard] = useState<{ code: string; balanceCents: number } | null>(null);
   const [giftInput, setGiftInput] = useState('');
-  // Enlarge a tech's tip QR full-screen so the customer can scan it easily.
-  const [zoomQr, setZoomQr] = useState<string | null>(null);
   // Direct-tip logging: the customer tipped the tech directly (QR/cash) — we only
   // record the amount so payroll shows it. The salon never holds this money.
   const [tipLogInput, setTipLogInput] = useState<Record<string, string>>({});
   const [tipLogged, setTipLogged] = useState<Record<string, number>>({});
   const [tipBusy, setTipBusy] = useState<string | null>(null);
+  // Post-payment QR tip (Channel 3): after the bill is paid, the customer's
+  // Thank-you screen offers a tip. We remember the just-paid ticket's tech(s)
+  // (with their service value as the split weight) so a tapped tip is logged to
+  // the right person(s). A token ref keeps the async log working from the
+  // (mount-time) BroadcastChannel handler.
+  const tokenRef = useRef(token); tokenRef.current = token;
+  const paidTipRef = useRef<{ techs: { id: string; name: string; qr?: string; handle?: string; weightCents: number }[]; baseCents: number }>({ techs: [], baseCents: 0 });
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
@@ -364,8 +369,11 @@ function Register() {
       const d = e.data;
       // A freshly-opened display asks the register to replay the current ticket.
       if (d?.type === 'request') ch.postMessage(displayPayloadRef.current);
-      // The customer tapped a tip on their screen → apply it to the ticket.
+      // Channel 1 — customer tapped a tip ON THE BILL during checkout.
       else if (d?.type === 'tip' && typeof d.amountCents === 'number') applyCustomerTip(d.amountCents);
+      // Channel 3 — customer tapped a tip on the AFTER-PAYMENT screen (scans the
+      // tech's QR to pay directly). We log it against the just-paid ticket's techs.
+      else if (d?.type === 'tipDirect' && typeof d.amountCents === 'number') logPaidTip(Math.max(0, Math.round(d.amountCents)));
     };
     return () => { ch.close(); displayChRef.current = null; };
   }, []);
@@ -390,10 +398,40 @@ function Register() {
     });
   }
   useEffect(() => { displayChRef.current?.postMessage(displayPayload); }, [displayPayload]);
+  // Log a tip the customer chose on the AFTER-PAYMENT screen (Channel 3). It goes
+  // straight to the tech (they scan the QR) — the salon never holds it — so we only
+  // RECORD it (method 'QR') for payroll visibility, split across the paid ticket's
+  // techs by their service value. Never throws (a failed log must not break checkout).
+  async function logPaidTip(amountCents: number) {
+    const techs = paidTipRef.current.techs.filter((t) => t.id);
+    if (amountCents <= 0 || techs.length === 0) return;
+    const totalW = techs.reduce((s, t) => s + Math.max(0, t.weightCents), 0);
+    let assigned = 0;
+    for (let i = 0; i < techs.length; i++) {
+      const last = i === techs.length - 1;
+      const share = last
+        ? Math.max(0, amountCents - assigned)
+        : totalW > 0 ? Math.round((amountCents * Math.max(0, techs[i].weightCents)) / totalW) : Math.round(amountCents / techs.length);
+      assigned += share;
+      if (share > 0) {
+        try { await apiFetch('/pos/tips', { method: 'POST', token: tokenRef.current, body: { staffMemberId: techs[i].id, amountCents: share, method: 'QR' } }); }
+        catch { /* visibility log only — ignore failures */ }
+      }
+    }
+  }
   function broadcastPaid() {
+    const tt = paidTipRef.current;
     displayChRef.current?.postMessage({
       type: 'state',
-      state: { status: 'paid', currency, salonName, salonLogo, salonAccent, lines: [], subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: money.due, paidCents: money.tenderedCents || money.due, changeCents: money.change },
+      state: {
+        status: 'paid', currency, salonName, salonLogo, salonAccent, lines: [],
+        subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0,
+        dueCents: money.due, paidCents: money.tenderedCents || money.due, changeCents: money.change,
+        // Channel 3 — offer a QR tip on the Thank-you screen for the tech(s) on this ticket.
+        tippable: tt.techs.length > 0,
+        tipBaseCents: tt.baseCents,
+        tipTechs: tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })),
+      },
     });
   }
   function openCustomerScreen() {
@@ -455,6 +493,16 @@ function Register() {
 
   async function pay() {
     if (cart.length === 0) { setError(t('po.addItem')); return; }
+    // Remember this ticket's tip-tech(s) + their service value BEFORE we clear the
+    // cart, so the customer's after-payment QR tip (Channel 3) logs to the right person.
+    {
+      const svcByTech = new Map<string, number>();
+      for (const l of cart) if (l.kind === 'SERVICE' && l.staffMemberId) svcByTech.set(l.staffMemberId, (svcByTech.get(l.staffMemberId) || 0) + l.unitPriceCents * l.quantity);
+      paidTipRef.current = {
+        techs: tipTechs.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName ?? ''}`.trim(), qr: s.tipQrUrl ?? undefined, handle: s.tipHandle ?? undefined, weightCents: svcByTech.get(s.id) || 0 })),
+        baseCents: cart.filter((l) => l.kind === 'SERVICE').reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
+      };
+    }
     // The gift card (if any) covers part/all of the ticket; tenders cover the rest.
     const dueCents = money.due;
     // Cash needs the amount received; Card & Transfer pay the due in full at the terminal/bank.
@@ -929,19 +977,16 @@ function Register() {
           {/* Direct tip to the tech(s) on this ticket — scan their QR. */}
           {tipTechs.length > 0 && (
             <div style={{ marginBottom: 12, border: '1px solid #155e75', borderRadius: 10, padding: 10, background: '#0f172a' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#a5f3fc', marginBottom: 6 }}>💸 {t('po.tipTitle')}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#a5f3fc', marginBottom: 4 }}>💸 {t('po.tipTitle')}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>{t('po.tipQrAfterNote')}</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
                 {t('po.tipSuggest')}: 15% {formatPrice(Math.round(money.subtotal * 0.15), currency)} · 18% {formatPrice(Math.round(money.subtotal * 0.18), currency)} · 20% {formatPrice(Math.round(money.subtotal * 0.2), currency)}
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 {tipTechs.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, width: 132 }}>
-                    {s.tipQrUrl
-                      // eslint-disable-next-line @next/next/no-img-element
-                      ? <img src={s.tipQrUrl} alt="tip QR" width={92} height={92} onClick={() => setZoomQr(s.tipQrUrl!)} style={{ borderRadius: 8, background: '#fff', cursor: 'pointer', border: '1px solid #334155' }} />
-                      : <span style={{ width: 92, height: 92, borderRadius: 8, background: '#1e293b', display: 'grid', placeItems: 'center', fontSize: 11, color: '#64748b', textAlign: 'center', padding: 6 }}>{t('po.tipNoQr')}</span>}
-                    <span style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center' }}>{s.firstName} {s.lastName ?? ''}</span>
-                    {s.tipHandle && <span style={{ fontSize: 11, color: '#64748b' }}>{s.tipHandle}</span>}
+                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 3, width: 150 }}>
+                    <span style={{ fontSize: 13, color: '#e2e8f0', textAlign: 'center', fontWeight: 600 }}>{s.firstName} {s.lastName ?? ''}</span>
+                    {s.tipHandle && <span style={{ fontSize: 11, color: '#64748b', textAlign: 'center' }}>{s.tipHandle}</span>}
                     <div style={{ display: 'flex', gap: 4, marginTop: 4, width: '100%' }}>
                       <input
                         type="number" min={0} step="0.01" placeholder="$"
@@ -1030,13 +1075,6 @@ function Register() {
             <div style={{ fontSize: 19, fontWeight: 800, color: '#22c55e' }}>{formatPrice(money.total, currency)}</div>
           </div>
           <button onClick={() => setMobileView('ticket')} style={{ ...ui.primaryBtn, padding: '12px 20px', fontSize: 15, whiteSpace: 'nowrap' }}>{t('po.viewTicket')} →</button>
-        </div>
-      )}
-
-      {zoomQr && (
-        <div onClick={() => setZoomQr(null)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.9)', display: 'grid', placeItems: 'center', padding: 20 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={zoomQr} alt="tip QR" style={{ width: 'min(82vw, 360px)', height: 'auto', borderRadius: 12, background: '#fff', padding: 10 }} />
         </div>
       )}
 
@@ -1161,7 +1199,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
   const [q, setQ] = useState('');
   const [results, setResults] = useState<CustomerHit[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [nf, setNf] = useState({ firstName: '', phone: '', birthDate: '' });
+  const [nf, setNf] = useState({ firstName: '', phone: '', email: '', birthDate: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1184,9 +1222,9 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
     if (!nf.phone.trim()) { setErr(t('po.custPhoneReq')); return; }
     setBusy(true); setErr(null);
     try {
-      const c = await apiFetch<CustomerHit>('/customers', { method: 'POST', token, body: { firstName: nf.firstName.trim() || undefined, phone: nf.phone.trim(), birthDate: nf.birthDate || undefined } });
+      const c = await apiFetch<CustomerHit>('/customers', { method: 'POST', token, body: { firstName: nf.firstName.trim() || undefined, phone: nf.phone.trim(), email: nf.email.trim() || undefined, birthDate: nf.birthDate || undefined } });
       onPick(c.id, hitLabel(c), c.loyaltyPoints ?? 0);
-      setAdding(false); setNf({ firstName: '', phone: '', birthDate: '' }); setQ('');
+      setAdding(false); setNf({ firstName: '', phone: '', email: '', birthDate: '' }); setQ('');
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusy(false); }
   }
@@ -1218,6 +1256,10 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
           <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>🎂 {t('po.custBirthday')}</span>
           <input type="date" value={nf.birthDate} onChange={(e) => setNf({ ...nf, birthDate: e.target.value })} style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>✉️ {t('po.custEmail')}</span>
+          <input type="email" value={nf.email} onChange={(e) => setNf({ ...nf, email: e.target.value })} placeholder="name@email.com" style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
+        </div>
         {err && <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 6 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 6 }}>
           <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 13 }}>{busy ? t('po.custSaving') : t('po.custSave')}</button>
@@ -1247,7 +1289,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
       )}
       {results && results.length === 0 && q.trim().length >= 2 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#1e293b', border: '1px solid #475569', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#94a3b8' }}>
-          {t('po.custNone')} <button type="button" onClick={() => { setAdding(true); setNf({ firstName: '', phone: q.replace(/[^\d+]/g, ''), birthDate: '' }); }} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 12, padding: 0 }}>＋ {t('po.custAdd')}</button>
+          {t('po.custNone')} <button type="button" onClick={() => { setAdding(true); setNf({ firstName: '', phone: q.replace(/[^\d+]/g, ''), email: '', birthDate: '' }); }} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 12, padding: 0 }}>＋ {t('po.custAdd')}</button>
         </div>
       )}
     </div>

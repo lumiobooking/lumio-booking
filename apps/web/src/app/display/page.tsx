@@ -125,6 +125,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   const [chosenTip, setChosenTip] = useState<number | null>(null);
   const [keypad, setKeypad] = useState(false);
   const [pad, setPad] = useState('');
+  const [portrait, setPortrait] = useState(true); // adapt the order screen to orientation
   const prevSaleRef = useRef<string>('__init__');
   const tipPanelRef = useRef<HTMLDivElement | null>(null);
 
@@ -157,6 +158,15 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   useEffect(() => {
     if (revealTip && tipPanelRef.current) tipPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [revealTip]);
+  // Track orientation so the order screen can lay out cleanly in portrait AND
+  // landscape (side-by-side when wide, stacked with the total pinned when tall).
+  useEffect(() => {
+    const check = () => setPortrait(window.innerHeight >= window.innerWidth);
+    check();
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); };
+  }, []);
 
   const sendTip = useCallback((amountCents: number) => {
     apiFetch(`/display/tip/${token}`, { method: 'POST', body: { amountCents: Math.max(0, Math.round(amountCents)) } }).catch(() => { /* best-effort log */ });
@@ -175,6 +185,8 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
     </div>
   ) : null;
 
+  const isActive = s.status === 'active' && s.lines.length > 0;
+
   if (notLinked) {
     return (
       <div style={fullCenter}>
@@ -191,7 +203,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
     <div style={page}>
       {brand}
       <div style={contentArea}>
-        <div style={scrollInner}>
+        <div style={{ ...scrollInner, justifyContent: isActive ? 'flex-start' : 'center' }}>
           {s.status === 'idle' || (s.status === 'active' && s.lines.length === 0) ? (
             <div style={centerBox}>
               <div style={{ fontSize: 72, marginBottom: 10 }}>💅</div>
@@ -228,8 +240,8 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
               )}
             </div>
           ) : (
-            <div style={twoCol}>
-              <div style={itemsPanel}>
+            <div style={activeWrap(portrait)}>
+              <div style={{ ...itemsPanel, flex: portrait ? '1 1 0%' : '2 1 440px', minHeight: 0, maxHeight: 'none' }}>
                 <div style={{ fontSize: 'clamp(22px, 3vw, 32px)', fontWeight: 800, color: '#1e293b', marginBottom: 18 }}>Your order</div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {s.lines.map((l, i) => (
@@ -245,7 +257,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
                   ))}
                 </div>
               </div>
-              <div style={{ ...totalsPanel, background: `linear-gradient(160deg, ${accent} 0%, ${accent} 100%)`, boxShadow: `0 20px 60px ${accent}59` }}>
+              <div style={{ ...totalsPanel, flex: portrait ? '0 0 auto' : '1 1 340px', background: `linear-gradient(160deg, ${accent} 0%, ${accent} 100%)`, boxShadow: `0 20px 60px ${accent}59` }}>
                 <Row k="Subtotal" v={money(s.subtotalCents, cur)} />
                 {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="#bbf7d0" />}
                 {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
@@ -279,7 +291,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
           </div>
         </div>
       )}
-      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v1</div>
+      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v2</div>
     </div>
   );
 }
@@ -387,10 +399,17 @@ const contentArea: React.CSSProperties = { flex: 1, minHeight: 0, width: '100%',
 const scrollInner: React.CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0', boxSizing: 'border-box' };
 const brandBar: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 14px', flexShrink: 0 };
 const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720, margin: '0 auto' };
-const twoCol: React.CSSProperties = {
-  display: 'flex', flexWrap: 'wrap', gap: '3vw', width: '100%', maxWidth: 1280,
-  alignItems: 'stretch', justifyContent: 'center',
-};
+// Order screen wrapper that fills the viewport height. Landscape → items and totals
+// side by side; portrait → stacked with the item list taking the remaining space
+// (scrolls internally) and the totals card pinned below, always fully visible.
+function activeWrap(portrait: boolean): React.CSSProperties {
+  return {
+    display: 'flex', flexDirection: portrait ? 'column' : 'row',
+    gap: portrait ? 'clamp(12px, 2vh, 22px)' : '3vw',
+    width: '100%', maxWidth: 1280, alignSelf: 'center',
+    flex: 1, minHeight: 0, boxSizing: 'border-box',
+  };
+}
 const itemsPanel: React.CSSProperties = {
   flex: '2 1 440px', background: 'white', borderRadius: 24, padding: 'clamp(20px, 3vw, 40px)',
   boxShadow: '0 20px 60px rgba(15,23,42,0.10)', maxHeight: '88vh', overflowY: 'auto',

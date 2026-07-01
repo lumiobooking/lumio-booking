@@ -107,10 +107,31 @@ export default function SmsOptInPage() {
         <h2 style={{ fontSize: 15, color: '#0f172a', margin: '0 0 8px' }}>How customers opt in</h2>
         <p style={{ ...p, fontSize: 13.5 }}>
           Customers also opt in directly when they book an appointment on their salon&rsquo;s online booking page
-          (for example, <span style={{ color: INDIGO }}>lumiobooking.com/book/your-salon</span>). On the
-          &ldquo;Your information&rdquo; step they enter their mobile number and see the same consent language and a
+          (for example, <span style={{ color: INDIGO }}>lumiobooking.com/your-salon</span>). On the
+          &ldquo;Your details &amp; payment&rdquo; step they enter their mobile number and see the same consent language and a
           separate, unchecked box to also receive promotional texts. Opt-in is never required to complete a booking, and
           consent is recorded with a timestamp.
+        </p>
+      </div>
+
+      {/* Sample messages — reviewers look for representative message content. */}
+      <div style={{ ...card, marginTop: 18 }}>
+        <h2 style={{ fontSize: 15, color: '#0f172a', margin: '0 0 10px' }}>Sample messages</h2>
+        <div style={sample}>
+          Lumio Booking: Hi Jane, a reminder of your Manicure at Rose Nails on Fri Jul 10 at 2:00 PM. Reply C to
+          confirm or call the salon. Reply STOP to opt out, HELP for help.
+        </div>
+        <div style={sample}>
+          Lumio Booking: Rose Nails — 20% off gel sets this week! Book: lumiobooking.com/rose-nails. Msg &amp; data
+          rates may apply. Reply STOP to opt out.
+        </div>
+        <div style={sample}>
+          Lumio Booking: You&rsquo;re unsubscribed and will receive no more messages. Reply START to resume.
+        </div>
+        <p style={{ ...fine, marginTop: 4 }}>
+          Program operated by <strong>Lumio Booking</strong>, a service of <strong>Lumio Agency</strong> ·{' '}
+          <a href="mailto:lumioagency.com@gmail.com" style={a}>lumioagency.com@gmail.com</a>. Messages are sent to
+          customers of the salons that use Lumio Booking, only after the customer opts in as shown above.
         </p>
       </div>
     </main>
@@ -124,6 +145,7 @@ const h1: React.CSSProperties = { fontSize: 22, margin: '14px 0 4px', color: '#0
 const muted: React.CSSProperties = { fontSize: 14, color: '#64748b', margin: 0 };
 const p: React.CSSProperties = { fontSize: 14, lineHeight: 1.6, color: '#334155', margin: '0 0 10px' };
 const fine: React.CSSProperties = { fontSize: 12.5, lineHeight: 1.55, color: '#475569', margin: '0 0 8px' };
+const sample: React.CSSProperties = { background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', fontSize: 13, lineHeight: 1.5, color: '#334155', margin: '0 0 8px' };
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginTop: 8, marginBottom: 6 };
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '12px 14px', fontSize: 15, borderRadius: 10, border: '1.5px solid #cbd5e1', outline: 'none' };
 const primaryBtn: React.CSSProperties = { width: '100%', marginTop: 18, background: '#111827', color: '#fff', fontWeight: 700, fontSize: 15, padding: '13px', borderRadius: 10, border: 'none', cursor: 'pointer' };

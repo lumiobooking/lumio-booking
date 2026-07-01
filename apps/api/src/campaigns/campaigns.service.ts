@@ -5,6 +5,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { bookingUrl } from '../common/public-url.util';
+import { ReferralService } from '../referral/referral.service';
+import { referralBlockHtml, referralBlockText } from '../notifications/email-template';
 import {
   CAMPAIGN_SETTINGS_KEY,
   CampaignKey,
@@ -39,6 +41,7 @@ export class CampaignsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly settings: SettingsService,
+    private readonly referral: ReferralService,
   ) {}
 
   private tid(user: AuthenticatedUser): string {
@@ -293,18 +296,44 @@ export class CampaignsService {
   ): Promise<boolean> {
     const pct = { ...basePct, customer_name: c.firstName || 'there' };
     const related = { relatedType: campaignRelatedType(key), relatedId: c.id };
+
+    // These are MARKETING messages (birthday / win-back), sent only to customers
+    // with an address or SMS consent — so a referral CTA is compliance-appropriate
+    // on BOTH channels here (unlike transactional confirmations/reminders).
+    let refHtml = '';
+    let refTextEmail = '';
+    let refSmsSuffix = '';
+    try {
+      const refs = await this.referral.getForTenant(tenantId);
+      if (refs.enabled) {
+        const linked = await this.referral.ensureLinkForCustomer(tenantId, c.id);
+        if (linked) {
+          const parts: string[] = [];
+          if (refs.referrerPoints > 0) parts.push(`you'll earn ${refs.referrerPoints} points`);
+          if (refs.refereePoints > 0) parts.push(`they'll get ${refs.refereePoints} to start`);
+          const sub = parts.length
+            ? `Share your personal link. When a friend books their first visit, ${parts.join(' and ')}.`
+            : 'Share your personal link with friends who would love this salon.';
+          const invite = { link: linked.link, headline: 'Refer a friend', sub };
+          refHtml = referralBlockHtml(invite, '#4f46e5');
+          refTextEmail = `\n\n${referralBlockText(invite)}`;
+          refSmsSuffix = ` Refer a friend, you both get rewarded: ${linked.link}`;
+        }
+      }
+    } catch { /* referral is optional — never block a campaign send */ }
+
     const jobs: Promise<unknown>[] = [];
     if (msg.email && c.email) {
       const bodyText = fillPct(msg.body, pct);
       jobs.push(this.notifications.send({
         tenantId, channel: NotificationChannel.EMAIL, recipient: c.email,
-        subject: fillPct(msg.subject, pct), body: bodyText, html: bodyToHtml(bodyText),
+        subject: fillPct(msg.subject, pct), body: bodyText + refTextEmail, html: bodyToHtml(bodyText) + refHtml,
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo, ...related,
       }));
     }
     if (msg.sms && c.phone && c.smsConsent) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: c.phone, body: fillPct(msg.smsBody, pct), ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: c.phone, body: fillPct(msg.smsBody, pct) + refSmsSuffix, ...related }));
     }
     if (jobs.length === 0) return false;
     await Promise.allSettled(jobs);

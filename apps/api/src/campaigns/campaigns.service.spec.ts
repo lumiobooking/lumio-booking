@@ -37,6 +37,8 @@ function makePrismaFake(opts?: { notifications?: { tenantId: string; relatedType
 
 const notificationsFake = { send: jest.fn(async () => undefined) };
 const settingsFake = { getNotificationSettings: jest.fn(async () => ({})) };
+// Referral is OFF here, so campaign messages carry no referral CTA in these tests.
+const referralFake = { getForTenant: jest.fn(async () => ({ enabled: false, referrerPoints: 0, refereePoints: 0, message: '' })), ensureLinkForCustomer: jest.fn(async () => null) };
 
 const salonA: AuthenticatedUser = { userId: 'u-a', email: 'a@x.test', role: UserRole.SALON_ADMIN, tenantId: 'tenant-a' };
 const salonB: AuthenticatedUser = { userId: 'u-b', email: 'b@x.test', role: UserRole.SALON_ADMIN, tenantId: 'tenant-b' };
@@ -44,7 +46,7 @@ const salonB: AuthenticatedUser = { userId: 'u-b', email: 'b@x.test', role: User
 describe('CampaignsService tenant isolation', () => {
   it('updateSettings persists under the caller tenant only', async () => {
     const prisma = makePrismaFake();
-    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any);
+    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any, referralFake as any);
 
     await svc.updateSettings(salonA, { winBack: { enabled: true } });
 
@@ -58,7 +60,7 @@ describe('CampaignsService tenant isolation', () => {
 
   it('getSettings merges stored values over defaults', async () => {
     const prisma = makePrismaFake();
-    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any);
+    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any, referralFake as any);
 
     const s = await svc.getSettings(salonA);
     expect(s.sendHour).toBe(10); // default
@@ -75,7 +77,7 @@ describe('CampaignsService tenant isolation', () => {
         { tenantId: 'tenant-b', relatedType: campaignRelatedType('winBack') }, // other tenant — must be ignored
       ],
     });
-    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any);
+    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any, referralFake as any);
 
     const stats = await svc.getStats(salonA);
 
@@ -89,7 +91,7 @@ describe('CampaignsService tenant isolation', () => {
 
   it('clamps sendHour into 0–23 on save', async () => {
     const prisma = makePrismaFake();
-    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any);
+    const svc = new CampaignsService(prisma as any, notificationsFake as any, settingsFake as any, referralFake as any);
 
     const saved = await svc.updateSettings(salonA, { sendHour: 99 });
     expect(saved.sendHour).toBe(23);

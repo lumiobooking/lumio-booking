@@ -532,7 +532,7 @@ export class BookingsService {
         OR: [{ remind1SentAt: null }, { remind2SentAt: null }],
       },
       include: {
-        customer: { select: { firstName: true, email: true, phone: true } },
+        customer: { select: { id: true, firstName: true, email: true, phone: true } },
         service: { select: { name: true } },
         assignedStaff: { select: { firstName: true, lastName: true } },
       },
@@ -565,7 +565,7 @@ export class BookingsService {
   /** Send a single reminder (email + SMS, per the salon's reminder channels). */
   private async sendReminderFor(
     tenantId: string,
-    appt: { id: string; startTime: Date; customer: { firstName: string | null; email: string | null; phone: string | null } | null; service: { name: string } | null },
+    appt: { id: string; startTime: Date; customer: { id?: string; firstName: string | null; email: string | null; phone: string | null } | null; service: { name: string } | null },
     rs: ReminderSettings,
   ) {
     const custEmail = appt.customer?.email;
@@ -603,9 +603,34 @@ export class BookingsService {
       : undefined;
     const related = { relatedType: 'appointment', relatedId: appt.id };
 
+    // Refer-a-friend footer — EMAIL ONLY (never the SMS, which stays transactional
+    // to keep 10DLC/toll-free traffic clean). Best-effort + only when the program is on.
+    let refHtml = '';
+    let refText = '';
+    try {
+      const custId = appt.customer?.id;
+      if (custId) {
+        const refs = await this.referral.getForTenant(tenantId);
+        if (refs.enabled) {
+          const linked = await this.referral.ensureLinkForCustomer(tenantId, custId);
+          if (linked) {
+            const parts: string[] = [];
+            if (refs.referrerPoints > 0) parts.push(`you'll earn ${refs.referrerPoints} points`);
+            if (refs.refereePoints > 0) parts.push(`they'll get ${refs.refereePoints} to start`);
+            const sub = parts.length
+              ? `Share your personal link. When a friend books their first visit, ${parts.join(' and ')}.`
+              : 'Share your personal link with friends who would love this salon.';
+            const invite = { link: linked.link, headline: `Love ${salon}? Refer a friend`, sub };
+            refHtml = referralBlockHtml(invite, '#4f46e5');
+            refText = `\n\n${referralBlockText(invite)}`;
+          }
+        }
+      }
+    } catch { /* referral is optional — never block a reminder */ }
+
     const jobs: Promise<unknown>[] = [];
     if (rs.channelEmail && custEmail) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text, html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text + refText, html: html + refHtml, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
     }
     if (rs.channelSms && custPhone) {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, ...related }));

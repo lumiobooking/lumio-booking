@@ -135,13 +135,13 @@ function ServicesInner() {
 
   return (
     <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>{t('sv.title')}</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>
+        <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #475569' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
           </button>
-          <button onClick={() => { setShowForm((s) => !s); setShowImport(false); }} style={ui.primaryBtn}>
+          <button onClick={() => { setShowForm((s) => !s); setShowImport(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined }}>
             {showForm ? t('sv.close') : t('sv.newService')}
           </button>
         </div>
@@ -595,17 +595,17 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           />
         </label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginTop: 12, alignItems: 'end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginTop: 12, alignItems: 'end' }}>
         <label><span style={ui.label}>{t('sv.fCategory')}</span>
           <select style={ui.input} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
             <option value="">{t('sv.optUncategorised')}</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> {t('sv.popularLabel')}
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
       </div>

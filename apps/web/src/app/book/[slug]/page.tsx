@@ -492,13 +492,15 @@ export default function PublicBookingPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
                   <Field label="First name" required><input style={field} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
                   <Field label="Last name"><input style={field} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
-                  <Field label="Email">
+                  <Field label="Email (optional)">
                     <input
                       style={{ ...field, borderColor: showEmailError ? '#ef4444' : '#cbd5e1' }}
                       type="email" value={form.email} placeholder="you@email.com"
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
                     />
-                    {showEmailError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid email address.</div>}
+                    {showEmailError
+                      ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid email address.</div>
+                      : <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>We&rsquo;ll email your receipt &amp; members-only offers 💌</div>}
                   </Field>
                   <Field label="Phone">
                     <input

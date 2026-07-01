@@ -67,9 +67,20 @@ export class ReferralService {
 
   /** Ensure a customer has a referral code, and return it with the shareable link. */
   async getCustomerLink(user: AuthenticatedUser, customerId: string): Promise<{ code: string; link: string }> {
-    const tenantId = this.tid(user);
+    const res = await this.ensureLinkForCustomer(this.tid(user), customerId);
+    if (!res) throw new NotFoundException('Customer not found');
+    return res;
+  }
+
+  /**
+   * Tenant-scoped variant (no authenticated user) — used by the public
+   * appointment page so a customer can grab their own share link. Lazily
+   * generates and persists the code on first request. Returns null if the
+   * customer doesn't belong to the tenant.
+   */
+  async ensureLinkForCustomer(tenantId: string, customerId: string): Promise<{ code: string; link: string } | null> {
     const c = await this.prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { id: true, firstName: true, referralCode: true } });
-    if (!c) throw new NotFoundException('Customer not found');
+    if (!c) return null;
     let code = c.referralCode;
     if (!code) {
       code = await this.generateUniqueCode(tenantId, c.firstName);

@@ -959,10 +959,23 @@ export class BookingsService {
     if (!id) throw new NotFoundException('This link has expired or is invalid.');
     const a = await this.prisma.appointment.findUnique({
       where: { id },
-      include: { service: { select: { name: true } }, tenant: { select: { name: true, slug: true, timezone: true, branding: true } }, customer: { select: { firstName: true } } },
+      include: { service: { select: { name: true } }, tenant: { select: { name: true, slug: true, timezone: true, branding: true } }, customer: { select: { id: true, firstName: true } } },
     });
     if (!a) throw new NotFoundException('Appointment not found');
     const tz = a.tenant?.timezone || 'America/New_York';
+    // Referral: when the program is on, surface THIS customer's own share link so
+    // they can invite friends straight from their appointment page. Purely a
+    // bonus — never let it break the page.
+    let referral: { link: string; message: string; referrerPoints: number; refereePoints: number } | null = null;
+    try {
+      if (a.customer?.id) {
+        const s = await this.referral.getForTenant(a.tenantId);
+        if (s.enabled) {
+          const l = await this.referral.ensureLinkForCustomer(a.tenantId, a.customer.id);
+          if (l) referral = { link: l.link, message: s.message, referrerPoints: s.referrerPoints, refereePoints: s.refereePoints };
+        }
+      }
+    } catch { /* ignore — referral is optional */ }
     return {
       salon: a.tenant?.name ?? 'Our salon',
       slug: a.tenant?.slug ?? '',
@@ -973,6 +986,7 @@ export class BookingsService {
       status: a.status,
       confirmed: !!a.customerConfirmedAt,
       canAct: BookingsService.ACTIONABLE.includes(a.status),
+      referral,
     };
   }
 

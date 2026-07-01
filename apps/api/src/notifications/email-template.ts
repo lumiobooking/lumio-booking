@@ -41,6 +41,29 @@ function detailRow(label: string, value: string, emphasize = false): string {
     </tr>`;
 }
 
+/** Optional "refer a friend" invite shown at the bottom of the customer email. */
+export interface ReferralInvite {
+  link: string;
+  headline: string;
+  sub: string;
+}
+
+/** Email-safe (inline-style) referral card. Rendered only when passed. */
+export function referralBlockHtml(r: ReferralInvite, accent: string): string {
+  return `
+    <div style="margin-top:22px;padding:18px 18px 20px;border:1px solid #eef0f4;border-radius:12px;background:#fafbff;">
+      <div style="font-size:15px;font-weight:800;color:#111827;margin:0 0 6px;">${esc(r.headline)}</div>
+      <p style="margin:0 0 14px;color:#4b5563;font-size:13px;line-height:1.6;">${esc(r.sub)}</p>
+      <a href="${esc(r.link)}" style="display:inline-block;background:${esc(accent)};color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 20px;border-radius:9px;">Invite a friend &rarr;</a>
+      <div style="margin-top:12px;font-size:12px;color:#8a94a6;word-break:break-all;">Your link: <a href="${esc(r.link)}" style="color:${esc(accent)};text-decoration:none;">${esc(r.link)}</a></div>
+    </div>`;
+}
+
+/** Plain-text version of the referral invite. */
+export function referralBlockText(r: ReferralInvite): string {
+  return `${r.headline}\n${r.sub}\nYour link: ${r.link}`;
+}
+
 /**
  * Builds the email. `heading` is the bold title, `intro` the paragraph below it,
  * `footer` the closing note — all already placeholder-filled by the caller.
@@ -50,8 +73,9 @@ export function renderBookingEmailHtml(args: {
   intro: string;
   footer: string;
   d: BookingTemplateData;
+  referral?: ReferralInvite | null;
 }): string {
-  const { heading, intro, footer, d } = args;
+  const { heading, intro, footer, d, referral } = args;
   const rows =
     detailRow('Service', d.service) +
     detailRow('Add-ons', d.addons) +
@@ -74,6 +98,7 @@ export function renderBookingEmailHtml(args: {
         <p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.6;">${esc(intro)}</p>
         <table style="width:100%;border-collapse:collapse;">${rows}</table>
         ${footer ? `<p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">${esc(footer)}</p>` : ''}
+        ${referral ? referralBlockHtml(referral, d.accent) : ''}
       </div>
       <div style="background:#f9fafb;padding:16px 26px;color:#9aa4b2;font-size:12px;border-top:1px solid #eef0f4;">
         ${esc(d.salon)}${d.contact ? ' · ' + esc(d.contact) : ''}
@@ -153,7 +178,7 @@ export function renderTemplatedEmailHtml(args: {
 }
 
 /** Plain-text fallback (for clients that don't render HTML). */
-export function renderBookingEmailText(heading: string, intro: string, footer: string, d: BookingTemplateData): string {
+export function renderBookingEmailText(heading: string, intro: string, footer: string, d: BookingTemplateData, referral?: ReferralInvite | null): string {
   const lines = [
     heading,
     '',
@@ -168,6 +193,7 @@ export function renderBookingEmailText(heading: string, intro: string, footer: s
     `Total: ${d.total}`,
     '',
     footer,
+    referral ? referralBlockText(referral) : '',
     '',
     `${d.salon}${d.contact ? ' · ' + d.contact : ''}`,
   ];

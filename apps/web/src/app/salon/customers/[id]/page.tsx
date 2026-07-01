@@ -122,7 +122,7 @@ function Inner() {
       <div style={{ ...ui.card, marginBottom: 18, display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <label>
           <span style={ui.label}>🎂 {t('cu.birthday')}</span>
-          <input type="date" value={bday} onChange={(e) => setBday(e.target.value)} style={{ ...ui.input, width: 190, colorScheme: 'dark' }} />
+          <input lang="en-US" type="date" value={bday} onChange={(e) => setBday(e.target.value)} style={{ ...ui.input, width: 190, colorScheme: 'dark' }} />
         </label>
         <button onClick={saveBirthday} style={ui.primaryBtn}>{t('cu.bdSave')}</button>
         {bdaySaved && <span style={{ color: '#22c55e', fontSize: 13, paddingBottom: 8 }}>{t('cu.bdSaved')}</span>}

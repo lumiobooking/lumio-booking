@@ -241,8 +241,8 @@ function CleanupTools({ onWipe, onCleanup }: { onWipe: () => void; onCleanup: (f
               : <>Use these to clear data you created while testing. <strong style={{ color: '#fca5a5' }}>These permanently delete data and cannot be undone.</strong></>}
           </p>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-            <label><span style={ui.label}>{t('rv.from')}</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
-            <label><span style={ui.label}>{t('rv.to')}</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
+            <label><span style={ui.label}>{t('rv.from')}</span><input lang="en-US" type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
+            <label><span style={ui.label}>{t('rv.to')}</span><input lang="en-US" type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
             <button onClick={() => onCleanup(from, to)} style={{ ...miniBtn, borderColor: '#f97316', color: '#f97316', padding: '9px 14px' }}>{t('rv.deleteRange')}</button>
           </div>
           <button onClick={onWipe} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#b91c1c', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>

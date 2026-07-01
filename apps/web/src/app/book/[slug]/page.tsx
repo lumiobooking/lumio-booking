@@ -522,7 +522,7 @@ export default function PublicBookingPage() {
                 </div>
                 <div style={{ marginTop: 14, maxWidth: isMobile ? '100%' : 300 }}>
                   <Field label="🎂 Birthday (optional)">
-                    <input style={field} type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+                    <input lang="en-US" style={field} type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
                   </Field>
                   <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>Share it and we&rsquo;ll send you a birthday treat 🎁</div>
                 </div>

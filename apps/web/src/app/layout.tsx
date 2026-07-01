@@ -29,7 +29,7 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en-US">
       <body
         style={{
           margin: 0,

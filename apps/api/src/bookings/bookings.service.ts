@@ -15,9 +15,11 @@ import { AssignmentService } from '../assignment/assignment.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   BookingTemplateData,
+  ReferralInvite,
   fill,
   fillPct,
   htmlToText,
+  referralBlockHtml,
   renderBookingEmailHtml,
   renderBookingEmailText,
   renderTemplatedEmailHtml,
@@ -352,7 +354,7 @@ export class BookingsService {
       priceCents: number;
       currency: string;
       addons?: unknown;
-      customer: { firstName?: string; email: string | null; phone: string | null } | null;
+      customer: { id?: string; firstName?: string; email: string | null; phone: string | null } | null;
       service: { name: string } | null;
       assignedStaff?: { firstName: string; lastName: string | null } | null;
     },
@@ -396,6 +398,30 @@ export class BookingsService {
     const custEmail = appointment.customer?.email;
     const custPhone = appointment.customer?.phone;
     const related = { relatedType: 'appointment', relatedId: appointment.id };
+
+    // Refer-a-friend invite in the confirmation email — only when the program is
+    // ON. Best-effort: any failure here must never block the confirmation.
+    let referralBlock: ReferralInvite | null = null;
+    try {
+      const custId = appointment.customer?.id;
+      if (custId) {
+        const rs = await this.referral.getForTenant(tenantId);
+        if (rs.enabled) {
+          const linked = await this.referral.ensureLinkForCustomer(tenantId, custId);
+          if (linked) {
+            const parts: string[] = [];
+            if (rs.referrerPoints > 0) parts.push(`you'll earn ${rs.referrerPoints} points`);
+            if (rs.refereePoints > 0) parts.push(`they'll get ${rs.refereePoints} to start`);
+            const sub = parts.length
+              ? `Share your personal link. When a friend books their first visit, ${parts.join(' and ')}.`
+              : 'Share your personal link with friends who would love this salon.';
+            referralBlock = { link: linked.link, headline: `Love ${d.salon}? Refer a friend`, sub };
+          }
+        }
+      }
+    } catch {
+      // referral invite is optional — ignore and send the confirmation anyway
+    }
     const smtp =
       n.smtp.user && n.smtp.pass
         ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || d.salon} <${n.senderEmail || n.smtp.user}>` }
@@ -441,7 +467,8 @@ export class BookingsService {
 
     if (emailCustomer && custEmail) {
       if (tpl) {
-        const bodyFilled = fillPct(tpl.body, pct); // HTML
+        const refHtml = referralBlock ? referralBlockHtml(referralBlock, d.accent) : '';
+        const bodyFilled = fillPct(tpl.body, pct) + refHtml; // HTML
         jobs.push(this.notifications.send({
           tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail,
           subject: fillPct(tpl.subject, pct),
@@ -455,8 +482,8 @@ export class BookingsService {
         jobs.push(this.notifications.send({
           tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail,
           subject: fill(n.emailSubjectCustomer, d),
-          body: renderBookingEmailText('Booking confirmed', intro, footer, d),
-          html: renderBookingEmailHtml({ heading: 'Booking confirmed', intro, footer, d }),
+          body: renderBookingEmailText('Booking confirmed', intro, footer, d, referralBlock),
+          html: renderBookingEmailHtml({ heading: 'Booking confirmed', intro, footer, d, referral: referralBlock }),
           smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       }

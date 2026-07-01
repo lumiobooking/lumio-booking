@@ -192,7 +192,7 @@ function IssueForm({ token, onDone }: { token: string; onDone: (card: GiftCard) 
         <label><span style={ui.label}>{t('gc.recipientContact')}</span>
           <input style={ui.input} value={form.recipientContact} onChange={(e) => setForm({ ...form, recipientContact: e.target.value })} /></label>
         <label><span style={ui.label}>{t('gc.expiry')}</span>
-          <input style={ui.input} type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} /></label>
+          <input lang="en-US" style={ui.input} type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} /></label>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

@@ -120,9 +120,9 @@ function Inner() {
             ))}
             <button onClick={applyThisMonth} style={presetBtn}>{t('db.month')}</button>
           </div>
-          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
+          <input lang="en-US" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
           <span style={{ color: '#64748b' }}>→</span>
-          <input type="date" value={to} min={from} max={isoDay(today)} onChange={(e) => setTo(e.target.value)} style={dateInput} />
+          <input lang="en-US" type="date" value={to} min={from} max={isoDay(today)} onChange={(e) => setTo(e.target.value)} style={dateInput} />
         </div>
       </div>
 

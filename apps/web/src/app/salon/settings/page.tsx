@@ -291,7 +291,7 @@ function DaysOffSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <input style={{ ...ui.input, width: 200 }} type="date" value={newDay} onChange={(e) => setNewDay(e.target.value)} />
+        <input lang="en-US" style={{ ...ui.input, width: 200 }} type="date" value={newDay} onChange={(e) => setNewDay(e.target.value)} />
         <button style={{ ...ui.primaryBtn, padding: '9px 14px' }} onClick={add}>{t('se.do.add')}</button>
       </div>
       <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('booking', { daysOff: days }, 'Days off')}>{t('se.do.save')}</button>

@@ -1254,7 +1254,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
           <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>🎂 {t('po.custBirthday')}</span>
-          <input type="date" value={nf.birthDate} onChange={(e) => setNf({ ...nf, birthDate: e.target.value })} style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
+          <input lang="en-US" type="date" value={nf.birthDate} onChange={(e) => setNf({ ...nf, birthDate: e.target.value })} style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
           <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>✉️ {t('po.custEmail')}</span>

@@ -242,6 +242,7 @@ export function DateRangeBar({ range }: { range: DateRange }) {
         ))}
       </div>
       <input
+        lang="en-US"
         type="date"
         value={from}
         max={to || today}
@@ -251,6 +252,7 @@ export function DateRangeBar({ range }: { range: DateRange }) {
       />
       <span style={{ color: '#64748b' }}>→</span>
       <input
+        lang="en-US"
         type="date"
         value={to}
         min={from || undefined}

@@ -51,8 +51,8 @@ function Inner() {
       <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('cr.subtitle')}</p>
 
       <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
-        <label><span style={ui.label}>{t('cr.from')}</span><input type="date" style={ui.input} value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-        <label><span style={ui.label}>{t('cr.to')}</span><input type="date" style={ui.input} value={to} onChange={(e) => setTo(e.target.value)} /></label>
+        <label><span style={ui.label}>{t('cr.from')}</span><input lang="en-US" type="date" style={ui.input} value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label><span style={ui.label}>{t('cr.to')}</span><input lang="en-US" type="date" style={ui.input} value={to} onChange={(e) => setTo(e.target.value)} /></label>
         <button onClick={load} style={ui.primaryBtn}>{t('cr.apply')}</button>
         {data && <span style={{ color: '#64748b', fontSize: 12, marginLeft: 'auto' }}>{data.range.from} → {data.range.to}</span>}
       </div>

@@ -480,10 +480,12 @@ export default function PublicBookingPage() {
             const emailValid = isValidEmail(form.email);
             const showPhoneError = hasPhone && !phoneValid;
             const showEmailError = hasEmail && !emailValid;
-            // Phone is the contact we confirm with (SMS); email is OPTIONAL — for
-            // receipts + remarketing only, just like the birthday field below.
-            const phoneOk = hasPhone && phoneValid;
-            const infoOk = form.firstName.trim().length > 0 && phoneOk && !showEmailError;
+            // Email is the REQUIRED contact — so no customer is ever forced to give a
+            // phone number or receive SMS (keeps us clearly clear of "SMS consent as a
+            // condition of service"). Phone is optional; adding it also enables text
+            // reminders. Marketing texts stay a separate, unchecked opt-in below.
+            const emailOk = hasEmail && emailValid;
+            const infoOk = form.firstName.trim().length > 0 && emailOk && !showPhoneError;
             // Customer details + birthday are collected HERE on the final step so the
             // booking flow is shorter (no separate "Your information" step). This block
             // renders at the top of the payment step.
@@ -493,7 +495,7 @@ export default function PublicBookingPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
                   <Field label="First name" required><input style={field} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
                   <Field label="Last name"><input style={field} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
-                  <Field label="Email (optional)">
+                  <Field label="Email" required>
                     <input
                       style={{ ...field, borderColor: showEmailError ? '#ef4444' : '#cbd5e1' }}
                       type="email" value={form.email} placeholder="you@email.com"
@@ -503,7 +505,7 @@ export default function PublicBookingPage() {
                       ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid email address.</div>
                       : <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>We&rsquo;ll email your receipt &amp; members-only offers 💌</div>}
                   </Field>
-                  <Field label="Phone" required>
+                  <Field label="Phone (optional)">
                     <input
                       style={{ ...field, borderColor: showPhoneError ? '#ef4444' : '#cbd5e1' }}
                       value={form.phone} inputMode="tel" placeholder="e.g. (201) 555-0123"
@@ -512,8 +514,8 @@ export default function PublicBookingPage() {
                     {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Please enter a valid phone number (8–15 digits).</div>}
                   </Field>
                 </div>
-                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 500, color: !phoneOk ? '#ef4444' : '#64748b' }}>
-                  We&rsquo;ll text your confirmation &amp; reminders, so a phone number is required. Email is optional.
+                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 500, color: !emailOk ? '#ef4444' : '#64748b' }}>
+                  We&rsquo;ll email your confirmation &amp; receipt. Add a phone number too if you&rsquo;d like text reminders <span style={{ color: '#94a3b8' }}>(optional)</span>.
                 </div>
                 <div style={{ marginTop: 14, maxWidth: isMobile ? '100%' : 300 }}>
                   <Field label="🎂 Birthday (optional)">
@@ -528,7 +530,7 @@ export default function PublicBookingPage() {
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Appointment text updates</span>
                   </div>
                   <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: '#64748b' }}>
-                    We&rsquo;ll text you confirmations &amp; reminders for this appointment from {salon?.name || 'the salon'}. Up to ~6 msgs/month.
+                    If you add a phone number, we&rsquo;ll text you confirmations &amp; reminders for this appointment from {salon?.name || 'the salon'}. Up to ~6 msgs/month.
                     Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.
                   </p>
                   <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 10, cursor: 'pointer' }}>
@@ -544,7 +546,7 @@ export default function PublicBookingPage() {
                     <span> · Opt-in data never shared.</span>
                   </div>
                 </div>
-                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>Enter your first name and a valid phone number to confirm. Email is optional.</p>}
+                {!infoOk && <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>Enter your first name and a valid email to confirm. Phone is optional.</p>}
                 <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 20 }} />
               </div>
             );

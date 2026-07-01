@@ -160,9 +160,9 @@ export default function PosDisplayPage() {
             {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
 
             <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '18px 0' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-              <span style={{ fontSize: 'clamp(18px, 2.4vw, 26px)', fontWeight: 700, color: 'rgba(255,255,255,0.92)' }}>Amount due</span>
-              <span style={{ fontSize: 'clamp(36px, 6vw, 64px)', fontWeight: 900, color: 'white', letterSpacing: '-0.02em', lineHeight: 1 }}>{money(s.dueCents, cur)}</span>
+            <div>
+              <div style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>
+              <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 900, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
             </div>
           </div>
         </div>
@@ -279,12 +279,12 @@ const page: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', padding: '2.5vw',
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', overflow: 'hidden',
 };
-const contentArea: React.CSSProperties = { flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' };
+const contentArea: React.CSSProperties = { flex: 1, minHeight: 0, width: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '0.5rem 0' };
 const brandBar: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 14px', flexShrink: 0 };
-const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720 };
+const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720, margin: 'auto' };
 const twoCol: React.CSSProperties = {
   display: 'flex', flexWrap: 'wrap', gap: '3vw', width: '100%', maxWidth: 1280,
-  alignItems: 'stretch', justifyContent: 'center',
+  alignItems: 'stretch', justifyContent: 'center', margin: 'auto',
 };
 const itemsPanel: React.CSSProperties = {
   flex: '2 1 440px', background: 'white', borderRadius: 24, padding: 'clamp(20px, 3vw, 40px)',

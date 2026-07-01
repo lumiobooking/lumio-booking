@@ -61,19 +61,26 @@ export default function PosDisplayPage() {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
     const ch = new BroadcastChannel('lumio-pos-display');
     chRef.current = ch;
-    let holdUntil = 0; // keep the "Thank you" screen up briefly after a sale
+    // 'mirror' = live-mirror the register; 'paid' = showing the thank-you + optional
+    // tip. Once paid, we STAY on that screen — ignoring idle/empty mirror updates AND
+    // duplicate 'paid' broadcasts — until a genuinely NEW ticket starts. This is what
+    // makes the tip taps reliable: a background re-broadcast can no longer wipe the
+    // customer's reveal/selection (the previous timer-based version could).
+    let mode: 'mirror' | 'paid' = 'mirror';
     ch.onmessage = (e) => {
       const d = e.data;
       if (!d || d.type !== 'state' || !d.state) return;
-      // A new ticket (active with items) always takes over — even during a paid hold.
-      if (d.state.status === 'active' && (d.state.lines?.length ?? 0) > 0) { holdUntil = 0; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false); setS({ ...EMPTY, ...d.state }); return; }
-      if (d.state.status === 'paid') {
-        // Hold the thank-you 5s normally; much longer when we're inviting an
-        // after-payment tip so the customer has time to scan the QR.
-        holdUntil = Date.now() + (((d.state.tipTechs?.length ?? 0) > 0) ? 5 * 60 * 1000 : 5000);
-        setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false); setS({ ...EMPTY, ...d.state }); return;
+      const stt = d.state.status;
+      if (stt === 'active' && (d.state.lines?.length ?? 0) > 0) {
+        mode = 'mirror'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false);
+        setS({ ...EMPTY, ...d.state }); return;
       }
-      if (Date.now() < holdUntil) return; // still showing the thank-you
+      if (stt === 'paid') {
+        // Reset tip state only when FIRST entering paid (a new sale) — never on a re-broadcast.
+        if (mode !== 'paid') { mode = 'paid'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false); }
+        setS({ ...EMPTY, ...d.state }); return;
+      }
+      if (mode === 'paid') return; // hold the thank-you + tip up until a new ticket
       setS({ ...EMPTY, ...d.state });
     };
     // Ask the register to replay its current state (it may already be running).

@@ -56,6 +56,16 @@ export default function PosDisplayPage() {
   const [revealTip, setRevealTip] = useState(false); // customer tapped to open the (optional) tip panel
   const [chosenTip, setChosenTip] = useState<number | null>(null); // amount selected but NOT yet confirmed as sent
   const chRef = useRef<BroadcastChannel | null>(null);
+  const tipPanelRef = useRef<HTMLDivElement | null>(null);
+
+  // When the customer opens the tip panel, bring it fully into view — on a short
+  // screen the panel can extend below the fold, which otherwise reads as "nothing
+  // happened" after the tap.
+  useEffect(() => {
+    if (revealTip && tipPanelRef.current) {
+      tipPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [revealTip]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
@@ -128,11 +138,13 @@ export default function PosDisplayPage() {
           {tipped ? (
             <div style={{ marginTop: 20, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
           ) : (s.tipTechs?.length ?? 0) > 0 && revealTip ? (
-            <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
-              onChoose={setChosenTip}
-              onCustom={() => { setPad(''); setKeypad(true); }}
-              onConfirm={() => { if (chosenTip != null) sendTipDirect(chosenTip); }}
-              onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
+            <div ref={tipPanelRef}>
+              <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
+                onChoose={setChosenTip}
+                onCustom={() => { setPad(''); setKeypad(true); }}
+                onConfirm={() => { if (chosenTip != null) sendTipDirect(chosenTip); }}
+                onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
+            </div>
           ) : (
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
               <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>

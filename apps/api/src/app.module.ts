@@ -27,6 +27,7 @@ import { SuppliesModule } from './supplies/supplies.module';
 import { BranchesModule } from './branches/branches.module';
 import { PrintModule } from './print/print.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
+import { DisplayModule } from './display/display.module';
 
 @Module({
   imports: [
@@ -82,6 +83,9 @@ import { GiftCardsModule } from './gift-cards/gift-cards.module';
     BranchesModule,
     // Receipt print queue + reception-desk print agent.
     PrintModule,
+    // Customer-facing display relay: pair a wireless iPad to mirror the register
+    // and take after-payment QR tips over the network (tenant-scoped).
+    DisplayModule,
   ],
 })
 export class AppModule {}

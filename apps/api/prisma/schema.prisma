@@ -228,6 +228,7 @@ model Tenant {
   supplyItems       SupplyItem[]
   supplyMovements   SupplyMovement[]
   products          Product[]
+  displaySession    DisplaySession?
   orders            Order[]
   orderItems        OrderItem[]
   orderPayments     OrderPayment[]
@@ -1335,6 +1336,30 @@ model TipLog {
   @@index([tenantId, createdAt])
   @@index([staffMemberId])
   @@map("tip_logs")
+}
+
+// Customer-facing display relay. Lets an INDEPENDENT device (e.g. a wireless
+// iPad on a stand) mirror the register in near-real-time over the network,
+// instead of only a same-PC second monitor. One session per tenant:
+//   - token: long secret the paired device uses to poll state + post tips.
+//   - pairCode: short human code shown on the register to link a device once.
+//   - state: latest client-facing display payload (order lines, totals, paid).
+//   - payTicket: server-only tech split + ref for the after-payment QR tip.
+//   - lastTipRef: idempotency guard so a tip is recorded once per paid ticket.
+model DisplaySession {
+  id         String   @id @default(uuid())
+  tenantId   String   @unique
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  pairCode   String   @unique
+  state      Json?
+  payTicket  Json?
+  lastTipRef String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("display_sessions")
 }
 
 // Receipt print queue for the reception-desk print agent. The phone enqueues a

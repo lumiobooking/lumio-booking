@@ -127,6 +127,32 @@ function Register() {
   const tokenRef = useRef(token); tokenRef.current = token;
   const paidTipRef = useRef<{ techs: { id: string; name: string; qr?: string; handle?: string; weightCents: number }[]; baseCents: number }>({ techs: [], baseCents: 0 });
 
+  // ---- Wireless iPad customer display (server relay) --------------------------
+  // A paired iPad polls the backend for the same payload we broadcast to a local
+  // 2nd monitor. To avoid needless traffic, we only push once the salon has opened
+  // the iPad panel at least once (remembered in localStorage).
+  const [displaySession, setDisplaySession] = useState<{ pairCode: string; pairUrl: string; displayUrl: string } | null>(null);
+  const [ipadPanel, setIpadPanel] = useState(false);
+  const ipadEnabledRef = useRef(false);
+  const lastPushRef = useRef<string>('');
+  const holdPaidRef = useRef(false);
+  useEffect(() => { try { ipadEnabledRef.current = localStorage.getItem('lumio_ipad_display') === '1'; } catch { /* ignore */ } }, []);
+  const enableIpad = () => { ipadEnabledRef.current = true; try { localStorage.setItem('lumio_ipad_display', '1'); } catch { /* ignore */ } };
+  const pushDisplayState = useCallback((state: Record<string, unknown>, payTicket?: Record<string, unknown> | null) => {
+    if (!ipadEnabledRef.current || !tokenRef.current) return;
+    const key = JSON.stringify({ s: state, p: payTicket ?? null });
+    if (key === lastPushRef.current) return; // skip identical re-renders
+    lastPushRef.current = key;
+    apiFetch('/display/push', { method: 'POST', token: tokenRef.current, body: { state, ...(payTicket ? { payTicket } : {}) } }).catch(() => { /* best-effort mirror */ });
+  }, []);
+  const rotateDisplay = useCallback(async () => {
+    if (!tokenRef.current) return;
+    try {
+      const s = await apiFetch<{ pairCode: string; pairUrl: string; displayUrl: string }>('/display/session/rotate', { method: 'POST', token: tokenRef.current });
+      setDisplaySession(s);
+    } catch { /* ignore */ }
+  }, []);
+
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
     setTaxRate(c.taxRate); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
@@ -398,6 +424,24 @@ function Register() {
     });
   }
   useEffect(() => { displayChRef.current?.postMessage(displayPayload); }, [displayPayload]);
+  // Mirror the same live payload to the backend so a paired wireless iPad sees it.
+  // After a sale is paid we HOLD the server on the thank-you state (skip the trailing
+  // 'idle') until a new ticket starts — otherwise the iPad's tip window would vanish.
+  useEffect(() => {
+    const st = displayPayload.state as unknown as Record<string, unknown>;
+    if (holdPaidRef.current) {
+      if (st.status === 'idle') return;
+      holdPaidRef.current = false;
+    }
+    pushDisplayState(st);
+  }, [displayPayload, pushDisplayState]);
+  // Fetch this salon's pairing code the first time the iPad panel is opened.
+  useEffect(() => {
+    if (!ipadPanel || displaySession || !token) return;
+    apiFetch<{ pairCode: string; pairUrl: string; displayUrl: string }>('/display/session', { token })
+      .then(setDisplaySession)
+      .catch(() => { /* ignore */ });
+  }, [ipadPanel, displaySession, token]);
   // Log a tip the customer chose on the AFTER-PAYMENT screen (Channel 3). It goes
   // straight to the tech (they scan the QR) — the salon never holds it — so we only
   // RECORD it (method 'QR') for payroll visibility, split across the paid ticket's
@@ -419,20 +463,28 @@ function Register() {
       }
     }
   }
-  function broadcastPaid() {
+  function broadcastPaid(ticketRef: string) {
     const tt = paidTipRef.current;
-    displayChRef.current?.postMessage({
-      type: 'state',
-      state: {
-        status: 'paid', currency, salonName, salonLogo, salonAccent, lines: [],
-        subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0,
-        dueCents: money.due, paidCents: money.tenderedCents || money.due, changeCents: money.change,
-        // Channel 3 — offer a QR tip on the Thank-you screen for the tech(s) on this ticket.
-        tippable: tt.techs.length > 0,
-        tipBaseCents: tt.baseCents,
-        tipTechs: tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })),
-      },
-    });
+    const paidState = {
+      status: 'paid', currency, salonName, salonLogo, salonAccent, lines: [] as unknown[],
+      saleRef: ticketRef, // lets an independent iPad detect a NEW sale and reset its tip UI
+      subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0,
+      dueCents: money.due, paidCents: money.tenderedCents || money.due, changeCents: money.change,
+      // Channel 3 — offer a QR tip on the Thank-you screen for the tech(s) on this ticket.
+      tippable: tt.techs.length > 0,
+      tipBaseCents: tt.baseCents,
+      tipTechs: tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })),
+    };
+    displayChRef.current?.postMessage({ type: 'state', state: paidState });
+    // Relay to a paired iPad, carrying the server-only tech split so a tapped tip is
+    // logged to the right person(s). Hold this paid state on the server until a new sale.
+    const idTechs = tt.techs.filter((t) => t.id);
+    const payTicket = idTechs.length
+      ? { ref: ticketRef, baseCents: tt.baseCents, techs: idTechs.map((t) => ({ staffMemberId: t.id, weightCents: t.weightCents })) }
+      : null;
+    holdPaidRef.current = true;
+    lastPushRef.current = ''; // force the paid push through even if the prior state matched
+    pushDisplayState(paidState as unknown as Record<string, unknown>, payTicket);
   }
   function openCustomerScreen() {
     if (typeof window !== 'undefined') window.open('/pos-display', 'lumioCustomerDisplay', 'width=1100,height=760');
@@ -545,7 +597,7 @@ function Register() {
       setPendingSync(queueCount());
       printReceipt(`OFF-${clientRef.slice(0, 5).toUpperCase()}`);
       setOkMsg(t('po.savedOffline'));
-      broadcastPaid();
+      broadcastPaid(clientRef);
       clearCart();
       setOnline(false);
     };
@@ -561,7 +613,7 @@ function Register() {
         const order = await apiFetch<{ orderNumber: number }>('/pos/orders', { method: 'POST', token, body: payload });
         printReceipt(order.orderNumber);
         setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
-        broadcastPaid();
+        broadcastPaid(clientRef);
         clearCart();
         setOnline(true);
         setPendingSync(queueCount());
@@ -854,8 +906,12 @@ function Register() {
           )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px' }}>
             <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
-            <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>📱 {t('po.ipad')}</button>
+              <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
+            </div>
           </div>
+          {ipadPanel && <IpadPairPanel session={displaySession} onRotate={rotateDisplay} onClose={() => setIpadPanel(false)} t={t} />}
 
           <CustomerBox
             token={token} t={t}
@@ -1088,6 +1144,48 @@ function Register() {
         />
       )}
     </section>
+  );
+}
+
+// Pairing panel: link a wireless iPad as the customer screen. Scan the QR (or open
+// the short link and type the code) ONCE on the iPad — it then mirrors this register
+// over the network and takes after-payment QR tips.
+function IpadPairPanel({ session, onRotate, onClose, t }: {
+  session: { pairCode: string; pairUrl: string; displayUrl: string } | null;
+  onRotate: () => void; onClose: () => void; t: (k: string) => string;
+}) {
+  const [qrFailed, setQrFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const code = session?.pairCode ?? '••••••';
+  const displayUrl = session?.displayUrl ?? 'lumiobooking.com/display';
+  const pairUrl = session?.pairUrl ?? '';
+  const qrSrc = pairUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(pairUrl)}` : '';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 22, width: 'min(94vw, 430px)', color: '#e2e8f0', boxShadow: '0 30px 80px rgba(0,0,0,0.5)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 17 }}>📱 {t('po.ipadTitle')}</h3>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{t('po.ipadStep')}</p>
+        {qrSrc && !qrFailed && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qrSrc} alt="Pairing QR" onError={() => setQrFailed(true)} style={{ width: 200, height: 200, borderRadius: 12, background: '#fff', padding: 8 }} />
+          </div>
+        )}
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('po.ipadOpenOn')} <strong style={{ color: '#e2e8f0' }}>{displayUrl}</strong></div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('po.ipadCodeLabel')}</div>
+          <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: 6, color: '#a5f3fc', fontFamily: 'monospace' }}>{code}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <button onClick={() => { if (pairUrl) { navigator.clipboard?.writeText(pairUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={{ ...ghost, padding: '8px 14px', fontSize: 13 }}>{copied ? '✓' : t('po.ipadCopyLink')}</button>
+          <button onClick={onRotate} style={{ ...ghost, padding: '8px 14px', fontSize: 13 }}>{t('po.ipadNewCode')}</button>
+        </div>
+        <p style={{ margin: '14px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>{t('po.ipadNote')}</p>
+      </div>
+    </div>
   );
 }
 

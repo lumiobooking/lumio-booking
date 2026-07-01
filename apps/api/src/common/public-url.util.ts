@@ -27,3 +27,13 @@ export function referralBookingUrl(slug: string | null | undefined, code: string
   if (!slug) return publicWebBase();
   return `${bookingUrl(slug)}?ref=${encodeURIComponent(code)}`;
 }
+
+/** Customer-display page a paired device opens: https://lumiobooking.com/display */
+export function displayBaseUrl(): string {
+  return `${publicWebBase()}/display`;
+}
+
+/** One-tap pairing link (also the QR target): https://lumiobooking.com/display?c=CODE */
+export function displayPairUrl(pairCode: string): string {
+  return `${displayBaseUrl()}?c=${encodeURIComponent(pairCode)}`;
+}

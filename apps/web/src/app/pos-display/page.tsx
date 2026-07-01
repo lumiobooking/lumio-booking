@@ -149,7 +149,10 @@ export default function PosDisplayPage() {
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
               <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
               {(s.tipTechs?.length ?? 0) > 0 && (
-                <button onClick={() => setRevealTip(true)} style={softTipLink(accent)}>
+                // onPointerDown fires on the very first press — so even if this window
+                // wasn't the active window (a background/2nd-monitor click that would
+                // otherwise be "eaten" just to focus it), the tip still opens on tap 1.
+                <button type="button" onPointerDown={() => setRevealTip(true)} onClick={() => setRevealTip(true)} style={softTipLink(accent)}>
                   Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
                 </button>
               )}
@@ -281,11 +284,14 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
 const skipBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
 
 // A small, understated tip link on the paid screen (opt-in — never forced).
+// Generous tap target + touch-action:manipulation so a tap can't be mistaken for
+// a pan/scroll gesture on a touch display.
 function softTipLink(accent: string): React.CSSProperties {
   return {
-    border: `1.5px solid ${accent}44`, background: `${accent}0d`, color: accent,
-    borderRadius: 999, padding: 'clamp(10px, 1.4vw, 14px) clamp(18px, 2.6vw, 26px)',
-    fontSize: 'clamp(14px, 1.7vw, 18px)', fontWeight: 700, cursor: 'pointer',
+    border: `1.5px solid ${accent}55`, background: `${accent}0d`, color: accent,
+    borderRadius: 999, padding: 'clamp(13px, 1.8vw, 18px) clamp(24px, 3.2vw, 36px)',
+    fontSize: 'clamp(15px, 1.9vw, 20px)', fontWeight: 700, cursor: 'pointer',
+    touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent', userSelect: 'none',
   };
 }
 

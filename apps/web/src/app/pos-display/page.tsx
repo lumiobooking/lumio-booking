@@ -53,7 +53,7 @@ export default function PosDisplayPage() {
   const [keypad, setKeypad] = useState(false);
   const [pad, setPad] = useState(''); // custom-tip dollars being typed
   const [tipped, setTipped] = useState(false); // customer recorded an after-payment tip
-  const [tipDismissed, setTipDismissed] = useState(false); // customer chose to hide the (optional) tip panel
+  const [revealTip, setRevealTip] = useState(false); // customer tapped to open the (optional) tip panel
   const [chosenTip, setChosenTip] = useState<number | null>(null); // amount selected but NOT yet confirmed as sent
   const chRef = useRef<BroadcastChannel | null>(null);
 
@@ -72,12 +72,12 @@ export default function PosDisplayPage() {
       if (!d || d.type !== 'state' || !d.state) return;
       const stt = d.state.status;
       if (stt === 'active' && (d.state.lines?.length ?? 0) > 0) {
-        mode = 'mirror'; setTipped(false); setTipDismissed(false); setChosenTip(null); setKeypad(false);
+        mode = 'mirror'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false);
         setS({ ...EMPTY, ...d.state }); return;
       }
       if (stt === 'paid') {
         // Reset tip state only when FIRST entering paid (a new sale) — never on a re-broadcast.
-        if (mode !== 'paid') { mode = 'paid'; setTipped(false); setTipDismissed(false); setChosenTip(null); setKeypad(false); }
+        if (mode !== 'paid') { mode = 'paid'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false); }
         setS({ ...EMPTY, ...d.state }); return;
       }
       if (mode === 'paid') return; // hold the thank-you + tip up until a new ticket
@@ -110,6 +110,7 @@ export default function PosDisplayPage() {
     <div style={page}>
       {brand}
       <div style={contentArea}>
+        <div style={scrollInner}>
       {s.status === 'idle' || (s.status === 'active' && s.lines.length === 0) ? (
         <div style={centerBox}>
           <div style={{ fontSize: 72, marginBottom: 10 }}>💅</div>
@@ -126,16 +127,21 @@ export default function PosDisplayPage() {
           )}
           {tipped ? (
             <div style={{ marginTop: 20, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
-          ) : (s.tipTechs?.length ?? 0) > 0 && !tipDismissed ? (
-            // Shown directly (not behind a tap) so the customer can simply scan the
-            // QR with their phone — no click on this screen is needed to tip.
+          ) : (s.tipTechs?.length ?? 0) > 0 && revealTip ? (
             <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
               onChoose={setChosenTip}
               onCustom={() => { setPad(''); setKeypad(true); }}
               onConfirm={() => { if (chosenTip != null) sendTipDirect(chosenTip); }}
-              onSkip={() => { setTipDismissed(true); setChosenTip(null); }} />
+              onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
           ) : (
-            <div style={{ marginTop: 20, fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
+            <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+              <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
+              {(s.tipTechs?.length ?? 0) > 0 && (
+                <button onClick={() => setRevealTip(true)} style={softTipLink(accent)}>
+                  Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       ) : (
@@ -174,6 +180,7 @@ export default function PosDisplayPage() {
           </div>
         </div>
       )}
+        </div>
       </div>
 
       {keypad && (
@@ -195,7 +202,7 @@ export default function PosDisplayPage() {
       )}
       {/* Tiny build marker — lets the salon confirm the display reloaded fresh code
           after a deploy (a long-lived kiosk window can otherwise run stale JS). */}
-      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>tips v2</div>
+      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>tips v3</div>
     </div>
   );
 }
@@ -261,6 +268,15 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
 
 const skipBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
 
+// A small, understated tip link on the paid screen (opt-in — never forced).
+function softTipLink(accent: string): React.CSSProperties {
+  return {
+    border: `1.5px solid ${accent}44`, background: `${accent}0d`, color: accent,
+    borderRadius: 999, padding: 'clamp(10px, 1.4vw, 14px) clamp(18px, 2.6vw, 26px)',
+    fontSize: 'clamp(14px, 1.7vw, 18px)', fontWeight: 700, cursor: 'pointer',
+  };
+}
+
 // A calm outline chip for the (optional) suggested tip amounts.
 function quietChip(accent: string): React.CSSProperties {
   return {
@@ -271,7 +287,7 @@ function quietChip(accent: string): React.CSSProperties {
 }
 
 const afterTipCard: React.CSSProperties = {
-  marginTop: 22, width: 'min(94vw, 500px)', background: '#fff', borderRadius: 20,
+  margin: '22px auto 0', width: 'min(94vw, 500px)', background: '#fff', borderRadius: 20,
   padding: 'clamp(18px, 3vw, 28px)', border: '1px solid #eef2f7',
   boxShadow: '0 12px 40px rgba(15,23,42,0.08)', textAlign: 'center',
 };
@@ -299,12 +315,16 @@ const page: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', padding: '2.5vw',
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', overflow: 'hidden',
 };
-const contentArea: React.CSSProperties = { flex: 1, minHeight: 0, width: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '0.5rem 0' };
+const contentArea: React.CSSProperties = { flex: 1, minHeight: 0, width: '100%', overflowY: 'auto' };
+// Centering lives on this INNER wrapper (min-height:100%) rather than on the scroll
+// container itself — so when content is taller than the screen it stays fully
+// scrollable/clickable instead of being clipped by flex centering.
+const scrollInner: React.CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0', boxSizing: 'border-box' };
 const brandBar: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 14px', flexShrink: 0 };
-const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720, margin: 'auto' };
+const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720, margin: '0 auto' };
 const twoCol: React.CSSProperties = {
   display: 'flex', flexWrap: 'wrap', gap: '3vw', width: '100%', maxWidth: 1280,
-  alignItems: 'stretch', justifyContent: 'center', margin: 'auto',
+  alignItems: 'stretch', justifyContent: 'center',
 };
 const itemsPanel: React.CSSProperties = {
   flex: '2 1 440px', background: 'white', borderRadius: 24, padding: 'clamp(20px, 3vw, 40px)',

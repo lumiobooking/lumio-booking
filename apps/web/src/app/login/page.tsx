@@ -95,6 +95,12 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} style={buttonStyle}>
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
+
+        {/* Shortcut so a customer-facing tablet can reach the display screen
+            without signing in (it pairs with a code from the register). */}
+        <a href="/display" style={displayLinkStyle}>
+          📱 Open customer display →
+        </a>
       </form>
     </main>
   );
@@ -129,4 +135,18 @@ const buttonStyle: React.CSSProperties = {
   fontWeight: 600,
   fontSize: 14,
   cursor: 'pointer',
+};
+
+const displayLinkStyle: React.CSSProperties = {
+  display: 'block',
+  textAlign: 'center',
+  marginTop: 16,
+  padding: '10px 12px',
+  borderRadius: 8,
+  border: '1px solid #334155',
+  background: '#0f172a',
+  color: '#a5f3fc',
+  fontWeight: 600,
+  fontSize: 13,
+  textDecoration: 'none',
 };

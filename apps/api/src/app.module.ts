@@ -28,6 +28,7 @@ import { BranchesModule } from './branches/branches.module';
 import { PrintModule } from './print/print.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
 import { DisplayModule } from './display/display.module';
+import { GoogleReviewsModule } from './google-reviews/google-reviews.module';
 
 @Module({
   imports: [
@@ -86,6 +87,9 @@ import { DisplayModule } from './display/display.module';
     // Customer-facing display relay: pair a wireless iPad to mirror the register
     // and take after-payment QR tips over the network (tenant-scoped).
     DisplayModule,
+    // Google review auto-reply: draft replies to positive reviews for one-tap
+    // approval; hold negative/neutral ones and email the manager (tenant-scoped).
+    GoogleReviewsModule,
   ],
 })
 export class AppModule {}

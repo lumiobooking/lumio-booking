@@ -223,6 +223,7 @@ model Tenant {
   feedbacks         Feedback[]
   staffRewardTransactions StaffRewardTransaction[]
   reviewClicks      ReviewClick[]
+  googleReviews     GoogleReview[]
   waitlistEntries   WaitlistEntry[]
   walkIns           WalkIn[]
   supplyItems       SupplyItem[]
@@ -1082,6 +1083,51 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([action])
   @@map("audit_logs")
+}
+
+// ===========================================================================
+// GOOGLE REVIEWS — auto-reply to positive reviews, alert manager on bad ones.
+// Each row mirrors one Google Business Profile review for a tenant. Positive
+// reviews (>= autoMinStars) get a drafted reply awaiting one-tap approval;
+// low/neutral reviews (<= alertMaxStars) are held for a human and the manager
+// is emailed. Connection + settings live in the Setting key "googleReviews".
+// ===========================================================================
+
+enum GoogleReviewStatus {
+  NEW // just fetched, not yet routed
+  DRAFTED // positive → reply drafted, waiting for one-tap approval
+  REPLIED // reply posted to Google
+  NEEDS_ATTENTION // low/neutral → manager alerted, a human must handle it
+  SKIPPED // manager chose to ignore (no reply)
+}
+
+model GoogleReview {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Google's own review id (last path segment of the review "name").
+  googleReviewId String
+
+  reviewerName  String?
+  reviewerPhoto String?
+  starRating    Int // 1..5 (mapped from Google's ONE..FIVE enum)
+  comment       String? // the review text (may be empty)
+
+  status     GoogleReviewStatus @default(NEW)
+  draftReply String? // suggested reply awaiting approval
+  replyText  String? // the reply actually posted to Google
+  repliedAt  DateTime?
+  alertedAt  DateTime? // when the manager was emailed (dedupe)
+
+  reviewCreatedAt DateTime? // Google's review create time
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, googleReviewId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("google_reviews")
 }
 
 // ===========================================================================

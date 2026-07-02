@@ -201,6 +201,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
 
   return (
     <div style={page}>
+      <style>{`@keyframes lumioFade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes lumioPop{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.08)}100%{transform:scale(1)}}`}</style>
       {brand}
       <div style={contentArea}>
         <div style={{ ...scrollInner, justifyContent: isActive ? 'flex-start' : 'center' }}>
@@ -212,7 +213,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
             </div>
           ) : s.status === 'paid' ? (
             <div style={centerBox}>
-              <div style={{ width: 'clamp(84px, 13vh, 116px)', height: 'clamp(84px, 13vh, 116px)', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 'clamp(46px, 8vh, 66px)', display: 'grid', placeItems: 'center', margin: '0 auto 16px' }}>✓</div>
+              <div style={{ width: 'clamp(84px, 13vh, 116px)', height: 'clamp(84px, 13vh, 116px)', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 'clamp(46px, 8vh, 66px)', display: 'grid', placeItems: 'center', margin: '0 auto 16px', animation: 'lumioPop .55s cubic-bezier(.2,.8,.3,1.2) both', boxShadow: '0 12px 34px rgba(22,163,74,0.28), 0 0 0 12px rgba(34,197,94,0.08)' }}>✓</div>
               <div style={{ fontSize: 'clamp(32px, 6vw, 54px)', fontWeight: 800, color: '#16a34a' }}>Thank you!</div>
               <div style={{ fontSize: 'clamp(18px, 2.8vw, 28px)', color: '#1e293b', marginTop: 12 }}>Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong></div>
               {(s.changeCents ?? 0) > 0 && (
@@ -291,7 +292,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
           </div>
         </div>
       )}
-      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v2</div>
+      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v3</div>
     </div>
   );
 }
@@ -386,19 +387,19 @@ function Row({ k, v, color }: { k: string; v: string; color?: string }) {
 }
 
 const fullCenter: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
+  position: 'fixed', inset: 0, background: 'radial-gradient(1100px 550px at 12% -8%, #e0e7ff 0%, rgba(224,231,255,0) 55%), radial-gradient(900px 480px at 108% 6%, #ede9fe 0%, rgba(237,233,254,0) 52%), linear-gradient(160deg, #f8fafc 0%, #eef2ff 100%)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: '4vw',
 };
 const page: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
+  position: 'fixed', inset: 0, background: 'radial-gradient(1100px 550px at 12% -8%, #e0e7ff 0%, rgba(224,231,255,0) 55%), radial-gradient(900px 480px at 108% 6%, #ede9fe 0%, rgba(237,233,254,0) 52%), linear-gradient(160deg, #f8fafc 0%, #eef2ff 100%)',
   display: 'flex', flexDirection: 'column', padding: '2.5vw',
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', overflow: 'hidden',
 };
 const contentArea: React.CSSProperties = { flex: 1, minHeight: 0, width: '100%', overflowY: 'auto' };
 const scrollInner: React.CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0', boxSizing: 'border-box' };
 const brandBar: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 14px', flexShrink: 0 };
-const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720, margin: '0 auto' };
+const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720, margin: '0 auto', animation: 'lumioFade .5s ease both' };
 // Order screen wrapper that fills the viewport height. Landscape → items and totals
 // side by side; portrait → stacked with the item list taking the remaining space
 // (scrolls internally) and the totals card pinned below, always fully visible.

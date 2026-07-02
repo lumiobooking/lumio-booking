@@ -246,14 +246,16 @@ export class OverviewService {
     const serviceAgg = new Map<string, { name: string; bookings: number; revenueCents: number }>();
     for (const a of appts) {
       const id = a.serviceId ?? 'unknown';
-      const entry = serviceAgg.get(id) ?? { name: a.service?.name ?? '—', bookings: 0, revenueCents: 0 };
+      const entry = serviceAgg.get(id) ?? { name: a.service?.name ?? 'Products / other', bookings: 0, revenueCents: 0 };
       entry.bookings += 1;
       serviceAgg.set(id, entry);
     }
     for (const p of countablePayments) {
+      // Payments not tied to a booked service (POS product sales, gift cards, manual
+      // "mark paid") group under one clear bucket instead of a nameless "—" row.
       const id = p.appointment?.serviceId ?? 'unknown';
       const entry = serviceAgg.get(id) ?? {
-        name: p.appointment?.service?.name ?? '—',
+        name: p.appointment?.service?.name ?? 'Products / other',
         bookings: 0,
         revenueCents: 0,
       };

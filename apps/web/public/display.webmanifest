@@ -1,0 +1,16 @@
+{
+  "name": "Lumio Customer Display",
+  "short_name": "Lumio Display",
+  "description": "Customer-facing order & tip display",
+  "start_url": "/display",
+  "scope": "/display",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

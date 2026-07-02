@@ -248,7 +248,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'db.cancelled': { en: 'Cancelled', vi: 'Đã huỷ' },
   'db.completed': { en: 'completed', vi: 'hoàn thành' },
   'db.noShows': { en: 'no-shows', vi: 'vắng' },
-  'db.avgPerBooking': { en: 'Avg {v}/booking', vi: 'TB {v}/lượt' },
+  'db.avgPerBooking': { en: 'Avg {v}/sale', vi: 'TB {v}/lần bán' },
   'db.revAndBookings': { en: 'Revenue & bookings', vi: 'Doanh thu & lượt đặt' },
   'db.bookingStatus': { en: 'Booking status', vi: 'Trạng thái đặt lịch' },
   'db.revByMethod': { en: 'Revenue by payment method', vi: 'Doanh thu theo cách thanh toán' },

@@ -323,19 +323,22 @@ export class SettingsService {
         fromEmail: typeof incSmtp.fromEmail === 'string' ? incSmtp.fromEmail : cur.smtp.fromEmail,
         secure: incSmtp.secure === 'ssl' || incSmtp.secure === 'tls' || incSmtp.secure === 'none' ? incSmtp.secure : cur.smtp.secure,
         // Blank password keeps the stored one.
-        pass: incSmtp.pass ? String(incSmtp.pass) : cur.smtp.pass,
+        // Blank OR masked (••••) password keeps the stored one — never overwrite a
+        // real secret with the UI mask (the bug that silently corrupted saved keys).
+        pass: cleanSecret(incSmtp.pass) ?? cur.smtp.pass,
       },
       brevo: {
         senderEmail: typeof incBrevo.senderEmail === 'string' ? incBrevo.senderEmail : cur.brevo.senderEmail,
         senderName: typeof incBrevo.senderName === 'string' ? incBrevo.senderName : cur.brevo.senderName,
-        // Blank API key keeps the stored one.
-        apiKey: incBrevo.apiKey ? String(incBrevo.apiKey) : cur.brevo.apiKey,
+        // Blank/masked API key keeps the stored one (guarded like the Gmail secret).
+        apiKey: cleanSecret(incBrevo.apiKey) ?? cur.brevo.apiKey,
       },
       gmail: mergedGmail,
       twilio: {
         accountSid: typeof incTwilio.accountSid === 'string' ? incTwilio.accountSid : cur.twilio.accountSid,
         fromNumber: typeof incTwilio.fromNumber === 'string' ? incTwilio.fromNumber : cur.twilio.fromNumber,
-        authToken: incTwilio.authToken ? String(incTwilio.authToken) : cur.twilio.authToken,
+        // Blank/masked auth token keeps the stored one.
+        authToken: cleanSecret(incTwilio.authToken) ?? cur.twilio.authToken,
       },
     } as NotificationSettings;
     await this.writeKey(tenantId, NOTIFICATION_SETTINGS_KEY, merged);

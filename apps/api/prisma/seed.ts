@@ -21,37 +21,91 @@ const DEMO_PASSWORD = 'Password123!';
 async function main() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
-  // --- Subscription plans (platform-level) ---
-  const basic = await prisma.plan.upsert({
-    where: { id: 'plan_basic' },
-    update: {},
+  // --- Subscription plans (platform-level). Flat per-location, unlimited staff. ---
+  // (Production sets these via the pricing_plans migration; kept here in sync for
+  // fresh/local databases. maxStaff null = unlimited — the key nail-salon selling point.)
+  const starter = await prisma.plan.upsert({
+    where: { id: 'plan_starter' },
+    update: { name: 'Starter', priceMonthlyCents: 4900, priceYearlyCents: 49000, publicVisible: true, sortOrder: 0 },
     create: {
-      id: 'plan_basic',
-      name: 'Basic',
-      description: 'For a single small salon',
-      priceCents: 2900,
+      id: 'plan_starter',
+      name: 'Starter',
+      description: 'New salon getting started',
+      priceCents: 4900,
+      priceMonthlyCents: 4900,
+      priceYearlyCents: 49000,
       billingInterval: BillingInterval.MONTHLY,
-      maxStaff: 5,
-      maxBookingsPerMonth: 300,
-      maxSmsPerMonth: 100,
-      onlinePaymentEnabled: false,
-      multiLocationEnabled: false,
-      whiteLabelEnabled: false,
+      tagline: 'For a new salon getting started',
+      featuresJson: [
+        'Unlimited staff — no per-tech fees',
+        'Online booking + reminders',
+        'Basic POS checkout',
+        'Loyalty points + Google review boost',
+        'Walk-in list',
+        'Keep your own card processor — no % on your sales',
+        '1 location',
+      ],
+      publicVisible: true,
+      sortOrder: 0,
+      maxStaff: null,
+      posEnabled: true,
+      onlinePaymentEnabled: true,
+    },
+  });
+
+  await prisma.plan.upsert({
+    where: { id: 'plan_growth' },
+    update: { name: 'Growth', priceMonthlyCents: 9900, priceYearlyCents: 99000, publicVisible: true, highlighted: true, sortOrder: 1 },
+    create: {
+      id: 'plan_growth',
+      name: 'Growth',
+      description: 'Most popular — the full marketing engine',
+      priceCents: 9900,
+      priceMonthlyCents: 9900,
+      priceYearlyCents: 99000,
+      billingInterval: BillingInterval.MONTHLY,
+      tagline: 'Most popular — the full marketing engine',
+      featuresJson: [
+        'Everything in Starter',
+        'Full marketing: SMS/email, birthday, referral, weekday deals',
+        'Customer display + tipping',
+        'Walk-in queue with fair turn rotation',
+        'Payroll with tip tracking',
+        'Inventory + gift cards',
+        'Unlimited staff',
+      ],
+      publicVisible: true,
+      highlighted: true,
+      sortOrder: 1,
+      maxStaff: null,
+      posEnabled: true,
+      onlinePaymentEnabled: true,
     },
   });
 
   await prisma.plan.upsert({
     where: { id: 'plan_pro' },
-    update: {},
+    update: { name: 'Pro', priceMonthlyCents: 14900, priceYearlyCents: 149000, publicVisible: true, sortOrder: 2, multiLocationEnabled: true, whiteLabelEnabled: true },
     create: {
       id: 'plan_pro',
       name: 'Pro',
-      description: 'For growing salons',
-      priceCents: 7900,
+      description: 'For chains & advanced',
+      priceCents: 14900,
+      priceMonthlyCents: 14900,
+      priceYearlyCents: 149000,
       billingInterval: BillingInterval.MONTHLY,
-      maxStaff: 25,
-      maxBookingsPerMonth: 2000,
-      maxSmsPerMonth: 1000,
+      tagline: 'For chains — per location, volume discounts',
+      featuresJson: [
+        'Everything in Growth',
+        'Multiple locations + consolidated reporting',
+        'Advanced payroll + tax export',
+        'Priority support + white-label',
+        '$149 per location · discount at 5+ · 10+ contact us',
+      ],
+      publicVisible: true,
+      sortOrder: 2,
+      maxStaff: null,
+      posEnabled: true,
       onlinePaymentEnabled: true,
       multiLocationEnabled: true,
       whiteLabelEnabled: true,
@@ -81,8 +135,8 @@ async function main() {
       slug: 'salon-a',
       timezone: 'America/New_York',
       contactEmail: 'owner@salon-a.test',
-      planId: basic.id,
-      subscriptions: { create: { planId: basic.id, status: 'TRIALING' } },
+      planId: starter.id,
+      subscriptions: { create: { planId: starter.id, status: 'TRIALING' } },
     },
   });
 
@@ -121,8 +175,8 @@ async function main() {
       slug: 'salon-b',
       timezone: 'America/Los_Angeles',
       contactEmail: 'owner@salon-b.test',
-      planId: basic.id,
-      subscriptions: { create: { planId: basic.id, status: 'TRIALING' } },
+      planId: starter.id,
+      subscriptions: { create: { planId: starter.id, status: 'TRIALING' } },
     },
   });
 

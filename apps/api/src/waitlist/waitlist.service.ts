@@ -92,7 +92,7 @@ export class WaitlistService {
 
     const jobs: Promise<unknown>[] = [];
     if (e.email) jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: e.email, subject, body: text, html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
-    if (e.phone) jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: e.phone, body: smsText, ...related }));
+    if (e.phone) jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: e.phone, body: smsText, twilio: n.twilio, ...related }));
     await Promise.allSettled(jobs);
 
     await this.prisma.waitlistEntry.updateMany({ where: { id, tenantId }, data: { status: WaitlistStatus.NOTIFIED, notifiedAt: new Date() } });

@@ -50,6 +50,8 @@ import {
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
 import { GmailOAuthProvider } from '../notifications/providers/gmail-oauth.provider';
+import { TwilioSmsProvider } from '../notifications/providers/twilio.provider';
+import { createSmsProvider } from '../notifications/providers/notification-provider.factory';
 import {
   UpdateBookingRulesDto,
   UpdateBrandingDto,
@@ -471,6 +473,30 @@ export class SettingsService {
    * Sends a real test email using the saved SMTP credentials, to the admin email
    * (or the SMTP user). Returns the exact error message so the admin can fix it.
    */
+  /**
+   * Sends a real test SMS using the salon's own Twilio creds (or the platform
+   * default if the salon hasn't entered its own). Diagnostics for the SMS setup.
+   */
+  async sendTestSms(user: AuthenticatedUser, to?: string) {
+    const tenantId = this.tenantId(user);
+    const n = await this.getNotificationSettings(tenantId);
+    const target = (to || '').trim() || n.adminPhone || '';
+    if (!target) return { ok: false, error: 'Enter a phone number to send the test to (or set an Admin phone first).' };
+    const t = n.twilio;
+    const hasTenant = !!(t.accountSid && t.authToken && t.fromNumber);
+    const hasEnv = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_MESSAGING_SERVICE_SID || process.env.TWILIO_FROM_NUMBER));
+    if (!hasTenant && !hasEnv) {
+      return { ok: false, error: 'Enter your Twilio Account SID, Auth token and From number, then Save before testing.' };
+    }
+    const provider = hasTenant
+      ? new TwilioSmsProvider({ accountSid: t.accountSid, authToken: t.authToken, fromNumber: t.fromNumber })
+      : createSmsProvider();
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+    const salon = n.senderName || tenant?.name || 'Lumio Booking';
+    const res = await provider.sendSms({ to: target, body: `[TEST] ${salon}: your SMS is working. Reply STOP to opt out.` });
+    return res.success ? { ok: true } : { ok: false, error: res.error || 'Send failed' };
+  }
+
   async sendTestEmail(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const n = await this.getNotificationSettings(tenantId);

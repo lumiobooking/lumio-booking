@@ -57,6 +57,12 @@ export class SettingsController {
     return this.settings.sendTestEmail(user);
   }
 
+  // Sends a real test SMS with the salon's Twilio credentials (diagnostics).
+  @Post('notifications/test-sms')
+  testSms(@CurrentUser() user: AuthenticatedUser, @Body() body: { to?: string }) {
+    return this.settings.sendTestSms(user, body?.to);
+  }
+
   // Starts the Gmail OAuth flow — returns the Google consent URL to open.
   @Get('gmail/auth-url')
   gmailAuthUrl(@CurrentUser() user: AuthenticatedUser) {

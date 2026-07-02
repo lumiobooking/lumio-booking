@@ -164,7 +164,7 @@ export class CampaignsService {
     const phone = (dto.phone ?? '').trim();
     if (phone) {
       const rec = await this.notifications.send({
-        tenantId, channel: NotificationChannel.SMS, recipient: phone,
+        tenantId, channel: NotificationChannel.SMS, recipient: phone, twilio: n.twilio,
         body: `[TEST] ${fillPct(msg.smsBody, pct)}`, relatedType: 'campaign_test', relatedId: dto.campaign,
       });
       out.sms = String(rec.status) === 'SENT' ? 'sent' : `error: ${rec.error || 'failed'}`;
@@ -333,7 +333,7 @@ export class CampaignsService {
       }));
     }
     if (msg.sms && c.phone && c.smsConsent) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: c.phone, body: fillPct(msg.smsBody, pct) + refSmsSuffix, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: c.phone, body: fillPct(msg.smsBody, pct) + refSmsSuffix, twilio: n.twilio, ...related }));
     }
     if (jobs.length === 0) return false;
     await Promise.allSettled(jobs);

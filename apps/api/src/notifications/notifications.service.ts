@@ -7,6 +7,7 @@ import { createEmailProvider, createSmsProvider } from './providers/notification
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
 import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
 import { GmailOAuthConfig, GmailOAuthProvider } from './providers/gmail-oauth.provider';
+import { TwilioSmsProvider } from './providers/twilio.provider';
 
 /** Build a platform Gmail-OAuth provider from env vars, or null if not configured. */
 function envGmailProvider(senderName?: string, replyTo?: string): GmailOAuthProvider | null {
@@ -48,6 +49,10 @@ export interface SendNotificationInput {
   brevo?: BrevoConfig;
   // The salon's own Gmail OAuth2 config (Gmail API over HTTPS).
   gmail?: GmailOAuthConfig;
+  // The salon's own Twilio SMS credentials (per-tenant). When complete, SMS is
+  // sent from the salon's own number; otherwise it falls back to the platform
+  // (env) Twilio, then mock.
+  twilio?: { accountSid: string; authToken: string; fromNumber?: string; messagingServiceSid?: string };
   // Explicit delivery choice (Amelia-style). When set, it wins over auto-detection.
   mailService?: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail';
   // Used by the platform-email (Auto) path so the customer sees the SALON's name
@@ -105,7 +110,22 @@ export class NotificationsService {
       }
       return this.email;
     })();
-    const provider = input.channel === NotificationChannel.EMAIL ? emailProvider : this.sms;
+    // SMS provider (per salon): the salon's own Twilio when its credentials are
+    // complete, otherwise the platform env Twilio (or mock). Mirrors the email logic.
+    const smsProvider: SmsProvider = ((): SmsProvider => {
+      if (input.channel !== NotificationChannel.SMS) return this.sms;
+      const t = input.twilio;
+      if (t?.accountSid && t?.authToken && (t.fromNumber || t.messagingServiceSid)) {
+        return new TwilioSmsProvider({
+          accountSid: t.accountSid,
+          authToken: t.authToken,
+          fromNumber: t.fromNumber || undefined,
+          messagingServiceSid: t.messagingServiceSid || undefined,
+        });
+      }
+      return this.sms;
+    })();
+    const provider = input.channel === NotificationChannel.EMAIL ? emailProvider : smsProvider;
 
     try {
       const result =
@@ -116,7 +136,7 @@ export class NotificationsService {
               body: input.body,
               html: input.html,
             })
-          : await this.sms.sendSms({ to: input.recipient, body: input.body });
+          : await smsProvider.sendSms({ to: input.recipient, body: input.body });
       status = result.success ? NotificationStatus.SENT : NotificationStatus.FAILED;
       error = result.error ?? null;
     } catch (err) {

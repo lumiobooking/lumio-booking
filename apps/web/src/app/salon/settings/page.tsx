@@ -674,6 +674,18 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
     }
   };
 
+  const [smsTo, setSmsTo] = useState('');
+  const [smsTest, setSmsTest] = useState<{ kind: 'idle' | 'sending' | 'ok' | 'err'; msg?: string }>({ kind: 'idle' });
+  const sendTestSms = async () => {
+    setSmsTest({ kind: 'sending' });
+    try {
+      const r = await apiFetch<{ ok: boolean; error?: string }>('/settings/notifications/test-sms', { method: 'POST', token, body: { to: smsTo } });
+      setSmsTest(r.ok ? { kind: 'ok', msg: t('se.no.smsTestOk') } : { kind: 'err', msg: r.error || t('se.no.testFail') });
+    } catch (e) {
+      setSmsTest({ kind: 'err', msg: e instanceof Error ? e.message : t('se.no.reqFail') });
+    }
+  };
+
   // Show the result of returning from Google's consent screen.
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -886,6 +898,18 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <Field label={t('se.no.authToken')}><input style={ui.input} type="password" value={tw.authToken} onChange={(e) => setTw({ ...tw, authToken: e.target.value })} placeholder={n.twilio.connected ? t('se.no.saved') : t('se.no.authToken')} /></Field>
         <Field label={t('se.no.fromNumber')}><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
       </div>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
+        <Field label={t('se.no.smsTestTo')}><input style={ui.input} value={smsTo} onChange={(e) => setSmsTo(e.target.value)} placeholder="+1…" /></Field>
+        <button
+          style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}
+          disabled={smsTest.kind === 'sending'}
+          onClick={sendTestSms}
+        >{smsTest.kind === 'sending' ? t('se.no.sending') : t('se.no.smsTestBtn')}</button>
+      </div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>{t('se.no.smsTestHint')}</p>
+      {smsTest.kind === 'ok' && <p style={{ color: '#22c55e', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
+      {smsTest.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
 
       <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, gmail, twilio: tw }, 'Notifications')}>{t('se.no.save')}</button>
     </Card>

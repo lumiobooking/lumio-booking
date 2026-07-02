@@ -491,7 +491,7 @@ export class BookingsService {
     }
     if (smsCustomer && custPhone) {
       const smsText = tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d);
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
     }
     // Admin notification: who gets it = the Admin email, falling back to the
     // sender email so the salon is never left un-notified.
@@ -507,7 +507,7 @@ export class BookingsService {
       }));
     }
     if (n.smsAdminOnBooking && n.adminPhone) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: n.adminPhone, body: fill(n.smsAdmin, d), ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: n.adminPhone, body: fill(n.smsAdmin, d), twilio: n.twilio, ...related }));
     }
     await Promise.allSettled(jobs);
   }
@@ -634,7 +634,7 @@ export class BookingsService {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text + refText, html: html + refHtml, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
     }
     if (rs.channelSms && custPhone) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
     }
     await Promise.allSettled(jobs);
   }

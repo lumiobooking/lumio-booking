@@ -111,6 +111,7 @@ function PairScreen({ onPair }: { onPair: (code: string) => Promise<boolean> }) 
         <button onClick={submit} disabled={busy} style={{ marginTop: 16, width: '100%', padding: '14px', borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 17, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.7 : 1 }}>
           {busy ? 'Linking…' : 'Link screen'}
         </button>
+        <a href="/login" style={{ display: 'inline-block', marginTop: 18, color: '#94a3b8', fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 3 }}>Salon staff? Sign in</a>
       </div>
     </div>
   );
@@ -128,6 +129,12 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   const [portrait, setPortrait] = useState(true); // adapt the order screen to orientation
   const prevSaleRef = useRef<string>('__init__');
   const tipPanelRef = useRef<HTMLDivElement | null>(null);
+  // Hidden staff exit: press-and-hold the top-left corner ~2.5s to open a small
+  // menu (sign in / unpair). Invisible to customers; a normal tap does nothing.
+  const [menu, setMenu] = useState(false);
+  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelHold = () => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } };
+  const startHold = () => { cancelHold(); holdRef.current = setTimeout(() => setMenu(true), 2500); };
 
   // Poll the salon's current state ~1s. A new paid sale (saleRef change) — or any
   // move away from the paid screen — resets the optional tip UI.
@@ -194,6 +201,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
           <div style={{ fontSize: 46, marginBottom: 8 }}>🔌</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b' }}>This screen was unlinked</div>
           <button onClick={onUnlink} style={{ marginTop: 16, padding: '12px 20px', borderRadius: 12, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>Pair again</button>
+          <div><a href="/login" style={{ display: 'inline-block', marginTop: 16, color: '#94a3b8', fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 3 }}>Salon staff? Sign in</a></div>
         </div>
       </div>
     );
@@ -292,7 +300,21 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
           </div>
         </div>
       )}
-      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v3</div>
+      {/* Invisible staff hotspot — press & hold the top-left corner to open the exit menu. */}
+      <div onPointerDown={startHold} onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
+        aria-hidden style={{ position: 'fixed', top: 0, left: 0, width: 84, height: 84, zIndex: 90 }} />
+      {menu && (
+        <div style={keypadOverlay} onClick={() => setMenu(false)}>
+          <div style={{ ...keypadCard, width: 'min(90vw, 360px)' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 19, fontWeight: 800, color: '#1e293b', textAlign: 'center' }}>Staff menu</div>
+            <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', margin: '4px 0 18px' }}>For salon staff only</div>
+            <button onClick={() => { window.location.href = '/login'; }} style={{ ...menuBtn, background: '#4f46e5', color: '#fff' }}>Sign in / Admin</button>
+            <button onClick={() => { setMenu(false); onUnlink(); }} style={{ ...menuBtn, background: '#f8fafc', color: '#334155', border: '1px solid #e2e8f0' }}>Unpair this device</button>
+            <button onClick={() => setMenu(false)} style={{ ...menuBtn, background: '#f1f5f9', color: '#64748b' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v4</div>
     </div>
   );
 }
@@ -435,4 +457,9 @@ const keypadCard: React.CSSProperties = {
 const keypadKey: React.CSSProperties = {
   padding: 'clamp(12px, 2vw, 20px)', fontSize: 'clamp(20px, 3vw, 28px)', fontWeight: 700,
   borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#1e293b', cursor: 'pointer', touchAction: 'manipulation',
+};
+const menuBtn: React.CSSProperties = {
+  display: 'block', width: '100%', boxSizing: 'border-box', marginBottom: 10,
+  padding: '13px 14px', borderRadius: 12, border: 'none',
+  fontSize: 15, fontWeight: 700, cursor: 'pointer',
 };

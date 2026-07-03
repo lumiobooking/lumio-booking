@@ -376,6 +376,25 @@ export class GoogleReviewsService {
     return this.syncReviews(tenantId);
   }
 
+  /** Background auto-sync: for every tenant that has connected Google, picked a
+   *  location and turned ON auto-processing, pull new reviews (draft/alert). One
+   *  tenant failing (expired token, quota) never blocks the others. */
+  async syncAllConnected(): Promise<{ tenants: number; drafted: number; alerted: number }> {
+    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY } });
+    let tenants = 0, drafted = 0, alerted = 0;
+    for (const row of rows) {
+      const s = { ...DEFAULTS, ...((row.value ?? {}) as Partial<GbrSettings>) };
+      if (!s.enabled || !s.connected || !s.accountId || !s.locationId) continue;
+      try {
+        const r = await this.syncReviews(row.tenantId);
+        tenants++; drafted += r.drafted; alerted += r.alerted;
+      } catch (e) {
+        this.logger.warn(`Auto-sync failed for tenant ${row.tenantId}: ${String(e).slice(0, 120)}`);
+      }
+    }
+    return { tenants, drafted, alerted };
+  }
+
   /** Pull the latest reviews for a tenant, store new ones, and route them. */
   async syncReviews(tenantId: string): Promise<{ fetched: number; drafted: number; alerted: number }> {
     const s = await this.getSettings(tenantId);

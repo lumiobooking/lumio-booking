@@ -61,6 +61,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   testOk: { vi: 'AI đang hoạt động! Đây là câu AI vừa viết:', en: 'AI is working! Here is what it wrote:' },
   testFallback: { vi: 'AI chưa chạy — đang dùng mẫu. Xem lỗi bên dưới:', en: 'AI not active — using a template. See error below:' },
   testSample: { vi: 'Review mẫu', en: 'Sample review' },
+  autoSyncNote: { vi: 'Tự đồng bộ mỗi 15 phút — khỏi bấm Sync. Review xấu tự gửi email cảnh báo ngay.', en: 'Auto-syncs every 15 min — no need to click Sync. Bad reviews email you automatically.' },
   ruleTitle: { vi: 'Quy tắc trả lời', en: 'Reply rule' },
   ruleAuto: { vi: 'Tự soạn trả lời cho đánh giá từ', en: 'Auto-draft a reply for reviews of' },
   ruleStarUp: { vi: '★ trở lên', en: '★ and up' },
@@ -407,6 +408,9 @@ function Inner() {
             {t('lastSync')}: {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString('en-US') : t('never')}
           </span>
         </div>
+        {s.enabled && s.hasLocation && (
+          <div style={{ fontSize: 11.5, color: '#22c55e', marginTop: 8 }}>🔄 {t('autoSyncNote')}</div>
+        )}
       </div>
 
       {/* Inbox */}

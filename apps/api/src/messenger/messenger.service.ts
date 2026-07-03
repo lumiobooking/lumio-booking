@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
+import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
@@ -50,6 +51,7 @@ export class MessengerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
+    private readonly settings: SettingsService,
   ) {}
 
   // ---- config --------------------------------------------------------------
@@ -291,9 +293,10 @@ export class MessengerService {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return 'Thanks for reaching out! A team member will reply to you shortly. 💕';
 
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true } });
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true } });
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
+    const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
     const system = `You are the friendly booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger.
@@ -302,7 +305,7 @@ To book you MUST collect: their name, their phone number, which service, and a s
 You MAY also ask for their email so the salon can send an email confirmation — this is OPTIONAL; if they skip or decline, book anyway without it.
 Use the get_services tool to tell them what's available and to get service ids. When you have name + phone + service + a specific date/time, call create_booking (include their email if they gave one). After it succeeds, confirm the details warmly and let them know a confirmation is on its way.
 The salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.
-Never invent prices, availability, or promises. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
 
     const tools = [
       { name: 'get_services', description: 'List this salon’s bookable services with their id, name, price and duration.', input_schema: { type: 'object', properties: {}, required: [] } },
@@ -355,6 +358,32 @@ Never invent prices, availability, or promises. If the customer is upset or asks
       return text || 'Got it! How else can I help you book?';
     }
     return 'Thanks! A team member will follow up with you shortly. 💕';
+  }
+
+  /** Business hours + contact injected into the agent prompt so it can answer
+   *  "when are you open?" and never book outside opening times. */
+  private async salonInfoBlock(tenantId: string, phone: string | null, email: string | null): Promise<string> {
+    const lines: string[] = [];
+    try {
+      const rules = await this.settings.getBookingRules(tenantId);
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const hrs = (rules.businessHours || []).map((h, i) =>
+        !h || h.closed ? `${dayNames[i]}: Closed` : `${dayNames[i]}: ${this.minToAmPm(h.openMinutes)} – ${this.minToAmPm(h.closeMinutes)}`,
+      );
+      const ordered = [1, 2, 3, 4, 5, 6, 0].map((i) => hrs[i]).filter(Boolean); // Mon..Sun
+      if (ordered.length) lines.push('Business hours (only take bookings within these):', ...ordered);
+    } catch { /* hours are best-effort */ }
+    if (phone) lines.push(`Salon phone: ${phone}`);
+    if (email) lines.push(`Salon email: ${email}`);
+    return lines.join('\n');
+  }
+
+  private minToAmPm(mins: number): string {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
   }
 
   private async runTool(tenantId: string, tz: string, name: string, input: Record<string, unknown>): Promise<string> {

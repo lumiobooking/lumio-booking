@@ -56,6 +56,11 @@ const DICT: Record<string, { vi: string; en: string }> = {
   aiInstrPh: { vi: 'VD: luôn ký "Đội ngũ ABC Nails", nhắc mở cửa 7 ngày, mời khách quay lại…', en: 'e.g. always sign as "The ABC Nails Team", mention we are open 7 days…' },
   aiOn: { vi: 'AI đang bật', en: 'AI on' },
   aiOff: { vi: 'đang dùng mẫu (thêm ANTHROPIC_API_KEY để bật AI)', en: 'using templates (add ANTHROPIC_API_KEY for AI)' },
+  testAi: { vi: '🧪 Thử AI viết một câu', en: '🧪 Test AI reply' },
+  testingAi: { vi: 'Đang thử…', en: 'Testing…' },
+  testOk: { vi: 'AI đang hoạt động! Đây là câu AI vừa viết:', en: 'AI is working! Here is what it wrote:' },
+  testFallback: { vi: 'AI chưa chạy — đang dùng mẫu. Xem lỗi bên dưới:', en: 'AI not active — using a template. See error below:' },
+  testSample: { vi: 'Review mẫu', en: 'Sample review' },
   ruleTitle: { vi: 'Quy tắc trả lời', en: 'Reply rule' },
   ruleAuto: { vi: 'Tự soạn trả lời cho đánh giá từ', en: 'Auto-draft a reply for reviews of' },
   ruleStarUp: { vi: '★ trở lên', en: '★ and up' },
@@ -119,6 +124,8 @@ function Inner() {
   const [locFilter, setLocFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [testing, setTesting] = useState(false);
+  const [aiTest, setAiTest] = useState<{ ok: boolean; mode: string; sample: string; reply: string; error?: string } | null>(null);
 
   const loadReviews = useCallback(async (status: string) => {
     if (!token) return;
@@ -214,6 +221,14 @@ function Inner() {
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSyncing(false); }
+  }
+  async function testAi() {
+    setTesting(true); setError(null); setAiTest(null);
+    try {
+      const r = await apiFetch<{ ok: boolean; mode: string; sample: string; reply: string; error?: string }>('/google-reviews/test-ai', { method: 'POST', token });
+      setAiTest(r);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setTesting(false); }
   }
   async function approve(id: string) {
     setBusyId(id); setError(null);
@@ -364,6 +379,19 @@ function Inner() {
             onChange={(e) => setS({ ...s, aiInstruction: e.target.value })}
             onBlur={(e) => saveSettings({ aiInstruction: e.target.value })}
             style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+          <div style={{ marginTop: 8 }}>
+            <button onClick={testAi} disabled={testing} style={{ ...ghostBtn, padding: '7px 12px', fontSize: 12.5 }}>{testing ? t('testingAi') : t('testAi')}</button>
+          </div>
+          {aiTest && (
+            <div style={{ marginTop: 10, background: '#0f172a', border: `1px solid ${aiTest.ok ? '#14532d' : '#7f1d1d'}`, borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: 12, color: aiTest.ok ? '#22c55e' : '#f59e0b', fontWeight: 700, marginBottom: 6 }}>
+                {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
+              </div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
+              <div style={{ fontSize: 13.5, color: '#e2e8f0', lineHeight: 1.5 }}>💬 {aiTest.reply}</div>
+              {aiTest.error && <div style={{ fontSize: 11.5, color: '#fca5a5', marginTop: 6 }}>{aiTest.error}</div>}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>

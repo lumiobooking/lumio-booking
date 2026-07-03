@@ -347,6 +347,26 @@ export class GoogleReviewsService {
     return this.syncReviews(tenantId);
   }
 
+  /** Prove the AI is working: generate a reply for a sample 5-star review and
+   *  report whether it came from the AI or fell back to a template. */
+  async testAi(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const s = await this.getSettings(tenantId);
+    const salonName = await this.salonName(tenantId);
+    const sample = "Amazing service! Anna did my gel manicure and it looks perfect — I'll be back!";
+    const tpl = () => this.draftReply(5, sample, s.tone, salonName, 'Jessica');
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return { ok: false, mode: 'template', sample, reply: tpl(), error: 'No ANTHROPIC_API_KEY set on the server.' };
+    }
+    try {
+      const ai = await this.aiReply(5, sample, s, salonName, 'Jessica');
+      if (ai) return { ok: true, mode: 'ai', sample, reply: ai };
+      return { ok: false, mode: 'template', sample, reply: tpl(), error: 'Anthropic returned no text — check the API key and that credits are funded.' };
+    } catch (e) {
+      return { ok: false, mode: 'template', sample, reply: tpl(), error: String(e).slice(0, 200) };
+    }
+  }
+
   /** Wipe this tenant's mirrored reviews and pull them fresh for the CURRENT
    *  location — clears any leftover rows from a previously-selected location. */
   async resync(user: AuthenticatedUser) {

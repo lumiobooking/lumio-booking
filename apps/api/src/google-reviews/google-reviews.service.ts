@@ -302,7 +302,7 @@ export class GoogleReviewsService {
   }
 
   // ---- sync + routing ------------------------------------------------------
-  /** The v4 reviews path: accounts/*/locations/* → its /reviews collection. */
+  // The v4 reviews path: an account + location, then its /reviews collection.
   private reviewsParent(s: GbrSettings): string {
     // locationId may be stored as "locations/456" or "accounts/1/locations/456".
     const loc = s.locationId.includes('/locations/') ? s.locationId : `${s.accountId}/${s.locationId}`;

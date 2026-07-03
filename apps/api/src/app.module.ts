@@ -29,6 +29,7 @@ import { PrintModule } from './print/print.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
 import { DisplayModule } from './display/display.module';
 import { GoogleReviewsModule } from './google-reviews/google-reviews.module';
+import { MessengerModule } from './messenger/messenger.module';
 
 @Module({
   imports: [
@@ -90,6 +91,9 @@ import { GoogleReviewsModule } from './google-reviews/google-reviews.module';
     // Google review auto-reply: draft replies to positive reviews for one-tap
     // approval; hold negative/neutral ones and email the manager (tenant-scoped).
     GoogleReviewsModule,
+    // Messenger booking bot: AI receptionist on the salon's Facebook Page that
+    // chats with customers and books appointments (tenant-scoped).
+    MessengerModule,
   ],
 })
 export class AppModule {}

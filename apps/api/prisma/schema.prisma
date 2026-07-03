@@ -224,6 +224,8 @@ model Tenant {
   staffRewardTransactions StaffRewardTransaction[]
   reviewClicks      ReviewClick[]
   googleReviews     GoogleReview[]
+  messengerConnection MessengerConnection?
+  messengerThreads  MessengerThread[]
   waitlistEntries   WaitlistEntry[]
   walkIns           WalkIn[]
   supplyItems       SupplyItem[]
@@ -1128,6 +1130,50 @@ model GoogleReview {
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("google_reviews")
+}
+
+// ===========================================================================
+// MESSENGER BOT — an AI receptionist on the salon's Facebook Page that chats
+// with customers, collects their details and books appointments. One Page per
+// tenant; conversations (threads) are tenant-scoped.
+// ===========================================================================
+
+model MessengerConnection {
+  id       String @id @default(uuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  pageId    String  @unique // Facebook Page id (routes incoming webhooks to a tenant)
+  pageToken String // Page access token (secret) used to send replies
+  enabled   Boolean @default(false)
+  greeting  String? // optional opening line
+  aiInstruction String? // brand-voice / extra guidance for the bot
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("messenger_connections")
+}
+
+model MessengerThread {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  pageId   String
+  senderId String // the customer's page-scoped id (PSID)
+
+  history  Json    @default("[]") // recent turns for context
+  lastText String? // last customer message (admin preview)
+  handoff  Boolean @default(false) // a human took over → bot stays quiet
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pageId, senderId])
+  @@index([tenantId])
+  @@index([tenantId, updatedAt])
+  @@map("messenger_threads")
 }
 
 // ===========================================================================

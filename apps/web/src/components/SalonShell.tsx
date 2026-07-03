@@ -26,6 +26,7 @@ const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
   { href: '/salon/staff', label: 'Staff', icon: '✄' },
   { href: '/salon/payroll', label: 'Lương thợ · Payroll', icon: '💵', feature: 'pos' },
   { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
+  { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
   { href: '/salon/marketing', label: 'Marketing', icon: '📣' },
   { href: '/salon/inventory', label: 'Inventory', icon: '📦', feature: 'pos' },
   { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },

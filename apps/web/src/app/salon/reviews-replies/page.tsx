@@ -177,6 +177,8 @@ function Inner() {
       const next = await apiFetch<GrSettings>('/google-reviews/location', { method: 'POST', token, body: { accountId: pickAccount, locationId: pickLoc, locationTitle: title } });
       setS(next); setSaved(true); setTimeout(() => setSaved(false), 2500);
       setLocations(null); setLocFilter(''); // collapse picker → shows the "Change location" button + saved title
+      setReviews([]); // clear the old location's reviews from view immediately
+      await sync(); // pull the newly-selected location's reviews right away
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally { setSaving(false); }

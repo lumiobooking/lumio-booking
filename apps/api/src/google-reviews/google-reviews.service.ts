@@ -315,7 +315,17 @@ export class GoogleReviewsService {
 
   async setLocation(user: AuthenticatedUser, accountId: string, locationId: string, locationTitle?: string) {
     const tenantId = this.tenantId(user);
-    await this.writeSettings(tenantId, { accountId: accountId.trim(), locationId: locationId.trim(), locationTitle: (locationTitle || '').trim() });
+    const cur = await this.getSettings(tenantId);
+    const changed = cur.locationId !== locationId.trim();
+    await this.writeSettings(tenantId, {
+      accountId: accountId.trim(), locationId: locationId.trim(), locationTitle: (locationTitle || '').trim(),
+      ...(changed ? { lastSyncAt: null } : {}),
+    });
+    if (changed) {
+      // Switched to a DIFFERENT Google location: drop the previous location's
+      // mirrored reviews so the inbox shows only the newly-selected salon.
+      await this.prisma.googleReview.deleteMany({ where: { tenantId } });
+    }
     await this.audit(tenantId, user.userId, 'google_reviews.location_set');
     return this.get(user);
   }

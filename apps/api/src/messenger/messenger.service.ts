@@ -115,9 +115,15 @@ export class MessengerService {
     if (!this.appId() || !this.appSecret()) {
       throw new BadRequestException('Facebook app not configured (set FB_APP_ID and FB_APP_SECRET). Contact Lumio.');
     }
+    // Core Messenger booking scopes (must be added to the app in Meta first).
+    // Instagram scopes are opt-in: Facebook rejects the WHOLE dialog with
+    // "Invalid Scopes" if instagram_basic / instagram_manage_messages aren't yet
+    // added to the app, so we only request them once the owner has added those
+    // permissions in Meta and flipped FB_ENABLE_INSTAGRAM=1.
+    const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
     const scope = [
-      'pages_show_list', 'pages_messaging', 'pages_manage_metadata', 'pages_read_engagement',
-      'instagram_basic', 'instagram_manage_messages', 'business_management',
+      'pages_show_list', 'pages_messaging', 'pages_manage_metadata', 'business_management',
+      ...(igOn ? ['instagram_basic', 'instagram_manage_messages'] : []),
     ].join(',');
     const params = new URLSearchParams({
       client_id: this.appId(), redirect_uri: this.oauthRedirect(), response_type: 'code',

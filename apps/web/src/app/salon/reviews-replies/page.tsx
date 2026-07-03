@@ -105,7 +105,7 @@ function Inner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [locations, setLocations] = useState<{ name: string; title: string }[] | null>(null);
+  const [locations, setLocations] = useState<{ name: string; title: string; address: string }[] | null>(null);
   const [pickAccount, setPickAccount] = useState('');
   const [pickLoc, setPickLoc] = useState('');
   const [locFilter, setLocFilter] = useState('');
@@ -163,7 +163,7 @@ function Inner() {
   async function loadLocations() {
     setError(null);
     try {
-      const r = await apiFetch<{ accountId: string; locations: { name: string; title: string }[] }>('/google-reviews/locations', { token });
+      const r = await apiFetch<{ accountId: string; locations: { name: string; title: string; address: string }[] }>('/google-reviews/locations', { token });
       setLocations(r.locations); setPickAccount(r.accountId);
       if (r.locations[0]) setPickLoc(r.locations[0].name);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -206,7 +206,7 @@ function Inner() {
 
   const stars = (n: number) => '★'.repeat(Math.max(0, Math.min(5, n))) + '☆'.repeat(Math.max(0, 5 - n));
   // Filter the (possibly long) location list by name so the salon is easy to find.
-  const filteredLocs = (locations ?? []).filter((l) => l.title.toLowerCase().includes(locFilter.trim().toLowerCase()));
+  const filteredLocs = (locations ?? []).filter((l) => `${l.title} ${l.address}`.toLowerCase().includes(locFilter.trim().toLowerCase()));
 
   if (loading || !s) {
     return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: '#94a3b8' }}>{t('loading')}</p></section>;
@@ -258,7 +258,7 @@ function Inner() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                     <select value={pickLoc} onChange={(e) => setPickLoc(e.target.value)} size={Math.min(8, Math.max(2, filteredLocs.length))}
                       style={{ ...ui.input, width: 'auto', minWidth: 320, maxWidth: '100%', height: 'auto' }}>
-                      {filteredLocs.map((l) => <option key={l.name} value={l.name}>{l.title}</option>)}
+                      {filteredLocs.map((l) => <option key={l.name} value={l.name}>{l.title}{l.address ? ` — ${l.address}` : ''}</option>)}
                     </select>
                     <button onClick={saveLocation} style={ui.primaryBtn}>{t('saveLocation')}</button>
                   </div>

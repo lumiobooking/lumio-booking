@@ -259,7 +259,7 @@ export class GoogleReviewsService {
 
   // ---- location discovery (best-effort) ------------------------------------
   /** List the connected account's locations so the salon can pick the right one. */
-  async listLocations(user: AuthenticatedUser): Promise<{ accountId: string; locations: { name: string; title: string }[] }> {
+  async listLocations(user: AuthenticatedUser): Promise<{ accountId: string; locations: { name: string; title: string; address: string }[] }> {
     const tenantId = this.tenantId(user);
     const s = await this.getSettings(tenantId);
     const token = await this.accessToken(s);
@@ -278,17 +278,20 @@ export class GoogleReviewsService {
       throw new BadRequestException('This Google login manages no Business Profile. Sign in with the account that owns the salon on Google.');
     }
     const locRes = await fetch(
-      `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations?readMask=name,title&pageSize=100`,
+      `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations?readMask=name,title,storefrontAddress&pageSize=100`,
       { headers: { authorization: `Bearer ${token}` } },
     );
     if (!locRes.ok) {
       const t = await locRes.text().catch(() => '');
       throw new BadRequestException(`Google locations call failed (${locRes.status}). ${t.slice(0, 240)}`);
     }
-    const data = (await locRes.json()) as { locations?: { name?: string; title?: string }[] };
+    const data = (await locRes.json()) as {
+      locations?: { name?: string; title?: string; storefrontAddress?: { addressLines?: string[]; locality?: string; administrativeArea?: string } }[];
+    };
     const locations = (data.locations || [])
-      .map((l) => ({ name: l.name || '', title: l.title || l.name || '' }))
-      .filter((l) => l.name);
+      .map((l) => ({ name: l.name || '', title: l.title || l.name || '', address: shortAddress(l.storefrontAddress) }))
+      .filter((l) => l.name)
+      .sort((a, b) => a.title.localeCompare(b.title));
     return { accountId, locations };
   }
 
@@ -562,4 +565,11 @@ interface GoogleApiReview {
   comment?: string;
   createTime?: string;
   reviewReply?: { comment?: string; updateTime?: string };
+}
+
+/** A short one-line address (street + city + state) to tell same-named salons apart. */
+function shortAddress(a?: { addressLines?: string[]; locality?: string; administrativeArea?: string }): string {
+  if (!a) return '';
+  const line = (a.addressLines || []).join(' ').trim();
+  return [line, a.locality, a.administrativeArea].filter(Boolean).join(', ');
 }

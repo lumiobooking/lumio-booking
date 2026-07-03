@@ -44,6 +44,10 @@ const DICT: Record<string, { vi: string; en: string }> = {
   loadLocations: { vi: 'Tải danh sách địa điểm', en: 'Load locations' },
   saveLocation: { vi: 'Lưu địa điểm', en: 'Save location' },
   noLocations: { vi: 'Chưa lấy được địa điểm (cần được Google duyệt và tài khoản phải quản lý hồ sơ).', en: 'No locations yet (needs Google approval and the account must manage the profile).' },
+  locSet: { vi: 'đã chọn', en: 'selected' },
+  changeLoc: { vi: 'Đổi địa điểm', en: 'Change location' },
+  filterLoc: { vi: 'Lọc theo tên tiệm…', en: 'Filter by salon name…' },
+  locCount: { vi: 'tiệm', en: 'shown' },
   ruleTitle: { vi: 'Quy tắc trả lời', en: 'Reply rule' },
   ruleAuto: { vi: 'Tự soạn trả lời cho đánh giá từ', en: 'Auto-draft a reply for reviews of' },
   ruleStarUp: { vi: '★ trở lên', en: '★ and up' },
@@ -104,6 +108,7 @@ function Inner() {
   const [locations, setLocations] = useState<{ name: string; title: string }[] | null>(null);
   const [pickAccount, setPickAccount] = useState('');
   const [pickLoc, setPickLoc] = useState('');
+  const [locFilter, setLocFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
@@ -200,6 +205,8 @@ function Inner() {
   }
 
   const stars = (n: number) => '★'.repeat(Math.max(0, Math.min(5, n))) + '☆'.repeat(Math.max(0, 5 - n));
+  // Filter the (possibly long) location list by name so the salon is easy to find.
+  const filteredLocs = (locations ?? []).filter((l) => l.title.toLowerCase().includes(locFilter.trim().toLowerCase()));
 
   if (loading || !s) {
     return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: '#94a3b8' }}>{t('loading')}</p></section>;
@@ -234,23 +241,31 @@ function Inner() {
               <button onClick={disconnect} style={ui.dangerBtn}>{t('disconnect')}</button>
             </div>
 
-            {!s.hasLocation && (
-              <div style={{ marginTop: 14, borderTop: '1px solid #334155', paddingTop: 14 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>{t('pickLocation')}</div>
-                {locations === null ? (
-                  <button onClick={loadLocations} style={ui.primaryBtn}>{t('loadLocations')}</button>
-                ) : locations.length === 0 ? (
-                  <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('noLocations')}</p>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <select value={pickLoc} onChange={(e) => setPickLoc(e.target.value)} style={{ ...ui.input, width: 'auto', minWidth: 260 }}>
-                      {locations.map((l) => <option key={l.name} value={l.name}>{l.title}</option>)}
+            {/* Location picker — always available (even after one is set) + searchable,
+                since an agency account can manage many salons. */}
+            <div style={{ marginTop: 14, borderTop: '1px solid #334155', paddingTop: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>
+                {t('pickLocation')}
+                {s.hasLocation && <span style={{ color: '#22c55e', fontWeight: 500, marginLeft: 8, fontSize: 12.5 }}>✓ {t('locSet')}</span>}
+              </div>
+              {locations === null ? (
+                <button onClick={loadLocations} style={ui.primaryBtn}>{s.hasLocation ? t('changeLoc') : t('loadLocations')}</button>
+              ) : locations.length === 0 ? (
+                <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('noLocations')}</p>
+              ) : (
+                <div>
+                  <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder={t('filterLoc')} style={{ ...ui.input, marginBottom: 8, maxWidth: 420 }} />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <select value={pickLoc} onChange={(e) => setPickLoc(e.target.value)} size={Math.min(8, Math.max(2, filteredLocs.length))}
+                      style={{ ...ui.input, width: 'auto', minWidth: 320, maxWidth: '100%', height: 'auto' }}>
+                      {filteredLocs.map((l) => <option key={l.name} value={l.name}>{l.title}</option>)}
                     </select>
                     <button onClick={saveLocation} style={ui.primaryBtn}>{t('saveLocation')}</button>
                   </div>
-                )}
-              </div>
-            )}
+                  <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>{filteredLocs.length}/{locations.length} {t('locCount')}</div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

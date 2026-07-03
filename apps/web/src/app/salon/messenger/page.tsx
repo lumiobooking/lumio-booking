@@ -70,7 +70,9 @@ const DICT: Record<string, { vi: string; en: string }> = {
   behaviorTitle: { vi: 'Cách bot trả lời', en: 'Bot behaviour' },
   greeting: { vi: 'Lời chào (tùy chọn)', en: 'Greeting (optional)' },
   greetingPh: { vi: 'vd: Chào bạn! Bạn muốn đặt dịch vụ gì hôm nay ạ?', en: 'e.g. Hi! What would you like to book today?' },
-  infoTitle: { vi: 'Thông tin tiệm cho bot', en: 'Salon info for the bot' },
+  infoTitle: { vi: '🏢 Thông tin doanh nghiệp', en: '🏢 Business information' },
+  infoKnows: { vi: 'Bot đã biết sẵn:', en: 'The bot already knows:' },
+  infoKnowsList: { vi: 'Giờ mở cửa · Dịch vụ & giá · SĐT/email · Địa chỉ', en: 'Hours · Services & prices · Phone/email · Address' },
   infoHelp: { vi: 'Bot đã tự biết: giờ mở cửa, dịch vụ & giá, SĐT/email, địa chỉ (từ Settings). Tick những mục dưới đây và điền câu trả lời để bot trả lời khách đúng. Có thể tự thêm mục mới.', en: 'The bot already knows hours, services & prices, phone/email and address (from Settings). Tick the items below and fill the answer so the bot can reply. You can add your own.' },
   addItem: { vi: '+ Thêm mục', en: '+ Add item' },
   saveInfo: { vi: 'Lưu thông tin', en: 'Save info' },
@@ -321,10 +323,13 @@ function Inner() {
       {/* Salon info — tick + fill so the bot answers common questions */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('infoTitle')}</div>
-        <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 12px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
+        <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
+        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
+          <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: '#94a3b8' }}>{t('infoKnowsList')}</span>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {facts.map((f, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: f.on ? '#0f172a' : 'transparent', border: '1px solid', borderColor: f.on ? '#334155' : '#1e293b', borderRadius: 8, padding: '8px 10px' }}>
               <input type="checkbox" checked={f.on} onChange={(e) => setFact(i, { on: e.target.checked })} style={{ flexShrink: 0, width: 16, height: 16 }} />
               {f.custom
                 ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />

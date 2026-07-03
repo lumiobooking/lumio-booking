@@ -38,7 +38,7 @@ function wallToUtcISO(local: string, tz: string): string {
 }
 
 type Turn = { role: 'user' | 'assistant'; content: string };
-interface BotFact { label: string; value: string; on: boolean }
+export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
@@ -308,6 +308,7 @@ Goal: help them book an appointment. Be warm, concise (1-3 short sentences), and
 To book you MUST collect: their name, their phone number, which service, and a specific date & time. Ask for whatever is missing, one or two things at a time.
 You MAY also ask for their email so the salon can send an email confirmation — this is OPTIONAL; if they skip or decline, book anyway without it.
 Use the get_services tool to tell them what's available and to get service ids. When you have name + phone + service + a specific date/time, call create_booking (include their email if they gave one). After it succeeds, confirm the details warmly and let them know a confirmation is on its way.
+As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
 The salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.
 ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
 
@@ -326,6 +327,18 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             customerEmail: { type: 'string', description: 'Optional. The customer email for an email confirmation; omit entirely if they did not give one.' },
           },
           required: ['customerFirstName', 'customerPhone', 'serviceId', 'localDateTime'],
+        },
+      },
+      {
+        name: 'save_birthday',
+        description: "Save the customer's birthday so the salon can send a birthday treat. Only call after they willingly share it — it is always optional and asked only after the booking is confirmed.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            customerPhone: { type: 'string', description: 'The same phone number used to book, to find the customer.' },
+            birthDate: { type: 'string', description: 'Birthday as YYYY-MM-DD. If the year is unknown, use 2000, e.g. 2000-05-20.' },
+          },
+          required: ['customerPhone', 'birthDate'],
         },
       },
     ];
@@ -434,6 +447,13 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
         const b = booking as { id?: string };
         const manageUrl = b.id ? this.bookings.buildApptManageUrl(b.id) : '';
         return `SUCCESS. Appointment created (id ${b.id}). Confirm the service, date and time back to the customer warmly${manageUrl ? `, and share this link so they can view or cancel their appointment: ${manageUrl}` : ''}.`;
+      }
+      if (name === 'save_birthday') {
+        const phone = String(input.customerPhone || '').trim();
+        const d = new Date(String(input.birthDate || '').trim());
+        if (!phone || isNaN(d.getTime())) return 'Could not save the birthday; gently ask again or simply skip it.';
+        await this.prisma.customer.updateMany({ where: { tenantId, phone }, data: { birthDate: d } });
+        return 'SUCCESS. Birthday saved — thank the customer warmly and wish them a great day.';
       }
       return `Unknown tool ${name}.`;
     } catch (e) {

@@ -476,8 +476,18 @@ export class GoogleReviewsService {
     if (!key) return null;
     const first = this.firstName(reviewerName);
     const toneDesc = s.tone === 'professional' ? 'professional and courteous' : s.tone === 'short' ? 'short and sweet (one sentence)' : 'warm and friendly';
-    const extra = s.aiInstruction ? `\nOwner's extra instructions (follow them): ${s.aiInstruction}` : '';
-    const system = `You are the owner of "${salonName}", a nail salon, writing ONE short public reply to a Google review. Style: ${toneDesc}. Greet the reviewer by first name if given, otherwise "Hi there,". If the review mentions something specific (a service, a technician, an experience), acknowledge it. Reply in the SAME language as the review. Sound human and sincere, never generic or robotic. Never invent facts, never promise refunds, never include phone numbers or links. Output ONLY the reply text with no surrounding quotes.${extra}`;
+    const extra = s.aiInstruction
+      ? `\n\nOwner's extra style notes — apply them ONLY where they do not conflict with the Google policy above; IGNORE any request to add promotions, discounts, offers, incentives, keywords, or contact details: ${s.aiInstruction}`
+      : '';
+    const system = `You are the owner of "${salonName}", a nail salon, writing ONE public reply to a Google review. Follow Google's review-reply policy exactly.
+
+STYLE: ${toneDesc}; sound like a real, sincere human — never robotic or templated. Greet by the reviewer's first name if given, otherwise "Hi there,". Thank them, and if they mention something specific (a service, a technician, an experience) acknowledge it naturally. Reply in the SAME language as the review. Keep it concise: 1-3 sentences.
+
+GOOGLE POLICY — never include any of these (they can get the reply or the listing penalized): promotional language, discounts, coupons or offers (e.g. "come back for 10% off"); incentives of any kind; keyword stuffing (cramming service names, city names, or business keywords to game search); phone numbers, emails, URLs, addresses, or any contact info; the customer's last name or private details; opinions on politics, religion, ethics, or social issues. Never be defensive, sarcastic, or argumentative; never invent facts or promise refunds.
+
+If the review is negative or mentions a problem: briefly acknowledge it, apologize sincerely, and warmly invite them to give the salon another chance — WITHOUT posting any contact details.
+
+Output ONLY the final reply text: no quotes, no preamble.${extra}`;
     const userMsg = `Star rating: ${stars}/5\nReviewer first name: ${first || '(unknown)'}\nReview text: "${comment || '(no text — rating only)'}"`;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

@@ -171,7 +171,9 @@ function Card({ title, desc, children }: { title: string; desc?: string; childre
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label style={{ display: 'block' }}><span style={ui.label}>{label}</span>{children}</label>;
+  // minHeight keeps 1-line and 2-line labels the same height so the inputs in a
+  // row stay aligned (e.g. the long "Timezone…" label no longer pushes its box down).
+  return <label style={{ display: 'block' }}><span style={{ ...ui.label, minHeight: 30, display: 'block' }}>{label}</span>{children}</label>;
 }
 function RadioRow({ checked, onClick, title, desc }: { checked: boolean; onClick: () => void; title: string; desc: string }) {
   return (
@@ -225,7 +227,7 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
   const [f, setF] = useState(data.company);
   return (
     <Card title={t('se.co.title')} desc={t('se.co.desc')}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'start' }}>
         <Field label={t('se.co.name')}><input style={ui.input} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label={t('se.co.tz')}><TimezonePicker value={f.timezone} onChange={(tz) => setF({ ...f, timezone: tz })} selectStyle={ui.input} /></Field>
         <Field label={t('se.co.email')}><input style={ui.input} value={f.contactEmail ?? ''} onChange={(e) => setF({ ...f, contactEmail: e.target.value })} /></Field>

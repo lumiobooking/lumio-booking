@@ -12,7 +12,7 @@ import { useLang } from '../../../lib/i18n';
 
 interface MConf {
   connected: boolean; pageId: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
-  aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number;
+  aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean;
 }
 interface MThread { id: string; senderId: string; lastText: string | null; handoff: boolean; updatedAt: string }
 
@@ -21,6 +21,14 @@ const DICT: Record<string, { vi: string; en: string }> = {
   title: { vi: 'Messenger — Trợ lý đặt lịch', en: 'Messenger booking bot' },
   subtitle: { vi: 'Trợ lý AI trên fanpage tự trò chuyện, xin thông tin và đặt lịch cho khách.', en: 'An AI assistant on your Facebook Page that chats with customers and books appointments.' },
   connectTitle: { vi: 'Kết nối Facebook Page', en: 'Connect your Facebook Page' },
+  oneClickHint: { vi: 'Bấm nút bên dưới, đăng nhập Facebook và chọn Page của tiệm — hệ thống tự lấy Page, Instagram và token. Không cần dán gì cả.', en: 'Click below, log in to Facebook and pick your salon Page — we grab the Page, Instagram and token automatically. Nothing to paste.' },
+  connectFb: { vi: 'Kết nối với Facebook', en: 'Connect with Facebook' },
+  reconnectFb: { vi: 'Kết nối lại Facebook', en: 'Reconnect Facebook' },
+  connecting: { vi: 'Đang mở Facebook…', en: 'Opening Facebook…' },
+  fbConnectedMsg: { vi: 'Đã kết nối Facebook thành công ✓', en: 'Facebook connected successfully ✓' },
+  fbErrorMsg: { vi: 'Kết nối Facebook thất bại', en: 'Facebook connection failed' },
+  advanced: { vi: 'Nhập thủ công (nâng cao)', en: 'Manual entry (advanced)' },
+  advancedHint: { vi: 'Chỉ dùng nếu bạn tự tạo token trong Meta. Hầu hết tiệm chỉ cần nút xanh phía trên.', en: 'Only if you create a token yourself in Meta. Most salons just need the blue button above.' },
   pageId: { vi: 'Facebook Page ID', en: 'Facebook Page ID' },
   pageIdPh: { vi: 'vd 1234567890', en: 'e.g. 1234567890' },
   igId: { vi: 'Instagram Business ID (tùy chọn)', en: 'Instagram Business ID (optional)' },
@@ -70,7 +78,37 @@ function Inner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [showManual, setShowManual] = useState(false);
   const [copied, setCopied] = useState('');
+
+  // Read the ?fb=connected|error the OAuth callback redirected back with.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const fb = p.get('fb');
+    if (!fb) return;
+    if (fb === 'connected') {
+      const page = p.get('page');
+      setNotice(`${DICT.fbConnectedMsg[lang as Lang]}${page ? ` — ${page}` : ''}`);
+    } else {
+      const msg = p.get('msg');
+      setError(`${DICT.fbErrorMsg[lang as Lang]}${msg ? `: ${decodeURIComponent(msg)}` : ''}`);
+    }
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [lang]);
+
+  async function connectFacebook() {
+    if (!token) return;
+    setConnecting(true); setError(null);
+    try {
+      const { url } = await apiFetch<{ url: string }>('/messenger/connect', { token });
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start Facebook connect');
+      setConnecting(false);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -114,6 +152,7 @@ function Inner() {
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('title')}</h1>
       <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}
+      {notice && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#22c55e', color: '#bbf7d0', fontSize: 13.5 }}>{notice}</div>}
 
       {/* Connect */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
@@ -123,28 +162,57 @@ function Inner() {
             ● {c.connected ? t('connected') : t('notConnected')}
           </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-          <div>
-            <label style={ui.label}>{t('pageId')}</label>
-            <input value={c.pageId} placeholder={t('pageIdPh')} onChange={(e) => setC({ ...c, pageId: e.target.value })} style={ui.input} />
+
+        {/* One-click OAuth (preferred) */}
+        {c.fbConfigured && (
+          <div style={{ marginBottom: 4 }}>
+            <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>{t('oneClickHint')}</p>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={connectFacebook} disabled={connecting} style={fbBtn}>
+                <span style={{ fontSize: 16, fontWeight: 800 }}>f</span>
+                {connecting ? t('connecting') : (c.connected ? t('reconnectFb') : t('connectFb'))}
+              </button>
+              {c.connected && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
+                  <input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
+                  {t('enable')}
+                </label>
+              )}
+            </div>
+            <button onClick={() => setShowManual((v) => !v)} style={{ ...ghost, marginTop: 14, fontSize: 12 }}>
+              {showManual ? '▾ ' : '▸ '}{t('advanced')}
+            </button>
           </div>
-          <div>
-            <label style={ui.label}>{t('igId')}</label>
-            <input value={c.igId} placeholder={t('igIdPh')} onChange={(e) => setC({ ...c, igId: e.target.value })} style={ui.input} />
+        )}
+
+        {/* Manual entry — always shown if FB app not configured, else collapsible */}
+        {(!c.fbConfigured || showManual) && (
+          <div style={{ marginTop: c.fbConfigured ? 12 : 0, paddingTop: c.fbConfigured ? 12 : 0, borderTop: c.fbConfigured ? '1px solid #334155' : 'none' }}>
+            {c.fbConfigured && <p style={{ color: '#64748b', fontSize: 11.5, margin: '0 0 12px' }}>{t('advancedHint')}</p>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <div>
+                <label style={ui.label}>{t('pageId')}</label>
+                <input value={c.pageId} placeholder={t('pageIdPh')} onChange={(e) => setC({ ...c, pageId: e.target.value })} style={ui.input} />
+              </div>
+              <div>
+                <label style={ui.label}>{t('igId')}</label>
+                <input value={c.igId} placeholder={t('igIdPh')} onChange={(e) => setC({ ...c, igId: e.target.value })} style={ui.input} />
+              </div>
+              <div>
+                <label style={ui.label}>{t('pageToken')}</label>
+                <input value={pageToken} placeholder={c.connected ? '••••••••' : t('pageTokenPh')} onChange={(e) => setPageToken(e.target.value)} style={ui.input} />
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
+              <input type="checkbox" checked={c.enabled} onChange={(e) => setC({ ...c, enabled: e.target.checked })} />
+              {t('enable')}
+            </label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
+              <button onClick={() => save({ pageToken: pageToken || undefined })} disabled={saving} style={ui.primaryBtn}>{t('save')}</button>
+              {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
+            </div>
           </div>
-          <div>
-            <label style={ui.label}>{t('pageToken')}</label>
-            <input value={pageToken} placeholder={c.connected ? '••••••••' : t('pageTokenPh')} onChange={(e) => setPageToken(e.target.value)} style={ui.input} />
-          </div>
-        </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
-          <input type="checkbox" checked={c.enabled} onChange={(e) => setC({ ...c, enabled: e.target.checked })} />
-          {t('enable')}
-        </label>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
-          <button onClick={() => save({ pageToken: pageToken || undefined })} disabled={saving} style={ui.primaryBtn}>{t('save')}</button>
-          {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
-        </div>
+        )}
         <p style={{ color: '#64748b', fontSize: 11.5, margin: '12px 0 0' }}>{t('pendingNote')}</p>
       </div>
 
@@ -201,4 +269,9 @@ function Inner() {
 
 const ghost: React.CSSProperties = {
   padding: '8px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12.5, cursor: 'pointer',
+};
+
+const fbBtn: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderRadius: 10,
+  border: 'none', background: '#1877F2', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
 };

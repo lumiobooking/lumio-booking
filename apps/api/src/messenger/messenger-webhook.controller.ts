@@ -27,4 +27,22 @@ export class MessengerWebhookController {
     this.svc.handleWebhook(body).catch(() => undefined);
     return 'EVENT_RECEIVED';
   }
+
+  /**
+   * Facebook Login for Business redirect target. Meta sends the salon admin back
+   * here with ?code&state after they pick their Page; we exchange the code and
+   * bounce them to the salon Messenger settings page. Public because Meta calls it
+   * without our JWT — the signed `state` proves which tenant started the flow.
+   */
+  @Public()
+  @Get('oauth/callback')
+  async oauthCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ) {
+    const url = await this.svc.oauthCallback(code || '', state || '', error || '');
+    res.redirect(url);
+  }
 }

@@ -17,6 +17,11 @@ export class MessengerController {
     return this.svc.get(user);
   }
 
+  @Get('connect')
+  connect(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.oauthUrl(user);
+  }
+
   @Post('settings')
   update(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateMessengerDto) {
     return this.svc.updateSettings(user, dto);

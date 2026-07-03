@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
@@ -63,6 +64,30 @@ export class MessengerService {
   private apiBase(): string {
     return (process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || 'https://lumio-api-uqm6.onrender.com').replace(/\/$/, '');
   }
+  private webBase(): string {
+    const cors = (process.env.CORS_ORIGINS || '').split(',')[0].trim();
+    return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
+  }
+  private appId(): string { return process.env.FB_APP_ID || ''; }
+  private appSecret(): string { return process.env.FB_APP_SECRET || ''; }
+  private oauthRedirect(): string { return `${this.apiBase()}/api/messenger/oauth/callback`; }
+  private signSecret(): string { return process.env.JWT_SECRET || process.env.APP_SECRET || 'lumio-fb-signing'; }
+  private signState(tenantId: string): string {
+    const payload = Buffer.from(JSON.stringify({ t: tenantId, exp: Date.now() + 600_000 })).toString('base64url');
+    const sig = crypto.createHmac('sha256', this.signSecret()).update(payload).digest('base64url');
+    return `${payload}.${sig}`;
+  }
+  private verifyState(state: string): string | null {
+    const [payload, sig] = (state || '').split('.');
+    if (!payload || !sig) return null;
+    const expect = crypto.createHmac('sha256', this.signSecret()).update(payload).digest('base64url');
+    if (sig !== expect) return null;
+    try {
+      const d = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { t: string; exp: number };
+      if (!d.exp || Date.now() > d.exp) return null;
+      return d.t;
+    } catch { return null; }
+  }
 
   // ---- admin (salon) -------------------------------------------------------
   async get(user: AuthenticatedUser) {
@@ -79,8 +104,72 @@ export class MessengerService {
       aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
       verifyToken: this.verifyToken(),
+      fbConfigured: Boolean(this.appId() && this.appSecret()),
       threads,
     };
+  }
+
+  // ---- One-click OAuth (Facebook Login for Business) -----------------------
+  async oauthUrl(user: AuthenticatedUser): Promise<{ url: string }> {
+    const tenantId = this.tenantId(user);
+    if (!this.appId() || !this.appSecret()) {
+      throw new BadRequestException('Facebook app not configured (set FB_APP_ID and FB_APP_SECRET). Contact Lumio.');
+    }
+    const scope = [
+      'pages_show_list', 'pages_messaging', 'pages_manage_metadata', 'pages_read_engagement',
+      'instagram_basic', 'instagram_manage_messages', 'business_management',
+    ].join(',');
+    const params = new URLSearchParams({
+      client_id: this.appId(), redirect_uri: this.oauthRedirect(), response_type: 'code',
+      state: this.signState(tenantId), scope,
+    });
+    return { url: `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}` };
+  }
+
+  /** Facebook redirects here with ?code&state. Exchange it, grab the salon's Page
+   *  + linked Instagram, store the Page token and subscribe the Page to our app. */
+  async oauthCallback(code: string, state: string, error?: string): Promise<string> {
+    const web = this.webBase();
+    const back = (q: string) => `${web}/salon/messenger?${q}`;
+    if (error) return back(`fb=error&msg=${encodeURIComponent(error)}`);
+    const tenantId = this.verifyState(state);
+    if (!tenantId || !code) return back('fb=error&msg=invalid_state');
+    try {
+      const tokRes = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${this.appId()}&client_secret=${this.appSecret()}&redirect_uri=${encodeURIComponent(this.oauthRedirect())}&code=${encodeURIComponent(code)}`,
+      );
+      const tok = (await tokRes.json()) as { access_token?: string; error?: { message?: string } };
+      if (!tok.access_token) return back(`fb=error&msg=${encodeURIComponent(tok.error?.message || 'no_token')}`);
+      const pagesRes = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
+      );
+      const pagesData = (await pagesRes.json()) as { data?: { id: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[] };
+      const pages = pagesData.data || [];
+      if (!pages.length) return back('fb=error&msg=no_pages');
+      const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+      const chosen = pages.find((p) => p.id === cur?.pageId) || pages[0];
+      if (!chosen.access_token) return back('fb=error&msg=no_page_token');
+      const igId = chosen.instagram_business_account?.id || null;
+      await this.prisma.messengerConnection.upsert({
+        where: { tenantId },
+        update: { pageId: chosen.id, igId, pageToken: chosen.access_token, enabled: true },
+        create: { tenantId, pageId: chosen.id, igId, pageToken: chosen.access_token, enabled: true },
+      });
+      // Subscribe the Page to our app's webhook so messages start flowing.
+      await fetch(
+        `https://graph.facebook.com/v21.0/${chosen.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions&access_token=${encodeURIComponent(chosen.access_token)}`,
+        { method: 'POST' },
+      ).catch(() => undefined);
+      await this.audit(tenantId, 'messenger.connected');
+      return back(`fb=connected&page=${encodeURIComponent(chosen.name || '')}`);
+    } catch (e) {
+      this.logger.warn(`fb oauth failed: ${String(e).slice(0, 160)}`);
+      return back('fb=error&msg=exception');
+    }
+  }
+
+  private async audit(tenantId: string, action: string): Promise<void> {
+    try { await this.prisma.auditLog.create({ data: { tenantId, action, resourceType: 'messenger' } }); } catch { /* never break */ }
   }
 
   async updateSettings(

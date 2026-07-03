@@ -263,16 +263,30 @@ export class GoogleReviewsService {
     const tenantId = this.tenantId(user);
     const s = await this.getSettings(tenantId);
     const token = await this.accessToken(s);
-    const accounts = await fetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
+    // Surface the real Google error (e.g. 403 SERVICE_DISABLED / quota) instead of
+    // silently returning an empty list, so setup problems are easy to diagnose.
+    const accRes = await fetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
       headers: { authorization: `Bearer ${token}` },
-    }).then((r) => r.json()).catch(() => ({}));
-    const accountId = ((accounts as { accounts?: { name?: string }[] }).accounts?.[0]?.name) || s.accountId || '';
-    if (!accountId) return { accountId: '', locations: [] };
+    });
+    if (!accRes.ok) {
+      const t = await accRes.text().catch(() => '');
+      throw new BadRequestException(`Google accounts call failed (${accRes.status}). ${t.slice(0, 240)}`);
+    }
+    const accounts = (await accRes.json()) as { accounts?: { name?: string }[] };
+    const accountId = accounts.accounts?.[0]?.name || s.accountId || '';
+    if (!accountId) {
+      throw new BadRequestException('This Google login manages no Business Profile. Sign in with the account that owns the salon on Google.');
+    }
     const locRes = await fetch(
       `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations?readMask=name,title&pageSize=100`,
       { headers: { authorization: `Bearer ${token}` } },
-    ).then((r) => r.json()).catch(() => ({}));
-    const locations = (((locRes as { locations?: { name?: string; title?: string }[] }).locations) || [])
+    );
+    if (!locRes.ok) {
+      const t = await locRes.text().catch(() => '');
+      throw new BadRequestException(`Google locations call failed (${locRes.status}). ${t.slice(0, 240)}`);
+    }
+    const data = (await locRes.json()) as { locations?: { name?: string; title?: string }[] };
+    const locations = (data.locations || [])
       .map((l) => ({ name: l.name || '', title: l.title || l.name || '' }))
       .filter((l) => l.name);
     return { accountId, locations };

@@ -1149,6 +1149,7 @@ model MessengerConnection {
   enabled   Boolean @default(false)
   greeting  String? // optional opening line
   aiInstruction String? // brand-voice / extra guidance for the bot
+  botFacts  Json  @default("[]") // structured FAQ facts [{label,value,on}] injected into the bot
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

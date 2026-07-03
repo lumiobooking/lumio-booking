@@ -38,6 +38,7 @@ function wallToUtcISO(local: string, tz: string): string {
 }
 
 type Turn = { role: 'user' | 'assistant'; content: string };
+interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
@@ -103,6 +104,7 @@ export class MessengerService {
       enabled: c?.enabled ?? false,
       greeting: c?.greeting ?? '',
       aiInstruction: c?.aiInstruction ?? '',
+      botFacts: Array.isArray(c?.botFacts) ? (c!.botFacts as unknown as BotFact[]) : [],
       aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
       verifyToken: this.verifyToken(),
@@ -195,7 +197,7 @@ export class MessengerService {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string },
+    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string; botFacts?: BotFact[] },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -209,6 +211,7 @@ export class MessengerService {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur?.enabled ?? false,
       greeting: typeof dto.greeting === 'string' ? dto.greeting.slice(0, 500) : cur?.greeting ?? null,
       aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur?.aiInstruction ?? null,
+      botFacts: (Array.isArray(dto.botFacts) ? dto.botFacts.slice(0, 40) : (cur?.botFacts ?? [])) as unknown as Prisma.InputJsonValue,
     };
     if (!pageId) throw new BadRequestException('Enter your Facebook Page ID.');
     await this.prisma.messengerConnection.upsert({
@@ -275,7 +278,8 @@ export class MessengerService {
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
     let reply: string;
     try {
-      reply = await this.runAgent(conn.tenantId, conn.aiInstruction || '', history, text);
+      const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
+      reply = await this.runAgent(conn.tenantId, instruction, history, text);
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
       reply = 'Thanks for your message! A team member will get back to you shortly. 💕';
@@ -372,7 +376,15 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       );
       const ordered = [1, 2, 3, 4, 5, 6, 0].map((i) => hrs[i]).filter(Boolean); // Mon..Sun
       if (ordered.length) lines.push('Business hours (only take bookings within these):', ...ordered);
+      const lead = rules.minLeadHours ?? 0;
+      const adv = rules.maxAdvanceDays ?? 0;
+      if (lead || adv) lines.push(`Booking window: at least ${lead}h in advance, up to ${adv} days ahead.`);
     } catch { /* hours are best-effort */ }
+    try {
+      const extra = await this.settings.getCompanyExtra(tenantId);
+      if (extra?.address) lines.push(`Address: ${extra.address}`);
+      if (extra?.website) lines.push(`Website: ${extra.website}`);
+    } catch { /* address is best-effort */ }
     if (phone) lines.push(`Salon phone: ${phone}`);
     if (email) lines.push(`Salon email: ${email}`);
     return lines.join('\n');
@@ -384,6 +396,15 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
     const ampm = h < 12 ? 'AM' : 'PM';
     const h12 = h % 12 === 0 ? 12 : h % 12;
     return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  }
+
+  /** Turn the salon's ticked FAQ facts into prompt lines the bot can answer from. */
+  private factsText(botFacts: unknown): string {
+    if (!Array.isArray(botFacts)) return '';
+    return (botFacts as BotFact[])
+      .filter((f) => f && f.on && typeof f.value === 'string' && f.value.trim())
+      .map((f) => `- ${String(f.label).trim()}: ${f.value.trim()}`)
+      .join('\n');
   }
 
   private async runTool(tenantId: string, tz: string, name: string, input: Record<string, unknown>): Promise<string> {

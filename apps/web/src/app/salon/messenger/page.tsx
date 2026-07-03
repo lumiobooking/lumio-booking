@@ -10,11 +10,29 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 
+interface BotFact { label: string; value: string; on: boolean }
 interface MConf {
   connected: boolean; pageId: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
-  aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean;
+  aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
 }
 interface MThread { id: string; senderId: string; lastText: string | null; handoff: boolean; updatedAt: string }
+interface FactRow extends BotFact { custom: boolean }
+
+// Common things customers ask a nail salon. label = sent to the bot (English);
+// vi/en = what the salon admin sees; ph = example hint.
+const FACT_DEFS: { label: string; vi: string; en: string; phVi: string; phEn: string }[] = [
+  { label: 'Parking', vi: 'Chỗ đậu xe', en: 'Parking', phVi: 'vd: bãi miễn phí trước tiệm', phEn: 'e.g. free lot in front' },
+  { label: 'Languages spoken', vi: 'Ngôn ngữ nhân viên', en: 'Languages spoken', phVi: 'vd: tiếng Việt & tiếng Anh', phEn: 'e.g. Vietnamese & English' },
+  { label: 'Specialties', vi: 'Chuyên môn', en: 'Specialties', phVi: 'vd: gel, dip, bột, nail art', phEn: 'e.g. gel, dip, acrylic, nail art' },
+  { label: 'Payment methods', vi: 'Thanh toán', en: 'Payment methods', phVi: 'vd: thẻ, tiền mặt, Zelle, Apple Pay', phEn: 'e.g. card, cash, Zelle, Apple Pay' },
+  { label: 'Walk-ins', vi: 'Nhận khách vãng lai', en: 'Walk-ins', phVi: 'vd: có nhận / chỉ đặt trước', phEn: 'e.g. welcome / by appointment' },
+  { label: 'Cancellation policy', vi: 'Chính sách hủy / trễ', en: 'Cancellation policy', phVi: "vd: báo trước 2 tiếng; trễ 15' phải dời", phEn: 'e.g. 2h notice; 15+ min late reschedules' },
+  { label: 'Deposit', vi: 'Đặt cọc', en: 'Deposit', phVi: 'vd: cọc $20 cho nhóm', phEn: 'e.g. $20 deposit for groups' },
+  { label: 'Promotions', vi: 'Ưu đãi / gift card / tích điểm', en: 'Promotions / gift cards / loyalty', phVi: 'vd: giảm 10% Thứ 3–4; có gift card', phEn: 'e.g. 10% off Tue–Wed; gift cards' },
+  { label: 'Kids services', vi: 'Trẻ em', en: 'Kids services', phVi: 'vd: có làm mani/pedi cho bé', phEn: 'e.g. mani/pedi for children' },
+  { label: 'Groups / parties', vi: 'Nhóm / tiệc', en: 'Groups / parties', phVi: 'vd: nhận nhóm 4–6, đặt trước', phEn: 'e.g. 4–6 people, book ahead' },
+  { label: 'Request a technician', vi: 'Yêu cầu thợ cụ thể', en: 'Request a technician', phVi: 'vd: được yêu cầu thợ quen', phEn: 'e.g. can request your usual tech' },
+];
 
 type Lang = 'vi' | 'en';
 const DICT: Record<string, { vi: string; en: string }> = {
@@ -52,8 +70,14 @@ const DICT: Record<string, { vi: string; en: string }> = {
   behaviorTitle: { vi: 'Cách bot trả lời', en: 'Bot behaviour' },
   greeting: { vi: 'Lời chào (tùy chọn)', en: 'Greeting (optional)' },
   greetingPh: { vi: 'vd: Chào bạn! Bạn muốn đặt dịch vụ gì hôm nay ạ?', en: 'e.g. Hi! What would you like to book today?' },
-  aiInstr: { vi: 'Hướng dẫn AI (giọng văn, dịch vụ đặc trưng…)', en: 'AI instructions (voice, specialties…)' },
-  aiInstrPh: { vi: 'vd: Tiệm gia đình, chuyên gel & dip. Luôn thân thiện, hỏi khung giờ ưu tiên.', en: 'e.g. Family-owned, gel & dip specialists. Always warm; ask for a preferred time.' },
+  infoTitle: { vi: 'Thông tin tiệm cho bot', en: 'Salon info for the bot' },
+  infoHelp: { vi: 'Bot đã tự biết: giờ mở cửa, dịch vụ & giá, SĐT/email, địa chỉ (từ Settings). Tick những mục dưới đây và điền câu trả lời để bot trả lời khách đúng. Có thể tự thêm mục mới.', en: 'The bot already knows hours, services & prices, phone/email and address (from Settings). Tick the items below and fill the answer so the bot can reply. You can add your own.' },
+  addItem: { vi: '+ Thêm mục', en: '+ Add item' },
+  saveInfo: { vi: 'Lưu thông tin', en: 'Save info' },
+  customLabelPh: { vi: 'Tên mục (vd: Wifi)', en: 'Item name (e.g. Wifi)' },
+  factValuePh: { vi: 'Nhập câu trả lời…', en: 'Enter the answer…' },
+  extraNotes: { vi: 'Ghi chú thêm cho bot (tự do)', en: 'Extra notes for the bot (free text)' },
+  extraNotesPh: { vi: 'vd: giọng thân thiện, xưng em; luôn hỏi khung giờ ưu tiên.', en: 'e.g. warm tone; always ask for a preferred time.' },
   aiOn: { vi: '✨ AI đang bật', en: '✨ AI on' },
   aiOff: { vi: 'chưa có ANTHROPIC_API_KEY → bot chỉ báo "sẽ có người trả lời"', en: 'no ANTHROPIC_API_KEY → bot only says a human will reply' },
   convosTitle: { vi: 'Cuộc trò chuyện', en: 'Conversations' },
@@ -85,6 +109,32 @@ function Inner() {
   const [connecting, setConnecting] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [copied, setCopied] = useState('');
+  const [facts, setFacts] = useState<FactRow[]>([]);
+  const [factsInit, setFactsInit] = useState(false);
+
+  // Seed the checklist from stored facts once the config loads: every predefined
+  // row shows (ticked/filled if saved), plus any custom rows the salon added.
+  useEffect(() => {
+    if (!c || factsInit) return;
+    const stored = Array.isArray(c.botFacts) ? c.botFacts : [];
+    const byLabel = new Map(stored.map((f) => [f.label, f]));
+    const rows: FactRow[] = FACT_DEFS.map((d) => {
+      const s = byLabel.get(d.label);
+      return { label: d.label, value: s?.value ?? '', on: s?.on ?? false, custom: false };
+    });
+    for (const s of stored) {
+      if (!FACT_DEFS.some((d) => d.label === s.label)) rows.push({ label: s.label, value: s.value ?? '', on: s.on ?? true, custom: true });
+    }
+    setFacts(rows);
+    setFactsInit(true);
+  }, [c, factsInit]);
+
+  const factDef = (label: string) => FACT_DEFS.find((d) => d.label === label);
+  const factLabel = (label: string) => { const d = factDef(label); return d ? d[lang as Lang] : label; };
+  const factPh = (label: string) => { const d = factDef(label); return d ? (lang === 'vi' ? d.phVi : d.phEn) : DICT.factValuePh[lang as Lang]; };
+  const setFact = (i: number, patch: Partial<FactRow>) => setFacts((fs) => fs.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+  const addFact = () => setFacts((fs) => [...fs, { label: '', value: '', on: true, custom: true }]);
+  const removeFact = (i: number) => setFacts((fs) => fs.filter((_, idx) => idx !== i));
 
   // Read the ?fb=connected|error the OAuth callback redirected back with.
   useEffect(() => {
@@ -149,6 +199,12 @@ function Inner() {
       setC(next); setPageToken(''); setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch (e) { setError(e instanceof Error ? e.message : 'Save failed'); }
     finally { setSaving(false); }
+  }
+  async function saveFacts() {
+    const payload = facts
+      .filter((f) => f.label.trim() && (f.value.trim() || f.on))
+      .map((f) => ({ label: f.label.trim(), value: f.value.trim(), on: f.on }));
+    await save({ botFacts: payload });
   }
   async function handoff(id: string, val: boolean) {
     try { await apiFetch(`/messenger/threads/${id}/handoff`, { method: 'POST', token, body: { handoff: val } }); await load(); }
@@ -258,8 +314,31 @@ function Inner() {
         </div>
         <label style={ui.label}>{t('greeting')}</label>
         <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
-        <label style={ui.label}>{t('aiInstr')}</label>
-        <textarea value={c.aiInstruction} placeholder={t('aiInstrPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+        <label style={ui.label}>{t('extraNotes')}</label>
+        <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+      </div>
+
+      {/* Salon info — tick + fill so the bot answers common questions */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('infoTitle')}</div>
+        <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 12px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {facts.map((f, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <input type="checkbox" checked={f.on} onChange={(e) => setFact(i, { on: e.target.checked })} style={{ flexShrink: 0, width: 16, height: 16 }} />
+              {f.custom
+                ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />
+                : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? '#e2e8f0' : '#94a3b8' }}>{factLabel(f.label)}</span>}
+              <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
+              {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: '#fca5a5', borderColor: '#7f1d1d' }}>✕</button>}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+          <button onClick={addFact} style={ghost}>{t('addItem')}</button>
+          <button onClick={saveFacts} disabled={saving} style={ui.primaryBtn}>{t('saveInfo')}</button>
+          {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
+        </div>
       </div>
 
       {/* Conversations */}

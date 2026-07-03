@@ -20,6 +20,7 @@ export interface GbrSettings {
   refreshToken: string; // secret (never sent to the client)
   accountId: string; // "accounts/123"
   locationId: string; // "locations/456"
+  locationTitle: string; // friendly name of the chosen location (shown in the UI)
   connectedEmail: string;
   autoMinStars: number; // >= this → draft/auto reply (default 4)
   alertMaxStars: number; // <= this → alert manager, no auto reply (default 3)
@@ -30,7 +31,7 @@ export interface GbrSettings {
 }
 
 const DEFAULTS: GbrSettings = {
-  enabled: false, connected: false, refreshToken: '', accountId: '', locationId: '',
+  enabled: false, connected: false, refreshToken: '', accountId: '', locationId: '', locationTitle: '',
   connectedEmail: '', autoMinStars: 4, alertMaxStars: 3, approveFirst: true,
   alertEmail: '', tone: 'warm', lastSyncAt: null,
 };
@@ -128,6 +129,7 @@ export class GoogleReviewsService {
       connectedEmail: s.connectedEmail,
       accountId: s.accountId,
       locationId: s.locationId,
+      locationTitle: s.locationTitle,
       hasLocation: Boolean(s.accountId && s.locationId),
       autoMinStars: s.autoMinStars,
       alertMaxStars: s.alertMaxStars,
@@ -311,9 +313,9 @@ export class GoogleReviewsService {
     if (accountId && loc) await this.writeSettings(tenantId, { accountId, locationId: loc });
   }
 
-  async setLocation(user: AuthenticatedUser, accountId: string, locationId: string) {
+  async setLocation(user: AuthenticatedUser, accountId: string, locationId: string, locationTitle?: string) {
     const tenantId = this.tenantId(user);
-    await this.writeSettings(tenantId, { accountId: accountId.trim(), locationId: locationId.trim() });
+    await this.writeSettings(tenantId, { accountId: accountId.trim(), locationId: locationId.trim(), locationTitle: (locationTitle || '').trim() });
     await this.audit(tenantId, user.userId, 'google_reviews.location_set');
     return this.get(user);
   }

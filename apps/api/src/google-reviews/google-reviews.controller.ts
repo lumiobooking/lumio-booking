@@ -45,7 +45,7 @@ export class GoogleReviewsController {
 
   @Post('location')
   setLocation(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetLocationDto) {
-    return this.svc.setLocation(user, dto.accountId, dto.locationId);
+    return this.svc.setLocation(user, dto.accountId, dto.locationId, dto.locationTitle);
   }
 
   @Post('sync')

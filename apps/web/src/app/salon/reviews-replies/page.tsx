@@ -16,7 +16,7 @@ import { useLang } from '../../../lib/i18n';
 
 interface GrSettings {
   enabled: boolean; connected: boolean; connectedEmail: string;
-  accountId: string; locationId: string; hasLocation: boolean;
+  accountId: string; locationId: string; locationTitle: string; hasLocation: boolean;
   autoMinStars: number; alertMaxStars: number; approveFirst: boolean;
   alertEmail: string; tone: string; lastSyncAt: string | null;
   clientConfigured: boolean; redirectUri: string;
@@ -48,6 +48,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   changeLoc: { vi: 'Đổi địa điểm', en: 'Change location' },
   filterLoc: { vi: 'Lọc theo tên tiệm…', en: 'Filter by salon name…' },
   locCount: { vi: 'tiệm', en: 'shown' },
+  pickFirst: { vi: 'Hãy chọn một tiệm trong danh sách trước.', en: 'Pick a location from the list first.' },
   ruleTitle: { vi: 'Quy tắc trả lời', en: 'Reply rule' },
   ruleAuto: { vi: 'Tự soạn trả lời cho đánh giá từ', en: 'Auto-draft a reply for reviews of' },
   ruleStarUp: { vi: '★ trở lên', en: '★ and up' },
@@ -169,8 +170,16 @@ function Inner() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   }
   async function saveLocation() {
-    if (!pickLoc) return;
-    setS(await apiFetch<GrSettings>('/google-reviews/location', { method: 'POST', token, body: { accountId: pickAccount, locationId: pickLoc } }));
+    if (!pickLoc) { setError(t('pickFirst')); return; }
+    setError(null); setSaving(true); setSaved(false);
+    try {
+      const title = (locations ?? []).find((l) => l.name === pickLoc)?.title || '';
+      const next = await apiFetch<GrSettings>('/google-reviews/location', { method: 'POST', token, body: { accountId: pickAccount, locationId: pickLoc, locationTitle: title } });
+      setS(next); setSaved(true); setTimeout(() => setSaved(false), 2500);
+      setLocations(null); setLocFilter(''); // collapse picker → shows the "Change location" button + saved title
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally { setSaving(false); }
   }
   async function saveSettings(patch: Partial<GrSettings>) {
     if (!s) return;
@@ -248,6 +257,9 @@ function Inner() {
                 {t('pickLocation')}
                 {s.hasLocation && <span style={{ color: '#22c55e', fontWeight: 500, marginLeft: 8, fontSize: 12.5 }}>✓ {t('locSet')}</span>}
               </div>
+              {s.hasLocation && s.locationTitle && (
+                <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 10 }}>📍 <strong>{s.locationTitle}</strong>{saved && <span style={{ color: '#22c55e', marginLeft: 8, fontSize: 12 }}>{t('saved')}</span>}</div>
+              )}
               {locations === null ? (
                 <button onClick={loadLocations} style={ui.primaryBtn}>{s.hasLocation ? t('changeLoc') : t('loadLocations')}</button>
               ) : locations.length === 0 ? (

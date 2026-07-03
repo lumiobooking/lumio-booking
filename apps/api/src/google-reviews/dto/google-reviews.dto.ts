@@ -15,6 +15,7 @@ export class UpdateGbrSettingsDto {
 export class SetLocationDto {
   @IsString() @MaxLength(200) accountId!: string;
   @IsString() @MaxLength(200) locationId!: string;
+  @IsOptional() @IsString() @MaxLength(300) locationTitle?: string;
 }
 
 export class ApproveReplyDto {

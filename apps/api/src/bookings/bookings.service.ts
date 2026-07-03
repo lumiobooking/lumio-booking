@@ -216,12 +216,19 @@ export class BookingsService {
    * from the API key, not a logged-in user). Race-safe when a staff is given.
    */
   async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null) {
-    // Every booking needs a way to reach the customer: a valid email OR phone.
-    // (Email format is enforced by @IsEmail on the DTO; we check phone shape and
-    // the at-least-one rule here so it holds for both the public and admin flows.)
+    // Contact rules. Online (public) customer bookings MUST include a phone number
+    // — it is the salon's primary way to reach the client and it cuts down on spam
+    // bookings. Admin-created bookings only need at least one contact (email OR
+    // phone) so staff aren't blocked. Receiving marketing texts is never required
+    // (that opt-in is separate), so requiring a phone stays TCPA-compliant.
     const contactEmail = dto.customerEmail?.trim();
     const contactPhone = dto.customerPhone?.trim();
-    if (!contactEmail && !contactPhone) {
+    const isPublicBooking = actorUserId === null;
+    if (isPublicBooking) {
+      if (!contactPhone) {
+        throw new BadRequestException('A phone number is required to book.');
+      }
+    } else if (!contactEmail && !contactPhone) {
       throw new BadRequestException('Please provide an email address or a phone number.');
     }
     if (contactPhone && !isValidPhoneNumber(contactPhone)) {

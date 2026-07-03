@@ -178,6 +178,19 @@ export class MessengerService {
     try { await this.prisma.auditLog.create({ data: { tenantId, action, resourceType: 'messenger' } }); } catch { /* never break */ }
   }
 
+  /** Fully disconnect the salon's Page: unsubscribe our app from its webhook
+   *  (best-effort) and delete the stored connection so no token remains. */
+  async disconnect(user: AuthenticatedUser): Promise<{ connected: false }> {
+    const tenantId = this.tenantId(user);
+    const c = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+    if (c?.pageId && c?.pageToken) {
+      await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageToken)}`, { method: 'DELETE' }).catch(() => undefined);
+    }
+    await this.prisma.messengerConnection.deleteMany({ where: { tenantId } });
+    await this.audit(tenantId, 'messenger.disconnected');
+    return { connected: false };
+  }
+
   async updateSettings(
     user: AuthenticatedUser,
     dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string },
@@ -286,7 +299,8 @@ export class MessengerService {
     const system = `You are the friendly booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger.
 Goal: help them book an appointment. Be warm, concise (1-3 short sentences), and reply in the SAME language the customer uses.
 To book you MUST collect: their name, their phone number, which service, and a specific date & time. Ask for whatever is missing, one or two things at a time.
-Use the get_services tool to tell them what's available and to get service ids. When you have name + phone + service + a specific date/time, call create_booking. After it succeeds, confirm the details warmly.
+You MAY also ask for their email so the salon can send an email confirmation — this is OPTIONAL; if they skip or decline, book anyway without it.
+Use the get_services tool to tell them what's available and to get service ids. When you have name + phone + service + a specific date/time, call create_booking (include their email if they gave one). After it succeeds, confirm the details warmly and let them know a confirmation is on its way.
 The salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.
 Never invent prices, availability, or promises. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
 
@@ -302,6 +316,7 @@ Never invent prices, availability, or promises. If the customer is upset or asks
             customerPhone: { type: 'string' },
             serviceId: { type: 'string' },
             localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00' },
+            customerEmail: { type: 'string', description: 'Optional. The customer email for an email confirmation; omit entirely if they did not give one.' },
           },
           required: ['customerFirstName', 'customerPhone', 'serviceId', 'localDateTime'],
         },
@@ -358,12 +373,17 @@ Never invent prices, availability, or promises. If the customer is upset or asks
         const phone = String(input.customerPhone || '').trim();
         const serviceId = String(input.serviceId || '').trim();
         const local = String(input.localDateTime || '').trim();
+        const email = String(input.customerEmail || '').trim();
         if (!firstName || !phone || !serviceId || !local) return 'Missing required info; ask the customer for what is missing.';
         const startTime = wallToUtcISO(local, tz);
-        const dto = { serviceId, startTime, customerFirstName: firstName, customerPhone: phone } as CreateBookingDto;
+        const dto = {
+          serviceId, startTime, customerFirstName: firstName, customerPhone: phone,
+          ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
+        } as CreateBookingDto;
         const booking = await this.bookings.createForTenant(tenantId, dto, null);
         const b = booking as { id?: string };
-        return `SUCCESS. Appointment created (id ${b.id}). Confirm the service, date and time back to the customer warmly.`;
+        const manageUrl = b.id ? this.bookings.buildApptManageUrl(b.id) : '';
+        return `SUCCESS. Appointment created (id ${b.id}). Confirm the service, date and time back to the customer warmly${manageUrl ? `, and share this link so they can view or cancel their appointment: ${manageUrl}` : ''}.`;
       }
       return `Unknown tool ${name}.`;
     } catch (e) {

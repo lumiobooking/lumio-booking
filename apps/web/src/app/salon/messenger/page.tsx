@@ -24,6 +24,9 @@ const DICT: Record<string, { vi: string; en: string }> = {
   oneClickHint: { vi: 'Bấm nút bên dưới, đăng nhập Facebook và chọn Page của tiệm — hệ thống tự lấy Page, Instagram và token. Không cần dán gì cả.', en: 'Click below, log in to Facebook and pick your salon Page — we grab the Page, Instagram and token automatically. Nothing to paste.' },
   connectFb: { vi: 'Kết nối với Facebook', en: 'Connect with Facebook' },
   reconnectFb: { vi: 'Kết nối lại Facebook', en: 'Reconnect Facebook' },
+  disconnectFb: { vi: 'Ngắt kết nối', en: 'Disconnect' },
+  disconnectConfirm: { vi: 'Ngắt kết nối Facebook Page khỏi tiệm này? Bot sẽ ngừng trả lời cho đến khi kết nối lại.', en: 'Disconnect this Facebook Page from the salon? The bot will stop replying until you reconnect.' },
+  disconnected: { vi: 'Đã ngắt kết nối Facebook.', en: 'Facebook disconnected.' },
   connecting: { vi: 'Đang mở Facebook…', en: 'Opening Facebook…' },
   fbConnectedMsg: { vi: 'Đã kết nối Facebook thành công ✓', en: 'Facebook connected successfully ✓' },
   fbErrorMsg: { vi: 'Kết nối Facebook thất bại', en: 'Facebook connection failed' },
@@ -110,6 +113,18 @@ function Inner() {
     }
   }
 
+  async function disconnectFacebook() {
+    if (!token || !window.confirm(DICT.disconnectConfirm[lang as Lang])) return;
+    setError(null); setNotice(null);
+    try {
+      await apiFetch('/messenger/disconnect', { method: 'POST', token });
+      setNotice(DICT.disconnected[lang as Lang]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Disconnect failed');
+    }
+  }
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
@@ -177,6 +192,11 @@ function Inner() {
                   <input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
                   {t('enable')}
                 </label>
+              )}
+              {c.connected && (
+                <button onClick={disconnectFacebook} style={{ ...ghost, borderColor: '#7f1d1d', color: '#fca5a5', marginLeft: 'auto' }}>
+                  {t('disconnectFb')}
+                </button>
               )}
             </div>
             <button onClick={() => setShowManual((v) => !v)} style={{ ...ghost, marginTop: 14, fontSize: 12 }}>

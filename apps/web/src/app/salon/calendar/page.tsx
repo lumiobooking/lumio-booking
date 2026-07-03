@@ -63,6 +63,19 @@ function Inner() {
   const [selected, setSelected] = useState<Booking | null>(null);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  // Salon timezone so every appointment renders in the SALON's local time, never
+  // the admin device's timezone (owners often manage US salons from abroad).
+  const [tz, setTz] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ company?: { timezone?: string } }>('/settings', { token })
+      .then((s) => setTz(s.company?.timezone || undefined))
+      .catch(() => undefined);
+  }, [token]);
+  const fmtT = useCallback(
+    (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }),
+    [tz],
+  );
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -85,17 +98,17 @@ function Inner() {
   const byDay = useMemo(() => {
     const map = new Map<string, Booking[]>();
     for (const b of bookings) {
-      const key = new Date(b.startTime).toDateString();
+      const key = dayKeyTz(new Date(b.startTime), tz);
       const arr = map.get(key) ?? [];
       arr.push(b);
       map.set(key, arr);
     }
     for (const arr of map.values()) arr.sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
     return map;
-  }, [bookings]);
+  }, [bookings, tz]);
 
   const todayStats = useMemo(() => {
-    const list = byDay.get(today.toDateString()) ?? [];
+    const list = byDay.get(cellKey(today)) ?? [];
     const count = (k: string) => list.filter((b) => statusBucket(b.status).key === k).length;
     return { total: list.length, pending: count('Pending'), arrived: count('Arrived') };
   }, [byDay, today]);
@@ -147,10 +160,10 @@ function Inner() {
         /* Phones: a clean day-by-day agenda (only days that have appointments). */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(() => {
-            const withItems = days.filter((d): d is Date => !!d && (byDay.get(d.toDateString())?.length ?? 0) > 0);
+            const withItems = days.filter((d): d is Date => !!d && (byDay.get(cellKey(d))?.length ?? 0) > 0);
             if (withItems.length === 0) return <p style={{ color: '#64748b', fontSize: 14, padding: '20px 0', textAlign: 'center' }}>{t('cal.noneThisMonth')}</p>;
             return withItems.map((d) => {
-              const items = byDay.get(d.toDateString()) ?? [];
+              const items = byDay.get(cellKey(d)) ?? [];
               const isToday = d.getTime() === today.getTime();
               return (
                 <div key={d.toDateString()} style={{ ...ui.card, padding: 12 }}>
@@ -163,7 +176,7 @@ function Inner() {
                       return (
                         <div key={b.id} onClick={() => setSelected(b)}
                           style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
-                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{new Date(b.startTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
+                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{fmtT(b.startTime)}</span>
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{b.service?.name ? ' · ' + b.service.name : ''}</span>
                           <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
                         </div>
@@ -182,7 +195,7 @@ function Inner() {
           <div key={dow} style={{ background: '#1e293b', textAlign: 'center', padding: '8px 0', fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{DAY_LABEL[lang][dow]}</div>
         ))}
         {days.map((d, i) => {
-          const items = d ? byDay.get(d.toDateString()) ?? [] : [];
+          const items = d ? byDay.get(cellKey(d)) ?? [] : [];
           const isToday = d && d.getTime() === today.getTime();
           return (
             <div key={i} style={{ background: '#0f172a', minHeight: 104, padding: 6, opacity: d ? 1 : 0.4 }}>
@@ -201,7 +214,7 @@ function Inner() {
                           onClick={() => setSelected(b)}
                           style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '3px 6px', borderRadius: 4, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.5 : 1 }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', textDecoration: strike }}>{new Date(b.startTime).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })}</span>
+                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', textDecoration: strike }}>{fmtT(b.startTime)}</span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: strike }}>{name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}</span>
                         </div>
                       );
@@ -218,14 +231,14 @@ function Inner() {
       )}
 
       {selected && (
-        <BookingDetail booking={selected} onClose={() => setSelected(null)} onAction={action} />
+        <BookingDetail booking={selected} tz={tz} onClose={() => setSelected(null)} onAction={action} />
       )}
     </section>
   );
 }
 
-function BookingDetail({ booking: b, onClose, onAction }: {
-  booking: Booking; onClose: () => void; onAction: (id: string, path: string) => void;
+function BookingDetail({ booking: b, tz, onClose, onAction }: {
+  booking: Booking; tz?: string; onClose: () => void; onAction: (id: string, path: string) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -258,8 +271,8 @@ function BookingDetail({ booking: b, onClose, onAction }: {
           </div>
         </div>
 
-        <DetailRow label={t('cal.dDate')} value={start.toLocaleDateString(locale, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })} />
-        <DetailRow label={t('cal.dTime')} value={`${fmtTime(start)} – ${fmtTime(end)}`} />
+        <DetailRow label={t('cal.dDate')} value={start.toLocaleDateString(locale, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', ...(tz ? { timeZone: tz } : {}) })} />
+        <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         <DetailRow label={t('cal.dTechnician')} value={tech} />
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
@@ -315,8 +328,18 @@ function StatusBadge({ status }: { status: string }) {
   return <span style={{ color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 600 }}>{tr('cal.st' + m.key, lang)}</span>;
 }
 
-function fmtTime(d: Date) {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+function fmtTime(d: Date, tz?: string) {
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+}
+
+// Salon-timezone-aware day key (YYYY-MM-DD): a booking lands on the salon's
+// calendar day regardless of the admin device timezone. Grid cells are built at
+// local midnight, so cellKey keys them by their plain calendar Y-M-D to match.
+function dayKeyTz(d: Date, tz?: string): string {
+  return d.toLocaleDateString('en-CA', tz ? { timeZone: tz } : undefined);
+}
+function cellKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function buildMonth(view: Date): (Date | null)[] {

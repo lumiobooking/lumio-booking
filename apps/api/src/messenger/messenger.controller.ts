@@ -27,6 +27,11 @@ export class MessengerController {
     return this.svc.updateSettings(user, dto);
   }
 
+  @Post('disconnect')
+  disconnect(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.disconnect(user);
+  }
+
   @Get('threads')
   threads(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.listThreads(user);

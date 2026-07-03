@@ -406,6 +406,8 @@ export class BookingsService {
     const custEmail = appointment.customer?.email;
     const custPhone = appointment.customer?.phone;
     const related = { relatedType: 'appointment', relatedId: appointment.id };
+    // Self-service link so the customer can view / confirm / cancel without login.
+    const manageUrl = `${publicWebBase()}/appt/${this.apptToken(appointment.id)}`;
 
     // Refer-a-friend invite in the confirmation email — only when the program is
     // ON. Best-effort: any failure here must never block the confirmation.
@@ -476,7 +478,8 @@ export class BookingsService {
     if (emailCustomer && custEmail) {
       if (tpl) {
         const refHtml = referralBlock ? referralBlockHtml(referralBlock, d.accent) : '';
-        const bodyFilled = fillPct(tpl.body, pct) + refHtml; // HTML
+        const manageHtml = `<p style="margin:16px 0 0"><a href="${manageUrl}" style="color:${d.accent};font-weight:600">Manage or cancel your appointment →</a></p>`;
+        const bodyFilled = fillPct(tpl.body, pct) + manageHtml + refHtml; // HTML
         jobs.push(this.notifications.send({
           tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail,
           subject: fillPct(tpl.subject, pct),
@@ -486,7 +489,7 @@ export class BookingsService {
         }));
       } else {
         const intro = fill(n.emailIntroCustomer, d);
-        const footer = fill(n.emailFooter, d);
+        const footer = `${fill(n.emailFooter, d)}\n\nManage or cancel your appointment: ${manageUrl}`;
         jobs.push(this.notifications.send({
           tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail,
           subject: fill(n.emailSubjectCustomer, d),
@@ -497,7 +500,7 @@ export class BookingsService {
       }
     }
     if (smsCustomer && custPhone) {
-      const smsText = tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d);
+      const smsText = `${tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d)}\nManage/cancel: ${manageUrl}`;
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
     }
     // Admin notification: who gets it = the Admin email, falling back to the
@@ -995,6 +998,12 @@ export class BookingsService {
     const payload = Buffer.from(JSON.stringify({ a: appointmentId, exp: Date.now() + 30 * 86400 * 1000 })).toString('base64url');
     const sig = createHmac('sha256', signingSecret()).update(payload).digest('base64url');
     return `${payload}.${sig}`;
+  }
+
+  /** Public signed self-service URL for an appointment (view / confirm / cancel,
+   *  no login). Used by confirmations and the Messenger bot. */
+  buildApptManageUrl(appointmentId: string): string {
+    return `${publicWebBase()}/appt/${this.apptToken(appointmentId)}`;
   }
 
   private verifyApptToken(token: string): string | null {

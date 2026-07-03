@@ -182,6 +182,31 @@ export class MessengerService {
     try { await this.prisma.auditLog.create({ data: { tenantId, action, resourceType: 'messenger' } }); } catch { /* never break */ }
   }
 
+  /** Facebook "Data Deletion Request" callback. Verify the signed_request, delete
+   *  the Messenger/Instagram conversation data we hold for that user, and return
+   *  the status URL + confirmation code Meta requires. */
+  async dataDeletion(signedRequest: string): Promise<{ url: string; confirmation_code: string }> {
+    const web = this.webBase();
+    const code = crypto.randomBytes(8).toString('hex');
+    const parsed = this.parseSignedRequest(signedRequest);
+    const userId = parsed?.user_id ? String(parsed.user_id) : '';
+    if (userId) {
+      // PSID is page-scoped; delete every conversation thread for this sender.
+      await this.prisma.messengerThread.deleteMany({ where: { senderId: userId } }).catch(() => undefined);
+    }
+    return { url: `${web}/data-deletion?id=${code}`, confirmation_code: code };
+  }
+
+  private parseSignedRequest(signed: string): { user_id?: string } | null {
+    try {
+      const [sig, payload] = (signed || '').split('.');
+      if (!sig || !payload) return null;
+      const expected = crypto.createHmac('sha256', this.appSecret()).update(payload).digest('base64url');
+      if (sig !== expected) return null;
+      return JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) as { user_id?: string };
+    } catch { return null; }
+  }
+
   /** Fully disconnect the salon's Page: unsubscribe our app from its webhook
    *  (best-effort) and delete the stored connection so no token remains. */
   async disconnect(user: AuthenticatedUser): Promise<{ connected: false }> {

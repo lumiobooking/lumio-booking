@@ -45,4 +45,16 @@ export class MessengerWebhookController {
     const url = await this.svc.oauthCallback(code || '', state || '', error || '');
     res.redirect(url);
   }
+
+  /**
+   * Facebook "Data Deletion Request" callback (App Review requirement). Meta POSTs
+   * a form-encoded signed_request when a user asks to delete their data; we remove
+   * their conversation data and return { url, confirmation_code }.
+   */
+  @Public()
+  @Post('data-deletion')
+  @HttpCode(200)
+  dataDeletion(@Body('signed_request') signedRequest: string) {
+    return this.svc.dataDeletion(signedRequest || '');
+  }
 }

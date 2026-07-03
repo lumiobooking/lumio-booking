@@ -49,6 +49,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
   filterLoc: { vi: 'Lọc theo tên tiệm…', en: 'Filter by salon name…' },
   locCount: { vi: 'tiệm', en: 'shown' },
   pickFirst: { vi: 'Hãy chọn một tiệm trong danh sách trước.', en: 'Pick a location from the list first.' },
+  resyncFresh: { vi: '↻ Xoá & đồng bộ lại', en: '↻ Reset & re-sync' },
+  resyncHint: { vi: 'Xoá toàn bộ review đã lưu và kéo lại đúng địa điểm hiện tại (dọn dữ liệu lẫn từ trước).', en: 'Wipe all stored reviews and re-pull fresh for the current location.' },
   ruleTitle: { vi: 'Quy tắc trả lời', en: 'Reply rule' },
   ruleAuto: { vi: 'Tự soạn trả lời cho đánh giá từ', en: 'Auto-draft a reply for reviews of' },
   ruleStarUp: { vi: '★ trở lên', en: '★ and up' },
@@ -200,6 +202,14 @@ function Inner() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Sync failed'); }
     finally { setSyncing(false); }
   }
+  async function resync() {
+    setSyncing(true); setError(null); setReviews([]);
+    try {
+      await apiFetch('/google-reviews/resync', { method: 'POST', token });
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setSyncing(false); }
+  }
   async function approve(id: string) {
     setBusyId(id); setError(null);
     try {
@@ -333,6 +343,10 @@ function Inner() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
           <button onClick={sync} disabled={syncing || !s.connected || !s.hasLocation} style={{ ...ui.primaryBtn, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
             {syncing ? t('syncing') : t('syncNow')}
+          </button>
+          <button onClick={resync} disabled={syncing || !s.connected || !s.hasLocation} title={t('resyncHint')}
+            style={{ ...ghostBtn, padding: '9px 12px', fontSize: 12.5, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
+            {t('resyncFresh')}
           </button>
           {saving ? <span style={{ color: '#94a3b8', fontSize: 12 }}>…</span> : saved ? <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span> : null}
           <span style={{ color: '#64748b', fontSize: 12, marginLeft: 'auto' }}>

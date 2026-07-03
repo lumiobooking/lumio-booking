@@ -53,6 +53,11 @@ export class GoogleReviewsController {
     return this.svc.syncNow(user);
   }
 
+  @Post('resync')
+  resync(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.resync(user);
+  }
+
   @Post(':id/approve')
   approve(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ApproveReplyDto) {
     return this.svc.approve(user, id, dto.text);

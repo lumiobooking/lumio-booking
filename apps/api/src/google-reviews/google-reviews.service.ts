@@ -343,6 +343,15 @@ export class GoogleReviewsService {
     return this.syncReviews(tenantId);
   }
 
+  /** Wipe this tenant's mirrored reviews and pull them fresh for the CURRENT
+   *  location — clears any leftover rows from a previously-selected location. */
+  async resync(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    await this.prisma.googleReview.deleteMany({ where: { tenantId } });
+    await this.writeSettings(tenantId, { lastSyncAt: null });
+    return this.syncReviews(tenantId);
+  }
+
   /** Pull the latest reviews for a tenant, store new ones, and route them. */
   async syncReviews(tenantId: string): Promise<{ fetched: number; drafted: number; alerted: number }> {
     const s = await this.getSettings(tenantId);

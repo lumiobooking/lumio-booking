@@ -27,13 +27,14 @@ export interface GbrSettings {
   approveFirst: boolean; // true = draft & wait for one-tap approval (default)
   alertEmail: string; // where bad-review alerts go (falls back to salon email)
   tone: 'warm' | 'professional' | 'short';
+  aiInstruction: string; // optional brand-voice guidance for the AI replies
   lastSyncAt: string | null;
 }
 
 const DEFAULTS: GbrSettings = {
   enabled: false, connected: false, refreshToken: '', accountId: '', locationId: '', locationTitle: '',
   connectedEmail: '', autoMinStars: 4, alertMaxStars: 3, approveFirst: true,
-  alertEmail: '', tone: 'warm', lastSyncAt: null,
+  alertEmail: '', tone: 'warm', aiInstruction: '', lastSyncAt: null,
 };
 
 /** A blank or masked ("••••") secret must never overwrite the stored one. */
@@ -136,6 +137,8 @@ export class GoogleReviewsService {
       approveFirst: s.approveFirst,
       alertEmail: s.alertEmail,
       tone: s.tone,
+      aiInstruction: s.aiInstruction,
+      aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       lastSyncAt: s.lastSyncAt,
       clientConfigured: Boolean(this.clientId() && this.clientSecret()),
       redirectUri: this.redirectUri(),
@@ -147,7 +150,7 @@ export class GoogleReviewsService {
     user: AuthenticatedUser,
     dto: {
       enabled?: boolean; autoMinStars?: number; alertMaxStars?: number;
-      approveFirst?: boolean; alertEmail?: string; tone?: string;
+      approveFirst?: boolean; alertEmail?: string; tone?: string; aiInstruction?: string;
       accountId?: string; locationId?: string; refreshToken?: string;
     },
   ) {
@@ -161,6 +164,7 @@ export class GoogleReviewsService {
       approveFirst: typeof dto.approveFirst === 'boolean' ? dto.approveFirst : cur.approveFirst,
       alertEmail: typeof dto.alertEmail === 'string' ? dto.alertEmail.trim() : cur.alertEmail,
       tone: dto.tone === 'professional' || dto.tone === 'short' || dto.tone === 'warm' ? dto.tone : cur.tone,
+      aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur.aiInstruction,
       accountId: typeof dto.accountId === 'string' ? dto.accountId.trim() : cur.accountId,
       locationId: typeof dto.locationId === 'string' ? dto.locationId.trim() : cur.locationId,
       // Secret only overwritten when a real (non-masked) value is provided.
@@ -388,13 +392,16 @@ export class GoogleReviewsService {
         reviewCreatedAt: r.createTime ? new Date(r.createTime) : null,
       };
       if (!existing) {
-        // Decide the initial status for a brand-new review.
-        const decided = this.decide(stars, r.comment || '', s, salonName, already, r.reviewer?.displayName || '');
+        // Decide the status, then draft a reply (AI) only when one is needed.
+        const status = this.decide(stars, r.comment || '', s, already);
+        const draft = status === 'DRAFTED'
+          ? await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '')
+          : null;
         const created = await this.prisma.googleReview.create({
-          data: { tenantId, googleReviewId: gid, ...base, status: decided.status, draftReply: decided.draft, replyText: already ? r.reviewReply?.comment || null : null, repliedAt: already ? new Date() : null },
+          data: { tenantId, googleReviewId: gid, ...base, status, draftReply: draft, replyText: already ? r.reviewReply?.comment || null : null, repliedAt: already ? new Date() : null },
         });
-        if (decided.status === 'DRAFTED') drafted++;
-        if (decided.status === 'NEEDS_ATTENTION') {
+        if (status === 'DRAFTED') drafted++;
+        if (status === 'NEEDS_ATTENTION') {
           await this.alertManager(tenantId, created.id, stars, r, s, salonName).catch(() => undefined);
           alerted++;
         }
@@ -408,18 +415,45 @@ export class GoogleReviewsService {
   }
 
   /** Star + text → status + optional draft reply. */
-  private decide(stars: number, comment: string, s: GbrSettings, salonName: string, alreadyReplied: boolean, reviewerName: string): { status: GStatus; draft: string | null } {
-    if (alreadyReplied) return { status: 'REPLIED', draft: null };
-    // Low or neutral → always a human.
-    if (stars <= s.alertMaxStars) return { status: 'NEEDS_ATTENTION', draft: null };
-    // High star but the text complains → treat as needs-attention (smart guard).
-    if (stars >= s.autoMinStars && this.negativeSignal(comment)) return { status: 'NEEDS_ATTENTION', draft: null };
-    if (stars >= s.autoMinStars) {
-      const draft = this.draftReply(stars, comment, s.tone, salonName, this.firstName(reviewerName));
-      // approveFirst = draft & wait; otherwise it would be posted by the caller.
-      return { status: 'DRAFTED', draft };
-    }
-    return { status: 'NEEDS_ATTENTION', draft: null };
+  private decide(stars: number, comment: string, s: GbrSettings, alreadyReplied: boolean): GStatus {
+    if (alreadyReplied) return 'REPLIED';
+    if (stars <= s.alertMaxStars) return 'NEEDS_ATTENTION'; // low or neutral → a human handles it
+    if (stars >= s.autoMinStars && this.negativeSignal(comment)) return 'NEEDS_ATTENTION'; // high star but complains
+    if (stars >= s.autoMinStars) return 'DRAFTED';
+    return 'NEEDS_ATTENTION';
+  }
+
+  /** Generate a reply: AI (personalised, language-matched) with a template fallback. */
+  private async generateReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string): Promise<string> {
+    const ai = await this.aiReply(stars, comment, s, salonName, reviewerName).catch(() => null);
+    return ai || this.draftReply(stars, comment, s.tone, salonName, this.firstName(reviewerName));
+  }
+
+  /** Ask Claude to write ONE short, genuine reply in the review's own language.
+   *  Returns null when no API key is configured or the call fails (caller falls
+   *  back to a template), so the feature always works. */
+  private async aiReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string): Promise<string | null> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) return null;
+    const first = this.firstName(reviewerName);
+    const toneDesc = s.tone === 'professional' ? 'professional and courteous' : s.tone === 'short' ? 'short and sweet (one sentence)' : 'warm and friendly';
+    const extra = s.aiInstruction ? `\nOwner's extra instructions (follow them): ${s.aiInstruction}` : '';
+    const system = `You are the owner of "${salonName}", a nail salon, writing ONE short public reply to a Google review. Style: ${toneDesc}. Greet the reviewer by first name if given, otherwise "Hi there,". If the review mentions something specific (a service, a technician, an experience), acknowledge it. Reply in the SAME language as the review. Sound human and sincere, never generic or robotic. Never invent facts, never promise refunds, never include phone numbers or links. Output ONLY the reply text with no surrounding quotes.${extra}`;
+    const userMsg = `Star rating: ${stars}/5\nReviewer first name: ${first || '(unknown)'}\nReview text: "${comment || '(no text — rating only)'}"`;
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        system,
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { content?: { text?: string }[] };
+    const text = data.content?.[0]?.text?.trim();
+    return text || null;
   }
 
   private negativeSignal(comment: string): boolean {
@@ -548,6 +582,18 @@ export class GoogleReviewsService {
     await this.prisma.googleReview.update({ where: { id: row.id }, data: { status: 'SKIPPED' } });
     await this.audit(tenantId, user.userId, 'google_reviews.skipped', row.id);
     return { ok: true };
+  }
+
+  /** Re-draft the reply for one review (owner wants a fresh AI suggestion). */
+  async regenerate(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.googleReview.findFirst({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('Review not found');
+    const s = await this.getSettings(tenantId);
+    const salonName = await this.salonName(tenantId);
+    const draft = await this.generateReply(row.starRating, row.comment || '', s, salonName, row.reviewerName || '');
+    await this.prisma.googleReview.update({ where: { id: row.id }, data: { draftReply: draft, status: 'DRAFTED' } });
+    return { ok: true, draft };
   }
 
   private async postReply(s: GbrSettings, googleReviewId: string, text: string) {

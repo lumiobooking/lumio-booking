@@ -63,6 +63,11 @@ export class GoogleReviewsController {
     return this.svc.approve(user, id, dto.text);
   }
 
+  @Post(':id/regenerate')
+  regenerate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.regenerate(user, id);
+  }
+
   @Post(':id/skip')
   skip(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.skip(user, id);

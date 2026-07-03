@@ -7,6 +7,7 @@ export class UpdateGbrSettingsDto {
   @IsOptional() @IsBoolean() approveFirst?: boolean;
   @IsOptional() @IsString() @MaxLength(200) alertEmail?: string;
   @IsOptional() @IsString() @MaxLength(20) tone?: string;
+  @IsOptional() @IsString() @MaxLength(2000) aiInstruction?: string;
   @IsOptional() @IsString() @MaxLength(200) accountId?: string;
   @IsOptional() @IsString() @MaxLength(200) locationId?: string;
   @IsOptional() @IsString() @MaxLength(4000) refreshToken?: string;

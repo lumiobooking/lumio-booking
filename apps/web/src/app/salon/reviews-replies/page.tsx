@@ -18,7 +18,7 @@ interface GrSettings {
   enabled: boolean; connected: boolean; connectedEmail: string;
   accountId: string; locationId: string; locationTitle: string; hasLocation: boolean;
   autoMinStars: number; alertMaxStars: number; approveFirst: boolean;
-  alertEmail: string; tone: string; lastSyncAt: string | null;
+  alertEmail: string; tone: string; aiInstruction: string; aiEnabled: boolean; lastSyncAt: string | null;
   clientConfigured: boolean; redirectUri: string;
   counts: Record<string, number>;
 }
@@ -51,6 +51,11 @@ const DICT: Record<string, { vi: string; en: string }> = {
   pickFirst: { vi: 'Hãy chọn một tiệm trong danh sách trước.', en: 'Pick a location from the list first.' },
   resyncFresh: { vi: '↻ Xoá & đồng bộ lại', en: '↻ Reset & re-sync' },
   resyncHint: { vi: 'Xoá toàn bộ review đã lưu và kéo lại đúng địa điểm hiện tại (dọn dữ liệu lẫn từ trước).', en: 'Wipe all stored reviews and re-pull fresh for the current location.' },
+  regen: { vi: '↻ Tạo lại', en: '↻ Regenerate' },
+  aiInstr: { vi: 'Hướng dẫn AI viết trả lời (tùy chọn)', en: 'AI reply instructions (optional)' },
+  aiInstrPh: { vi: 'VD: luôn ký "Đội ngũ ABC Nails", nhắc mở cửa 7 ngày, mời khách quay lại…', en: 'e.g. always sign as "The ABC Nails Team", mention we are open 7 days…' },
+  aiOn: { vi: 'AI đang bật', en: 'AI on' },
+  aiOff: { vi: 'đang dùng mẫu (thêm ANTHROPIC_API_KEY để bật AI)', en: 'using templates (add ANTHROPIC_API_KEY for AI)' },
   ruleTitle: { vi: 'Quy tắc trả lời', en: 'Reply rule' },
   ruleAuto: { vi: 'Tự soạn trả lời cho đánh giá từ', en: 'Auto-draft a reply for reviews of' },
   ruleStarUp: { vi: '★ trở lên', en: '★ and up' },
@@ -218,6 +223,14 @@ function Inner() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusyId(null); }
   }
+  async function regenerate(id: string) {
+    setBusyId(id); setError(null);
+    try {
+      const r = await apiFetch<{ draft: string }>(`/google-reviews/${id}/regenerate`, { method: 'POST', token });
+      setDrafts((d) => ({ ...d, [id]: r.draft }));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setBusyId(null); }
+  }
   async function skip(id: string) {
     setBusyId(id);
     try { await apiFetch(`/google-reviews/${id}/skip`, { method: 'POST', token }); await loadReviews(filter); }
@@ -340,6 +353,19 @@ function Inner() {
           </div>
         </div>
 
+        <div style={{ marginTop: 14 }}>
+          <label style={ui.label}>
+            {t('aiInstr')}{' '}
+            {s.aiEnabled
+              ? <span style={{ color: '#22c55e' }}>· ✨ {t('aiOn')}</span>
+              : <span style={{ color: '#f59e0b' }}>· {t('aiOff')}</span>}
+          </label>
+          <textarea value={s.aiInstruction} placeholder={t('aiInstrPh')} rows={2}
+            onChange={(e) => setS({ ...s, aiInstruction: e.target.value })}
+            onBlur={(e) => saveSettings({ aiInstruction: e.target.value })}
+            style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
           <button onClick={sync} disabled={syncing || !s.connected || !s.hasLocation} style={{ ...ui.primaryBtn, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
             {syncing ? t('syncing') : t('syncNow')}
@@ -389,6 +415,7 @@ function Inner() {
                       rows={3} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                       <button onClick={() => approve(r.id)} disabled={busyId === r.id} style={ui.primaryBtn}>{busyId === r.id ? t('posting') : t('approvePost')}</button>
+                      <button onClick={() => regenerate(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('regen')}</button>
                       <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('skip')}</button>
                     </div>
                   </div>

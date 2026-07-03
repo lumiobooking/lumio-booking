@@ -72,6 +72,7 @@ export class MessengerService {
     return {
       connected: Boolean(c?.pageId && c?.pageToken),
       pageId: c?.pageId ?? '',
+      igId: c?.igId ?? '',
       enabled: c?.enabled ?? false,
       greeting: c?.greeting ?? '',
       aiInstruction: c?.aiInstruction ?? '',
@@ -84,14 +85,16 @@ export class MessengerService {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { pageId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string },
+    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
     const pageId = typeof dto.pageId === 'string' ? dto.pageId.trim() : cur?.pageId ?? '';
+    const igId = typeof dto.igId === 'string' ? (dto.igId.trim() || null) : cur?.igId ?? null;
     const pageToken = cleanSecret(dto.pageToken) ?? cur?.pageToken ?? '';
     const data = {
       pageId,
+      igId,
       pageToken,
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur?.enabled ?? false,
       greeting: typeof dto.greeting === 'string' ? dto.greeting.slice(0, 500) : cur?.greeting ?? null,
@@ -132,23 +135,26 @@ export class MessengerService {
   /** Meta POSTs message events here. We ack immediately and process async. */
   async handleWebhook(body: unknown): Promise<void> {
     const b = body as { object?: string; entry?: { id?: string; messaging?: MessagingEvent[] }[] };
-    if (b?.object !== 'page' || !Array.isArray(b.entry)) return;
+    // "page" = Facebook Messenger, "instagram" = Instagram DMs (same event shape).
+    if ((b?.object !== 'page' && b?.object !== 'instagram') || !Array.isArray(b.entry)) return;
     for (const entry of b.entry) {
-      const pageId = entry.id || '';
+      const entryId = entry.id || ''; // Page id (Messenger) or IG account id (Instagram)
       for (const ev of entry.messaging || []) {
         const senderId = ev.sender?.id;
         const text = ev.message?.text;
         if (!senderId || !text || ev.message?.is_echo) continue;
-        await this.handleMessage(pageId, senderId, text).catch((e) =>
+        await this.handleMessage(entryId, senderId, text).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
       }
     }
   }
 
-  private async handleMessage(pageId: string, senderId: string, text: string): Promise<void> {
-    const conn = await this.prisma.messengerConnection.findUnique({ where: { pageId } });
+  private async handleMessage(entryId: string, senderId: string, text: string): Promise<void> {
+    // Route by Facebook Page id OR the linked Instagram account id.
+    const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
     if (!conn || !conn.enabled || !conn.pageToken) return;
+    const pageId = conn.pageId;
     const thread = await this.prisma.messengerThread.upsert({
       where: { pageId_senderId: { pageId, senderId } },
       update: { lastText: text.slice(0, 300) },

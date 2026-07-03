@@ -1144,7 +1144,8 @@ model MessengerConnection {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   pageId    String  @unique // Facebook Page id (routes incoming webhooks to a tenant)
-  pageToken String // Page access token (secret) used to send replies
+  igId      String? @unique // linked Instagram business account id (routes IG DMs)
+  pageToken String // Page access token (secret) used to send replies (FB + IG)
   enabled   Boolean @default(false)
   greeting  String? // optional opening line
   aiInstruction String? // brand-voice / extra guidance for the bot

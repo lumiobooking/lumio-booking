@@ -11,7 +11,7 @@ import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 
 interface MConf {
-  connected: boolean; pageId: string; enabled: boolean; greeting: string; aiInstruction: string;
+  connected: boolean; pageId: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number;
 }
 interface MThread { id: string; senderId: string; lastText: string | null; handoff: boolean; updatedAt: string }
@@ -23,6 +23,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
   connectTitle: { vi: 'Kết nối Facebook Page', en: 'Connect your Facebook Page' },
   pageId: { vi: 'Facebook Page ID', en: 'Facebook Page ID' },
   pageIdPh: { vi: 'vd 1234567890', en: 'e.g. 1234567890' },
+  igId: { vi: 'Instagram Business ID (tùy chọn)', en: 'Instagram Business ID (optional)' },
+  igIdPh: { vi: 'để bot trả lời cả DM Instagram', en: 'to also reply to Instagram DMs' },
   pageToken: { vi: 'Page Access Token (bí mật)', en: 'Page Access Token (secret)' },
   pageTokenPh: { vi: 'dán token mới (để trống nếu không đổi)', en: 'paste a new token (leave blank to keep)' },
   connected: { vi: 'Đã kết nối', en: 'Connected' },
@@ -89,7 +91,7 @@ function Inner() {
     setSaving(true); setError(null); setSaved(false);
     try {
       const next = await apiFetch<MConf>('/messenger/settings', { method: 'POST', token, body: {
-        pageId: c.pageId, enabled: c.enabled, greeting: c.greeting, aiInstruction: c.aiInstruction, ...patch,
+        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, aiInstruction: c.aiInstruction, ...patch,
       } });
       setC(next); setPageToken(''); setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch (e) { setError(e instanceof Error ? e.message : 'Save failed'); }
@@ -125,6 +127,10 @@ function Inner() {
           <div>
             <label style={ui.label}>{t('pageId')}</label>
             <input value={c.pageId} placeholder={t('pageIdPh')} onChange={(e) => setC({ ...c, pageId: e.target.value })} style={ui.input} />
+          </div>
+          <div>
+            <label style={ui.label}>{t('igId')}</label>
+            <input value={c.igId} placeholder={t('igIdPh')} onChange={(e) => setC({ ...c, igId: e.target.value })} style={ui.input} />
           </div>
           <div>
             <label style={ui.label}>{t('pageToken')}</label>

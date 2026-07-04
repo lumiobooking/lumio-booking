@@ -46,8 +46,17 @@ export class ReviewsService {
    * to a manually-pasted URL only when no Place ID is configured.
    */
   private buildGoogleUrl(settings: { googlePlaceId?: string; googleReviewUrl?: string }): string | null {
-    const placeId = (settings.googlePlaceId ?? '').trim();
-    if (placeId) return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
+    const raw = (settings.googlePlaceId ?? '').trim();
+    if (raw) {
+      // If a full URL was pasted (e.g. g.page/r/…/review, maps.google, search.google),
+      // use it as-is — these are already valid review links that hand off to the
+      // Google Maps app on a phone. (Wrapping a URL inside placeid= breaks it.)
+      if (/^https?:\/\//i.test(raw)) return raw;
+      // Otherwise treat it as a real Place ID (ChIJ… / 0x… / numeric CID) and build
+      // the official write-review link, which opens the Maps app where the customer
+      // is already signed in instead of a browser that may demand a login.
+      return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(raw)}`;
+    }
     const url = (settings.googleReviewUrl ?? '').trim();
     return url || null;
   }

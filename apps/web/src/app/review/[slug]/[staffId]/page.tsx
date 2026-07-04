@@ -45,7 +45,6 @@ export default function ReviewPage() {
   const [err, setErr] = useState<string | null>(null);
   const [googleWords, setGoogleWords] = useState('');
   const [copied, setCopied] = useState(false);
-  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/public/review/${encodeURIComponent(slug)}/${encodeURIComponent(staffId)}`)
@@ -80,34 +79,24 @@ export default function ReviewPage() {
     else setPhase('comment');
   }
 
-  // Open Google review. If the customer typed a few words, copy them to the
-  // clipboard first so they just paste (no retyping). We navigate in the SAME tab
-  // so the OS hands off to the Google Maps app — where they're already signed in.
-  async function openGoogle() {
+  // The Google links open from a REAL anchor tap, not a JS redirect: iOS only
+  // honors the Google Maps universal link (opening the app, where the customer is
+  // already signed in) on a genuine tap — a `window.location` redirect opens Safari
+  // instead. So the buttons below are <a> elements and these helpers only do
+  // best-effort side work (copying words / logging) without blocking navigation.
+
+  function copyWords() {
     const words = googleWords.trim();
-    if (words) {
-      try { await navigator.clipboard.writeText(words); setCopied(true); } catch { /* clipboard blocked — open anyway */ }
-    }
-    if (result?.googleUrl) window.location.href = result.googleUrl;
+    if (words) { try { navigator.clipboard?.writeText(words); setCopied(true); } catch { /* ignore */ } }
   }
 
-  // Direct mode: log the send (so the salon can count it for this tech), then
-  // hand off to Google in the SAME tab → opens the Google Maps app where the
-  // customer is already signed in.
-  async function sendDirect() {
-    if (sending) return;
-    setSending(true);
-    let url = ctx?.googleUrl ?? null;
+  // Fire-and-forget send log so the salon can still count this tap for the tech.
+  function logSend() {
     try {
-      const res = await fetch(`${API_URL}/public/review-send`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, staffId, deviceId: deviceId() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data?.googleUrl) url = data.googleUrl;
-    } catch { /* logging failed — still send them to Google */ }
-    if (url) window.location.href = url;
-    else setSending(false);
+      const body = JSON.stringify({ slug, staffId, deviceId: deviceId() });
+      if (navigator.sendBeacon) navigator.sendBeacon(`${API_URL}/public/review-send`, new Blob([body], { type: 'application/json' }));
+      else fetch(`${API_URL}/public/review-send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => undefined);
+    } catch { /* ignore */ }
   }
 
   if (loadErr) return <Center accent="#6366f1"><p style={{ color: '#64748b' }}>{loadErr}</p></Center>;
@@ -137,9 +126,9 @@ export default function ReviewPage() {
           </div>
           {ctx.googleUrl ? (
             <>
-              <button type="button" onClick={sendDirect} disabled={sending} style={{ ...bigBtn, background: accent }}>
-                {sending ? 'Opening…' : '⭐ Leave a Google review'}
-              </button>
+              <a href={ctx.googleUrl} onClick={logSend} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+                ⭐ Leave a Google review
+              </a>
               <p style={{ color: '#94a3b8', fontSize: 11.5, margin: '12px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
                 Opens the Google Maps app on your phone — you&apos;re already signed in there, no password needed.
               </p>
@@ -233,9 +222,9 @@ export default function ReviewPage() {
                   placeholder="Optional — write a few words and we'll copy them for you"
                   style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 15, resize: 'vertical', fontFamily: 'inherit', marginBottom: 10 }}
                 />
-                <button type="button" onClick={openGoogle} style={{ ...bigBtn, background: accent }}>
+                <a href={result.googleUrl} onClick={copyWords} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                   ⭐ Open Google review
-                </button>
+                </a>
                 {copied && <p style={{ color: '#15803d', fontSize: 12.5, fontWeight: 600, margin: '10px 0 0' }}>✓ Your words are copied — just press &amp; hold to paste on Google</p>}
                 <p style={{ color: '#94a3b8', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.4 }}>
                   Opens the Google Maps app on your phone — you&apos;re already signed in there, no password needed.

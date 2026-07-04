@@ -126,7 +126,7 @@ export default function ReviewPage() {
           </div>
           {ctx.googleUrl ? (
             <>
-              <a href={ctx.googleUrl} onClick={logSend} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+              <a href={appDeepLink(ctx.googleUrl)} onClick={logSend} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                 ⭐ Leave a Google review
               </a>
               <p style={{ color: '#94a3b8', fontSize: 11.5, margin: '12px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
@@ -222,7 +222,7 @@ export default function ReviewPage() {
                   placeholder="Optional — write a few words and we'll copy them for you"
                   style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 15, resize: 'vertical', fontFamily: 'inherit', marginBottom: 10 }}
                 />
-                <a href={result.googleUrl} onClick={copyWords} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+                <a href={appDeepLink(result.googleUrl)} onClick={copyWords} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                   ⭐ Open Google review
                 </a>
                 {copied && <p style={{ color: '#15803d', fontSize: 12.5, fontWeight: 600, margin: '10px 0 0' }}>✓ Your words are copied — just press &amp; hold to paste on Google</p>}
@@ -240,6 +240,20 @@ export default function ReviewPage() {
       </div>
     </Center>
   );
+}
+
+// Maximise "opens the Google Maps app" on Android: for links the Maps app can
+// handle (g.page / google.com/maps / maps.app.goo.gl), rewrite to an Android
+// `intent://` that targets the Maps app, with a browser fallback if it isn't
+// installed. iOS / desktop keep the plain universal link (opens the app if
+// installed). Google still requires sign-in in a browser — the whole point of the
+// app is that the customer is already signed in there.
+function appDeepLink(url: string): string {
+  if (typeof navigator === 'undefined') return url;
+  if (!/Android/i.test(navigator.userAgent || '')) return url;
+  if (!/(g\.page\/|google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(url)) return url;
+  const stripped = url.replace(/^https?:\/\//i, '');
+  return `intent://${stripped}#Intent;scheme=https;package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(url)};end`;
 }
 
 function Center({ children, accent }: { children: React.ReactNode; accent: string }) {

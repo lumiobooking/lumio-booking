@@ -84,6 +84,10 @@ const DICT: Record<string, { vi: string; en: string }> = {
   aiOff: { vi: 'chưa có ANTHROPIC_API_KEY → bot chỉ báo "sẽ có người trả lời"', en: 'no ANTHROPIC_API_KEY → bot only says a human will reply' },
   convosTitle: { vi: 'Cuộc trò chuyện', en: 'Conversations' },
   noConvos: { vi: 'Chưa có cuộc trò chuyện nào.', en: 'No conversations yet.' },
+  searchConvo: { vi: 'Tìm trong tin nhắn…', en: 'Search messages…' },
+  noMatch: { vi: 'Không có kết quả phù hợp.', en: 'No matches.' },
+  collapse: { vi: 'Thu gọn ▾', en: 'Collapse ▾' },
+  expand: { vi: 'Mở rộng ▸', en: 'Expand ▸' },
   takeOver: { vi: 'Tôi tiếp nhận', en: 'Take over' },
   giveBack: { vi: 'Trả lại cho bot', en: 'Give back to bot' },
   handedOff: { vi: 'người thật đang xử lý', en: 'human handling' },
@@ -113,6 +117,8 @@ function Inner() {
   const [copied, setCopied] = useState('');
   const [facts, setFacts] = useState<FactRow[]>([]);
   const [factsInit, setFactsInit] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(true);     // fold the business-info checklist
+  const [convoSearch, setConvoSearch] = useState(''); // filter the conversations list
 
   // Seed the checklist from stored facts once the config loads: every predefined
   // row shows (ticked/filled if saved), plus any custom rows the salon added.
@@ -322,28 +328,37 @@ function Inner() {
 
       {/* Salon info — tick + fill so the bot answers common questions */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('infoTitle')}</div>
-        <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
-        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
-          <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: '#94a3b8' }}>{t('infoKnowsList')}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: infoOpen ? 6 : 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>
+            {t('infoTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: '#64748b' }}>· {facts.filter((f) => f.on && f.value.trim()).length}</span>
+          </div>
+          <button onClick={() => setInfoOpen((v) => !v)} style={{ ...ghost, fontSize: 12 }}>{infoOpen ? t('collapse') : t('expand')}</button>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {facts.map((f, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: f.on ? '#0f172a' : 'transparent', border: '1px solid', borderColor: f.on ? '#334155' : '#1e293b', borderRadius: 8, padding: '8px 10px' }}>
-              <input type="checkbox" checked={f.on} onChange={(e) => setFact(i, { on: e.target.checked })} style={{ flexShrink: 0, width: 16, height: 16 }} />
-              {f.custom
-                ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />
-                : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? '#e2e8f0' : '#94a3b8' }}>{factLabel(f.label)}</span>}
-              <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
-              {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: '#fca5a5', borderColor: '#7f1d1d' }}>✕</button>}
+        {infoOpen && (
+          <>
+            <p style={{ color: '#94a3b8', fontSize: 12, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
+            <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
+              <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: '#94a3b8' }}>{t('infoKnowsList')}</span>
             </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
-          <button onClick={addFact} style={ghost}>{t('addItem')}</button>
-          <button onClick={saveFacts} disabled={saving} style={ui.primaryBtn}>{t('saveInfo')}</button>
-          {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
-        </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: facts.length > 6 ? 4 : 0 }}>
+              {facts.map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: f.on ? '#0f172a' : 'transparent', border: '1px solid', borderColor: f.on ? '#334155' : '#1e293b', borderRadius: 8, padding: '8px 10px' }}>
+                  <input type="checkbox" checked={f.on} onChange={(e) => setFact(i, { on: e.target.checked })} style={{ flexShrink: 0, width: 16, height: 16 }} />
+                  {f.custom
+                    ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />
+                    : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? '#e2e8f0' : '#94a3b8' }}>{factLabel(f.label)}</span>}
+                  <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
+                  {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: '#fca5a5', borderColor: '#7f1d1d' }}>✕</button>}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+              <button onClick={addFact} style={ghost}>{t('addItem')}</button>
+              <button onClick={saveFacts} disabled={saving} style={ui.primaryBtn}>{t('saveInfo')}</button>
+              {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Conversations */}
@@ -351,21 +366,34 @@ function Inner() {
         <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
         {threads.length === 0 ? (
           <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noConvos')}</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {threads.map((th) => (
-              <div key={th.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{th.lastText || '—'}</div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(th.updatedAt).toLocaleString('en-US')}{th.handoff ? ` · ⚠️ ${t('handedOff')}` : ''}</div>
+        ) : (() => {
+          const q = convoSearch.trim().toLowerCase();
+          const shown = q ? threads.filter((th) => (th.lastText || '').toLowerCase().includes(q)) : threads;
+          return (
+            <>
+              {threads.length > 5 && (
+                <input value={convoSearch} onChange={(e) => setConvoSearch(e.target.value)} placeholder={t('searchConvo')} style={{ ...ui.input, marginBottom: 10 }} />
+              )}
+              {shown.length === 0 ? (
+                <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noMatch')}</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: shown.length > 6 ? 4 : 0 }}>
+                  {shown.map((th) => (
+                    <div key={th.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{th.lastText || '—'}</div>
+                        <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(th.updatedAt).toLocaleString('en-US')}{th.handoff ? ` · ⚠️ ${t('handedOff')}` : ''}</div>
+                      </div>
+                      {th.handoff
+                        ? <button onClick={() => handoff(th.id, false)} style={ghost}>{t('giveBack')}</button>
+                        : <button onClick={() => handoff(th.id, true)} style={ghost}>{t('takeOver')}</button>}
+                    </div>
+                  ))}
                 </div>
-                {th.handoff
-                  ? <button onClick={() => handoff(th.id, false)} style={ghost}>{t('giveBack')}</button>
-                  : <button onClick={() => handoff(th.id, true)} style={ghost}>{t('takeOver')}</button>}
-              </div>
-            ))}
-          </div>
-        )}
+              )}
+            </>
+          );
+        })()}
       </div>
     </section>
   );

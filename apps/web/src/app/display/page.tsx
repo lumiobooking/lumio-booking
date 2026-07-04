@@ -36,6 +36,7 @@ type DisplayState = {
   tippable?: boolean;
   tipBaseCents?: number;
   tipTechs?: { name: string; qr?: string; handle?: string }[];
+  reviewUrl?: string; // salon Google-review link → QR on the display
 };
 
 const TIP_PERCENTS = [15, 18, 20];
@@ -218,6 +219,11 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
               <div style={{ fontSize: 72, marginBottom: 10 }}>💅</div>
               <div style={{ fontSize: 'clamp(34px, 6vw, 60px)', fontWeight: 800, color: '#1e293b' }}>Welcome</div>
               <div style={{ fontSize: 'clamp(16px, 2.4vw, 24px)', color: '#64748b', marginTop: 12 }}>Sit back and relax — we&rsquo;ll take care of you.</div>
+              {s.reviewUrl && (
+                <ReviewInvite url={s.reviewUrl} accent={accent}
+                  title={<>Been in before? <span style={{ color: '#f59e0b' }}>★★★★★</span></>}
+                  subtitle="We'd love a quick Google review — scan anytime 💛" />
+              )}
             </div>
           ) : s.status === 'paid' ? (
             <div style={centerBox}>
@@ -246,6 +252,11 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
                     </button>
                   )}
                 </div>
+              )}
+              {s.reviewUrl && (
+                <ReviewInvite url={s.reviewUrl} accent={accent}
+                  title={<>Loved your visit? <span style={{ color: '#f59e0b' }}>★★★★★</span></>}
+                  subtitle="A quick Google review would truly make our day 💛 — 10 seconds, scan below." />
               )}
             </div>
           ) : (
@@ -370,6 +381,29 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
 }
 
 const skipBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
+
+// Warm, eye-catching Google-review invite (QR). Shown on the welcome + thank-you
+// screens; the customer scans with THEIR phone (opens Google where they're signed
+// in). Copy is inviting, never pushy.
+function ReviewInvite({ url, accent, title, subtitle }: { url: string; accent: string; title: React.ReactNode; subtitle: React.ReactNode }) {
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=340x340&data=${encodeURIComponent(url)}`;
+  return (
+    <div style={{ ...reviewCard, borderTop: `4px solid ${accent}` }}>
+      <div style={{ fontSize: 'clamp(19px, 2.5vw, 27px)', fontWeight: 800, color: '#1e293b' }}>{title}</div>
+      <div style={{ fontSize: 'clamp(13.5px, 1.7vw, 18px)', color: '#64748b', margin: '7px 0 16px', lineHeight: 1.5 }}>{subtitle}</div>
+      <div style={{ display: 'inline-block', background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #eef2f7', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={qr} alt="Google review QR" style={{ width: 'clamp(150px, 24vw, 230px)', height: 'auto', display: 'block' }} />
+      </div>
+      <div style={{ fontSize: 'clamp(11.5px, 1.4vw, 14px)', color: '#94a3b8', marginTop: 12 }}>📱 Scan with your phone — opens Google, you&rsquo;re already signed in</div>
+    </div>
+  );
+}
+const reviewCard: React.CSSProperties = {
+  margin: '24px auto 0', width: 'min(94vw, 480px)', background: 'linear-gradient(160deg, #ffffff, #fbfaff)', borderRadius: 22,
+  padding: 'clamp(20px, 3vw, 30px)', border: '1px solid #eef2f7', boxShadow: '0 14px 44px rgba(15,23,42,0.10)', textAlign: 'center',
+  animation: 'lumioFade .5s ease both',
+};
 function softTipLink(accent: string): React.CSSProperties {
   return {
     border: `1.5px solid ${accent}55`, background: `${accent}0d`, color: accent,

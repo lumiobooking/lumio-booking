@@ -393,8 +393,9 @@ function Register() {
       // line, and the % is computed off the service subtotal.
       tippable: cart.some((l) => l.kind === 'SERVICE'),
       tipBaseCents: cart.filter((l) => l.kind === 'SERVICE').reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
+      reviewUrl: reviewUrl ?? undefined,
     },
-  }), [cart, currency, money, staff, salonName, salonLogo, salonAccent]);
+  }), [cart, currency, money, staff, salonName, salonLogo, salonAccent, reviewUrl]);
   const displayChRef = useRef<BroadcastChannel | null>(null);
   const displayPayloadRef = useRef(displayPayload);
   displayPayloadRef.current = displayPayload;

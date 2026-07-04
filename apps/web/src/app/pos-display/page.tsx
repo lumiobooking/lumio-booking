@@ -34,6 +34,8 @@ type DisplayState = {
   tipBaseCents?: number;
   // Channel 3 — tech(s) whose QR is offered on the AFTER-PAYMENT screen.
   tipTechs?: { name: string; qr?: string; handle?: string }[];
+  // Google review invite on the AFTER-PAYMENT screen (salon-level link → QR).
+  reviewUrl?: string;
 };
 
 const TIP_PERCENTS = [15, 18, 20];
@@ -158,6 +160,7 @@ export default function PosDisplayPage() {
               )}
             </div>
           )}
+          {s.reviewUrl && <ReviewInvite url={s.reviewUrl} accent={accent} />}
         </div>
       ) : (
         <div style={twoCol}>
@@ -282,6 +285,32 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
 }
 
 const skipBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
+
+/**
+ * Warm, eye-catching Google-review invite shown after the bill is paid — the ideal
+ * moment (happy, done, phone in hand). The customer scans with THEIR phone, which
+ * opens Google where they're already signed in. Calm and inviting, never pushy.
+ */
+function ReviewInvite({ url, accent }: { url: string; accent: string }) {
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=340x340&data=${encodeURIComponent(url)}`;
+  return (
+    <div style={{ ...reviewCard, borderTop: `4px solid ${accent}` }}>
+      <div style={{ fontSize: 'clamp(19px, 2.5vw, 27px)', fontWeight: 800, color: '#1e293b' }}>Loved your visit? <span style={{ color: '#f59e0b' }}>★★★★★</span></div>
+      <div style={{ fontSize: 'clamp(13.5px, 1.7vw, 18px)', color: '#64748b', margin: '7px 0 16px', lineHeight: 1.5 }}>
+        A quick Google review would truly make our day 💛<br />Scan below — it takes 10 seconds.
+      </div>
+      <div style={{ display: 'inline-block', background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #eef2f7', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={qr} alt="Google review QR" style={{ width: 'clamp(160px, 26vw, 240px)', height: 'auto', display: 'block' }} />
+      </div>
+      <div style={{ fontSize: 'clamp(11.5px, 1.4vw, 14px)', color: '#94a3b8', marginTop: 12 }}>📱 Opens Google on your phone — no password, you&rsquo;re already signed in</div>
+    </div>
+  );
+}
+const reviewCard: React.CSSProperties = {
+  margin: '24px auto 0', width: 'min(94vw, 480px)', background: 'linear-gradient(160deg, #ffffff, #fbfaff)', borderRadius: 22,
+  padding: 'clamp(20px, 3vw, 30px)', border: '1px solid #eef2f7', boxShadow: '0 14px 44px rgba(15,23,42,0.10)', textAlign: 'center',
+};
 
 // A small, understated tip link on the paid screen (opt-in — never forced).
 // Generous tap target + touch-action:manipulation so a tap can't be mistaken for

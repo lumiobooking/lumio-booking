@@ -25,6 +25,7 @@ function Inner() {
   const t = (k: string) => tr(k, lang);
   const isMobile = useIsMobile();
   const [settings, setSettings] = useState<ReviewSettings | null>(null);
+  const [slug, setSlug] = useState('');
   const [board, setBoard] = useState<LeaderRow[]>([]);
   const [boardLabel, setBoardLabel] = useState('');
   const [ym, setYm] = useState<string>(currentYm());
@@ -46,11 +47,12 @@ function Inner() {
     setLoading(true); setError(null);
     try {
       const [s, f, sn] = await Promise.all([
-        apiFetch<{ review: ReviewSettings }>('/settings', { token }),
+        apiFetch<{ review: ReviewSettings; company?: { slug?: string } }>('/settings', { token }),
         apiFetch<FeedbackRow[]>('/reviews/feedback', { token }),
         apiFetch<SendRow[]>('/reviews/sends', { token }).catch(() => [] as SendRow[]),
       ]);
       setSettings(s.review);
+      setSlug(s.company?.slug ?? '');
       setFeedback(f);
       setSends(sn);
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load'); }
@@ -99,6 +101,10 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
 
       {settings && <SettingsCard token={token!} initial={settings} onSaved={load} />}
+
+      {settings && slug && (
+        <AdminReviewQr slug={slug} enabled={settings.enabled} hasGoogle={!!(settings.googlePlaceId || settings.googleReviewUrl)} />
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, margin: '24px 0 10px' }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>{t('rv.leaderboard')}</h2>
@@ -250,6 +256,37 @@ function CleanupTools({ onWipe, onCleanup }: { onWipe: () => void; onCleanup: (f
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Salon-level review QR the admin can test with or print for the front desk —
+// not tied to a specific technician (staffId "salon" resolves to no staff).
+function AdminReviewQr({ slug, enabled, hasGoogle }: { slug: string; enabled: boolean; hasGoogle: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://lumiobooking.com';
+  const url = `${origin}/review/${slug}/salon`;
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(url)}`;
+  const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ } };
+  return (
+    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 14, padding: 16, marginTop: 16, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ background: '#fff', borderRadius: 12, padding: 10, flexShrink: 0 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={qr} alt="Salon review QR" width={150} height={150} style={{ display: 'block' }} />
+      </div>
+      <div style={{ minWidth: 220, flex: 1 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}>🔗 Salon review QR — test &amp; front desk</div>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', margin: '5px 0 10px', lineHeight: 1.5 }}>
+          Scan to test the customer flow, or print it for the counter. Not tied to a specific tech.
+          {!enabled && <span style={{ color: '#f59e0b' }}> Turn the program ON above to use it.</span>}
+          {enabled && !hasGoogle && <span style={{ color: '#f59e0b' }}> Add your Place ID / review link above so it opens Google.</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...miniBtn, textDecoration: 'none', display: 'inline-block' }}>Open ↗</a>
+          <button onClick={copy} style={{ ...miniBtn, ...(copied ? { background: '#16a34a', color: '#fff', borderColor: '#16a34a' } : {}) }}>{copied ? '✓ Copied' : 'Copy link'}</button>
+          <code style={{ fontSize: 11.5, color: '#64748b', wordBreak: 'break-all' }}>{url}</code>
+        </div>
+      </div>
     </div>
   );
 }

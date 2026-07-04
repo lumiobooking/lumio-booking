@@ -74,6 +74,7 @@ function Register() {
   const [salonName, setSalonName] = useState('');
   const [salonLogo, setSalonLogo] = useState('');
   const [salonAccent, setSalonAccent] = useState('#6366f1');
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null); // salon Google-review link for the customer display
   const [transferInfo, setTransferInfo] = useState('');
   const [transferQr, setTransferQr] = useState('');
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
@@ -169,7 +170,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string }; branding?: { logoUrl?: string; accentColor?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string } }>('/settings', { token }),
       ]);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
@@ -189,6 +190,16 @@ function Register() {
       };
       applyCatalog(cat);
       cacheCatalog(cat);
+      // Salon-level Google-review link for the customer display — only when the
+      // program is on AND a Google target is configured (best-effort).
+      const rvSlug = settings.company?.slug;
+      if (rvSlug) {
+        try {
+          const rv = await apiFetch<{ enabled?: boolean; hasGoogle?: boolean }>(`/public/review/${encodeURIComponent(rvSlug)}/salon`, { token });
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          setReviewUrl(rv?.enabled && rv?.hasGoogle ? `${origin}/review/${rvSlug}/salon` : null);
+        } catch { /* review invite is optional */ }
+      }
       setOnline(true);
       setError(null);
     } catch (err) {
@@ -474,6 +485,7 @@ function Register() {
       tippable: tt.techs.length > 0,
       tipBaseCents: tt.baseCents,
       tipTechs: tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })),
+      reviewUrl: reviewUrl ?? undefined,
     };
     displayChRef.current?.postMessage({ type: 'state', state: paidState });
     // Relay to a paired iPad, carrying the server-only tech split so a tapped tip is

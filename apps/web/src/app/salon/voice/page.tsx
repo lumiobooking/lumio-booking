@@ -19,6 +19,7 @@ interface VCall {
   id: string; fromNumber: string | null; outcome: string; appointmentId: string | null;
   durationSec: number | null; createdAt: string;
 }
+interface VUsage { periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number }
 
 type Lang = 'vi' | 'en';
 const SUPPORT_EMAIL = 'lumioagency.com@gmail.com';
@@ -85,6 +86,11 @@ const DICT: Record<string, { vi: string; en: string }> = {
     en: 'The AI assistant is not configured (missing AI key). Contact Lumio.',
   },
   needProvision: { vi: 'Cần được Lumio cấp số trước khi bật.', en: 'Lumio must assign a number before you can enable it.' },
+  usageTitle: { vi: 'Sử dụng tháng này', en: 'Usage this month' },
+  usageCalls: { vi: 'Cuộc gọi AI', en: 'AI calls' },
+  usageMinutes: { vi: 'Phút AI', en: 'AI minutes' },
+  usageSms: { vi: 'SMS đã gửi', en: 'SMS sent' },
+  usageNote: { vi: 'Tính từ đầu tháng. Phút dựa trên thời lượng cuộc gọi thực tế; SMS là tin đã gửi thành công.', en: 'Since the 1st. Minutes are based on actual call length; SMS counts messages sent successfully.' },
   callsTitle: { vi: 'Cuộc gọi gần đây', en: 'Recent calls' },
   noCalls: { vi: 'Chưa có cuộc gọi nào.', en: 'No calls yet.' },
   colFrom: { vi: 'Từ số', en: 'From' },
@@ -121,16 +127,18 @@ function Inner() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [usage, setUsage] = useState<VUsage | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const [conf, cl] = await Promise.all([
+      const [conf, cl, us] = await Promise.all([
         apiFetch<VConf>('/voice', { token }),
         apiFetch<VCall[]>('/voice/calls', { token }).catch(() => [] as VCall[]),
+        apiFetch<VUsage>('/voice/usage', { token }).catch(() => null),
       ]);
-      setC(conf); setCalls(cl);
+      setC(conf); setCalls(cl); setUsage(us);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -187,6 +195,19 @@ function Inner() {
           </>
         )}
       </div>
+
+      {/* Usage this month */}
+      {usage && (
+        <div style={{ ...ui.card, marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('usageTitle')}</div>
+          <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+            <Stat label={t('usageCalls')} value={usage.aiCalls} />
+            <Stat label={t('usageMinutes')} value={usage.aiMinutes} />
+            <Stat label={t('usageSms')} value={usage.smsSent} />
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>{t('usageNote')}</div>
+        </div>
+      )}
 
       {/* Forwarding instructions */}
       {c.provisioned && (
@@ -264,3 +285,12 @@ function Inner() {
 }
 
 const codeS: CSSProperties = { padding: '2px 7px', background: '#0f172a', borderRadius: 6, border: '1px solid #334155', color: '#a5b4fc', fontSize: 13 };
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: '#a5b4fc', lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}

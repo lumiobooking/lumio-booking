@@ -28,4 +28,13 @@ export class VoiceWebhookController {
   turn(@Body() body: Record<string, string>, @Query('miss') miss: string) {
     return this.svc.handleTurn(body || {}, miss || '0');
   }
+
+  /** Twilio "call status changes" callback → records the billed call duration. */
+  @Public()
+  @Post('status')
+  @HttpCode(200)
+  status(@Body() body: Record<string, string>) {
+    this.svc.handleStatus(body || {}).catch(() => undefined);
+    return 'ok';
+  }
 }

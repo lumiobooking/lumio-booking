@@ -26,6 +26,11 @@ export class VoiceController {
   calls(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.listCalls(user);
   }
+
+  @Get('usage')
+  usage(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.usage(user);
+  }
 }
 
 /** Platform (Super Admin) provisioning of Lumio voice numbers to tenants. */
@@ -37,5 +42,10 @@ export class VoiceAdminController {
   @Post('provision')
   provision(@Body() dto: ProvisionVoiceDto) {
     return this.svc.provision(dto.tenantId, dto.lumioNumber);
+  }
+
+  @Get('usage')
+  usage() {
+    return this.svc.usageAll();
   }
 }

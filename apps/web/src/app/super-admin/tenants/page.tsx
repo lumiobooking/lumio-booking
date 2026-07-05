@@ -31,6 +31,8 @@ interface Plan {
   currency: string;
 }
 
+interface VoiceUsage { tenantId: string; aiCalls: number; aiMinutes: number; smsSent: number }
+
 export default function TenantsPage() {
   const { token, user, ready, logout } = useAuth();
   const router = useRouter();
@@ -41,6 +43,7 @@ export default function TenantsPage() {
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [voiceUsage, setVoiceUsage] = useState<VoiceUsage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -60,12 +63,14 @@ export default function TenantsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [tenantList, planList] = await Promise.all([
+      const [tenantList, planList, usageList] = await Promise.all([
         apiFetch<Tenant[]>('/tenants', { token }),
         apiFetch<Plan[]>('/tenants/plans', { token }),
+        apiFetch<VoiceUsage[]>('/admin/voice/usage', { token }).catch(() => [] as VoiceUsage[]),
       ]);
       setTenants(tenantList);
       setPlans(planList);
+      setVoiceUsage(usageList);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tenants');
     } finally {
@@ -243,7 +248,7 @@ export default function TenantsPage() {
               {editId === t.id && (
                 <tr>
                   <td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
-                    <TenantEditPanel token={token} tenant={t} onSaved={loadData} />
+                    <TenantEditPanel token={token} tenant={t} usage={voiceUsage.find((u) => u.tenantId === t.id)} onSaved={loadData} />
                   </td>
                 </tr>
               )}
@@ -300,7 +305,7 @@ function AccountPanel({ token, currentEmail }: { token: string; currentEmail: st
   );
 }
 
-function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Tenant; onSaved: () => void }) {
+function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; tenant: Tenant; usage?: VoiceUsage; onSaved: () => void }) {
   const currentLoginEmail = tenant.users?.[0]?.email ?? '';
   const [form, setForm] = useState({ name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone });
   const [loginEmail, setLoginEmail] = useState(currentLoginEmail);
@@ -412,6 +417,11 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
           <input style={{ ...inp, maxWidth: 260 }} value={voiceNum} onChange={(e) => setVoiceNum(e.target.value)} placeholder="+14085551234" />
           <button onClick={saveVoice} disabled={busy || !voiceNum.trim()} style={primaryBtn}>Assign number</button>
         </div>
+        {usage && (
+          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '8px 0 0' }}>
+            This month: <strong style={{ color: '#e2e8f0' }}>{usage.aiCalls}</strong> calls · <strong style={{ color: '#e2e8f0' }}>{usage.aiMinutes}</strong> AI min · <strong style={{ color: '#e2e8f0' }}>{usage.smsSent}</strong> SMS
+          </p>
+        )}
       </div>
 
       <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>

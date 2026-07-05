@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
@@ -46,6 +46,8 @@ function normNum(v: string | null | undefined): string {
 type Turn = { role: 'user' | 'assistant'; content: string };
 interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
+export interface VoiceUsage { periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number }
+export interface TenantVoiceUsage extends VoiceUsage { tenantId: string; name: string }
 
 const MAX_TURNS = 16;
 const MAX_TOOL_LOOPS = 5;
@@ -172,6 +174,39 @@ export class VoiceService {
       where: { id: callId },
       data: { ...(appointmentId ? { appointmentId } : {}), outcome },
     }).catch(() => undefined);
+  }
+
+  /** Twilio "call status changes" webhook → record the real billed duration. */
+  async handleStatus(body: Record<string, string>): Promise<void> {
+    const callSid = String(body.CallSid || '');
+    const dur = Number(body.CallDuration || body.DialCallDuration || 0) || 0;
+    if (!callSid || !dur) return;
+    await this.prisma.voiceCall.updateMany({ where: { callSid }, data: { durationSec: dur } }).catch(() => undefined);
+  }
+
+  // ---- usage metering (AI minutes + SMS) -----------------------------------
+  private monthStart(): Date {
+    const n = new Date();
+    return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1));
+  }
+
+  /** AI voice usage + SMS sent for one tenant, this calendar month. */
+  private async usageForTenant(tenantId: string): Promise<VoiceUsage> {
+    const since = this.monthStart();
+    const calls = await this.prisma.voiceCall.findMany({
+      where: { tenantId, createdAt: { gte: since } },
+      select: { durationSec: true, createdAt: true, updatedAt: true },
+    });
+    let seconds = 0;
+    for (const c of calls) {
+      // Prefer Twilio's billed duration; else estimate from the turn span (cap 30m).
+      if (typeof c.durationSec === 'number' && c.durationSec > 0) seconds += c.durationSec;
+      else seconds += Math.max(0, Math.min(1800, Math.round((c.updatedAt.getTime() - c.createdAt.getTime()) / 1000)));
+    }
+    const smsSent = await this.prisma.notification.count({
+      where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.SENT, createdAt: { gte: since } },
+    });
+    return { periodStart: since.toISOString(), aiCalls: calls.length, aiMinutes: Math.ceil(seconds / 60), smsSent };
   }
 
   // ---- AI agent (tool use) — phone-tuned -----------------------------------
@@ -388,6 +423,10 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
     return rows;
   }
 
+  async usage(user: AuthenticatedUser): Promise<VoiceUsage> {
+    return this.usageForTenant(this.tenantId(user));
+  }
+
   // ---- Super Admin (platform) ----------------------------------------------
   /** Assign a Lumio-owned voice number to a tenant (the number they forward to). */
   async provision(tenantId: string, lumioNumber: string) {
@@ -405,6 +444,14 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
     });
     await this.audit(tenantId, 'voice.provisioned');
     return { tenantId, lumioNumber: num };
+  }
+
+  /** Per-tenant AI usage this month (Super Admin billing oversight). */
+  async usageAll(): Promise<TenantVoiceUsage[]> {
+    const tenants = await this.prisma.tenant.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    const rows: TenantVoiceUsage[] = [];
+    for (const t of tenants) rows.push({ tenantId: t.id, name: t.name, ...(await this.usageForTenant(t.id)) });
+    return rows;
   }
 
   private async audit(tenantId: string, action: string): Promise<void> {

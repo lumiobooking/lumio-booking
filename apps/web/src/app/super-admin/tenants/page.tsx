@@ -21,6 +21,7 @@ interface Tenant {
   users?: { email: string }[]; // first SALON_ADMIN — the login email
   billingExempt?: boolean;
   accessUntil?: string | null;
+  voiceLine?: { lumioNumber: string | null; enabled: boolean } | null; // AI hotline number
 }
 
 interface Plan {
@@ -309,6 +310,16 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [voiceNum, setVoiceNum] = useState(tenant.voiceLine?.lumioNumber ?? '');
+
+  async function saveVoice() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ lumioNumber: string }>('/admin/voice/provision', { method: 'POST', token, body: { tenantId: tenant.id, lumioNumber: voiceNum.trim() } });
+      setMsg(`✓ AI Hotline number assigned: ${r.lumioNumber}. The salon can now enable it and forward their line to it.`);
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not assign number'); } finally { setBusy(false); }
+  }
 
   async function saveAccess() {
     setBusy(true); setErr(null); setMsg(null);
@@ -387,6 +398,20 @@ function TenantEditPanel({ token, tenant, onSaved }: { token: string; tenant: Te
         <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>
           Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString('en-US')}` : 'billing-controlled'} · status {tenant.status}
         </p>
+      </div>
+
+      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>📞 AI Hotline number</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+          Assign a Lumio voice number (E.164). The salon forwards its own line to this number and the AI answers.{' '}
+          {tenant.voiceLine?.lumioNumber
+            ? <>Current: <strong style={{ color: '#a5b4fc' }}>{tenant.voiceLine.lumioNumber}</strong> · {tenant.voiceLine.enabled ? 'enabled' : 'off'}</>
+            : 'Not assigned yet.'}
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input style={{ ...inp, maxWidth: 260 }} value={voiceNum} onChange={(e) => setVoiceNum(e.target.value)} placeholder="+14085551234" />
+          <button onClick={saveVoice} disabled={busy || !voiceNum.trim()} style={primaryBtn}>Assign number</button>
+        </div>
       </div>
 
       <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>

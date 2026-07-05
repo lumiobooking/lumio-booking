@@ -140,6 +140,8 @@ export class TenantsService {
         _count: { select: { users: true, staffMembers: true } },
         // The salon's admin login email (first SALON_ADMIN) so the UI can show it.
         users: { where: { role: UserRole.SALON_ADMIN }, select: { email: true }, orderBy: { createdAt: 'asc' }, take: 1 },
+        // Assigned AI-hotline number so the Super Admin can manage it inline.
+        voiceLine: { select: { lumioNumber: true, enabled: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

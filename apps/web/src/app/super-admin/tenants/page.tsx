@@ -31,7 +31,12 @@ interface Plan {
   currency: string;
 }
 
-interface VoiceUsage { tenantId: string; aiCalls: number; aiMinutes: number; smsSent: number }
+interface VoiceUsage {
+  tenantId: string; aiCalls: number; aiMinutes: number; smsSent: number;
+  includedMinutes: number; includedSms: number;
+  overageCentsPerMin: number; overageCentsPerSms: number;
+  overageMinutes: number; overageSms: number; overageCents: number; hardCap: boolean;
+}
 
 export default function TenantsPage() {
   const { token, user, ready, logout } = useAuth();
@@ -317,12 +322,26 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   const [busy, setBusy] = useState(false);
   const [voiceNum, setVoiceNum] = useState(tenant.voiceLine?.lumioNumber ?? '');
   const [fp, setFp] = useState<{ key: string; label: string; mode: string }[]>([]);
+  const [lim, setLim] = useState({ includedMinutes: 0, includedSms: 0, overageCentsPerMin: 0, overageCentsPerSms: 0, hardCap: false });
 
   useEffect(() => {
     apiFetch<{ policy: Record<string, string>; defs: { key: string; label: string }[] }>(`/admin/feature-policy/${tenant.id}`, { token })
       .then((r) => setFp((r.defs || []).map((d) => ({ key: d.key, label: d.label, mode: r.policy?.[d.key] || 'salon' }))))
       .catch(() => {});
   }, [tenant.id, token]);
+
+  useEffect(() => {
+    if (usage) setLim({ includedMinutes: usage.includedMinutes, includedSms: usage.includedSms, overageCentsPerMin: usage.overageCentsPerMin, overageCentsPerSms: usage.overageCentsPerSms, hardCap: usage.hardCap });
+  }, [usage]);
+
+  async function saveLimits() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      await apiFetch('/admin/voice/limits', { method: 'POST', token, body: { tenantId: tenant.id, ...lim } });
+      setMsg('✓ AI plan limits saved.');
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save limits'); } finally { setBusy(false); }
+  }
 
   async function saveVoice() {
     setBusy(true); setErr(null); setMsg(null);
@@ -436,10 +455,32 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           <button onClick={saveVoice} disabled={busy || !voiceNum.trim()} style={primaryBtn}>Assign number</button>
         </div>
         {usage && (
-          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '8px 0 0' }}>
+          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '10px 0 0' }}>
             This month: <strong style={{ color: '#e2e8f0' }}>{usage.aiCalls}</strong> calls · <strong style={{ color: '#e2e8f0' }}>{usage.aiMinutes}</strong> AI min · <strong style={{ color: '#e2e8f0' }}>{usage.smsSent}</strong> SMS
+            {usage.overageCents > 0 && <span style={{ color: '#fca5a5' }}> · overage ~${(usage.overageCents / 100).toFixed(2)}</span>}
           </p>
         )}
+
+        <div style={{ marginTop: 12, fontSize: 12, color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>AI plan limits (0 = unlimited)</div>
+        <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+          <label style={{ fontSize: 12, color: '#94a3b8' }}>Included minutes / mo
+            <input type="number" min={0} value={lim.includedMinutes} onChange={(e) => setLim({ ...lim, includedMinutes: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#94a3b8' }}>Included SMS / mo
+            <input type="number" min={0} value={lim.includedSms} onChange={(e) => setLim({ ...lim, includedSms: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#94a3b8' }}>Overage ¢ / min
+            <input type="number" min={0} value={lim.overageCentsPerMin} onChange={(e) => setLim({ ...lim, overageCentsPerMin: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
+          </label>
+          <label style={{ fontSize: 12, color: '#94a3b8' }}>Overage ¢ / SMS
+            <input type="number" min={0} value={lim.overageCentsPerSms} onChange={(e) => setLim({ ...lim, overageCentsPerSms: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
+          </label>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '10px 0' }}>
+          <input type="checkbox" checked={lim.hardCap} onChange={(e) => setLim({ ...lim, hardCap: e.target.checked })} />
+          <span><strong>Hard cap</strong> — block new AI calls once over included minutes</span>
+        </label>
+        <button onClick={saveLimits} disabled={busy} style={primaryBtn}>Save plan limits</button>
       </div>
 
       <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>

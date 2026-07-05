@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { VoiceService } from './voice.service';
-import { ProvisionVoiceDto, UpdateVoiceDto } from './dto/voice.dto';
+import { ProvisionVoiceDto, UpdateVoiceDto, VoiceLimitsDto } from './dto/voice.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -51,5 +51,10 @@ export class VoiceAdminController {
   @Get('usage')
   usage() {
     return this.svc.usageAll();
+  }
+
+  @Post('limits')
+  limits(@Body() dto: VoiceLimitsDto) {
+    return this.svc.setLimits(dto.tenantId, dto);
   }
 }

@@ -1204,6 +1204,13 @@ model VoiceLine {
   voice         String? // optional Twilio <Say> voice name
   aiInstruction String? // extra brand-voice guidance for the agent
 
+  // Monthly plan limits (Super Admin set). 0 = unlimited. Overage in cents.
+  includedMinutes    Int     @default(0)
+  includedSms        Int     @default(0)
+  overageCentsPerMin Int     @default(0)
+  overageCentsPerSms Int     @default(0)
+  hardCap            Boolean @default(false) // block new AI calls once over included minutes
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

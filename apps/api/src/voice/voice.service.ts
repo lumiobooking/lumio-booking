@@ -46,7 +46,12 @@ function normNum(v: string | null | undefined): string {
 type Turn = { role: 'user' | 'assistant'; content: string };
 interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
-export interface VoiceUsage { periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number }
+export interface VoiceUsage {
+  periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number;
+  includedMinutes: number; includedSms: number;
+  overageCentsPerMin: number; overageCentsPerSms: number;
+  overageMinutes: number; overageSms: number; overageCents: number; hardCap: boolean;
+}
 export interface TenantVoiceUsage extends VoiceUsage { tenantId: string; name: string }
 
 const MAX_TURNS = 16;
@@ -104,6 +109,14 @@ export class VoiceService {
     const line = to ? await this.prisma.voiceLine.findFirst({ where: { lumioNumber: to } }) : null;
     if (!line || !line.enabled) {
       return this.sayHangup('Sorry, we are not able to take this call right now. Please try again later. Goodbye.', null);
+    }
+    // Hard cap: stop taking NEW calls once over the included minutes (a call
+    // already in progress is never cut off). Overage is still recorded otherwise.
+    if (line.hardCap && line.includedMinutes > 0) {
+      const u = await this.usageForTenant(line.tenantId);
+      if (u.aiMinutes >= line.includedMinutes) {
+        return this.sayHangup('Sorry, our automated booking line is not available right now. Please call back a little later. Goodbye.', line.voice || null);
+      }
     }
     const tenant = await this.prisma.tenant.findUnique({ where: { id: line.tenantId }, select: { name: true } });
     const salonName = tenant?.name || 'our salon';
@@ -190,23 +203,41 @@ export class VoiceService {
     return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1));
   }
 
-  /** AI voice usage + SMS sent for one tenant, this calendar month. */
+  /** AI voice usage + SMS sent for one tenant this month, with plan limits and
+   *  computed overage (minutes/SMS beyond the included allowance). */
   private async usageForTenant(tenantId: string): Promise<VoiceUsage> {
     const since = this.monthStart();
-    const calls = await this.prisma.voiceCall.findMany({
-      where: { tenantId, createdAt: { gte: since } },
-      select: { durationSec: true, createdAt: true, updatedAt: true },
-    });
+    const [calls, line] = await Promise.all([
+      this.prisma.voiceCall.findMany({
+        where: { tenantId, createdAt: { gte: since } },
+        select: { durationSec: true, createdAt: true, updatedAt: true },
+      }),
+      this.prisma.voiceLine.findUnique({
+        where: { tenantId },
+        select: { includedMinutes: true, includedSms: true, overageCentsPerMin: true, overageCentsPerSms: true, hardCap: true },
+      }),
+    ]);
     let seconds = 0;
     for (const c of calls) {
       // Prefer Twilio's billed duration; else estimate from the turn span (cap 30m).
       if (typeof c.durationSec === 'number' && c.durationSec > 0) seconds += c.durationSec;
       else seconds += Math.max(0, Math.min(1800, Math.round((c.updatedAt.getTime() - c.createdAt.getTime()) / 1000)));
     }
+    const aiMinutes = Math.ceil(seconds / 60);
     const smsSent = await this.prisma.notification.count({
       where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.SENT, createdAt: { gte: since } },
     });
-    return { periodStart: since.toISOString(), aiCalls: calls.length, aiMinutes: Math.ceil(seconds / 60), smsSent };
+    const incMin = line?.includedMinutes ?? 0;
+    const incSms = line?.includedSms ?? 0;
+    const overageMinutes = incMin > 0 ? Math.max(0, aiMinutes - incMin) : 0;
+    const overageSms = incSms > 0 ? Math.max(0, smsSent - incSms) : 0;
+    const overageCents = overageMinutes * (line?.overageCentsPerMin ?? 0) + overageSms * (line?.overageCentsPerSms ?? 0);
+    return {
+      periodStart: since.toISOString(), aiCalls: calls.length, aiMinutes, smsSent,
+      includedMinutes: incMin, includedSms: incSms,
+      overageCentsPerMin: line?.overageCentsPerMin ?? 0, overageCentsPerSms: line?.overageCentsPerSms ?? 0,
+      overageMinutes, overageSms, overageCents, hardCap: line?.hardCap ?? false,
+    };
   }
 
   // ---- AI agent (tool use) — phone-tuned -----------------------------------
@@ -452,6 +483,26 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
     const rows: TenantVoiceUsage[] = [];
     for (const t of tenants) rows.push({ tenantId: t.id, name: t.name, ...(await this.usageForTenant(t.id)) });
     return rows;
+  }
+
+  /** Super Admin: set the tenant's AI plan limits (0 = unlimited; overage in cents). */
+  async setLimits(
+    tenantId: string,
+    dto: { includedMinutes?: number; includedSms?: number; overageCentsPerMin?: number; overageCentsPerSms?: number; hardCap?: boolean },
+  ): Promise<VoiceUsage> {
+    if (!tenantId) throw new BadRequestException('tenantId required');
+    const cur = await this.prisma.voiceLine.findUnique({ where: { tenantId } });
+    const n = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 ? Math.floor(v) : d);
+    const data = {
+      includedMinutes: n(dto.includedMinutes, cur?.includedMinutes ?? 0),
+      includedSms: n(dto.includedSms, cur?.includedSms ?? 0),
+      overageCentsPerMin: n(dto.overageCentsPerMin, cur?.overageCentsPerMin ?? 0),
+      overageCentsPerSms: n(dto.overageCentsPerSms, cur?.overageCentsPerSms ?? 0),
+      hardCap: typeof dto.hardCap === 'boolean' ? dto.hardCap : (cur?.hardCap ?? false),
+    };
+    await this.prisma.voiceLine.upsert({ where: { tenantId }, update: data, create: { tenantId, ...data } });
+    await this.audit(tenantId, 'voice.limits_updated');
+    return this.usageForTenant(tenantId);
   }
 
   private async audit(tenantId: string, action: string): Promise<void> {

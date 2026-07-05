@@ -19,7 +19,11 @@ interface VCall {
   id: string; fromNumber: string | null; outcome: string; appointmentId: string | null;
   durationSec: number | null; createdAt: string;
 }
-interface VUsage { periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number }
+interface VUsage {
+  periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number;
+  includedMinutes: number; includedSms: number;
+  overageMinutes: number; overageSms: number; overageCents: number; hardCap: boolean;
+}
 
 type Lang = 'vi' | 'en';
 const SUPPORT_EMAIL = 'lumioagency.com@gmail.com';
@@ -91,6 +95,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   usageMinutes: { vi: 'Phút AI', en: 'AI minutes' },
   usageSms: { vi: 'SMS đã gửi', en: 'SMS sent' },
   usageNote: { vi: 'Tính từ đầu tháng. Phút dựa trên thời lượng cuộc gọi thực tế; SMS là tin đã gửi thành công.', en: 'Since the 1st. Minutes are based on actual call length; SMS counts messages sent successfully.' },
+  overWarn: { vi: 'Đã vượt hạn mức gói', en: 'Over your plan allowance' },
   callsTitle: { vi: 'Cuộc gọi gần đây', en: 'Recent calls' },
   noCalls: { vi: 'Chưa có cuộc gọi nào.', en: 'No calls yet.' },
   colFrom: { vi: 'Từ số', en: 'From' },
@@ -202,9 +207,14 @@ function Inner() {
           <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('usageTitle')}</div>
           <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
             <Stat label={t('usageCalls')} value={usage.aiCalls} />
-            <Stat label={t('usageMinutes')} value={usage.aiMinutes} />
-            <Stat label={t('usageSms')} value={usage.smsSent} />
+            <Stat label={t('usageMinutes')} value={usage.includedMinutes > 0 ? `${usage.aiMinutes} / ${usage.includedMinutes}` : usage.aiMinutes} />
+            <Stat label={t('usageSms')} value={usage.includedSms > 0 ? `${usage.smsSent} / ${usage.includedSms}` : usage.smsSent} />
           </div>
+          {(usage.overageMinutes > 0 || usage.overageSms > 0) && (
+            <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#3b1d1d', border: '1px solid #b91c1c', color: '#fecaca', fontSize: 13 }}>
+              ⚠️ {t('overWarn')}: {usage.overageMinutes > 0 ? `+${usage.overageMinutes} ${t('usageMinutes').toLowerCase()}` : ''}{usage.overageMinutes > 0 && usage.overageSms > 0 ? ', ' : ''}{usage.overageSms > 0 ? `+${usage.overageSms} SMS` : ''}{usage.overageCents > 0 ? ` (~$${(usage.overageCents / 100).toFixed(2)})` : ''}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>{t('usageNote')}</div>
         </div>
       )}
@@ -286,7 +296,7 @@ function Inner() {
 
 const codeS: CSSProperties = { padding: '2px 7px', background: '#0f172a', borderRadius: 6, border: '1px solid #334155', color: '#a5b4fc', fontSize: 13 };
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div>
       <div style={{ fontSize: 28, fontWeight: 800, color: '#a5b4fc', lineHeight: 1 }}>{value}</div>

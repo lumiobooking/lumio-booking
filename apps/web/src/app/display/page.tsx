@@ -328,9 +328,9 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
         </div>
       )}
 
-      {/* Invisible staff hotspot — press & hold the top-left corner to open the exit menu. */}
-      <div onPointerDown={startHold} onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
-        aria-hidden style={{ position: 'fixed', top: 0, left: 0, width: 84, height: 84, zIndex: 90 }} />
+      {/* Discreet staff exit — a faint gear (top-left) opens the menu; press-and-hold works too. */}
+      <button onClick={() => setMenu(true)} onPointerDown={startHold} onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
+        aria-label="Staff menu" style={{ position: 'fixed', top: 8, left: 8, width: 40, height: 40, borderRadius: 10, border: 'none', background: 'rgba(148,163,184,0.12)', color: 'rgba(100,116,139,0.5)', fontSize: 20, cursor: 'pointer', zIndex: 90, display: 'grid', placeItems: 'center' }}>⚙</button>
       {menu && (
         <div style={keypadOverlay} onClick={() => setMenu(false)}>
           <div style={{ ...keypadCard, width: 'min(90vw, 360px)' }} onClick={(e) => e.stopPropagation()}>

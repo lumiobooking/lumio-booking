@@ -241,6 +241,8 @@ model Tenant {
   giftCards            GiftCard[]
   giftCardTransactions GiftCardTransaction[]
   tipLogs              TipLog[]
+  voiceLine            VoiceLine?
+  voiceCalls           VoiceCall[]
 
   @@index([status])
   @@index([accountGroupId])
@@ -1176,6 +1178,52 @@ model MessengerThread {
   @@index([tenantId])
   @@index([tenantId, updatedAt])
   @@map("messenger_threads")
+}
+
+// ===========================================================================
+// AI Voice hotline — the salon KEEPS its own public phone number and forwards
+// (on no-answer / busy) to an assigned Lumio voice number. Twilio answers,
+// transcribes speech, runs the shared booking agent, and speaks replies.
+// The tenant is resolved from the Lumio number the call arrives on (the "To").
+// ===========================================================================
+model VoiceLine {
+  id       String @id @default(uuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Lumio-owned number (E.164) the salon forwards to. Routes calls → tenant.
+  lumioNumber   String? @unique
+  enabled       Boolean @default(false)
+  greeting      String? // spoken welcome line (includes the AI disclosure)
+  language      String  @default("en-US") // Twilio speech recognition + TTS language
+  voice         String? // optional Twilio <Say> voice name
+  aiInstruction String? // extra brand-voice guidance for the agent
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("voice_lines")
+}
+
+model VoiceCall {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  callSid       String? @unique // Twilio Call SID (per-call session key)
+  fromNumber    String? // caller's number (E.164)
+  toNumber      String? // the Lumio number dialed
+  transcript    Json    @default("[]") // [{role,content}] conversation turns
+  outcome       String  @default("in_progress") // in_progress|booked|info|no_action|handoff|error
+  appointmentId String?
+  durationSec   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@map("voice_calls")
 }
 
 // ===========================================================================

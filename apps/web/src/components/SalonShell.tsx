@@ -28,6 +28,7 @@ const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
   { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
   { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
   { href: '/salon/messenger', label: 'Messenger bot', icon: '🤖' },
+  { href: '/salon/voice', label: 'AI Hotline', icon: '📞' },
   { href: '/salon/marketing', label: 'Marketing', icon: '📣' },
   { href: '/salon/inventory', label: 'Inventory', icon: '📦', feature: 'pos' },
   { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },

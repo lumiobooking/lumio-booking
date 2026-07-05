@@ -74,6 +74,14 @@ export class BillingController {
     return this.billing.subscriptionStatus(user);
   }
 
+  /** Salon admin: itemized month-to-date bill (plan + AI Hotline + SMS + overage).
+   *  Always available to the owner — never hidden by feature policy. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('billing/usage-summary')
+  usageSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.billing.usageSummary(user);
+  }
+
   /** Salon admin: subscribe to / upgrade to a plan (checkout for this salon). */
   @Roles(UserRole.SALON_ADMIN)
   @Post('billing/subscribe')

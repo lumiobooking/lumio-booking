@@ -159,6 +159,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'nav.notifications': { en: 'Notifications', vi: 'Thông báo' },
   'nav.integrations': { en: 'Integrations', vi: 'Tích hợp' },
   'nav.billing': { en: 'Billing & plan', vi: 'Gói & thanh toán' },
+  'nav.usageCosts': { en: 'Usage & costs', vi: 'Chi phí sử dụng' },
   'nav.settings': { en: 'Settings', vi: 'Cài đặt' },
   // shell common
   'shell.subtitle': { en: 'Salon dashboard', vi: 'Quản lý tiệm' },
@@ -1387,5 +1388,6 @@ export const NAV_KEY: Record<string, string> = {
   '/salon/notifications': 'nav.notifications',
   '/salon/integrations': 'nav.integrations',
   '/salon/billing': 'nav.billing',
+  '/salon/usage-costs': 'nav.usageCosts',
   '/salon/settings': 'nav.settings',
 };

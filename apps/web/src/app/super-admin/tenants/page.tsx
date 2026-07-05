@@ -33,6 +33,7 @@ interface Plan {
 
 interface VoiceUsage {
   tenantId: string; aiCalls: number; aiMinutes: number; smsSent: number;
+  monthlyCents: number;
   includedMinutes: number; includedSms: number;
   overageCentsPerMin: number; overageCentsPerSms: number;
   overageMinutes: number; overageSms: number; overageCents: number; hardCap: boolean;
@@ -322,7 +323,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   const [busy, setBusy] = useState(false);
   const [voiceNum, setVoiceNum] = useState(tenant.voiceLine?.lumioNumber ?? '');
   const [fp, setFp] = useState<{ key: string; label: string; mode: string }[]>([]);
-  const [lim, setLim] = useState({ includedMinutes: 0, includedSms: 0, overageCentsPerMin: 0, overageCentsPerSms: 0, hardCap: false });
+  const [lim, setLim] = useState({ monthlyCents: 0, includedMinutes: 0, includedSms: 0, overageCentsPerMin: 0, overageCentsPerSms: 0, hardCap: false });
 
   useEffect(() => {
     apiFetch<{ policy: Record<string, string>; defs: { key: string; label: string }[] }>(`/admin/feature-policy/${tenant.id}`, { token })
@@ -331,7 +332,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   }, [tenant.id, token]);
 
   useEffect(() => {
-    if (usage) setLim({ includedMinutes: usage.includedMinutes, includedSms: usage.includedSms, overageCentsPerMin: usage.overageCentsPerMin, overageCentsPerSms: usage.overageCentsPerSms, hardCap: usage.hardCap });
+    if (usage) setLim({ monthlyCents: usage.monthlyCents, includedMinutes: usage.includedMinutes, includedSms: usage.includedSms, overageCentsPerMin: usage.overageCentsPerMin, overageCentsPerSms: usage.overageCentsPerSms, hardCap: usage.hardCap });
   }, [usage]);
 
   async function saveLimits() {
@@ -463,6 +464,9 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
 
         <div style={{ marginTop: 12, fontSize: 12, color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>AI plan limits (0 = unlimited)</div>
         <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+          <label style={{ fontSize: 12, color: '#94a3b8' }}>AI Hotline fee $ / mo
+            <input type="number" min={0} step={1} value={(lim.monthlyCents / 100) || 0} onChange={(e) => setLim({ ...lim, monthlyCents: Math.round((Number(e.target.value) || 0) * 100) })} style={{ ...inp, marginTop: 4 }} />
+          </label>
           <label style={{ fontSize: 12, color: '#94a3b8' }}>Included minutes / mo
             <input type="number" min={0} value={lim.includedMinutes} onChange={(e) => setLim({ ...lim, includedMinutes: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
           </label>

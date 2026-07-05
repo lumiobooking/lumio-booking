@@ -9,6 +9,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
 import { PlatformConfigService } from './platform-config.service';
+import { VoiceService } from '../voice/voice.service';
 
 export interface SignupInput {
   salonName: string;
@@ -33,6 +34,7 @@ export class BillingService {
     private readonly stripe: StripeService,
     private readonly paypal: PaypalService,
     private readonly platform: PlatformConfigService,
+    private readonly voice: VoiceService,
   ) {}
 
   /** Super Admin: gateway connection status + webhook URLs for the UI. */
@@ -92,6 +94,83 @@ export class BillingService {
       billingExempt: tenant?.billingExempt ?? false,
       accessUntil: tenant?.accessUntil ?? null,
       subscription, // null when the salon has never paid (manual/free access)
+    };
+  }
+
+  /**
+   * Itemized month-to-date bill so the salon owner always knows exactly what they
+   * will pay: fixed fees (plan + AI Hotline add-on) + variable overage (SMS beyond
+   * the plan allowance + AI Hotline minutes beyond the included bucket) + a
+   * projected month-end total. Always available — never hidden by feature policy.
+   */
+  async usageSummary(user: AuthenticatedUser) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return null;
+    const [tenant, line, u] = await Promise.all([
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { plan: { select: { name: true, currency: true, priceMonthlyCents: true, priceCents: true, maxSmsPerMonth: true } } },
+      }),
+      this.prisma.voiceLine.findUnique({ where: { tenantId }, select: { enabled: true, monthlyCents: true } }),
+      this.voice.usage(user),
+    ]);
+    const plan = tenant?.plan ?? null;
+    const currency = plan?.currency ?? 'USD';
+    const baseCents = (plan?.priceMonthlyCents || plan?.priceCents) ?? 0;
+
+    // ---- AI Hotline (voice) ----
+    const hotlineEnabled = !!line?.enabled;
+    const hotlineMonthlyCents = hotlineEnabled ? (line?.monthlyCents ?? 0) : 0;
+    const minIncluded = u.includedMinutes;
+    const minUsed = u.aiMinutes;
+    const minOver = u.overageMinutes; // 0 when no included bucket is set (bundled/unlimited)
+    const minRate = u.overageCentsPerMin;
+    const minOverageCents = minOver * minRate;
+
+    // ---- SMS (reconciled with the plan allowance) ----
+    // A per-tenant override (VoiceLine.includedSms) wins; otherwise the plan's monthly SMS.
+    const smsIncluded = u.includedSms > 0 ? u.includedSms : (plan?.maxSmsPerMonth ?? 0);
+    const smsUsed = u.smsSent;
+    const smsOver = smsIncluded > 0 ? Math.max(0, smsUsed - smsIncluded) : 0;
+    const smsRate = u.overageCentsPerSms;
+    const smsOverageCents = smsOver * smsRate;
+
+    // ---- Totals ----
+    const fixedCents = baseCents + hotlineMonthlyCents;
+    const overageCents = minOverageCents + smsOverageCents;
+    const grandTotalCents = fixedCents + overageCents;
+
+    // Straight-line projection of the variable overage to month end.
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dayOfMonth = Math.max(1, now.getDate());
+    const projectedOverageCents = Math.round((overageCents / dayOfMonth) * daysInMonth);
+    const projectedGrandTotalCents = fixedCents + projectedOverageCents;
+
+    return {
+      periodStart: u.periodStart,
+      currency,
+      daysElapsed: dayOfMonth,
+      daysInMonth,
+      plan: { name: plan?.name ?? null, monthlyCents: baseCents },
+      hotline: {
+        enabled: hotlineEnabled,
+        monthlyCents: hotlineMonthlyCents,
+        includedMinutes: minIncluded,
+        usedMinutes: minUsed,
+        overageMinutes: minOver,
+        overageCentsPerMin: minRate,
+        overageCents: minOverageCents,
+        aiCalls: u.aiCalls,
+      },
+      sms: {
+        included: smsIncluded,
+        used: smsUsed,
+        overage: smsOver,
+        overageCentsPer: smsRate,
+        overageCents: smsOverageCents,
+      },
+      totals: { fixedCents, overageCents, grandTotalCents, projectedGrandTotalCents },
     };
   }
 

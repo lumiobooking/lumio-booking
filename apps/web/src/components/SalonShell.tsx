@@ -36,6 +36,7 @@ const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
   { href: '/salon/notifications', label: 'Notifications', icon: '✉' },
   { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },
   { href: '/salon/billing', label: 'Billing & plan', icon: '💳' },
+  { href: '/salon/usage-costs', label: 'Usage & costs', icon: '🧮' },
   { href: '/salon/settings', label: 'Settings', icon: '⚙' },
 ];
 
@@ -48,7 +49,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/payroll': 'payroll',
   '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
-  '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/settings': 'settings',
+  '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/usage-costs': 'billing', '/salon/settings': 'settings',
   '/salon/chain': 'reports', // multi-branch consolidated report
 };
 const ALL_CAPS = Object.values(HREF_CAP);

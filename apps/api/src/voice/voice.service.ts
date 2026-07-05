@@ -48,6 +48,7 @@ interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 export interface VoiceUsage {
   periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number;
+  monthlyCents: number;
   includedMinutes: number; includedSms: number;
   overageCentsPerMin: number; overageCentsPerSms: number;
   overageMinutes: number; overageSms: number; overageCents: number; hardCap: boolean;
@@ -214,7 +215,7 @@ export class VoiceService {
       }),
       this.prisma.voiceLine.findUnique({
         where: { tenantId },
-        select: { includedMinutes: true, includedSms: true, overageCentsPerMin: true, overageCentsPerSms: true, hardCap: true },
+        select: { monthlyCents: true, includedMinutes: true, includedSms: true, overageCentsPerMin: true, overageCentsPerSms: true, hardCap: true },
       }),
     ]);
     let seconds = 0;
@@ -234,6 +235,7 @@ export class VoiceService {
     const overageCents = overageMinutes * (line?.overageCentsPerMin ?? 0) + overageSms * (line?.overageCentsPerSms ?? 0);
     return {
       periodStart: since.toISOString(), aiCalls: calls.length, aiMinutes, smsSent,
+      monthlyCents: line?.monthlyCents ?? 0,
       includedMinutes: incMin, includedSms: incSms,
       overageCentsPerMin: line?.overageCentsPerMin ?? 0, overageCentsPerSms: line?.overageCentsPerSms ?? 0,
       overageMinutes, overageSms, overageCents, hardCap: line?.hardCap ?? false,
@@ -488,12 +490,13 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
   /** Super Admin: set the tenant's AI plan limits (0 = unlimited; overage in cents). */
   async setLimits(
     tenantId: string,
-    dto: { includedMinutes?: number; includedSms?: number; overageCentsPerMin?: number; overageCentsPerSms?: number; hardCap?: boolean },
+    dto: { monthlyCents?: number; includedMinutes?: number; includedSms?: number; overageCentsPerMin?: number; overageCentsPerSms?: number; hardCap?: boolean },
   ): Promise<VoiceUsage> {
     if (!tenantId) throw new BadRequestException('tenantId required');
     const cur = await this.prisma.voiceLine.findUnique({ where: { tenantId } });
     const n = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 ? Math.floor(v) : d);
     const data = {
+      monthlyCents: n(dto.monthlyCents, cur?.monthlyCents ?? 0),
       includedMinutes: n(dto.includedMinutes, cur?.includedMinutes ?? 0),
       includedSms: n(dto.includedSms, cur?.includedSms ?? 0),
       overageCentsPerMin: n(dto.overageCentsPerMin, cur?.overageCentsPerMin ?? 0),

@@ -17,6 +17,7 @@ export class ProvisionVoiceDto {
 /** Super Admin: set a tenant's AI plan limits (0 = unlimited; overage in cents). */
 export class VoiceLimitsDto {
   @IsString() tenantId!: string;
+  @IsOptional() @IsInt() @Min(0) monthlyCents?: number;
   @IsOptional() @IsInt() @Min(0) includedMinutes?: number;
   @IsOptional() @IsInt() @Min(0) includedSms?: number;
   @IsOptional() @IsInt() @Min(0) overageCentsPerMin?: number;

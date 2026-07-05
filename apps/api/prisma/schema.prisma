@@ -1205,6 +1205,7 @@ model VoiceLine {
   aiInstruction String? // extra brand-voice guidance for the agent
 
   // Monthly plan limits (Super Admin set). 0 = unlimited. Overage in cents.
+  monthlyCents       Int     @default(0) // AI Hotline add-on subscription fee / month (0 = bundled in plan)
   includedMinutes    Int     @default(0)
   includedSms        Int     @default(0)
   overageCentsPerMin Int     @default(0)

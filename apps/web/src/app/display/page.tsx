@@ -129,6 +129,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   const [keypad, setKeypad] = useState(false);
   const [pad, setPad] = useState('');
   const [portrait, setPortrait] = useState(true);
+  const [vw, setVw] = useState(1024);
   const prevSaleRef = useRef<string>('__init__');
   const tipPanelRef = useRef<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState(false);
@@ -166,7 +167,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
     if (revealTip && tipPanelRef.current) tipPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [revealTip]);
   useEffect(() => {
-    const check = () => setPortrait(window.innerHeight >= window.innerWidth);
+    const check = () => { setPortrait(window.innerHeight >= window.innerWidth); setVw(window.innerWidth); };
     check();
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);
@@ -302,7 +303,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
                   <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 900, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
                 </div>
               </div>
-              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="strip" />}
+              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="strip" narrow={vw < 640} />}
             </div>
           )}
 
@@ -419,21 +420,21 @@ function Stars({ size }: { size: number | string }) {
     </div>
   );
 }
-function ReviewCard({ url, accent, variant }: { url: string; accent: string; variant: 'hero' | 'card' | 'strip' }) {
+function ReviewCard({ url, accent, variant, narrow }: { url: string; accent: string; variant: 'hero' | 'card' | 'strip'; narrow?: boolean }) {
   const qr = (px: number) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=1&data=${encodeURIComponent(url)}`;
 
   if (variant === 'strip') {
-    // Order screen: a slim horizontal banner — present but never distracting.
+    // Order screen: a slim banner — horizontal on tablets/TVs, stacked on phones.
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(14px, 2.5vw, 26px)', width: 'min(96vw, 720px)', margin: '0 auto', background: 'linear-gradient(120deg, #fffdf5, #fff)', border: `1px solid ${GOLD}33`, borderRadius: 18, padding: 'clamp(12px, 1.8vw, 18px)', boxShadow: '0 8px 26px rgba(15,23,42,0.06)', animation: 'lumioFade .5s ease both' }}>
+      <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', alignItems: 'center', gap: 'clamp(12px, 2.5vw, 26px)', width: 'min(96vw, 720px)', margin: '0 auto', background: 'linear-gradient(120deg, #fffdf5, #fff)', border: `1px solid ${GOLD}33`, borderRadius: 18, padding: 'clamp(14px, 1.8vw, 20px)', boxShadow: '0 8px 26px rgba(15,23,42,0.06)', animation: 'lumioFade .5s ease both' }}>
         <div style={{ background: '#fff', borderRadius: 12, padding: 7, border: '1px solid #eef2f7', flexShrink: 0, boxShadow: '0 4px 14px rgba(15,23,42,0.08)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qr(300)} alt="Google review QR" style={{ width: 'clamp(80px, 12vw, 108px)', height: 'auto', display: 'block' }} />
+          <img src={qr(300)} alt="Google review QR" style={{ width: narrow ? 'clamp(104px, 30vw, 140px)' : 'clamp(80px, 12vw, 108px)', height: 'auto', display: 'block' }} />
         </div>
-        <div style={{ textAlign: 'left', minWidth: 0 }}>
+        <div style={{ textAlign: narrow ? 'center' : 'left', minWidth: 0 }}>
           <div style={{ marginBottom: 4 }}><Stars size="clamp(15px, 1.9vw, 20px)" /></div>
-          <div style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 800, color: '#0f172a' }}>Enjoying your visit?</div>
-          <div style={{ fontSize: 'clamp(12.5px, 1.6vw, 16px)', color: '#64748b', marginTop: 2 }}>
+          <div style={{ fontSize: 'clamp(16px, 2vw, 22px)', fontWeight: 800, color: '#0f172a' }}>Enjoying your visit?</div>
+          <div style={{ fontSize: 'clamp(13px, 1.6vw, 16px)', color: '#64748b', marginTop: 2 }}>
             Scan to review us on <GoogleWord size={16} /> 💛
           </div>
         </div>

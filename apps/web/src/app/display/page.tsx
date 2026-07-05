@@ -3,15 +3,15 @@
 // ---------------------------------------------------------------------------
 // Wireless customer display (independent device — e.g. an iPad on a stand).
 //
-// Unlike /pos-display (same-PC second monitor over BroadcastChannel), this page
-// talks to the BACKEND: it pairs once with a short code, then POLLS the salon's
-// live state (~1s) and posts after-payment QR tips. So it works on any device on
-// any network — no cables, no Sidecar.
+// Talks to the BACKEND: pairs once with a short code, then POLLS the salon's
+// live state (~1s) and posts after-payment QR tips. Works on any device / any
+// network — no cables, no Sidecar.
 //
-// Customer-facing → English only (matches the booking page & printed receipts).
+// Customer-facing → English only. Every step (welcome, order, paid) carries a
+// warm, prominent Google-review call-to-action.
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, CSSProperties } from 'react';
 import { apiFetch, ApiError } from '../../lib/api';
 
 const TOKEN_KEY = 'lumio_display_token';
@@ -40,6 +40,7 @@ type DisplayState = {
 };
 
 const TIP_PERCENTS = [15, 18, 20];
+const GOLD = '#f59e0b';
 const EMPTY: DisplayState = {
   status: 'idle', currency: 'USD', lines: [],
   subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
@@ -127,11 +128,9 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   const [chosenTip, setChosenTip] = useState<number | null>(null);
   const [keypad, setKeypad] = useState(false);
   const [pad, setPad] = useState('');
-  const [portrait, setPortrait] = useState(true); // adapt the order screen to orientation
+  const [portrait, setPortrait] = useState(true);
   const prevSaleRef = useRef<string>('__init__');
   const tipPanelRef = useRef<HTMLDivElement | null>(null);
-  // Hidden staff exit: press-and-hold the top-left corner ~2.5s to open a small
-  // menu (sign in / unpair). Invisible to customers; a normal tap does nothing.
   const [menu, setMenu] = useState(false);
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelHold = () => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } };
@@ -166,8 +165,6 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   useEffect(() => {
     if (revealTip && tipPanelRef.current) tipPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [revealTip]);
-  // Track orientation so the order screen can lay out cleanly in portrait AND
-  // landscape (side-by-side when wide, stacked with the total pinned when tall).
   useEffect(() => {
     const check = () => setPortrait(window.innerHeight >= window.innerWidth);
     check();
@@ -187,13 +184,14 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
     <div style={brandBar}>
       {s.salonLogo
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={s.salonLogo} alt="" style={{ height: 'clamp(36px, 5.5vh, 58px)', width: 'auto', objectFit: 'contain', borderRadius: 8 }} />
+        ? <img src={s.salonLogo} alt="" style={{ height: 'clamp(34px, 5.2vh, 54px)', width: 'auto', objectFit: 'contain', borderRadius: 8 }} />
         : null}
       {s.salonName ? <div style={{ fontSize: 'clamp(18px, 2.6vw, 28px)', fontWeight: 800, color: '#1e293b' }}>{s.salonName}</div> : null}
     </div>
   ) : null;
 
   const isActive = s.status === 'active' && s.lines.length > 0;
+  const hasTip = (s.tipTechs?.length ?? 0) > 0;
 
   if (notLinked) {
     return (
@@ -210,87 +208,104 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
 
   return (
     <div style={page}>
-      <style>{`@keyframes lumioFade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes lumioPop{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.08)}100%{transform:scale(1)}}`}</style>
+      <style>{`
+        @keyframes lumioFade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+        @keyframes lumioPop{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.08)}100%{transform:scale(1)}}
+        @keyframes lumioStar{0%{opacity:0;transform:scale(.2) rotate(-25deg)}70%{opacity:1;transform:scale(1.25)}100%{transform:scale(1) rotate(0)}}
+        @keyframes lumioPulse{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.05);opacity:.12}}
+      `}</style>
       {brand}
       <div style={contentArea}>
         <div style={{ ...scrollInner, justifyContent: isActive ? 'flex-start' : 'center' }}>
+
           {s.status === 'idle' || (s.status === 'active' && s.lines.length === 0) ? (
+            // ---------------- WELCOME ----------------
             <div style={centerBox}>
-              <div style={{ fontSize: 72, marginBottom: 10 }}>💅</div>
-              <div style={{ fontSize: 'clamp(34px, 6vw, 60px)', fontWeight: 800, color: '#1e293b' }}>Welcome</div>
-              <div style={{ fontSize: 'clamp(16px, 2.4vw, 24px)', color: '#64748b', marginTop: 12 }}>Sit back and relax — we&rsquo;ll take care of you.</div>
-              {s.reviewUrl && (
-                <ReviewInvite url={s.reviewUrl} accent={accent}
-                  title={<>Been in before? <span style={{ color: '#f59e0b' }}>★★★★★</span></>}
-                  subtitle="We'd love a quick Google review — scan anytime 💛" />
-              )}
+              <div style={{ fontSize: 'clamp(54px, 9vh, 82px)', marginBottom: 4 }}>💅</div>
+              <div style={{ fontSize: 'clamp(34px, 6vw, 60px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>Welcome</div>
+              <div style={{ fontSize: 'clamp(16px, 2.4vw, 24px)', color: '#64748b', marginTop: 10 }}>Sit back and relax — we&rsquo;ll take care of you.</div>
+              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="card" />}
             </div>
+
           ) : s.status === 'paid' ? (
+            // ---------------- PAID · THANK YOU (review = hero) ----------------
             <div style={centerBox}>
-              <div style={{ width: 'clamp(84px, 13vh, 116px)', height: 'clamp(84px, 13vh, 116px)', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 'clamp(46px, 8vh, 66px)', display: 'grid', placeItems: 'center', margin: '0 auto 16px', animation: 'lumioPop .55s cubic-bezier(.2,.8,.3,1.2) both', boxShadow: '0 12px 34px rgba(22,163,74,0.28), 0 0 0 12px rgba(34,197,94,0.08)' }}>✓</div>
-              <div style={{ fontSize: 'clamp(32px, 6vw, 54px)', fontWeight: 800, color: '#16a34a' }}>Thank you!</div>
-              <div style={{ fontSize: 'clamp(18px, 2.8vw, 28px)', color: '#1e293b', marginTop: 12 }}>Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong></div>
-              {(s.changeCents ?? 0) > 0 && (
-                <div style={{ fontSize: 'clamp(15px, 2.2vw, 22px)', color: '#64748b', marginTop: 6 }}>Change {money(s.changeCents!, cur)}</div>
+              {s.reviewUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 2, animation: 'lumioFade .5s ease both' }}>
+                  <div style={checkCircle(true)}>✓</div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: 'clamp(26px, 4.6vw, 44px)', fontWeight: 900, color: '#16a34a', lineHeight: 1.05 }}>Thank you!</div>
+                    <div style={{ fontSize: 'clamp(14px, 2.1vw, 20px)', color: '#475569', marginTop: 3 }}>
+                      Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong>{(s.changeCents ?? 0) > 0 ? ` · change ${money(s.changeCents!, cur)}` : ''}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={checkCircle(false)}>✓</div>
+                  <div style={{ fontSize: 'clamp(32px, 6vw, 54px)', fontWeight: 900, color: '#16a34a' }}>Thank you!</div>
+                  <div style={{ fontSize: 'clamp(18px, 2.8vw, 28px)', color: '#1e293b', marginTop: 12 }}>Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong></div>
+                  {(s.changeCents ?? 0) > 0 && <div style={{ fontSize: 'clamp(15px, 2.2vw, 22px)', color: '#64748b', marginTop: 6 }}>Change {money(s.changeCents!, cur)}</div>}
+                </>
               )}
+
+              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="hero" />}
+
+              {/* Optional tip — secondary to the review */}
               {tipped ? (
-                <div style={{ marginTop: 20, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
-              ) : (s.tipTechs?.length ?? 0) > 0 && revealTip ? (
-                <div ref={tipPanelRef}>
+                <div style={{ marginTop: 18, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
+              ) : hasTip && revealTip ? (
+                <div ref={tipPanelRef} style={{ marginTop: 10 }}>
                   <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
                     onChoose={setChosenTip}
                     onCustom={() => { setPad(''); setKeypad(true); }}
                     onConfirm={() => { if (chosenTip != null) sendTip(chosenTip); }}
                     onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
                 </div>
+              ) : hasTip ? (
+                <button type="button" onPointerDown={() => setRevealTip(true)} onClick={() => setRevealTip(true)} style={{ ...softTipLink(accent), marginTop: 20 }}>
+                  💝 Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
+                </button>
               ) : (
-                <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                  <div style={{ fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
-                  {(s.tipTechs?.length ?? 0) > 0 && (
-                    <button type="button" onPointerDown={() => setRevealTip(true)} onClick={() => setRevealTip(true)} style={softTipLink(accent)}>
-                      Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
-                    </button>
-                  )}
-                </div>
-              )}
-              {s.reviewUrl && (
-                <ReviewInvite url={s.reviewUrl} accent={accent}
-                  title={<>Loved your visit? <span style={{ color: '#f59e0b' }}>★★★★★</span></>}
-                  subtitle="A quick Google review would truly make our day 💛 — 10 seconds, scan below." />
+                <div style={{ marginTop: 16, fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
               )}
             </div>
+
           ) : (
-            <div style={activeWrap(portrait)}>
-              <div style={{ ...itemsPanel, flex: portrait ? '1 1 0%' : '2 1 440px', minHeight: 0, maxHeight: 'none' }}>
-                <div style={{ fontSize: 'clamp(22px, 3vw, 32px)', fontWeight: 800, color: '#1e293b', marginBottom: 18 }}>Your order</div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {s.lines.map((l, i) => (
-                    <div key={i} style={lineRow}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: '#1e293b' }}>
-                          <span style={{ color: accent, fontWeight: 800 }}>{l.qty}×</span> {l.name}
+            // ---------------- ACTIVE · ORDER ----------------
+            <div style={{ width: '100%', maxWidth: 1220, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(14px, 2.2vh, 24px)', animation: 'lumioFade .4s ease both' }}>
+              <div style={{ display: 'flex', flexDirection: portrait ? 'column' : 'row', gap: portrait ? 'clamp(14px, 2vh, 20px)' : '2.4vw', alignItems: 'stretch' }}>
+                <div style={{ ...itemsPanel, flex: portrait ? '0 0 auto' : '2 1 440px' }}>
+                  <div style={{ fontSize: 'clamp(20px, 2.8vw, 30px)', fontWeight: 800, color: '#0f172a', marginBottom: 14 }}>Your services</div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {s.lines.map((l, i) => (
+                      <div key={i} style={lineRow}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: '#1e293b' }}>
+                            <span style={{ color: accent, fontWeight: 800 }}>{l.qty}×</span> {l.name}
+                          </div>
+                          {l.staff && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 2 }}>with {l.staff}</div>}
                         </div>
-                        {l.staff && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 2 }}>with {l.staff}</div>}
+                        <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', marginLeft: 16 }}>{money(l.lineCents, cur)}</div>
                       </div>
-                      <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', marginLeft: 16 }}>{money(l.lineCents, cur)}</div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div style={{ ...totalsPanel, flex: portrait ? '0 0 auto' : '1 1 340px', background: `linear-gradient(160deg, ${accent} 0%, ${accent} 100%)`, boxShadow: `0 20px 60px ${accent}59` }}>
-                <Row k="Subtotal" v={money(s.subtotalCents, cur)} />
-                {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="#bbf7d0" />}
-                {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
-                {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
-                {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
-                <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '18px 0' }} />
-                <div>
-                  <div style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>
+                <div style={{ ...totalsPanel(accent), flex: portrait ? '0 0 auto' : '1 1 330px' }}>
+                  <Row k="Subtotal" v={money(s.subtotalCents, cur)} />
+                  {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="#bbf7d0" />}
+                  {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
+                  {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
+                  {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '16px 0' }} />
+                  <div style={{ fontSize: 'clamp(14px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>
                   <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 900, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
                 </div>
               </div>
+              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="strip" />}
             </div>
           )}
+
         </div>
       </div>
 
@@ -311,6 +326,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
           </div>
         </div>
       )}
+
       {/* Invisible staff hotspot — press & hold the top-left corner to open the exit menu. */}
       <div onPointerDown={startHold} onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
         aria-hidden style={{ position: 'fixed', top: 0, left: 0, width: 84, height: 84, zIndex: 90 }} />
@@ -325,11 +341,12 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
           </div>
         </div>
       )}
-      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v4</div>
+      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>ipad v5</div>
     </div>
   );
 }
 
+// --- After-payment tip (QR to the tech) -------------------------------------
 function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSkip }: {
   s: DisplayState; cur: string; accent: string; chosen: number | null;
   onChoose: (cents: number | null) => void; onCustom: () => void; onConfirm: () => void; onSkip: () => void;
@@ -380,50 +397,76 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
   );
 }
 
-const skipBtn: React.CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
+const skipBtn: CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
 
-// Warm, eye-catching Google-review invite (QR). Shown on the welcome + thank-you
-// screens; the customer scans with THEIR phone (opens Google where they're signed
-// in). Copy is inviting, never pushy.
-function ReviewInvite({ url, accent, title, subtitle }: { url: string; accent: string; title: React.ReactNode; subtitle: React.ReactNode }) {
-  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=340x340&data=${encodeURIComponent(url)}`;
+// --- Google review invite (the star of the show) ----------------------------
+// Three sizes: 'hero' (paid screen — biggest, pulsing ring), 'card' (welcome),
+// 'strip' (order screen — horizontal, compact so it never competes with the total).
+function GoogleWord({ size }: { size: number }) {
+  const letters: [string, string][] = [['G', '#4285F4'], ['o', '#EA4335'], ['o', '#FBBC05'], ['g', '#4285F4'], ['l', '#34A853'], ['e', '#EA4335']];
   return (
-    <div style={{ ...reviewCard, borderTop: `4px solid ${accent}` }}>
-      <div style={{ fontSize: 'clamp(19px, 2.5vw, 27px)', fontWeight: 800, color: '#1e293b' }}>{title}</div>
-      <div style={{ fontSize: 'clamp(13.5px, 1.7vw, 18px)', color: '#64748b', margin: '7px 0 16px', lineHeight: 1.5 }}>{subtitle}</div>
-      <div style={{ display: 'inline-block', background: '#fff', borderRadius: 16, padding: 12, border: '1px solid #eef2f7', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={qr} alt="Google review QR" style={{ width: 'clamp(150px, 24vw, 230px)', height: 'auto', display: 'block' }} />
-      </div>
-      <div style={{ fontSize: 'clamp(11.5px, 1.4vw, 14px)', color: '#94a3b8', marginTop: 12 }}>📱 Scan with your phone — opens Google, you&rsquo;re already signed in</div>
+    <span style={{ fontWeight: 800, fontSize: size, letterSpacing: '-0.01em' }}>
+      {letters.map(([ch, c], i) => <span key={i} style={{ color: c }}>{ch}</span>)}
+    </span>
+  );
+}
+function Stars({ size }: { size: number | string }) {
+  return (
+    <div style={{ display: 'flex', gap: 5, justifyContent: 'center' }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <span key={i} style={{ fontSize: size, color: GOLD, animation: `lumioStar .5s ${0.06 * i}s both`, filter: 'drop-shadow(0 2px 4px rgba(245,158,11,0.35))' }}>★</span>
+      ))}
     </div>
   );
 }
-const reviewCard: React.CSSProperties = {
-  margin: '24px auto 0', width: 'min(94vw, 480px)', background: 'linear-gradient(160deg, #ffffff, #fbfaff)', borderRadius: 22,
-  padding: 'clamp(20px, 3vw, 30px)', border: '1px solid #eef2f7', boxShadow: '0 14px 44px rgba(15,23,42,0.10)', textAlign: 'center',
-  animation: 'lumioFade .5s ease both',
-};
-function softTipLink(accent: string): React.CSSProperties {
-  return {
-    border: `1.5px solid ${accent}55`, background: `${accent}0d`, color: accent,
-    borderRadius: 999, padding: 'clamp(13px, 1.8vw, 18px) clamp(24px, 3.2vw, 36px)',
-    fontSize: 'clamp(15px, 1.9vw, 20px)', fontWeight: 700, cursor: 'pointer',
-    touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent', userSelect: 'none',
-  };
+function ReviewCard({ url, accent, variant }: { url: string; accent: string; variant: 'hero' | 'card' | 'strip' }) {
+  const qr = (px: number) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=1&data=${encodeURIComponent(url)}`;
+
+  if (variant === 'strip') {
+    // Order screen: a slim horizontal banner — present but never distracting.
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(14px, 2.5vw, 26px)', width: 'min(96vw, 720px)', margin: '0 auto', background: 'linear-gradient(120deg, #fffdf5, #fff)', border: `1px solid ${GOLD}33`, borderRadius: 18, padding: 'clamp(12px, 1.8vw, 18px)', boxShadow: '0 8px 26px rgba(15,23,42,0.06)', animation: 'lumioFade .5s ease both' }}>
+        <div style={{ background: '#fff', borderRadius: 12, padding: 7, border: '1px solid #eef2f7', flexShrink: 0, boxShadow: '0 4px 14px rgba(15,23,42,0.08)' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qr(300)} alt="Google review QR" style={{ width: 'clamp(80px, 12vw, 108px)', height: 'auto', display: 'block' }} />
+        </div>
+        <div style={{ textAlign: 'left', minWidth: 0 }}>
+          <div style={{ marginBottom: 4 }}><Stars size="clamp(15px, 1.9vw, 20px)" /></div>
+          <div style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 800, color: '#0f172a' }}>Enjoying your visit?</div>
+          <div style={{ fontSize: 'clamp(12.5px, 1.6vw, 16px)', color: '#64748b', marginTop: 2 }}>
+            Scan to review us on <GoogleWord size={16} /> 💛
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const hero = variant === 'hero';
+  const qrBox = hero ? 'clamp(190px, 30vw, 286px)' : 'clamp(150px, 24vw, 216px)';
+  return (
+    <div style={{ ...reviewCard, ...(hero ? reviewCardHero(accent) : {}) }}>
+      <div style={{ marginBottom: 10 }}><Stars size={hero ? 'clamp(30px, 5vw, 46px)' : 'clamp(22px, 3vw, 32px)'} /></div>
+      <div style={{ fontSize: hero ? 'clamp(25px, 3.8vw, 42px)' : 'clamp(19px, 2.5vw, 27px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.015em' }}>
+        {hero ? 'Loved your visit?' : 'Been in before?'}
+      </div>
+      <div style={{ fontSize: hero ? 'clamp(15px, 2vw, 21px)' : 'clamp(13.5px, 1.7vw, 17px)', color: '#475569', margin: '8px auto 18px', lineHeight: 1.5, maxWidth: 440 }}>
+        Leave us a quick <strong>5-star review</strong> — it truly makes our day 💛
+      </div>
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        {hero && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite' }} />}
+        <div style={{ position: 'relative', background: '#fff', borderRadius: 20, padding: 14, boxShadow: '0 12px 34px rgba(15,23,42,0.13)', border: '1px solid #eef2f7' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qr(hero ? 460 : 360)} alt="Google review QR" style={{ width: qrBox, height: 'auto', display: 'block' }} />
+        </div>
+      </div>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 14, background: '#fff', borderRadius: 999, padding: '7px 15px', border: '1px solid #eef2f7', boxShadow: '0 4px 14px rgba(15,23,42,0.06)' }}>
+        <span style={{ fontSize: hero ? 15 : 14 }}>📱</span>
+        <span style={{ fontSize: hero ? 'clamp(13px, 1.6vw, 16px)' : 'clamp(12px, 1.5vw, 14px)', color: '#334155', fontWeight: 600 }}>Point your camera at the code to review us on</span>
+        <GoogleWord size={hero ? 17 : 15} />
+      </div>
+    </div>
+  );
 }
-function quietChip(accent: string): React.CSSProperties {
-  return {
-    border: `1.5px solid ${accent}55`, background: '#fff', color: accent, borderRadius: 999,
-    padding: 'clamp(8px, 1.2vw, 12px) clamp(14px, 2vw, 20px)', cursor: 'pointer',
-    fontSize: 'clamp(14px, 1.7vw, 18px)', fontWeight: 700, touchAction: 'manipulation',
-  };
-}
-const afterTipCard: React.CSSProperties = {
-  margin: '22px auto 0', width: 'min(94vw, 500px)', background: '#fff', borderRadius: 20,
-  padding: 'clamp(18px, 3vw, 28px)', border: '1px solid #eef2f7',
-  boxShadow: '0 12px 40px rgba(15,23,42,0.08)', textAlign: 'center',
-};
 
 function padPress(p: string, k: string): string {
   if (k === '←') return p.slice(0, -1);
@@ -442,57 +485,90 @@ function Row({ k, v, color }: { k: string; v: string; color?: string }) {
   );
 }
 
-const fullCenter: React.CSSProperties = {
+function checkCircle(small: boolean): CSSProperties {
+  const d = small ? 'clamp(52px, 8vh, 72px)' : 'clamp(84px, 13vh, 116px)';
+  return {
+    width: d, height: d, borderRadius: '50%', background: '#dcfce7', color: '#16a34a',
+    fontSize: small ? 'clamp(28px, 5vh, 42px)' : 'clamp(46px, 8vh, 66px)',
+    display: 'grid', placeItems: 'center', margin: small ? 0 : '0 auto 16px',
+    animation: 'lumioPop .55s cubic-bezier(.2,.8,.3,1.2) both', flexShrink: 0,
+    boxShadow: '0 12px 34px rgba(22,163,74,0.28), 0 0 0 10px rgba(34,197,94,0.08)',
+  };
+}
+
+const fullCenter: CSSProperties = {
   position: 'fixed', inset: 0, background: 'radial-gradient(1100px 550px at 12% -8%, #e0e7ff 0%, rgba(224,231,255,0) 55%), radial-gradient(900px 480px at 108% 6%, #ede9fe 0%, rgba(237,233,254,0) 52%), linear-gradient(160deg, #f8fafc 0%, #eef2ff 100%)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: '4vw',
 };
-const page: React.CSSProperties = {
+const page: CSSProperties = {
   position: 'fixed', inset: 0, background: 'radial-gradient(1100px 550px at 12% -8%, #e0e7ff 0%, rgba(224,231,255,0) 55%), radial-gradient(900px 480px at 108% 6%, #ede9fe 0%, rgba(237,233,254,0) 52%), linear-gradient(160deg, #f8fafc 0%, #eef2ff 100%)',
   display: 'flex', flexDirection: 'column', padding: '2.5vw',
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', overflow: 'hidden',
 };
-const contentArea: React.CSSProperties = { flex: 1, minHeight: 0, width: '100%', overflowY: 'auto' };
-const scrollInner: React.CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0', boxSizing: 'border-box' };
-const brandBar: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 14px', flexShrink: 0 };
-const centerBox: React.CSSProperties = { textAlign: 'center', maxWidth: 720, margin: '0 auto', animation: 'lumioFade .5s ease both' };
-// Order screen wrapper that fills the viewport height. Landscape → items and totals
-// side by side; portrait → stacked with the item list taking the remaining space
-// (scrolls internally) and the totals card pinned below, always fully visible.
-function activeWrap(portrait: boolean): React.CSSProperties {
+const contentArea: CSSProperties = { flex: 1, minHeight: 0, width: '100%', overflowY: 'auto' };
+const scrollInner: CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0', boxSizing: 'border-box' };
+const brandBar: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 12px', flexShrink: 0 };
+const centerBox: CSSProperties = { textAlign: 'center', maxWidth: 760, margin: '0 auto', animation: 'lumioFade .5s ease both' };
+const itemsPanel: CSSProperties = {
+  background: 'white', borderRadius: 24, padding: 'clamp(20px, 3vw, 38px)',
+  boxShadow: '0 20px 60px rgba(15,23,42,0.10)',
+};
+function totalsPanel(accent: string): CSSProperties {
   return {
-    display: 'flex', flexDirection: portrait ? 'column' : 'row',
-    gap: portrait ? 'clamp(12px, 2vh, 22px)' : '3vw',
-    width: '100%', maxWidth: 1280, alignSelf: 'center',
-    flex: 1, minHeight: 0, boxSizing: 'border-box',
+    background: `linear-gradient(160deg, ${accent} 0%, ${accent} 100%)`, borderRadius: 24,
+    padding: 'clamp(22px, 3vw, 38px)', boxShadow: `0 20px 60px ${accent}59`,
+    display: 'flex', flexDirection: 'column', justifyContent: 'center',
   };
 }
-const itemsPanel: React.CSSProperties = {
-  flex: '2 1 440px', background: 'white', borderRadius: 24, padding: 'clamp(20px, 3vw, 40px)',
-  boxShadow: '0 20px 60px rgba(15,23,42,0.10)', maxHeight: '88vh', overflowY: 'auto',
-};
-const totalsPanel: React.CSSProperties = {
-  flex: '1 1 340px', background: 'linear-gradient(160deg, #6366f1 0%, #4f46e5 100%)', borderRadius: 24,
-  padding: 'clamp(22px, 3vw, 40px)', boxShadow: '0 20px 60px rgba(79,70,229,0.35)',
-  display: 'flex', flexDirection: 'column', justifyContent: 'center',
-};
-const lineRow: React.CSSProperties = {
+const lineRow: CSSProperties = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
   padding: 'clamp(11px, 1.6vw, 18px) 0', borderBottom: '1px solid #f1f5f9',
 };
-const keypadOverlay: React.CSSProperties = {
+const reviewCard: CSSProperties = {
+  margin: '22px auto 0', width: 'min(94vw, 480px)', background: 'linear-gradient(160deg, #ffffff, #fffdf5)', borderRadius: 24,
+  padding: 'clamp(20px, 3vw, 32px)', border: '1px solid #f4ecd6', boxShadow: '0 14px 44px rgba(15,23,42,0.10)', textAlign: 'center',
+  animation: 'lumioFade .55s ease both',
+};
+function reviewCardHero(accent: string): CSSProperties {
+  return {
+    width: 'min(96vw, 540px)', margin: '20px auto 0',
+    border: `1px solid ${accent}22`, boxShadow: `0 22px 60px rgba(15,23,42,0.14), 0 0 0 6px ${accent}0d`,
+  };
+}
+function softTipLink(accent: string): CSSProperties {
+  return {
+    border: `1.5px solid ${accent}55`, background: `${accent}0d`, color: accent,
+    borderRadius: 999, padding: 'clamp(12px, 1.6vw, 16px) clamp(22px, 3vw, 32px)',
+    fontSize: 'clamp(14px, 1.8vw, 19px)', fontWeight: 700, cursor: 'pointer',
+    touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent', userSelect: 'none',
+  };
+}
+function quietChip(accent: string): CSSProperties {
+  return {
+    border: `1.5px solid ${accent}55`, background: '#fff', color: accent, borderRadius: 999,
+    padding: 'clamp(8px, 1.2vw, 12px) clamp(14px, 2vw, 20px)', cursor: 'pointer',
+    fontSize: 'clamp(14px, 1.7vw, 18px)', fontWeight: 700, touchAction: 'manipulation',
+  };
+}
+const afterTipCard: CSSProperties = {
+  margin: '20px auto 0', width: 'min(94vw, 500px)', background: '#fff', borderRadius: 20,
+  padding: 'clamp(18px, 3vw, 28px)', border: '1px solid #eef2f7',
+  boxShadow: '0 12px 40px rgba(15,23,42,0.08)', textAlign: 'center',
+};
+const keypadOverlay: CSSProperties = {
   position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 100,
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4vw',
 };
-const keypadCard: React.CSSProperties = {
+const keypadCard: CSSProperties = {
   background: 'white', borderRadius: 24, padding: 'clamp(18px, 3vw, 32px)',
   width: 'min(92vw, 420px)', boxShadow: '0 30px 80px rgba(0,0,0,0.40)',
 };
-const keypadKey: React.CSSProperties = {
+const keypadKey: CSSProperties = {
   padding: 'clamp(12px, 2vw, 20px)', fontSize: 'clamp(20px, 3vw, 28px)', fontWeight: 700,
   borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#1e293b', cursor: 'pointer', touchAction: 'manipulation',
 };
-const menuBtn: React.CSSProperties = {
+const menuBtn: CSSProperties = {
   display: 'block', width: '100%', boxSizing: 'border-box', marginBottom: 10,
   padding: '13px 14px', borderRadius: 12, border: 'none',
   fontSize: 15, fontWeight: 700, cursor: 'pointer',

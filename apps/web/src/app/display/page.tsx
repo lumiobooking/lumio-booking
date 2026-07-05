@@ -196,6 +196,39 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   const isActive = s.status === 'active' && s.lines.length > 0;
   const hasTip = (s.tipTechs?.length ?? 0) > 0;
 
+  // Services + totals. `col` stacks them (used in the right half of the landscape
+  // split, and in portrait); otherwise they sit side by side.
+  const orderPayment = (col: boolean) => (
+    <div style={{ display: 'flex', flexDirection: col ? 'column' : 'row', gap: col ? 'clamp(14px, 2vh, 20px)' : '2.4vw', alignItems: 'stretch', width: '100%' }}>
+      <div style={{ ...itemsPanel, flex: col ? '0 0 auto' : '2 1 440px' }}>
+        <div style={{ fontSize: 'clamp(20px, 2.8vw, 30px)', fontWeight: 800, color: '#0f172a', marginBottom: 14 }}>Your services</div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {s.lines.map((l, i) => (
+            <div key={i} style={lineRow}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: '#1e293b' }}>
+                  <span style={{ color: accent, fontWeight: 800 }}>{l.qty}×</span> {l.name}
+                </div>
+                {l.staff && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 2 }}>with {l.staff}</div>}
+              </div>
+              <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', marginLeft: 16 }}>{money(l.lineCents, cur)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ ...totalsPanel(accent), flex: col ? '0 0 auto' : '1 1 330px' }}>
+        <Row k="Subtotal" v={money(s.subtotalCents, cur)} />
+        {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="#bbf7d0" />}
+        {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
+        {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
+        {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '16px 0' }} />
+        <div style={{ fontSize: 'clamp(14px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>
+        <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 900, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
+      </div>
+    </div>
+  );
+
   if (notLinked) {
     return (
       <div style={fullCenter}>
@@ -274,37 +307,18 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
               )}
             </div>
 
-          ) : (
-            // ---------------- ACTIVE · ORDER ----------------
-            <div style={{ width: '100%', maxWidth: 1220, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(14px, 2.2vh, 24px)', animation: 'lumioFade .4s ease both' }}>
-              <div style={{ display: 'flex', flexDirection: portrait ? 'column' : 'row', gap: portrait ? 'clamp(14px, 2vh, 20px)' : '2.4vw', alignItems: 'stretch' }}>
-                <div style={{ ...itemsPanel, flex: portrait ? '0 0 auto' : '2 1 440px' }}>
-                  <div style={{ fontSize: 'clamp(20px, 2.8vw, 30px)', fontWeight: 800, color: '#0f172a', marginBottom: 14 }}>Your services</div>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {s.lines.map((l, i) => (
-                      <div key={i} style={lineRow}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: '#1e293b' }}>
-                            <span style={{ color: accent, fontWeight: 800 }}>{l.qty}×</span> {l.name}
-                          </div>
-                          {l.staff && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 2 }}>with {l.staff}</div>}
-                        </div>
-                        <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', marginLeft: 16 }}>{money(l.lineCents, cur)}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ ...totalsPanel(accent), flex: portrait ? '0 0 auto' : '1 1 330px' }}>
-                  <Row k="Subtotal" v={money(s.subtotalCents, cur)} />
-                  {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="#bbf7d0" />}
-                  {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
-                  {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
-                  {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '16px 0' }} />
-                  <div style={{ fontSize: 'clamp(14px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>
-                  <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 900, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
-                </div>
+          ) : (!tall && s.reviewUrl) ? (
+            // ORDER · landscape → split screen: review QR (left) | payment (right)
+            <div style={{ width: '100%', maxWidth: 1320, margin: '0 auto', display: 'flex', flexDirection: 'row', gap: '2.6vw', alignItems: 'stretch', animation: 'lumioFade .4s ease both' }}>
+              <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ReviewCard url={s.reviewUrl} accent={accent} big full />
               </div>
+              <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>{orderPayment(true)}</div>
+            </div>
+          ) : (
+            // ORDER · portrait (or no review) → stacked: payment, then review below
+            <div style={{ width: '100%', maxWidth: 1220, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(14px, 2.2vh, 24px)', animation: 'lumioFade .4s ease both' }}>
+              {orderPayment(portrait)}
               {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} />}
             </div>
           )}
@@ -424,22 +438,26 @@ function Stars({ size, align = 'center' }: { size: number | string; align?: stri
 }
 // Google review invite. Portrait (stack) → QR on top, text below, centered.
 // Landscape / square → a 50/50 split: QR fills one half, invitation the other.
-function ReviewCard({ url, accent, stack, big }: { url: string; accent: string; stack?: boolean; big?: boolean }) {
+function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: string; stack?: boolean; big?: boolean; full?: boolean }) {
   const qr = (px: number) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=1&data=${encodeURIComponent(url)}`;
-  const qrW = big
-    ? (stack ? 'clamp(210px, 56vw, 340px)' : 'clamp(200px, 26vw, 340px)')
-    : (stack ? 'clamp(170px, 50vw, 260px)' : 'clamp(160px, 20vw, 240px)');
+  const col = stack || full; // column layout (QR on top, text below)
+  const qrW = full
+    ? (big ? 'clamp(200px, 26vw, 320px)' : 'clamp(170px, 22vw, 280px)')
+    : big
+      ? (stack ? 'clamp(210px, 56vw, 340px)' : 'clamp(200px, 26vw, 340px)')
+      : (stack ? 'clamp(170px, 50vw, 260px)' : 'clamp(160px, 20vw, 240px)');
   return (
     <div style={{
-      display: 'flex', flexDirection: stack ? 'column' : 'row', alignItems: 'center',
-      gap: stack ? 'clamp(14px, 3vh, 26px)' : 'clamp(22px, 4vw, 56px)',
-      width: stack ? 'min(94vw, 520px)' : 'min(96vw, 940px)', margin: '20px auto 0',
+      display: 'flex', flexDirection: col ? 'column' : 'row', alignItems: 'center', justifyContent: 'center',
+      gap: col ? 'clamp(14px, 3vh, 26px)' : 'clamp(22px, 4vw, 56px)',
+      width: full ? '100%' : (stack ? 'min(94vw, 520px)' : 'min(96vw, 940px)'),
+      maxWidth: full ? 480 : undefined, margin: full ? '0 auto' : '20px auto 0',
       background: 'linear-gradient(160deg, #ffffff, #fffdf5)', border: `1px solid ${GOLD}33`,
       borderRadius: 26, padding: 'clamp(20px, 3vw, 40px)',
       boxShadow: big ? `0 22px 60px rgba(15,23,42,0.14), 0 0 0 6px ${accent}0d` : '0 14px 44px rgba(15,23,42,0.10)',
       animation: 'lumioFade .55s ease both', boxSizing: 'border-box',
     }}>
-      <div style={{ flex: stack ? 'none' : '1 1 0%', display: 'flex', justifyContent: stack ? 'center' : 'flex-end' }}>
+      <div style={{ flex: col ? 'none' : '1 1 0%', display: 'flex', justifyContent: col ? 'center' : 'flex-end' }}>
         <div style={{ position: 'relative' }}>
           {big && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite' }} />}
           <div style={{ position: 'relative', background: '#fff', borderRadius: 20, padding: 14, boxShadow: '0 12px 34px rgba(15,23,42,0.13)', border: '1px solid #eef2f7' }}>
@@ -448,8 +466,8 @@ function ReviewCard({ url, accent, stack, big }: { url: string; accent: string; 
           </div>
         </div>
       </div>
-      <div style={{ flex: stack ? 'none' : '1 1 0%', textAlign: stack ? 'center' : 'left', maxWidth: stack ? 480 : 440 }}>
-        <div style={{ marginBottom: 10 }}><Stars size={big ? 'clamp(28px, 4.5vw, 46px)' : 'clamp(22px, 3vw, 34px)'} align={stack ? 'center' : 'flex-start'} /></div>
+      <div style={{ flex: col ? 'none' : '1 1 0%', textAlign: col ? 'center' : 'left', maxWidth: col ? 480 : 440 }}>
+        <div style={{ marginBottom: 10 }}><Stars size={big ? 'clamp(28px, 4.5vw, 46px)' : 'clamp(22px, 3vw, 34px)'} align={col ? 'center' : 'flex-start'} /></div>
         <div style={{ fontSize: big ? 'clamp(26px, 3.6vw, 44px)' : 'clamp(20px, 2.6vw, 30px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.015em' }}>
           {big ? 'Loved your visit?' : 'Enjoying your visit?'}
         </div>

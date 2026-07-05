@@ -316,6 +316,13 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [voiceNum, setVoiceNum] = useState(tenant.voiceLine?.lumioNumber ?? '');
+  const [fp, setFp] = useState<{ key: string; label: string; mode: string }[]>([]);
+
+  useEffect(() => {
+    apiFetch<{ policy: Record<string, string>; defs: { key: string; label: string }[] }>(`/admin/feature-policy/${tenant.id}`, { token })
+      .then((r) => setFp((r.defs || []).map((d) => ({ key: d.key, label: d.label, mode: r.policy?.[d.key] || 'salon' }))))
+      .catch(() => {});
+  }, [tenant.id, token]);
 
   async function saveVoice() {
     setBusy(true); setErr(null); setMsg(null);
@@ -324,6 +331,17 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
       setMsg(`✓ AI Hotline number assigned: ${r.lumioNumber}. The salon can now enable it and forward their line to it.`);
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not assign number'); } finally { setBusy(false); }
+  }
+
+  async function saveFeaturePolicy() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const policy: Record<string, string> = {};
+      for (const f of fp) policy[f.key] = f.mode;
+      await apiFetch('/admin/feature-policy', { method: 'POST', token, body: { tenantId: tenant.id, policy } });
+      setMsg('✓ Feature access updated.');
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not update feature access'); } finally { setBusy(false); }
   }
 
   async function saveAccess() {
@@ -431,6 +449,23 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           <input style={{ ...inp, maxWidth: 260 }} type="text" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password (min 8 chars)" />
           <button onClick={resetPw} disabled={busy} style={warnBtn}>Reset password</button>
         </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>🔒 Feature access</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+          Uncheck to make a feature <strong>platform-managed</strong> — it disappears from this salon&apos;s dashboard and salon edits are blocked at the API. Checked = the salon self-manages it.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+          {fp.map((f, i) => (
+            <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
+              <input type="checkbox" checked={f.mode === 'salon'}
+                onChange={(e) => setFp((rows) => rows.map((r, idx) => (idx === i ? { ...r, mode: e.target.checked ? 'salon' : 'platform' } : r)))} />
+              <span>{f.label} — <span style={{ color: f.mode === 'salon' ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>{f.mode === 'salon' ? 'Salon can manage' : 'Platform-managed (hidden)'}</span></span>
+            </label>
+          ))}
+        </div>
+        <button onClick={saveFeaturePolicy} disabled={busy || fp.length === 0} style={primaryBtn}>Save feature access</button>
       </div>
     </div>
   );

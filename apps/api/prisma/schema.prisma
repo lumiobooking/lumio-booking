@@ -179,6 +179,11 @@ model Tenant {
   // Branding settings for future white-label (logo URL, colors, etc.)
   branding Json @default("{}")
 
+  // Per-feature access policy set by Super Admin: { [featureKey]: 'salon' | 'platform' }.
+  // 'platform' = hidden from the salon UI AND write-blocked at the API (protects
+  // Lumio's internal process). Missing key = feature's built-in default (usually salon).
+  featurePolicy Json @default("{}")
+
   // Current plan (denormalized convenience pointer); source of truth for
   // billing periods is the Subscription rows.
   planId             String?

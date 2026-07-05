@@ -31,6 +31,7 @@ import { DisplayModule } from './display/display.module';
 import { GoogleReviewsModule } from './google-reviews/google-reviews.module';
 import { MessengerModule } from './messenger/messenger.module';
 import { VoiceModule } from './voice/voice.module';
+import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
 
 @Module({
   imports: [
@@ -98,6 +99,9 @@ import { VoiceModule } from './voice/voice.module';
     // AI voice hotline: the salon forwards its own number (on no-answer) to a
     // Lumio number; Twilio speech + the booking agent answer and book by phone.
     VoiceModule,
+    // Feature access policy: Super Admin decides per salon which features are
+    // salon-managed vs platform-managed (hidden + write-blocked). Global.
+    FeaturePolicyModule,
   ],
 })
 export class AppModule {}

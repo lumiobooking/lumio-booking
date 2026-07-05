@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { VoiceService } from './voice.service';
 import { ProvisionVoiceDto, UpdateVoiceDto } from './dto/voice.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
+import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
 /** Salon-admin management of the AI voice hotline (tenant-scoped). */
 @Roles(UserRole.SALON_ADMIN)
@@ -18,6 +20,8 @@ export class VoiceController {
   }
 
   @Post('settings')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('voiceAi')
   update(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateVoiceDto) {
     return this.svc.updateSettings(user, dto);
   }

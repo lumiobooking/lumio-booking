@@ -80,6 +80,8 @@ export function SalonShell({ children }: { children: ReactNode }) {
   // items then hide them on every reload/navigation. null = unknown (first ever
   // load) → gated items stay hidden until the plan resolves (no "show all" flash).
   const [posEnabled, setPosEnabled] = useState<boolean | null>(() => readCachedPos());
+  // Routes hidden because Super Admin set the feature to platform-managed.
+  const [hiddenHrefs, setHiddenHrefs] = useState<string[]>([]);
 
   // Feature permissions. Older sessions carry no `capabilities` → owners fall
   // back to "all" so upgrading never locks the owner out.
@@ -89,7 +91,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
   // Staff with salon access are assumed POS-entitled (the owner's plan applies);
   // only the owner's own view is gated by the cached plan flag.
   const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
-  const visibleNav = NAV.filter((item) => (item.feature !== 'pos' || posOk) && can(item.href));
+  const visibleNav = NAV.filter((item) => (item.feature !== 'pos' || posOk) && can(item.href) && !hiddenHrefs.includes(item.href));
   const firstAllowedHref = visibleNav[0]?.href ?? '/salon';
 
   useEffect(() => {
@@ -107,6 +109,14 @@ export function SalonShell({ children }: { children: ReactNode }) {
       .then((p) => { const on = p?.posEnabled ?? true; setPosEnabled(on); writeCachedPos(on); })
       .catch(() => {});
   }, [token, user]);
+
+  // Load the feature access policy and hide any platform-managed routes.
+  useEffect(() => {
+    if (!token || !hasSalonAccess) return;
+    apiFetch<{ policy: Record<string, string>; defs: { key: string; hrefs: string[] }[] }>('/feature-policy', { token })
+      .then((r) => setHiddenHrefs((r?.defs || []).filter((d) => r.policy?.[d.key] === 'platform').flatMap((d) => d.hrefs)))
+      .catch(() => {});
+  }, [token, hasSalonAccess]);
 
   // Close the drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, CSSProperties } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../lib/auth';
 import { useIsMobile } from '../lib/responsive';
@@ -18,6 +18,97 @@ interface PublicPlan {
 
 const money = (cents: number, currency = 'USD') =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
+
+// Static 3-tier fallback (shown until the DB Plans are created) + the full
+// feature comparison that always renders below the plan cards.
+const STATIC_PLANS = [
+  { name: 'Starter', tag: 'Small & new salons', monthly: 29, yearly: 290, hi: false,
+    bullets: ['Online booking 24/7', 'Calendar & customer CRM', 'Email confirmations', 'Google review QR', 'Installable app (PWA)', '100 SMS / month'] },
+  { name: 'Pro', tag: 'Full-service salons', monthly: 69, yearly: 690, hi: true,
+    bullets: ['Everything in Starter', 'POS & checkout', 'Walk-ins & waitlist', 'Payroll & tips', 'Messenger AI booking bot', 'Marketing & referrals', '500 SMS/mo · AI Hotline add-on'] },
+  { name: 'Premium', tag: 'Multi-location + full AI', monthly: 149, yearly: 1490, hi: false,
+    bullets: ['Everything in Pro', 'AI Hotline included (300 min)', 'Multi-branch + reports', 'Priority support', 'White-label ready', '1,500 SMS / month'] },
+];
+
+const COMPARE: [string, [string, string, string, string][]][] = [
+  ['Booking & scheduling', [
+    ['Online booking 24/7', '✓', '✓', '✓'], ['Calendar & appointment statuses', '✓', '✓', '✓'],
+    ['Automatic email reminders', '✓', '✓', '✓'], ['No-show deposits', '—', '✓', '✓'],
+    ['Waitlist', '—', '✓', '✓'], ['Walk-in turn queue', '—', '✓', '✓'],
+  ]],
+  ['Point of sale (POS)', [
+    ['Checkout + receipts', '—', '✓', '✓'], ['Gift cards + barcode', '—', '✓', '✓'],
+    ['Tips (3 channels)', '—', '✓', '✓'], ['Offline mode + receipt printing', '—', '✓', '✓'],
+  ]],
+  ['Customers & staff', [
+    ['Customer CRM', '✓', '✓', '✓'], ['Services & categories', '✓', '✓', '✓'],
+    ['Staff management + roles', '✓', '✓', '✓'], ['Payroll + tips + CSV export', '—', '✓', '✓'],
+  ]],
+  ['Marketing & growth', [
+    ['Google review QR + tracking', '✓', '✓', '✓'], ['AI review replies + leaderboard', '—', '✓', '✓'],
+    ['Loyalty rewards + installable app', 'Basic', '✓', '✓'], ['Referral program', '—', '✓', '✓'],
+    ['Campaigns (birthday, email + SMS)', '—', '✓', '✓'], ['Messenger AI booking bot (FB/IG)', '—', '✓', '✓'],
+    ['AI-SEO booking page', '✓', '✓', '✓'],
+  ]],
+  ['Communications', [
+    ['Email notifications', '✓', '✓', '✓'], ['SMS included / month', '100', '500', '1,500'],
+    ['SMS overage / message', '$0.03', '$0.03', '$0.02'], ['AI phone hotline', '—', 'Add-on', '✓'],
+    ['AI hotline minutes / month', '—', '150*', '300'], ['Minute overage', '—', '$0.25', '$0.20'],
+  ]],
+  ['Operations & support', [
+    ['Inventory / supplies', '—', '✓', '✓'], ['Multi-branch + consolidated reports', '—', '—', '✓'],
+    ['WordPress connector', '✓', '✓', '✓'], ['Customer display (iPad + 2nd monitor)', '—', '✓', '✓'],
+    ['Sales & payroll reports', 'Basic', '✓', '✓'], ['White-label ready', '—', '—', '✓'],
+    ['Support', 'Email', 'Priority', 'Priority + phone'],
+  ]],
+];
+
+const cCell = (v: string) => v === '✓'
+  ? <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+  : v === '—' ? <span style={{ color: '#cbd5e1' }}>—</span>
+  : <span style={{ color: '#4f46e5', fontWeight: 700, fontSize: 12.5 }}>{v}</span>;
+
+function ComparisonTable({ mobile }: { mobile: boolean }) {
+  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 700, textAlign: 'center', background: '#0f172a', color: '#fff' };
+  const cat: CSSProperties = { padding: '9px 12px', fontSize: 13, fontWeight: 800, color: '#0f172a', background: '#eef2f7' };
+  const feat: CSSProperties = { padding: '9px 12px', fontSize: 13.5, color: '#334155', borderBottom: '1px solid #f1f5f9' };
+  const val: CSSProperties = { padding: '9px 10px', fontSize: 14, textAlign: 'center', borderBottom: '1px solid #f1f5f9' };
+  return (
+    <div style={{ marginTop: 48 }}>
+      <div style={{ textAlign: 'center', fontSize: mobile ? 20 : 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 20 }}>Compare every feature</div>
+      <div style={{ overflowX: 'auto', border: '1px solid #eef2f7', borderRadius: 14 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: 'left', paddingLeft: 14 }}>Feature</th>
+              <th style={th}>Starter<br /><span style={{ fontWeight: 600, color: '#cbd5e1' }}>$29/mo</span></th>
+              <th style={{ ...th, background: '#4f46e5' }}>Pro<br /><span style={{ fontWeight: 600, color: '#c7d2fe' }}>$69/mo</span></th>
+              <th style={th}>Premium<br /><span style={{ fontWeight: 600, color: '#cbd5e1' }}>$149/mo</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARE.map(([c, rows]) => (
+              <Fragment key={c}>
+                <tr><td colSpan={4} style={cat}>{c}</td></tr>
+                {rows.map((r) => (
+                  <tr key={r[0]}>
+                    <td style={feat}>{r[0]}</td>
+                    <td style={val}>{cCell(r[1])}</td>
+                    <td style={{ ...val, background: '#f5f6ff' }}>{cCell(r[2])}</td>
+                    <td style={val}>{cCell(r[3])}</td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ color: '#94a3b8', fontSize: 12.5, marginTop: 14, textAlign: 'center' }}>
+        * On Pro, AI Hotline is an add-on (~$39/mo, 150 minutes). Premium includes 300 minutes. Annual billing saves ~2 months. SMS &amp; minute overage billed as used.
+      </p>
+    </div>
+  );
+}
 
 export default function HomePage() {
   const { user, ready } = useAuth();
@@ -127,7 +218,28 @@ export default function HomePage() {
         </div>
 
         {plans.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: 40 }}>Plans are being set up — please check back shortly.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 360px))', gap: 24, justifyContent: 'center', marginTop: 40 }}>
+            {STATIC_PLANS.map((p) => (
+              <div key={p.name} style={{ ...priceCard, ...(p.hi ? priceCardHi : {}) }}>
+                {p.hi && <span style={popularBadge}>MOST POPULAR</span>}
+                <h3 style={{ fontSize: 22, margin: 0 }}>{p.name}</h3>
+                <p style={{ color: '#64748b', fontSize: 14, margin: '6px 0 0' }}>{p.tag}</p>
+                <div style={{ margin: '20px 0 4px' }}>
+                  <span style={{ fontSize: 44, fontWeight: 800, letterSpacing: -1 }}>${yearly ? p.yearly : p.monthly}</span>
+                  <span style={{ color: '#64748b', fontSize: 16 }}>{yearly ? '/year' : '/month'}</span>
+                </div>
+                <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>14-day free trial · no card upfront</p>
+                <Link href="/signup" style={{ ...primaryBtn, display: 'block', textAlign: 'center', padding: '13px', marginTop: 20, ...(p.hi ? {} : { background: '#fff', color: INDIGO, border: `1.5px solid ${INDIGO}` }) }}>Start free trial</Link>
+                <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {p.bullets.map((f) => (
+                    <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#334155' }}>
+                      <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(280px, ${plans.length > 1 ? '380px' : '420px'}))`, gap: 24, justifyContent: 'center', marginTop: 40 }}>
             {plans.map((p) => {
@@ -163,6 +275,7 @@ export default function HomePage() {
             })}
           </div>
         )}
+        <ComparisonTable mobile={mobile} />
         <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginTop: 28 }}>
           All plans include secure card payments (Stripe) and PayPal · cancel anytime from your dashboard.
         </p>

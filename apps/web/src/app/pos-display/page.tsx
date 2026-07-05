@@ -55,7 +55,9 @@ export default function PosDisplayPage() {
   const [revealTip, setRevealTip] = useState(false);
   const [chosenTip, setChosenTip] = useState<number | null>(null);
   const [portrait, setPortrait] = useState(false);
-  const [vw, setVw] = useState(1024);
+  // 'tall' = clearly portrait (height > 1.1× width). Square/landscape → false, so
+  // the review card splits 50/50; portrait → stacks (QR on top, text below).
+  const [tall, setTall] = useState(false);
   const [menu, setMenu] = useState(false); // staff exit menu
   const chRef = useRef<BroadcastChannel | null>(null);
   const tipPanelRef = useRef<HTMLDivElement | null>(null);
@@ -65,7 +67,7 @@ export default function PosDisplayPage() {
   }, [revealTip]);
 
   useEffect(() => {
-    const check = () => { setPortrait(window.innerHeight >= window.innerWidth); setVw(window.innerWidth); };
+    const check = () => { setPortrait(window.innerHeight >= window.innerWidth); setTall(window.innerHeight > window.innerWidth * 1.1); };
     check();
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);
@@ -128,7 +130,7 @@ export default function PosDisplayPage() {
               <div style={{ fontSize: 'clamp(54px, 9vh, 82px)', marginBottom: 4 }}>💅</div>
               <div style={{ fontSize: 'clamp(34px, 6vw, 60px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>Welcome</div>
               <div style={{ fontSize: 'clamp(16px, 2.4vw, 24px)', color: '#64748b', marginTop: 10 }}>Sit back and relax — we&rsquo;ll take care of you.</div>
-              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="card" />}
+              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} />}
             </div>
 
           ) : s.status === 'paid' ? (
@@ -152,7 +154,7 @@ export default function PosDisplayPage() {
                 </>
               )}
 
-              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="hero" />}
+              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} big />}
 
               {tipped ? (
                 <div style={{ marginTop: 18, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
@@ -203,7 +205,7 @@ export default function PosDisplayPage() {
                   <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 900, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
                 </div>
               </div>
-              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} variant="strip" narrow={vw < 640} />}
+              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} />}
             </div>
           )}
 
@@ -309,58 +311,54 @@ function GoogleWord({ size }: { size: number }) {
     </span>
   );
 }
-function Stars({ size }: { size: number | string }) {
+function Stars({ size, align = 'center' }: { size: number | string; align?: string }) {
   return (
-    <div style={{ display: 'flex', gap: 5, justifyContent: 'center' }}>
+    <div style={{ display: 'flex', gap: 5, justifyContent: align }}>
       {[0, 1, 2, 3, 4].map((i) => (
         <span key={i} style={{ fontSize: size, color: GOLD, animation: `lumioStar .5s ${0.06 * i}s both`, filter: 'drop-shadow(0 2px 4px rgba(245,158,11,0.35))' }}>★</span>
       ))}
     </div>
   );
 }
-function ReviewCard({ url, accent, variant, narrow }: { url: string; accent: string; variant: 'hero' | 'card' | 'strip'; narrow?: boolean }) {
+// Google review invite. Portrait (stack) → QR on top, text below, centered.
+// Landscape / square → a 50/50 split: QR fills one half, invitation the other.
+function ReviewCard({ url, accent, stack, big }: { url: string; accent: string; stack?: boolean; big?: boolean }) {
   const qr = (px: number) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=1&data=${encodeURIComponent(url)}`;
-
-  if (variant === 'strip') {
-    return (
-      <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', alignItems: 'center', gap: 'clamp(12px, 2.5vw, 26px)', width: 'min(96vw, 720px)', margin: '0 auto', background: 'linear-gradient(120deg, #fffdf5, #fff)', border: `1px solid ${GOLD}33`, borderRadius: 18, padding: 'clamp(14px, 1.8vw, 20px)', boxShadow: '0 8px 26px rgba(15,23,42,0.06)', animation: 'lumioFade .5s ease both' }}>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 7, border: '1px solid #eef2f7', flexShrink: 0, boxShadow: '0 4px 14px rgba(15,23,42,0.08)' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qr(300)} alt="Google review QR" style={{ width: narrow ? 'clamp(104px, 30vw, 140px)' : 'clamp(80px, 12vw, 108px)', height: 'auto', display: 'block' }} />
-        </div>
-        <div style={{ textAlign: narrow ? 'center' : 'left', minWidth: 0 }}>
-          <div style={{ marginBottom: 4 }}><Stars size="clamp(15px, 1.9vw, 20px)" /></div>
-          <div style={{ fontSize: 'clamp(16px, 2vw, 22px)', fontWeight: 800, color: '#0f172a' }}>Enjoying your visit?</div>
-          <div style={{ fontSize: 'clamp(13px, 1.6vw, 16px)', color: '#64748b', marginTop: 2 }}>
-            Scan to review us on <GoogleWord size={16} /> 💛
+  const qrW = big
+    ? (stack ? 'clamp(210px, 56vw, 340px)' : 'clamp(200px, 26vw, 340px)')
+    : (stack ? 'clamp(170px, 50vw, 260px)' : 'clamp(160px, 20vw, 240px)');
+  return (
+    <div style={{
+      display: 'flex', flexDirection: stack ? 'column' : 'row', alignItems: 'center',
+      gap: stack ? 'clamp(14px, 3vh, 26px)' : 'clamp(22px, 4vw, 56px)',
+      width: stack ? 'min(94vw, 520px)' : 'min(96vw, 940px)', margin: '20px auto 0',
+      background: 'linear-gradient(160deg, #ffffff, #fffdf5)', border: `1px solid ${GOLD}33`,
+      borderRadius: 26, padding: 'clamp(20px, 3vw, 40px)',
+      boxShadow: big ? `0 22px 60px rgba(15,23,42,0.14), 0 0 0 6px ${accent}0d` : '0 14px 44px rgba(15,23,42,0.10)',
+      animation: 'lumioFade .55s ease both', boxSizing: 'border-box',
+    }}>
+      <div style={{ flex: stack ? 'none' : '1 1 0%', display: 'flex', justifyContent: stack ? 'center' : 'flex-end' }}>
+        <div style={{ position: 'relative' }}>
+          {big && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite' }} />}
+          <div style={{ position: 'relative', background: '#fff', borderRadius: 20, padding: 14, boxShadow: '0 12px 34px rgba(15,23,42,0.13)', border: '1px solid #eef2f7' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qr(big ? 460 : 360)} alt="Google review QR" style={{ width: qrW, height: 'auto', display: 'block' }} />
           </div>
         </div>
       </div>
-    );
-  }
-
-  const hero = variant === 'hero';
-  const qrBox = hero ? 'clamp(190px, 30vw, 286px)' : 'clamp(150px, 24vw, 216px)';
-  return (
-    <div style={{ ...reviewCard, ...(hero ? reviewCardHero(accent) : {}) }}>
-      <div style={{ marginBottom: 10 }}><Stars size={hero ? 'clamp(30px, 5vw, 46px)' : 'clamp(22px, 3vw, 32px)'} /></div>
-      <div style={{ fontSize: hero ? 'clamp(25px, 3.8vw, 42px)' : 'clamp(19px, 2.5vw, 27px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.015em' }}>
-        {hero ? 'Loved your visit?' : 'Been in before?'}
-      </div>
-      <div style={{ fontSize: hero ? 'clamp(15px, 2vw, 21px)' : 'clamp(13.5px, 1.7vw, 17px)', color: '#475569', margin: '8px auto 18px', lineHeight: 1.5, maxWidth: 440 }}>
-        Leave us a quick <strong>5-star review</strong> — it truly makes our day 💛
-      </div>
-      <div style={{ position: 'relative', display: 'inline-block' }}>
-        {hero && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite' }} />}
-        <div style={{ position: 'relative', background: '#fff', borderRadius: 20, padding: 14, boxShadow: '0 12px 34px rgba(15,23,42,0.13)', border: '1px solid #eef2f7' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qr(hero ? 460 : 360)} alt="Google review QR" style={{ width: qrBox, height: 'auto', display: 'block' }} />
+      <div style={{ flex: stack ? 'none' : '1 1 0%', textAlign: stack ? 'center' : 'left', maxWidth: stack ? 480 : 440 }}>
+        <div style={{ marginBottom: 10 }}><Stars size={big ? 'clamp(28px, 4.5vw, 46px)' : 'clamp(22px, 3vw, 34px)'} align={stack ? 'center' : 'flex-start'} /></div>
+        <div style={{ fontSize: big ? 'clamp(26px, 3.6vw, 44px)' : 'clamp(20px, 2.6vw, 30px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.015em' }}>
+          {big ? 'Loved your visit?' : 'Enjoying your visit?'}
         </div>
-      </div>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 14, background: '#fff', borderRadius: 999, padding: '7px 15px', border: '1px solid #eef2f7', boxShadow: '0 4px 14px rgba(15,23,42,0.06)' }}>
-        <span style={{ fontSize: hero ? 15 : 14 }}>📱</span>
-        <span style={{ fontSize: hero ? 'clamp(13px, 1.6vw, 16px)' : 'clamp(12px, 1.5vw, 14px)', color: '#334155', fontWeight: 600 }}>Point your camera at the code to review us on</span>
-        <GoogleWord size={hero ? 17 : 15} />
+        <div style={{ fontSize: big ? 'clamp(15px, 1.9vw, 21px)' : 'clamp(14px, 1.7vw, 18px)', color: '#475569', margin: '8px 0 16px', lineHeight: 1.5 }}>
+          Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '8px 15px', border: '1px solid #eef2f7', boxShadow: '0 4px 14px rgba(15,23,42,0.06)' }}>
+          <span style={{ fontSize: 15 }}>📱</span>
+          <span style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#334155', fontWeight: 600 }}>Point your camera to review on</span>
+          <GoogleWord size={16} />
+        </div>
       </div>
     </div>
   );
@@ -418,17 +416,6 @@ const lineRow: CSSProperties = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
   padding: 'clamp(11px, 1.6vw, 18px) 0', borderBottom: '1px solid #f1f5f9',
 };
-const reviewCard: CSSProperties = {
-  margin: '22px auto 0', width: 'min(94vw, 480px)', background: 'linear-gradient(160deg, #ffffff, #fffdf5)', borderRadius: 24,
-  padding: 'clamp(20px, 3vw, 32px)', border: '1px solid #f4ecd6', boxShadow: '0 14px 44px rgba(15,23,42,0.10)', textAlign: 'center',
-  animation: 'lumioFade .55s ease both',
-};
-function reviewCardHero(accent: string): CSSProperties {
-  return {
-    width: 'min(96vw, 540px)', margin: '20px auto 0',
-    border: `1px solid ${accent}22`, boxShadow: `0 22px 60px rgba(15,23,42,0.14), 0 0 0 6px ${accent}0d`,
-  };
-}
 function softTipLink(accent: string): CSSProperties {
   return {
     border: `1.5px solid ${accent}55`, background: `${accent}0d`, color: accent,

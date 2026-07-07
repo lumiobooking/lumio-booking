@@ -650,23 +650,29 @@ function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot
           return (
             <button key={i} disabled={disabled} onClick={() => onPickDate(d)}
               title={deal ? `Save ${pct}% on this day` : undefined}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
+              style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible',
                 minHeight: 46, borderRadius: 9, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
-                border: sel ? `2px solid ${ACCENT}` : deal ? '1px solid #cdeede' : '1px solid #e2e8f0',
-                background: sel ? '#eef2ff' : disabled ? '#f8fafc' : deal ? '#f5fcf8' : 'white',
+                border: sel ? `2px solid ${ACCENT}` : deal ? '1px solid #dcf3e8' : '1px solid #e2e8f0',
+                background: sel ? '#eef2ff' : disabled ? '#f8fafc' : deal ? '#f7fdfa' : 'white',
                 color: disabled ? '#cbd5e1' : '#1e293b',
                 fontWeight: sel ? 700 : 400 }}>
-              <span style={{ lineHeight: 1 }}>{d.getDate()}</span>
-              {deal && <span style={{ fontSize: 8.5, fontWeight: 600, color: '#16a34a', lineHeight: 1, letterSpacing: '0.01em', opacity: 0.85 }}>−{pct}%</span>}
+              {d.getDate()}
+              {deal && (
+                <span style={{ position: 'absolute', top: -6, right: -6, background: 'linear-gradient(135deg, #10b981, #047857)',
+                  color: '#fff', fontSize: 8.5, fontWeight: 700, lineHeight: 1, padding: '3px 5px', borderRadius: 7,
+                  border: '1.5px solid #ffffff', boxShadow: '0 2px 6px rgba(4,120,87,0.28)', letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
+                  −{pct}%
+                </span>
+              )}
             </button>
           );
         })}
       </div>
 
       {hasDeals && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, padding: '7px 12px', background: '#f8fefb', border: '1px solid #e3f5ec', borderRadius: 10, fontSize: 12.5, color: '#047857', fontWeight: 500 }}>
-          <span style={{ width: 28, height: 20, borderRadius: 6, background: '#f5fcf8', border: '1px solid #cdeede', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8.5, fontWeight: 600, color: '#16a34a', opacity: 0.85 }}>−%</span>
-          Days in green have a discount — applied automatically.
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 14, padding: '7px 12px', background: '#f8fefb', border: '1px solid #e3f5ec', borderRadius: 10, fontSize: 12.5, color: '#047857', fontWeight: 500 }}>
+          <span style={{ background: 'linear-gradient(135deg, #10b981, #047857)', color: '#fff', fontSize: 8, fontWeight: 700, padding: '3px 6px', borderRadius: 6, boxShadow: '0 1px 3px rgba(4,120,87,0.3)', flexShrink: 0, letterSpacing: '0.02em' }}>−%</span>
+          Days with a tag have a discount — applied automatically.
         </div>
       )}
       {!selectedDate && (

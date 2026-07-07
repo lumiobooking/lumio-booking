@@ -263,17 +263,30 @@ export class VoiceService {
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const extra = [facts, aiInstruction].filter(Boolean).join('\n');
 
+    // Inject the services directly into the prompt so the agent NEVER needs a
+    // separate get_services round-trip — one Claude call per turn instead of two.
+    const services = await this.prisma.service.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true, priceCents: true, durationMinutes: true },
+      orderBy: { name: 'asc' }, take: 40,
+    });
+    const price = (c: number) => `$${(c / 100).toFixed(c % 100 === 0 ? 0 : 2)}`;
+    const servicesBlock = services.length
+      ? 'Bookable services (use the exact id when you call create_booking; never say the id out loud):\n' +
+        services.map((s) => `- ${s.name} — ${price(s.priceCents)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n')
+      : 'No services are configured yet; take a message and tell them someone will call back.';
+
     const system = `You are the friendly phone booking assistant for "${salonName}", a nail salon. You are speaking with a caller on the PHONE and your words are read aloud, so keep every reply short and natural — 1 to 2 spoken sentences. No lists, no emojis, no special characters, no URLs.
 The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
 Goal: book an appointment. You still need their first name, which service they want, and a specific date and time. Ask for what is missing, ONE thing at a time, and confirm details by repeating them back.
-Use get_services to know the available services and their ids. Once you have a first name, a service id, and a specific date and time, call create_booking. After it succeeds, say the day and time out loud to confirm and let them know they'll get a text message confirmation.
+Once you have a first name, a service (use its id from the list below), and a specific date and time, call create_booking. After it succeeds, say the day and time out loud to confirm and let them know they'll get a text message confirmation.
 Speak times naturally (for example, "two thirty PM on Friday"). The salon's local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the salon is closed then and offer the nearest open time.
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
+${servicesBlock}
 ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
 
     const tools = [
-      { name: 'get_services', description: 'List this salon’s bookable services with id, name, price and duration.', input_schema: { type: 'object', properties: {}, required: [] } },
       {
         name: 'create_booking',
         description: 'Create the appointment. Only call once you have the caller first name, a chosen service id, and a specific local date & time.',
@@ -304,7 +317,14 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 400, system, tools, messages }),
+        body: JSON.stringify({
+          model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+          max_tokens: 256, // phone replies are 1–2 sentences; a small cap trims worst-case latency
+          // Cache the (stable) system prompt so turns 2+ of the same call are faster.
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+          tools,
+          messages,
+        }),
       });
       if (!res.ok) {
         this.logger.warn(`Anthropic ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);

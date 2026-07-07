@@ -6,7 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StripeService } from '../billing/stripe.service';
 import { publicWebBase } from '../common/public-url.util';
 
-interface LineItem { label: string; amountCents: number }
+export interface LineItem { label: string; amountCents: number }
 
 const money = (c: number, cur = 'USD') =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format((c || 0) / 100);

@@ -126,27 +126,47 @@ export class BookingsService {
   }
 
   /**
-   * Quiet-day promo: the % off a service gets on the booking's weekday, based on
-   * the tenant's weekday-discount rules (matched by salon-local weekday + the
-   * service's category). Returns 0 when disabled or no rule matches. Read straight
-   * from the settings row to avoid a cross-module dependency.
+   * Best promo % a service gets on the booking's date: the HIGHER of the
+   * recurring weekday-discount rules and the specific-date rules (a sale on exact
+   * dates / date ranges), matched by the service's category. Returns 0 when
+   * nothing applies. Read straight from the settings rows to avoid a cross-module
+   * dependency.
    */
-  private async weekdayDiscountPercent(tenantId: string, start: Date, categoryId: string | null): Promise<number> {
+  private async promoDiscountPercent(tenantId: string, start: Date, categoryId: string | null): Promise<number> {
     try {
-      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'weekday_discounts' } } });
-      const cfg = row?.value as { enabled?: boolean; rules?: Array<{ day: number; categoryId: string | null; percent: number }> } | undefined;
-      if (!cfg?.enabled || !Array.isArray(cfg.rules) || cfg.rules.length === 0) return 0;
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
       const tz = tenant?.timezone || 'UTC';
-      const wdName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(start);
-      const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      const weekday = map[wdName] ?? start.getDay();
+      const [wdRow, dtRow] = await Promise.all([
+        this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'weekday_discounts' } } }),
+        this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'date_discounts' } } }),
+      ]);
       let best = 0;
-      for (const r of cfg.rules) {
-        if (r.day !== weekday) continue;
-        if (r.categoryId && r.categoryId !== categoryId) continue;
-        if (r.percent > best) best = r.percent;
+
+      // Recurring weekday rules (matched by salon-local weekday).
+      const wd = wdRow?.value as { enabled?: boolean; rules?: Array<{ day: number; categoryId: string | null; percent: number }> } | undefined;
+      if (wd?.enabled && Array.isArray(wd.rules)) {
+        const wdName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(start);
+        const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+        const weekday = map[wdName] ?? start.getDay();
+        for (const r of wd.rules) {
+          if (r.day !== weekday) continue;
+          if (r.categoryId && r.categoryId !== categoryId) continue;
+          if (r.percent > best) best = r.percent;
+        }
       }
+
+      // Specific-date rules (exact dates / ranges) — take the higher of the two.
+      const dt = dtRow?.value as { enabled?: boolean; rules?: Array<{ startDate: string; endDate: string | null; categoryId: string | null; percent: number }> } | undefined;
+      if (dt?.enabled && Array.isArray(dt.rules)) {
+        const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(start);
+        for (const r of dt.rules) {
+          if (!r?.startDate) continue;
+          if (r.categoryId && r.categoryId !== categoryId) continue;
+          const end = r.endDate || r.startDate;
+          if (r.startDate <= localDate && localDate <= end && r.percent > best) best = r.percent;
+        }
+      }
+
       return Math.min(90, Math.max(0, best));
     } catch {
       return 0;
@@ -266,7 +286,7 @@ export class BookingsService {
     // Primary service: its own discount, then the weekday promo for its category.
     const primaryDisc = Math.min(90, Math.max(0, service.discountPercent ?? 0));
     const primaryNet = Math.round((service.priceCents * (100 - primaryDisc)) / 100);
-    const primaryWd = await this.weekdayDiscountPercent(tenantId, start, service.categoryId);
+    const primaryWd = await this.promoDiscountPercent(tenantId, start, service.categoryId);
     const primaryFinal = Math.round((primaryNet * (100 - primaryWd)) / 100);
 
     // Extra services in the SAME visit (multi-service). The first service stays
@@ -280,7 +300,7 @@ export class BookingsService {
     for (const s of extraServices) {
       const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
       const net = Math.round((s.priceCents * (100 - disc)) / 100);
-      const wd = await this.weekdayDiscountPercent(tenantId, start, s.categoryId);
+      const wd = await this.promoDiscountPercent(tenantId, start, s.categoryId);
       extraItems.push({ id: s.id, name: s.name, priceCents: Math.round((net * (100 - wd)) / 100), durationMinutes: s.durationMinutes, kind: 'service' });
     }
     const extraPrice = extraItems.reduce((sum, x) => sum + x.priceCents, 0);

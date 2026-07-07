@@ -159,6 +159,7 @@ function ServicesInner() {
       <CategoryManager token={token!} categories={categories} onChanged={load} />
 
       <WeekdayDiscountCard token={token!} categories={categories} />
+      <DateDiscountCard token={token!} categories={categories} />
 
       {categories.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
@@ -823,6 +824,86 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Specific-date discounts (one-off dates / ranges) ----------------------
+interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
+
+function DateDiscountCard({ token, categories }: { token: string; categories: Category[] }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [rules, setRules] = useState<DateRule[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    apiFetch<{ dateDiscounts?: { enabled: boolean; rules: DateRule[] } }>('/settings', { token })
+      .then((s) => {
+        const d = s.dateDiscounts;
+        if (d) { setEnabled(!!d.enabled); setRules(Array.isArray(d.rules) ? d.rules : []); }
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, [open, loaded, token]);
+
+  function upd(i: number, patch: Partial<DateRule>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { await apiFetch('/settings/date-discounts', { method: 'PATCH', token, body: { enabled, rules } }); setMsg(t('sv.saved')); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+  const today = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+        {open ? '▾' : '▸'} {t('sv.dateTitle')}
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.dateDesc')}</p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <span style={{ fontSize: 14 }}>{t('sv.dateEnable')}</span>
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {rules.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.dateNoRules')}</p>}
+            {rules.map((r, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <label style={{ fontSize: 12, color: '#94a3b8' }}>{t('sv.dateFrom')}
+                  <input type="date" value={r.startDate || ''} min={today} onChange={(e) => upd(i, { startDate: e.target.value })} style={{ ...ui.input, width: 'auto', display: 'block', marginTop: 3 }} />
+                </label>
+                <label style={{ fontSize: 12, color: '#94a3b8' }}>{t('sv.dateTo')}
+                  <input type="date" value={r.endDate || ''} min={r.startDate || today} onChange={(e) => upd(i, { endDate: e.target.value || null })} style={{ ...ui.input, width: 'auto', display: 'block', marginTop: 3 }} />
+                </label>
+                <select value={r.categoryId ?? ''} onChange={(e) => upd(i, { categoryId: e.target.value || null })} style={{ ...ui.input, width: 'auto' }}>
+                  <option value="">{t('sv.allCategories')}</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 74 }} />
+                  <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                </div>
+                <input value={r.label ?? ''} onChange={(e) => upd(i, { label: e.target.value })} placeholder={t('sv.dateLabelPh')} style={{ ...ui.input, width: 150 }} />
+                <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.dateAddRule')}</button>
+            <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+          </div>
+          <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('sv.dateHint')}</p>
         </div>
       )}
     </div>

@@ -53,10 +53,11 @@ export class PublicSalonController {
     if (!tenant || !this.isOpen(tenant)) {
       throw new NotFoundException('Salon not found');
     }
-    // Read the three settings rows in parallel (was 3 sequential DB round-trips).
-    const [booking, weekdayDiscounts, deposit] = await Promise.all([
+    // Read the settings rows in parallel (avoids sequential DB round-trips).
+    const [booking, weekdayDiscounts, dateDiscounts, deposit] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
+      this.settings.getDateDiscounts(tenant.id),
       this.settings.getDepositSettings(tenant.id),
     ]);
     return {
@@ -66,6 +67,7 @@ export class PublicSalonController {
       branding: this.settings.brandingFrom(tenant.branding),
       booking,
       weekdayDiscounts,
+      dateDiscounts,
       deposit,
     };
   }

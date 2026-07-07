@@ -40,6 +40,10 @@ import {
   WeekdayDiscounts,
   WeekdayDiscountRule,
   DEFAULT_WEEKDAY_DISCOUNTS,
+  DATE_DISCOUNTS_KEY,
+  DateDiscounts,
+  DateDiscountRule,
+  DEFAULT_DATE_DISCOUNTS,
   REMINDER_SETTINGS_KEY,
   ReminderSettings,
   DEFAULT_REMINDER_SETTINGS,
@@ -641,6 +645,7 @@ export class SettingsService {
       loyalty: await this.getLoyaltySettings(tenantId),
       review: await this.getReviewSettings(tenantId),
       weekdayDiscounts: await this.getWeekdayDiscounts(tenantId),
+      dateDiscounts: await this.getDateDiscounts(tenantId),
       reminders: await this.getReminderSettings(tenantId),
       deposit: await this.getDepositSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
@@ -708,6 +713,38 @@ export class SettingsService {
     };
     await this.writeKey(tenantId, WEEKDAY_DISCOUNTS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.weekday_discounts_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
+  }
+
+  async getDateDiscounts(tenantId: string): Promise<DateDiscounts> {
+    return this.readKey<DateDiscounts>(tenantId, DATE_DISCOUNTS_KEY, DEFAULT_DATE_DISCOUNTS);
+  }
+
+  async updateDateDiscounts(user: AuthenticatedUser, dto: { enabled?: boolean; rules?: DateDiscountRule[] }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getDateDiscounts(tenantId);
+    const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const rules: DateDiscountRule[] = Array.isArray(dto.rules)
+      ? dto.rules
+          .filter((r) => isDate(r?.startDate) && typeof r?.percent === 'number' && r.percent > 0)
+          .map((r) => {
+            const end = isDate(r.endDate) && (r.endDate as string) >= r.startDate ? (r.endDate as string) : null;
+            return {
+              startDate: r.startDate,
+              endDate: end,
+              categoryId: r.categoryId || null,
+              percent: Math.min(90, Math.max(1, Math.round(r.percent))),
+              label: typeof r.label === 'string' && r.label.trim() ? r.label.trim().slice(0, 60) : undefined,
+            };
+          })
+          .slice(0, 100)
+      : cur.rules;
+    const next: DateDiscounts = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      rules,
+    };
+    await this.writeKey(tenantId, DATE_DISCOUNTS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.date_discounts_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
   }
 

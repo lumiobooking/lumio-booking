@@ -41,8 +41,10 @@ function fmtMoney(cents: number, r: BookingRules): string {
 
 interface WdRule { day: number; categoryId: string | null; percent: number }
 interface WeekdayDiscounts { enabled: boolean; message: string; rules: WdRule[] }
+interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
+interface DateDiscounts { enabled: boolean; rules: DateRule[] }
 interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
-interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules; weekdayDiscounts?: WeekdayDiscounts; deposit?: DepositPolicy }
+interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules; weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy }
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -57,6 +59,32 @@ function weekdayPctFor(wd: WeekdayDiscounts | undefined, date: Date | null, cate
     if (r.percent > best) best = r.percent;
   }
   return Math.min(90, Math.max(0, best));
+}
+
+/** Salon-local YYYY-MM-DD for a calendar cell (built at local midnight). */
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Highest specific-date discount % for a (date, category). Pass categoryId=null
+ *  to get the best across ALL categories (used to highlight the calendar). */
+function datePctFor(dd: DateDiscounts | undefined, date: Date | null, categoryId: string | null | undefined): number {
+  if (!dd?.enabled || !date || !Array.isArray(dd.rules)) return 0;
+  const s = ymd(date);
+  let best = 0;
+  for (const r of dd.rules) {
+    if (!r?.startDate) continue;
+    if (categoryId && r.categoryId && r.categoryId !== categoryId) continue;
+    const end = r.endDate || r.startDate;
+    if (r.startDate <= s && s <= end && r.percent > best) best = r.percent;
+  }
+  return Math.min(90, Math.max(0, best));
+}
+
+/** Best promo % for a date — the higher of the weekday rule and the specific-date
+ *  rule (matches the backend "take the higher" behaviour). */
+function promoPctFor(salon: Salon | null | undefined, date: Date | null, categoryId: string | null | undefined): number {
+  return Math.max(weekdayPctFor(salon?.weekdayDiscounts, date, categoryId), datePctFor(salon?.dateDiscounts, date, categoryId));
 }
 
 /** "Can't find a time? Join the waitlist" — captures contact so the salon can
@@ -120,22 +148,29 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
 }
 const wlInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', color: '#1e293b', fontSize: 14 };
 
-/** Prominent banner listing the salon's quiet-day deals (shown while picking a date). */
-function DealsBanner({ wd, categories }: { wd?: WeekdayDiscounts; categories: { id: string; name: string }[] }) {
-  if (!wd?.enabled || !wd.rules?.length) return null;
+/** Prominent banner listing the salon's deals (weekday + specific dates). */
+function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateDiscounts; categories: { id: string; name: string }[] }) {
+  const wdOn = !!(wd?.enabled && wd.rules?.length);
+  const ddOn = !!(dd?.enabled && dd.rules?.length);
+  if (!wdOn && !ddOn) return null;
   const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'select services') : 'everything');
-  const sorted = [...wd.rules].sort((a, b) => a.day - b.day || b.percent - a.percent);
+  const wdSorted = wdOn ? [...wd!.rules].sort((a, b) => a.day - b.day || b.percent - a.percent) : [];
+  const ddSorted = ddOn ? [...dd!.rules].filter((r) => r.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
+  const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return s; } };
+  const fmtRange = (r: DateRule) => (r.endDate && r.endDate !== r.startDate ? `${fmtOne(r.startDate)}–${fmtOne(r.endDate)}` : fmtOne(r.startDate));
+  const chip: React.CSSProperties = { background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 13, color: '#065f46', fontWeight: 600 };
   return (
     <div style={{ marginBottom: 16, padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7' }}>
-      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 15 }}>💸 {wd.message || 'Save on quieter days!'}</div>
+      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 15 }}>💸 {(wdOn && wd!.message) || 'Save on select days!'}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {sorted.map((r, i) => (
-          <span key={i} style={{ background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 13, color: '#065f46', fontWeight: 600 }}>
-            {WEEKDAY_NAMES[r.day]}: −{r.percent}% off {catName(r.categoryId)}
-          </span>
+        {wdSorted.map((r, i) => (
+          <span key={`w${i}`} style={chip}>{WEEKDAY_NAMES[r.day]}: −{r.percent}% off {catName(r.categoryId)}</span>
+        ))}
+        {ddSorted.map((r, i) => (
+          <span key={`d${i}`} style={chip}>{r.label ? `${r.label} · ` : ''}{fmtRange(r)}: −{r.percent}% off {catName(r.categoryId)}</span>
         ))}
       </div>
-      <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>Pick a highlighted day below and the discount applies automatically.</div>
+      <div style={{ color: '#047857', fontSize: 12, marginTop: 8 }}>Highlighted days below get the discount automatically.</div>
     </div>
   );
 }
@@ -208,7 +243,7 @@ export default function PublicBookingPage() {
   const serviceNetCents = svcNetCents(service);
   const serviceDiscount = svcDiscount(service);
   // Quiet-day discount applies on top of any service discount, once a date is picked.
-  const weekdayPct = weekdayPctFor(salon?.weekdayDiscounts, selectedDate, service?.categoryId ?? null);
+  const weekdayPct = promoPctFor(salon, selectedDate, service?.categoryId ?? null);
   const serviceFinalCents = Math.round((serviceNetCents * (100 - weekdayPct)) / 100);
   const addonsCents = selectedAddons.reduce((s, a) => s + a.priceCents, 0);
 
@@ -217,7 +252,7 @@ export default function PublicBookingPage() {
   const extraServices = services.filter((s) => s.id !== serviceId && extraServiceIds.includes(s.id));
   const extraLines = extraServices.map((s) => {
     const net = svcNetCents(s);
-    const wd = weekdayPctFor(salon?.weekdayDiscounts, selectedDate, s.categoryId ?? null);
+    const wd = promoPctFor(salon, selectedDate, s.categoryId ?? null);
     return { id: s.id, name: s.name, priceCents: Math.round((net * (100 - wd)) / 100), durationMinutes: s.durationMinutes, fullCents: s.priceCents };
   });
   const extrasCents = extraLines.reduce((a, x) => a + x.priceCents, 0);
@@ -384,8 +419,8 @@ export default function PublicBookingPage() {
         <section style={isMobile ? contentMobile : content}>
           {step === 1 && (
             <>
-              <DealsBanner wd={salon?.weekdayDiscounts} categories={categories} />
-              <StepDateTime rules={rules} deals={salon?.weekdayDiscounts} selectedDate={selectedDate} slot={slot}
+              <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
+              <StepDateTime rules={rules} deals={salon?.weekdayDiscounts} dateDeals={salon?.dateDiscounts} selectedDate={selectedDate} slot={slot}
                 onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                 onPickSlot={setSlot}
                 onContinue={() => slot && setStep(2)} />
@@ -592,8 +627,8 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 // Step 1: Date & time (the customer locks in a date AND a time slot first)
 // ---------------------------------------------------------------------------
-function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
-  rules: BookingRules; deals?: WeekdayDiscounts; selectedDate: Date | null; slot: Slot | null;
+function StepDateTime({ rules, deals, dateDeals, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
+  rules: BookingRules; deals?: WeekdayDiscounts; dateDeals?: DateDiscounts; selectedDate: Date | null; slot: Slot | null;
   onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void; onContinue: () => void;
 }) {
   // Highest discount % per weekday (0=Sun..6=Sat) so we can make deal days pop in
@@ -607,7 +642,7 @@ function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot
     }
     return m;
   }, [deals]);
-  const hasDeals = Object.keys(dealByWeekday).length > 0;
+  const hasDeals = Object.keys(dealByWeekday).length > 0 || !!(dateDeals?.enabled && Array.isArray(dateDeals.rules) && dateDeals.rules.length > 0);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const maxDate = useMemo(() => { const d = new Date(today); d.setDate(d.getDate() + rules.maxAdvanceDays); return d; }, [today, rules.maxAdvanceDays]);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -645,7 +680,7 @@ function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot
           if (!d) return <div key={i} />;
           const disabled = d < today || d > maxDate || isClosedDay(d, rules);
           const sel = selectedDate && sameDay(d, selectedDate);
-          const pct = disabled ? 0 : (dealByWeekday[d.getDay()] || 0);
+          const pct = disabled ? 0 : Math.max(dealByWeekday[d.getDay()] || 0, datePctFor(dateDeals, d, null));
           const deal = pct > 0;
           return (
             <button key={i} disabled={disabled} onClick={() => onPickDate(d)}

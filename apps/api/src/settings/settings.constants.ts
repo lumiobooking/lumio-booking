@@ -45,6 +45,31 @@ export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
   rules: [],
 };
 
+// Special-date discounts: run a sale on specific calendar dates or date ranges
+// (holidays, a grand-opening week) — NOT recurring by weekday. Each rule applies
+// a % off in a category (or all) from startDate to endDate inclusive. Dates are
+// salon-local YYYY-MM-DD strings; a blank endDate means a single day. When a date
+// is covered by BOTH a weekday rule and a date rule, the higher % wins.
+export const DATE_DISCOUNTS_KEY = 'date_discounts';
+
+export interface DateDiscountRule {
+  startDate: string; // YYYY-MM-DD (salon local)
+  endDate: string | null; // YYYY-MM-DD inclusive; blank/null = one day (= startDate)
+  categoryId: string | null; // null = all categories
+  percent: number; // 1–90
+  label?: string; // optional promo name, e.g. "Grand opening"
+}
+
+export interface DateDiscounts {
+  enabled: boolean;
+  rules: DateDiscountRule[];
+}
+
+export const DEFAULT_DATE_DISCOUNTS: DateDiscounts = {
+  enabled: false,
+  rules: [],
+};
+
 // Deposit-to-hold-the-slot (no-show deterrent). OFF by default. The deposit is
 // taken as a partial online payment at booking time, kept on no-show, refunded
 // on cancel, and credited toward the final bill at checkout. It runs on the

@@ -248,6 +248,7 @@ model Tenant {
   tipLogs              TipLog[]
   voiceLine            VoiceLine?
   voiceCalls           VoiceCall[]
+  invoices             Invoice[]
 
   @@index([status])
   @@index([accountGroupId])
@@ -1237,6 +1238,54 @@ model VoiceCall {
   @@index([tenantId])
   @@index([tenantId, createdAt])
   @@map("voice_calls")
+}
+
+// ===========================================================================
+// Invoices — month-end usage-overage bills and plan-renewal bills. Emailed to
+// the salon owner with a public hosted page (token) + payment link. Records the
+// charge so it is never double-created for the same tenant + type + period.
+// ===========================================================================
+enum InvoiceType {
+  OVERAGE // usage beyond the plan allowance (SMS + AI Hotline minutes)
+  RENEWAL // the plan subscription is due for renewal
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+model Invoice {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  number String        @unique // human-friendly, e.g. INV-202607-0007
+  token  String        @unique @default(uuid()) // public hosted-invoice page key
+  type   InvoiceType
+  status InvoiceStatus @default(OPEN)
+
+  currency      String    @default("USD")
+  periodStart   DateTime? // month billed (OVERAGE) or period start (RENEWAL)
+  periodEnd     DateTime?
+  lineItems     Json      @default("[]") // [{label, detail?, amountCents}]
+  subtotalCents Int       @default(0)
+  totalCents    Int       @default(0)
+  dueDate       DateTime?
+
+  sentAt      DateTime? // when the invoice email was sent
+  paidAt      DateTime?
+  provider    String? // stripe | paypal (when paid)
+  externalRef String? // checkout session / payment id
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, type, periodStart]) // idempotent: one bill per tenant/type/period
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@map("invoices")
 }
 
 // ===========================================================================

@@ -54,6 +54,39 @@ export class StripeService {
     return { url: session.url };
   }
 
+  /** Hosted Checkout for a ONE-TIME charge (a usage-overage or renewal invoice). */
+  async createPaymentSession(params: {
+    amountCents: number; currency: string; productName: string;
+    customerEmail?: string; successUrl: string; cancelUrl: string; metadata: Record<string, string>;
+  }): Promise<{ url: string }> {
+    const stripe = await this.client();
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: (params.currency || 'USD').toLowerCase(),
+          product_data: { name: params.productName },
+          unit_amount: params.amountCents,
+        },
+      }],
+      customer_email: params.customerEmail || undefined,
+      metadata: params.metadata,
+      payment_intent_data: { metadata: params.metadata },
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+    });
+    if (!session.url) throw new BadRequestException('Could not start Stripe checkout');
+    return { url: session.url };
+  }
+
+  /** Read a Checkout Session to confirm payment on return from Stripe. */
+  async getCheckoutSession(id: string): Promise<{ paymentStatus: string; metadata: Record<string, string> }> {
+    const stripe = await this.client();
+    const s = await stripe.checkout.sessions.retrieve(id);
+    return { paymentStatus: s.payment_status ?? 'unpaid', metadata: (s.metadata ?? {}) as Record<string, string> };
+  }
+
   /** Verify a webhook payload signature and return the parsed event. */
   async constructEvent(rawBody: Buffer, signature: string): Promise<Stripe.Event> {
     const secret = await this.platform.get('stripe_webhook_secret');

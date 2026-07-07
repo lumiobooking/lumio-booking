@@ -11,34 +11,54 @@ import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
-const NAV: { href: string; label: string; icon: string; feature?: 'pos' }[] = [
-  { href: '/salon', label: 'Dashboard', icon: '◉' },
-  { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾', feature: 'pos' },
-  { href: '/salon/orders', label: 'Orders', icon: '📋', feature: 'pos' },
-  { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
-  { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
-  { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: '🔄' },
-  { href: '/salon/waitlist', label: 'Waitlist', icon: '⏳' },
-  { href: '/salon/customers', label: 'Customers', icon: '☺' },
-  { href: '/salon/services', label: 'Services', icon: '✦' },
-  { href: '/salon/products', label: 'Products', icon: '🛍', feature: 'pos' },
-  { href: '/salon/gift-cards', label: 'Gift cards', icon: '🎁', feature: 'pos' },
-  { href: '/salon/staff', label: 'Staff', icon: '✄' },
-  { href: '/salon/payroll', label: 'Lương thợ · Payroll', icon: '💵', feature: 'pos' },
-  { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
-  { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
-  { href: '/salon/messenger', label: 'Messenger bot', icon: '🤖' },
-  { href: '/salon/voice', label: 'AI Hotline', icon: '📞' },
-  { href: '/salon/marketing', label: 'Marketing', icon: '📣' },
-  { href: '/salon/inventory', label: 'Inventory', icon: '📦', feature: 'pos' },
-  { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
-  { href: '/salon/payments', label: 'Payments', icon: '＄' },
-  { href: '/salon/notifications', label: 'Notifications', icon: '✉' },
-  { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },
-  { href: '/salon/billing', label: 'Billing & plan', icon: '💳' },
-  { href: '/salon/usage-costs', label: 'Usage & costs', icon: '🧮' },
-  { href: '/salon/settings', label: 'Settings', icon: '⚙' },
+type NavItem = { href: string; label: string; icon: string; feature?: 'pos' };
+type NavGroup = { id: string; label: string; icon: string; items: NavItem[] };
+
+// Dashboard sits on its own above the collapsible groups.
+const DASHBOARD: NavItem = { href: '/salon', label: 'Dashboard', icon: '◉' };
+
+// The sidebar is organised as a folder tree: 5 collapsible groups. Usage & costs
+// now lives inside Billing & plan, so it is no longer a separate nav item.
+const GROUPS: NavGroup[] = [
+  { id: 'ops', label: 'Operations', icon: '🗂', items: [
+    { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
+    { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
+    { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: '🔄' },
+    { href: '/salon/waitlist', label: 'Waitlist', icon: '⏳' },
+    { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾', feature: 'pos' },
+    { href: '/salon/orders', label: 'Orders', icon: '📋', feature: 'pos' },
+  ] },
+  { id: 'clients', label: 'Clients & Catalog', icon: '☺', items: [
+    { href: '/salon/customers', label: 'Customers', icon: '☺' },
+    { href: '/salon/services', label: 'Services', icon: '✦' },
+    { href: '/salon/products', label: 'Products', icon: '🛍', feature: 'pos' },
+    { href: '/salon/gift-cards', label: 'Gift cards', icon: '🎁', feature: 'pos' },
+    { href: '/salon/staff', label: 'Staff', icon: '✄' },
+  ] },
+  { id: 'growth', label: 'Marketing & AI', icon: '📣', items: [
+    { href: '/salon/marketing', label: 'Marketing', icon: '📣' },
+    { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
+    { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
+    { href: '/salon/messenger', label: 'Messenger bot', icon: '🤖' },
+    { href: '/salon/voice', label: 'AI Hotline', icon: '📞' },
+  ] },
+  { id: 'finance', label: 'Finance', icon: '＄', items: [
+    { href: '/salon/payments', label: 'Payments', icon: '＄' },
+    { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
+    { href: '/salon/payroll', label: 'Payroll', icon: '💵', feature: 'pos' },
+    { href: '/salon/inventory', label: 'Inventory', icon: '📦', feature: 'pos' },
+  ] },
+  { id: 'account', label: 'Account', icon: '⚙', items: [
+    { href: '/salon/billing', label: 'Billing & plan', icon: '💳' },
+    { href: '/salon/notifications', label: 'Notifications', icon: '✉' },
+    { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },
+    { href: '/salon/settings', label: 'Settings', icon: '⚙' },
+  ] },
 ];
+
+const GROUP_KEY: Record<string, string> = {
+  ops: 'navg.ops', clients: 'navg.clients', growth: 'navg.growth', finance: 'navg.finance', account: 'navg.account',
+};
 
 // Each nav route → the feature capability needed to use it (RBAC). Routes not
 // listed need no capability. Must match the backend capability names.
@@ -83,6 +103,17 @@ export function SalonShell({ children }: { children: ReactNode }) {
   const [posEnabled, setPosEnabled] = useState<boolean | null>(() => readCachedPos());
   // Routes hidden because Super Admin set the feature to platform-managed.
   const [hiddenHrefs, setHiddenHrefs] = useState<string[]>([]);
+  // Which sidebar groups are expanded (persisted). The group holding the active
+  // route auto-expands so the current page is always reachable.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(window.localStorage.getItem('lumio_nav_groups') || '{}'); } catch { return {}; }
+  });
+  const toggleGroup = (id: string) => setOpenGroups((prev) => {
+    const next = { ...prev, [id]: !prev[id] };
+    try { localStorage.setItem('lumio_nav_groups', JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
 
   // Feature permissions. Older sessions carry no `capabilities` → owners fall
   // back to "all" so upgrading never locks the owner out.
@@ -92,8 +123,11 @@ export function SalonShell({ children }: { children: ReactNode }) {
   // Staff with salon access are assumed POS-entitled (the owner's plan applies);
   // only the owner's own view is gated by the cached plan flag.
   const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
-  const visibleNav = NAV.filter((item) => (item.feature !== 'pos' || posOk) && can(item.href) && !hiddenHrefs.includes(item.href));
-  const firstAllowedHref = visibleNav[0]?.href ?? '/salon';
+  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk) && can(item.href) && !hiddenHrefs.includes(item.href);
+  const visibleGroups = GROUPS
+    .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
+    .filter((g) => g.items.length > 0);
+  const firstAllowedHref = (can(DASHBOARD.href) && DASHBOARD.href) || visibleGroups[0]?.items[0]?.href || '/salon';
 
   useEffect(() => {
     if (!ready) return;
@@ -122,6 +156,12 @@ export function SalonShell({ children }: { children: ReactNode }) {
   // Close the drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
+  // Auto-expand the group that contains the current route.
+  useEffect(() => {
+    const g = GROUPS.find((grp) => grp.items.some((it) => pathname === it.href || pathname.startsWith(it.href + '/')));
+    if (g) setOpenGroups((prev) => (prev[g.id] ? prev : { ...prev, [g.id]: true }));
+  }, [pathname]);
+
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
@@ -130,27 +170,58 @@ export function SalonShell({ children }: { children: ReactNode }) {
     );
   }
 
+  const renderLink = (item: NavItem, indent: boolean) => {
+    const active = pathname === item.href;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setDrawerOpen(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: indent ? '9px 12px 9px 22px' : '11px 12px', borderRadius: 8, fontSize: indent ? 14 : 15,
+          textDecoration: 'none',
+          color: active ? 'white' : '#94a3b8',
+          background: active ? '#6366f1' : 'transparent',
+          fontWeight: active ? 600 : 500,
+        }}
+      >
+        <span style={{ width: 18, textAlign: 'center', fontSize: 13 }}>{item.icon}</span>
+        {NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label}
+      </Link>
+    );
+  };
+
   const navList = (
     <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {visibleNav.map((item) => {
-        const active = pathname === item.href;
+      {can(DASHBOARD.href) && renderLink(DASHBOARD, false)}
+      {visibleGroups.map((grp) => {
+        const open = !!openGroups[grp.id];
+        const hasActive = grp.items.some((it) => pathname === it.href || pathname.startsWith(it.href + '/'));
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setDrawerOpen(false)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '11px 12px', borderRadius: 8, fontSize: 15,
-              textDecoration: 'none',
-              color: active ? 'white' : '#94a3b8',
-              background: active ? '#6366f1' : 'transparent',
-              fontWeight: active ? 600 : 500,
-            }}
-          >
-            <span style={{ width: 18, textAlign: 'center', fontSize: 13 }}>{item.icon}</span>
-            {NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label}
-          </Link>
+          <div key={grp.id} style={{ marginTop: 6 }}>
+            <button
+              onClick={() => toggleGroup(grp.id)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+                padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: 'transparent', color: hasActive && !open ? '#c7d2fe' : '#64748b',
+                fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 16, textAlign: 'center', fontSize: 12 }}>{grp.icon}</span>
+                {tr(GROUP_KEY[grp.id], lang)}
+                {hasActive && !open && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#6366f1' }} />}
+              </span>
+              <span style={{ fontSize: 10, opacity: 0.8, transition: 'transform .15s', transform: open ? 'rotate(90deg)' : 'none' }}>▸</span>
+            </button>
+            {open && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                {grp.items.map((item) => renderLink(item, true))}
+              </div>
+            )}
+          </div>
         );
       })}
     </nav>

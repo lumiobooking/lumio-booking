@@ -206,11 +206,14 @@ export class VoiceService {
 
   /** AI voice usage + SMS sent for one tenant this month, with plan limits and
    *  computed overage (minutes/SMS beyond the included allowance). */
-  private async usageForTenant(tenantId: string): Promise<VoiceUsage> {
-    const since = this.monthStart();
+  private async usageForTenant(tenantId: string, monthStart?: Date): Promise<VoiceUsage> {
+    const since = monthStart ?? this.monthStart();
+    // When billing a specific past month, bound the window to that month only.
+    const until = monthStart ? new Date(since.getFullYear(), since.getMonth() + 1, 1) : null;
+    const callWindow = until ? { gte: since, lt: until } : { gte: since };
     const [calls, line] = await Promise.all([
       this.prisma.voiceCall.findMany({
-        where: { tenantId, createdAt: { gte: since } },
+        where: { tenantId, createdAt: callWindow },
         select: { durationSec: true, createdAt: true, updatedAt: true },
       }),
       this.prisma.voiceLine.findUnique({
@@ -226,7 +229,7 @@ export class VoiceService {
     }
     const aiMinutes = Math.ceil(seconds / 60);
     const smsSent = await this.prisma.notification.count({
-      where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.SENT, createdAt: { gte: since } },
+      where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.SENT, createdAt: callWindow },
     });
     const incMin = line?.includedMinutes ?? 0;
     const incSms = line?.includedSms ?? 0;
@@ -458,6 +461,11 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
 
   async usage(user: AuthenticatedUser): Promise<VoiceUsage> {
     return this.usageForTenant(this.tenantId(user));
+  }
+
+  /** Usage for a specific month (monthStart = first day 00:00). Used by month-end invoicing. */
+  async usageForMonth(tenantId: string, monthStart: Date): Promise<VoiceUsage> {
+    return this.usageForTenant(tenantId, monthStart);
   }
 
   // ---- Super Admin (platform) ----------------------------------------------

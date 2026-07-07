@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
+import { UsageCostsPanel } from '../../../components/UsageCostsPanel';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, Lang } from '../../../lib/i18n';
+
+type BillTab = 'plan' | 'usage' | 'invoices';
+interface InvoiceRow { id: string; number: string; type: string; status: string; totalCents: number; currency: string; periodStart: string | null; periodEnd: string | null; dueDate: string | null; token: string; createdAt: string }
 
 interface PlanFlags { planName: string | null }
 interface Subscription { status: string; provider: string | null; interval: string; currentPeriodStart: string | null; currentPeriodEnd: string | null; trialEndsAt: string | null; createdAt: string }
@@ -33,6 +37,13 @@ function Inner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [tab, setTab] = useState<BillTab>('plan');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search).get('tab');
+    if (q === 'usage' || q === 'invoices') setTab(q);
+  }, []);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -83,11 +94,23 @@ function Inner() {
   return (
     <section style={{ maxWidth: 760 }}>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('bl.title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('bl.subtitle')}</p>
+      <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('bl.subtitle')}</p>
+
+      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #1f2937', marginBottom: 18, flexWrap: 'wrap' }}>
+        {(([['plan', t('bl.tabPlan')], ['usage', t('bl.tabUsage')], ['invoices', t('bl.tabInvoices')]]) as [BillTab, string][]).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            border: 'none', background: 'transparent', cursor: 'pointer', padding: '9px 14px',
+            fontSize: 14, fontWeight: tab === id ? 700 : 500,
+            color: tab === id ? '#e2e8f0' : '#94a3b8',
+            borderBottom: tab === id ? '2px solid #6366f1' : '2px solid transparent', marginBottom: -1,
+          }}>{label}</button>
+        ))}
+      </div>
 
       {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
       {error && <div style={ui.banner}>{error}</div>}
 
+      {tab === 'plan' && (<>
       <div style={{ ...ui.card, marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
@@ -165,8 +188,64 @@ function Inner() {
       <p style={{ color: '#64748b', fontSize: 12, marginTop: 16 }}>
         {t('bl.footerNote')}
       </p>
+      </>)}
+
+      {tab === 'usage' && <UsageCostsPanel />}
+      {tab === 'invoices' && <InvoicesList token={token ?? ''} lang={lang} />}
     </section>
   );
+}
+
+/** The salon's own invoices (overage + renewal). Each links to a hosted invoice
+ *  page where they can view details and pay. */
+function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
+  const t = (k: string) => tr(k, lang);
+  const [rows, setRows] = useState<InvoiceRow[] | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<InvoiceRow[]>('/billing/invoices', { token }).then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([]));
+  }, [token]);
+
+  if (rows === null) return <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('bl.loading')}</p>;
+  if (rows.length === 0) return (
+    <div style={{ ...ui.card }}>
+      <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{t('bl.invNone')}</p>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 4px' }}>{t('bl.invIntro')}</p>
+      {rows.map((iv) => {
+        const paid = iv.status === 'PAID';
+        const void_ = iv.status === 'VOID';
+        return (
+          <div key={iv.id} style={{ ...ui.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>
+                {iv.type === 'RENEWAL' ? t('bl.invRenewal') : t('bl.invOverage')} · <span style={{ color: '#94a3b8', fontWeight: 500 }}>#{iv.number}</span>
+              </div>
+              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 3 }}>
+                {invMoney(iv.totalCents, iv.currency)} · {fmtInvDate(iv.createdAt)}
+                {' · '}<span style={{ color: paid ? '#4ade80' : void_ ? '#94a3b8' : '#fbbf24', fontWeight: 600 }}>
+                  {paid ? t('bl.invPaid') : void_ ? t('bl.invVoid') : t('bl.invDue')}
+                </span>
+              </div>
+            </div>
+            <a href={`/invoice/${iv.token}`} target="_blank" rel="noopener noreferrer"
+              style={{ ...ui.primaryBtn, textDecoration: 'none', background: paid || void_ ? 'transparent' : undefined, border: paid || void_ ? '1px solid #475569' : undefined, whiteSpace: 'nowrap' }}>
+              {paid || void_ ? t('bl.invViewer') : t('bl.invPay')}
+            </a>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const invMoney = (c: number, cur = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format((c || 0) / 100);
+function fmtInvDate(s: string): string {
+  try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return ''; }
 }
 
 function toggle(active: boolean): React.CSSProperties {

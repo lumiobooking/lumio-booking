@@ -385,7 +385,7 @@ export default function PublicBookingPage() {
           {step === 1 && (
             <>
               <DealsBanner wd={salon?.weekdayDiscounts} categories={categories} />
-              <StepDateTime rules={rules} selectedDate={selectedDate} slot={slot}
+              <StepDateTime rules={rules} deals={salon?.weekdayDiscounts} selectedDate={selectedDate} slot={slot}
                 onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                 onPickSlot={setSlot}
                 onContinue={() => slot && setStep(2)} />
@@ -592,10 +592,22 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 // Step 1: Date & time (the customer locks in a date AND a time slot first)
 // ---------------------------------------------------------------------------
-function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
-  rules: BookingRules; selectedDate: Date | null; slot: Slot | null;
+function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
+  rules: BookingRules; deals?: WeekdayDiscounts; selectedDate: Date | null; slot: Slot | null;
   onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void; onContinue: () => void;
 }) {
+  // Highest discount % per weekday (0=Sun..6=Sat) so we can make deal days pop in
+  // the calendar. Uses the best rule across categories to entice the customer.
+  const dealByWeekday = useMemo(() => {
+    const m: Record<number, number> = {};
+    if (deals?.enabled && Array.isArray(deals.rules)) {
+      for (const r of deals.rules) {
+        if (r.percent > 0) m[r.day] = Math.max(m[r.day] || 0, Math.min(90, r.percent));
+      }
+    }
+    return m;
+  }, [deals]);
+  const hasDeals = Object.keys(dealByWeekday).length > 0;
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const maxDate = useMemo(() => { const d = new Date(today); d.setDate(d.getDate() + rules.maxAdvanceDays); return d; }, [today, rules.maxAdvanceDays]);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -633,17 +645,31 @@ function StepDateTime({ rules, selectedDate, slot, onPickDate, onPickSlot, onCon
           if (!d) return <div key={i} />;
           const disabled = d < today || d > maxDate || isClosedDay(d, rules);
           const sel = selectedDate && sameDay(d, selectedDate);
+          const pct = disabled ? 0 : (dealByWeekday[d.getDay()] || 0);
+          const deal = pct > 0;
           return (
             <button key={i} disabled={disabled} onClick={() => onPickDate(d)}
-              style={{ padding: '10px 0', borderRadius: 8, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
-                border: sel ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: sel ? '#eef2ff' : disabled ? '#f8fafc' : 'white',
-                color: disabled ? '#cbd5e1' : '#1e293b', fontWeight: sel ? 700 : 400 }}>
-              {d.getDate()}
+              title={deal ? `Save ${pct}% on this day` : undefined}
+              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
+                minHeight: 46, borderRadius: 9, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
+                border: sel ? `2px solid ${ACCENT}` : deal ? '1px solid #34d399' : '1px solid #e2e8f0',
+                background: sel ? '#eef2ff' : disabled ? '#f8fafc' : deal ? 'linear-gradient(135deg, #ecfdf5, #d1fae5)' : 'white',
+                color: disabled ? '#cbd5e1' : deal ? '#065f46' : '#1e293b',
+                fontWeight: sel || deal ? 700 : 400,
+                boxShadow: deal && !sel ? '0 2px 7px rgba(16,185,129,0.22)' : undefined }}>
+              <span style={{ lineHeight: 1 }}>{d.getDate()}</span>
+              {deal && <span style={{ fontSize: 9, fontWeight: 800, color: sel ? '#059669' : '#16a34a', lineHeight: 1, letterSpacing: '-0.02em' }}>−{pct}%</span>}
             </button>
           );
         })}
       </div>
 
+      {hasDeals && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, fontSize: 12.5, color: '#065f46', fontWeight: 600 }}>
+          <span style={{ width: 30, height: 22, borderRadius: 6, background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '1px solid #34d399', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#16a34a' }}>−%</span>
+          Green days save you money — the discount applies automatically 🎉
+        </div>
+      )}
       {!selectedDate && (
         <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>Pick a date — greyed-out days are closed or outside the booking window.</p>
       )}

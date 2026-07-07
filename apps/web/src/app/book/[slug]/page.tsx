@@ -652,22 +652,21 @@ function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot
               title={deal ? `Save ${pct}% on this day` : undefined}
               style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
                 minHeight: 46, borderRadius: 9, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
-                border: sel ? `2px solid ${ACCENT}` : deal ? '1px solid #34d399' : '1px solid #e2e8f0',
-                background: sel ? '#eef2ff' : disabled ? '#f8fafc' : deal ? 'linear-gradient(135deg, #ecfdf5, #d1fae5)' : 'white',
-                color: disabled ? '#cbd5e1' : deal ? '#065f46' : '#1e293b',
-                fontWeight: sel || deal ? 700 : 400,
-                boxShadow: deal && !sel ? '0 2px 7px rgba(16,185,129,0.22)' : undefined }}>
+                border: sel ? `2px solid ${ACCENT}` : deal ? '1px solid #cdeede' : '1px solid #e2e8f0',
+                background: sel ? '#eef2ff' : disabled ? '#f8fafc' : deal ? '#f5fcf8' : 'white',
+                color: disabled ? '#cbd5e1' : '#1e293b',
+                fontWeight: sel ? 700 : 400 }}>
               <span style={{ lineHeight: 1 }}>{d.getDate()}</span>
-              {deal && <span style={{ fontSize: 9, fontWeight: 800, color: sel ? '#059669' : '#16a34a', lineHeight: 1, letterSpacing: '-0.02em' }}>−{pct}%</span>}
+              {deal && <span style={{ fontSize: 8.5, fontWeight: 600, color: '#16a34a', lineHeight: 1, letterSpacing: '0.01em', opacity: 0.85 }}>−{pct}%</span>}
             </button>
           );
         })}
       </div>
 
       {hasDeals && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, fontSize: 12.5, color: '#065f46', fontWeight: 600 }}>
-          <span style={{ width: 30, height: 22, borderRadius: 6, background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '1px solid #34d399', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#16a34a' }}>−%</span>
-          Green days save you money — the discount applies automatically 🎉
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12, padding: '7px 12px', background: '#f8fefb', border: '1px solid #e3f5ec', borderRadius: 10, fontSize: 12.5, color: '#047857', fontWeight: 500 }}>
+          <span style={{ width: 28, height: 20, borderRadius: 6, background: '#f5fcf8', border: '1px solid #cdeede', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8.5, fontWeight: 600, color: '#16a34a', opacity: 0.85 }}>−%</span>
+          Days in green have a discount — applied automatically.
         </div>
       )}
       {!selectedDate && (

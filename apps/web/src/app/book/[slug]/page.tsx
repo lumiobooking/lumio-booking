@@ -650,14 +650,14 @@ function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot
           return (
             <button key={i} disabled={disabled} onClick={() => onPickDate(d)}
               title={deal ? `Save ${pct}% on this day` : undefined}
-              style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 minHeight: 46, borderRadius: 9, fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
                 border: sel ? `2px solid ${ACCENT}` : deal ? '1px solid #e8f4ee' : '1px solid #e2e8f0',
                 background: sel ? '#eef2ff' : disabled ? '#f8fafc' : deal ? '#f9fdfb' : 'white',
                 color: disabled ? '#cbd5e1' : '#1e293b',
                 fontWeight: sel ? 700 : 400 }}>
               {d.getDate()}
-              {deal && <span style={{ position: 'absolute', top: 7, right: 7, width: 6, height: 6, borderRadius: '50%', background: '#34d399' }} />}
+              {deal && <span style={{ position: 'absolute', top: 0, right: 0, width: 0, height: 0, borderTop: '14px solid #34d399', borderLeft: '14px solid transparent' }} />}
             </button>
           );
         })}
@@ -665,8 +665,8 @@ function StepDateTime({ rules, deals, selectedDate, slot, onPickDate, onPickSlot
 
       {hasDeals && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 14, fontSize: 12.5, color: '#64748b', fontWeight: 400 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#34d399', flexShrink: 0 }} />
-          Days with a dot have a discount — applied automatically.
+          <span style={{ width: 0, height: 0, borderTop: '11px solid #34d399', borderLeft: '11px solid transparent', flexShrink: 0 }} />
+          Days with a corner tag have a discount — applied automatically.
         </div>
       )}
       {!selectedDate && (

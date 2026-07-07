@@ -39,15 +39,17 @@ export class BillingService {
 
   /** Super Admin: gateway connection status + webhook URLs for the UI. */
   async gatewayStatus() {
-    const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv] = await Promise.all([
+    const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv, brevoKey, brevoSender, brevoName] = await Promise.all([
       this.platform.get('stripe_secret_key'), this.platform.get('stripe_webhook_secret'),
       this.platform.get('paypal_client_id'), this.platform.get('paypal_secret'),
       this.platform.get('paypal_webhook_id'), this.platform.get('paypal_env'),
+      this.platform.get('brevo_api_key'), this.platform.get('brevo_sender_email'), this.platform.get('brevo_sender_name'),
     ]);
     const apiBase = (this.config.get<string>('RENDER_EXTERNAL_URL') ?? this.config.get<string>('KEEPALIVE_SELF_URL') ?? '').replace(/\/$/, '');
     return {
       stripe: { hasKey: !!stripeKey, hasWebhook: !!stripeHook, live: (stripeKey ?? '').startsWith('sk_live') },
       paypal: { hasClient: !!(ppId && ppSecret), hasWebhook: !!ppHook, env: ppEnv ?? 'live' },
+      email: { hasKey: !!(brevoKey && brevoSender), senderEmail: brevoSender ?? '', senderName: brevoName ?? '' },
       webhookStripeUrl: apiBase ? `${apiBase}/api/billing/webhook/stripe` : '/api/billing/webhook/stripe',
       webhookPaypalUrl: apiBase ? `${apiBase}/api/billing/webhook/paypal` : '/api/billing/webhook/paypal',
     };
@@ -196,6 +198,9 @@ export class BillingService {
       paypal_webhook_id: dto.paypalWebhookId,
       paypal_env: dto.paypalEnv,
       app_url: dto.appUrl,
+      brevo_api_key: dto.brevoApiKey,
+      brevo_sender_email: dto.brevoSenderEmail,
+      brevo_sender_name: dto.brevoSenderName,
     });
     return this.gatewayStatus();
   }

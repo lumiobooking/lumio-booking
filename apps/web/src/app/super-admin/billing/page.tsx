@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 interface Status {
   stripe: { hasKey: boolean; hasWebhook: boolean; live: boolean };
   paypal: { hasClient: boolean; hasWebhook: boolean; env: string };
+  email?: { hasKey: boolean; senderEmail: string; senderName: string };
   webhookStripeUrl: string;
   webhookPaypalUrl: string;
 }
@@ -28,6 +29,11 @@ export default function GatewaysPage() {
   const [ppSecret, setPpSecret] = useState('');
   const [ppHook, setPpHook] = useState('');
   const [ppEnv, setPpEnv] = useState('live');
+  // Invoice email (Brevo) inputs
+  const [brevoKey, setBrevoKey] = useState('');
+  const [brevoSender, setBrevoSender] = useState('');
+  const [brevoName, setBrevoName] = useState('');
+  const [testEmail, setTestEmail] = useState('');
 
   useEffect(() => {
     if (!ready) return;
@@ -37,7 +43,11 @@ export default function GatewaysPage() {
 
   const load = useCallback(async () => {
     if (!token) return;
-    try { const s = await apiFetch<Status>('/billing/config', { token }); setSt(s); setPpEnv(s.paypal.env || 'live'); }
+    try {
+      const s = await apiFetch<Status>('/billing/config', { token });
+      setSt(s); setPpEnv(s.paypal.env || 'live');
+      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || '');
+    }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
   }, [token]);
   useEffect(() => { if (ready && token && user?.role === 'SUPER_ADMIN') load(); }, [ready, token, user, load]);
@@ -60,6 +70,16 @@ export default function GatewaysPage() {
       setMsg('✓ Saved. Connection status updated below.');
       setStripeKey(''); setStripeHook(''); setPpId(''); setPpSecret(''); setPpHook('');
     } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  async function sendTest() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ sent: boolean; via: string; error?: string }>('/admin/invoices/test-email', { method: 'POST', token, body: { email: testEmail } });
+      if (r.sent) setMsg(`✓ Test email sent to ${testEmail} (via ${r.via}). Check the inbox / spam folder.`);
+      else setErr(`Not sent: ${r.error || 'email not configured'} — via ${r.via}.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Test failed'); }
     finally { setBusy(false); }
   }
 
@@ -132,6 +152,32 @@ export default function GatewaysPage() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <code style={codeBox}>{st?.webhookPaypalUrl}</code>
             <button onClick={() => st && copy(st.webhookPaypalUrl)} style={ghost}>Copy</button>
+          </div>
+        </div>
+      </section>
+
+      {/* Invoice email (Brevo) — Lumio → salons */}
+      <section style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 18, margin: 0 }}>✉ Invoice email (sends from Lumio)</h2>
+          <span style={{ fontSize: 13 }}>{st ? dot(!!st.email?.hasKey) : '…'}</span>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px' }}>The address Lumio sends month-end &amp; renewal invoices FROM. Free key at brevo.com → SMTP &amp; API → API Keys (~300 emails/day free). Verify your sender email in Brevo first.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Brevo API key {st?.email?.hasKey && <span style={savedTag}>saved</span>}</label>
+            <input style={inp} type="password" value={brevoKey} onChange={(e) => setBrevoKey(e.target.value)} placeholder={st?.email?.hasKey ? '•••••••• (leave blank to keep)' : 'xkeysib-…'} /></div>
+          <div><label style={lbl}>Sender email (verified in Brevo)</label>
+            <input style={inp} value={brevoSender} onChange={(e) => setBrevoSender(e.target.value)} placeholder="billing@yourdomain.com" /></div>
+          <div><label style={lbl}>Sender name</label>
+            <input style={inp} value={brevoName} onChange={(e) => setBrevoName(e.target.value)} placeholder="Lumio Booking" /></div>
+        </div>
+        <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName })} disabled={busy} style={primaryBtn}>Save email</button>
+
+        <div style={hintBox}>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Send yourself a test to confirm it works before month-end:</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input style={{ ...inp, marginBottom: 0, flex: 1, minWidth: 200 }} value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="your@email.com" />
+            <button onClick={sendTest} disabled={busy || !testEmail} style={ghost}>Send test</button>
           </div>
         </div>
       </section>

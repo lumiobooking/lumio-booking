@@ -18,6 +18,10 @@ export class PlatformConfigService {
     paypal_webhook_id: 'PAYPAL_WEBHOOK_ID',
     paypal_env: 'PAYPAL_ENV',
     app_url: 'APP_URL',
+    // Platform email (Brevo) used to send invoices FROM Lumio to salons.
+    brevo_api_key: 'BREVO_API_KEY',
+    brevo_sender_email: 'BREVO_SENDER_EMAIL',
+    brevo_sender_name: 'BREVO_SENDER_NAME',
   };
 
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}

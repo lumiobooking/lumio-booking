@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VoiceService } from '../voice/voice.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StripeService } from '../billing/stripe.service';
+import { PlatformConfigService } from '../billing/platform-config.service';
 import { publicWebBase } from '../common/public-url.util';
 
 export interface LineItem { label: string; amountCents: number }
@@ -27,9 +28,20 @@ export class InvoicesService {
     private readonly voice: VoiceService,
     private readonly notifications: NotificationsService,
     private readonly stripe: StripeService,
+    private readonly platform: PlatformConfigService,
   ) {}
 
   // -------------------------------------------------------------- helpers
+  /** Lumio's own sending email (set in Super Admin → Payment gateways → Invoice
+   *  email). Used so invoices go out FROM Lumio, not the salon's own inbox. */
+  private async platformBrevo(): Promise<{ apiKey: string; senderEmail: string; senderName: string } | undefined> {
+    const [apiKey, senderEmail, senderName] = await Promise.all([
+      this.platform.get('brevo_api_key'), this.platform.get('brevo_sender_email'), this.platform.get('brevo_sender_name'),
+    ]);
+    if (apiKey && senderEmail) return { apiKey, senderEmail, senderName: senderName || 'Lumio Booking' };
+    return undefined;
+  }
+
   private async ownerEmail(tenantId: string): Promise<string | null> {
     const u = await this.prisma.user.findFirst({
       where: { tenantId, role: UserRole.SALON_ADMIN },
@@ -152,7 +164,8 @@ export class InvoicesService {
 
     await this.notifications.send({
       tenantId: inv.tenantId, channel: NotificationChannel.EMAIL, recipient: email,
-      subject, body, html, senderName: 'Lumio Booking', relatedType: 'invoice', relatedId: inv.id,
+      subject, body, html, senderName: 'Lumio Booking', replyTo: (await this.platformBrevo())?.senderEmail,
+      brevo: await this.platformBrevo(), relatedType: 'invoice', relatedId: inv.id,
     });
     await this.prisma.invoice.update({ where: { id: inv.id }, data: { sentAt: new Date() } });
     return true;
@@ -242,5 +255,26 @@ export class InvoicesService {
   async voidInvoice(id: string) {
     await this.prisma.invoice.updateMany({ where: { id, status: InvoiceStatus.OPEN }, data: { status: InvoiceStatus.VOID } });
     return { ok: true };
+  }
+
+  /** Super Admin: send a sample invoice email to confirm the platform email works
+   *  before month-end. Uses the same path as a real invoice email. */
+  async sendTestEmail(to: string): Promise<{ sent: boolean; via: string; error?: string }> {
+    if (!to || !to.includes('@')) return { sent: false, via: 'none', error: 'Enter a valid email address.' };
+    const tenant = await this.prisma.tenant.findFirst({ select: { id: true } });
+    if (!tenant) return { sent: false, via: 'none', error: 'Create a salon first (the test is logged under a tenant).' };
+    const brevo = await this.platformBrevo();
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+      <div style="font-size:20px;font-weight:800;color:#4f46e5">Lumio Booking</div>
+      <h2 style="font-size:18px;margin:12px 0 4px">Invoice email test ✓</h2>
+      <p style="color:#334155;font-size:14px">If you can read this, your Lumio invoice email is set up correctly. Real month-end and plan-renewal invoices will look like this and include a secure payment link.</p>
+      <div style="margin:18px 0"><a href="${publicWebBase()}/invoice/sample" style="background:#4f46e5;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:700;display:inline-block">Sample &ldquo;View &amp; pay&rdquo; button</a></div>
+    </div>`;
+    const rec = (await this.notifications.send({
+      tenantId: tenant.id, channel: NotificationChannel.EMAIL, recipient: to,
+      subject: 'Lumio — invoice email test', body: 'Your Lumio invoice email is set up correctly.',
+      html, senderName: 'Lumio Booking', replyTo: brevo?.senderEmail, brevo,
+    })) as { status?: string; error?: string | null };
+    return { sent: rec?.status === 'SENT', via: brevo ? 'Brevo (in-app key)' : 'env fallback / mock', error: rec?.error || undefined };
   }
 }

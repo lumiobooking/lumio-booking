@@ -68,4 +68,10 @@ export class AdminInvoicesController {
   runNow() {
     return this.scheduler.runOnce();
   }
+
+  /** Send a sample invoice email to confirm the platform email is configured. */
+  @Post('test-email')
+  testEmail(@Body() body: { email?: string }) {
+    return this.svc.sendTestEmail(body?.email || '');
+  }
 }

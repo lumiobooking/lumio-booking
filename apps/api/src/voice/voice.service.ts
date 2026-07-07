@@ -276,7 +276,7 @@ export class VoiceService {
         services.map((s) => `- ${s.name} — ${price(s.priceCents)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n')
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
-    const system = `You are the friendly phone booking assistant for "${salonName}", a nail salon. You are speaking with a caller on the PHONE and your words are read aloud, so keep every reply short and natural — 1 to 2 spoken sentences. No lists, no emojis, no special characters, no URLs.
+    const system = `You are the warm, professional phone receptionist for "${salonName}", a nail salon. Your words are read aloud on a live call. Speak naturally like a friendly human receptionist — usually one relaxed sentence, occasionally two; concise and to the point, but never curt, robotic, or scripted. A little warmth ("Of course!", "Happy to help") is good; rambling is not. No lists, no emojis, no special characters, no URLs.
 The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
 Goal: book an appointment. You still need their first name, which service they want, and a specific date and time. Ask for what is missing, ONE thing at a time, and confirm details by repeating them back.
 Once you have a first name, a service (use its id from the list below), and a specific date and time, call create_booking. After it succeeds, say the day and time out loud to confirm and let them know they'll get a text message confirmation.
@@ -319,7 +319,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
-          max_tokens: 256, // phone replies are 1–2 sentences; a small cap trims worst-case latency
+          max_tokens: 180, // keep replies short → faster generation + faster text-to-speech
           // Cache the (stable) system prompt so turns 2+ of the same call are faster.
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
           tools,

@@ -61,10 +61,6 @@ function weekdayPctFor(wd: WeekdayDiscounts | undefined, date: Date | null, cate
   return Math.min(90, Math.max(0, best));
 }
 
-/** Salon-local YYYY-MM-DD for a calendar cell (built at local midnight). */
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 /** Highest specific-date discount % for a (date, category). Pass categoryId=null
  *  to get the best across ALL categories (used to highlight the calendar). */

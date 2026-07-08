@@ -252,6 +252,7 @@ model Tenant {
   invoices             Invoice[]
 
   tables             RestaurantTable[]
+  menuItems          MenuItem[]
 
   @@index([status])
   @@index([accountGroupId])
@@ -905,6 +906,28 @@ model RestaurantTable {
 
   @@index([tenantId])
   @@map("restaurant_tables")
+}
+
+/// A dish on a restaurant tenant's menu. Reference catalog now; wires into
+/// reservation pre-order later. Tenant-scoped like every other resource.
+model MenuItem {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  category    String? // e.g. "Phở", "Khai vị", "Đồ uống"
+  priceCents  Int     @default(0)
+  currency    String  @default("USD")
+  description String?
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("menu_items")
 }
 
 model Appointment {

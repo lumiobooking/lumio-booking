@@ -24,6 +24,7 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
     { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
     { href: '/salon/tables', label: 'Tables', icon: '🍽', biz: 'restaurant' },
+    { href: '/salon/menu', label: 'Menu', icon: '🍜', biz: 'restaurant' },
     { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: '🔄' },
     { href: '/salon/waitlist', label: 'Waitlist', icon: '⏳' },
     { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾', feature: 'pos' },

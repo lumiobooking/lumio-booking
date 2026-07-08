@@ -8,6 +8,7 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
+import { StaffDayView } from './StaffDayView';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -64,13 +65,13 @@ function Inner() {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   // Month grid vs. detailed single-day timeline.
-  const [mode, setMode] = useState<'month' | 'day'>('month');
+  const [mode, setMode] = useState<'month' | 'day' | 'staff'>('month');
   const [dayDate, setDayDate] = useState<Date>(today);
   const goDay = useCallback((d: Date) => {
     const dd = new Date(d); dd.setHours(0, 0, 0, 0);
     setDayDate(dd);
     setView(new Date(dd.getFullYear(), dd.getMonth(), 1)); // keep the month fetch covering this day
-    setMode('day');
+    setMode((m) => (m === 'staff' ? 'staff' : 'day')); // keep staff mode when just stepping days
   }, []);
   // Salon timezone so every appointment renders in the SALON's local time, never
   // the admin device's timezone (owners often manage US salons from abroad).
@@ -143,6 +144,7 @@ function Inner() {
           <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
             <button onClick={() => setMode('month')} style={segBtn(mode === 'month')}>{t('cal.viewMonth')}</button>
             <button onClick={() => setMode('day')} style={segBtn(mode === 'day')}>{t('cal.viewDay')}</button>
+            <button onClick={() => setMode('staff')} style={segBtn(mode === 'staff')}>{t('cal.viewStaff')}</button>
           </div>
           {mode === 'month' ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -180,7 +182,9 @@ function Inner() {
         </div>
       </div>
 
-      {mode === 'day' ? (
+      {mode === 'staff' ? (
+        <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
+      ) : mode === 'day' ? (
         <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
       ) : isMobile ? (
         /* Phones: a clean day-by-day agenda (only days that have appointments). */

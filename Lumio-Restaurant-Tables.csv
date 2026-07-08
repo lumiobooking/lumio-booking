@@ -1,0 +1,25 @@
+name,seats,area
+M1,2,Main Dining
+M2,2,Main Dining
+M3,4,Main Dining
+M4,4,Main Dining
+M5,4,Main Dining
+M6,4,Main Dining
+M7,6,Main Dining
+M8,6,Main Dining
+M9,4,Main Dining
+M10,2,Main Dining
+W1,2,Window
+W2,2,Window
+W3,4,Window
+W4,4,Window
+P1,4,Patio
+P2,4,Patio
+P3,6,Patio
+P4,6,Patio
+P5,8,Patio
+VIP1,10,Private Room
+VIP2,12,Private Room
+B1,2,Bar
+B2,2,Bar
+B3,2,Bar

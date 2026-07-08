@@ -6,8 +6,44 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { ImportCsv } from '../../../components/ImportCsv';
 
 interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; isActive: boolean; sortOrder: number }
+
+const SAMPLE_MENU = `name,category,price,description
+Crispy Egg Rolls,Appetizers,8,
+Fresh Spring Rolls,Appetizers,7,
+Green Papaya Salad,Appetizers,11,
+Fish-Sauce Chicken Wings,Appetizers,12,
+Sizzling Vietnamese Crepe,Appetizers,13,
+Rare Beef Pho,Pho,14,
+House Special Pho,Pho,16,
+Chicken Pho,Pho,14,
+Vegetarian Pho,Pho,13,
+Spicy Hue Beef Noodle,Vermicelli,15,
+Hanoi Grilled Pork Vermicelli,Vermicelli,15,
+Grilled Pork Vermicelli Bowl,Vermicelli,14,
+Crab and Tomato Noodle Soup,Vermicelli,15,
+Broken Rice Combo Plate,Rice Plates,16,
+Crispy Chicken over Rice,Rice Plates,15,
+Yang Chow Fried Rice,Rice Plates,14,
+Shaking Beef,Entrees,22,
+Clay-Pot Caramel Fish,Entrees,20,
+Tamarind Shrimp,Entrees,21,
+Grilled Pork Chops,Entrees,19,
+Ginger Braised Chicken,Entrees,18,
+Garlic Water Spinach,Entrees,12,
+Thai Hot Pot,Hot Pot,45,
+Seafood Hot Pot,Hot Pot,55,
+Beef Hot Pot,Hot Pot,50,
+Three-Color Sweet Dessert,Dessert,6,
+Vietnamese Flan,Dessert,5,
+Coconut Jelly,Dessert,5,
+Vietnamese Iced Coffee,Drinks,5,
+Iced Tea,Drinks,2,
+Sugarcane Juice,Drinks,5,
+Avocado Smoothie,Drinks,6,
+Saigon Beer,Drinks,6,`;
 
 export default function MenuPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -68,6 +104,8 @@ function Inner() {
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('mn.title')}</h1>
       <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{t('mn.subtitle')}</p>
       {err && <div style={ui.banner}>{err}</div>}
+
+      <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description" sample={SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], category: c[1] || undefined, priceCents: Math.round((parseFloat(c[2]) || 0) * 100), description: c[3] || undefined })} onDone={load} />
 
       <form onSubmit={add} style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ flex: '2 1 160px' }}><span style={ui.label}>{t('mn.name')}</span>

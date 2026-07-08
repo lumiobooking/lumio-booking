@@ -6,8 +6,35 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { ImportCsv } from '../../../components/ImportCsv';
 
 interface Table { id: string; name: string; seats: number; area: string | null; isActive: boolean; sortOrder: number }
+
+const SAMPLE_TABLES = `name,seats,area
+M1,2,Main Dining
+M2,2,Main Dining
+M3,4,Main Dining
+M4,4,Main Dining
+M5,4,Main Dining
+M6,4,Main Dining
+M7,6,Main Dining
+M8,6,Main Dining
+M9,4,Main Dining
+M10,2,Main Dining
+W1,2,Window
+W2,2,Window
+W3,4,Window
+W4,4,Window
+P1,4,Patio
+P2,4,Patio
+P3,6,Patio
+P4,6,Patio
+P5,8,Patio
+VIP1,10,Private Room
+VIP2,12,Private Room
+B1,2,Bar
+B2,2,Bar
+B3,2,Bar`;
 
 export default function TablesPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -50,11 +77,44 @@ function Inner() {
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
   }
 
+  async function loadSampleRes() {
+    setBusy(true); setErr(null);
+    try {
+      const svcs = await apiFetch<{ id: string; name: string }[]>('/services', { token });
+      const svc = svcs.find((sv) => /reserv|table/i.test(sv.name)) || svcs[0];
+      if (!svc) { setErr('No reservation service — set this tenant to Restaurant first.'); return; }
+      const at = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+      const RES: [string, string, string, number, string][] = [
+        ['Emily', 'Tran', '4155550101', 2, at(17, 0)],
+        ['Michael', 'Nguyen', '4155550102', 4, at(17, 30)],
+        ['The Johnson', 'Family', '4155550103', 6, at(18, 0)],
+        ['David', 'Chen', '4155550104', 10, at(18, 0)],
+        ['Sarah', 'Pham', '4155550105', 2, at(18, 30)],
+        ['James', 'Le', '4155550106', 4, at(19, 0)],
+        ['Birthday', 'Party', '4155550107', 8, at(19, 0)],
+        ['Jessica', 'Do', '4155550108', 2, at(19, 30)],
+        ['Kevin', 'Vo', '4155550109', 4, at(19, 30)],
+        ['Company', 'Group', '4155550110', 12, at(20, 0)],
+        ['Amanda', 'Hoang', '4155550111', 2, at(20, 0)],
+        ['Brian', 'Dang', '4155550112', 6, at(20, 30)],
+      ];
+      let n = 0;
+      for (const [fn, ln, ph, party, startTime] of RES) {
+        try { await apiFetch('/bookings', { method: 'POST', token, body: { serviceId: svc.id, startTime, partySize: party, customerFirstName: fn, customerLastName: ln, customerPhone: ph } }); n++; } catch { /* skip */ }
+      }
+      alert('Added ' + n + ' reservations for today. Open Calendar and switch to the Tables view.');
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    finally { setBusy(false); }
+  }
+
   return (
     <section style={{ maxWidth: 720 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('tb.title')}</h1>
       <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{t('tb.subtitle')}</p>
       {err && <div style={ui.banner}>{err}</div>}
+
+      <ImportCsv token={token} endpoint="/tables" header="name,seats,area" sample={SAMPLE_TABLES} existing={() => new Set(tables.map((tb) => tb.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], seats: parseInt(c[1], 10) || 2, area: c[2] || undefined })} onDone={load} />
+      <button onClick={loadSampleRes} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>+ Sample reservations (today)</button>
 
       <form onSubmit={add} style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ flex: '2 1 150px' }}><span style={ui.label}>{t('tb.name')}</span>

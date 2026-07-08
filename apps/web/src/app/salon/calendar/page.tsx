@@ -63,6 +63,15 @@ function Inner() {
   const [selected, setSelected] = useState<Booking | null>(null);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  // Month grid vs. detailed single-day timeline.
+  const [mode, setMode] = useState<'month' | 'day'>('month');
+  const [dayDate, setDayDate] = useState<Date>(today);
+  const goDay = useCallback((d: Date) => {
+    const dd = new Date(d); dd.setHours(0, 0, 0, 0);
+    setDayDate(dd);
+    setView(new Date(dd.getFullYear(), dd.getMonth(), 1)); // keep the month fetch covering this day
+    setMode('day');
+  }, []);
   // Salon timezone so every appointment renders in the SALON's local time, never
   // the admin device's timezone (owners often manage US salons from abroad).
   const [tz, setTz] = useState<string | undefined>(undefined);
@@ -128,13 +137,28 @@ function Inner() {
 
   return (
     <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 style={{ fontSize: 24, margin: 0 }}>{t('cal.title')}</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <strong style={{ minWidth: 140, textAlign: 'center' }}>{monthLabel}</strong>
-          <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}>‹</button>
-          <button style={navBtn} onClick={() => setView(new Date(today.getFullYear(), today.getMonth(), 1))}>{t('cal.today')}</button>
-          <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}>›</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
+            <button onClick={() => setMode('month')} style={segBtn(mode === 'month')}>{t('cal.viewMonth')}</button>
+            <button onClick={() => setMode('day')} style={segBtn(mode === 'day')}>{t('cal.viewDay')}</button>
+          </div>
+          {mode === 'month' ? (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <strong style={{ minWidth: 140, textAlign: 'center' }}>{monthLabel}</strong>
+              <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}>‹</button>
+              <button style={navBtn} onClick={() => setView(new Date(today.getFullYear(), today.getMonth(), 1))}>{t('cal.today')}</button>
+              <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}>›</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <strong style={{ minWidth: 170, textAlign: 'center' }}>{dayDate.toLocaleDateString(locale, { weekday: 'short', month: 'long', day: 'numeric' })}</strong>
+              <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() - 1))}>‹</button>
+              <button style={navBtn} onClick={() => goDay(today)}>{t('cal.today')}</button>
+              <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() + 1))}>›</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -156,7 +180,9 @@ function Inner() {
         </div>
       </div>
 
-      {isMobile ? (
+      {mode === 'day' ? (
+        <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
+      ) : isMobile ? (
         /* Phones: a clean day-by-day agenda (only days that have appointments). */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(() => {
@@ -201,7 +227,8 @@ function Inner() {
             <div key={i} style={{ background: '#0f172a', minHeight: 104, padding: 6, opacity: d ? 1 : 0.4 }}>
               {d && (
                 <>
-                  <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? '#818cf8' : '#cbd5e1', marginBottom: 4 }}>
+                  <div onClick={() => goDay(d)} title={t('cal.viewDay')}
+                    style={{ display: 'inline-block', fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? '#818cf8' : '#cbd5e1', marginBottom: 4, cursor: 'pointer', padding: '0 4px', borderRadius: 5 }}>
                     {d.getDate()}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -235,6 +262,128 @@ function Inner() {
       )}
     </section>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Day view: a detailed single-day timeline. Appointments are placed by time,
+// sized by duration, and split into side-by-side columns when they overlap.
+// ---------------------------------------------------------------------------
+function DayView({ date, items, tz, isMobile, onOpen, today }: {
+  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date;
+}) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const minInTz = (iso: string) => {
+    const d = new Date(iso);
+    if (!tz) return d.getHours() * 60 + d.getMinutes();
+    const p = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
+    return (Number(p.find((x) => x.type === 'hour')?.value ?? 0) % 24) * 60 + Number(p.find((x) => x.type === 'minute')?.value ?? 0);
+  };
+
+  const isToday = date.getTime() === today.getTime();
+  const revenue = items.reduce((s, b) => s + (b.status === 'CANCELLED' || b.status === 'NO_SHOW' ? 0 : b.priceCents), 0);
+  const currency = items[0]?.currency ?? 'USD';
+
+  const ev = items
+    .map((b) => {
+      const s = minInTz(b.startTime);
+      let e = minInTz(b.endTime);
+      if (e <= s) e = s + (Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000) || 30);
+      return { b, s, e };
+    })
+    .sort((a, z) => a.s - z.s || a.e - z.e);
+
+  let startH = 9, endH = 18;
+  for (const x of ev) { startH = Math.min(startH, Math.floor(x.s / 60)); endH = Math.max(endH, Math.ceil(x.e / 60)); }
+  startH = Math.max(6, startH); endH = Math.min(23, Math.max(endH, startH + 4));
+  const gStart = startH * 60;
+  const HP = isMobile ? 54 : 62;
+  const railW = isMobile ? 46 : 58;
+  const total = (endH - startH) * HP;
+
+  type Pos = { b: Booking; s: number; e: number; col: number; cols: number };
+  const pos: Pos[] = [];
+  let cluster: { b: Booking; s: number; e: number; col: number }[] = [];
+  let clusterEnd = -1;
+  const laneEnds: number[] = [];
+  const flush = () => {
+    const cols = Math.max(1, ...cluster.map((c) => c.col + 1));
+    for (const c of cluster) pos.push({ ...c, cols });
+    cluster = []; laneEnds.length = 0;
+  };
+  for (const x of ev) {
+    if (cluster.length && x.s >= clusterEnd) flush();
+    let col = laneEnds.findIndex((end) => end <= x.s);
+    if (col === -1) { col = laneEnds.length; laneEnds.push(x.e); } else laneEnds[col] = x.e;
+    cluster.push({ b: x.b, s: x.s, e: x.e, col });
+    clusterEnd = cluster.length === 1 ? x.e : Math.max(clusterEnd, x.e);
+  }
+  if (cluster.length) flush();
+
+  const nowMin = isToday ? minInTz(new Date().toISOString()) : -1;
+  const nowTop = nowMin >= gStart && nowMin <= endH * 60 ? (nowMin - gStart) / 60 * HP : -1;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10 }}>
+        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: '#94a3b8' }}>{t('cal.apptWord')}</span></span>
+        <span style={{ color: '#334155' }}>|</span>
+        <span style={{ fontSize: 14 }}><span style={{ color: '#94a3b8' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+        {ev.length > 0 && <><span style={{ color: '#334155' }}>|</span><span style={{ fontSize: 13, color: '#94a3b8' }}>{fmtT(ev[0].b.startTime)} – {fmtT(ev[ev.length - 1].b.endTime)}</span></>}
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{ ...ui.card, textAlign: 'center', color: '#64748b', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
+      ) : (
+        <div style={{ display: 'flex', background: '#0f172a', border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ width: railW, flexShrink: 0, position: 'relative', height: total, borderRight: '1px solid #1f2937' }}>
+            {Array.from({ length: endH - startH + 1 }, (_, i) => startH + i).map((h) => (
+              <div key={h} style={{ position: 'absolute', top: (h - startH) * HP - 6, right: 8, fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>
+                {((h % 12) || 12)}{h < 12 ? 'a' : 'p'}
+              </div>
+            ))}
+          </div>
+          <div style={{ position: 'relative', flex: 1, height: total }}>
+            {Array.from({ length: endH - startH + 1 }, (_, i) => i).map((i) => (
+              <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid #1e293b' }} />
+            ))}
+            {nowTop >= 0 && (
+              <div style={{ position: 'absolute', top: nowTop, left: 0, right: 0, borderTop: '2px solid #ef4444', zIndex: 3 }}>
+                <span style={{ position: 'absolute', left: 0, top: -5, width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
+              </div>
+            )}
+            {pos.map(({ b, s, e, col, cols }) => {
+              const m = statusBucket(b.status);
+              const top = (s - gStart) / 60 * HP;
+              const h = Math.max(38, (e - s) / 60 * HP - 3);
+              const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
+              const w = 100 / cols;
+              const tech = b.assignedStaff ? b.assignedStaff.firstName : t('cal.unassigned');
+              return (
+                <div key={b.id} onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.service?.name ?? ''}`}
+                  style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`,
+                    background: dim ? '#1e293b' : `${m.color}22`, border: `1px solid ${m.color}66`, borderLeft: `3px solid ${m.color}`,
+                    borderRadius: 8, padding: '4px 8px', overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.7 : 1 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}{h > 30 ? ` – ${fmtT(b.endTime)}` : ''}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
+                    {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
+                  </div>
+                  {h > 46 && <div style={{ fontSize: 11.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</div>}
+                  {h > 68 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>{tech} · {formatPrice(b.priceCents, b.currency)}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('cal.dayHint')}</p>
+    </div>
+  );
+}
+
+function segBtn(active: boolean): React.CSSProperties {
+  return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#94a3b8' };
 }
 
 function BookingDetail({ booking: b, tz, onClose, onAction }: {

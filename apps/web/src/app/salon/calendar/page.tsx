@@ -20,6 +20,7 @@ interface Booking {
   currency: string;
   notes: string | null;
   source?: string | null;
+  partySize?: number;
   addons?: Addon[];
   payments?: { status: string; amountCents: number }[];
   customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
@@ -429,8 +430,9 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         <DetailRow label={t('cal.dTechnician')} value={tech} />
-        {b.source && <DetailRow label={t('cal.dSource')} value={t(({ online: 'cal.srcOnline', hotline: 'cal.srcHotline', messenger: 'cal.srcMessenger', admin: 'cal.srcAdmin', walkin: 'cal.srcWalkin' } as Record<string, string>)[b.source] ?? 'cal.srcOnline')} />}
+        {b.source && <DetailRow label={t('cal.dSource')} value={t(({ web: 'cal.srcWeb', mobile: 'cal.srcMobile', online: 'cal.srcOnline', hotline: 'cal.srcHotline', messenger: 'cal.srcMessenger', admin: 'cal.srcAdmin', walkin: 'cal.srcWalkin' } as Record<string, string>)[b.source] ?? 'cal.srcOnline')} />}
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
+        {b.partySize != null && b.partySize > 1 && <DetailRow label={t('cal.dParty')} value={String(b.partySize)} />}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
           <span style={{ color: '#94a3b8' }}>{t('cal.dPaid')}</span>
           <span style={{ textAlign: 'right', fontWeight: 600, color: paidCents > 0 ? '#22c55e' : '#f59e0b' }}>

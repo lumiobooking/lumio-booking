@@ -222,7 +222,7 @@ export default function PublicBookingPage() {
   const [staffId, setStaffId] = useState('');
   const [slot, setSlot] = useState<Slot | null>(null);
   const [avail, setAvail] = useState<Availability | null>(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', birthDate: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' });
   const [paymentType, setPaymentType] = useState<'PAY_ONLINE' | 'PAY_LATER'>('PAY_LATER');
   // Optional marketing SMS opt-in (A2P 10DLC): off by default, never required to book.
   const [smsConsent, setSmsConsent] = useState(false);
@@ -336,6 +336,7 @@ export default function PublicBookingPage() {
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
           customerBirthDate: form.birthDate || undefined,
+          partySize: parseInt(form.partySize, 10) || 1,
           smsConsent,
           // Referral attribution: forward the ?ref= code from the share link, if any.
           referralCode: (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') : null) || undefined,
@@ -352,7 +353,7 @@ export default function PublicBookingPage() {
 
   function reset() {
     setStep(1); setSelectedDate(null); setServiceId(''); setAddonIds([]); setStaffId(''); setSlot(null);
-    setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '' });
+    setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' });
     setPaymentType('PAY_LATER'); setResult(null); setError(null);
   }
 
@@ -530,6 +531,7 @@ export default function PublicBookingPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
                   <Field label="First name" required><input style={field} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></Field>
                   <Field label="Last name"><input style={field} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></Field>
+                  <Field label="People"><input style={field} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></Field>
                   <Field label="Email (optional)">
                     <input
                       style={{ ...field, borderColor: showEmailError ? '#ef4444' : '#cbd5e1' }}

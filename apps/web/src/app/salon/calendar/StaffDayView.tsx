@@ -16,6 +16,7 @@ interface Booking {
   currency: string;
   notes: string | null;
   source?: string | null;
+  partySize?: number;
   addons?: Addon[];
   payments?: { status: string; amountCents: number }[];
   customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
@@ -47,6 +48,8 @@ const paidOf = (b: Booking) => (b.payments ?? []).filter((p) => p.status === 'PA
 function srcMeta(s: string | null | undefined, t: (k: string) => string): { k: string; full: string } | null {
   switch (s) {
     case 'online': return { k: 'W', full: t('cal.srcOnline') };
+    case 'web': return { k: 'PC', full: t('cal.srcWeb') };
+    case 'mobile': return { k: 'ĐT', full: t('cal.srcMobile') };
     case 'hotline': return { k: 'H', full: t('cal.srcHotline') };
     case 'messenger': return { k: 'C', full: t('cal.srcMessenger') };
     case 'admin': return { k: 'S', full: t('cal.srcAdmin') };
@@ -272,6 +275,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                               {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
                             </span>
                             <span style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
+                              {b.partySize != null && b.partySize > 1 && <span title={t('cal.dParty')} style={{ fontSize: 9, fontWeight: 700, color: '#e2e8f0', background: '#475569', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>×{b.partySize}</span>}
                               {paid > 0 && <span title={`${dep} · ${formatPrice(paid, b.currency)}`} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />}
                               {sm && <span title={sm.full} style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', border: '1px solid #334155', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>{sm.k}</span>}
                             </span>

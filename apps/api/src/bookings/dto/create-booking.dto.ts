@@ -4,6 +4,9 @@ import {
   IsEmail,
   IsEnum,
   IsISO8601,
+  IsInt,
+  Max,
+  Min,
   IsOptional,
   IsString,
   MaxLength,
@@ -36,6 +39,13 @@ export class CreateBookingDto {
   // ISO 8601 start time, e.g. "2026-06-20T14:00:00.000Z".
   @IsISO8601()
   startTime!: string;
+
+  // Number of people in this booking (group bookings), 1-20.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  partySize?: number;
 
   // Optionally assign directly to a staff member (must have the skill & be free).
   @IsOptional()

@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, UseGuards } from '@nestjs/common';
 import { BookingsService } from '../bookings/bookings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
+import { deviceSource } from '../bookings/booking.util';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { ApiTenantId } from '../common/decorators/api-tenant.decorator';
@@ -34,8 +35,8 @@ export class PublicController {
   // technician is treated as a PREFERENCE and the booking starts PENDING so the
   // salon (or the assignment engine) decides.
   @Post('bookings')
-  createBooking(@ApiTenantId() tenantId: string, @Body() dto: CreateBookingDto) {
+  createBooking(@ApiTenantId() tenantId: string, @Body() dto: CreateBookingDto, @Headers('user-agent') ua?: string) {
     const safeDto: CreateBookingDto = { ...dto, staffId: undefined };
-    return this.bookings.createForTenant(tenantId, safeDto, null);
+    return this.bookings.createForTenant(tenantId, safeDto, null, deviceSource(ua));
   }
 }

@@ -1,10 +1,11 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
+import { deviceSource } from '../bookings/booking.util';
 import { Public } from '../auth/decorators/public.decorator';
 
 /**
@@ -144,10 +145,10 @@ export class PublicSalonController {
   // A chosen technician is treated as a preference, never a hard assignment.
   // If a paymentType is provided, a payment is created right after the booking.
   @Post(':slug/bookings')
-  async createBooking(@Param('slug') slug: string, @Body() dto: CreateBookingDto) {
+  async createBooking(@Param('slug') slug: string, @Body() dto: CreateBookingDto, @Headers('user-agent') ua?: string) {
     const tenantId = await this.resolveTenantId(slug);
     const safeDto: CreateBookingDto = { ...dto, staffId: undefined };
-    let booking = await this.bookings.createForTenant(tenantId, safeDto, null);
+    let booking = await this.bookings.createForTenant(tenantId, safeDto, null, deviceSource(ua));
 
     // Auto-assign (fair rotation) if the salon's assignment mode is 'auto'.
     const rules = await this.settings.getBookingRules(tenantId);

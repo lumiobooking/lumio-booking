@@ -907,6 +907,8 @@ model Appointment {
 
   // Booking channel: online | hotline | messenger | admin | walkin
   source     String?
+  // Number of people in this booking (group bookings); 1 = solo.
+  partySize  Int     @default(1)
 
   // Snapshot of the add-ons the customer selected, e.g.
   // [{ "id": "...", "name": "Nail art", "priceCents": 1500, "durationMinutes": 15 }]

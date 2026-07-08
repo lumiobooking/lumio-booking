@@ -339,6 +339,7 @@ export class BookingsService {
           addons: lineItems as unknown as Prisma.InputJsonValue,
           notes: dto.notes ?? null,
           source: source ?? (actorUserId ? 'admin' : 'online'),
+          partySize: dto.partySize ?? 1,
           assignedAt: dto.staffId ? new Date() : null,
           responseDeadline: dto.staffId ? addMinutes(new Date(), 30) : null,
         },

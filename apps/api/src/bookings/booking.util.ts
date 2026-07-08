@@ -33,3 +33,7 @@ export function parseStartTime(value: string): Date {
   }
   return d;
 }
+/** Detect whether an online booking came from a phone or a computer, via User-Agent. */
+export function deviceSource(ua?: string | null): 'mobile' | 'web' {
+  return ua && /Mobi|Android|iPhone|iPad|iPod|Windows Phone|BlackBerry|Opera Mini|IEMobile/i.test(ua) ? 'mobile' : 'web';
+}

@@ -14,6 +14,7 @@ interface Tenant {
   status: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
   timezone: string;
   contactEmail: string | null;
+  businessType?: string;
   planId: string | null;
   subscriptionStatus: string;
   createdAt: string;
@@ -89,6 +90,13 @@ export default function TenantsPage() {
       loadData();
     }
   }, [ready, token, user, loadData]);
+
+  async function changeBiz(id: string, businessType: string) {
+    try {
+      await apiFetch(`/tenants/${id}`, { method: 'PATCH', token, body: { businessType } });
+      await loadData();
+    } catch { /* ignore */ }
+  }
 
   async function changePlan(id: string, planId: string) {
     try {
@@ -234,6 +242,15 @@ export default function TenantsPage() {
                   >
                     <option value="">— No plan —</option>
                     {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <select
+                    value={t.businessType ?? 'SALON'}
+                    onChange={(e) => changeBiz(t.id, e.target.value)}
+                    style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 110, marginTop: 6 }}
+                    title="Business type"
+                  >
+                    <option value="SALON">Salon</option>
+                    <option value="RESTAURANT">Restaurant</option>
                   </select>
                 </td>
                 <td style={td}>{t._count?.users ?? '-'}</td>

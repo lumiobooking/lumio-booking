@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
 
 /** Editable fields of a tenant. SUPER_ADMIN only. */
 export class UpdateTenantDto {
@@ -20,4 +20,8 @@ export class UpdateTenantDto {
   @IsString()
   @MaxLength(120)
   contactEmail?: string;
+
+  @IsOptional()
+  @IsIn(['SALON', 'RESTAURANT'])
+  businessType?: 'SALON' | 'RESTAURANT';
 }

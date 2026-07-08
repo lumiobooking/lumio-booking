@@ -8,6 +8,7 @@ import { MeModule } from './me/me.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { ServicesModule } from './services/services.module';
 import { StaffModule } from './staff/staff.module';
+import { TablesModule } from './tables/tables.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { PublicModule } from './public/public.module';
@@ -52,6 +53,7 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     // Salon Admin: services & staff (tenant-scoped).
     ServicesModule,
     StaffModule,
+    TablesModule,
     // Booking foundation (anti double-booking, race-condition safe).
     BookingsModule,
     // WordPress plugin connector: API keys + public (API-key-authenticated)

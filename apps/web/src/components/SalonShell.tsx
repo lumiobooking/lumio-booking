@@ -11,7 +11,7 @@ import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
-type NavItem = { href: string; label: string; icon: string; feature?: 'pos' };
+type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant' };
 type NavGroup = { id: string; label: string; icon: string; items: NavItem[] };
 
 // Dashboard sits on its own above the collapsible groups.
@@ -23,6 +23,7 @@ const GROUPS: NavGroup[] = [
   { id: 'ops', label: 'Operations', icon: '🗂', items: [
     { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
     { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
+    { href: '/salon/tables', label: 'Tables', icon: '🍽', biz: 'restaurant' },
     { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: '🔄' },
     { href: '/salon/waitlist', label: 'Waitlist', icon: '⏳' },
     { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾', feature: 'pos' },
@@ -103,6 +104,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
   const [posEnabled, setPosEnabled] = useState<boolean | null>(() => readCachedPos());
   // Routes hidden because Super Admin set the feature to platform-managed.
   const [hiddenHrefs, setHiddenHrefs] = useState<string[]>([]);
+  const [isRestaurant, setIsRestaurant] = useState(false);
   // Which sidebar groups are expanded (persisted). The group holding the active
   // route auto-expands so the current page is always reachable.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -123,7 +125,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
   // Staff with salon access are assumed POS-entitled (the owner's plan applies);
   // only the owner's own view is gated by the cached plan flag.
   const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
-  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk) && can(item.href) && !hiddenHrefs.includes(item.href);
+  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk) && (item.biz !== 'restaurant' || isRestaurant) && can(item.href) && !hiddenHrefs.includes(item.href);
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
     .filter((g) => g.items.length > 0);
@@ -150,6 +152,14 @@ export function SalonShell({ children }: { children: ReactNode }) {
     if (!token || !hasSalonAccess) return;
     apiFetch<{ policy: Record<string, string>; defs: { key: string; hrefs: string[] }[] }>('/feature-policy', { token })
       .then((r) => setHiddenHrefs((r?.defs || []).filter((d) => r.policy?.[d.key] === 'platform').flatMap((d) => d.hrefs)))
+      .catch(() => {});
+  }, [token, hasSalonAccess]);
+
+  // Business type (salon vs restaurant) gates restaurant-only nav (e.g. Tables).
+  useEffect(() => {
+    if (!token || !hasSalonAccess) return;
+    apiFetch<{ businessType?: string }>('/me/tenant', { token })
+      .then((r) => setIsRestaurant(r?.businessType === 'RESTAURANT'))
       .catch(() => {});
   }, [token, hasSalonAccess]);
 

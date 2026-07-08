@@ -30,7 +30,7 @@ export class MeController {
     }
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, name: true, slug: true, status: true, timezone: true },
+      select: { id: true, name: true, slug: true, status: true, timezone: true, businessType: true },
     });
     return tenant;
   }

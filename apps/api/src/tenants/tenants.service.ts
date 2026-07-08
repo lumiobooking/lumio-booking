@@ -20,6 +20,7 @@ const TENANT_PUBLIC_SELECT = {
   slug: true,
   status: true,
   timezone: true,
+  businessType: true,
   contactEmail: true,
   planId: true,
   subscriptionStatus: true,
@@ -241,6 +242,7 @@ export class TenantsService {
         timezone: dto.timezone,
         planId: dto.planId,
         contactEmail: dto.contactEmail,
+        businessType: dto.businessType,
       },
       select: TENANT_PUBLIC_SELECT,
     });

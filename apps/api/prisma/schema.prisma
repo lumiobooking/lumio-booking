@@ -171,6 +171,7 @@ model Tenant {
   name     String
   slug     String       @unique // URL-safe identifier, also used for routing
   status   TenantStatus @default(ACTIVE)
+  businessType BusinessType @default(SALON) // salon (default) or restaurant
   timezone String       @default("UTC")
 
   contactEmail String?
@@ -249,6 +250,8 @@ model Tenant {
   voiceLine            VoiceLine?
   voiceCalls           VoiceCall[]
   invoices             Invoice[]
+
+  tables             RestaurantTable[]
 
   @@index([status])
   @@index([accountGroupId])
@@ -877,6 +880,33 @@ model Customer {
 // APPOINTMENTS / BOOKINGS
 // ===========================================================================
 
+enum BusinessType {
+  SALON
+  RESTAURANT
+}
+
+/// A physical table in a restaurant tenant — the bookable resource (like a
+/// StaffMember is for a salon). Reservations attach to a table.
+model RestaurantTable {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String  // e.g. "T1", "Patio 4", "Bar 2"
+  seats     Int     @default(2) // capacity (number of guests)
+  area      String? // optional zone: indoor / outdoor / bar / private
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[] @relation("TableReservations")
+
+  @@index([tenantId])
+  @@map("restaurant_tables")
+}
+
 model Appointment {
   id       String @id @default(uuid())
   tenantId String
@@ -895,6 +925,10 @@ model Appointment {
   // Staff the customer requested (optional preference).
   preferredStaffId String?
   preferredStaff   StaffMember? @relation("PreferredStaff", fields: [preferredStaffId], references: [id], onDelete: SetNull)
+
+  // Restaurant reservations: the table assigned (null for salon bookings).
+  tableId String?
+  table   RestaurantTable? @relation("TableReservations", fields: [tableId], references: [id], onDelete: SetNull)
 
   status AppointmentStatus @default(PENDING)
 

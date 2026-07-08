@@ -235,6 +235,40 @@ export class BookingsService {
    * Salon Admin flow and by the public/WordPress flow (where the tenant comes
    * from the API key, not a logged-in user). Race-safe when a staff is given.
    */
+  /**
+   * Restaurant reservations: pick the smallest active table whose seat count
+   * fits the party and that is not already occupied for the requested time.
+   * Returns null when nothing is free (the reservation is left table-less so the
+   * host can seat it manually). Scoped to tenantId — never crosses tenants.
+   */
+  private async findFreeTable(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    start: Date,
+    end: Date,
+    partySize: number,
+  ): Promise<string | null> {
+    const tables = await tx.restaurantTable.findMany({
+      where: { tenantId, isActive: true, seats: { gte: Math.max(1, partySize) } },
+      orderBy: [{ seats: 'asc' }, { sortOrder: 'asc' }],
+      select: { id: true },
+    });
+    if (tables.length === 0) return null;
+    const busy = await tx.appointment.findMany({
+      where: {
+        tenantId,
+        tableId: { in: tables.map((t: { id: string }) => t.id) },
+        status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] },
+        startTime: { lt: end },
+        endTime: { gt: start },
+      },
+      select: { tableId: true },
+    });
+    const taken = new Set(busy.map((b: { tableId: string | null }) => b.tableId));
+    const free = tables.find((t: { id: string }) => !taken.has(t.id));
+    return free ? free.id : null;
+  }
+
   async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null, source?: string) {
     // Contact rules. Online (public) customer bookings MUST include a phone number
     // — it is the salon's primary way to reach the client and it cuts down on spam
@@ -324,9 +358,17 @@ export class BookingsService {
         await this.assertNoOverlap(tx, tenantId, dto.staffId, start, end);
       }
 
+      // Restaurant tenants: auto-assign the smallest free table that fits the party.
+      let tableId: string | null = null;
+      const tenantRow = await tx.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } });
+      if (tenantRow?.businessType === 'RESTAURANT') {
+        tableId = await this.findFreeTable(tx, tenantId, start, end, dto.partySize ?? 1);
+      }
+
       return tx.appointment.create({
         data: {
           tenantId,
+          tableId,
           customerId: customer.id,
           serviceId: service.id,
           assignedStaffId: dto.staffId ?? null,

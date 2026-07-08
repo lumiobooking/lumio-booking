@@ -47,6 +47,12 @@ export class CreateBookingDto {
   @Max(20)
   partySize?: number;
 
+  // Restaurant: preferred seating area (e.g. "Patio", "Window"). Optional.
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  area?: string;
+
   // Optionally assign directly to a staff member (must have the skill & be free).
   @IsOptional()
   @IsString()

@@ -49,22 +49,25 @@ export class PublicSalonController {
   async salon(@Param('slug') slug: string) {
     const tenant = await this.prisma.tenant.findFirst({
       where: { slug, deletedAt: null },
-      select: { id: true, name: true, slug: true, businessType: true, timezone: true, branding: true, status: true, billingExempt: true, accessUntil: true },
+      select: { id: true, name: true, slug: true, businessType: true, timezone: true, branding: true, status: true, billingExempt: true, accessUntil: true, contactPhone: true },
     });
     if (!tenant || !this.isOpen(tenant)) {
       throw new NotFoundException('Salon not found');
     }
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, areaRows] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
       this.settings.getDepositSettings(tenant.id),
+      this.prisma.restaurantTable.findMany({ where: { tenantId: tenant.id, isActive: true, area: { not: null } }, select: { area: true }, distinct: ['area'] }),
     ]);
     return {
       name: tenant.name,
       slug: tenant.slug,
       businessType: tenant.businessType,
+      contactPhone: tenant.contactPhone,
+      areas: areaRows.map((a: { area: string | null }) => a.area).filter((x: string | null): x is string => !!x),
       timezone: tenant.timezone,
       branding: this.settings.brandingFrom(tenant.branding),
       booking,
@@ -81,9 +84,21 @@ export class PublicSalonController {
     @Param('slug') slug: string,
     @Query('date') date: string,
     @Query('partySize') partySize: string,
+    @Query('area') area: string,
   ) {
     const tenantId = await this.resolveTenantId(slug);
-    return this.bookings.publicTableAvailability(tenantId, date, parseInt(partySize, 10) || 1);
+    return this.bookings.publicTableAvailability(tenantId, date, parseInt(partySize, 10) || 1, area || undefined);
+  }
+
+  // GET /api/public/salons/:slug/menu -> active menu items for the reservation page.
+  @Get(':slug/menu')
+  async menu(@Param('slug') slug: string) {
+    const tenantId = await this.resolveTenantId(slug);
+    return this.prisma.menuItem.findMany({
+      where: { tenantId, isActive: true },
+      orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      select: { name: true, category: true, priceCents: true, description: true },
+    });
   }
 
   // GET /api/public/salons/:slug/seo -> structured-data payload for the booking

@@ -248,13 +248,15 @@ export class BookingsService {
     start: Date,
     end: Date,
     partySize: number,
+    preferArea?: string,
   ): Promise<string | null> {
     const tables = await tx.restaurantTable.findMany({
       where: { tenantId, isActive: true, seats: { gte: Math.max(1, partySize) } },
       orderBy: [{ seats: 'asc' }, { sortOrder: 'asc' }],
-      select: { id: true },
+      select: { id: true, area: true },
     });
     if (tables.length === 0) return null;
+    if (preferArea) tables.sort((a: { area: string | null }, b: { area: string | null }) => (a.area === preferArea ? 0 : 1) - (b.area === preferArea ? 0 : 1));
     const busy = await tx.appointment.findMany({
       where: {
         tenantId,
@@ -363,7 +365,7 @@ export class BookingsService {
       let tableId: string | null = null;
       const tenantRow = await tx.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } });
       if (tenantRow?.businessType === 'RESTAURANT') {
-        tableId = await this.findFreeTable(tx, tenantId, start, end, dto.partySize ?? 1);
+        tableId = await this.findFreeTable(tx, tenantId, start, end, dto.partySize ?? 1, dto.area);
       }
 
       return tx.appointment.create({
@@ -853,10 +855,10 @@ export class BookingsService {
    * The frontend generates candidate slots and marks a slot open when fewer than
    * `tableCount` fitting tables overlap it.
    */
-  async publicTableAvailability(tenantId: string, dateStr: string, partySize: number) {
+  async publicTableAvailability(tenantId: string, dateStr: string, partySize: number, area?: string) {
     const size = Math.max(1, Math.min(50, Math.round(partySize || 1)));
     const tables = await this.prisma.restaurantTable.findMany({
-      where: { tenantId, isActive: true, seats: { gte: size } },
+      where: { tenantId, isActive: true, seats: { gte: size }, ...(area ? { area } : {}) },
       select: { id: true },
     });
     const svc = await this.prisma.service.findFirst({

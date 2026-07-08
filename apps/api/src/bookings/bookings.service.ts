@@ -38,6 +38,7 @@ const BOOKING_INCLUDE = {
   customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
   service: { select: { id: true, name: true, durationMinutes: true } },
   assignedStaff: { select: { id: true, firstName: true, lastName: true } },
+  table: { select: { id: true, name: true, seats: true } },
   preferredStaff: { select: { id: true, firstName: true, lastName: true } },
   // Lightweight payment summary so the calendar/list can show "paid / unpaid".
   payments: { select: { status: true, amountCents: true } },
@@ -1036,6 +1037,34 @@ export class BookingsService {
     // Notify the assigned technician (fire-and-forget).
     this.sendStaffAssignmentEmail(tenantId, id).catch(() => undefined);
 
+    return updated;
+  }
+
+  /**
+   * Restaurant: move a reservation to a different table (host re-seating). Scoped
+   * to the tenant, and blocked if the target table already has an overlapping
+   * reservation, so a table is never double-booked.
+   */
+  async assignTable(user: AuthenticatedUser, id: string, tableId: string) {
+    const tenantId = this.tenantId(user);
+    const booking = await this.getById(user, id);
+    const table = await this.prisma.restaurantTable.findFirst({ where: { id: tableId, tenantId }, select: { id: true } });
+    if (!table) throw new NotFoundException('Table not found');
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const clash = await tx.appointment.findFirst({
+        where: {
+          tenantId, tableId, id: { not: id },
+          status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] },
+          startTime: { lt: booking.endTime },
+          endTime: { gt: booking.startTime },
+        },
+        select: { id: true },
+      });
+      if (clash) throw new ConflictException('That table is already booked for this time');
+      await tx.appointment.updateMany({ where: { id, tenantId }, data: { tableId } });
+      return tx.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'booking.table_assigned', resourceType: 'appointment', resourceId: id, metadata: { tableId } });
     return updated;
   }
 

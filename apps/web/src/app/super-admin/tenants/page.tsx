@@ -258,7 +258,7 @@ export default function TenantsPage() {
                   {new Date(t.createdAt).toLocaleDateString('en-US')}
                 </td>
                 <td style={td}>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
                     <button onClick={() => setEditId(editId === t.id ? null : t.id)} style={{ ...primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === t.id ? '#475569' : '#6366f1' }}>
                       {editId === t.id ? 'Close' : 'Edit'}
                     </button>
@@ -657,6 +657,8 @@ function StatusBadge({ status }: { status: string }) {
         padding: '2px 10px',
         fontSize: 12,
         fontWeight: 600,
+        whiteSpace: 'nowrap',
+        display: 'inline-block',
       }}
     >
       {status}
@@ -710,8 +712,8 @@ function Centered({ children }: { children: ReactNodeLike }) {
 
 type ReactNodeLike = React.ReactNode;
 
-const th: React.CSSProperties = { padding: '12px 14px', fontWeight: 600, color: '#cbd5e1' };
-const td: React.CSSProperties = { padding: '12px 14px' };
+const th: React.CSSProperties = { padding: '12px 14px', fontWeight: 600, color: '#cbd5e1', whiteSpace: 'nowrap' };
+const td: React.CSSProperties = { padding: '12px 14px', whiteSpace: 'nowrap', verticalAlign: 'middle' };
 const inp: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
@@ -723,6 +725,8 @@ const inp: React.CSSProperties = {
   fontSize: 14,
 };
 const primaryBtn: React.CSSProperties = {
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
   padding: '9px 14px',
   borderRadius: 8,
   border: 'none',
@@ -733,6 +737,8 @@ const primaryBtn: React.CSSProperties = {
   cursor: 'pointer',
 };
 const ghostBtn: React.CSSProperties = {
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
   padding: '9px 14px',
   borderRadius: 8,
   border: '1px solid #475569',
@@ -742,6 +748,8 @@ const ghostBtn: React.CSSProperties = {
   cursor: 'pointer',
 };
 const warnBtn: React.CSSProperties = {
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
   padding: '6px 12px',
   borderRadius: 8,
   border: '1px solid #eab308',
@@ -751,6 +759,8 @@ const warnBtn: React.CSSProperties = {
   cursor: 'pointer',
 };
 const dangerBtn: React.CSSProperties = {
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
   padding: '6px 12px',
   borderRadius: 8,
   border: '1px solid #ef4444',
@@ -760,6 +770,8 @@ const dangerBtn: React.CSSProperties = {
   cursor: 'pointer',
 };
 const okBtn: React.CSSProperties = {
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
   padding: '6px 12px',
   borderRadius: 8,
   border: '1px solid #22c55e',

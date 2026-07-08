@@ -9,6 +9,7 @@ import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { StaffDayView } from './StaffDayView';
+import { TableDayView } from './TableDayView';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -26,6 +27,8 @@ interface Booking {
   customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
   service: { id: string; name: string; durationMinutes: number } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
+  tableId?: string | null;
+  table?: { id: string; name: string; seats: number } | null;
 }
 
 // Six operational buckets the front desk actually tracks. The 8 raw enum values
@@ -78,10 +81,18 @@ function Inner() {
   // Salon timezone so every appointment renders in the SALON's local time, never
   // the admin device's timezone (owners often manage US salons from abroad).
   const [tz, setTz] = useState<string | undefined>(undefined);
+  const [isRestaurant, setIsRestaurant] = useState(false);
   useEffect(() => {
     if (!token) return;
     apiFetch<{ company?: { timezone?: string } }>('/settings', { token })
       .then((s) => setTz(s.company?.timezone || undefined))
+      .catch(() => undefined);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ businessType?: string }>('/me/tenant', { token })
+      .then((r) => setIsRestaurant(r?.businessType === 'RESTAURANT'))
       .catch(() => undefined);
   }, [token]);
   const fmtT = useCallback(
@@ -146,7 +157,7 @@ function Inner() {
           <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
             <button onClick={() => setMode('month')} style={segBtn(mode === 'month')}>{t('cal.viewMonth')}</button>
             <button onClick={() => setMode('day')} style={segBtn(mode === 'day')}>{t('cal.viewDay')}</button>
-            <button onClick={() => setMode('staff')} style={segBtn(mode === 'staff')}>{t('cal.viewStaff')}</button>
+            <button onClick={() => setMode('staff')} style={segBtn(mode === 'staff')}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
           </div>
           {mode === 'month' ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -185,7 +196,11 @@ function Inner() {
       </div>
 
       {mode === 'staff' ? (
-        <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
+        isRestaurant ? (
+          <TableDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
+        ) : (
+          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
+        )
       ) : mode === 'day' ? (
         <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
       ) : isMobile ? (

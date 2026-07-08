@@ -13,6 +13,7 @@ import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { AssignBookingDto } from './dto/assign-booking.dto';
+import { AssignTableDto } from './dto/assign-table.dto';
 import { RejectBookingDto } from './dto/reject-booking.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -106,6 +107,18 @@ export class BookingsController {
     @Body() dto: AssignBookingDto,
   ) {
     return this.bookings.assign(user, id, dto.staffId);
+  }
+
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Post(':id/table')
+  @HttpCode(200)
+  assignTable(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AssignTableDto,
+  ) {
+    return this.bookings.assignTable(user, id, dto.tableId);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

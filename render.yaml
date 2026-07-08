@@ -122,7 +122,10 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: npm install --include=dev && npm run build --workspace=apps/web
+    # Raise Node's heap ceiling for `next build` so it doesn't die with
+    # "JavaScript heap out of memory" as the app grows (the build machine has
+    # headroom even though the runtime instance is small).
+    buildCommand: npm install --include=dev && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
     startCommand: cd apps/web && npx next start -p $PORT
     envVars:
       - key: NODE_ENV

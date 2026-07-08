@@ -905,6 +905,9 @@ model Appointment {
   currency   String @default("USD")
   notes      String?
 
+  // Booking channel: online | hotline | messenger | admin | walkin
+  source     String?
+
   // Snapshot of the add-ons the customer selected, e.g.
   // [{ "id": "...", "name": "Nail art", "priceCents": 1500, "durationMinutes": 15 }]
   addons Json @default("[]")

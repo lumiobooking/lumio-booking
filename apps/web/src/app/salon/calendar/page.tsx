@@ -19,6 +19,7 @@ interface Booking {
   priceCents: number;
   currency: string;
   notes: string | null;
+  source?: string | null;
   addons?: Addon[];
   payments?: { status: string; amountCents: number }[];
   customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
@@ -183,7 +184,7 @@ function Inner() {
       </div>
 
       {mode === 'staff' ? (
-        <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
+        <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
       ) : mode === 'day' ? (
         <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
       ) : isMobile ? (
@@ -428,6 +429,7 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         <DetailRow label={t('cal.dTechnician')} value={tech} />
+        {b.source && <DetailRow label={t('cal.dSource')} value={t(({ online: 'cal.srcOnline', hotline: 'cal.srcHotline', messenger: 'cal.srcMessenger', admin: 'cal.srcAdmin', walkin: 'cal.srcWalkin' } as Record<string, string>)[b.source] ?? 'cal.srcOnline')} />}
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
           <span style={{ color: '#94a3b8' }}>{t('cal.dPaid')}</span>

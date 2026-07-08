@@ -468,7 +468,7 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
           serviceId, startTime, customerFirstName: firstName, customerPhone: phone,
           ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
         } as CreateBookingDto;
-        const booking = await this.bookings.createForTenant(tenantId, dto, null);
+        const booking = await this.bookings.createForTenant(tenantId, dto, null, 'messenger');
         const b = booking as { id?: string };
         const manageUrl = b.id ? this.bookings.buildApptManageUrl(b.id) : '';
         return `SUCCESS. Appointment created (id ${b.id}). Confirm the service, date and time back to the customer warmly${manageUrl ? `, and share this link so they can view or cancel their appointment: ${manageUrl}` : ''}.`;

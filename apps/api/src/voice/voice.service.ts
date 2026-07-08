@@ -372,7 +372,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         if (!phone) return 'No phone number available; politely ask the caller for a good callback number.';
         const startTime = wallToUtcISO(local, tz);
         const dto = { serviceId, startTime, customerFirstName: firstName, customerPhone: phone } as CreateBookingDto;
-        const booking = await this.bookings.createForTenant(tenantId, dto, null);
+        const booking = await this.bookings.createForTenant(tenantId, dto, null, 'hotline');
         const b = booking as { id?: string };
         acc.booked = true;
         acc.appointmentId = b.id || null;

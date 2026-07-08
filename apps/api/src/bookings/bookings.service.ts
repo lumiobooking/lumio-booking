@@ -235,7 +235,7 @@ export class BookingsService {
    * Salon Admin flow and by the public/WordPress flow (where the tenant comes
    * from the API key, not a logged-in user). Race-safe when a staff is given.
    */
-  async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null) {
+  async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null, source?: string) {
     // Contact rules. Online (public) customer bookings MUST include a phone number
     // — it is the salon's primary way to reach the client and it cuts down on spam
     // bookings. Admin-created bookings only need at least one contact (email OR
@@ -338,6 +338,7 @@ export class BookingsService {
           currency: service.currency,
           addons: lineItems as unknown as Prisma.InputJsonValue,
           notes: dto.notes ?? null,
+          source: source ?? (actorUserId ? 'admin' : 'online'),
           assignedAt: dto.staffId ? new Date() : null,
           responseDeadline: dto.staffId ? addMinutes(new Date(), 30) : null,
         },

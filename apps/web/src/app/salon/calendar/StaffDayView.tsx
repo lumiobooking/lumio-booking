@@ -45,15 +45,19 @@ const paidOf = (b: Booking) => (b.payments ?? []).filter((p) => p.status === 'PA
 
 // Booking channel → compact 1-letter badge + tooltip. Older bookings have no
 // source (null) and simply show nothing.
-function srcMeta(s: string | null | undefined, t: (k: string) => string): { k: string; full: string } | null {
+function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon: React.ReactNode; full: string } | null {
+  const ic = (children: React.ReactNode) => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+  );
+  const monitor = ic(<><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>);
   switch (s) {
-    case 'online': return { k: 'W', full: t('cal.srcOnline') };
-    case 'web': return { k: 'PC', full: t('cal.srcWeb') };
-    case 'mobile': return { k: 'ĐT', full: t('cal.srcMobile') };
-    case 'hotline': return { k: 'H', full: t('cal.srcHotline') };
-    case 'messenger': return { k: 'C', full: t('cal.srcMessenger') };
-    case 'admin': return { k: 'S', full: t('cal.srcAdmin') };
-    case 'walkin': return { k: 'K', full: t('cal.srcWalkin') };
+    case 'web': return { full: t('cal.srcWeb'), icon: monitor };
+    case 'online': return { full: t('cal.srcOnline'), icon: monitor };
+    case 'mobile': return { full: t('cal.srcMobile'), icon: ic(<><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></>) };
+    case 'hotline': return { full: t('cal.srcHotline'), icon: ic(<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.98.37 1.92.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.89.33 1.83.57 2.81.7A2 2 0 0 1 22 16.92z" />) };
+    case 'messenger': return { full: t('cal.srcMessenger'), icon: ic(<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />) };
+    case 'admin': return { full: t('cal.srcAdmin'), icon: ic(<><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 12 0v1" /></>) };
+    case 'walkin': return { full: t('cal.srcWalkin'), icon: ic(<><circle cx="11" cy="4.5" r="2" /><path d="M11 7l-1.5 5 3 2.5 1 5.5M9.5 12L6 14" /></>) };
     default: return null;
   }
 }
@@ -277,7 +281,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                             <span style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
                               {b.partySize != null && b.partySize > 1 && <span title={t('cal.dParty')} style={{ fontSize: 9, fontWeight: 700, color: '#e2e8f0', background: '#475569', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>×{b.partySize}</span>}
                               {paid > 0 && <span title={`${dep} · ${formatPrice(paid, b.currency)}`} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />}
-                              {sm && <span title={sm.full} style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', border: '1px solid #334155', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>{sm.k}</span>}
+                              {sm && <span title={sm.full} style={{ color: '#94a3b8', display: 'inline-flex', alignItems: 'center' }}>{sm.icon}</span>}
                             </span>
                           </div>
                           {h > 48 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</div>}

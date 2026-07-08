@@ -321,7 +321,8 @@ export class TenantsService {
       throw new BadRequestException('This salon has no admin user to reset');
     }
     const passwordHash = await hashSecret(password);
-    await this.prisma.user.update({ where: { id: adminUser.id }, data: { passwordHash } });
+    // passwordChangedAt forces the salon admin to sign in again (old tokens die).
+    await this.prisma.user.update({ where: { id: adminUser.id }, data: { passwordHash, passwordChangedAt: new Date() } });
     await this.audit.log({
       tenantId: id,
       userId: actor.userId,

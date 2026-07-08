@@ -16,7 +16,7 @@ export default function SalonAccountPage() {
 }
 
 function Inner() {
-  const { token, user } = useAuth();
+  const { token, user, logout } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const currentEmail = user?.email ?? '';
@@ -36,7 +36,7 @@ function Inner() {
     if (newPassword && newPassword.length < 8) { setErr(t('ac.pwShort')); return; }
     setBusy(true);
     try {
-      const r = await apiFetch<{ ok: boolean; email: string }>('/me/account', {
+      const r = await apiFetch<{ ok: boolean; email: string; passwordChanged?: boolean }>('/me/account', {
         method: 'PATCH', token,
         body: {
           currentPassword,
@@ -44,8 +44,14 @@ function Inner() {
           newPassword: newPassword || undefined,
         },
       });
-      setMsg(t('ac.saved').replace('{email}', r.email) + (newPassword ? ' ' + t('ac.savedPw') : ''));
       setCurrentPassword(''); setNewPassword(''); setConfirm('');
+      if (r.passwordChanged) {
+        // Password changed → the current session is now invalid. Sign out immediately.
+        setMsg(t('ac.pwLogout'));
+        setTimeout(() => logout(), 1400);
+        return;
+      }
+      setMsg(t('ac.saved').replace('{email}', r.email) + (newPassword ? ' ' + t('ac.savedPw') : ''));
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : t('ac.updateFail'));
     } finally { setBusy(false); }

@@ -67,6 +67,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'ac.pwShort': { en: 'New password must be at least 8 characters.', vi: 'Mật khẩu mới phải có ít nhất 8 ký tự.' },
   'ac.saved': { en: '✓ Saved. Your login email is {email}.', vi: '✓ Đã lưu. Email đăng nhập của bạn là {email}.' },
   'ac.savedPw': { en: 'Use your new password next time you sign in.', vi: 'Dùng mật khẩu mới ở lần đăng nhập sau.' },
+  'ac.pwLogout': { en: '✓ Password changed. Signing you out — please log in again with your new password.', vi: '✓ Đã đổi mật khẩu. Đang đăng xuất — vui lòng đăng nhập lại bằng mật khẩu mới.' },
   'ac.updateFail': { en: 'Update failed', vi: 'Cập nhật thất bại' },
   // POS sales report page (sr.* — distinct from the Payroll page's pr.*)
   'sr.loadFail': { en: 'Failed to load report', vi: 'Không tải được báo cáo' },

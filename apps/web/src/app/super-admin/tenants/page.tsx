@@ -277,6 +277,7 @@ export default function TenantsPage() {
 }
 
 function AccountPanel({ token, currentEmail }: { token: string; currentEmail: string }) {
+  const { logout } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newEmail, setNewEmail] = useState(currentEmail);
   const [newPassword, setNewPassword] = useState('');
@@ -289,12 +290,13 @@ function AccountPanel({ token, currentEmail }: { token: string; currentEmail: st
     if (!currentPassword) { setErr('Enter your current password to confirm the change.'); return; }
     setBusy(true);
     try {
-      const r = await apiFetch<{ ok: boolean; email: string }>('/me/account', {
+      const r = await apiFetch<{ ok: boolean; email: string; passwordChanged?: boolean }>('/me/account', {
         method: 'PATCH', token,
         body: { currentPassword, newEmail: newEmail !== currentEmail ? newEmail : undefined, newPassword: newPassword || undefined },
       });
-      setMsg(`✓ Saved. Login email: ${r.email}.${newPassword ? ' Use your new password next time you log in.' : ''}`);
       setCurrentPassword(''); setNewPassword('');
+      if (r.passwordChanged) { setMsg('✓ Password changed. Signing you out — please log in again.'); setTimeout(() => logout(), 1400); return; }
+      setMsg(`✓ Saved. Login email: ${r.email}.${newPassword ? ' Use your new password next time you log in.' : ''}`);
     } catch (e) { setErr(e instanceof Error ? e.message : 'Update failed'); } finally { setBusy(false); }
   }
 

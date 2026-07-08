@@ -340,7 +340,8 @@ export class StaffService {
     }
 
     const passwordHash = await hashSecret(dto.password);
-    await this.prisma.user.update({ where: { id: account.id }, data: { passwordHash } });
+    // passwordChangedAt forces the staff member to sign in again (old tokens die).
+    await this.prisma.user.update({ where: { id: account.id }, data: { passwordHash, passwordChangedAt: new Date() } });
 
     await this.audit.log({
       tenantId,

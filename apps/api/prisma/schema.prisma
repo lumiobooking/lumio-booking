@@ -302,6 +302,9 @@ model User {
   role         UserRole
   email        String   @unique
   passwordHash String
+  // Set whenever the password changes. Any JWT issued before this instant is
+  // rejected → the user is forced to sign in again with the new password.
+  passwordChangedAt DateTime?
   firstName    String?
   lastName     String?
   phone        String?

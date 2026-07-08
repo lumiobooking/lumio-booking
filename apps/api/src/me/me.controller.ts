@@ -73,13 +73,14 @@ export class MeController {
     if (!dto.currentPassword || !(await verifySecret(dto.currentPassword, u.passwordHash))) {
       throw new BadRequestException('Current password is incorrect');
     }
-    const data: { email?: string; passwordHash?: string } = {};
+    const data: { email?: string; passwordHash?: string; passwordChangedAt?: Date } = {};
     if (dto.newEmail && dto.newEmail.trim() && dto.newEmail.trim() !== u.email) {
       data.email = dto.newEmail.trim().toLowerCase();
     }
     if (dto.newPassword) {
       if (dto.newPassword.length < 8) throw new BadRequestException('New password must be at least 8 characters');
       data.passwordHash = await hashSecret(dto.newPassword);
+      data.passwordChangedAt = new Date(); // invalidates all existing sessions
     }
     if (!data.email && !data.passwordHash) {
       throw new BadRequestException('Nothing to change — enter a new email or new password');
@@ -89,6 +90,7 @@ export class MeController {
     } catch {
       throw new BadRequestException('That email is already in use by another account');
     }
-    return { ok: true, email: data.email ?? u.email };
+    // passwordChanged tells the client to log out immediately and re-login.
+    return { ok: true, email: data.email ?? u.email, passwordChanged: !!data.passwordHash };
   }
 }

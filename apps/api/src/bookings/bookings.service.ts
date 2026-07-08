@@ -846,6 +846,45 @@ export class BookingsService {
    * service, and each one's already-booked (blocking) time ranges around the
    * given date — so the UI can grey out slots a technician is already taken.
    */
+  /**
+   * Restaurant reservation availability: for a party of `partySize`, returns the
+   * number of fitting tables and the busy intervals occupying them on the date.
+   * The frontend generates candidate slots and marks a slot open when fewer than
+   * `tableCount` fitting tables overlap it.
+   */
+  async publicTableAvailability(tenantId: string, dateStr: string, partySize: number) {
+    const size = Math.max(1, Math.min(50, Math.round(partySize || 1)));
+    const tables = await this.prisma.restaurantTable.findMany({
+      where: { tenantId, isActive: true, seats: { gte: size } },
+      select: { id: true },
+    });
+    const svc = await this.prisma.service.findFirst({
+      where: { tenantId, isActive: true },
+      select: { durationMinutes: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const durationMinutes = svc?.durationMinutes ?? 90;
+    if (tables.length === 0) return { tableCount: 0, durationMinutes, busy: [] as { start: string; end: string }[] };
+    const day = new Date(`${dateStr}T00:00:00`);
+    const from = new Date(day.getTime() - 24 * 3_600_000);
+    const to = new Date(day.getTime() + 48 * 3_600_000);
+    const appts = await this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        tableId: { in: tables.map((t: { id: string }) => t.id) },
+        status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] },
+        startTime: { lt: to },
+        endTime: { gt: from },
+      },
+      select: { startTime: true, endTime: true },
+    });
+    return {
+      tableCount: tables.length,
+      durationMinutes,
+      busy: appts.map((a: { startTime: Date; endTime: Date }) => ({ start: a.startTime.toISOString(), end: a.endTime.toISOString() })),
+    };
+  }
+
   async publicAvailability(tenantId: string, serviceId: string, dateStr: string) {
     // Skills are an OPTIONAL restriction. If at least one technician is explicitly
     // linked to this service, only those are eligible; if NONE are linked (service

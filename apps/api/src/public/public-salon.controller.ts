@@ -49,7 +49,7 @@ export class PublicSalonController {
   async salon(@Param('slug') slug: string) {
     const tenant = await this.prisma.tenant.findFirst({
       where: { slug, deletedAt: null },
-      select: { id: true, name: true, slug: true, timezone: true, branding: true, status: true, billingExempt: true, accessUntil: true },
+      select: { id: true, name: true, slug: true, businessType: true, timezone: true, branding: true, status: true, billingExempt: true, accessUntil: true },
     });
     if (!tenant || !this.isOpen(tenant)) {
       throw new NotFoundException('Salon not found');
@@ -64,6 +64,7 @@ export class PublicSalonController {
     return {
       name: tenant.name,
       slug: tenant.slug,
+      businessType: tenant.businessType,
       timezone: tenant.timezone,
       branding: this.settings.brandingFrom(tenant.branding),
       booking,
@@ -71,6 +72,18 @@ export class PublicSalonController {
       dateDiscounts,
       deposit,
     };
+  }
+
+  // GET /api/public/salons/:slug/table-availability?date=YYYY-MM-DD&partySize=N
+  // -> restaurant table availability for the public reservation page.
+  @Get(':slug/table-availability')
+  async tableAvailability(
+    @Param('slug') slug: string,
+    @Query('date') date: string,
+    @Query('partySize') partySize: string,
+  ) {
+    const tenantId = await this.resolveTenantId(slug);
+    return this.bookings.publicTableAvailability(tenantId, date, parseInt(partySize, 10) || 1);
   }
 
   // GET /api/public/salons/:slug/seo -> structured-data payload for the booking

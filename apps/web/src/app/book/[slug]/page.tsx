@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, FormEvent } from 'react';
 import { useParams } from 'next/navigation';
+import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
 
@@ -44,7 +45,7 @@ interface WeekdayDiscounts { enabled: boolean; message: string; rules: WdRule[] 
 interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
 interface DateDiscounts { enabled: boolean; rules: DateRule[] }
 interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
-interface Salon { name: string; slug: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules; weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy }
+interface Salon { name: string; slug: string; businessType?: string; timezone: string; branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules; weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy }
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -359,6 +360,7 @@ export default function PublicBookingPage() {
 
   if (loading) return <Shell><Center>Loading…</Center></Shell>;
   if (loadError) return <Shell><Center>{loadError}</Center></Shell>;
+  if (salon && salon.businessType === 'RESTAURANT') return <RestaurantReserve slug={slug} salon={salon} />;
 
   const steps = [
     { n: 1, label: 'Date & time', summary: slot ? `${selectedDate?.toLocaleDateString('en-US')} · ${fmtTime(slot.start)}` : selectedDate ? selectedDate.toLocaleDateString('en-US') : '' },

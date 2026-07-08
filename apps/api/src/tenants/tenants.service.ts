@@ -247,6 +247,17 @@ export class TenantsService {
       select: TENANT_PUBLIC_SELECT,
     });
 
+    // A restaurant needs at least one "reservation service" so the booking core
+    // (which requires a serviceId) works. Seed a default one the first time.
+    if (dto.businessType === 'RESTAURANT') {
+      const svcCount = await this.prisma.service.count({ where: { tenantId: id } });
+      if (svcCount === 0) {
+        await this.prisma.service.create({
+          data: { tenantId: id, name: 'Table reservation', durationMinutes: 90, priceCents: 0, currency: 'USD', isActive: true },
+        });
+      }
+    }
+
     await this.audit.log({
       tenantId: id,
       userId: actor.userId,

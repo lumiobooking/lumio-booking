@@ -1,0 +1,20 @@
+<!-- ================================================================
+     LUMIO BOOKING — nhúng vào WordPress (paste vào block "Custom HTML")
+     Đổi YOUR-SALON-SLUG thành slug của tiệm (ví dụ: lux-nails).
+     Đoạn <script> giúp iframe tự co giãn vừa khít form → hết khoảng trắng.
+     ================================================================ -->
+<iframe id="lumio-booking"
+        src="https://lumiobooking.com/YOUR-SALON-SLUG"
+        title="Book an appointment"
+        scrolling="no"
+        style="width:100%; border:0; display:block; min-height:520px; overflow:hidden;"></iframe>
+<script>
+(function () {
+  var frame = document.getElementById('lumio-booking');
+  window.addEventListener('message', function (e) {
+    if (!e || !e.data || e.data.type !== 'lumio-embed-height') return;
+    var h = parseInt(e.data.height, 10);
+    if (h && h > 120) frame.style.height = h + 'px';   // co giãn theo nội dung
+  });
+})();
+</script>

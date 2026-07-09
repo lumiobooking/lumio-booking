@@ -12,11 +12,11 @@ async function bootstrap() {
   // Global API prefix: all routes live under /api
   app.setGlobalPrefix('api');
 
-  // Fail fast in production if the JWT signing secret wasn't provided — never
-  // silently fall back to the built-in dev secret (that would let anyone forge
-  // admin tokens).
-  if (config.get<string>('NODE_ENV') === 'production' && !config.get<string>('JWT_SECRET')) {
-    throw new Error('JWT_SECRET must be set in production');
+  // Fail fast in ANY non-development environment if the JWT signing secret is
+  // missing — never silently fall back to the built-in dev secret (that would let
+  // anyone forge admin tokens, even if NODE_ENV were mis-set to e.g. "prod").
+  if (config.get<string>('NODE_ENV') !== 'development' && !config.get<string>('JWT_SECRET')) {
+    throw new Error('JWT_SECRET must be set outside development');
   }
 
   // Baseline security headers (dependency-free equivalent of the headers helmet

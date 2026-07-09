@@ -1,7 +1,8 @@
-import { Body, Controller, Header, HttpCode, Post, Query } from '@nestjs/common';
+import { Body, Controller, Header, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
 import { VoiceService } from './voice.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { SkipRateLimit } from '../common/security/rate-limit.guard';
+import { TwilioSignatureGuard } from '../common/security/webhook-signatures';
 
 /**
  * Public Twilio Voice webhooks for the AI hotline. Twilio POSTs form-encoded
@@ -10,6 +11,7 @@ import { SkipRateLimit } from '../common/security/rate-limit.guard';
  * @SkipRateLimit: Twilio legitimately fires many turns per call from one IP.
  */
 @SkipRateLimit()
+@UseGuards(TwilioSignatureGuard)
 @Controller('voice')
 export class VoiceWebhookController {
   constructor(private readonly svc: VoiceService) {}

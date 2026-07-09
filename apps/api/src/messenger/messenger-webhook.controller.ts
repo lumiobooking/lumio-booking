@@ -1,8 +1,10 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { MessengerService } from './messenger.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { SkipRateLimit } from '../common/security/rate-limit.guard';
+import { verifyMetaSignature } from '../common/security/webhook-signatures';
 
 /**
  * Public Meta Messenger webhook. GET verifies the subscription (hub.challenge);
@@ -25,9 +27,12 @@ export class MessengerWebhookController {
   @Public()
   @Post('webhook')
   @HttpCode(200)
-  receive(@Body() body: unknown) {
-    // Acknowledge immediately; process in the background so Meta doesn't retry.
-    this.svc.handleWebhook(body).catch(() => undefined);
+  receive(@Req() req: RawBodyRequest<Request>, @Body() body: unknown) {
+    // Verify Meta's X-Hub-Signature-256 over the raw body. Spoofed events are
+    // silently dropped (still 200 so Meta doesn't retry a forged request).
+    if (verifyMetaSignature(req)) {
+      this.svc.handleWebhook(body).catch(() => undefined);
+    }
     return 'EVENT_RECEIVED';
   }
 

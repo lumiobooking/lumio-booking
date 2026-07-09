@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, createContext, useContext, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
@@ -88,11 +88,32 @@ function writeCachedPos(on: boolean) {
   if (typeof window !== 'undefined') window.localStorage.setItem(POS_CACHE_KEY, on ? '1' : '0');
 }
 
+const RESTAURANT_CACHE_KEY = 'lumio_is_restaurant';
+function readCachedRestaurant(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(RESTAURANT_CACHE_KEY) === '1';
+}
+function writeCachedRestaurant(on: boolean) {
+  if (typeof window !== 'undefined') window.localStorage.setItem(RESTAURANT_CACHE_KEY, on ? '1' : '0');
+}
+
 /**
  * Salon Admin layout. Desktop: fixed left sidebar. Mobile: a sticky top bar
  * with a hamburger that opens a slide-in drawer. Auth-guarded.
  */
+const ShellMountedContext = createContext(false);
+
 export function SalonShell({ children }: { children: ReactNode }) {
+  const alreadyInShell = useContext(ShellMountedContext);
+  if (alreadyInShell) return <>{children}</>;
+  return (
+    <ShellMountedContext.Provider value={true}>
+      <SalonShellChrome>{children}</SalonShellChrome>
+    </ShellMountedContext.Provider>
+  );
+}
+
+function SalonShellChrome({ children }: { children: ReactNode }) {
   const { token, user, ready, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -105,7 +126,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
   const [posEnabled, setPosEnabled] = useState<boolean | null>(() => readCachedPos());
   // Routes hidden because Super Admin set the feature to platform-managed.
   const [hiddenHrefs, setHiddenHrefs] = useState<string[]>([]);
-  const [isRestaurant, setIsRestaurant] = useState(false);
+  const [isRestaurant, setIsRestaurant] = useState<boolean>(() => readCachedRestaurant());
   // Which sidebar groups are expanded (persisted). The group holding the active
   // route auto-expands so the current page is always reachable.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -160,7 +181,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token || !hasSalonAccess) return;
     apiFetch<{ businessType?: string }>('/me/tenant', { token })
-      .then((r) => setIsRestaurant(r?.businessType === 'RESTAURANT'))
+      .then((r) => { const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on); })
       .catch(() => {});
   }, [token, hasSalonAccess]);
 
@@ -175,7 +196,7 @@ export function SalonShell({ children }: { children: ReactNode }) {
 
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8', background: '#0b1120' }}>
         {tr('shell.loading', lang)}
       </div>
     );

@@ -31,6 +31,13 @@ const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
 export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon }) {
   const base = `${API_URL}/public/salons/${encodeURIComponent(slug)}`;
   const accent = salon.branding?.accentColor || '#dc2626';
+  const darken = (hex: string, f = 0.72) => {
+    const h = hex.replace('#', '');
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return hex;
+    const c = (i: number) => Math.round(parseInt(h.slice(i, i + 2), 16) * f);
+    return `rgb(${c(0)}, ${c(2)}, ${c(4)})`;
+  };
+  const accentDark = darken(accent);
   const tz = salon.timezone || 'UTC';
   const areas = (salon.areas && salon.areas.length ? salon.areas : []);
   const seatingOpts = [...areas, 'No Preference'];
@@ -126,13 +133,19 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   const cta = (dis: boolean): React.CSSProperties => ({ width: '100%', marginTop: 20, padding: '15px', borderRadius: 12, border: 'none', background: dis ? '#d6d3d1' : accent, color: '#fff', fontSize: 16, fontWeight: 700, cursor: dis ? 'not-allowed' : 'pointer' });
   const pill = (on: boolean): React.CSSProperties => ({ padding: '10px 6px', borderRadius: 10, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', textAlign: 'center', border: `1px solid ${on ? accent : '#e7e5e4'}`, background: on ? '#fef2f2' : '#fff', color: on ? accent : '#44403c' });
 
-  const Head = (title: string) => (
-    <div style={{ position: 'relative', textAlign: 'center', padding: '16px 50px 10px' }}>
-      {step > 1 && step < 4 && <button onClick={() => goto(step - 1)} aria-label="Back" style={{ position: 'absolute', left: 16, top: 15, background: 'none', border: 'none', cursor: 'pointer', color: '#44403c' }}><Icon d="M15 18l-6-6 6-6" size={22} /></button>}
-      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: accent }}>STEP {Math.min(step, 3)} OF 3</div>
-      <div style={{ fontSize: 19, fontWeight: 700, color: '#1c1917', marginTop: 2 }}>{title}</div>
-    </div>
-  );
+  const Head = (title: string) => {
+    const photo = salon.branding?.logoUrl;
+    const bg = photo
+      ? `linear-gradient(180deg, rgba(0,0,0,0.28), rgba(0,0,0,0.66)), #1c1917 url(${photo}) center/cover`
+      : `linear-gradient(135deg, ${accent} 0%, ${accentDark} 100%)`;
+    return (
+      <div style={{ position: 'relative', textAlign: 'center', color: '#fff', background: bg, padding: step === 1 ? '26px 50px 60px' : '22px 50px 22px' }}>
+        {step > 1 && step < 4 && <button onClick={() => goto(step - 1)} aria-label="Back" style={{ position: 'absolute', left: 14, top: 16, background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 9, width: 34, height: 34, display: 'grid', placeItems: 'center', cursor: 'pointer', color: '#fff' }}><Icon d="M15 18l-6-6 6-6" size={20} /></button>}
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.82)' }}>STEP {Math.min(step, 3)} OF 3</div>
+        <div style={{ fontFamily: SERIF, fontSize: 23, fontWeight: 700, color: '#fff', marginTop: 4, textShadow: '0 1px 10px rgba(0,0,0,0.35)' }}>{title}</div>
+      </div>
+    );
+  };
 
   if (done) return (
     <div style={page}><div style={{ ...shell, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: 30, textAlign: 'center' }}>
@@ -158,8 +171,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
 
           {step === 1 && (
             <div>
-              <div style={{ height: 128, borderRadius: 14, background: salon.branding?.logoUrl ? `#000 url(${salon.branding.logoUrl}) center/cover` : accent, position: 'relative' }} />
-              <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: 14, padding: 14, marginTop: -46, position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' }}>
+              <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: 14, padding: 14, marginTop: -44, position: 'relative', zIndex: 1, boxShadow: '0 6px 20px rgba(0,0,0,0.08)' }}>
                 <div style={{ display: 'flex', gap: 11, alignItems: 'center' }}>
                   <div style={{ width: 46, height: 46, borderRadius: 10, background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontFamily: SERIF, fontSize: 22, flexShrink: 0 }}>{initial}</div>
                   <div style={{ minWidth: 0 }}>

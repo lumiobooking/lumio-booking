@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings, then add the [lumio_booking] shortcode to any page.
- * Version:           0.4.2
+ * Version:           0.5.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Lumio
@@ -110,7 +110,10 @@ if (!function_exists('lumio_booking_base')) {
     /* ---- Customer shortcode: [lumio_booking] ---- */
     function lumio_booking_shortcode($atts)
     {
-        $atts = shortcode_atts(array('slug' => '', 'url' => '', 'height' => '900'), $atts, 'lumio_booking');
+        // 'height' is only the INITIAL height; the iframe auto-resizes to the
+        // form's real content height (via a postMessage the hosted form sends),
+        // so there is never empty space below it.
+        $atts = shortcode_atts(array('slug' => '', 'url' => '', 'height' => '560'), $atts, 'lumio_booking');
         $site = ($atts['url'] !== '') ? rtrim($atts['url'], '/') : lumio_booking_base();
         $slug = ($atts['slug'] !== '') ? $atts['slug'] : get_option(LUMIO_BOOKING_OPT_SLUG, '');
         $slug = trim((string) $slug);
@@ -118,11 +121,20 @@ if (!function_exists('lumio_booking_base')) {
             return current_user_can('manage_options') ? '<p><em>Lumio Booking: set your Salon slug under Lumio Booking &rarr; Settings.</em></p>' : '';
         }
         $src    = esc_url($site . '/book/' . rawurlencode($slug));
-        $height = max(400, intval($atts['height']));
+        $height = max(320, intval($atts['height']));
+
+        // Origin of the booking site, for a safe postMessage check.
+        $scheme = parse_url($site, PHP_URL_SCHEME);
+        $host   = parse_url($site, PHP_URL_HOST);
+        $origin = ($scheme && $host) ? $scheme . '://' . $host : '';
+        $fid    = 'lumio-booking-' . wp_rand(1000, 99999);
+
         $html  = '<div class="lumio-booking-embed" style="width:100%;max-width:980px;margin:0 auto;">';
-        $html .= '<iframe src="' . $src . '" loading="lazy" title="Book an appointment" allow="payment" ';
-        $html .= 'style="width:100%;min-height:' . $height . 'px;border:0;border-radius:16px;overflow:hidden;background:transparent;"></iframe>';
+        $html .= '<iframe id="' . esc_attr($fid) . '" src="' . $src . '" loading="lazy" title="Book an appointment" allow="payment" ';
+        $html .= 'style="width:100%;min-height:' . $height . 'px;border:0;border-radius:16px;overflow:hidden;background:transparent;display:block;"></iframe>';
         $html .= '</div>';
+        // Auto-resize: match the iframe to the form's reported content height.
+        $html .= '<script>(function(){var f=document.getElementById(' . wp_json_encode($fid) . ');if(!f){return;}var o=' . wp_json_encode($origin) . ';window.addEventListener("message",function(e){if(o&&e.origin!==o){return;}var d=e.data;if(!d||d.type!=="lumio-embed-height"){return;}var h=parseInt(d.height,10);if(h&&h>120){f.style.height=h+"px";f.style.minHeight="0px";}});})();</script>';
         return $html;
     }
     add_shortcode('lumio_booking', 'lumio_booking_shortcode');

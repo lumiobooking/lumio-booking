@@ -1,0 +1,223 @@
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumio — Clip demo tổng thể</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Be Vietnam Pro',system-ui,sans-serif}
+html,body{height:100%;background:#05060c;display:grid;place-items:center;overflow:hidden}
+.stage{position:relative;aspect-ratio:9/16;height:min(96vh,96svh);max-width:98vw;border-radius:26px;overflow:hidden;color:#fff;
+ background:radial-gradient(120% 80% at 50% -10%,#312e81 0%,#1e1b4b 40%,#0b1024 72%,#070a16 100%);box-shadow:0 30px 90px rgba(0,0,0,.6)}
+.glow{position:absolute;inset:0;pointer-events:none;background:radial-gradient(55% 26% at 18% 16%,rgba(236,72,153,.20),transparent 60%),radial-gradient(50% 30% at 88% 82%,rgba(99,102,241,.28),transparent 60%)}
+.brand{position:absolute;top:4.6%;left:0;right:0;text-align:center;z-index:6}
+.brand b{font-size:5.4vh;font-weight:800;letter-spacing:-.5px;background:linear-gradient(90deg,#a5b4fc,#f0abfc);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand span{display:block;font-size:1.7vh;color:#c7d2fe;font-weight:500;margin-top:1px}
+.progress{position:absolute;top:3%;left:8%;right:8%;height:4px;border-radius:99px;background:rgba(255,255,255,.15);z-index:6;overflow:hidden}
+.progress .bar{height:100%;width:0;background:linear-gradient(90deg,#818cf8,#ec4899)}
+.persp{position:absolute;top:10.5%;left:50%;transform:translateX(-50%);z-index:6;font-size:1.55vh;font-weight:700;letter-spacing:.5px;color:#fff;
+ background:rgba(99,102,241,.9);padding:.7vh 2vh;border-radius:99px;opacity:0;transition:opacity .3s}
+.stage[data-mode="flow"] .persp{opacity:1}
+/* phone */
+.phone{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:64%;aspect-ratio:9/19;background:#0b1020;border-radius:34px;padding:2.3%;
+ box-shadow:0 20px 55px rgba(0,0,0,.55),inset 0 0 0 2px #262b45;animation:float 6s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translate(-50%,-51%)}50%{transform:translate(-50%,-49%)}}
+.notch{position:absolute;top:2.3%;left:50%;transform:translateX(-50%);width:30%;height:2.2%;background:#0b1020;border-radius:0 0 12px 12px;z-index:4}
+.vp{position:relative;width:100%;height:100%;border-radius:26px;overflow:hidden}
+.screen{position:absolute;inset:0;opacity:0;transform:translateY(10px) scale(.99);transition:opacity .45s,transform .45s}
+.screen.active{opacity:1;transform:none}
+/* ---------- CUSTOMER (light) ---------- */
+.cust{background:#f6f5f3}
+.chead{background:linear-gradient(135deg,#6366f1,#4338ca);padding:9% 6% 12%;color:#fff;text-align:center}
+.chead .k{font-size:1.4vh;font-weight:700;letter-spacing:1px;opacity:.85}
+.chead .t{font-family:Georgia,serif;font-size:2.7vh;font-weight:700;margin-top:2px}
+.cbody{padding:5% 6%}
+.lbl{font-size:1.7vh;font-weight:700;color:#1c1917;margin:4% 0 2.5%}
+.psz{display:grid;grid-template-columns:repeat(6,1fr);gap:2.5%}
+.psz .p{aspect-ratio:1;border-radius:9px;border:1.5px solid #e7e5e4;display:grid;place-items:center;font-weight:700;font-size:1.7vh;color:#44403c;background:#fff}
+.psz .p.sel{border-color:#6366f1;background:#eef0ff;color:#6366f1}
+.dts{display:flex;gap:2.5%;margin-top:1%}
+.dts .d{flex:1;text-align:center;padding:2.6% 0;border-radius:10px;border:1.5px solid #e7e5e4;background:#fff}
+.dts .d .w{font-size:1.3vh;font-weight:700;color:#a8a29e}.dts .d .n{font-size:2vh;font-weight:700;color:#1c1917}
+.dts .d.sel{border-color:#6366f1;background:#eef0ff}.dts .d.sel .w,.dts .d.sel .n{color:#6366f1}
+.tms{display:grid;grid-template-columns:repeat(4,1fr);gap:2.5%;margin-top:1%}
+.tms .s{text-align:center;padding:2.6% 0;border-radius:9px;border:1.5px solid #e7e5e4;font-size:1.5vh;font-weight:600;color:#44403c;background:#fff}
+.tms .s.sel{background:#6366f1;color:#fff;border-color:#6366f1}
+.cbtn{margin-top:6%;width:100%;padding:3.4% 0;border-radius:12px;background:#6366f1;color:#fff;text-align:center;font-weight:700;font-size:1.9vh}
+/* confirm */
+.cok{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 8%;background:#f6f5f3}
+.cok .c{width:24%;aspect-ratio:1;border-radius:99px;background:#e9f9ef;display:grid;place-items:center;margin-bottom:5%}
+.cok .c div{width:60%;aspect-ratio:1;border-radius:99px;background:#22c55e;color:#fff;display:grid;place-items:center;font-size:3.4vh;font-weight:800}
+.screen.active .cok .c div{animation:pop .5s .1s both}
+@keyframes pop{0%{transform:scale(0)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
+.cok h2{font-size:2.3vh;color:#111827;font-weight:800}
+.cok .card{margin-top:5%;background:#fff;border:1.5px solid #eee;border-radius:14px;padding:4.5%;width:100%}
+.cok .card .r{display:flex;justify-content:space-between;padding:2% 0;font-size:1.6vh}
+.cok .card .r span{color:#a8a29e}.cok .card .r b{color:#1f2937}
+.cok .toast{margin-top:5%;background:#eef0ff;border:1px solid #c7d2fe;border-radius:12px;padding:3.6%;font-size:1.5vh;color:#4338ca;font-weight:600;text-align:left}
+/* ---------- OWNER admin (dark, real theme) ---------- */
+.adm{background:#0b1120;color:#e2e8f0}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:5% 5.5%;background:#111827;border-bottom:1px solid #1f2937}
+.topbar .lg{font-size:2.2vh;font-weight:800;color:#e2e8f0}
+.topbar .hm{width:8%;aspect-ratio:1;border:1px solid #334155;border-radius:9px;display:grid;place-items:center;color:#e2e8f0;font-size:2vh}
+.acont{padding:5.5%}
+.ah{font-size:2.2vh;font-weight:700;margin-bottom:1%}
+.asub{font-size:1.5vh;color:#94a3b8;margin-bottom:5%}
+.bk{background:#1e293b;border-radius:12px;padding:3.6% 4%;margin-bottom:3%;display:flex;align-items:center;gap:4%;border-left:4px solid #3b82f6}
+.bk .tm{font-size:1.55vh;font-weight:700;color:#cbd5e1;width:22%}
+.bk .mid{flex:1;min-width:0}.bk .mid .nm{font-size:1.75vh;font-weight:600;color:#f1f5f9}
+.bk .mid .sv{font-size:1.45vh;color:#94a3b8}
+.bk .pr{font-size:1.75vh;font-weight:700;color:#a5b4fc}
+.bk .ic{font-size:1.5vh;opacity:.85;margin-left:2%}
+.bk.amber{border-left-color:#f59e0b}.bk.green{border-left-color:#10b981}.bk.purple{border-left-color:#8b5cf6}
+/* menu screen */
+.mtabs{display:flex;gap:2.5%;margin-bottom:5%;flex-wrap:wrap}
+.mtab{font-size:1.5vh;font-weight:600;color:#cbd5e1;border:1px solid #334155;border-radius:99px;padding:1.6% 4%}
+.mtab.sel{background:#6366f1;color:#fff;border-color:#6366f1}
+.mit{background:#1e293b;border-radius:11px;padding:3.2% 4%;margin-bottom:2.6%;display:flex;align-items:center;justify-content:space-between}
+.mit .nm{font-size:1.7vh;font-weight:600;color:#f1f5f9}
+.mit .rt{display:flex;align-items:center;gap:8px}
+.mit .pr{font-size:1.7vh;font-weight:700;color:#a5b4fc}
+.mit .ck{font-size:1.35vh;color:#22c55e;font-weight:700}
+/* stats + sms */
+.stwrap{display:flex;gap:3.5%;margin-bottom:5%}
+.stat{flex:1;background:#1e293b;border-radius:14px;padding:5% 4%}
+.stat .v{font-size:3vh;font-weight:800;color:#fff}.stat .l{font-size:1.4vh;color:#94a3b8;margin-top:2px}
+.stat .v.g{color:#34d399}
+.smstoast{background:#111827;border:1px solid #334155;border-radius:14px;padding:4.5%;display:flex;gap:3.5%;align-items:flex-start;box-shadow:0 14px 30px rgba(0,0,0,.5)}
+.smstoast .ic{width:11%;aspect-ratio:1;border-radius:9px;background:linear-gradient(135deg,#6366f1,#ec4899);display:grid;place-items:center;font-weight:800;font-size:1.6vh;flex-shrink:0}
+.smstoast .nm{font-size:1.6vh;font-weight:700;color:#f1f5f9}.smstoast .tx{font-size:1.5vh;color:#cbd5e1;margin-top:3px;line-height:1.4}
+.screen.active .smstoast{animation:slideup .5s .2s both}
+@keyframes slideup{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+/* ai hotline */
+.ai{background:radial-gradient(80% 50% at 50% 30%,#1e1b4b,#0b1120);color:#fff;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 8%}
+.ai .ring{width:30%;aspect-ratio:1;border-radius:99px;background:linear-gradient(135deg,#6366f1,#ec4899);display:grid;place-items:center;font-size:4vh;box-shadow:0 0 0 0 rgba(129,140,248,.5);animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(129,140,248,.5)}70%{box-shadow:0 0 0 8vh rgba(129,140,248,0)}100%{box-shadow:0 0 0 0 rgba(129,140,248,0)}}
+.ai h2{font-size:2.4vh;font-weight:800;margin-top:6%}
+.ai .st{font-size:1.5vh;color:#c7d2fe;margin-top:2%}
+.wave{display:flex;gap:5px;align-items:center;justify-content:center;height:5vh;margin-top:6%}
+.wave i{width:5px;border-radius:3px;background:#a5b4fc;animation:wv 1s infinite ease-in-out}
+.wave i:nth-child(2){animation-delay:.15s}.wave i:nth-child(3){animation-delay:.3s}.wave i:nth-child(4){animation-delay:.45s}.wave i:nth-child(5){animation-delay:.6s}.wave i:nth-child(6){animation-delay:.2s}.wave i:nth-child(7){animation-delay:.5s}
+@keyframes wv{0%,100%{height:1.2vh}50%{height:4.5vh}}
+.ai .bub{margin-top:7%;width:100%}
+.ai .bub .q{background:#1e293b;border-radius:14px 14px 14px 4px;padding:3.4%;font-size:1.55vh;color:#e2e8f0;text-align:left;margin-bottom:2.5%}
+.ai .bub .a{background:#6366f1;border-radius:14px 14px 4px 14px;padding:3.4%;font-size:1.55vh;color:#fff;text-align:left}
+/* caption + overlays */
+.capwrap{position:absolute;left:0;right:0;bottom:6.5%;text-align:center;z-index:6;transition:opacity .3s}
+.cap{display:inline-block;background:rgba(10,12,24,.75);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.14);color:#fff;font-size:2vh;font-weight:700;padding:1.5vh 3vh;border-radius:99px;max-width:90%}
+.cap.pop{animation:capin .4s ease}
+@keyframes capin{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+.ov{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 8%;opacity:0;pointer-events:none;transition:opacity .5s}
+.hook .k{font-size:1.9vh;font-weight:700;letter-spacing:3px;color:#f0abfc;text-transform:uppercase}
+.hook h1{font-size:7.6vh;font-weight:800;line-height:1.03;margin:2vh 0;letter-spacing:-1px}
+.hook h1 em{font-style:normal;background:linear-gradient(90deg,#818cf8,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hook .s{font-size:2.3vh;color:#c7d2fe;font-weight:500}
+.cta h1{font-size:5vh;font-weight:800;line-height:1.12;margin-bottom:2vh}
+.cta h1 em{font-style:normal;background:linear-gradient(90deg,#818cf8,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cta .feats{display:flex;gap:1.2vh;flex-wrap:wrap;justify-content:center;margin-bottom:3vh}
+.cta .feats span{font-size:1.5vh;font-weight:600;color:#e9e9ff;background:rgba(129,140,248,.18);border:1px solid rgba(165,180,252,.35);padding:.8vh 1.6vh;border-radius:99px}
+.cta .btn{font-size:2.4vh;font-weight:700;color:#fff;background:linear-gradient(90deg,#6366f1,#ec4899);padding:2vh 3.6vh;border-radius:99px;box-shadow:0 14px 34px rgba(236,72,153,.4)}
+.cta .lm{margin-top:3vh;font-size:2vh;color:#c7d2fe}.cta .lm b{color:#fff}
+.stage[data-mode="hook"] .hook{opacity:1}
+.stage[data-mode="cta"] .cta{opacity:1}
+.stage[data-mode="hook"] .phone{opacity:.22}
+.stage[data-mode="cta"] .phone,.stage[data-mode="cta"] .capwrap{opacity:.1}
+</style></head>
+<body>
+<div class="stage" id="stage" data-mode="hook">
+ <div class="glow"></div>
+ <div class="progress"><div class="bar" id="bar"></div></div>
+ <div class="brand"><b>Lumio</b><span>Phần mềm quản lý cho tiệm Việt • US & Canada</span></div>
+ <div class="persp" id="persp">👤 KHÁCH ĐẶT</div>
+
+ <div class="phone"><div class="notch"></div><div class="vp">
+   <!-- 0 customer booking -->
+   <div class="screen cust" data-i="0">
+     <div class="chead"><div class="k">LISA NAILS & SPA</div><div class="t">Đặt lịch online</div></div>
+     <div class="cbody">
+       <div class="lbl">Số người</div>
+       <div class="psz"><div class="p">1</div><div class="p sel">2</div><div class="p">3</div><div class="p">4</div><div class="p">5</div><div class="p">6</div></div>
+       <div class="lbl">Chọn ngày</div>
+       <div class="dts"><div class="d"><div class="w">Hôm nay</div><div class="n">8</div></div><div class="d sel"><div class="w">Mai</div><div class="n">9</div></div><div class="d"><div class="w">T6</div><div class="n">10</div></div></div>
+       <div class="lbl">Chọn giờ</div>
+       <div class="tms"><div class="s">1:00</div><div class="s">1:30</div><div class="s sel">2:00</div><div class="s">2:30</div></div>
+       <div class="cbtn">Tiếp tục →</div>
+     </div>
+   </div>
+   <!-- 1 confirm -->
+   <div class="screen" data-i="1"><div class="cok">
+     <div class="c"><div>✓</div></div><h2>Đặt lịch thành công!</h2>
+     <div class="card"><div class="r"><span>Dịch vụ</span><b>Gel Manicure</b></div><div class="r"><span>Thợ</span><b>Anna</b></div><div class="r"><span>Giờ</span><b>Th 5, 2:00 PM</b></div></div>
+     <div class="toast">💬 Đã nhắn SMS xác nhận cho khách</div>
+   </div></div>
+   <!-- 2 admin day view -->
+   <div class="screen adm" data-i="2">
+     <div class="topbar"><div class="lg">Lumio</div><div class="hm">☰</div></div>
+     <div class="acont"><div class="ah">Lịch hôm nay</div><div class="asub">Thứ Tư, 8 tháng 7 • 18 lịch hẹn</div>
+       <div class="bk"><div class="tm">10:00</div><div class="mid"><div class="nm">Anna Tran</div><div class="sv">Gel Manicure</div></div><div class="pr">$35</div><div class="ic">💻</div></div>
+       <div class="bk amber"><div class="tm">11:30</div><div class="mid"><div class="nm">Kim Le</div><div class="sv">Pedicure Deluxe</div></div><div class="pr">$45</div><div class="ic">📱</div></div>
+       <div class="bk green"><div class="tm">1:00</div><div class="mid"><div class="nm">Nhóm 4 người</div><div class="sv">Bàn Patio • Nhà hàng</div></div><div class="pr">•</div><div class="ic">🤖</div></div>
+       <div class="bk purple"><div class="tm">2:00</div><div class="mid"><div class="nm">Sarah Pham</div><div class="sv">Full Set</div></div><div class="pr">$60</div><div class="ic">💻</div></div>
+     </div>
+   </div>
+   <!-- 3 menu mgmt -->
+   <div class="screen adm" data-i="3">
+     <div class="topbar"><div class="lg">Lumio</div><div class="hm">☰</div></div>
+     <div class="acont"><div class="ah">Thực đơn</div><div class="asub">Nhà hàng • 33 món</div>
+       <div class="mtabs"><div class="mtab sel">Phở</div><div class="mtab">Khai vị</div><div class="mtab">Nước</div><div class="mtab">Tráng miệng</div></div>
+       <div class="mit"><div class="nm">Rare Beef Pho</div><div class="rt"><div class="pr">$14</div><div class="ck">✓ Bán</div></div></div>
+       <div class="mit"><div class="nm">House Special Pho</div><div class="rt"><div class="pr">$16</div><div class="ck">✓ Bán</div></div></div>
+       <div class="mit"><div class="nm">Chicken Pho</div><div class="rt"><div class="pr">$14</div><div class="ck">✓ Bán</div></div></div>
+       <div class="mit"><div class="nm">Vegetarian Pho</div><div class="rt"><div class="pr">$13</div><div class="ck">✓ Bán</div></div></div>
+     </div>
+   </div>
+   <!-- 4 stats + sms -->
+   <div class="screen adm" data-i="4">
+     <div class="topbar"><div class="lg">Lumio</div><div class="hm">☰</div></div>
+     <div class="acont"><div class="ah">Tổng quan</div><div class="asub">Hôm nay</div>
+       <div class="stwrap"><div class="stat"><div class="v g">$1,240</div><div class="l">Doanh thu</div></div><div class="stat"><div class="v">18</div><div class="l">Lịch hẹn</div></div></div>
+       <div class="stwrap"><div class="stat"><div class="v">4</div><div class="l">Đang phục vụ</div></div><div class="stat"><div class="v g">96%</div><div class="l">Khách đến</div></div></div>
+       <div class="smstoast"><div class="ic">L</div><div><div class="nm">Nhắc lịch tự động</div><div class="tx">Đã gửi SMS nhắc 12 khách có hẹn ngày mai 💅</div></div></div>
+     </div>
+   </div>
+   <!-- 5 ai hotline -->
+   <div class="screen" data-i="5"><div class="ai">
+     <div class="ring">📞</div><h2>Tổng đài AI Lumio</h2><div class="st">Đang nghe cuộc gọi đặt lịch…</div>
+     <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+     <div class="bub"><div class="q">“Cho tôi đặt 2 giờ chiều mai nha.”</div><div class="a">“Dạ được ạ! Em đặt Gel Manicure 2:00 PM mai, sẽ nhắn xác nhận cho mình ạ.”</div></div>
+   </div></div>
+ </div></div>
+
+ <div class="capwrap"><span class="cap" id="cap">Khách tự đặt lịch — 24/7</span></div>
+
+ <div class="ov hook"><div class="k">Của người Việt · cho tiệm Việt</div><h1>Cả tiệm bạn<br><em>trong 1 phần mềm</em></h1><div class="s">Nail & Nhà hàng • US & Canada</div></div>
+ <div class="ov cta"><h1>Lumio — <em>gọn</em> mọi thứ<br>cho tiệm của bạn</h1>
+   <div class="feats"><span>🇻🇳 Tiếng Việt</span><span>🕐 Đặt 24/7</span><span>💬 Nhắc SMS</span><span>🤖 Tổng đài AI</span><span>📊 Doanh thu</span></div>
+   <div class="btn">Nhắn Lumio để dùng thử</div><div class="lm">Miễn phí — <b>link ở bio</b></div></div>
+</div>
+<script>
+(function(){
+ var stage=document.getElementById('stage'),bar=document.getElementById('bar'),cap=document.getElementById('cap'),persp=document.getElementById('persp');
+ var screens=[].slice.call(document.querySelectorAll('.screen'));
+ var S=[
+  {end:3000,mode:'hook'},
+  {end:8000,mode:'flow',s:0,p:'👤 KHÁCH ĐẶT',c:'Khách tự đặt lịch / đặt bàn — 24/7'},
+  {end:11500,mode:'flow',s:1,p:'👤 KHÁCH ĐẶT',c:'✓ Xác nhận tức thì + nhắc SMS'},
+  {end:17500,mode:'flow',s:2,p:'🧑‍💼 BẠN QUẢN LÝ',c:'Lịch hẹn về thẳng máy của bạn'},
+  {end:23000,mode:'flow',s:3,p:'🧑‍💼 BẠN QUẢN LÝ',c:'Quản lý thực đơn & bàn (nhà hàng)'},
+  {end:28000,mode:'flow',s:4,p:'🧑‍💼 BẠN QUẢN LÝ',c:'Xem doanh thu · nhắc SMS tự động'},
+  {end:33500,mode:'flow',s:5,p:'🧑‍💼 BẠN QUẢN LÝ',c:'Tổng đài AI nghe máy giúp bạn'},
+  {end:39500,mode:'cta'}
+ ];
+ var TOTAL=39500,t0=null,last='';
+ function frame(now){
+  if(t0===null)t0=now;var t=(now-t0)%TOTAL;
+  bar.style.width=(t/TOTAL*100).toFixed(2)+'%';
+  var sc=S[0];for(var i=0;i<S.length;i++){if(t<S[i].end){sc=S[i];break;}}
+  stage.setAttribute('data-mode',sc.mode);
+  for(var j=0;j<screens.length;j++){screens[j].classList.toggle('active',sc.s===j);}
+  if(sc.p)persp.textContent=sc.p;
+  if(sc.c){document.querySelector('.capwrap').style.opacity=1;if(sc.c!==last){last=sc.c;cap.textContent=sc.c;cap.classList.remove('pop');void cap.offsetWidth;cap.classList.add('pop');}}
+  else{document.querySelector('.capwrap').style.opacity=0;last='';}
+  requestAnimationFrame(frame);
+ }
+ requestAnimationFrame(frame);
+})();
+</script></body></html>

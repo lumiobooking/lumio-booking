@@ -1,0 +1,131 @@
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumio — Đề xuất giao diện App điện thoại</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Be Vietnam Pro',system-ui,sans-serif}
+body{background:#0b0f1a;color:#e7eaf3;padding:26px 14px 40px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto}
+h1{font-size:22px;font-weight:800;text-align:center;background:linear-gradient(90deg,#a5b4fc,#f0abfc);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{text-align:center;color:#98a1b3;font-size:13.5px;margin:6px 0 22px}
+.board{display:flex;gap:22px;justify-content:center;flex-wrap:wrap}
+.col{width:300px;max-width:94vw}
+.cap{text-align:center;font-size:13px;color:#c7d2fe;font-weight:600;margin-top:12px}
+.cap b{color:#fff}
+/* phone */
+.phone{width:100%;aspect-ratio:9/19.3;background:#0b1020;border-radius:36px;padding:9px;box-shadow:0 24px 60px rgba(0,0,0,.5),inset 0 0 0 2px #232842}
+.scr{position:relative;width:100%;height:100%;background:#f6f7fb;border-radius:28px;overflow:hidden;display:flex;flex-direction:column}
+.stat{display:flex;justify-content:space-between;align-items:center;padding:12px 20px 4px;font-size:12.5px;font-weight:700;color:#0f172a}
+.stat .r{display:flex;gap:5px;align-items:center}
+.hdr{padding:8px 18px 12px}
+.hdr .t{font-size:20px;font-weight:800;color:#0f172a}
+.hdr .s{font-size:12.5px;color:#8b93a7;font-weight:500}
+.body{flex:1;overflow:hidden;padding:2px 14px}
+/* filter chips */
+.chips{display:flex;gap:7px;padding:2px 4px 12px;flex-wrap:wrap}
+.chip{font-size:11.5px;font-weight:600;color:#5b6478;background:#eceef4;border-radius:99px;padding:5px 11px}
+.chip.on{background:#6366f1;color:#fff}
+/* section label */
+.sl{font-size:11px;font-weight:800;letter-spacing:.6px;color:#a3abbb;margin:6px 4px 8px}
+/* notif row */
+.nrow{display:flex;gap:11px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid #eef0f4;position:relative}
+.nic{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:grid;place-items:center;color:#fff}
+.nic svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.n-book{background:#6366f1}.n-cancel{background:#ef4444}.n-pay{background:#10b981}.n-table{background:#3b82f6}
+.ntx{flex:1;min-width:0}
+.ntx .m{font-size:13.5px;color:#111827;line-height:1.3;font-weight:500}
+.ntx .m b{font-weight:700}
+.ntx .d{font-size:11.5px;color:#98a1b3;margin-top:3px}
+.ntime{font-size:11px;color:#b3bac8;flex-shrink:0;padding-top:2px}
+.dot{position:absolute;left:-2px;top:16px;width:7px;height:7px;border-radius:99px;background:#ef4444}
+/* home stats */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:2px 2px 4px}
+.kpi{background:#fff;border:1px solid #edeff4;border-radius:16px;padding:13px 14px}
+.kpi .v{font-size:22px;font-weight:800;color:#0f172a}
+.kpi .v.g{color:#10b981}
+.kpi .l{font-size:11.5px;color:#8b93a7;margin-top:1px;font-weight:500}
+.up{background:#fff;border:1px solid #edeff4;border-radius:16px;padding:6px 14px;margin-top:12px}
+.up .h{font-size:12px;font-weight:800;color:#a3abbb;letter-spacing:.4px;padding:8px 0 6px}
+.uprow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f1f3f7}
+.uprow .tm{font-size:12.5px;font-weight:700;color:#6366f1;width:58px}
+.uprow .nm{flex:1;font-size:13.5px;font-weight:600;color:#1f2937}
+.uprow .sv{font-size:11.5px;color:#98a1b3}
+.uprow .st{width:9px;height:9px;border-radius:99px;background:#3b82f6}
+.uprow .st.a{background:#f59e0b}
+.quick{margin-top:14px;background:linear-gradient(90deg,#6366f1,#4f46e5);color:#fff;border-radius:14px;padding:13px;text-align:center;font-weight:700;font-size:14px}
+/* bottom nav */
+.nav{display:flex;justify-content:space-around;align-items:center;padding:9px 6px 16px;background:#fff;border-top:1px solid #edeff4}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:3px;color:#9aa2b2;font-size:10px;font-weight:600;text-decoration:none;flex:1}
+.nav a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav a.on{color:#6366f1}
+.nav a.on .badge{position:relative}
+.badge{position:relative}
+.badge b{position:absolute;top:-4px;right:-8px;background:#ef4444;color:#fff;font-size:8.5px;font-weight:800;min-width:14px;height:14px;border-radius:99px;display:grid;place-items:center;padding:0 3px}
+</style></head>
+<body><div class="wrap">
+<h1>Đề xuất giao diện App điện thoại Lumio</h1>
+<div class="sub">Điện thoại = xem & xử lý nhanh · Máy tính = cài đặt & thiết lập · Thanh tab dưới gọn + Feed thông báo đặt lịch/đơn hàng</div>
+
+<div class="board">
+
+  <!-- PHONE 1: HOME -->
+  <div class="col">
+   <div class="phone"><div class="scr">
+     <div class="stat"><span>9:41</span><span class="r">📶 🔋</span></div>
+     <div class="hdr"><div class="t">Chào buổi sáng 👋</div><div class="s">Lisa Nails & Spa</div></div>
+     <div class="body">
+       <div class="grid2">
+         <div class="kpi"><div class="v g">$1,240</div><div class="l">Doanh thu hôm nay</div></div>
+         <div class="kpi"><div class="v">18</div><div class="l">Lịch hẹn</div></div>
+         <div class="kpi"><div class="v">4</div><div class="l">Đang phục vụ</div></div>
+         <div class="kpi"><div class="v g">96%</div><div class="l">Khách đến</div></div>
+       </div>
+       <div class="up">
+         <div class="h">SẮP TỚI</div>
+         <div class="uprow"><div class="tm">2:00 PM</div><div><div class="nm">Anna Tran</div><div class="sv">Gel Manicure</div></div><div class="st"></div></div>
+         <div class="uprow"><div class="tm">2:30 PM</div><div><div class="nm">Kim Le</div><div class="sv">Shellac Pedi</div></div><div class="st a"></div></div>
+         <div class="uprow"><div class="tm">3:00 PM</div><div><div class="nm">Nhóm 4 · Bàn Patio</div><div class="sv">Đặt bàn</div></div><div class="st"></div></div>
+       </div>
+       <div class="quick">＋ Tính tiền nhanh</div>
+     </div>
+     <div class="nav">
+       <a class="on"><svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg>Tổng quan</a>
+       <a><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Lịch</a>
+       <a><span class="badge"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><b>9</b></span>Thông báo</a>
+       <a><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg>Báo cáo</a>
+       <a><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Tính tiền</a>
+     </div>
+   </div></div>
+   <div class="cap"><b>Tổng quan</b> — số liệu hôm nay + lịch sắp tới + nút tính tiền</div>
+  </div>
+
+  <!-- PHONE 2: NOTIFICATIONS (hero) -->
+  <div class="col">
+   <div class="phone"><div class="scr">
+     <div class="stat"><span>9:41</span><span class="r">📶 🔋</span></div>
+     <div class="hdr"><div class="t">Thông báo</div><div class="s">Lisa Nails & Spa</div></div>
+     <div class="body" style="overflow-y:auto">
+       <div class="chips"><span class="chip on">Tất cả</span><span class="chip">Đặt lịch</span><span class="chip">Huỷ</span><span class="chip">Đơn hàng</span></div>
+       <div class="sl">HÔM NAY</div>
+       <div class="nrow"><span class="dot"></span><div class="nic n-book"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18M12 14v4M10 16h4"/></svg></div><div class="ntx"><div class="m"><b>Anna Tran</b> đặt Gel Manicure</div><div class="d">Hôm nay · 2:00 PM · qua Web</div></div><div class="ntime">4 phút</div></div>
+       <div class="nrow"><span class="dot"></span><div class="nic n-pay"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="ntx"><div class="m"><b>Bàn 5</b> · Đơn hàng $84 đã thanh toán</div><div class="d">Hôm nay · 1:32 PM · Thẻ</div></div><div class="ntime">15 phút</div></div>
+       <div class="nrow"><span class="dot"></span><div class="nic n-table"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div class="ntx"><div class="m"><b>Nhóm 4 người</b> đặt bàn — Patio</div><div class="d">Hôm nay · 7:00 PM · qua Điện thoại</div></div><div class="ntime">32 phút</div></div>
+       <div class="nrow"><div class="nic n-cancel"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18M9 15l6 4M15 15l-6 4"/></svg></div><div class="ntx"><div class="m"><b>Kim Le</b> huỷ Shellac Pedi</div><div class="d">Hôm nay · 5:15 PM · qua App</div></div><div class="ntime">1 giờ</div></div>
+       <div class="sl">HÔM QUA</div>
+       <div class="nrow"><div class="nic n-book"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18M12 14v4M10 16h4"/></svg></div><div class="ntx"><div class="m"><b>Sarah Pham</b> đặt Full Set</div><div class="d">Hôm qua · 4:30 PM · qua Web</div></div><div class="ntime">1 ngày</div></div>
+       <div class="nrow"><div class="nic n-pay"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="ntx"><div class="m"><b>Tina Vo</b> · Đơn hàng $52 đã thanh toán</div><div class="d">Hôm qua · 3:10 PM · Tiền mặt</div></div><div class="ntime">1 ngày</div></div>
+     </div>
+     <div class="nav">
+       <a><svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg>Tổng quan</a>
+       <a><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Lịch</a>
+       <a class="on"><span class="badge"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>Thông báo</a>
+       <a><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg>Báo cáo</a>
+       <a><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Tính tiền</a>
+     </div>
+   </div></div>
+   <div class="cap"><b>Thông báo</b> — feed đặt lịch · huỷ · đơn hàng, lọc theo loại (mục anh cần)</div>
+  </div>
+
+</div>
+
+<p style="text-align:center;color:#6b7385;font-size:12px;margin-top:24px">Nền sáng, gọn kiểu app anh gửi · màu nhấn indigo Lumio · icon phân loại · huy hiệu số thông báo chưa đọc</p>
+</div></body></html>

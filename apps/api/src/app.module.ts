@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { RateLimitGuard } from './common/security/rate-limit.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuditModule } from './audit/audit.module';
@@ -110,6 +112,12 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     // Feature access policy: Super Admin decides per salon which features are
     // salon-managed vs platform-managed (hidden + write-blocked). Global.
     FeaturePolicyModule,
+  ],
+  providers: [
+    // Global sliding-window rate limiter — first line of defence against
+    // brute-force logins and booking/signup spam. Public routes tighten it with
+    // @RateLimit; provider webhooks opt out with @SkipRateLimit.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
   ],
 })
 export class AppModule {}

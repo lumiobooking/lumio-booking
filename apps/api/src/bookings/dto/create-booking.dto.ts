@@ -115,4 +115,18 @@ export class CreateBookingDto {
   @IsOptional()
   @IsEnum(PaymentType)
   paymentType?: PaymentType;
+
+  // --- Anti-spam (both optional; invisible to real customers) ---
+  // Honeypot: a hidden field real browsers leave empty. Bots that auto-fill
+  // every input set it → the booking is silently dropped server-side.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  website?: string;
+
+  // Cloudflare Turnstile token — only verified when TURNSTILE_SECRET is set.
+  @IsOptional()
+  @IsString()
+  @MaxLength(3000)
+  captchaToken?: string;
 }

@@ -61,6 +61,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hp, setHp] = useState(''); // honeypot: real users never fill this
 
   useEffect(() => { fetch(`${base}/services`).then((r) => r.json()).then((s: Svc[]) => setSvcId(Array.isArray(s) && s[0] ? s[0].id : '')).catch(() => {}); }, [base]);
   useEffect(() => { if (showMenu && !menu) fetch(`${base}/menu`).then((r) => r.json()).then(setMenu).catch(() => setMenu([])); }, [showMenu, menu, base]);
@@ -117,7 +118,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
     try {
       const res = await fetch(`${base}/bookings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceId: svcId, startTime: startISO, partySize: party, area: seating !== 'No Preference' ? seating : undefined, customerFirstName: first, customerLastName: rest.join(' ') || undefined, customerPhone: form.phone.trim(), customerEmail: form.email.trim() || undefined, notes: parts.join(' · ') || undefined, paymentType: dep?.enabled ? 'PAY_ONLINE' : 'PAY_LATER' }),
+        body: JSON.stringify({ website: hp, serviceId: svcId, startTime: startISO, partySize: party, area: seating !== 'No Preference' ? seating : undefined, customerFirstName: first, customerLastName: rest.join(' ') || undefined, customerPhone: form.phone.trim(), customerEmail: form.email.trim() || undefined, notes: parts.join(' · ') || undefined, paymentType: dep?.enabled ? 'PAY_ONLINE' : 'PAY_LATER' }),
       });
       const b = await res.json().catch(() => null);
       if (!res.ok) { setError((b && b.message) || `Reservation failed (${res.status})`); return; }
@@ -167,6 +168,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
       <div style={shell}>
         {Head(step === 1 ? 'Choose Your Table' : step === 2 ? 'Your Information' : 'Review & Confirm')}
         <div style={{ padding: '4px 20px 24px' }}>
+          <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={hp} onChange={(e) => setHp(e.target.value)} style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
           {error && <div style={{ background: '#fef2f2', color: '#b91c1c', padding: '10px 13px', borderRadius: 11, fontSize: 14, marginBottom: 14 }}>{error}</div>}
 
           {step === 1 && (

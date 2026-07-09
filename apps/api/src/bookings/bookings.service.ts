@@ -292,6 +292,20 @@ export class BookingsService {
       throw new BadRequestException('Please enter a valid phone number (8–15 digits).');
     }
 
+    // Anti-spam velocity cap: a single phone number may create at most a handful
+    // of PUBLIC bookings per rolling 24h for one salon. Stops a competitor who
+    // scripts the public form with one number to flood the calendar and burn the
+    // salon's SMS credit. Admin-created bookings are never capped.
+    if (isPublicBooking && contactPhone) {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recent = await this.prisma.appointment.count({
+        where: { tenantId, createdAt: { gte: since }, customer: { phone: contactPhone } },
+      });
+      if (recent >= 6) {
+        throw new BadRequestException('You have reached the maximum number of online bookings for today. Please call the salon to book again.');
+      }
+    }
+
     const service = await this.prisma.service.findFirst({
       where: { id: dto.serviceId, tenantId, isActive: true },
     });

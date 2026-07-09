@@ -8,6 +8,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { BillingService } from './billing.service';
+import { RateLimit } from '../common/security/rate-limit.guard';
+import { verifyCaptcha } from '../common/security/turnstile';
 
 class SignupDto {
   @IsString() salonName!: string;
@@ -19,6 +21,8 @@ class SignupDto {
   @IsIn(['month', 'year']) interval!: 'month' | 'year';
   @IsIn(['stripe', 'paypal']) provider!: 'stripe' | 'paypal';
   @IsOptional() @IsString() @MaxLength(64) timezone?: string;
+  @IsOptional() @IsString() @MaxLength(200) website?: string;
+  @IsOptional() @IsString() @MaxLength(3000) captchaToken?: string;
 }
 
 @Controller()
@@ -33,9 +37,16 @@ export class BillingController {
   }
 
   /** Public self-serve signup → returns the provider checkout URL. */
+  @RateLimit(5, 600_000)
   @Public()
   @Post('public/signup')
-  signup(@Body() dto: SignupDto) {
+  async signup(@Body() dto: SignupDto, @Headers('x-forwarded-for') xff?: string) {
+    // Honeypot — a filled hidden field means a bot; fake success, create nothing.
+    if (dto.website && dto.website.trim()) return { ok: true };
+    const ip = (xff || '').split(',')[0].trim() || undefined;
+    if (!(await verifyCaptcha(dto.captchaToken, ip))) {
+      throw new BadRequestException('Captcha verification failed. Please try again.');
+    }
     return this.billing.signup(dto);
   }
 

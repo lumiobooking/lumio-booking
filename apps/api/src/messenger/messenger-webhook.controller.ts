@@ -2,11 +2,14 @@ import { Body, Controller, Get, HttpCode, Post, Query, Res } from '@nestjs/commo
 import { Response } from 'express';
 import { MessengerService } from './messenger.service';
 import { Public } from '../auth/decorators/public.decorator';
+import { SkipRateLimit } from '../common/security/rate-limit.guard';
 
 /**
  * Public Meta Messenger webhook. GET verifies the subscription (hub.challenge);
  * POST receives message events. No @Roles so the RolesGuard won't block Meta.
+ * @SkipRateLimit: Meta batches many message events to one endpoint from one IP.
  */
+@SkipRateLimit()
 @Controller('messenger')
 export class MessengerWebhookController {
   constructor(private readonly svc: MessengerService) {}

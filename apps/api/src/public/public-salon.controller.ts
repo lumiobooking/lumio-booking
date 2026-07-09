@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
@@ -7,6 +7,8 @@ import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { deviceSource } from '../bookings/booking.util';
 import { Public } from '../auth/decorators/public.decorator';
+import { RateLimit } from '../common/security/rate-limit.guard';
+import { verifyCaptcha } from '../common/security/turnstile';
 
 /**
  * Hosted "online booking link" flow. Unlike the WordPress plugin (which is
@@ -173,8 +175,24 @@ export class PublicSalonController {
   // POST /api/public/salons/:slug/bookings -> end-customer booking (PENDING).
   // A chosen technician is treated as a preference, never a hard assignment.
   // If a paymentType is provided, a payment is created right after the booking.
+  @RateLimit(12, 60_000)
   @Post(':slug/bookings')
-  async createBooking(@Param('slug') slug: string, @Body() dto: CreateBookingDto, @Headers('user-agent') ua?: string) {
+  async createBooking(
+    @Param('slug') slug: string,
+    @Body() dto: CreateBookingDto,
+    @Headers('user-agent') ua?: string,
+    @Headers('x-forwarded-for') xff?: string,
+  ) {
+    // Honeypot: real customers never fill the hidden `website` field. If it's
+    // set, a bot filled it — pretend the booking succeeded so the spammer can't
+    // tell it was rejected, but create nothing.
+    if (dto.website && dto.website.trim()) {
+      return { booking: { id: 'ok', status: 'PENDING' }, payment: null, depositCents: 0 };
+    }
+    const ip = (xff || '').split(',')[0].trim() || undefined;
+    if (!(await verifyCaptcha(dto.captchaToken, ip))) {
+      throw new BadRequestException('Captcha verification failed. Please try again.');
+    }
     const tenantId = await this.resolveTenantId(slug);
     const safeDto: CreateBookingDto = { ...dto, staffId: undefined };
     let booking = await this.bookings.createForTenant(tenantId, safeDto, null, deviceSource(ua));

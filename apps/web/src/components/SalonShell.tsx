@@ -9,6 +9,7 @@ import { useIsMobile } from '../lib/responsive';
 import { useLang, tr, NAV_KEY } from '../lib/i18n';
 import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
+import { MobileTabBar } from './MobileTabBar';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
 type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant' };
@@ -23,6 +24,7 @@ const GROUPS: NavGroup[] = [
   { id: 'ops', label: 'Operations', icon: '🗂', items: [
     { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
     { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
+    { href: '/salon/activity', label: 'Activity', icon: '🔔' },
     { href: '/salon/tables', label: 'Tables', icon: '🍽', biz: 'restaurant' },
     { href: '/salon/menu', label: 'Menu', icon: '🍜', biz: 'restaurant' },
     { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: '🔄' },
@@ -328,7 +330,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           </>
         )}
 
-        <main style={{ padding: '18px 16px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>
+        <main style={{ padding: '18px 16px 88px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>
+        <MobileTabBar />
       </div>
     );
   }

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { RateLimitGuard } from './common/security/rate-limit.guard';
+import { ActivityModule } from './activity/activity.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuditModule } from './audit/audit.module';
@@ -112,6 +113,7 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     // Feature access policy: Super Admin decides per salon which features are
     // salon-managed vs platform-managed (hidden + write-blocked). Global.
     FeaturePolicyModule,
+    ActivityModule,
   ],
   providers: [
     // Global sliding-window rate limiter — first line of defence against

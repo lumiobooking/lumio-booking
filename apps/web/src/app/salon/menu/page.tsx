@@ -57,6 +57,7 @@ function Inner() {
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', category: '', price: '', description: '' });
   const [busy, setBusy] = useState(false);
+  const [activeCat, setActiveCat] = useState<string>('');
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -98,6 +99,10 @@ function Inner() {
     for (const it of items) { const k = it.category || '—'; const a = m.get(k) ?? []; a.push(it); m.set(k, a); }
     return Array.from(m.entries());
   }, [items]);
+  const cats = useMemo(() => grouped.map(([c]) => c), [grouped]);
+  useEffect(() => { if (cats.length && activeCat !== '__all' && !cats.includes(activeCat)) setActiveCat(cats[0]); }, [cats, activeCat]);
+  const shownGroups = activeCat === '__all' ? grouped : grouped.filter(([c]) => c === activeCat);
+  const catTab = (on: boolean): React.CSSProperties => ({ padding: '7px 14px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' });
 
   return (
     <section style={{ maxWidth: 820 }}>
@@ -122,9 +127,18 @@ function Inner() {
 
       {items.length === 0 && <p style={{ color: '#64748b', fontSize: 14, marginTop: 16 }}>{t('mn.empty')}</p>}
 
-      {grouped.map(([cat, list]) => (
-        <div key={cat} style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>{cat} <span style={{ color: '#475569' }}>· {list.length}</span></div>
+      {items.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '18px 0 12px', overflowX: 'auto', paddingBottom: 2 }}>
+          {grouped.map(([cat, list]) => (
+            <button key={cat} onClick={() => setActiveCat(cat)} style={catTab(activeCat === cat)}>{cat} <span style={{ opacity: 0.6 }}>{list.length}</span></button>
+          ))}
+          {grouped.length > 1 && <button onClick={() => setActiveCat('__all')} style={catTab(activeCat === '__all')}>All <span style={{ opacity: 0.6 }}>{items.length}</span></button>}
+        </div>
+      )}
+
+      {shownGroups.map(([cat, list]) => (
+        <div key={cat} style={{ marginTop: 4 }}>
+          {activeCat === '__all' && <div style={{ fontSize: 13, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: '#475569' }}>· {list.length}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {list.map((it) => (
               <div key={it.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 10, opacity: it.isActive ? 1 : 0.5 }}>

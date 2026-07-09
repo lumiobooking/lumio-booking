@@ -107,7 +107,7 @@ export class PublicSalonController {
   async seo(@Param('slug') slug: string) {
     const tenant = await this.prisma.tenant.findFirst({
       where: { slug, deletedAt: null },
-      select: { id: true, name: true, slug: true, timezone: true, contactEmail: true, contactPhone: true, branding: true, status: true, billingExempt: true, accessUntil: true },
+      select: { id: true, name: true, slug: true, businessType: true, timezone: true, contactEmail: true, contactPhone: true, branding: true, status: true, billingExempt: true, accessUntil: true },
     });
     if (!tenant || !this.isOpen(tenant)) throw new NotFoundException('Salon not found');
 
@@ -129,6 +129,7 @@ export class PublicSalonController {
     return {
       name: tenant.name,
       slug: tenant.slug,
+      businessType: tenant.businessType,
       timezone: tenant.timezone,
       contactPhone: tenant.contactPhone ?? null,
       contactEmail: tenant.contactEmail ?? null,

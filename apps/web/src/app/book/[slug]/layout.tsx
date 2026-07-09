@@ -1,8 +1,9 @@
 // Server component layout for the public booking page. Adds crawler- & AI-visible
 // SEO: server-rendered <title>/description/Open Graph (generateMetadata) plus
-// schema.org NailSalon JSON-LD structured data. This is what lets a salon show up
-// in Google rich results and in AI assistants (ChatGPT/Gemini) — something the
-// generic beauty-booking competitors don't do for nail salons.
+// schema.org JSON-LD structured data (NailSalon or Restaurant depending on the
+// tenant's businessType). This is what lets a salon or restaurant show up in
+// Google rich results and in AI assistants (ChatGPT/Gemini) — something the
+// generic booking competitors don't do.
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
@@ -12,6 +13,7 @@ const WEB_URL = (process.env.NEXT_PUBLIC_WEB_URL ?? 'https://lumiobooking.com').
 interface Seo {
   name: string;
   slug: string;
+  businessType?: string;
   timezone: string;
   contactPhone: string | null;
   contactEmail: string | null;
@@ -44,6 +46,12 @@ function money(cents: number, currency: string): string {
 }
 
 function buildDescription(s: Seo): string {
+  if (s.businessType === 'RESTAURANT') {
+    const parts: string[] = [`Reserve a table at ${s.name} online`];
+    if (s.address) parts.push(`Located in ${s.address}`);
+    parts.push('Fast, easy 24/7 online reservations — pick your party size, date and time.');
+    return parts.join('. ').slice(0, 300);
+  }
   const parts: string[] = [`Book your nail appointment at ${s.name} online`];
   if (s.address) parts.push(`Located in ${s.address}`);
   if (s.priceFromCents) parts.push(`Services from ${money(s.priceFromCents, s.currency)}`);
@@ -55,12 +63,13 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 function buildJsonLd(s: Seo): Record<string, unknown> {
   const url = `${WEB_URL}/${s.slug}`;
+  const isRestaurant = s.businessType === 'RESTAURANT';
   const openingHoursSpecification = (s.hours ?? [])
     .filter((h) => !h.closed)
     .map((h) => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: DAY_NAMES[h.day], opens: h.open, closes: h.close }));
   return {
     '@context': 'https://schema.org',
-    '@type': 'NailSalon',
+    '@type': isRestaurant ? 'Restaurant' : 'NailSalon',
     name: s.name,
     url,
     ...(s.contactPhone ? { telephone: s.contactPhone } : {}),
@@ -69,16 +78,19 @@ function buildJsonLd(s: Seo): Record<string, unknown> {
     ...(s.address ? { address: { '@type': 'PostalAddress', streetAddress: s.address } } : {}),
     ...(s.logoUrl ? { image: s.logoUrl, logo: s.logoUrl } : {}),
     priceRange: s.priceFromCents ? `${money(s.priceFromCents, s.currency)}+` : '$$',
+    ...(isRestaurant ? { acceptsReservations: true } : {}),
     ...(openingHoursSpecification.length ? { openingHoursSpecification } : {}),
-    potentialAction: { '@type': 'ReserveAction', name: 'Book an appointment', target: url },
+    potentialAction: { '@type': 'ReserveAction', name: isRestaurant ? 'Reserve a table' : 'Book an appointment', target: url },
     ...(s.rating ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: s.rating.value, reviewCount: s.rating.count } } : {}),
   };
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const s = await getSeo(params.slug);
-  if (!s) return { title: 'Book an appointment online' };
-  const title = `${s.name} — Book a Nail Appointment Online`;
+  if (!s) return { title: 'Book online' };
+  const title = s.businessType === 'RESTAURANT'
+    ? `${s.name} — Book a Table Online`
+    : `${s.name} — Book a Nail Appointment Online`;
   const description = buildDescription(s);
   const url = `${WEB_URL}/${s.slug}`;
   return {

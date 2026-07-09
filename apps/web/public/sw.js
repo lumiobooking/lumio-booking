@@ -8,7 +8,7 @@
  *    old caches are purged on activate.
  *
  * Bump CACHE on every meaningful change to force old caches out. */
-const CACHE = 'lumio-cache-v4';
+const CACHE = 'lumio-cache-v5';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -45,5 +45,34 @@ self.addEventListener('fetch', (event) => {
         return res;
       })
       .catch(() => caches.match(req)),
+  );
+});
+
+// ---- Web Push: show the notification, and focus/open the app on tap ----
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  const title = data.title || 'Lumio';
+  const options = {
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: 'lumio-booking',
+    renotify: true,
+    data: { url: data.url || '/salon/activity' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/salon/activity';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('focus' in c) { try { c.navigate(url); } catch (e) {} return c.focus(); }
+      }
+      return self.clients.openWindow(url);
+    }),
   );
 });

@@ -80,6 +80,15 @@ services:
       # Public base URL of the web app, used for checkout success/cancel links.
       - key: APP_URL
         value: https://lumiobooking.com
+      # Web Push (VAPID): new-booking alerts on the owner's phone even when the
+      # app is closed. Generate a keypair (npx web-push generate-vapid-keys) and
+      # paste below in the Render dashboard. Leave blank to keep push disabled.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:support@lumiobooking.com
       # Stripe: secret key (sk_live_…) + webhook signing secret (whsec_…).
       - key: STRIPE_SECRET_KEY
         sync: false

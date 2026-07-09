@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AssignmentService } from '../assignment/assignment.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PushService } from '../push/push.service';
 import {
   BookingTemplateData,
   ReferralInvite,
@@ -68,6 +69,7 @@ export class BookingsService {
     private readonly settings: SettingsService,
     private readonly payments: PaymentsService,
     private readonly referral: ReferralService,
+    private readonly push: PushService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -600,6 +602,8 @@ export class BookingsService {
     if (n.smsAdminOnBooking && n.adminPhone) {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: n.adminPhone, body: fill(n.smsAdmin, d), twilio: n.twilio, ...related }));
     }
+    // Web push to the owner's phone (fire-and-forget; no-op unless VAPID is set).
+    this.push.sendToTenant(tenantId, { title: 'Booking mới 🗓️', body: `${d.customer} • ${d.service}`, url: '/salon/activity' }).catch(() => undefined);
     await Promise.allSettled(jobs);
   }
 

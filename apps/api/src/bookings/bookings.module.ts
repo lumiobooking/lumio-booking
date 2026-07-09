@@ -8,9 +8,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { ReferralModule } from '../referral/referral.module';
+import { PushModule } from '../push/push.module';
 
 @Module({
-  imports: [AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule],
+  imports: [AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule, PushModule],
   controllers: [BookingsController, PublicAppointmentController],
   providers: [BookingsService, ReminderService],
   exports: [BookingsService], // reused by PublicModule (WordPress plugin flow)

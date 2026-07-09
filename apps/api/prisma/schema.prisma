@@ -1657,3 +1657,16 @@ model PrintJob {
   @@index([tenantId, createdAt])
   @@map("print_jobs")
 }
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("push_subscriptions")
+}

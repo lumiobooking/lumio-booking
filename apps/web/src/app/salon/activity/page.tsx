@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
+import { PushEnable } from '../../../components/PushEnable';
 
 interface Item { id: string; type: 'booking' | 'cancel' | 'payment'; customer: string; detail: string; at: string; when: string | null }
 
@@ -83,6 +84,8 @@ function Inner() {
     <section style={{ maxWidth: 640 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 2px' }}>{L('Thông báo', 'Notifications')}</h1>
       <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{L('Booking mới, huỷ lịch và thanh toán — cập nhật liên tục.', 'New bookings, cancellations and payments — live.')}</p>
+
+      <PushEnable />
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0 6px' }}>
         {chips.map((c) => {

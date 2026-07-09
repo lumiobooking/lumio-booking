@@ -66,11 +66,10 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   useEffect(() => { if (showMenu && !menu) fetch(`${base}/menu`).then((r) => r.json()).then(setMenu).catch(() => setMenu([])); }, [showMenu, menu, base]);
 
   const loadAvail = useCallback(async () => {
-    setSlot(null); setLoadingAvail(true);
-    const a = seating && seating !== 'No Preference' ? `&area=${encodeURIComponent(seating)}` : '';
-    try { const r = await fetch(`${base}/table-availability?date=${date}&partySize=${party}${a}`); setAvail(await r.json()); }
+    setLoadingAvail(true);
+    try { const r = await fetch(`${base}/table-availability?date=${date}&partySize=${party}`); setAvail(await r.json()); }
     catch { setAvail(null); } finally { setLoadingAvail(false); }
-  }, [base, date, party, seating]);
+  }, [base, date, party]);
   useEffect(() => { loadAvail(); }, [loadAvail]);
 
   const slots = useMemo(() => {
@@ -92,6 +91,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
     return ([['Lunch', lunch], ['Dinner', dinner]] as [string, typeof slots][]).filter(([, a]) => a.length > 0);
   }, [slots]);
   const anyOpen = slots.some((s) => s.open);
+  useEffect(() => { if (slot && slots.length && !slots.some((s) => s.hm === slot && s.open)) setSlot(null); }, [slots, slot]);
 
   const fmtSlot = (hm: string) => { const [h, m] = hm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
   const dateCards = useMemo(() => Array.from({ length: 5 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d; }), []);
@@ -216,8 +216,8 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
               </div>
 
               <div style={lbl}>Select Time</div>
-              {loadingAvail ? <p style={{ color: '#a8a29e', fontSize: 14 }}>Finding available times…</p>
-                : !anyOpen ? <div style={{ background: '#f7f5f3', border: '1px solid #eee', borderRadius: 12, padding: 16, textAlign: 'center', color: '#78716c', fontSize: 14 }}>No tables for {party} guests{seating !== 'No Preference' ? ` in ${seating}` : ''} on this date.</div>
+              {loadingAvail && !avail ? <p style={{ color: '#a8a29e', fontSize: 14 }}>Finding available times…</p>
+                : !anyOpen ? <div style={{ background: '#f7f5f3', border: '1px solid #eee', borderRadius: 12, padding: 16, textAlign: 'center', color: '#78716c', fontSize: 14 }}>No tables for {party} guests on this date. Try another time or date.</div>
                 : groups.map(([label, arr]) => (
                   <div key={label} style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 12.5, color: '#a8a29e', fontWeight: 600, marginBottom: 6 }}>{label}</div>

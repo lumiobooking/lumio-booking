@@ -713,6 +713,10 @@ model WalkIn {
   note         String?
   partySize    Int     @default(1)
 
+  // Services performed this visit, accumulated live by the front desk AND the tech
+  // so checkout is complete without asking. [{ lineId, serviceId, name, priceCents, staffId }].
+  items        Json    @default("[]")
+
   status WalkInStatus @default(WAITING)
 
   createdAt  DateTime  @default(now())

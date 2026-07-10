@@ -265,25 +265,50 @@ function Register() {
     return () => { alive = false; };
   }, [token, customerId]);
 
-  // Pre-fill the ticket from a booking checkout (?serviceId=&staffId=).
+  // Pre-fill the ticket from a checkout link. A walk-in carries its full running
+  // ticket — every service done this visit, each with the technician who did it —
+  // so the cashier never re-keys anything or asks the tech/customer. A booking
+  // carries a single service + tech.
   useEffect(() => {
-    if (prefilled || services.length === 0) return;
-    const sid = params.get('serviceId');
-    const stid = params.get('staffId') || '';
-    if (sid) {
-      const s = services.find((x) => x.id === sid);
-      if (s) {
-        const d = s.discountPercent ?? 0;
-        const unit = d > 0 ? Math.round((s.priceCents * (100 - d)) / 100) : s.priceCents;
-        setCart((c) =>
-          c.length === 0
-            ? [{ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: unit, discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: stid }]
-            : c,
-        );
+    if (prefilled || !token) return;
+    let alive = true;
+    (async () => {
+      if (walkInId) {
+        try {
+          const w = await apiFetch<{ items?: { serviceId: string; name: string; priceCents: number; staffId: string | null }[] }>(`/walkins/${walkInId}`, { token });
+          const items = Array.isArray(w.items) ? w.items : [];
+          if (alive && items.length > 0) {
+            setCart((c) => (c.length > 0 ? c : items.map((it) => ({
+              uid: `u${uidSeq++}`, kind: 'SERVICE' as const, refId: it.serviceId, name: it.name,
+              origUnitPriceCents: it.priceCents, unitPriceCents: it.priceCents, discountPercent: 0,
+              quantity: 1, tipCents: 0, staffMemberId: it.staffId ?? '',
+            }))));
+            setPrefilled(true);
+            return;
+          }
+        } catch { /* fall through to the single-service prefill below */ }
       }
-    }
-    setPrefilled(true);
-  }, [services, prefilled, params]);
+      if (!alive) return;
+      // Booking checkout (or a walk-in with nothing logged yet): one service + tech.
+      if (services.length === 0) return; // catalog not ready — effect re-runs on load
+      const sid = params.get('serviceId');
+      const stid = params.get('staffId') || '';
+      if (sid) {
+        const s = services.find((x) => x.id === sid);
+        if (s) {
+          const d = s.discountPercent ?? 0;
+          const unit = d > 0 ? Math.round((s.priceCents * (100 - d)) / 100) : s.priceCents;
+          setCart((c) =>
+            c.length === 0
+              ? [{ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: s.id, name: s.name, origUnitPriceCents: s.priceCents, unitPriceCents: unit, discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: stid }]
+              : c,
+          );
+        }
+      }
+      setPrefilled(true);
+    })();
+    return () => { alive = false; };
+  }, [services, prefilled, params, token, walkInId]);
 
   const net = (priceCents: number, discountPercent?: number) =>
     discountPercent && discountPercent > 0

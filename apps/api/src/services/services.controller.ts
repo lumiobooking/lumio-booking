@@ -24,6 +24,9 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
+  // Technicians (STAFF) may READ the service menu - needed for the "My chair"
+  // running ticket. Create/update/delete stay Salon-Admin-only (class @Roles).
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.servicesService.list(user);

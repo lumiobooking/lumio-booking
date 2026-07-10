@@ -4,13 +4,15 @@ import { useCallback, useEffect, useState, FormEvent, CSSProperties } from 'reac
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { ui } from '../../../lib/ui';
+import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 
+interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface WalkIn {
   id: string; customerId: string | null; customerName: string | null; phone: string | null; note: string | null;
   partySize: number; status: string; createdAt: string; assignedAt: string | null;
+  items: WalkInItem[];
   service: { id: string; name: string } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
 }
@@ -37,17 +39,20 @@ function Inner() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ customerName: '', phone: '', serviceId: '', partySize: '1' });
+  const [form, setForm] = useState({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto' });
   const [pick, setPick] = useState<Record<string, string>>({});
+  const [currency, setCurrency] = useState('USD');
 
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [b, svc] = await Promise.all([
+      const [b, svc, settings] = await Promise.all([
         apiFetch<Board>('/walkins/board', { token }),
         apiFetch<Service[]>('/services', { token }).catch(() => []),
+        apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string } })),
       ]);
       setBoard(b); setServices(svc);
+      if (settings?.booking?.currency) setCurrency(settings.booking.currency);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -58,22 +63,35 @@ function Inner() {
   async function add(e: FormEvent) {
     e.preventDefault(); setError(null);
     try {
-      await apiFetch('/walkins', {
-        method: 'POST', token,
-        body: {
-          customerName: form.customerName.trim() || undefined,
-          phone: form.phone.trim() || undefined,
-          serviceId: form.serviceId || undefined,
-          partySize: parseInt(form.partySize, 10) || 1,
-        },
-      });
-      setForm({ customerName: '', phone: '', serviceId: '', partySize: '1' });
+      const body: Record<string, unknown> = {
+        customerName: form.customerName.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        serviceId: form.serviceId || undefined,
+        partySize: parseInt(form.partySize, 10) || 1,
+      };
+      // 'auto' = give it to the up-next free tech; a staff id = a requested tech;
+      // 'wait' = just add to the waiting list (assign later).
+      if (form.staffChoice === 'auto') body.autoAssign = true;
+      else if (form.staffChoice !== 'wait') body.assignedStaffId = form.staffChoice;
+      await apiFetch('/walkins', { method: 'POST', token, body });
+      setForm({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto' });
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add'); }
   }
   async function act(path: string, body?: unknown) {
     setError(null);
     try { await apiFetch(`/walkins/${path}`, { method: 'PATCH', token, body }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+  }
+
+  async function addServiceLine(id: string, serviceId: string, staffId: string) {
+    setError(null);
+    try { await apiFetch(`/walkins/${id}/services`, { method: 'POST', token, body: { serviceId, staffId: staffId || undefined } }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+  }
+  async function removeServiceLine(id: string, lineId: string) {
+    setError(null);
+    try { await apiFetch(`/walkins/${id}/services/${lineId}`, { method: 'DELETE', token }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
 
@@ -96,6 +114,13 @@ function Inner() {
           <ServiceSearchSelect services={services} value={form.serviceId} onChange={(id) => setForm({ ...form, serviceId: id })} placeholder={t('wi.serviceSearch')} />
         </label>
         <label><span style={ui.label}>{t('wi.partySize')}</span><input style={ui.input} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></label>
+        <label><span style={ui.label}>{lang === 'vi' ? 'Thợ' : 'Technician'}</span>
+          <select style={ui.input} value={form.staffChoice} onChange={(e) => setForm({ ...form, staffChoice: e.target.value })}>
+            <option value="auto">{lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next'}</option>
+            {(board?.staff ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
+            <option value="wait">{lang === 'vi' ? 'Chỉ thêm vào hàng chờ' : 'Add to waiting'}</option>
+          </select>
+        </label>
         <button type="submit" style={ui.primaryBtn}>{t('wi.addQueue')}</button>
       </form>
 
@@ -153,19 +178,8 @@ function Inner() {
           {(!board || board.serving.length === 0) ? (
             <div style={{ ...ui.card, color: '#64748b' }}>{t('wi.noInService')}</div>
           ) : board.serving.map((w) => (
-            <div key={w.id} style={{ ...ui.card, marginBottom: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-              <div>
-                <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
-                <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>{w.service?.name ?? '—'} · {t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff)}</strong></div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <a
-                  href={`/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`}
-                  style={{ ...ui.primaryBtn, padding: '8px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-                >{t('wi.checkout')}</a>
-                <button onClick={() => act(`${w.id}/done`)} style={{ ...ui.primaryBtn, background: '#334155', padding: '8px 14px' }}>{t('wi.done')}</button>
-              </div>
-            </div>
+            <ServingCard key={w.id} w={w} staff={staff} services={services} t={t} currency={currency}
+              onAdd={addServiceLine} onRemove={removeServiceLine} onDone={() => act(`${w.id}/done`)} />
           ))}
         </div>
       </div>
@@ -216,3 +230,82 @@ const svcOpt = (active: boolean): CSSProperties => ({
   display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none',
   background: active ? '#312e81' : 'transparent', color: active ? '#c7d2fe' : '#e2e8f0', cursor: 'pointer', fontSize: 14,
 });
+
+/**
+ * One "in service" walk-in with its running ticket. Both the front desk (here)
+ * and the technician (staff app) add each service as it's done — so when the
+ * customer checks out, every service, the tech who did it, and the total are
+ * already there. No asking the tech, no asking the customer, even with 2-3
+ * services on busy days.
+ */
+function ServingCard({ w, staff, services, t, currency, onAdd, onRemove, onDone }: {
+  w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
+  onAdd: (id: string, serviceId: string, staffId: string) => Promise<void> | void;
+  onRemove: (id: string, lineId: string) => Promise<void> | void;
+  onDone: () => void;
+}) {
+  const [svcId, setSvcId] = useState('');
+  const [techId, setTechId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const items = w.items ?? [];
+  const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
+  const techLabel = (id: string | null) => {
+    if (!id) return t('wi.unassignedTech');
+    const s = staff.find((x) => x.id === id);
+    if (s) return s.name;
+    return w.assignedStaff && w.assignedStaff.id === id ? fullName(w.assignedStaff) : t('wi.unassignedTech');
+  };
+  async function add() {
+    if (!svcId || busy) return;
+    setBusy(true);
+    try { await onAdd(w.id, svcId, techId); setSvcId(''); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div style={{ ...ui.card, marginBottom: 10, padding: '12px 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+        <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
+        <div style={{ color: '#94a3b8', fontSize: 12 }}>{t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
+      </div>
+
+      <div style={{ marginTop: 10, border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>
+        {items.length === 0 ? (
+          <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 12 }}>{t('wi.noLines')}</div>
+        ) : items.map((it) => (
+          <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+              <div style={{ color: '#94a3b8', fontSize: 11 }}>{techLabel(it.staffId)}</div>
+            </div>
+            <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
+            <button onClick={() => onRemove(w.id, it.lineId)} title={t('wi.removeLine')} aria-label={t('wi.removeLine')}
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 17, lineHeight: 1, padding: '0 2px' }}>×</button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#0f172a' }}>
+          <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>{t('wi.subtotal')}</span>
+          <span style={{ color: '#fff', fontSize: 14, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 150 }}>
+          <ServiceSearchSelect services={services} value={svcId} onChange={setSvcId} placeholder={t('wi.addServicePh')} />
+        </div>
+        <select style={{ ...ui.input, padding: '9px 10px', width: 'auto', maxWidth: 150 }} value={techId} onChange={(e) => setTechId(e.target.value)}>
+          <option value="">{t('wi.sameTech')}</option>
+          {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+        <button onClick={add} disabled={!svcId || busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: svcId && !busy ? 1 : 0.5 }}>{busy ? '…' : t('wi.addLine')}</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <a
+          href={`/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`}
+          style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '10px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+        >{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
+        <button onClick={onDone} style={{ ...ui.primaryBtn, background: '#334155', padding: '10px 14px' }}>{t('wi.done')}</button>
+      </div>
+    </div>
+  );
+}

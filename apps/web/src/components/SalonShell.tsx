@@ -49,6 +49,7 @@ const GROUPS: NavGroup[] = [
   ] },
   { id: 'finance', label: 'Finance', icon: '＄', items: [
     { href: '/salon/payments', label: 'Payments', icon: '＄' },
+    { href: '/salon/reports', label: 'Reports', icon: '📈' },
     { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
     { href: '/salon/payroll', label: 'Payroll', icon: '💵', feature: 'pos' },
     { href: '/salon/inventory', label: 'Inventory', icon: '📦', feature: 'pos' },
@@ -73,7 +74,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
   '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/inventory': 'inventory',
-  '/salon/pos/report': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
+  '/salon/pos/report': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
   '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/usage-costs': 'billing', '/salon/settings': 'settings',
   '/salon/chain': 'reports', // multi-branch consolidated report
 };

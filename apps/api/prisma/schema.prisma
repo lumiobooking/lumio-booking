@@ -1494,6 +1494,9 @@ model Order {
   // Optional links (scalar IDs, no relations to keep the schema lean).
   customerId      String?
   appointmentId   String?
+  walkInId        String?
+  // Denormalized channel for accurate source reporting: online | hotline | messenger | walkin | staff.
+  source          String?
   createdByUserId String?
   // Client-generated idempotency key for offline checkout: the same ref is never
   // created twice, so re-syncing a queued offline sale cannot duplicate the order.
@@ -1528,6 +1531,7 @@ model Order {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
+  @@index([tenantId, source])
   @@map("orders")
 }
 

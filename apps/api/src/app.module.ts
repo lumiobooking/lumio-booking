@@ -14,6 +14,7 @@ import { ServicesModule } from './services/services.module';
 import { StaffModule } from './staff/staff.module';
 import { TablesModule } from './tables/tables.module';
 import { StationsModule } from './stations/stations.module';
+import { StatsModule } from './stats/stats.module';
 import { MenuModule } from './menu/menu.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
@@ -61,6 +62,7 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     StaffModule,
     TablesModule,
     StationsModule,
+    StatsModule,
     MenuModule,
     // Booking foundation (anti double-booking, race-condition safe).
     BookingsModule,

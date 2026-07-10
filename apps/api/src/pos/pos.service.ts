@@ -9,6 +9,7 @@ import {
   WalkInStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeSource } from '../common/source.util';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -202,6 +203,14 @@ export class PosService {
     const rules = await this.settings.getBookingRules(tenantId);
     const currency = rules.currency || 'USD';
 
+    // Denormalize the sale's channel so reports can split revenue by source.
+    // Appointment sale -> the booking's channel; otherwise it is an in-person
+    // walk-in / counter sale.
+    let orderSource: string = 'walkin';
+    if (dto.appointmentId) {
+      const appt = await this.prisma.appointment.findFirst({ where: { id: dto.appointmentId, tenantId }, select: { source: true } });
+      orderSource = normalizeSource(appt?.source);
+    }
     const order = await this.prisma.$transaction(async (tx) => {
       // Next order number for this tenant.
       const last = await tx.order.findFirst({
@@ -218,6 +227,8 @@ export class PosService {
           status: paid ? OrderStatus.PAID : OrderStatus.OPEN,
           customerId: dto.customerId ?? null,
           appointmentId: dto.appointmentId ?? null,
+          walkInId: dto.walkInId ?? null,
+          source: orderSource,
           createdByUserId: user.userId,
           subtotalCents: subtotal,
           discountCents: orderDiscount,

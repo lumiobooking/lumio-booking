@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, createContext, useContext, useEffect, useState } from 'react';
+import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
@@ -164,29 +164,31 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     if (!can(pathname)) router.replace(firstAllowedHref); // on a page this role can't open
   }, [ready, token, user, pathname, hasSalonAccess, firstAllowedHref]);
 
-  // Load the salon's plan to gate plan-locked features, and cache the result.
-  useEffect(() => {
-    if (!token || user?.role !== 'SALON_ADMIN') return;
+  // Live entitlements: plan (POS gating), feature-access policy, and business
+  // type. Refetched on mount, on window focus/visibility, and on an interval so a
+  // change made in Super Admin (plan, feature access, salon <-> restaurant) shows
+  // on the salon side within seconds — no re-login or hard reload needed.
+  const refreshEntitlements = useCallback(() => {
+    if (!token || !hasSalonAccess) return;
     apiFetch<{ posEnabled: boolean }>('/me/plan', { token })
       .then((p) => { const on = p?.posEnabled ?? true; setPosEnabled(on); writeCachedPos(on); })
       .catch(() => {});
-  }, [token, user]);
-
-  // Load the feature access policy and hide any platform-managed routes.
-  useEffect(() => {
-    if (!token || !hasSalonAccess) return;
     apiFetch<{ policy: Record<string, string>; defs: { key: string; hrefs: string[] }[] }>('/feature-policy', { token })
       .then((r) => setHiddenHrefs((r?.defs || []).filter((d) => r.policy?.[d.key] === 'platform').flatMap((d) => d.hrefs)))
       .catch(() => {});
-  }, [token, hasSalonAccess]);
-
-  // Business type (salon vs restaurant) gates restaurant-only nav (e.g. Tables).
-  useEffect(() => {
-    if (!token || !hasSalonAccess) return;
     apiFetch<{ businessType?: string }>('/me/tenant', { token })
       .then((r) => { const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on); })
       .catch(() => {});
   }, [token, hasSalonAccess]);
+
+  useEffect(() => {
+    refreshEntitlements();
+    const onFocus = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') refreshEntitlements(); };
+    const iv = window.setInterval(refreshEntitlements, 45000);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => { window.clearInterval(iv); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
+  }, [refreshEntitlements]);
 
   // Close the drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);

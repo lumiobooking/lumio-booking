@@ -11,6 +11,7 @@ export interface ActivityItem {
   detail: string; // service name, or the paid amount for a payment
   at: string; // ISO timestamp of when the event happened (booked/cancelled/paid)
   when: string | null; // the appointment's start time (ISO) for booking/cancel events
+  appointmentId: string | null; // the booking this event points to (null for POS-only payments)
 }
 
 /**
@@ -56,6 +57,7 @@ export class ActivityService {
         amountCents: true,
         currency: true,
         paidAt: true,
+        appointmentId: true,
         appointment: { select: { customer: { select: { firstName: true, lastName: true } } } },
       },
     });
@@ -66,9 +68,9 @@ export class ActivityService {
       const cust = this.nameOf(a.customer);
       const detail = a.service?.name ?? 'Đặt chỗ';
       const when = a.startTime ? a.startTime.toISOString() : null;
-      items.push({ id: 'b_' + a.id, type: 'booking', customer: cust, detail, at: a.createdAt.toISOString(), when });
+      items.push({ id: 'b_' + a.id, type: 'booking', customer: cust, detail, at: a.createdAt.toISOString(), when, appointmentId: a.id });
       if (a.cancelledAt && (a.status === AppointmentStatus.CANCELLED || a.status === AppointmentStatus.NO_SHOW)) {
-        items.push({ id: 'c_' + a.id, type: 'cancel', customer: cust, detail, at: a.cancelledAt.toISOString(), when });
+        items.push({ id: 'c_' + a.id, type: 'cancel', customer: cust, detail, at: a.cancelledAt.toISOString(), when, appointmentId: a.id });
       }
     }
 
@@ -80,7 +82,7 @@ export class ActivityService {
       } catch {
         amt = '$' + Math.round(p.amountCents / 100);
       }
-      items.push({ id: 'p_' + p.id, type: 'payment', customer: this.nameOf(p.appointment?.customer), detail: amt, at: p.paidAt.toISOString(), when: null });
+      items.push({ id: 'p_' + p.id, type: 'payment', customer: this.nameOf(p.appointment?.customer), detail: amt, at: p.paidAt.toISOString(), when: null, appointmentId: p.appointmentId ?? null });
     }
 
     items.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));

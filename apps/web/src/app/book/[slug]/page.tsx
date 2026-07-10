@@ -422,8 +422,8 @@ export default function PublicBookingPage() {
               <StepDateTime rules={rules} deals={salon?.weekdayDiscounts} dateDeals={salon?.dateDiscounts} selectedDate={selectedDate} slot={slot}
                 onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                 onPickSlot={setSlot}
-                onContinue={() => slot && setStep(2)} />
-              <WaitlistCta base={base} preferredDate={selectedDate} serviceId={serviceId || undefined} fmtAccent={accent} />
+                onContinue={() => slot && setStep(2)}
+                waitlist={<WaitlistCta base={base} preferredDate={selectedDate} serviceId={serviceId || undefined} fmtAccent={accent} />} />
             </>
           )}
 
@@ -627,9 +627,9 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 // Step 1: Date & time (the customer locks in a date AND a time slot first)
 // ---------------------------------------------------------------------------
-function StepDateTime({ rules, deals, dateDeals, selectedDate, slot, onPickDate, onPickSlot, onContinue }: {
+function StepDateTime({ rules, deals, dateDeals, selectedDate, slot, onPickDate, onPickSlot, onContinue, waitlist }: {
   rules: BookingRules; deals?: WeekdayDiscounts; dateDeals?: DateDiscounts; selectedDate: Date | null; slot: Slot | null;
-  onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void; onContinue: () => void;
+  onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void; onContinue: () => void; waitlist?: React.ReactNode;
 }) {
   // Highest discount % per weekday (0=Sun..6=Sat) so we can make deal days pop in
   // the calendar. Uses the best rule across categories to entice the customer.
@@ -767,6 +767,8 @@ function StepDateTime({ rules, deals, dateDeals, selectedDate, slot, onPickDate,
           )}
         </div>
       )}
+
+      {waitlist}
     </StepFrame>
   );
 }

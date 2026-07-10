@@ -20,6 +20,7 @@ export interface AddWalkInDto {
 const INCLUDE = {
   service: { select: { id: true, name: true } },
   assignedStaff: { select: { id: true, firstName: true, lastName: true } },
+  stationRef: { select: { id: true, name: true, kind: true } },
 };
 
 export interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
@@ -59,13 +60,38 @@ export class WalkinsService {
     return d;
   }
 
+  /** Guess the chair kind a service belongs at, from its name + category. */
+  private detectKind(name?: string | null, category?: string | null): 'PEDI' | 'MANI' | 'NAIL' | 'OTHER' {
+    const s = `${name ?? ''} ${category ?? ''}`.toLowerCase();
+    if (/pedi|pedicure|foot|spa|chân|chan/.test(s)) return 'PEDI';
+    if (/mani|manicure|hand|tay/.test(s)) return 'MANI';
+    if (/nail|acrylic|dip|gel|powder|bột|bot|full set|fill|tip|shellac/.test(s)) return 'NAIL';
+    return 'OTHER';
+  }
+
+  /** A free chair for a new walk-in: an active station not currently held by a
+   *  SERVING walk-in, preferring one whose kind matches the service. */
+  private async freeStationId(tenantId: string, preferKind: 'PEDI' | 'MANI' | 'NAIL' | 'OTHER'): Promise<string | null> {
+    const [stations, occupied] = await Promise.all([
+      this.prisma.station.findMany({ where: { tenantId, isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, kind: true } }),
+      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING, stationId: { not: null } }, select: { stationId: true } }),
+    ]);
+    if (stations.length === 0) return null;
+    const busy = new Set(occupied.map((o) => o.stationId));
+    const free = stations.filter((st) => !busy.has(st.id));
+    if (free.length === 0) return null;
+    const match = preferKind !== 'OTHER' ? free.find((st) => st.kind === preferKind) : undefined;
+    return (match ?? free[0]).id;
+  }
+
   /** Add a walk-in. If a technician is passed (or auto-assign is on and a tech is
    * free) it starts in SERVING; otherwise it waits. */
   async add(user: AuthenticatedUser, dto: AddWalkInDto) {
     const tenantId = this.tenantId(user);
-    const serviceId = dto.serviceId
-      ? (await this.prisma.service.findFirst({ where: { id: dto.serviceId, tenantId }, select: { id: true } }))?.id ?? null
+    const svcMeta = dto.serviceId
+      ? await this.prisma.service.findFirst({ where: { id: dto.serviceId, tenantId }, select: { id: true, name: true, category: { select: { name: true } } } })
       : null;
+    const serviceId = svcMeta?.id ?? null;
     const staff = dto.assignedStaffId
       ? await this.prisma.staffMember.findFirst({ where: { id: dto.assignedStaffId, tenantId, takesAppointments: true }, select: { id: true } })
       : null;
@@ -79,6 +105,12 @@ export class WalkinsService {
     }
     const assigned = !!assignedStaffId;
     const items = serviceId ? [await this.buildItem(tenantId, serviceId, assignedStaffId)] : [];
+    // A customer takes a chair once a tech starts. Auto-pick a free chair, preferring
+    // one whose kind matches the service (pedi service -> pedi chair). Front desk can
+    // drag them to another chair on the floor view.
+    const stationId = assigned
+      ? await this.freeStationId(tenantId, this.detectKind(svcMeta?.name, svcMeta?.category?.name))
+      : null;
     // Find-or-create a CRM customer by phone so the walk-in earns loyalty and is
     // remarketable. Skips when no phone is given (no key to dedupe on).
     const linked = dto.phone?.trim()
@@ -96,6 +128,7 @@ export class WalkinsService {
         assignedStaffId,
         items: items as unknown as Prisma.InputJsonValue,
         station: dto.station?.trim().slice(0, 24) || null,
+        stationId,
         status: assigned ? WalkInStatus.SERVING : WalkInStatus.WAITING,
         assignedAt: assigned ? new Date() : null,
       },
@@ -196,6 +229,19 @@ export class WalkinsService {
     const w = await this.mine(user, id);
     const val = (station ?? '').toString().trim().slice(0, 24) || null;
     return this.prisma.walkIn.update({ where: { id: w.id }, data: { station: val }, include: INCLUDE });
+  }
+
+  /** Move a walk-in to a managed chair (drag on the floor) — or clear it (empty id). */
+  async moveToStation(user: AuthenticatedUser, id: string, stationId?: string) {
+    const w = await this.mine(user, id);
+    let sid: string | null = null;
+    const wanted = (stationId ?? '').trim();
+    if (wanted) {
+      const st = await this.prisma.station.findFirst({ where: { id: wanted, tenantId: w.tenantId }, select: { id: true } });
+      if (!st) throw new BadRequestException('Station not found');
+      sid = st.id;
+    }
+    return this.prisma.walkIn.update({ where: { id: w.id }, data: { stationId: sid }, include: INCLUDE });
   }
 
   /** Add a service line to a walk-in's running ticket (front desk OR the tech). */

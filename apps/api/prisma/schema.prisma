@@ -234,6 +234,7 @@ model Tenant {
   messengerThreads  MessengerThread[]
   waitlistEntries   WaitlistEntry[]
   walkIns           WalkIn[]
+  stations          Station[]
   supplyItems       SupplyItem[]
   supplyMovements   SupplyMovement[]
   products          Product[]
@@ -692,6 +693,13 @@ enum WalkInStatus {
   CANCELLED // left / removed
 }
 
+enum StationKind {
+  PEDI // pedicure spa chair
+  MANI // manicure table
+  NAIL // nail / acrylic / dip station
+  OTHER
+}
+
 model WalkIn {
   id       String @id @default(uuid())
   tenantId String
@@ -721,6 +729,11 @@ model WalkIn {
   // A locator, not a billing unit — it moves with the customer during the visit.
   station      String?
 
+  // The managed chair/station the customer is seated at (typed Pedi/Mani/Nail).
+  // Drives the reception floor view; moves with the customer via drag-and-drop.
+  stationId    String?
+  stationRef   Station? @relation("WalkInStation", fields: [stationId], references: [id], onDelete: SetNull)
+
   status WalkInStatus @default(WAITING)
 
   createdAt  DateTime  @default(now())
@@ -731,7 +744,30 @@ model WalkIn {
   @@index([tenantId, status])
   @@index([tenantId, assignedStaffId])
   @@index([tenantId, customerId])
+  @@index([tenantId, stationId])
   @@map("walk_ins")
+}
+
+/// A physical chair/station in a salon (Pedi spa chair, Mani table, Nail station).
+/// The reception "floor view" shows which chair is busy or free and who is on it.
+/// Every query is tenant-scoped so one salon never sees another's chairs.
+model Station {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String      // e.g. "1", "Spa 3", "Nail 7"
+  kind      StationKind @default(OTHER)
+  isActive  Boolean     @default(true)
+  sortOrder Int         @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  walkIns WalkIn[] @relation("WalkInStation")
+
+  @@index([tenantId])
+  @@map("stations")
 }
 
 // Back-of-house supplies/consumables a salon stocks (nail polish, tips, powder,

@@ -31,6 +31,10 @@ class StationDto {
   @IsOptional() @IsString() @MaxLength(24) station?: string;
 }
 
+class ChairDto {
+  @IsOptional() @IsString() @MaxLength(60) stationId?: string;
+}
+
 /** Walk-in queue + turn rotation — Salon Admin (front desk) only. */
 @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
 @Caps('walkins')
@@ -66,6 +70,11 @@ export class WalkinsController {
   @Patch(':id/station')
   setStation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: StationDto) {
     return this.walkins.setStation(user, id, dto.station);
+  }
+
+  @Patch(':id/chair')
+  moveToStation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ChairDto) {
+    return this.walkins.moveToStation(user, id, dto.stationId);
   }
 
   @Post(':id/services')

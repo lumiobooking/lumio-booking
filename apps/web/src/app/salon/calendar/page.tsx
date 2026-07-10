@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
+import { FloorView } from '../../../components/FloorView';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
@@ -72,7 +73,7 @@ function Inner() {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   // Month grid vs. detailed single-day timeline.
-  const [mode, setMode] = useState<'month' | 'day' | 'staff'>('month');
+  const [mode, setMode] = useState<'month' | 'day' | 'staff' | 'floor'>('month');
   // Day view: a scannable card grid (best for busy days) or a time-axis timeline.
   const [dayLayout, setDayLayout] = useState<'grid' | 'timeline'>(() => {
     if (typeof window === 'undefined') return 'grid';
@@ -210,6 +211,23 @@ function Inner() {
     }
   }
 
+  if (mode === 'floor') {
+    return (
+      <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '14px 18px', overflow: 'auto' } : undefined}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
+          <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
+            <button onClick={() => setMode('month')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
+            <button onClick={() => setMode('day')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
+            <button onClick={() => setMode('staff')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
+            <button onClick={() => setMode('floor')} style={{ ...segBtn(true), ...(isMobile ? { flex: 1 } : {}) }}>{lang === 'vi' ? 'Sơ đồ ghế' : 'Floor'}</button>
+          </div>
+        </div>
+        <FloorView token={token} lang={lang} />
+      </section>
+    );
+  }
+
   return (
     <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '14px 18px', overflow: 'auto' } : undefined}>
       {/* Row 1: title + view toggle (toggle is full-width on phones) */}
@@ -219,6 +237,7 @@ function Inner() {
           <button onClick={() => setMode('month')} style={{ ...segBtn(mode === 'month'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
           <button onClick={() => setMode('day')} style={{ ...segBtn(mode === 'day'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
           <button onClick={() => setMode('staff')} style={{ ...segBtn(mode === 'staff'), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
+          {!isRestaurant && <button onClick={() => setMode('floor')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{lang === 'vi' ? 'Sơ đồ ghế' : 'Floor'}</button>}
         </div>
       </div>
 

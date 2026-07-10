@@ -32,6 +32,7 @@ function Inner() {
   const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment'>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [tz, setTz] = useState<string | undefined>(() => (typeof window !== 'undefined' ? (window.localStorage.getItem('lumio_tz') || undefined) : undefined));
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -40,6 +41,11 @@ function Inner() {
     finally { setLoading(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    apiFetch<{ timezone?: string }>('/me/tenant', { token })
+      .then((r) => { if (r?.timezone) { setTz(r.timezone); try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } } })
+      .catch(() => {});
+  }, [token]);
 
   // Opening this screen marks everything as seen -> clears the tab/bell badge.
   useEffect(() => {
@@ -57,7 +63,7 @@ function Inner() {
   const whenText = (when: string | null) => {
     if (!when) return '';
     const d = new Date(when);
-    return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'short', ...(tz ? { timeZone: tz } : {}) }) + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   };
   const dayKey = (at: string) => {
     const d = new Date(at); const now = new Date();

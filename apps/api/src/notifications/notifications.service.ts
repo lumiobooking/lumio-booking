@@ -144,6 +144,14 @@ export class NotificationsService {
       error = String(err);
     }
 
+    // In production, an SMS routed to the mock provider means NO real Twilio is
+    // connected for this salon — record it as FAILED with a clear reason instead
+    // of a misleading "SENT", so the salon sees the customer text never went out.
+    if (input.channel === NotificationChannel.SMS && smsProvider.name === 'mock' && process.env.NODE_ENV === 'production') {
+      status = NotificationStatus.FAILED;
+      error = 'SMS not sent — no Twilio number is connected for this salon. Connect Twilio in Settings -> SMS gateway (and make sure the plan includes SMS).';
+    }
+
     return this.prisma.notification.create({
       data: {
         tenantId: input.tenantId,

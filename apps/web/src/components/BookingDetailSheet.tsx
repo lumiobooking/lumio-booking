@@ -36,6 +36,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
   const isMobile = useIsMobile();
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState(false);
+  const [tz, setTz] = useState<string | undefined>(() => (typeof window !== 'undefined' ? (window.localStorage.getItem('lumio_tz') || undefined) : undefined));
 
   useEffect(() => {
     let alive = true;
@@ -48,6 +49,12 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
   }, [apptId, token]);
 
   useEffect(() => {
+    apiFetch<{ timezone?: string }>('/me/tenant', { token })
+      .then((r) => { if (r?.timezone) { setTz(r.timezone); try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } } })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -55,8 +62,8 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
 
   const fullName = (o?: { firstName: string; lastName: string | null } | null, fb = L('Khách', 'Guest')) =>
     o ? ([o.firstName, o.lastName].filter(Boolean).join(' ').trim() || fb) : fb;
-  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' });
-  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const money = (cents: number) => { try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100); } catch { return '$' + Math.round(cents / 100); } };
   const sourceLabel = (s?: string | null) => {
     switch ((s || '').toUpperCase()) {

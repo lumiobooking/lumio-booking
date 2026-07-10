@@ -36,6 +36,19 @@ function xml(s: string): string {
 }
 
 /** Normalise a phone number for matching (keep leading +, digits only). */
+// Normalize a phone to E.164 (US/CA default) so Twilio can text it. Returns ''
+// when the number is too short to be a real, sendable number.
+function toE164(raw: string | null | undefined): string {
+  const t = String(raw || '').trim();
+  if (!t) return '';
+  if (t[0] === '+') { const dd = t.slice(1).replace(/\D/g, ''); return dd.length >= 10 ? '+' + dd : ''; }
+  const digits = t.replace(/\D/g, '');
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits[0] === '1') return '+' + digits;
+  if (digits.length >= 11) return '+' + digits;
+  return '';
+}
+
 function normNum(v: string | null | undefined): string {
   if (!v) return '';
   const t = String(v).trim();
@@ -367,7 +380,9 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         const firstName = String(input.customerFirstName || '').trim();
         const serviceId = String(input.serviceId || '').trim();
         const local = String(input.localDateTime || '').trim();
-        const phone = (String(input.customerPhone || '').trim() || callerPhone || '').trim();
+        // Use a fully-formed spoken number if the caller gave one; otherwise fall
+        // back to the verified caller ID. Both normalized to E.164 so Twilio can text it.
+        const phone = toE164(String(input.customerPhone || '')) || toE164(callerPhone);
         if (!firstName || !serviceId || !local) return 'Missing required info; ask the caller for what is missing.';
         if (!phone) return 'No phone number available; politely ask the caller for a good callback number.';
         const startTime = wallToUtcISO(local, tz);

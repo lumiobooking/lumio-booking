@@ -176,8 +176,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     apiFetch<{ policy: Record<string, string>; defs: { key: string; hrefs: string[] }[] }>('/feature-policy', { token })
       .then((r) => setHiddenHrefs((r?.defs || []).filter((d) => r.policy?.[d.key] === 'platform').flatMap((d) => d.hrefs)))
       .catch(() => {});
-    apiFetch<{ businessType?: string }>('/me/tenant', { token })
-      .then((r) => { const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on); })
+    apiFetch<{ businessType?: string; timezone?: string }>('/me/tenant', { token })
+      .then((r) => { const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on); if (r?.timezone) { try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } } })
       .catch(() => {});
   }, [token, hasSalonAccess]);
 

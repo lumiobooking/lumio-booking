@@ -401,7 +401,7 @@ const tbBtn: React.CSSProperties = {
 
 interface NotificationRow {
   id: string; channel: string; recipient: string; subject: string | null; body: string;
-  status: string; provider: string; sentAt: string | null; createdAt: string;
+  status: string; provider: string; error: string | null; sentAt: string | null; createdAt: string;
 }
 const COLORS: Record<string, string> = { SENT: '#22c55e', PENDING: '#eab308', FAILED: '#ef4444' };
 
@@ -443,7 +443,11 @@ function HistoryView({ token }: { token: string | null }) {
                 {n.subject && <div style={{ fontWeight: 600 }}>{n.subject}</div>}
                 <div style={{ color: '#94a3b8', fontSize: 13 }}>{n.body}</div>
               </td>
-              <td style={ui.td}><span style={{ color: COLORS[n.status] ?? '#94a3b8', fontWeight: 600 }}>{n.status}</span></td>
+              <td style={ui.td}>
+                <span style={{ color: COLORS[n.status] ?? '#94a3b8', fontWeight: 600 }}>{n.status}</span>
+                {n.status === 'FAILED' && n.error && <div style={{ color: '#f87171', fontSize: 11.5, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{n.error}</div>}
+                {n.status !== 'FAILED' && n.provider === 'mock' && <div style={{ color: '#fbbf24', fontSize: 11, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{lang === 'vi' ? '⚠ Chưa gửi thật — chưa kết nối Twilio/email' : '⚠ Not a real send — connect Twilio/email'}</div>}
+              </td>
             </tr>
           ))}
         </tbody>

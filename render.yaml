@@ -129,7 +129,9 @@ services:
   - type: web
     name: lumio-web
     runtime: node
-    plan: free
+    # Paid (Starter, $7/mo) so a blueprint deploy never silently reverts it to
+    # free (which would sleep + cold-start). Pinned here like the API service.
+    plan: starter
     rootDir: .
     # Raise Node's heap ceiling for `next build` so it doesn't die with
     # "JavaScript heap out of memory" as the app grows (the build machine has

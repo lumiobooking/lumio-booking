@@ -58,21 +58,23 @@ export default function PlansPage() {
 
   useEffect(() => { if (ready && token && user?.role === 'SUPER_ADMIN') load(); }, [ready, token, user, load]);
 
-  async function seedDefaults() {
+  // The 3 standard Lumio plans (must match the public pricing page).
+  async function resetToStandard() {
     if (!token) return;
+    if (typeof window !== 'undefined' && !window.confirm('This DELETES all current plans and creates the 3 standard plans (Starter / Pro / Premium). Salons on a deleted plan become "no plan". Continue?')) return;
     setSeeding(true); setError(null);
-    const defaults = [
-      { name: 'Starter', tagline: 'For a single salon getting started', priceMonthlyCents: 2900, priceYearlyCents: 29000, trialDays: 14, maxStaff: 3, maxBookingsPerMonth: null, posEnabled: false, onlinePaymentEnabled: false, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: false, sortOrder: 1, features: ['Online booking 24/7', 'SMS & email reminders', 'Up to 3 staff', 'AI hotline'] },
-      { name: 'Pro', tagline: 'For a busy salon that wants it all', priceMonthlyCents: 5900, priceYearlyCents: 59000, trialDays: 14, maxStaff: 10, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: true, sortOrder: 2, features: ['Everything in Starter', 'POS / checkout suite', 'Online payments', 'Up to 10 staff'] },
-      { name: 'Business', tagline: 'For multi-location owners', priceMonthlyCents: 9900, priceYearlyCents: 99000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true, isActive: true, publicVisible: true, highlighted: false, sortOrder: 3, features: ['Everything in Pro', 'Multi-location', 'White-label branding', 'Unlimited staff'] },
+    const standard = [
+      { name: 'Starter', tagline: 'Small & new salons', priceMonthlyCents: 2900, priceYearlyCents: 29000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: false, onlinePaymentEnabled: false, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: false, sortOrder: 1, features: ['Online booking 24/7', 'Calendar & customer CRM', 'Email confirmations', 'Google review QR', 'Installable app (PWA)', '100 SMS / month'] },
+      { name: 'Pro', tagline: 'Full-service salons', priceMonthlyCents: 6900, priceYearlyCents: 69000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: true, sortOrder: 2, features: ['Everything in Starter', 'POS & checkout', 'Walk-ins & waitlist', 'Payroll & tips', 'Messenger AI booking bot', 'Marketing & referrals'] },
+      { name: 'Premium', tagline: 'Multi-location + full AI', priceMonthlyCents: 14900, priceYearlyCents: 149000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true, isActive: true, publicVisible: true, highlighted: false, sortOrder: 3, features: ['Everything in Pro', 'AI Hotline included (300 min)', 'Multi-branch + reports', 'Priority support', 'White-label ready', '1,500 SMS / month'] },
     ];
     try {
-      for (const plan of defaults) {
-        await apiFetch('/tenants/plans', { method: 'POST', token, body: plan });
-      }
+      const existing = await apiFetch<Plan[]>('/tenants/plans', { token });
+      for (const pl of existing) { await apiFetch('/tenants/plans/' + pl.id, { method: 'DELETE', token }).catch(() => undefined); }
+      for (const plan of standard) { await apiFetch('/tenants/plans', { method: 'POST', token, body: plan }); }
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create starter plans');
+      setError(err instanceof Error ? err.message : 'Could not reset plans');
     } finally {
       setSeeding(false);
     }
@@ -103,7 +105,7 @@ export default function PlansPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a href="/super-admin/tenants" style={ghost}>← Salons</a>
-          {plans.length === 0 && <button onClick={seedDefaults} disabled={seeding} style={ghost}>{seeding ? 'Creating…' : '✨ Starter plans'}</button>}
+          <button onClick={resetToStandard} disabled={seeding} style={ghost}>{seeding ? 'Working…' : '↺ Standard plans'}</button>
           <button onClick={() => { setShowForm((s) => !s); setEditId(null); }} style={primary}>{showForm ? 'Close' : '+ New plan'}</button>
           <button onClick={logout} style={ghost}>Log out</button>
         </div>

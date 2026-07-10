@@ -70,11 +70,30 @@ import {
  * re-saving settings never overwrites a stored secret with the mask, and so
  * pasted whitespace can't corrupt it (a common cause of Google "invalid_client").
  */
+// A secret made ONLY of these characters (bullets of every kind, dots, stars,
+// dashes, underscores, spaces) is the UI mask — never a real key.
+const MASK_ONLY = /^[\s•●○◦∙⋅·*.\-_—–]+$/;
+function stripInvisible(v: string): string {
+  return v.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+}
+function isMaskOnly(v: string): boolean {
+  const t = stripInvisible(v);
+  return !t || MASK_ONLY.test(t);
+}
 function cleanSecret(v: unknown): string | null {
   if (typeof v !== 'string') return null;
-  const t = v.trim();
-  if (!t) return null;
-  if (/^[•*•.\s]+$/.test(t)) return null; // only mask characters
+  const t = stripInvisible(v);
+  if (!t || isMaskOnly(t)) return null;
+  return t;
+}
+// Sanitize a secret READ from storage: a value that is blank or only mask
+// characters (e.g. corrupted by an old save) is treated as unset, so a stale
+// "••••" can never be sent to a provider and the UI stops showing a false
+// "saved" state — the salon is prompted to paste a fresh key instead.
+function usableSecret(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  const t = stripInvisible(v);
+  if (!t || isMaskOnly(t)) return '';
   return t;
 }
 
@@ -226,13 +245,18 @@ export class SettingsService {
   /** Full notification settings (incl. secrets) — server-side use. */
   async getNotificationSettings(tenantId: string): Promise<NotificationSettings> {
     const merged = await this.readKey<NotificationSettings>(tenantId, NOTIFICATION_SETTINGS_KEY, DEFAULT_NOTIFICATION_SETTINGS);
-    return {
-      ...merged,
-      smtp: { ...DEFAULT_NOTIFICATION_SETTINGS.smtp, ...(merged.smtp ?? {}) },
-      brevo: { ...DEFAULT_NOTIFICATION_SETTINGS.brevo, ...(merged.brevo ?? {}) },
-      gmail: { ...DEFAULT_NOTIFICATION_SETTINGS.gmail, ...(merged.gmail ?? {}) },
-      twilio: { ...DEFAULT_NOTIFICATION_SETTINGS.twilio, ...(merged.twilio ?? {}) },
-    };
+    const smtp = { ...DEFAULT_NOTIFICATION_SETTINGS.smtp, ...(merged.smtp ?? {}) };
+    const brevo = { ...DEFAULT_NOTIFICATION_SETTINGS.brevo, ...(merged.brevo ?? {}) };
+    const gmail = { ...DEFAULT_NOTIFICATION_SETTINGS.gmail, ...(merged.gmail ?? {}) };
+    const twilio = { ...DEFAULT_NOTIFICATION_SETTINGS.twilio, ...(merged.twilio ?? {}) };
+    // Self-heal secrets that an old save corrupted to the UI mask, so a stale
+    // "••••" is never sent to a provider (the cause of Brevo 401 "Key not found"
+    // that appeared to persist across deploys). A real key is never all-mask.
+    brevo.apiKey = usableSecret(brevo.apiKey);
+    twilio.authToken = usableSecret(twilio.authToken);
+    smtp.pass = usableSecret(smtp.pass);
+    gmail.clientSecret = usableSecret(gmail.clientSecret);
+    return { ...merged, smtp, brevo, gmail, twilio };
   }
 
   /** Notification view for the frontend — hides the SMTP pass + Twilio token. */
@@ -317,6 +341,18 @@ export class SettingsService {
       senderEmail: gmailClientIdChanged ? '' : cur.gmail.senderEmail,
     };
 
+    // A freshly-entered Brevo key must look like a real Brevo API key (they all
+    // start with "xkeysib-"). Blocks a wrong/mangled paste from being stored and
+    // then failing later with Brevo 401 "Key not found".
+    const newBrevoKey = cleanSecret(incBrevo.apiKey);
+    if (newBrevoKey && !/^xkeysib-/i.test(newBrevoKey)) {
+      throw new BadRequestException(
+        'Brevo API key không đúng định dạng — key phải bắt đầu bằng "xkeysib-". ' +
+          'Vào Brevo → SMTP & API → API Keys tạo key mới rồi dán lại toàn bộ. ' +
+          '(Brevo API keys start with "xkeysib-"; paste the full key from SMTP & API → API Keys.)',
+      );
+    }
+
     const merged: NotificationSettings = {
       ...cur,
       ...stripUndefined(dto as Record<string, unknown>),
@@ -334,8 +370,8 @@ export class SettingsService {
       brevo: {
         senderEmail: typeof incBrevo.senderEmail === 'string' ? incBrevo.senderEmail : cur.brevo.senderEmail,
         senderName: typeof incBrevo.senderName === 'string' ? incBrevo.senderName : cur.brevo.senderName,
-        // Blank/masked API key keeps the stored one (guarded like the Gmail secret).
-        apiKey: cleanSecret(incBrevo.apiKey) ?? cur.brevo.apiKey,
+        // Blank/masked API key keeps the stored one; a valid new key replaces it.
+        apiKey: newBrevoKey ?? cur.brevo.apiKey,
       },
       gmail: mergedGmail,
       twilio: {
@@ -588,6 +624,13 @@ export class SettingsService {
     const result = await Promise.race([sendPromise, timeout]);
     if (result.success) return { ok: true, to };
     let error = result.error || 'Send failed';
+    // Brevo rejected the API key — the stored key is wrong or was regenerated.
+    if (/brevo/i.test(error) && /(401|unauthorized|key not found|invalid[_ ]?key)/i.test(error)) {
+      error =
+        'Brevo từ chối API key (Key not found/unauthorized): key đã lưu không còn đúng hoặc đã bị tạo lại trên Brevo. ' +
+        'Vào Brevo → SMTP & API → API Keys tạo key MỚI (bắt đầu bằng "xkeysib-"), dán vào ô “Brevo API key”, bấm Lưu rồi thử lại. ' +
+        '(The saved Brevo key is invalid or was regenerated — create a fresh key, paste it, Save, then retest.)';
+    }
     // Translate Google's cryptic OAuth errors into a clear next step.
     if (/invalid_client/i.test(error)) {
       error =

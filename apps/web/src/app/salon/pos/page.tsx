@@ -746,7 +746,7 @@ function Register() {
   if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
 
   return (
-    <section style={{ paddingBottom: isMobile && mobileView === 'catalog' ? 84 : undefined }}>
+    <section style={{ paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined }}>
       <style>{`
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
         .pos-card:hover { border-color: #6366f1 !important; background: #1e293b !important; }
@@ -1138,7 +1138,7 @@ function Register() {
 
       {/* Mobile: sticky total + go-to-ticket bar so checkout is one tap away. */}
       {isMobile && mobileView === 'catalog' && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, background: '#111827', borderTop: '1px solid #334155', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', zIndex: 45, background: '#111827', borderTop: '1px solid #334155', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#94a3b8' }}>{cart.length} {t('po.itemsWord')}</div>
             <div style={{ fontSize: 19, fontWeight: 800, color: '#22c55e' }}>{formatPrice(money.total, currency)}</div>

@@ -175,21 +175,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   // row stay aligned (e.g. the long "Timezone…" label no longer pushes its box down).
   return <label style={{ display: 'block' }}><span style={{ ...ui.label, minHeight: 30, display: 'block' }}>{label}</span>{children}</label>;
 }
-function RadioRow({ checked, onClick, title, desc }: { checked: boolean; onClick: () => void; title: string; desc: string }) {
-  return (
-    <button type="button" onClick={onClick}
-      style={{ textAlign: 'left', display: 'flex', gap: 10, padding: 12, borderRadius: 10, cursor: 'pointer',
-        border: `1px solid ${checked ? '#6366f1' : '#334155'}`, background: checked ? '#312e81' : '#0f172a' }}>
-      <span style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${checked ? '#818cf8' : '#64748b'}`, display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 2 }}>
-        {checked && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#818cf8' }} />}
-      </span>
-      <span>
-        <div style={{ fontWeight: 600, fontSize: 14, color: '#e2e8f0' }}>{title}</div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>{desc}</div>
-      </span>
-    </button>
-  );
-}
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button onClick={() => onChange(!on)} type="button"
@@ -324,13 +309,18 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
         <Toggle on={f.allowCustomerChooseStaff} onChange={(v) => setF({ ...f, allowCustomerChooseStaff: v })} label={t('se.ru.chooseStaff')} />
       </div>
 
-      <div style={{ marginTop: 14, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.ru.assignment')}</div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 8px' }}>{t('se.ru.assignWhen')}</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <RadioRow checked={f.assignmentMode === 'none'} onClick={() => setF({ ...f, assignmentMode: 'none' })}
-          title={t('se.ru.noneTitle')} desc={t('se.ru.noneDesc')} />
-        <RadioRow checked={f.assignmentMode === 'auto'} onClick={() => setF({ ...f, assignmentMode: 'auto' })}
-          title={t('se.ru.autoTitle')} desc={t('se.ru.autoDesc')} />
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.ru.assignment')}</div>
+      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid #334155', borderRadius: 10, background: '#0f172a' }}>
+        <Toggle on={f.assignmentMode === 'auto'} onChange={(v) => setF({ ...f, assignmentMode: v ? 'auto' : 'none' })} label={t('se.ru.autoTitle')} />
+        <p style={{ color: '#64748b', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
+          {f.assignmentMode === 'auto'
+            ? (lang === 'vi'
+                ? 'ĐANG BẬT — hệ thống tự chọn thợ đang rảnh (xoay vòng công bằng theo kỹ năng, lịch làm và khối lượng việc) cho MỌI lịch đặt: website, Messenger và AI Hotline.'
+                : 'ON — the system auto-picks an available technician (fair round-robin by skill, schedule and workload) for EVERY booking: website, Messenger and AI Hotline.')
+            : (lang === 'vi'
+                ? 'ĐANG TẮT — lịch mới để trống thợ (“Chưa xếp thợ”) cho tiệm tự xếp bằng tay.'
+                : 'OFF — new bookings stay unassigned (“Unassigned”) for you to assign manually.')}
+        </p>
       </div>
 
       <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('booking', f, 'Booking rules')}>{t('se.ru.save')}</button>

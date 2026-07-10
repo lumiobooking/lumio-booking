@@ -249,6 +249,12 @@ export class WalkinsService {
     return this.prisma.walkIn.update({ where: { id: w.id }, data: { stationId: sid }, include: INCLUDE });
   }
 
+  /** Undo an accidental "Done": bring a finished walk-in back to being served. */
+  async reactivate(user: AuthenticatedUser, id: string) {
+    const w = await this.mine(user, id);
+    return this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.SERVING, doneAt: null }, include: INCLUDE });
+  }
+
   /** Add a service line to a walk-in's running ticket (front desk OR the tech). */
   async addService(user: AuthenticatedUser, id: string, serviceId: string, staffId?: string) {
     const w = await this.mine(user, id);

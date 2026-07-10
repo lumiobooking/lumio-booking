@@ -31,6 +31,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
   const [openId, setOpenId] = useState<string | null>(null);
   const [quick, setQuick] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [lastDone, setLastDone] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -57,7 +58,14 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
   const move = (id: string, stationId: string) => call(`${id}/chair`, 'PATCH', { stationId });
   const addLine = (id: string, serviceId: string, staffId: string) => call(`${id}/services`, 'POST', { serviceId, staffId: staffId || undefined });
   const removeLine = (id: string, lineId: string) => call(`${id}/services/${lineId}`, 'DELETE');
-  const done = async (id: string) => { await call(`${id}/done`, 'PATCH'); setOpenId(null); };
+  const done = async (id: string) => {
+    const w = board?.serving.find((x) => x.id === id);
+    await call(`${id}/done`, 'PATCH');
+    setOpenId(null);
+    setLastDone({ id, name: w?.customerName || 'Walk-in' });
+    window.setTimeout(() => setLastDone((cur) => (cur && cur.id === id ? null : cur)), 15000);
+  };
+  async function reactivate(id: string) { setLastDone(null); await call(`${id}/reactivate`, 'PATCH'); }
   async function createBill(body: Record<string, unknown>) {
     setError(null);
     try { await apiFetch('/walkins', { method: 'POST', token, body: { ...body, autoAssign: true } }); setQuick(false); await load(); }
@@ -100,6 +108,13 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
+
+      {lastDone && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#1e293b', border: '1px solid #475569', borderRadius: 10, padding: '8px 12px', marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: '#cbd5e1' }}>{vi ? `Đã kết thúc "${lastDone.name}" (không thu tiền).` : `Finished "${lastDone.name}" (no sale).`}</span>
+          <button onClick={() => reactivate(lastDone.id)} style={{ ...ui.primaryBtn, padding: '6px 14px' }}>{vi ? '↶ Hoàn tác' : '↶ Undo'}</button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#111827', border: '1px solid #1e293b', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
         <span style={{ fontSize: 13, color: '#94a3b8' }}>{vi ? 'Thợ đang rảnh' : 'Idle techs'}</span>
@@ -271,6 +286,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
   onMove: (id: string, stationId: string) => void; onDone: () => void;
 }) {
   const [techId, setTechId] = useState('');
+  const [pendingSvc, setPendingSvc] = useState<Svc | null>(null);
   const items = w.items ?? [];
   const subtotal = items.reduce((a, it) => a + it.priceCents, 0);
   const techName = (id: string | null) => (id ? (staff.find((s) => s.id === id)?.name ?? fullName(w.assignedStaff)) : (vi ? 'Chưa gán' : 'Unassigned'));
@@ -310,11 +326,21 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-            <ServicePick services={services} onPick={(sid) => onAdd(w.id, sid, techId)} placeholder={vi ? 'Thêm dịch vụ…' : 'Add a service…'} />
+            {pendingSvc ? (
+              <div style={{ flex: 1, minWidth: 150, display: 'flex', alignItems: 'center', gap: 8, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '8px 10px' }}>
+                <span style={{ flex: 1, minWidth: 0, color: '#e2e8f0', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pendingSvc.name}</span>
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>{formatPrice(pendingSvc.priceCents, currency)}</span>
+                <button onClick={() => setPendingSvc(null)} aria-label="clear" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16 }}>×</button>
+              </div>
+            ) : (
+              <ServicePick services={services} onPick={(sid) => setPendingSvc(services.find((s) => s.id === sid) || null)} placeholder={vi ? 'Chọn dịch vụ…' : 'Pick a service…'} />
+            )}
             <select value={techId} onChange={(e) => setTechId(e.target.value)} style={{ ...ui.input, width: 'auto', maxWidth: 150, padding: '9px 10px' }}>
               <option value="">{vi ? 'Cùng thợ' : 'Same tech'}</option>
               {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+            <button disabled={!pendingSvc} onClick={() => { if (pendingSvc) { onAdd(w.id, pendingSvc.id, techId); setPendingSvc(null); setTechId(''); } }}
+              style={{ ...ui.primaryBtn, padding: '9px 16px', opacity: pendingSvc ? 1 : 0.5 }}>{vi ? 'Thêm' : 'Add'}</button>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <a href={checkoutHref} style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{vi ? '💳 Thu ngân' : '💳 Checkout'} · {formatPrice(subtotal, currency)}</a>

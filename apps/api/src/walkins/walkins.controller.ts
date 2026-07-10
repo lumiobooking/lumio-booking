@@ -77,6 +77,11 @@ export class WalkinsController {
     return this.walkins.moveToStation(user, id, dto.stationId);
   }
 
+  @Patch(':id/reactivate')
+  reactivate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.walkins.reactivate(user, id);
+  }
+
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
     return this.walkins.addService(user, id, dto.serviceId, dto.staffId);

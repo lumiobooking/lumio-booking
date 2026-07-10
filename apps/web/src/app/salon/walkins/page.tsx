@@ -12,6 +12,7 @@ interface WalkInItem { lineId: string; serviceId: string; name: string; priceCen
 interface WalkIn {
   id: string; customerId: string | null; customerName: string | null; phone: string | null; note: string | null;
   partySize: number; status: string; createdAt: string; assignedAt: string | null;
+  station: string | null;
   items: WalkInItem[];
   service: { id: string; name: string } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
@@ -39,7 +40,7 @@ function Inner() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto' });
+  const [form, setForm] = useState({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto', station: '' });
   const [pick, setPick] = useState<Record<string, string>>({});
   const [currency, setCurrency] = useState('USD');
 
@@ -68,13 +69,14 @@ function Inner() {
         phone: form.phone.trim() || undefined,
         serviceId: form.serviceId || undefined,
         partySize: parseInt(form.partySize, 10) || 1,
+        station: form.station.trim() || undefined,
       };
       // 'auto' = give it to the up-next free tech; a staff id = a requested tech;
       // 'wait' = just add to the waiting list (assign later).
       if (form.staffChoice === 'auto') body.autoAssign = true;
       else if (form.staffChoice !== 'wait') body.assignedStaffId = form.staffChoice;
       await apiFetch('/walkins', { method: 'POST', token, body });
-      setForm({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto' });
+      setForm({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto', station: '' });
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add'); }
   }
@@ -92,6 +94,11 @@ function Inner() {
   async function removeServiceLine(id: string, lineId: string) {
     setError(null);
     try { await apiFetch(`/walkins/${id}/services/${lineId}`, { method: 'DELETE', token }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+  }
+  async function setStationFor(id: string, station: string) {
+    setError(null);
+    try { await apiFetch(`/walkins/${id}/station`, { method: 'PATCH', token, body: { station } }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
 
@@ -114,6 +121,7 @@ function Inner() {
           <ServiceSearchSelect services={services} value={form.serviceId} onChange={(id) => setForm({ ...form, serviceId: id })} placeholder={t('wi.serviceSearch')} />
         </label>
         <label><span style={ui.label}>{t('wi.partySize')}</span><input style={ui.input} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></label>
+        <label><span style={ui.label}>{t('wi.station')}</span><input style={ui.input} value={form.station} placeholder={t('wi.stationPh')} onChange={(e) => setForm({ ...form, station: e.target.value })} /></label>
         <label><span style={ui.label}>{lang === 'vi' ? 'Thợ' : 'Technician'}</span>
           <select style={ui.input} value={form.staffChoice} onChange={(e) => setForm({ ...form, staffChoice: e.target.value })}>
             <option value="auto">{lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next'}</option>
@@ -156,7 +164,7 @@ function Inner() {
             return (
               <div key={w.id} style={{ ...ui.card, marginBottom: 8, padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}{w.partySize > 1 ? ` ·  ${w.partySize} ${t('wi.people')}` : ''}</div>
+                  <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}{w.partySize > 1 ? ` ·  ${w.partySize} ${t('wi.people')}` : ''}</div>
                   <div style={{ color: '#94a3b8', fontSize: 12 }}>{t('wi.waited')} {waitedMins(w.createdAt)}′</div>
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: 12, margin: '2px 0 10px' }}>{w.service?.name ?? t('wi.noService')}{w.phone ? ` · ${w.phone}` : ''}</div>
@@ -179,7 +187,7 @@ function Inner() {
             <div style={{ ...ui.card, color: '#64748b' }}>{t('wi.noInService')}</div>
           ) : board.serving.map((w) => (
             <ServingCard key={w.id} w={w} staff={staff} services={services} t={t} currency={currency}
-              onAdd={addServiceLine} onRemove={removeServiceLine} onDone={() => act(`${w.id}/done`)} />
+              onAdd={addServiceLine} onRemove={removeServiceLine} onDone={() => act(`${w.id}/done`)} onStation={setStationFor} />
           ))}
         </div>
       </div>
@@ -238,14 +246,16 @@ const svcOpt = (active: boolean): CSSProperties => ({
  * already there. No asking the tech, no asking the customer, even with 2-3
  * services on busy days.
  */
-function ServingCard({ w, staff, services, t, currency, onAdd, onRemove, onDone }: {
+function ServingCard({ w, staff, services, t, currency, onAdd, onRemove, onDone, onStation }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
   onAdd: (id: string, serviceId: string, staffId: string) => Promise<void> | void;
   onRemove: (id: string, lineId: string) => Promise<void> | void;
   onDone: () => void;
+  onStation: (id: string, station: string) => void;
 }) {
   const [svcId, setSvcId] = useState('');
   const [techId, setTechId] = useState('');
+  const [station, setStation] = useState(w.station ?? '');
   const [busy, setBusy] = useState(false);
   const items = w.items ?? [];
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
@@ -263,9 +273,22 @@ function ServingCard({ w, staff, services, t, currency, onAdd, onRemove, onDone 
   }
   return (
     <div style={{ ...ui.card, marginBottom: 10, padding: '12px 14px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-        <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
-        <div style={{ color: '#94a3b8', fontSize: 12 }}>{t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }} title={t('wi.station')}>
+            <span style={{ fontSize: 11, color: '#64748b' }}>{t('wi.stationShort')}</span>
+            <input
+              value={station}
+              onChange={(e) => setStation(e.target.value)}
+              onBlur={() => { const v = station.trim(); if (v !== (w.station ?? '')) onStation(w.id, v); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              placeholder={t('wi.stationPh')}
+              style={{ width: 52, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: 12, padding: '5px 8px', textAlign: 'center' }}
+            />
+          </label>
+        </div>
+        <div style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>{t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
       </div>
 
       <div style={{ marginTop: 10, border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>

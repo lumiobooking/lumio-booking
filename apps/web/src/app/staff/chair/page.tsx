@@ -11,10 +11,11 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 interface Svc { id: string; name: string; priceCents: number }
 interface Item { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface Chair {
-  id: string; customerName: string | null; phone: string | null; assignedAt: string | null;
+  id: string; customerName: string | null; phone: string | null; assignedAt: string | null; station: string | null;
   items: Item[]; service: { id: string; name: string } | null;
 }
-interface MyChair { staffId: string | null; currency: string; serving: Chair[] }
+interface SalonClient { id: string; customerName: string | null; station: string | null }
+interface MyChair { staffId: string | null; currency: string; serving: Chair[]; salon: SalonClient[] }
 
 export default function StaffChairPage() {
   const { lang } = useLang();
@@ -73,12 +74,14 @@ function Inner() {
   if (loading && !data) return <p style={{ color: '#94a3b8' }}>Loading...</p>;
 
   const serving = data?.serving ?? [];
+  const others = data?.salon ?? [];
 
   return (
     <div>
       <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('sc.subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}
-      {serving.length === 0 ? (
+
+      {serving.length === 0 && others.length === 0 ? (
         <div style={{ ...ui.card, color: '#94a3b8', textAlign: 'center', padding: '36px 16px' }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>💺</div>
           {t('sc.none')}
@@ -91,9 +94,49 @@ function Inner() {
           ))}
         </div>
       )}
+
+      {others.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 4px' }}>{t('sc.others')}</div>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 10px' }}>{t('sc.moved')}</p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {others.map((o) => (
+              <OtherClientRow key={o.id} c={o} services={services} currency={currency} t={t}
+                busy={busyId === o.id} onAdd={addService} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {serving.length > 0 && (
         <p style={{ color: '#64748b', fontSize: 12, marginTop: 16, lineHeight: 1.5 }}>{t('sc.hint')}</p>
       )}
+    </div>
+  );
+}
+
+/** Shared search + tap-to-add service list. */
+function ServicePicker({ services, currency, busy, onPick, onCancel, t }: {
+  services: Svc[]; currency: string; busy: boolean; onPick: (serviceId: string) => void; onCancel: () => void; t: (k: string) => string;
+}) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const filtered = q ? services.filter((s) => s.name.toLowerCase().includes(q)) : services;
+  return (
+    <div style={{ border: '1px solid #334155', borderRadius: 12, padding: 10 }}>
+      <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('wi.addServicePh')}
+        style={{ ...ui.input, width: '100%', boxSizing: 'border-box', marginBottom: 8 }} />
+      <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 6 }}>
+        {filtered.map((s) => (
+          <button key={s.id} disabled={busy} onClick={() => onPick(s.id)}
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', cursor: 'pointer', fontSize: 15, textAlign: 'left' }}>
+            <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+            <span style={{ color: '#94a3b8' }}>{formatPrice(s.priceCents, currency)}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && <div style={{ color: '#64748b', fontSize: 13, padding: '8px 4px' }}>{t('wi.noMatch')}</div>}
+      </div>
+      <button onClick={onCancel} style={{ ...ghost, width: '100%', marginTop: 8 }}>{t('wi.cancel')}</button>
     </div>
   );
 }
@@ -103,17 +146,17 @@ function ChairCard({ w, services, currency, t, busy, onAdd, onRemove }: {
   onAdd: (id: string, serviceId: string) => void; onRemove: (id: string, lineId: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
-  const [query, setQuery] = useState('');
   const items = w.items ?? [];
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
-  const q = query.trim().toLowerCase();
-  const filtered = q ? services.filter((s) => s.name.toLowerCase().includes(q)) : services;
   const mins = minsSince(w.assignedAt);
   return (
     <div style={{ ...ui.card, padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0' }}>{w.customerName || t('sc.walkin')}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {w.customerName || t('sc.walkin')}
+            {w.station && <span style={{ fontSize: 12, fontWeight: 700, color: '#c7d2fe', background: '#312e81', borderRadius: 6, padding: '2px 8px' }}>{t('wi.stationShort')} {w.station}</span>}
+          </div>
           {mins > 0 && <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{mins}m {t('sc.inChair')}</div>}
         </div>
         {w.phone && <a href={`tel:${w.phone}`} style={{ color: '#818cf8', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>}
@@ -137,22 +180,35 @@ function ChairCard({ w, services, currency, t, busy, onAdd, onRemove }: {
       </div>
 
       {!adding ? (
-        <button onClick={() => { setAdding(true); setQuery(''); }} style={{ ...ui.primaryBtn, width: '100%', padding: '13px', fontSize: 15 }}>{t('sc.add')}</button>
+        <button onClick={() => setAdding(true)} style={{ ...ui.primaryBtn, width: '100%', padding: '13px', fontSize: 15 }}>{t('sc.add')}</button>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, padding: 10 }}>
-          <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('wi.addServicePh')}
-            style={{ ...ui.input, width: '100%', boxSizing: 'border-box', marginBottom: 8 }} />
-          <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 6 }}>
-            {filtered.map((s) => (
-              <button key={s.id} disabled={busy} onClick={() => { onAdd(w.id, s.id); setAdding(false); }}
-                style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', cursor: 'pointer', fontSize: 15, textAlign: 'left' }}>
-                <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                <span style={{ color: '#94a3b8' }}>{formatPrice(s.priceCents, currency)}</span>
-              </button>
-            ))}
-            {filtered.length === 0 && <div style={{ color: '#64748b', fontSize: 13, padding: '8px 4px' }}>{t('wi.noMatch')}</div>}
-          </div>
-          <button onClick={() => setAdding(false)} style={{ ...ghost, width: '100%', marginTop: 8 }}>{t('wi.cancel')}</button>
+        <ServicePicker services={services} currency={currency} busy={busy} t={t}
+          onPick={(sid) => { onAdd(w.id, sid); setAdding(false); }} onCancel={() => setAdding(false)} />
+      )}
+    </div>
+  );
+}
+
+/** A client currently in the salon but not (yet) on this tech's ticket — used when a
+ *  customer moves to this tech's chair. Tapping adds this tech's service to the SAME bill. */
+function OtherClientRow({ c, services, currency, t, busy, onAdd }: {
+  c: SalonClient; services: Svc[]; currency: string; t: (k: string) => string; busy: boolean;
+  onAdd: (id: string, serviceId: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <div style={{ ...ui.card, padding: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        <div style={{ fontWeight: 600, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.customerName || t('sc.walkin')}</span>
+          {c.station && <span style={{ fontSize: 12, fontWeight: 700, color: '#c7d2fe', background: '#312e81', borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>{t('wi.stationShort')} {c.station}</span>}
+        </div>
+        {!adding && <button onClick={() => setAdding(true)} style={{ ...ui.primaryBtn, padding: '8px 14px', flexShrink: 0 }}>{t('sc.addMine')}</button>}
+      </div>
+      {adding && (
+        <div style={{ marginTop: 10 }}>
+          <ServicePicker services={services} currency={currency} busy={busy} t={t}
+            onPick={(sid) => { onAdd(c.id, sid); setAdding(false); }} onCancel={() => setAdding(false)} />
         </div>
       )}
     </div>

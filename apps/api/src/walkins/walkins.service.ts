@@ -14,6 +14,7 @@ export interface AddWalkInDto {
   partySize?: number;
   assignedStaffId?: string;
   autoAssign?: boolean;
+  station?: string;
 }
 
 const INCLUDE = {
@@ -94,6 +95,7 @@ export class WalkinsService {
         partySize: Math.max(1, Math.min(20, Math.round(dto.partySize ?? 1))),
         assignedStaffId,
         items: items as unknown as Prisma.InputJsonValue,
+        station: dto.station?.trim().slice(0, 24) || null,
         status: assigned ? WalkInStatus.SERVING : WalkInStatus.WAITING,
         assignedAt: assigned ? new Date() : null,
       },
@@ -131,15 +133,28 @@ export class WalkinsService {
         select: { id: true, firstName: true, lastName: true, avatarUrl: true, bookingPriority: true },
         orderBy: [{ bookingPriority: 'desc' }, { firstName: 'asc' }],
       }),
-      this.prisma.walkIn.groupBy({ by: ['assignedStaffId'], where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today }, assignedStaffId: { not: null } }, _count: { _all: true } }),
+      // DONE walk-ins today WITH their ticket, so a turn credits EVERY tech who did a
+      // service on the visit (a customer who moved to a 2nd tech gives both a turn) —
+      // not only the tech the walk-in was first assigned to.
+      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today } }, select: { assignedStaffId: true, items: true } }),
       this.prisma.appointment.groupBy({ by: ['assignedStaffId'], where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: today }, assignedStaffId: { not: null } }, _count: { _all: true } }),
     ]);
 
     const turns = new Map<string, number>();
-    for (const r of doneWalkIns) if (r.assignedStaffId) turns.set(r.assignedStaffId, (turns.get(r.assignedStaffId) ?? 0) + r._count._all);
+    const bump = (id: string | null | undefined) => { if (id) turns.set(id, (turns.get(id) ?? 0) + 1); };
+    for (const w of doneWalkIns) {
+      const techs = this.lineTechs(w);
+      if (techs.length) techs.forEach(bump);
+      else bump(w.assignedStaffId); // no lines logged -> credit the assigned tech
+    }
     for (const r of completedAppts) if (r.assignedStaffId) turns.set(r.assignedStaffId, (turns.get(r.assignedStaffId) ?? 0) + r._count._all);
 
-    const busy = new Set(serving.map((s) => s.assignedStaffId).filter((x): x is string => !!x));
+    // A tech is "busy" if they are the assigned tech OR actively on any current ticket.
+    const busy = new Set<string>();
+    for (const sv of serving) {
+      if (sv.assignedStaffId) busy.add(sv.assignedStaffId);
+      for (const tech of this.lineTechs(sv)) busy.add(tech);
+    }
 
     const board = staff.map((s) => ({
       id: s.id,
@@ -169,6 +184,20 @@ export class WalkinsService {
     return Array.isArray(raw) ? (raw as WalkInItem[]) : [];
   }
 
+  /** Distinct non-null technician ids that appear on a walk-in's ticket. */
+  private lineTechs(w: unknown): string[] {
+    const ids = new Set<string>();
+    for (const it of this.itemsOf(w)) if (it.staffId) ids.add(it.staffId);
+    return [...ids];
+  }
+
+  /** Set/clear the physical station a walk-in is currently at (front desk OR tech). */
+  async setStation(user: AuthenticatedUser, id: string, station?: string) {
+    const w = await this.mine(user, id);
+    const val = (station ?? '').toString().trim().slice(0, 24) || null;
+    return this.prisma.walkIn.update({ where: { id: w.id }, data: { station: val }, include: INCLUDE });
+  }
+
   /** Add a service line to a walk-in's running ticket (front desk OR the tech). */
   async addService(user: AuthenticatedUser, id: string, serviceId: string, staffId?: string) {
     const w = await this.mine(user, id);
@@ -194,9 +223,18 @@ export class WalkinsService {
     const tenantId = this.tenantId(user);
     const staff = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true } });
     const currency = (await this.settings.getBookingRules(tenantId).catch(() => null))?.currency ?? 'USD';
-    if (!staff) return { staffId: null, currency, serving: [] as unknown[] };
-    const serving = await this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING, assignedStaffId: staff.id }, include: INCLUDE, orderBy: { assignedAt: 'asc' } });
-    return { staffId: staff.id, currency, serving };
+    if (!staff) return { staffId: null, currency, serving: [] as unknown[], salon: [] as unknown[] };
+    const allServing = await this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING }, include: INCLUDE, orderBy: { assignedAt: 'asc' } });
+    // "Mine" = the tech is the assigned tech OR already has a service line on the
+    // ticket. So when a customer moves to a 2nd tech and that tech adds their
+    // service, the ticket appears in THEIR chair too.
+    const serving = allServing.filter((w) => w.assignedStaffId === staff.id || this.lineTechs(w).includes(staff.id));
+    // Everyone else currently in the salon (for the "a client moved to my chair" picker).
+    const mineIds = new Set(serving.map((w) => w.id));
+    const salon = allServing
+      .filter((w) => !mineIds.has(w.id))
+      .map((w) => ({ id: w.id, customerName: w.customerName, station: (w as { station?: string | null }).station ?? null }));
+    return { staffId: staff.id, currency, serving, salon };
   }
 
   /** Hand a waiting walk-in to a technician (→ SERVING). */

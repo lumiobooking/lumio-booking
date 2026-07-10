@@ -229,6 +229,9 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'wi.addLine': { en: 'Add', vi: 'Thêm' },
   'wi.removeLine': { en: 'Remove', vi: 'Xoá' },
   'wi.unassignedTech': { en: 'Unassigned', vi: 'Chưa gán thợ' },
+  'wi.station': { en: 'Station', vi: 'Ghế/Bàn' },
+  'wi.stationPh': { en: 'e.g. 5', vi: 'vd: 5' },
+  'wi.stationShort': { en: 'St.', vi: 'Ghế' },
   // Staff "My chair" — the tech's own in-service clients
   'sc.title': { en: 'My Chair', vi: 'Ghế của tôi' },
   'sc.subtitle': { en: 'Add each service as you do it, so checkout is ready at the front desk.', vi: 'Thêm từng dịch vụ khi bạn làm, để quầy thu ngân tính tiền đủ.' },
@@ -238,6 +241,9 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'sc.add': { en: '+ Add a service', vi: '+ Thêm dịch vụ' },
   'sc.inChair': { en: 'in chair', vi: 'tại ghế' },
   'sc.hint': { en: 'Add each service as you finish it. When the client is done, send them to the front desk to pay — everything you logged is already on their bill.', vi: 'Thêm từng dịch vụ khi làm xong. Khi khách xong, mời khách ra quầy thanh toán — mọi dịch vụ bạn ghi đã có sẵn trên hoá đơn.' },
+  'sc.others': { en: 'Others in the salon', vi: 'Khách khác trong tiệm' },
+  'sc.moved': { en: 'A client moved to your chair? Tap them and add what you did.', vi: 'Khách chuyển qua ghế bạn? Chọn khách và thêm dịch vụ bạn làm.' },
+  'sc.addMine': { en: '+ Add my service', vi: '+ Thêm dịch vụ của tôi' },
   // Payroll
   'pr.title': { en: 'Technician Payroll', vi: 'Bảng lương thợ · Payroll' },
   'pr.subtitle': { en: "Each tech's pay = commission (rate set in Staff) + tips, for the selected period.", vi: 'Lương phải trả mỗi thợ = hoa hồng (theo % cài ở Staff) + tip, trong kỳ đã chọn.' },

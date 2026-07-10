@@ -717,6 +717,10 @@ model WalkIn {
   // so checkout is complete without asking. [{ lineId, serviceId, name, priceCents, staffId }].
   items        Json    @default("[]")
 
+  // Physical station the customer is currently at (e.g. "5", "Spa 3", "Table 7").
+  // A locator, not a billing unit — it moves with the customer during the visit.
+  station      String?
+
   status WalkInStatus @default(WAITING)
 
   createdAt  DateTime  @default(now())

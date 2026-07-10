@@ -15,6 +15,7 @@ class AddWalkInDto {
   @IsOptional() @IsInt() @Min(1) @Max(20) partySize?: number;
   @IsOptional() @IsString() assignedStaffId?: string;
   @IsOptional() @IsBoolean() autoAssign?: boolean;
+  @IsOptional() @IsString() @MaxLength(24) station?: string;
 }
 
 class AssignDto {
@@ -24,6 +25,10 @@ class AssignDto {
 class AddServiceDto {
   @IsString() serviceId!: string;
   @IsOptional() @IsString() staffId?: string;
+}
+
+class StationDto {
+  @IsOptional() @IsString() @MaxLength(24) station?: string;
 }
 
 /** Walk-in queue + turn rotation — Salon Admin (front desk) only. */
@@ -56,6 +61,11 @@ export class WalkinsController {
   @Patch(':id/assign')
   assign(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AssignDto) {
     return this.walkins.assign(user, id, dto.staffId);
+  }
+
+  @Patch(':id/station')
+  setStation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: StationDto) {
+    return this.walkins.setStation(user, id, dto.station);
   }
 
   @Post(':id/services')

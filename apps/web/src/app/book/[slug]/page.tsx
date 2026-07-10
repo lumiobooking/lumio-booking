@@ -656,6 +656,19 @@ function StepDateTime({ rules, deals, dateDeals, selectedDate, slot, onPickDate,
     [selectedDate, rules],
   );
 
+  // Next few open days (today onward, within the booking window, not closed) so a
+  // customer can jump straight to the soonest date without scanning the grid.
+  const earliestOpen = useMemo(() => {
+    const out: Date[] = [];
+    const cur = new Date(today);
+    for (let i = 0; i < 120 && out.length < 4; i++) {
+      if (cur >= today && cur <= maxDate && !isClosedDay(cur, rules)) out.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, maxDate, rules]);
+
   // After a date is chosen, scroll the time list into view so customers don't
   // miss it (the time picker sits below the calendar fold).
   const slotsRef = useRef<HTMLDivElement | null>(null);
@@ -705,7 +718,30 @@ function StepDateTime({ rules, deals, dateDeals, selectedDate, slot, onPickDate,
         </div>
       )}
       {!selectedDate && (
-        <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>Pick a date — greyed-out days are closed or outside the booking window.</p>
+        <div style={{ marginTop: 18, textAlign: 'center', padding: '22px 16px 24px', border: '1px dashed #dbe4ee', borderRadius: 16, background: '#fbfdff' }}>
+          <span style={{ display: 'inline-grid', placeItems: 'center', width: 46, height: 46, borderRadius: 14, background: '#eef2ff', color: ACCENT }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="3" /><path d="M8 2v4M16 2v4M3 10h18M8 15h.01M12 15h.01M16 15h.01" /></svg>
+          </span>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#334155', marginTop: 10 }}>Pick a day to see open times</div>
+          <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>Tap a date above. Greyed-out days are closed or outside the booking window.</div>
+          {earliestOpen.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 9 }}>Soonest available</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {earliestOpen.map((d, i) => {
+                  const pct = Math.max(dealByWeekday[d.getDay()] || 0, datePctFor(dateDeals, d, null));
+                  return (
+                    <button key={i} onClick={() => onPickDate(d)}
+                      style={{ padding: '9px 13px', borderRadius: 999, border: `1.5px solid ${ACCENT}`, background: 'white', color: ACCENT, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {pct > 0 && <span style={{ fontSize: 10, fontWeight: 800, color: '#059669', background: '#d1fae5', borderRadius: 6, padding: '1px 5px' }}>-{pct}%</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {selectedDate && (

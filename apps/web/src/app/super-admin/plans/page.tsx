@@ -40,6 +40,7 @@ export default function PlansPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -57,6 +58,26 @@ export default function PlansPage() {
 
   useEffect(() => { if (ready && token && user?.role === 'SUPER_ADMIN') load(); }, [ready, token, user, load]);
 
+  async function seedDefaults() {
+    if (!token) return;
+    setSeeding(true); setError(null);
+    const defaults = [
+      { name: 'Starter', tagline: 'For a single salon getting started', priceMonthlyCents: 2900, priceYearlyCents: 29000, trialDays: 14, maxStaff: 3, maxBookingsPerMonth: null, posEnabled: false, onlinePaymentEnabled: false, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: false, sortOrder: 1, features: ['Online booking 24/7', 'SMS & email reminders', 'Up to 3 staff', 'AI hotline'] },
+      { name: 'Pro', tagline: 'For a busy salon that wants it all', priceMonthlyCents: 5900, priceYearlyCents: 59000, trialDays: 14, maxStaff: 10, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: false, whiteLabelEnabled: false, isActive: true, publicVisible: true, highlighted: true, sortOrder: 2, features: ['Everything in Starter', 'POS / checkout suite', 'Online payments', 'Up to 10 staff'] },
+      { name: 'Business', tagline: 'For multi-location owners', priceMonthlyCents: 9900, priceYearlyCents: 99000, trialDays: 14, maxStaff: null, maxBookingsPerMonth: null, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true, isActive: true, publicVisible: true, highlighted: false, sortOrder: 3, features: ['Everything in Pro', 'Multi-location', 'White-label branding', 'Unlimited staff'] },
+    ];
+    try {
+      for (const plan of defaults) {
+        await apiFetch('/tenants/plans', { method: 'POST', token, body: plan });
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create starter plans');
+    } finally {
+      setSeeding(false);
+    }
+  }
+
   if (!ready || !token || user?.role !== 'SUPER_ADMIN') {
     return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>Loading…</div>;
   }
@@ -70,6 +91,7 @@ export default function PlansPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a href="/super-admin/tenants" style={ghost}>← Salons</a>
+          {plans.length === 0 && <button onClick={seedDefaults} disabled={seeding} style={ghost}>{seeding ? 'Creating…' : '✨ Starter plans'}</button>}
           <button onClick={() => { setShowForm((s) => !s); setEditId(null); }} style={primary}>{showForm ? 'Close' : '+ New plan'}</button>
           <button onClick={logout} style={ghost}>Log out</button>
         </div>

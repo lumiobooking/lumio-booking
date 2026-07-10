@@ -10,6 +10,7 @@ import { useLang, tr, NAV_KEY } from '../lib/i18n';
 import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
+import { NotificationBell } from './NotificationBell';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
 type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant' };
@@ -308,10 +309,13 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         {/* Sticky top bar */}
         <header style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: '#111827', borderBottom: '1px solid #1f2937' }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0' }}>Lumio</div>
-          <button onClick={() => setDrawerOpen(true)} aria-label="Menu"
-            style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
-            ☰
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <NotificationBell />
+            <button onClick={() => setDrawerOpen(true)} aria-label="Menu"
+              style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              ☰
+            </button>
+          </div>
         </header>
 
         {/* Drawer + overlay */}
@@ -345,7 +349,12 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         {navList}
         {footer}
       </aside>
-      <main style={{ padding: '28px 32px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <header style={{ position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'rgba(11,17,32,0.82)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid #1f2937' }}>
+          <NotificationBell />
+        </header>
+        <main style={{ padding: '22px 32px 40px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>
+      </div>
     </div>
   );
 }

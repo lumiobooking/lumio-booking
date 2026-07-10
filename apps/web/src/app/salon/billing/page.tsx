@@ -91,6 +91,18 @@ function Inner() {
   }
 
   const currentName = (current?.planName ?? '').toLowerCase();
+  // Upgrade vs downgrade (by price tier) + proration from the current period.
+  const currentPlan = plans.find((p) => p.name.toLowerCase() === currentName) ?? null;
+  const currentTier = currentPlan ? currentPlan.priceMonthlyCents : -1;
+  const sub = sum?.subscription ?? null;
+  const nowMs = Date.now();
+  const psMs = sub?.currentPeriodStart ? new Date(sub.currentPeriodStart).getTime() : 0;
+  const peMs = sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).getTime() : 0;
+  const periodMs = peMs > psMs ? peMs - psMs : 0;
+  const remainMs = peMs > nowMs ? peMs - nowMs : 0;
+  const remainFrac = periodMs > 0 ? Math.min(1, Math.max(0, remainMs / periodMs)) : 0;
+  const remainDays = Math.max(0, Math.ceil(remainMs / 86400000));
+  const renewLabel = sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
   return (
     <section style={{ maxWidth: 760 }}>
@@ -159,6 +171,10 @@ function Inner() {
             const cents = yearly ? p.priceYearlyCents : p.priceMonthlyCents;
             const provider: 'stripe' | 'paypal' = p.providers.stripe ? 'stripe' : 'paypal';
             const canPay = p.providers.stripe || p.providers.paypal;
+            const isUpgrade = !isCurrent && currentTier >= 0 && p.priceMonthlyCents > currentTier;
+            const isDowngrade = !isCurrent && currentTier >= 0 && p.priceMonthlyCents < currentTier;
+            const curCents = currentPlan ? (yearly ? currentPlan.priceYearlyCents : currentPlan.priceMonthlyCents) : 0;
+            const prorateNow = isUpgrade && remainFrac > 0 ? Math.max(0, Math.round((cents - curCents) * remainFrac)) : 0;
             return (
               <div key={p.id} style={{ ...ui.card, border: p.highlighted ? '2px solid #6366f1' : '1px solid #334155' }}>
                 {p.highlighted && <div style={{ display: 'inline-block', background: '#312e81', color: '#c7d2fe', fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 999, marginBottom: 8 }}>{t('bl.mostPopular')}</div>}
@@ -176,9 +192,25 @@ function Inner() {
                 {isCurrent ? (
                   <button disabled style={{ ...ui.primaryBtn, width: '100%', background: '#334155', cursor: 'default' }}>{t('bl.currentPlan')}</button>
                 ) : (
-                  <button onClick={() => choose(p.id, provider)} disabled={busy || !canPay} style={{ ...ui.primaryBtn, width: '100%' }}>
-                    {!canPay ? t('bl.notAvailable') : busy ? t('bl.opening') : t('bl.upgradeTo').replace('{name}', p.name)}
-                  </button>
+                  <>
+                    <button onClick={() => choose(p.id, provider)} disabled={busy || !canPay}
+                      style={{ ...ui.primaryBtn, width: '100%', ...(isDowngrade ? { background: 'transparent', border: '1px solid #475569', color: '#cbd5e1' } : {}) }}>
+                      {!canPay ? t('bl.notAvailable') : busy ? t('bl.opening')
+                        : isDowngrade ? (lang === 'vi' ? `Chuyển xuống ${p.name}` : `Downgrade to ${p.name}`)
+                        : (lang === 'vi' ? `Nâng cấp lên ${p.name}` : `Upgrade to ${p.name}`)}
+                    </button>
+                    {(isUpgrade || isDowngrade) && (
+                      <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '8px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
+                        {isUpgrade
+                          ? (lang === 'vi'
+                              ? `Hiệu lực ngay — chỉ tính thêm phần chênh lệch cho ${remainDays} ngày còn lại của kỳ này${prorateNow > 0 ? ` (~${money(prorateNow, p.currency)})` : ''}.`
+                              : `Takes effect now — you're only charged the difference for the ${remainDays} days left in this cycle${prorateNow > 0 ? ` (~${money(prorateNow, p.currency)})` : ''}.`)
+                          : (lang === 'vi'
+                              ? `Áp dụng từ kỳ sau${renewLabel ? ` (${renewLabel})` : ''} — giữ nguyên quyền lợi hiện tại đến lúc đó, không mất phí ngay.`
+                              : `Applies next cycle${renewLabel ? ` (${renewLabel})` : ''} — you keep your current plan until then, no charge now.`)}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             );

@@ -1,22 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
 /**
  * Returns true when the viewport is at or below `breakpoint` (px).
  * Used to switch inline-style layouts between desktop and mobile.
- * SSR-safe: starts false, updates on mount + resize.
+ *
+ * useSyncExternalStore makes the FIRST client render already correct (matchMedia)
+ * instead of defaulting to false and flipping after mount — that flip was the
+ * visible flicker on load (desktop grid -> mobile agenda). The server snapshot is
+ * false so SSR/hydration stays consistent.
  */
 export function useIsMobile(breakpoint = 768): boolean {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, [breakpoint]);
-
-  return isMobile;
+  const query = `(max-width: ${breakpoint}px)`;
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window === 'undefined' || !window.matchMedia) return () => undefined;
+      const mq = window.matchMedia(query);
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    },
+    () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(query).matches,
+    () => false,
+  );
 }

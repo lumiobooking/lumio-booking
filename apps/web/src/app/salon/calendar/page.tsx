@@ -96,19 +96,21 @@ function Inner() {
   const dayJumpMonth = (delta: number) => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth() + delta, dayDate.getDate()));
   // Salon timezone so every appointment renders in the SALON's local time, never
   // the admin device's timezone (owners often manage US salons from abroad).
-  const [tz, setTz] = useState<string | undefined>(undefined);
-  const [isRestaurant, setIsRestaurant] = useState(false);
+  // Seed from cache so times + the staff/tables label don't reflow (flicker) when
+  // the /settings and /me/tenant fetches land a moment after mount.
+  const [tz, setTz] = useState<string | undefined>(() => (typeof window !== 'undefined' ? (window.localStorage.getItem('lumio_tz') || undefined) : undefined));
+  const [isRestaurant, setIsRestaurant] = useState<boolean>(() => (typeof window !== 'undefined' && window.localStorage.getItem('lumio_is_restaurant') === '1'));
   useEffect(() => {
     if (!token) return;
     apiFetch<{ company?: { timezone?: string } }>('/settings', { token })
-      .then((s) => setTz(s.company?.timezone || undefined))
+      .then((s) => { const z = s.company?.timezone || undefined; setTz(z); if (z) { try { window.localStorage.setItem('lumio_tz', z); } catch { /* ignore */ } } })
       .catch(() => undefined);
   }, [token]);
 
   useEffect(() => {
     if (!token) return;
     apiFetch<{ businessType?: string }>('/me/tenant', { token })
-      .then((r) => setIsRestaurant(r?.businessType === 'RESTAURANT'))
+      .then((r) => { const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); try { window.localStorage.setItem('lumio_is_restaurant', on ? '1' : '0'); } catch { /* ignore */ } })
       .catch(() => undefined);
   }, [token]);
   const fmtT = useCallback(

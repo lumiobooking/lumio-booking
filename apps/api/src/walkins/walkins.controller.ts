@@ -82,6 +82,11 @@ export class WalkinsController {
     return this.walkins.reactivate(user, id);
   }
 
+  @Patch(':id/wait-payment')
+  waitPayment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.walkins.waitPayment(user, id);
+  }
+
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
     return this.walkins.addService(user, id, dto.serviceId, dto.staffId);

@@ -186,10 +186,18 @@ export class WalkinsService {
       else bump(w.assignedStaffId); // no lines logged -> credit the assigned tech
     }
     for (const r of completedAppts) if (r.assignedStaffId) turns.set(r.assignedStaffId, (turns.get(r.assignedStaffId) ?? 0) + r._count._all);
+    // Waiting-to-pay: the tech has finished, so credit the turn now (chair + tech free).
+    for (const w of serving) {
+      if (!(w as { awaitingPayment?: boolean }).awaitingPayment) continue;
+      const techs = this.lineTechs(w);
+      if (techs.length) techs.forEach(bump);
+      else bump(w.assignedStaffId);
+    }
 
-    // A tech is "busy" if they are the assigned tech OR actively on any current ticket.
+    // A tech is "busy" only while actively serving (not once the client is waiting to pay).
     const busy = new Set<string>();
     for (const sv of serving) {
+      if ((sv as { awaitingPayment?: boolean }).awaitingPayment) continue;
       if (sv.assignedStaffId) busy.add(sv.assignedStaffId);
       for (const tech of this.lineTechs(sv)) busy.add(tech);
     }
@@ -246,7 +254,13 @@ export class WalkinsService {
       if (!st) throw new BadRequestException('Station not found');
       sid = st.id;
     }
-    return this.prisma.walkIn.update({ where: { id: w.id }, data: { stationId: sid }, include: INCLUDE });
+    return this.prisma.walkIn.update({ where: { id: w.id }, data: { stationId: sid, awaitingPayment: false }, include: INCLUDE });
+  }
+
+  /** Move the customer off the chair to wait to pay (bill stays open; chair + tech free). */
+  async waitPayment(user: AuthenticatedUser, id: string) {
+    const w = await this.mine(user, id);
+    return this.prisma.walkIn.update({ where: { id: w.id }, data: { awaitingPayment: true, stationId: null }, include: INCLUDE });
   }
 
   /** Undo an accidental "Done": bring a finished walk-in back to being served. */

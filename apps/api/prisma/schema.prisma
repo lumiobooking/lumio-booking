@@ -735,6 +735,10 @@ model WalkIn {
   stationId    String?
   stationRef   Station? @relation("WalkInStation", fields: [stationId], references: [id], onDelete: SetNull)
 
+  // Services finished; customer is off the chair, waiting to pay (bill still open).
+  // Frees the chair + tech immediately; checkout still closes it out normally.
+  awaitingPayment Boolean @default(false)
+
   status WalkInStatus @default(WAITING)
 
   createdAt  DateTime  @default(now())

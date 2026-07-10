@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
@@ -98,7 +99,7 @@ export function NotificationBell() {
         {unread > 0 && <span style={badgeStyle}>{unread > 9 ? '9+' : unread}</span>}
       </button>
 
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'transparent' }} />
           <div style={panel}>
@@ -144,7 +145,8 @@ export function NotificationBell() {
               {L('Xem tất cả thông báo', 'View all notifications')}
             </button>
           </div>
-        </>
+        </>,
+        document.body,
       )}
 
       {openId && <BookingDetailSheet token={token} apptId={openId} onClose={() => setOpenId(null)} lang={lang} L={L} />}

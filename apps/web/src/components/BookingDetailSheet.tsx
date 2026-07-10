@@ -2,6 +2,7 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
 
@@ -82,7 +83,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
     </div>
   );
 
-  return (
+  const content = (
     <div style={overlay} onClick={onClose}>
       <div style={card} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
@@ -127,4 +128,6 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
       </div>
     </div>
   );
+
+  return typeof document === 'undefined' ? null : createPortal(content, document.body);
 }

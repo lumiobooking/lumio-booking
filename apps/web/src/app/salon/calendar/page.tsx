@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -80,6 +80,14 @@ function Inner() {
     setView(new Date(dd.getFullYear(), dd.getMonth(), 1)); // keep the month fetch covering this day
     setMode((m) => (m === 'staff' ? 'staff' : 'day')); // keep staff mode when just stepping days
   }, []);
+  // Native month / date pickers (jump to a specific month or day).
+  const monthInputRef = useRef<HTMLInputElement>(null);
+  const dayInputRef = useRef<HTMLInputElement>(null);
+  const openMonthPicker = () => { const el = monthInputRef.current; if (!el) return; const anyEl = el as unknown as { showPicker?: () => void }; try { anyEl.showPicker ? anyEl.showPicker() : el.focus(); } catch { el.focus(); } };
+  const openDayPicker = () => { const el = dayInputRef.current; if (!el) return; const anyEl = el as unknown as { showPicker?: () => void }; try { anyEl.showPicker ? anyEl.showPicker() : el.focus(); } catch { el.focus(); } };
+  const onMonthPick = (e: React.ChangeEvent<HTMLInputElement>) => { const [y, m] = e.target.value.split('-').map(Number); if (y && m) setView(new Date(y, m - 1, 1)); };
+  const onDayPick = (e: React.ChangeEvent<HTMLInputElement>) => { const [y, m, d] = e.target.value.split('-').map(Number); if (y && m && d) goDay(new Date(y, m - 1, d)); };
+  const dayJumpMonth = (delta: number) => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth() + delta, dayDate.getDate()));
   // Salon timezone so every appointment renders in the SALON's local time, never
   // the admin device's timezone (owners often manage US salons from abroad).
   const [tz, setTz] = useState<string | undefined>(undefined);
@@ -160,6 +168,21 @@ function Inner() {
     return map;
   }, [filtered, tz]);
 
+  // Mobile agenda: nearest day to today on top (upcoming ascending, then past
+  // descending), paginated so a busy month never becomes an endless scroll.
+  const [monthPage, setMonthPage] = useState(0);
+  useEffect(() => { setMonthPage(0); }, [view, search, mode]);
+  const orderedMonthDays = useMemo(() => {
+    const withItems = days.filter((d): d is Date => !!d && (byDay.get(cellKey(d))?.length ?? 0) > 0);
+    const upcoming = withItems.filter((d) => d.getTime() >= today.getTime()).sort((a, b) => a.getTime() - b.getTime());
+    const past = withItems.filter((d) => d.getTime() < today.getTime()).sort((a, b) => b.getTime() - a.getTime());
+    return [...upcoming, ...past];
+  }, [days, byDay, today]);
+  const MONTH_PAGE_SIZE = 6;
+  const monthPageCount = Math.max(1, Math.ceil(orderedMonthDays.length / MONTH_PAGE_SIZE));
+  const monthSafePage = Math.min(monthPage, monthPageCount - 1);
+  const monthPageDays = orderedMonthDays.slice(monthSafePage * MONTH_PAGE_SIZE, monthSafePage * MONTH_PAGE_SIZE + MONTH_PAGE_SIZE);
+
   const todayStats = useMemo(() => {
     const list = byDay.get(cellKey(today)) ?? [];
     const count = (k: string) => list.filter((b) => statusBucket(b.status).key === k).length;
@@ -181,36 +204,44 @@ function Inner() {
 
   return (
     <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '14px 18px', overflow: 'auto' } : undefined}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24, margin: 0 }}>{t('cal.title')}</h1>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
-            <button onClick={() => setMode('month')} style={segBtn(mode === 'month')}>{t('cal.viewMonth')}</button>
-            <button onClick={() => setMode('day')} style={segBtn(mode === 'day')}>{t('cal.viewDay')}</button>
-            <button onClick={() => setMode('staff')} style={segBtn(mode === 'staff')}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
-          </div>
-          {mode === 'month' ? (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <strong style={{ minWidth: 140, textAlign: 'center' }}>{monthLabel}</strong>
-              <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}>‹</button>
-              <button style={navBtn} onClick={() => setView(new Date(today.getFullYear(), today.getMonth(), 1))}>{t('cal.today')}</button>
-              <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}>›</button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <strong style={{ minWidth: 170, textAlign: 'center' }}>{dayDate.toLocaleDateString(locale, { weekday: 'short', month: 'long', day: 'numeric' })}</strong>
-              <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() - 1))}>‹</button>
-              <button style={navBtn} onClick={() => goDay(today)}>{t('cal.today')}</button>
-              <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() + 1))}>›</button>
-            </div>
-          )}
+      {/* Row 1: title + view toggle (toggle is full-width on phones) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
+        <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
+          <button onClick={() => setMode('month')} style={{ ...segBtn(mode === 'month'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
+          <button onClick={() => setMode('day')} style={{ ...segBtn(mode === 'day'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
+          <button onClick={() => setMode('staff')} style={{ ...segBtn(mode === 'staff'), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
         </div>
       </div>
 
+      {/* Row 2: date navigation. Month mode = month arrows + month picker; Day/Staff = day arrows, month arrows, date picker. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 12, justifyContent: isMobile ? 'center' : 'flex-start' }}>
+        {mode === 'month' ? (
+          <>
+            <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} aria-label={lang === 'vi' ? 'Tháng trước' : 'Previous month'}>‹</button>
+            <button style={pickerBtn} onClick={openMonthPicker} title={lang === 'vi' ? 'Chọn tháng' : 'Pick a month'}>{monthLabel} ▾</button>
+            <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} aria-label={lang === 'vi' ? 'Tháng sau' : 'Next month'}>›</button>
+            <button style={navBtn} onClick={() => setView(new Date(today.getFullYear(), today.getMonth(), 1))}>{t('cal.today')}</button>
+          </>
+        ) : (
+          <>
+            <button style={navBtn} onClick={() => dayJumpMonth(-1)} title={lang === 'vi' ? 'Tháng trước' : 'Previous month'} aria-label={lang === 'vi' ? 'Tháng trước' : 'Previous month'}>«</button>
+            <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() - 1))} aria-label={lang === 'vi' ? 'Ngày trước' : 'Previous day'}>‹</button>
+            <button style={pickerBtn} onClick={openDayPicker} title={lang === 'vi' ? 'Chọn ngày' : 'Pick a date'}>{dayDate.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' })} ▾</button>
+            <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() + 1))} aria-label={lang === 'vi' ? 'Ngày sau' : 'Next day'}>›</button>
+            <button style={navBtn} onClick={() => dayJumpMonth(1)} title={lang === 'vi' ? 'Tháng sau' : 'Next month'} aria-label={lang === 'vi' ? 'Tháng sau' : 'Next month'}>»</button>
+            <button style={navBtn} onClick={() => goDay(today)}>{t('cal.today')}</button>
+          </>
+        )}
+        <input ref={monthInputRef} type="month" value={`${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`} onChange={onMonthPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
+        <input ref={dayInputRef} type="date" value={cellKey(dayDate)} onChange={onDayPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
+      </div>
+
+      {/* Row 3: search + full screen */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ flex: '1 1 240px', maxWidth: 380, padding: '9px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: 14 }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ flex: '1 1 240px', maxWidth: isMobile ? undefined : 380, padding: '9px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: 14 }} />
         {search && <button onClick={() => setSearch('')} style={navBtn} title="Clear">✕</button>}
-        <button onClick={toggleFull} style={{ ...navBtn, marginLeft: 'auto' }}>{fullscreen ? (lang === 'vi' ? '✕ Thoát toàn màn hình' : '✕ Exit full screen') : (lang === 'vi' ? '⛶ Toàn màn hình' : '⛶ Full screen')}</button>
+        <button onClick={toggleFull} style={{ ...navBtn, marginLeft: 'auto' }} title={fullscreen ? (lang === 'vi' ? 'Thoát toàn màn hình' : 'Exit full screen') : (lang === 'vi' ? 'Toàn màn hình' : 'Full screen')}>{fullscreen ? '✕' : '⛶'}{isMobile ? '' : (fullscreen ? (lang === 'vi' ? ' Thoát' : ' Exit') : (lang === 'vi' ? ' Toàn màn hình' : ' Full screen'))}</button>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -240,37 +271,49 @@ function Inner() {
       ) : mode === 'day' ? (
         <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
       ) : isMobile ? (
-        /* Phones: a clean day-by-day agenda (only days that have appointments). */
+        /* Phones: day-by-day agenda — nearest day to today on top, paginated. */
+        orderedMonthDays.length === 0 ? (
+          <p style={{ color: '#64748b', fontSize: 14, padding: '20px 0', textAlign: 'center' }}>{t('cal.noneThisMonth')}</p>
+        ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {(() => {
-            const withItems = days.filter((d): d is Date => !!d && (byDay.get(cellKey(d))?.length ?? 0) > 0);
-            if (withItems.length === 0) return <p style={{ color: '#64748b', fontSize: 14, padding: '20px 0', textAlign: 'center' }}>{t('cal.noneThisMonth')}</p>;
-            return withItems.map((d) => {
-              const items = byDay.get(cellKey(d)) ?? [];
-              const isToday = d.getTime() === today.getTime();
-              return (
-                <div key={d.toDateString()} style={{ ...ui.card, padding: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#818cf8' : '#e2e8f0', marginBottom: 8 }}>
+          {monthPageDays.map((d) => {
+            const items = byDay.get(cellKey(d)) ?? [];
+            const isToday = d.getTime() === today.getTime();
+            const isPast = d.getTime() < today.getTime();
+            return (
+              <div key={d.toDateString()} style={{ ...ui.card, padding: 12, opacity: isPast ? 0.72 : 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#818cf8' : '#e2e8f0' }}>
                     {d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' })}{isToday ? ' · ' + t('cal.todayLabel') : ''}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {items.map((b) => {
-                      const m = statusBucket(b.status);
-                      return (
-                        <div key={b.id} onClick={() => setSelected(b)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
-                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{fmtT(b.startTime)}</span>
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{b.service?.name ? ' · ' + b.service.name : ''}</span>
-                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                        </div>
-                      );
-                    })}
-                  </div>
+                  </span>
+                  {isPast && <span style={{ fontSize: 10.5, color: '#64748b', border: '1px solid #334155', borderRadius: 999, padding: '1px 7px' }}>{lang === 'vi' ? 'đã qua' : 'past'}</span>}
+                  <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#64748b' }}>{items.length}</span>
                 </div>
-              );
-            });
-          })()}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {items.map((b) => {
+                    const m = statusBucket(b.status);
+                    return (
+                      <div key={b.id} onClick={() => setSelected(b)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
+                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{fmtT(b.startTime)}</span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{b.service?.name ? ' · ' + b.service.name : ''}</span>
+                        <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {monthPageCount > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 4 }}>
+              <button style={{ ...navBtn, opacity: monthSafePage === 0 ? 0.5 : 1 }} disabled={monthSafePage === 0} onClick={() => setMonthPage((pp) => Math.max(0, pp - 1))}>‹ {lang === 'vi' ? 'Trước' : 'Prev'}</button>
+              <span style={{ fontSize: 13, color: '#94a3b8' }}>{lang === 'vi' ? 'Trang' : 'Page'} {monthSafePage + 1}/{monthPageCount}</span>
+              <button style={{ ...navBtn, opacity: monthSafePage >= monthPageCount - 1 ? 0.5 : 1 }} disabled={monthSafePage >= monthPageCount - 1} onClick={() => setMonthPage((pp) => Math.min(monthPageCount - 1, pp + 1))}>{lang === 'vi' ? 'Sau' : 'Next'} ›</button>
+            </div>
+          )}
         </div>
+        )
       ) : (
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, minWidth: 600, background: '#334155', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' }}>
@@ -563,4 +606,14 @@ function buildMonth(view: Date): (Date | null)[] {
 
 const navBtn: React.CSSProperties = {
   padding: '6px 12px', borderRadius: 8, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 13, cursor: 'pointer',
+};
+
+const pickerBtn: React.CSSProperties = {
+  padding: '6px 12px', borderRadius: 8, border: '1px solid #4f46e5', background: '#1e293b', color: '#e2e8f0', fontSize: 13, fontWeight: 700, cursor: 'pointer', minWidth: 128, textAlign: 'center', whiteSpace: 'nowrap',
+};
+
+// Zero-size but still rendered, so the browser's native month/date picker
+// (input.showPicker()) can anchor to it without showing a visible field.
+const hiddenInput: React.CSSProperties = {
+  width: 0, height: 0, opacity: 0, pointerEvents: 'none', border: 0, padding: 0, margin: 0, overflow: 'hidden', flex: '0 0 0px',
 };

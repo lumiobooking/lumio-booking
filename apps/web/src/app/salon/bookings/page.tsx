@@ -34,7 +34,7 @@ interface Booking {
   startTime: string;
   endTime: string;
   notes: string | null;
-  customer: NamedRef | null;
+  customer: (NamedRef & { phone?: string | null }) | null;
   service: { id: string; name: string } | null;
   assignedStaff: NamedRef | null;
 }
@@ -168,7 +168,7 @@ function BookingsInner() {
       (b) =>
         range.inRange(b.startTime) &&
         (!needsConfirm || isUnconfirmed(b)) &&
-        matchesQuery(`${staffName(b.customer)} ${b.service?.name ?? ''} ${staffName(b.assignedStaff)} ${b.status}`, q),
+        matchesQuery(`${staffName(b.customer)} ${b.customer?.phone ?? ''} ${(b.customer?.phone ?? '').replace(/\D/g, '')} ${b.service?.name ?? ''} ${staffName(b.assignedStaff)} ${b.status}`, q),
     ),
     (b) => b.startTime,
   );
@@ -190,7 +190,7 @@ function BookingsInner() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <SearchBox value={q} onChange={setQ} placeholder={t('bk.searchPh')} />
+        <SearchBox value={q} onChange={setQ} placeholder={lang === 'vi' ? 'Tìm theo tên, số điện thoại, dịch vụ…' : 'Search by name, phone, service…'} />
         <button
           onClick={() => setNeedsConfirm((v) => !v)}
           title={t('bk.needsConfirmHint')}

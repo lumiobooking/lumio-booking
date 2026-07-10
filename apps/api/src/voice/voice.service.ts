@@ -389,6 +389,14 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         const dto = { serviceId, startTime, customerFirstName: firstName, customerPhone: phone } as CreateBookingDto;
         const booking = await this.bookings.createForTenant(tenantId, dto, null, 'hotline');
         const b = booking as { id?: string };
+        // Auto-assign a technician (fair rotation) when the salon runs in auto mode —
+        // same as the public web flow — so AI bookings don't land unassigned.
+        if (b.id) {
+          try {
+            const rules = await this.settings.getBookingRules(tenantId);
+            if (rules.assignmentMode === 'auto') await this.bookings.autoAssignForTenant(tenantId, b.id);
+          } catch { /* best-effort: the booking is already created */ }
+        }
         acc.booked = true;
         acc.appointmentId = b.id || null;
         return `SUCCESS. Appointment created (id ${b.id}). Confirm the service, day and time back to the caller warmly and tell them a text confirmation is on its way.`;

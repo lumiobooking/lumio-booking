@@ -331,21 +331,32 @@ function Inner() {
         </div>
         )
       ) : (
-      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, minWidth: 600, background: '#334155', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' }}>
-        {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
-          <div key={dow} style={{ background: '#1e293b', textAlign: 'center', padding: '8px 0', fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>{DAY_LABEL[lang][dow]}</div>
-        ))}
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 12 }}>
+      <style>{`.cal-ev{transition:filter .12s ease}.cal-ev:hover{filter:brightness(1.2)}`}</style>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, minWidth: 680, background: '#243044', border: '1px solid #243044', borderRadius: 12, overflow: 'hidden' }}>
+        {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
+          const weekend = dow === 0 || dow === 6;
+          const todayCol = today.getDay() === dow;
+          return (
+            <div key={dow} style={{ background: '#1e293b', textAlign: 'center', padding: '9px 0', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: todayCol ? '#a5b4fc' : weekend ? '#8ea2c4' : '#94a3b8', fontWeight: 700 }}>{DAY_LABEL[lang][dow]}</div>
+          );
+        })}
         {days.map((d, i) => {
           const items = d ? byDay.get(cellKey(d)) ?? [] : [];
-          const isToday = d && d.getTime() === today.getTime();
+          const isToday = !!d && d.getTime() === today.getTime();
+          const dow = d ? d.getDay() : -1;
+          const weekend = dow === 0 || dow === 6;
+          const cellBg = !d ? '#0b1322' : isToday ? '#151f38' : weekend ? '#0d1526' : '#0f172a';
           return (
-            <div key={i} style={{ background: '#0f172a', minHeight: 104, padding: 6, opacity: d ? 1 : 0.4 }}>
+            <div key={i} style={{ background: cellBg, minHeight: 116, minWidth: 0, overflow: 'hidden', padding: 7, opacity: d ? 1 : 0.5, boxShadow: isToday ? 'inset 0 0 0 1.5px #4f46e5' : undefined }}>
               {d && (
                 <>
-                  <div onClick={() => goDay(d)} title={t('cal.viewDay')}
-                    style={{ display: 'inline-block', fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? '#818cf8' : '#cbd5e1', marginBottom: 4, cursor: 'pointer', padding: '0 4px', borderRadius: 5 }}>
-                    {d.getDate()}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                    <span onClick={() => goDay(d)} title={t('cal.viewDay')}
+                      style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999, fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : '#cbd5e1', background: isToday ? '#6366f1' : 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {d.getDate()}
+                    </span>
+                    {items.length > 0 && <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>{items.length}</span>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {items.slice(0, 4).map((b) => {
@@ -353,16 +364,15 @@ function Inner() {
                       const dim = m.key === 'Cancelled' || m.key === 'NoShow';
                       const strike = m.key === 'Cancelled' ? 'line-through' : 'none';
                       return (
-                        <div key={b.id} title={`${t('cal.st' + m.key)} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
+                        <div key={b.id} className="cal-ev" title={`${t('cal.st' + m.key)} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
                           onClick={() => setSelected(b)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '3px 6px', borderRadius: 4, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.5 : 1 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', textDecoration: strike }}>{fmtT(b.startTime)}</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: strike }}>{name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}</span>
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5, background: `${m.color}1f`, borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.55 : 1, overflow: 'hidden' }}>
+                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
+                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#dbe2ea', textDecoration: strike }}>{name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}</span>
                         </div>
                       );
                     })}
-                    {items.length > 4 && <div style={{ fontSize: 11, color: '#94a3b8' }}>{t('cal.more').replace('{n}', String(items.length - 4))}</div>}
+                    {items.length > 4 && <div onClick={() => goDay(d)} style={{ fontSize: 10.5, color: '#818cf8', cursor: 'pointer', fontWeight: 600, padding: '2px 4px 0' }}>{t('cal.more').replace('{n}', String(items.length - 4))}</div>}
                   </div>
                 </>
               )}

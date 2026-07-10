@@ -232,6 +232,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'wi.station': { en: 'Station', vi: 'Ghế/Bàn' },
   'wi.stationPh': { en: 'e.g. 5', vi: 'vd: 5' },
   'wi.stationShort': { en: 'St.', vi: 'Ghế' },
+  'wi.manage': { en: 'Details', vi: 'Chi tiết' },
+  'wi.svcMany': { en: 'services', vi: 'dịch vụ' },
   // Staff "My chair" — the tech's own in-service clients
   'sc.title': { en: 'My Chair', vi: 'Ghế của tôi' },
   'sc.subtitle': { en: 'Add each service as you do it, so checkout is ready at the front desk.', vi: 'Thêm từng dịch vụ khi bạn làm, để quầy thu ngân tính tiền đủ.' },

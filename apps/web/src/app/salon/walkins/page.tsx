@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, FormEvent, CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -43,6 +44,7 @@ function Inner() {
   const [form, setForm] = useState({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto', station: '' });
   const [pick, setPick] = useState<Record<string, string>>({});
   const [currency, setCurrency] = useState('USD');
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -154,22 +156,25 @@ function Inner() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{t('wi.waiting')} ({board?.waiting.length ?? 0})</div>
-          {(!board || board.waiting.length === 0) ? (
-            <div style={{ ...ui.card, color: '#64748b' }}>{t('wi.noWaiting')}</div>
-          ) : board.waiting.map((w) => {
+      <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color:#6366f1}.wi-serving:active{transform:scale(.99)}`}</style>
+
+      {/* Waiting queue — full width, compact grid (usually short). */}
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{t('wi.waiting')} ({board?.waiting.length ?? 0})</div>
+      {(!board || board.waiting.length === 0) ? (
+        <div style={{ ...ui.card, color: '#64748b', marginBottom: 20 }}>{t('wi.noWaiting')}</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10, marginBottom: 20 }}>
+          {board.waiting.map((w) => {
             const sel = pick[w.id] ?? nextUp ?? '';
             return (
-              <div key={w.id} style={{ ...ui.card, marginBottom: 8, padding: '12px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}{w.partySize > 1 ? ` ·  ${w.partySize} ${t('wi.people')}` : ''}</div>
-                  <div style={{ color: '#94a3b8', fontSize: 12 }}>{t('wi.waited')} {waitedMins(w.createdAt)}′</div>
+              <div key={w.id} style={{ ...ui.card, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                  <div style={{ fontWeight: 600, color: '#e2e8f0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}{w.partySize > 1 ? ` · ${w.partySize} ${t('wi.people')}` : ''}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>{waitedMins(w.createdAt)}′</div>
                 </div>
-                <div style={{ color: '#94a3b8', fontSize: 12, margin: '2px 0 10px' }}>{w.service?.name ?? t('wi.noService')}{w.phone ? ` · ${w.phone}` : ''}</div>
+                <div style={{ color: '#94a3b8', fontSize: 12, margin: '2px 0 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.service?.name ?? t('wi.noService')}{w.phone ? ` · ${w.phone}` : ''}</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select style={{ ...ui.input, padding: '7px 10px', flex: 1, minWidth: 130 }} value={sel} onChange={(e) => setPick({ ...pick, [w.id]: e.target.value })}>
+                  <select style={{ ...ui.input, padding: '7px 10px', flex: 1, minWidth: 120 }} value={sel} onChange={(e) => setPick({ ...pick, [w.id]: e.target.value })}>
                     <option value="">{t('wi.pickStaff')}</option>
                     {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.turns} {t('wi.turns')}){s.busy ? ' · ' + t('wi.busy') : ''}{s.nextUp ? ' · ' + t('wi.upnext') : ''}</option>)}
                   </select>
@@ -180,17 +185,34 @@ function Inner() {
             );
           })}
         </div>
+      )}
 
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{t('wi.inService')} ({board?.serving.length ?? 0})</div>
-          {(!board || board.serving.length === 0) ? (
-            <div style={{ ...ui.card, color: '#64748b' }}>{t('wi.noInService')}</div>
-          ) : board.serving.map((w) => (
-            <ServingCard key={w.id} w={w} staff={staff} services={services} t={t} currency={currency}
-              onAdd={addServiceLine} onRemove={removeServiceLine} onDone={() => act(`${w.id}/done`)} onStation={setStationFor} />
+      {/* In service — full-width responsive grid of COMPACT cards. Tap a card to open
+          the detail sheet (edit ticket / add services / checkout). Keeps the whole
+          floor on one screen even when busy. */}
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{t('wi.inService')} ({board?.serving.length ?? 0})</div>
+      {(!board || board.serving.length === 0) ? (
+        <div style={{ ...ui.card, color: '#64748b' }}>{t('wi.noInService')}</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(268px, 1fr))', gap: 12 }}>
+          {board.serving.map((w) => (
+            <CompactServingCard key={w.id} w={w} currency={currency} t={t} onOpen={() => setOpenId(w.id)} />
           ))}
         </div>
-      </div>
+      )}
+
+      {openId && board && (() => {
+        const w = board.serving.find((x) => x.id === openId);
+        if (!w) return null;
+        return (
+          <WalkInTicketSheet
+            w={w} staff={staff} services={services} t={t} currency={currency}
+            onAdd={addServiceLine} onRemove={removeServiceLine} onStation={setStationFor}
+            onDone={async () => { await act(`${w.id}/done`); setOpenId(null); }}
+            onClose={() => setOpenId(null)}
+          />
+        );
+      })()}
     </section>
   );
 }
@@ -239,19 +261,56 @@ const svcOpt = (active: boolean): CSSProperties => ({
   background: active ? '#312e81' : 'transparent', color: active ? '#c7d2fe' : '#e2e8f0', cursor: 'pointer', fontSize: 14,
 });
 
-/**
- * One "in service" walk-in with its running ticket. Both the front desk (here)
- * and the technician (staff app) add each service as it's done — so when the
- * customer checks out, every service, the tech who did it, and the total are
- * already there. No asking the tech, no asking the customer, even with 2-3
- * services on busy days.
- */
-function ServingCard({ w, staff, services, t, currency, onAdd, onRemove, onDone, onStation }: {
+/** Compact "in service" card: name, station, tech, service count + running total,
+ *  a quick Checkout, and a Details button that opens the full ticket sheet. Kept
+ *  small on purpose so the whole floor fits on one screen when it's busy. */
+function CompactServingCard({ w, currency, t, onOpen }: {
+  w: WalkIn; currency: string; t: (k: string) => string; onOpen: () => void;
+}) {
+  const items = w.items ?? [];
+  const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
+  const summary = items.length === 0
+    ? t('wi.noService')
+    : items.length === 1 ? items[0].name : `${items.length} ${t('wi.svcMany')}`;
+  const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
+  return (
+    <div className="wi-serving" onClick={onOpen}
+      style={{ ...ui.card, padding: 0, cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '12px 14px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+            <span style={{ fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</span>
+            {w.station && <span style={stationChip}>{t('wi.stationShort')} {w.station}</span>}
+          </div>
+          <span style={{ color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>{fullName(w.assignedStaff)}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginTop: 10 }}>
+          <span style={{ color: '#94a3b8', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary}</span>
+          <span style={{ color: '#fff', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>{formatPrice(subtotal, currency)}</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', borderTop: '1px solid #1e293b', marginTop: 'auto' }}>
+        <a href={checkoutHref} onClick={(e) => e.stopPropagation()}
+          style={{ flex: 1, textAlign: 'center', padding: '10px', color: '#c7d2fe', fontWeight: 700, fontSize: 13, textDecoration: 'none', background: 'rgba(99,102,241,0.12)' }}>{t('wi.checkout')}</a>
+        <button onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          style={{ padding: '10px 16px', background: 'none', border: 'none', borderLeft: '1px solid #1e293b', color: '#94a3b8', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>{t('wi.manage')} ›</button>
+      </div>
+    </div>
+  );
+}
+const stationChip: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#c7d2fe', background: '#312e81', borderRadius: 6, padding: '2px 8px', flexShrink: 0, whiteSpace: 'nowrap' };
+
+/** Full ticket editor for one in-service walk-in, in a focused overlay: service
+ *  lines (each with its tech), add a service, edit station, checkout, done. Opened
+ *  from a compact card so the board itself stays a clean overview. Portaled to body. */
+function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, onStation, onDone, onClose }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
   onAdd: (id: string, serviceId: string, staffId: string) => Promise<void> | void;
   onRemove: (id: string, lineId: string) => Promise<void> | void;
-  onDone: () => void;
   onStation: (id: string, station: string) => void;
+  onDone: () => void;
+  onClose: () => void;
 }) {
   const [svcId, setSvcId] = useState('');
   const [techId, setTechId] = useState('');
@@ -271,64 +330,68 @@ function ServingCard({ w, staff, services, t, currency, onAdd, onRemove, onDone,
     try { await onAdd(w.id, svcId, techId); setSvcId(''); }
     finally { setBusy(false); }
   }
-  return (
-    <div style={{ ...ui.card, marginBottom: 10, padding: '12px 14px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }} title={t('wi.station')}>
-            <span style={{ fontSize: 11, color: '#64748b' }}>{t('wi.stationShort')}</span>
-            <input
-              value={station}
-              onChange={(e) => setStation(e.target.value)}
-              onBlur={() => { const v = station.trim(); if (v !== (w.station ?? '')) onStation(w.id, v); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              placeholder={t('wi.stationPh')}
-              style={{ width: 52, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: 12, padding: '5px 8px', textAlign: 'center' }}
-            />
-          </label>
-        </div>
-        <div style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>{t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
-      </div>
-
-      <div style={{ marginTop: 10, border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>
-        {items.length === 0 ? (
-          <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 12 }}>{t('wi.noLines')}</div>
-        ) : items.map((it) => (
-          <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #1e293b' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-              <div style={{ color: '#94a3b8', fontSize: 11 }}>{techLabel(it.staffId)}</div>
-            </div>
-            <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
-            <button onClick={() => onRemove(w.id, it.lineId)} title={t('wi.removeLine')} aria-label={t('wi.removeLine')}
-              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 17, lineHeight: 1, padding: '0 2px' }}>×</button>
+  const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
+  const content = (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(560px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #1e293b', position: 'sticky', top: 0, background: '#111827', zIndex: 1 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
+            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>{t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
           </div>
-        ))}
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#0f172a' }}>
-          <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>{t('wi.subtotal')}</span>
-          <span style={{ color: '#fff', fontSize: 14, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={t('wi.station')}>
+              <span style={{ fontSize: 11, color: '#64748b' }}>{t('wi.stationShort')}</span>
+              <input value={station} onChange={(e) => setStation(e.target.value)}
+                onBlur={() => { const v = station.trim(); if (v !== (w.station ?? '')) onStation(w.id, v); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                placeholder={t('wi.stationPh')}
+                style={{ width: 52, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: 12, padding: '5px 8px', textAlign: 'center' }} />
+            </label>
+            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 150 }}>
-          <ServiceSearchSelect services={services} value={svcId} onChange={setSvcId} placeholder={t('wi.addServicePh')} />
+        <div style={{ padding: 16 }}>
+          <div style={{ border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>
+            {items.length === 0 ? (
+              <div style={{ padding: '12px', color: '#64748b', fontSize: 13 }}>{t('wi.noLines')}</div>
+            ) : items.map((it) => (
+              <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #1e293b' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 11 }}>{techLabel(it.staffId)}</div>
+                </div>
+                <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
+                <button onClick={() => onRemove(w.id, it.lineId)} title={t('wi.removeLine')} aria-label={t('wi.removeLine')}
+                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: '#0f172a' }}>
+              <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
+              <span style={{ color: '#fff', fontSize: 16, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 150 }}>
+              <ServiceSearchSelect services={services} value={svcId} onChange={setSvcId} placeholder={t('wi.addServicePh')} />
+            </div>
+            <select style={{ ...ui.input, padding: '9px 10px', width: 'auto', maxWidth: 150 }} value={techId} onChange={(e) => setTechId(e.target.value)}>
+              <option value="">{t('wi.sameTech')}</option>
+              {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+            <button onClick={add} disabled={!svcId || busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: svcId && !busy ? 1 : 0.5 }}>{busy ? '…' : t('wi.addLine')}</button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <a href={checkoutHref}
+              style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
+            <button onClick={onDone} style={{ ...ui.primaryBtn, background: '#334155', padding: '12px 14px' }}>{t('wi.done')}</button>
+          </div>
         </div>
-        <select style={{ ...ui.input, padding: '9px 10px', width: 'auto', maxWidth: 150 }} value={techId} onChange={(e) => setTechId(e.target.value)}>
-          <option value="">{t('wi.sameTech')}</option>
-          {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-        </select>
-        <button onClick={add} disabled={!svcId || busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: svcId && !busy ? 1 : 0.5 }}>{busy ? '…' : t('wi.addLine')}</button>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <a
-          href={`/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`}
-          style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '10px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-        >{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
-        <button onClick={onDone} style={{ ...ui.primaryBtn, background: '#334155', padding: '10px 14px' }}>{t('wi.done')}</button>
       </div>
     </div>
   );
+  return typeof document === 'undefined' ? null : createPortal(content, document.body);
 }

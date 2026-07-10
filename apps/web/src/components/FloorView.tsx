@@ -6,7 +6,6 @@ import { apiFetch } from '../lib/api';
 import { ui, formatPrice } from '../lib/ui';
 import { useLiveRefresh } from '../lib/useLiveRefresh';
 
-type Kind = 'PEDI' | 'MANI' | 'NAIL' | 'OTHER';
 interface WItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface Serving {
   id: string; customerName: string | null; phone: string | null; assignedAt: string | null; stationId: string | null;
@@ -15,12 +14,8 @@ interface Serving {
 interface Waiting { id: string; customerName: string | null; phone: string | null; createdAt: string; partySize: number; service: { id: string; name: string } | null }
 interface StaffTurn { id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean }
 interface Board { waiting: Waiting[]; serving: Serving[]; staff: StaffTurn[]; nextUpStaffId: string | null }
-interface Station { id: string; name: string; kind: Kind; isActive: boolean; sortOrder: number }
-interface Svc { id: string; name: string; priceCents: number }
-
-const KIND_LABEL = (k: Kind, vi: boolean) => (vi
-  ? { PEDI: 'Ghế Pedi', MANI: 'Bàn Mani', NAIL: 'Bàn Nail', OTHER: 'Khác' }[k]
-  : { PEDI: 'Pedi', MANI: 'Mani', NAIL: 'Nail', OTHER: 'Other' }[k]);
+interface Station { id: string; name: string; stationType: { id: string; name: string; sortOrder: number } | null; isActive: boolean; sortOrder: number }
+interface Svc { id: string; name: string; priceCents: number; durationMinutes: number }
 
 function fullName(s: { firstName: string; lastName: string | null } | null) { return s ? `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}` : ''; }
 function minsSince(iso: string | null) { return iso ? Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000)) : 0; }
@@ -77,7 +72,16 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
   const noChair = board.serving.filter((s) => !s.stationId);
   const idle = board.staff.filter((s) => !s.busy);
   const freeCount = active.length - occByStation.size;
-  const byKind = (['PEDI', 'MANI', 'NAIL', 'OTHER'] as Kind[]).map((k) => ({ k, list: active.filter((s) => s.kind === k) })).filter((g) => g.list.length > 0);
+  const freeStations = active.filter((s) => !occByStation.has(s.id));
+  const svcDur = new Map(services.map((s) => [s.id, s.durationMinutes || 0]));
+  const expectedMins = (items: WItem[]) => items.reduce((a, it) => a + (svcDur.get(it.serviceId) || 0), 0);
+  const typeGroups = new Map<string, { id: string; name: string; order: number; list: Station[] }>();
+  for (const st of active) {
+    const key = st.stationType?.id ?? '__none__';
+    if (!typeGroups.has(key)) typeGroups.set(key, { id: key, name: st.stationType?.name ?? (vi ? 'Chưa phân loại' : 'Other'), order: st.stationType?.sortOrder ?? 999, list: [] });
+    typeGroups.get(key)!.list.push(st);
+  }
+  const byType = [...typeGroups.values()].sort((a, b) => a.order - b.order);
 
   const openWalkIn = openId ? board.serving.find((x) => x.id === openId) ?? null : null;
 
@@ -109,33 +113,44 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {noChair.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>{vi ? 'Đang làm, chưa gắn ghế — kéo vào ghế trống:' : 'In service, no chair — drag onto a free chair:'}</div>
+          <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>{vi ? 'Đang làm, chưa có ghế — chọn ghế bên dưới (hoặc kéo vào ô ghế trống):' : 'In service, no chair — pick a chair below (or drag onto a free chair):'}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {noChair.map((w) => (
-              <div key={w.id} draggable onDragStart={() => setDragId(w.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(w.id)}
-                style={{ cursor: 'grab', background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 12px', minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>{fullName(w.assignedStaff)} · {formatPrice(w.items.reduce((a, it) => a + it.priceCents, 0), currency)}</div>
+              <div key={w.id} style={{ background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 12px', minWidth: 200 }}>
+                <div draggable onDragStart={() => setDragId(w.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(w.id)} style={{ cursor: 'grab' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{fullName(w.assignedStaff)} · {formatPrice(w.items.reduce((a, it) => a + it.priceCents, 0), currency)}</div>
+                </div>
+                <select value="" onChange={(e) => e.target.value && move(w.id, e.target.value)} style={{ ...ui.input, width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '5px 8px', fontSize: 12 }}>
+                  <option value="">{vi ? 'Xếp vào ghế…' : 'Seat at chair…'}</option>
+                  {freeStations.map((st) => <option key={st.id} value={st.id}>{st.name}{st.stationType ? ` · ${st.stationType.name}` : ''}</option>)}
+                </select>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {byKind.map((g) => (
-        <div key={g.k} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{KIND_LABEL(g.k, vi)} ({g.list.length})</div>
+      {byType.map((g) => (
+        <div key={g.id} style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(172px, 1fr))', gap: 10 }}>
             {g.list.map((st) => {
               const occ = occByStation.get(st.id);
               if (occ) {
                 const total = occ.items.reduce((a, it) => a + it.priceCents, 0);
+                const elapsed = minsSince(occ.assignedAt);
+                const exp = expectedMins(occ.items);
+                const over = exp > 0 && elapsed >= exp;
+                const soon = exp > 0 && !over && elapsed >= exp - 5;
+                const tColor = over ? '#f87171' : soon ? '#fbbf24' : '#c7d2fe';
+                const tBg = over ? 'rgba(248,113,113,0.15)' : soon ? 'rgba(251,191,36,0.15)' : '#312e81';
                 return (
                   <div key={st.id} className="fl-tile" draggable onDragStart={() => setDragId(occ.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(occ.id)}
                     style={{ ...ui.card, padding: '10px 12px', cursor: 'pointer', minHeight: 118, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#64748b' }}>{st.name}</span>
-                      <span style={{ fontSize: 11, color: '#c7d2fe', background: '#312e81', borderRadius: 20, padding: '2px 8px' }}>{minsSince(occ.assignedAt)}′</span>
+                      <span style={{ fontSize: 11, color: tColor, background: tBg, borderRadius: 20, padding: '2px 8px' }}>{elapsed}′{exp > 0 ? ` / ${exp}′` : ''}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                       <span style={ava}>{initials(occ.customerName || 'W')}</span>
@@ -185,7 +200,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {quick && <QuickBill vi={vi} services={services} currency={currency} onClose={() => setQuick(false)} onCreate={createBill} />}
       {openWalkIn && (
-        <TicketSheet vi={vi} w={openWalkIn} stations={active} staff={board.staff} services={services} currency={currency}
+        <TicketSheet vi={vi} w={openWalkIn} stations={active.filter((s) => !occByStation.has(s.id) || s.id === openWalkIn.stationId)} staff={board.staff} services={services} currency={currency}
           onClose={() => setOpenId(null)} onAdd={addLine} onRemove={removeLine} onMove={move} onDone={() => done(openWalkIn.id)} />
       )}
     </div>
@@ -303,8 +318,12 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <a href={checkoutHref} style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{vi ? '💳 Thu ngân' : '💳 Checkout'} · {formatPrice(subtotal, currency)}</a>
-            <button onClick={onDone} style={{ ...ui.primaryBtn, background: '#334155', padding: '12px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
+            <button
+              onClick={() => { if (window.confirm(vi ? 'Kết thúc khách này mà KHÔNG thu tiền? Chỉ dùng khi khách bỏ về hoặc không tính tiền.' : 'Finish this client WITHOUT taking payment? Only use this for a walk-out or a comp.')) onDone(); }}
+              title={vi ? 'Kết thúc không thu tiền' : 'Finish without payment'}
+              style={{ ...ui.primaryBtn, background: '#334155', padding: '12px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
           </div>
+          <p style={{ fontSize: 11, color: '#64748b', margin: '10px 0 0', lineHeight: 1.5 }}>{vi ? 'Thu ngân = tính tiền rồi tự kết thúc, ghế được giải phóng. Xong = kết thúc KHÔNG thu tiền (khách rời ghế, không có hoá đơn).' : 'Checkout takes payment then finishes and frees the chair. Done finishes with no sale.'}</p>
         </div>
       </div>
     </div>

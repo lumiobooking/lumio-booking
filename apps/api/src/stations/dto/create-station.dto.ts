@@ -1,17 +1,24 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-
-export type StationKindDto = 'PEDI' | 'MANI' | 'NAIL' | 'OTHER';
-export const STATION_KINDS: StationKindDto[] = ['PEDI', 'MANI', 'NAIL', 'OTHER'];
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateStationDto {
   @IsString() @MinLength(1) @MaxLength(40) name!: string;
-  @IsOptional() @IsIn(STATION_KINDS) kind?: StationKindDto;
+  @IsOptional() @IsString() stationTypeId?: string;
   @IsOptional() @IsInt() sortOrder?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
 export class BulkCreateStationDto {
-  @IsOptional() @IsIn(STATION_KINDS) kind?: StationKindDto;
+  @IsOptional() @IsString() stationTypeId?: string;
   @IsInt() count!: number;
   @IsOptional() @IsString() @MaxLength(20) prefix?: string;
+}
+
+export class CreateStationTypeDto {
+  @IsString() @MinLength(1) @MaxLength(40) name!: string;
+}
+
+export class UpdateStationTypeDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(40) name?: string;
+  @IsOptional() @IsInt() sortOrder?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }

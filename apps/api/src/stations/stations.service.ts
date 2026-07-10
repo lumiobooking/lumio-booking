@@ -2,13 +2,15 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { BulkCreateStationDto, CreateStationDto } from './dto/create-station.dto';
+import { BulkCreateStationDto, CreateStationDto, CreateStationTypeDto, UpdateStationTypeDto } from './dto/create-station.dto';
 import { UpdateStationDto } from './dto/update-station.dto';
 
+const TYPE_SELECT = { id: true, name: true, sortOrder: true };
+
 /**
- * Chairs / stations in a salon (Pedi spa chair, Mani table, Nail station) — the
- * physical spots the reception floor view is built on. Every query is scoped to
- * the caller's own tenantId so one salon can never see or touch another's chairs.
+ * Chairs / stations in a salon, and the salon's own chair TYPES (Pedi, Mani,
+ * Nail, or anything they define). The reception floor view is built on these.
+ * Every query is scoped to the caller's own tenantId.
  */
 @Injectable()
 export class StationsService {
@@ -23,10 +25,58 @@ export class StationsService {
     return id;
   }
 
+  // ---- Chair types (fully salon-managed) -----------------------------------
+  /** The salon's chair types. Seeds a sensible default set the first time. */
+  async listTypes(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    let types = await this.prisma.stationType.findMany({ where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+    if (types.length === 0) {
+      await this.prisma.stationType.createMany({ data: [
+        { tenantId, name: 'Pedi', sortOrder: 0 },
+        { tenantId, name: 'Mani', sortOrder: 1 },
+        { tenantId, name: 'Nail', sortOrder: 2 },
+      ] });
+      types = await this.prisma.stationType.findMany({ where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+    }
+    return types;
+  }
+
+  async createType(user: AuthenticatedUser, dto: CreateStationTypeDto) {
+    const tenantId = this.tenantId(user);
+    const count = await this.prisma.stationType.count({ where: { tenantId } });
+    const type = await this.prisma.stationType.create({ data: { tenantId, name: dto.name.trim().slice(0, 40), sortOrder: count } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'station_type.created', resourceType: 'station_type', resourceId: type.id });
+    return type;
+  }
+
+  async updateType(user: AuthenticatedUser, id: string, dto: UpdateStationTypeDto) {
+    const tenantId = this.tenantId(user);
+    const existing = await this.prisma.stationType.findFirst({ where: { id, tenantId } });
+    if (!existing) throw new NotFoundException('Type not found');
+    const type = await this.prisma.stationType.update({
+      where: { id },
+      data: { name: dto.name?.trim().slice(0, 40) ?? undefined, sortOrder: dto.sortOrder ?? undefined, isActive: dto.isActive ?? undefined },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'station_type.updated', resourceType: 'station_type', resourceId: id });
+    return type;
+  }
+
+  async removeType(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const existing = await this.prisma.stationType.findFirst({ where: { id, tenantId } });
+    if (!existing) throw new NotFoundException('Type not found');
+    // Chairs of this type keep existing; their stationTypeId is set null (SetNull).
+    await this.prisma.stationType.delete({ where: { id } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'station_type.deleted', resourceType: 'station_type', resourceId: id });
+    return { ok: true };
+  }
+
+  // ---- Chairs / stations ---------------------------------------------------
   list(user: AuthenticatedUser) {
     return this.prisma.station.findMany({
       where: { tenantId: this.tenantId(user) },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      include: { stationType: { select: TYPE_SELECT } },
     });
   }
 
@@ -36,25 +86,25 @@ export class StationsService {
       data: {
         tenantId,
         name: dto.name.trim().slice(0, 40),
-        kind: dto.kind ?? 'OTHER',
+        stationTypeId: dto.stationTypeId || null,
         sortOrder: dto.sortOrder ?? 0,
         isActive: dto.isActive ?? true,
       },
+      include: { stationType: { select: TYPE_SELECT } },
     });
     await this.audit.log({ tenantId, userId: user.userId, action: 'station.created', resourceType: 'station', resourceId: station.id });
     return station;
   }
 
-  /** Quick setup: add N chairs of one kind, auto-numbered after the existing ones. */
+  /** Quick setup: add N chairs of one type, auto-numbered after the existing ones. */
   async bulkCreate(user: AuthenticatedUser, dto: BulkCreateStationDto) {
     const tenantId = this.tenantId(user);
     const count = Math.max(1, Math.min(40, Math.round(dto.count || 0)));
     const existing = await this.prisma.station.count({ where: { tenantId } });
-    const kind = dto.kind ?? 'OTHER';
     const prefix = (dto.prefix ?? '').trim().slice(0, 20);
     const data = Array.from({ length: count }, (_, i) => ({
       tenantId,
-      kind,
+      stationTypeId: dto.stationTypeId || null,
       sortOrder: existing + i,
       name: prefix ? `${prefix} ${existing + i + 1}` : String(existing + i + 1),
     }));
@@ -71,10 +121,11 @@ export class StationsService {
       where: { id },
       data: {
         name: dto.name?.trim().slice(0, 40) ?? undefined,
-        kind: dto.kind ?? undefined,
+        stationTypeId: dto.stationTypeId !== undefined ? (dto.stationTypeId || null) : undefined,
         isActive: dto.isActive ?? undefined,
         sortOrder: dto.sortOrder ?? undefined,
       },
+      include: { stationType: { select: TYPE_SELECT } },
     });
     await this.audit.log({ tenantId, userId: user.userId, action: 'station.updated', resourceType: 'station', resourceId: id });
     return station;

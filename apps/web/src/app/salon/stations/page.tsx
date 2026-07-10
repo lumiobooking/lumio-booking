@@ -7,9 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 
-type Kind = 'PEDI' | 'MANI' | 'NAIL' | 'OTHER';
-interface Station { id: string; name: string; kind: Kind; isActive: boolean; sortOrder: number }
-const KINDS: Kind[] = ['PEDI', 'MANI', 'NAIL', 'OTHER'];
+interface SType { id: string; name: string; sortOrder: number; isActive: boolean }
+interface Station { id: string; name: string; stationTypeId: string | null; stationType: { id: string; name: string } | null; isActive: boolean; sortOrder: number }
 
 export default function StationsPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -19,29 +18,53 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const kindLabel = (k: Kind) => (vi
-    ? { PEDI: 'Ghế Pedi (chân)', MANI: 'Bàn Mani (tay)', NAIL: 'Bàn Nail', OTHER: 'Khác' }[k]
-    : { PEDI: 'Pedi chair', MANI: 'Mani table', NAIL: 'Nail station', OTHER: 'Other' }[k]);
 
+  const [types, setTypes] = useState<SType[]>([]);
   const [rows, setRows] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [bulk, setBulk] = useState({ count: '4', kind: 'PEDI' as Kind, prefix: '' });
+  const [bulk, setBulk] = useState({ count: '4', typeId: '', prefix: '' });
+  const [newType, setNewType] = useState('');
 
   const load = useCallback(async () => {
     if (!token) return;
-    try { setRows(await apiFetch<Station[]>('/stations', { token })); setError(null); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
+    try {
+      const [ty, st] = await Promise.all([
+        apiFetch<SType[]>('/stations/types', { token }),
+        apiFetch<Station[]>('/stations', { token }),
+      ]);
+      setTypes(ty); setRows(st);
+      setBulk((b) => ({ ...b, typeId: b.typeId || ty[0]?.id || '' }));
+      setError(null);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
+  // ---- chair types (add / rename / delete) ----
+  async function addType(e: FormEvent) {
+    e.preventDefault(); const name = newType.trim(); if (!name) return;
+    setError(null);
+    try { await apiFetch('/stations/types', { method: 'POST', token, body: { name } }); setNewType(''); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not add type'); }
+  }
+  async function renameType(id: string, name: string) {
+    try { await apiFetch(`/stations/types/${id}`, { method: 'PATCH', token, body: { name } }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not save'); }
+  }
+  async function delType(id: string) {
+    if (!window.confirm(vi ? 'Xoá loại này? Các ghế thuộc loại này sẽ thành "chưa phân loại".' : 'Delete this type? Its chairs become untyped.')) return;
+    try { await apiFetch(`/stations/types/${id}`, { method: 'DELETE', token }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not delete'); }
+  }
+
+  // ---- chairs ----
   async function addBulk(e: FormEvent) {
     e.preventDefault(); setError(null);
     try {
       await apiFetch('/stations/bulk', { method: 'POST', token, body: {
         count: Math.max(1, Math.min(40, parseInt(bulk.count, 10) || 1)),
-        kind: bulk.kind,
+        stationTypeId: bulk.typeId || undefined,
         prefix: bulk.prefix.trim() || undefined,
       } });
       setBulk({ ...bulk, prefix: '' });
@@ -60,24 +83,47 @@ function Inner() {
 
   if (loading) return <section><h2 style={{ fontSize: 18 }}>{vi ? 'Ghế / Bàn' : 'Chairs'}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
 
-  const byKind = KINDS.map((k) => ({ k, list: rows.filter((r) => r.kind === k) })).filter((g) => g.list.length > 0);
+  const groups = [
+    ...types.map((t) => ({ id: t.id, name: t.name, list: rows.filter((r) => r.stationTypeId === t.id) })),
+    { id: '', name: vi ? 'Chưa phân loại' : 'Untyped', list: rows.filter((r) => !r.stationTypeId) },
+  ].filter((g) => g.list.length > 0);
 
   return (
     <section>
       <h2 style={{ fontSize: 18, margin: '0 0 2px' }}>{vi ? 'Ghế / Bàn của tiệm' : 'Chairs & stations'}</h2>
       <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>
-        {vi ? 'Khai báo các ghế/bàn của tiệm. Hệ thống dùng danh sách này cho Sơ đồ ghế trong Calendar — tự xếp khách vào ghế trống đúng loại.'
-            : 'Set up your chairs. The floor view in Calendar uses this list to auto-seat walk-ins in a free chair of the right type.'}
+        {vi ? 'Khai báo các loại ghế và ghế của tiệm. Sơ đồ ghế trong Calendar dùng danh sách này để tự xếp khách vào ghế trống đúng loại.'
+            : 'Set up your chair types and chairs. The floor view in Calendar uses this to auto-seat walk-ins in a free chair of the right type.'}
       </p>
 
       {error && <div style={ui.banner}>{error}</div>}
 
+      {/* Chair types — add / rename / delete */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 10 }}>{vi ? 'Loại ghế' : 'Chair types'}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          {types.map((t) => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '4px 4px 4px 10px' }}>
+              <input defaultValue={t.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) renameType(t.id, v); }}
+                style={{ background: 'transparent', border: 'none', color: '#e2e8f0', fontSize: 13, width: Math.max(60, t.name.length * 9), outline: 'none' }} />
+              <button onClick={() => delType(t.id)} aria-label="delete type" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}>×</button>
+            </div>
+          ))}
+        </div>
+        <form onSubmit={addType} style={{ display: 'flex', gap: 8 }}>
+          <input value={newType} onChange={(e) => setNewType(e.target.value)} placeholder={vi ? 'Thêm loại mới (vd: Ghế trẻ em)' : 'Add a type (e.g. Kids chair)'}
+            style={{ ...ui.input, flex: 1, maxWidth: 320 }} />
+          <button type="submit" style={{ ...ui.input, width: 'auto', padding: '9px 16px', cursor: 'pointer' }}>{vi ? '+ Thêm loại' : '+ Add type'}</button>
+        </form>
+      </div>
+
+      {/* Quick add chairs */}
       <form onSubmit={addBulk} style={{ ...ui.card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, alignItems: 'end', marginBottom: 18 }}>
         <label><span style={ui.label}>{vi ? 'Số lượng' : 'How many'}</span>
           <input style={ui.input} type="number" min={1} max={40} value={bulk.count} onChange={(e) => setBulk({ ...bulk, count: e.target.value })} /></label>
         <label><span style={ui.label}>{vi ? 'Loại' : 'Type'}</span>
-          <select style={ui.input} value={bulk.kind} onChange={(e) => setBulk({ ...bulk, kind: e.target.value as Kind })}>
-            {KINDS.map((k) => <option key={k} value={k}>{kindLabel(k)}</option>)}
+          <select style={ui.input} value={bulk.typeId} onChange={(e) => setBulk({ ...bulk, typeId: e.target.value })}>
+            {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select></label>
         <label><span style={ui.label}>{vi ? 'Tên đầu (tuỳ chọn)' : 'Name prefix (optional)'}</span>
           <input style={ui.input} value={bulk.prefix} placeholder={vi ? 'vd: Spa' : 'e.g. Spa'} onChange={(e) => setBulk({ ...bulk, prefix: e.target.value })} /></label>
@@ -85,17 +131,18 @@ function Inner() {
       </form>
 
       {rows.length === 0 ? (
-        <div style={{ ...ui.card, color: '#64748b' }}>{vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo, ví dụ 6 ghế Pedi.' : 'No chairs yet. Use "Quick add" above, e.g. 6 Pedi chairs.'}</div>
-      ) : byKind.map((g) => (
-        <div key={g.k} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{kindLabel(g.k)} ({g.list.length})</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        <div style={{ ...ui.card, color: '#64748b' }}>{vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo.' : 'No chairs yet. Use "Quick add" above.'}</div>
+      ) : groups.map((g) => (
+        <div key={g.id || 'none'} style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
             {g.list.map((s) => (
               <div key={s.id} style={{ ...ui.card, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, opacity: s.isActive ? 1 : 0.5 }}>
                 <input defaultValue={s.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.name) patch(s.id, { name: v }); }}
                   style={{ ...ui.input, flex: 1, minWidth: 0, padding: '7px 10px' }} />
-                <select value={s.kind} onChange={(e) => patch(s.id, { kind: e.target.value as Kind })} style={{ ...ui.input, width: 'auto', padding: '7px 8px' }}>
-                  {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+                <select value={s.stationTypeId ?? ''} onChange={(e) => patch(s.id, { stationTypeId: e.target.value })} style={{ ...ui.input, width: 'auto', padding: '7px 8px' }}>
+                  <option value="">{vi ? '—' : '—'}</option>
+                  {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <button onClick={() => patch(s.id, { isActive: !s.isActive })} title={s.isActive ? (vi ? 'Đang dùng' : 'Active') : (vi ? 'Tạm ẩn' : 'Hidden')}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.isActive ? '#22c55e' : '#64748b', fontSize: 16 }}>{s.isActive ? '●' : '○'}</button>

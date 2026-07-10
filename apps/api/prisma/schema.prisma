@@ -235,6 +235,7 @@ model Tenant {
   waitlistEntries   WaitlistEntry[]
   walkIns           WalkIn[]
   stations          Station[]
+  stationTypes      StationType[]
   supplyItems       SupplyItem[]
   supplyMovements   SupplyMovement[]
   products          Product[]
@@ -757,7 +758,13 @@ model Station {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name      String      // e.g. "1", "Spa 3", "Nail 7"
-  kind      StationKind @default(OTHER)
+  kind      StationKind @default(OTHER) // legacy; grouping now uses stationType
+
+  // The salon's own chair type (user-managed: add/rename/delete). Nullable so a
+  // chair can be untyped; SetNull if the type is deleted.
+  stationTypeId String?
+  stationType   StationType? @relation(fields: [stationTypeId], references: [id], onDelete: SetNull)
+
   isActive  Boolean     @default(true)
   sortOrder Int         @default(0)
 
@@ -767,7 +774,28 @@ model Station {
   walkIns WalkIn[] @relation("WalkInStation")
 
   @@index([tenantId])
+  @@index([stationTypeId])
   @@map("stations")
+}
+
+/// A chair/station type the salon defines itself (e.g. Pedi, Mani, Nail, Kids).
+/// Fully managed by the salon (add / rename / delete); tenant-scoped.
+model StationType {
+  id        String @id @default(uuid())
+  tenantId  String
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stations Station[]
+
+  @@index([tenantId])
+  @@map("station_types")
 }
 
 // Back-of-house supplies/consumables a salon stocks (nail polish, tips, powder,

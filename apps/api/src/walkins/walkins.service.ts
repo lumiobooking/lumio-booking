@@ -60,27 +60,28 @@ export class WalkinsService {
     return d;
   }
 
-  /** Guess the chair kind a service belongs at, from its name + category. */
-  private detectKind(name?: string | null, category?: string | null): 'PEDI' | 'MANI' | 'NAIL' | 'OTHER' {
+  /** Keyword hint for the chair type a service belongs at (matched against the
+   *  salon's own type names, e.g. "Pedi"). Null = no strong hint. */
+  private detectHint(name?: string | null, category?: string | null): string | null {
     const s = `${name ?? ''} ${category ?? ''}`.toLowerCase();
-    if (/pedi|pedicure|foot|spa|chân|chan/.test(s)) return 'PEDI';
-    if (/mani|manicure|hand|tay/.test(s)) return 'MANI';
-    if (/nail|acrylic|dip|gel|powder|bột|bot|full set|fill|tip|shellac/.test(s)) return 'NAIL';
-    return 'OTHER';
+    if (/pedi|pedicure|foot|spa|chân|chan/.test(s)) return 'pedi';
+    if (/mani|manicure|hand|tay/.test(s)) return 'mani';
+    if (/nail|acrylic|dip|gel|powder|bột|bot|full set|fill|tip|shellac/.test(s)) return 'nail';
+    return null;
   }
 
   /** A free chair for a new walk-in: an active station not currently held by a
-   *  SERVING walk-in, preferring one whose kind matches the service. */
-  private async freeStationId(tenantId: string, preferKind: 'PEDI' | 'MANI' | 'NAIL' | 'OTHER'): Promise<string | null> {
+   *  SERVING walk-in, preferring one whose TYPE name matches the service hint. */
+  private async freeStationId(tenantId: string, hint: string | null): Promise<string | null> {
     const [stations, occupied] = await Promise.all([
-      this.prisma.station.findMany({ where: { tenantId, isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, kind: true } }),
+      this.prisma.station.findMany({ where: { tenantId, isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, stationType: { select: { name: true } } } }),
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING, stationId: { not: null } }, select: { stationId: true } }),
     ]);
     if (stations.length === 0) return null;
     const busy = new Set(occupied.map((o) => o.stationId));
     const free = stations.filter((st) => !busy.has(st.id));
     if (free.length === 0) return null;
-    const match = preferKind !== 'OTHER' ? free.find((st) => st.kind === preferKind) : undefined;
+    const match = hint ? free.find((st) => (st.stationType?.name || '').toLowerCase().includes(hint)) : undefined;
     return (match ?? free[0]).id;
   }
 
@@ -109,7 +110,7 @@ export class WalkinsService {
     // one whose kind matches the service (pedi service -> pedi chair). Front desk can
     // drag them to another chair on the floor view.
     const stationId = assigned
-      ? await this.freeStationId(tenantId, this.detectKind(svcMeta?.name, svcMeta?.category?.name))
+      ? await this.freeStationId(tenantId, this.detectHint(svcMeta?.name, svcMeta?.category?.name))
       : null;
     // Find-or-create a CRM customer by phone so the walk-in earns loyalty and is
     // remarketable. Skips when no phone is given (no key to dedupe on).

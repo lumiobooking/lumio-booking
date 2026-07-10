@@ -942,9 +942,9 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
   // + content height lets the iframe shrink to fit the form.
   const wide = isMobile || embedded;
   return (
-    <div style={embedded ? frameRootEmbed : frameRoot}>
+    <div style={(embedded || isMobile) ? frameRootEmbed : frameRoot}>
       <h2 style={stepTitle}>{title}</h2>
-      <div style={embedded ? scrollAreaEmbed : (isMobile ? { ...scrollArea, paddingBottom: 88 } : scrollArea)}>{children}</div>
+      <div style={(embedded || isMobile) ? scrollAreaEmbed : scrollArea}>{children}</div>
       <div style={embedded ? footerEmbed : (isMobile ? footerMobile : footer)}>
         {onBack ? <button onClick={onBack} style={{ ...ghostBtn, ...(wide ? { flexShrink: 0 } : {}) }}>Back</button> : (isMobile && !embedded ? null : <span />)}
         <button onClick={onContinue} disabled={!canContinue}

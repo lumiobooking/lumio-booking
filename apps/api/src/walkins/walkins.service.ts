@@ -60,29 +60,33 @@ export class WalkinsService {
     return d;
   }
 
-  /** Keyword hint for the chair type a service belongs at (matched against the
-   *  salon's own type names, e.g. "Pedi"). Null = no strong hint. */
-  private detectHint(name?: string | null, category?: string | null): string | null {
-    const s = `${name ?? ''} ${category ?? ''}`.toLowerCase();
-    if (/pedi|pedicure|foot|spa|chân|chan/.test(s)) return 'pedi';
-    if (/mani|manicure|hand|tay/.test(s)) return 'mani';
-    if (/nail|acrylic|dip|gel|powder|bột|bot|full set|fill|tip|shellac/.test(s)) return 'nail';
-    return null;
+  /** Lowercased text used to route a service to a chair type (its name + category). */
+  private svcMatchText(name?: string | null, category?: string | null): string {
+    return `${name ?? ''} ${category ?? ''}`.toLowerCase();
+  }
+
+  /** True if the service text contains the type's name or any of its keywords. */
+  private typeMatches(svcText: string, typeName: string, keywords?: string | null): boolean {
+    const words = [typeName, ...(keywords ?? '').split(',')].map((w) => w.trim().toLowerCase()).filter(Boolean);
+    return words.some((w) => svcText.includes(w));
   }
 
   /** A free chair for a new walk-in: an active station not currently held by a
-   *  SERVING walk-in, preferring one whose TYPE name matches the service hint. */
-  private async freeStationId(tenantId: string, hint: string | null): Promise<string | null> {
+   *  SERVING walk-in, preferring one whose TYPE matches the service (by the type's
+   *  name or its editable keywords). Falls back to the first free chair. */
+  private async freeStationId(tenantId: string, svcText: string): Promise<string | null> {
     const [stations, occupied] = await Promise.all([
-      this.prisma.station.findMany({ where: { tenantId, isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, stationType: { select: { name: true } } } }),
+      this.prisma.station.findMany({ where: { tenantId, isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true, stationType: { select: { name: true, keywords: true } } } }),
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING, stationId: { not: null } }, select: { stationId: true } }),
     ]);
     if (stations.length === 0) return null;
     const busy = new Set(occupied.map((o) => o.stationId));
     const free = stations.filter((st) => !busy.has(st.id));
     if (free.length === 0) return null;
-    const match = hint ? free.find((st) => (st.stationType?.name || '').toLowerCase().includes(hint)) : undefined;
-    return (match ?? free[0]).id;
+    const hit = svcText.trim()
+      ? free.find((st) => st.stationType && this.typeMatches(svcText, st.stationType.name, st.stationType.keywords))
+      : undefined;
+    return (hit ?? free[0]).id;
   }
 
   /** Add a walk-in. If a technician is passed (or auto-assign is on and a tech is
@@ -110,7 +114,7 @@ export class WalkinsService {
     // one whose kind matches the service (pedi service -> pedi chair). Front desk can
     // drag them to another chair on the floor view.
     const stationId = assigned
-      ? await this.freeStationId(tenantId, this.detectHint(svcMeta?.name, svcMeta?.category?.name))
+      ? await this.freeStationId(tenantId, this.svcMatchText(svcMeta?.name, svcMeta?.category?.name))
       : null;
     // Find-or-create a CRM customer by phone so the walk-in earns loyalty and is
     // remarketable. Skips when no phone is given (no key to dedupe on).

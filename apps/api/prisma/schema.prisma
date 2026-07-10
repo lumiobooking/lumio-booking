@@ -786,6 +786,9 @@ model StationType {
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name      String
+  // Service keywords that auto-route a walk-in to this chair type. A service whose
+  // name or category contains any of these (comma-separated) seats here. Editable.
+  keywords  String?
   sortOrder Int     @default(0)
   isActive  Boolean @default(true)
 

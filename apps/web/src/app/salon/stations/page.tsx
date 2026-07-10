@@ -7,7 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 
-interface SType { id: string; name: string; sortOrder: number; isActive: boolean }
+interface SType { id: string; name: string; keywords: string | null; sortOrder: number; isActive: boolean }
 interface Station { id: string; name: string; stationTypeId: string | null; stationType: { id: string; name: string } | null; isActive: boolean; sortOrder: number }
 
 export default function StationsPage() {
@@ -48,8 +48,8 @@ function Inner() {
     try { await apiFetch('/stations/types', { method: 'POST', token, body: { name } }); setNewType(''); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not add type'); }
   }
-  async function renameType(id: string, name: string) {
-    try { await apiFetch(`/stations/types/${id}`, { method: 'PATCH', token, body: { name } }); await load(); }
+  async function patchType(id: string, data: { name?: string; keywords?: string }) {
+    try { await apiFetch(`/stations/types/${id}`, { method: 'PATCH', token, body: data }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not save'); }
   }
   async function delType(id: string) {
@@ -98,15 +98,21 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {/* Chair types — add / rename / delete */}
+      {/* Chair types + auto-seat keywords: automatic, but you control the words */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 10 }}>{vi ? 'Loại ghế' : 'Chair types'}</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>{vi ? 'Loại ghế & từ khóa tự xếp' : 'Chair types & auto-seat keywords'}</div>
+        <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 12px', lineHeight: 1.5 }}>{vi
+          ? 'Dịch vụ có tên hoặc nhóm chứa một trong các "từ khóa" này sẽ TỰ ĐỘNG được xếp vào loại ghế đó — không cần gán tay từng dịch vụ. Chỉ sửa từ khóa khi có ngoại lệ (vd thêm "combo" vào Pedi).'
+          : 'A service whose name or category contains any of these keywords is auto-seated at that chair type — no per-service setup. Edit the words only to fix exceptions.'}</p>
+        <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8, fontSize: 11, color: '#64748b' }}>
+            <span>{vi ? 'Tên loại' : 'Type name'}</span><span>{vi ? 'Từ khóa (cách nhau bằng dấu phẩy)' : 'Keywords (comma-separated)'}</span><span></span>
+          </div>
           {types.map((t) => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '4px 4px 4px 10px' }}>
-              <input defaultValue={t.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) renameType(t.id, v); }}
-                style={{ background: 'transparent', border: 'none', color: '#e2e8f0', fontSize: 13, width: Math.max(60, t.name.length * 9), outline: 'none' }} />
-              <button onClick={() => delType(t.id)} aria-label="delete type" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}>×</button>
+            <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8, alignItems: 'center' }}>
+              <input defaultValue={t.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) patchType(t.id, { name: v }); }} style={{ ...ui.input, padding: '7px 10px' }} />
+              <input defaultValue={t.keywords ?? ''} onBlur={(e) => { const v = e.target.value; if (v !== (t.keywords ?? '')) patchType(t.id, { keywords: v }); }} placeholder={vi ? 'vd: pedi, chân, foot, spa' : 'e.g. pedi, foot, spa'} style={{ ...ui.input, padding: '7px 10px' }} />
+              <button onClick={() => delType(t.id)} aria-label="delete type" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: '0 6px' }}>×</button>
             </div>
           ))}
         </div>

@@ -32,9 +32,9 @@ export class StationsService {
     let types = await this.prisma.stationType.findMany({ where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
     if (types.length === 0) {
       await this.prisma.stationType.createMany({ data: [
-        { tenantId, name: 'Pedi', sortOrder: 0 },
-        { tenantId, name: 'Mani', sortOrder: 1 },
-        { tenantId, name: 'Nail', sortOrder: 2 },
+        { tenantId, name: 'Pedi', sortOrder: 0, keywords: 'pedi,pedicure,chân,chan,foot,spa' },
+        { tenantId, name: 'Mani', sortOrder: 1, keywords: 'mani,manicure,tay,hand' },
+        { tenantId, name: 'Nail', sortOrder: 2, keywords: 'nail,gel,dip,acrylic,bột,bot,fill,tip,shellac,powder,full set' },
       ] });
       types = await this.prisma.stationType.findMany({ where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
     }
@@ -44,7 +44,7 @@ export class StationsService {
   async createType(user: AuthenticatedUser, dto: CreateStationTypeDto) {
     const tenantId = this.tenantId(user);
     const count = await this.prisma.stationType.count({ where: { tenantId } });
-    const type = await this.prisma.stationType.create({ data: { tenantId, name: dto.name.trim().slice(0, 40), sortOrder: count } });
+    const type = await this.prisma.stationType.create({ data: { tenantId, name: dto.name.trim().slice(0, 40), keywords: dto.keywords?.slice(0, 300) ?? null, sortOrder: count } });
     await this.audit.log({ tenantId, userId: user.userId, action: 'station_type.created', resourceType: 'station_type', resourceId: type.id });
     return type;
   }
@@ -55,7 +55,7 @@ export class StationsService {
     if (!existing) throw new NotFoundException('Type not found');
     const type = await this.prisma.stationType.update({
       where: { id },
-      data: { name: dto.name?.trim().slice(0, 40) ?? undefined, sortOrder: dto.sortOrder ?? undefined, isActive: dto.isActive ?? undefined },
+      data: { name: dto.name?.trim().slice(0, 40) ?? undefined, keywords: dto.keywords !== undefined ? (dto.keywords.slice(0, 300) || null) : undefined, sortOrder: dto.sortOrder ?? undefined, isActive: dto.isActive ?? undefined },
     });
     await this.audit.log({ tenantId, userId: user.userId, action: 'station_type.updated', resourceType: 'station_type', resourceId: id });
     return type;

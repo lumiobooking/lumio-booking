@@ -15,10 +15,12 @@ export class BulkCreateStationDto {
 
 export class CreateStationTypeDto {
   @IsString() @MinLength(1) @MaxLength(40) name!: string;
+  @IsOptional() @IsString() @MaxLength(300) keywords?: string;
 }
 
 export class UpdateStationTypeDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(40) name?: string;
+  @IsOptional() @IsString() @MaxLength(300) keywords?: string;
   @IsOptional() @IsInt() sortOrder?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }

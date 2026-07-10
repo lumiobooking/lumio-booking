@@ -368,6 +368,14 @@ function Inner() {
 // Day view: a detailed single-day timeline. Appointments are placed by time,
 // sized by duration, and split into side-by-side columns when they overlap.
 // ---------------------------------------------------------------------------
+// Distinct, stable avatar color per staff member (hash of id -> palette).
+const AVATAR_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#f43f5e'];
+function avatarColor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
 function DayView({ date, items, tz, isMobile, onOpen, today }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date;
 }) {
@@ -394,12 +402,19 @@ function DayView({ date, items, tz, isMobile, onOpen, today }: {
     })
     .sort((a, z) => a.s - z.s || a.e - z.e);
 
+  // Tight window: ~1h of air before the first and after the last appointment
+  // (min 6h span), so the day reads compact instead of a mostly-empty grid.
   let startH = 9, endH = 18;
-  for (const x of ev) { startH = Math.min(startH, Math.floor(x.s / 60)); endH = Math.max(endH, Math.ceil(x.e / 60)); }
-  startH = Math.max(6, startH); endH = Math.min(23, Math.max(endH, startH + 4));
+  if (ev.length) {
+    startH = Math.floor(ev[0].s / 60) - 1;
+    endH = Math.ceil(Math.max(...ev.map((x) => x.e)) / 60) + 1;
+  }
+  startH = Math.max(6, startH); endH = Math.min(23, endH);
+  while (endH - startH < 6 && endH < 22) endH++;
+  while (endH - startH < 6 && startH > 6) startH--;
   const gStart = startH * 60;
-  const HP = isMobile ? 54 : 62;
-  const railW = isMobile ? 46 : 58;
+  const HP = isMobile ? 60 : 66;
+  const railW = isMobile ? 46 : 60;
   const total = (endH - startH) * HP;
 
   type Pos = { b: Booking; s: number; e: number; col: number; cols: number };
@@ -423,14 +438,17 @@ function DayView({ date, items, tz, isMobile, onOpen, today }: {
 
   const nowMin = isToday ? minInTz(new Date().toISOString()) : -1;
   const nowTop = nowMin >= gStart && nowMin <= endH * 60 ? (nowMin - gStart) / 60 * HP : -1;
+  const nextB = isToday ? (ev.find((x) => x.e > nowMin)?.b ?? null) : null;
 
   return (
     <div>
+      <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.14)}.cal-day-card:active{transform:scale(.995)}`}</style>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10 }}>
         <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: '#94a3b8' }}>{t('cal.apptWord')}</span></span>
         <span style={{ color: '#334155' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: '#94a3b8' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
         {ev.length > 0 && <><span style={{ color: '#334155' }}>|</span><span style={{ fontSize: 13, color: '#94a3b8' }}>{fmtT(ev[0].b.startTime)} – {fmtT(ev[ev.length - 1].b.endTime)}</span></>}
+        {nextB && <><span style={{ color: '#334155' }}>|</span><span style={{ fontSize: 13, color: '#cbd5e1' }}>{lang === 'vi' ? 'Kế tiếp' : 'Next'}: <strong style={{ color: '#f1f5f9' }}>{fmtT(nextB.startTime)}</strong> {nextB.customer?.firstName ?? ''}</span></>}
       </div>
 
       {items.length === 0 ? (
@@ -449,28 +467,61 @@ function DayView({ date, items, tz, isMobile, onOpen, today }: {
               <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid #1e293b' }} />
             ))}
             {nowTop >= 0 && (
-              <div style={{ position: 'absolute', top: nowTop, left: 0, right: 0, borderTop: '2px solid #ef4444', zIndex: 3 }}>
-                <span style={{ position: 'absolute', left: 0, top: -5, width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
+              <div style={{ position: 'absolute', top: nowTop, left: 0, right: 0, borderTop: '2px solid #ef4444', zIndex: 5 }}>
+                <span style={{ position: 'absolute', left: -1, top: -5, width: 9, height: 9, borderRadius: '50%', background: '#ef4444' }} />
+                <span style={{ position: 'absolute', right: 6, top: -9, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 5, padding: '1px 6px' }}>{fmtT(new Date().toISOString())}</span>
               </div>
             )}
             {pos.map(({ b, s, e, col, cols }) => {
               const m = statusBucket(b.status);
               const top = (s - gStart) / 60 * HP;
-              const h = Math.max(38, (e - s) / 60 * HP - 3);
+              const h = Math.max(44, (e - s) / 60 * HP - 4);
               const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
+              const struck = b.status === 'CANCELLED';
               const w = 100 / cols;
+              const wide = cols === 1 && !isMobile;
+              const client = b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—';
               const tech = b.assignedStaff ? b.assignedStaff.firstName : t('cal.unassigned');
+              const initial = b.assignedStaff ? b.assignedStaff.firstName.charAt(0).toUpperCase() : '?';
+              const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : '#475569';
+              const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
+              const isNext = nextB?.id === b.id;
               return (
-                <div key={b.id} onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.service?.name ?? ''}`}
-                  style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`,
-                    background: dim ? '#1e293b' : `${m.color}22`, border: `1px solid ${m.color}66`, borderLeft: `3px solid ${m.color}`,
-                    borderRadius: 8, padding: '4px 8px', overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.7 : 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}{h > 30 ? ` – ${fmtT(b.endTime)}` : ''}</div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
-                    {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
-                  </div>
-                  {h > 46 && <div style={{ fontSize: 11.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</div>}
-                  {h > 68 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>{tech} · {formatPrice(b.priceCents, b.currency)}</div>}
+                <div key={b.id} onClick={() => onOpen(b)} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${b.service?.name ?? ''}`}
+                  style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 4px)`, width: `calc(${w}% - 8px)`,
+                    background: dim ? '#161f30' : `linear-gradient(180deg, ${m.color}26, ${m.color}12)`,
+                    border: `1px solid ${m.color}55`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
+                    boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.35)',
+                    padding: wide ? '0 12px' : '5px 9px', overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
+                    display: 'flex', flexDirection: wide ? 'row' : 'column', alignItems: wide ? 'center' : 'stretch', gap: wide ? 12 : 1 }}>
+                  {wide ? (
+                    <>
+                      <div style={{ width: 94, flexShrink: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#f1f5f9', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtT(b.endTime)} · {durMin}m</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                        <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+                        <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
+                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#22c55e', flexShrink: 0, minWidth: 54, textAlign: 'right' }}>{formatPrice(b.priceCents, b.currency)}</div>
+                      <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                      {h > 50 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
+                    </>
+                  )}
                 </div>
               );
             })}

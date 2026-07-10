@@ -67,6 +67,8 @@ function Inner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
+  const [search, setSearch] = useState('');
+  const [fullscreen, setFullscreen] = useState(false);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   // Month grid vs. detailed single-day timeline.
@@ -117,10 +119,38 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(load, 15000); // new bookings appear within ~15s, no reload needed
 
+  const toggleFull = useCallback(() => {
+    setFullscreen((f) => {
+      const next = !f;
+      try {
+        if (next) { document.documentElement.requestFullscreen?.().catch(() => undefined); }
+        else if (document.fullscreenElement) { document.exitFullscreen?.().catch(() => undefined); }
+      } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    const onFs = () => { if (!document.fullscreenElement) setFullscreen(false); };
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
   const days = useMemo(() => buildMonth(view), [view]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return bookings;
+    const qd = q.replace(/\D/g, '');
+    return bookings.filter((b) => {
+      const c = b.customer;
+      const nm = c ? (c.firstName + ' ' + (c.lastName ?? '')).toLowerCase() : '';
+      const ph = (c?.phone ?? '').replace(/\D/g, '');
+      const em = (c?.email ?? '').toLowerCase();
+      return nm.includes(q) || em.includes(q) || (!!qd && ph.includes(qd));
+    });
+  }, [bookings, search]);
   const byDay = useMemo(() => {
     const map = new Map<string, Booking[]>();
-    for (const b of bookings) {
+    for (const b of filtered) {
       const key = dayKeyTz(new Date(b.startTime), tz);
       const arr = map.get(key) ?? [];
       arr.push(b);
@@ -128,7 +158,7 @@ function Inner() {
     }
     for (const arr of map.values()) arr.sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
     return map;
-  }, [bookings, tz]);
+  }, [filtered, tz]);
 
   const todayStats = useMemo(() => {
     const list = byDay.get(cellKey(today)) ?? [];
@@ -150,7 +180,7 @@ function Inner() {
   }
 
   return (
-    <section>
+    <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '14px 18px', overflow: 'auto' } : undefined}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 style={{ fontSize: 24, margin: 0 }}>{t('cal.title')}</h1>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -175,6 +205,12 @@ function Inner() {
             </div>
           )}
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ flex: '1 1 240px', maxWidth: 380, padding: '9px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: 14 }} />
+        {search && <button onClick={() => setSearch('')} style={navBtn} title="Clear">✕</button>}
+        <button onClick={toggleFull} style={{ ...navBtn, marginLeft: 'auto' }}>{fullscreen ? (lang === 'vi' ? '✕ Thoát toàn màn hình' : '✕ Exit full screen') : (lang === 'vi' ? '⛶ Toàn màn hình' : '⛶ Full screen')}</button>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}

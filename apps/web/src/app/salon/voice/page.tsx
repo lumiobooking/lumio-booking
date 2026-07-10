@@ -9,6 +9,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { usePaged, Pager } from '../../../components/ListFilter';
 import { useLang } from '../../../lib/i18n';
 
 interface VConf {
@@ -127,6 +128,7 @@ function Inner() {
 
   const [c, setC] = useState<VConf | null>(null);
   const [calls, setCalls] = useState<VCall[]>([]);
+  const pgCalls = usePaged(calls, 15);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -266,6 +268,7 @@ function Inner() {
         {calls.length === 0 ? (
           <div style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noCalls')}</div>
         ) : (
+          <>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
@@ -276,7 +279,7 @@ function Inner() {
                 </tr>
               </thead>
               <tbody>
-                {calls.map((cl) => (
+                {pgCalls.paged.map((cl) => (
                   <tr key={cl.id} style={{ borderBottom: '1px solid #1f2937' }}>
                     <td style={ui.td}>{cl.fromNumber || '—'}</td>
                     <td style={ui.td}><span style={{ color: outc(cl.outcome).color, fontWeight: 600 }}>● {outc(cl.outcome)[lang as Lang]}</span></td>
@@ -286,6 +289,8 @@ function Inner() {
               </tbody>
             </table>
           </div>
+          <Pager paged={pgCalls} />
+          </>
         )}
       </div>
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, CSSProperties, ReactNode } from 'reac
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface Row {
   id: string; number: string; type: 'OVERAGE' | 'RENEWAL'; status: 'OPEN' | 'PAID' | 'VOID';
@@ -34,6 +35,7 @@ export default function AdminInvoicesPage() {
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
   }, [token]);
   useEffect(() => { if (ready && token && user?.role === 'SUPER_ADMIN') load(); }, [ready, token, user, load]);
+  const pg = usePaged(rows ?? [], 20);
 
   async function act(path: string, okMsg: string) {
     setBusy(true); setErr(null); setMsg(null);
@@ -76,6 +78,7 @@ export default function AdminInvoicesPage() {
         ) : rows.length === 0 ? (
           <p style={{ color: '#94a3b8', margin: 0 }}>No invoices yet. They are generated at month end (overage) and when a plan is due (renewal).</p>
         ) : (
+          <>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 720 }}>
               <thead>
@@ -86,7 +89,7 @@ export default function AdminInvoicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {pg.paged.map((r) => (
                   <tr key={r.id} style={{ borderTop: '1px solid #1f2937' }}>
                     <td style={td}><span style={{ fontFamily: 'monospace' }}>{r.number}</span></td>
                     <td style={td}>{r.salonName ?? '—'}</td>
@@ -105,6 +108,8 @@ export default function AdminInvoicesPage() {
               </tbody>
             </table>
           </div>
+          <Pager paged={pg} />
+          </>
         )}
       </section>
     </main>

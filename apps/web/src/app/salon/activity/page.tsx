@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
 import { PushEnable } from '../../../components/PushEnable';
 import { BookingDetailSheet } from '../../../components/BookingDetailSheet';
+import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface Item { id: string; type: 'booking' | 'cancel' | 'payment'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null }
 
@@ -69,12 +70,13 @@ function Inner() {
   const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : L('· Thanh toán', '· Paid');
 
   const shown = useMemo(() => items.filter((i) => filter === 'all' || i.type === filter), [items, filter]);
+  const pg = usePaged(shown, 20);
   const groups = useMemo(() => {
     const m = new Map<string, Item[]>();
-    for (const i of shown) { const k = dayKey(i.at); const a = m.get(k) ?? []; a.push(i); m.set(k, a); }
+    for (const i of pg.paged) { const k = dayKey(i.at); const a = m.get(k) ?? []; a.push(i); m.set(k, a); }
     return Array.from(m.entries());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, lang]);
+  }, [pg.paged, lang]);
 
   const chips: { k: typeof filter; label: string }[] = [
     { k: 'all', label: L('Tất cả', 'All') },
@@ -99,7 +101,7 @@ function Inner() {
 
       {loading ? <p style={{ color: '#64748b', fontSize: 14, marginTop: 16 }}>{L('Đang tải…', 'Loading…')}</p>
         : shown.length === 0 ? <p style={{ color: '#64748b', fontSize: 14, marginTop: 20 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
-        : groups.map(([day, list]) => (
+        : <>{groups.map(([day, list]) => (
           <div key={day} style={{ marginTop: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6, color: '#64748b', marginBottom: 8 }}>{day}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -140,7 +142,7 @@ function Inner() {
               })}
             </div>
           </div>
-        ))}
+        ))}<Pager paged={pg} /></>}
 
       {openId && <BookingDetailSheet token={token} apptId={openId} onClose={() => setOpenId(null)} lang={lang} L={L} />}
     </section>

@@ -13,6 +13,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { usePaged, Pager } from '../../../components/ListFilter';
 
 interface GrSettings {
   enabled: boolean; connected: boolean; connectedEmail: string;
@@ -112,6 +113,7 @@ function Inner() {
 
   const [s, setS] = useState<GrSettings | null>(null);
   const [reviews, setReviews] = useState<GrReview[]>([]);
+  const pgReviews = usePaged(reviews, 12);
   const [filter, setFilter] = useState<'NEEDS_ATTENTION' | 'DRAFTED' | 'REPLIED' | 'ALL'>('DRAFTED');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -430,8 +432,9 @@ function Inner() {
         {reviews.length === 0 ? (
           <p style={{ color: '#94a3b8', fontSize: 13.5, padding: '10px 0' }}>{t('empty')}</p>
         ) : (
+          <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {reviews.map((r) => (
+            {pgReviews.paged.map((r) => (
               <div key={r.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <span style={{ color: r.starRating >= 4 ? '#22c55e' : '#f59e0b', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
@@ -472,6 +475,8 @@ function Inner() {
               </div>
             ))}
           </div>
+          <Pager paged={pgReviews} />
+          </>
         )}
       </div>
     </section>

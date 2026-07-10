@@ -8,7 +8,7 @@ import { ui } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
-import { SearchBox, matchesQuery, sortNewest } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 
 interface Service {
   id: string;
@@ -327,6 +327,7 @@ function StaffInner() {
     staff.filter((m) => matchesQuery(`${m.firstName} ${m.lastName ?? ''} ${m.email ?? ''} ${m.phone ?? ''}`, q)),
     (m) => m.createdAt,
   );
+  const pg = usePaged(visible, 20);
 
   return (
     <section>
@@ -361,7 +362,7 @@ function StaffInner() {
       ) : isMobile ? (
         <MList>
           {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('st.empty')}</p>}
-          {visible.map((m) => (
+          {pg.paged.map((m) => (
             <Fragment key={m.id}>
               <MCard>
                 <MHead right={<span style={{ color: m.isActive ? '#22c55e' : '#94a3b8', fontSize: 12, fontWeight: 600 }}>{m.isActive ? t('st.active') : t('st.inactive')}</span>}>
@@ -409,6 +410,7 @@ function StaffInner() {
               )}
             </Fragment>
           ))}
+          <Pager paged={pg} />
         </MList>
       ) : (
         <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
@@ -431,7 +433,7 @@ function StaffInner() {
                   </td>
                 </tr>
               )}
-              {visible.map((m) => (
+              {pg.paged.map((m) => (
                 <Fragment key={m.id}>
                 <tr style={{ borderTop: '1px solid #334155' }}>
                   <td style={ui.td}>
@@ -521,6 +523,7 @@ function StaffInner() {
               ))}
             </tbody>
           </table>
+          <Pager paged={pg} />
         </div>
       )}
     </section>

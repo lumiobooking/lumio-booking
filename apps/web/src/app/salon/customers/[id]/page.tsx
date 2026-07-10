@@ -6,6 +6,7 @@ import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
+import { usePaged, Pager } from '../../../../components/ListFilter';
 import { useLang, tr } from '../../../../lib/i18n';
 
 interface Pay { id: string; amountCents: number; currency: string; status: string; type: string; createdAt: string }
@@ -46,6 +47,8 @@ function Inner() {
   const params = useParams();
   const id = String(params?.id ?? '');
   const [c, setC] = useState<CustomerDetail | null>(null);
+  const pgAppts = usePaged(c?.appointments ?? [], 15);
+  const pgLoyalty = usePaged(c?.loyaltyTransactions ?? [], 15);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bday, setBday] = useState('');
@@ -144,12 +147,13 @@ function Inner() {
         <div style={{ ...ui.card, marginBottom: 18 }}>
           <div style={{ fontSize: 14, color: '#cbd5e1', fontWeight: 600, marginBottom: 8 }}>{t('cu.loyaltyHistory')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {c.loyaltyTransactions.map((tx) => (
+            {pgLoyalty.paged.map((tx) => (
               <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
                 <span style={{ color: '#cbd5e1' }}>{new Date(tx.createdAt).toLocaleDateString('en-US')} · {tx.reason}</span>
                 <span style={{ color: tx.points >= 0 ? '#22c55e' : '#f97316', fontWeight: 600 }}>{tx.points >= 0 ? '+' : ''}{tx.points} {t('cu.pts')} <span style={{ color: '#64748b', fontWeight: 400 }}>({t('cu.bal')} {tx.balanceAfter})</span></span>
               </div>
             ))}
+            <Pager paged={pgLoyalty} />
           </div>
         </div>
       )}
@@ -169,7 +173,7 @@ function Inner() {
           </tr></thead>
           <tbody>
             {c.appointments.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('cu.noBookingsYet')}</td></tr>}
-            {c.appointments.map((a) => {
+            {pgAppts.paged.map((a) => {
               const pay = a.payments[0];
               return (
                 <tr key={a.id} style={{ borderTop: '1px solid #334155' }}>
@@ -193,6 +197,7 @@ function Inner() {
           </tbody>
         </table>
       </div>
+      <Pager paged={pgAppts} />
     </section>
   );
 }

@@ -7,6 +7,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, Lang } from '../../../lib/i18n';
+import { usePaged, Pager } from '../../../components/ListFilter';
 
 type BillTab = 'plan' | 'usage' | 'invoices';
 interface InvoiceRow { id: string; number: string; type: string; status: string; totalCents: number; currency: string; periodStart: string | null; periodEnd: string | null; dueDate: string | null; token: string; createdAt: string }
@@ -205,6 +206,7 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
     if (!token) return;
     apiFetch<InvoiceRow[]>('/billing/invoices', { token }).then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([]));
   }, [token]);
+  const pg = usePaged(rows ?? [], 12);
 
   if (rows === null) return <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('bl.loading')}</p>;
   if (rows.length === 0) return (
@@ -216,7 +218,7 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 4px' }}>{t('bl.invIntro')}</p>
-      {rows.map((iv) => {
+      {pg.paged.map((iv) => {
         const paid = iv.status === 'PAID';
         const void_ = iv.status === 'VOID';
         return (
@@ -239,6 +241,7 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
           </div>
         );
       })}
+      <Pager paged={pg} />
     </div>
   );
 }

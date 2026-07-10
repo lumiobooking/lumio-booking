@@ -111,7 +111,7 @@ export class VoiceService {
     );
   }
   private sayHangup(text: string, voice: string | null): string {
-    return this.twiml(`<Say${this.sayAttr(voice)}>${xml(text)}</Say><Hangup/>`);
+    return this.twiml(`<Say${this.sayAttr(voice)}>${xml(text)}</Say><Pause length="1"/><Hangup/>`);
   }
 
   // ---- inbound call (Twilio webhook) --------------------------------------
@@ -143,7 +143,7 @@ export class VoiceService {
       }).catch(() => undefined);
     }
     // ALWAYS disclose the automated assistant up front (CA/TX AI-disclosure laws).
-    const disclosure = `You've reached the automated booking assistant for ${salonName}.`;
+    const disclosure = `Hi, thanks for calling ${salonName}! Just so you know, you're speaking with our friendly automated booking assistant.`;
     const greeting = (line.greeting && line.greeting.trim()) || 'How can I help you book an appointment today?';
     return this.sayGather(`${disclosure} ${greeting}`, 0, line.language || 'en-US', line.voice || null);
   }
@@ -292,10 +292,11 @@ export class VoiceService {
     const system = `You are the warm, professional phone receptionist for "${salonName}", a nail salon. Your words are read aloud on a live call. Speak naturally like a friendly human receptionist — usually one relaxed sentence, occasionally two; concise and to the point, but never curt, robotic, or scripted. A little warmth ("Of course!", "Happy to help") is good; rambling is not. No lists, no emojis, no special characters, no URLs.
 The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
 Goal: book an appointment. You still need their first name, which service they want, and a specific date and time. Ask for what is missing, ONE thing at a time, and confirm details by repeating them back.
-Once you have a first name, a service (use its id from the list below), and a specific date and time, call create_booking. After it succeeds, say the day and time out loud to confirm and let them know they'll get a text message confirmation.
+Once you have a first name, a service (use its id from the list below), and a specific date and time, call create_booking. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
 Speak times naturally (for example, "two thirty PM on Friday"). The salon's local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the salon is closed then and offer the nearest open time.
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
+Warmth and pace: sound like a caring human, not a script. Use the caller's name once you know it and react naturally ("Great choice!", "Perfect."). When it is time to end, give an unhurried, friendly goodbye: thank them by name, wish them a great day, and invite them to call back anytime. Never clip the goodbye or hang up mid-thought.
 ${servicesBlock}
 ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
 
@@ -357,7 +358,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         continue;
       }
       const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
-      return { reply: text || 'How else can I help you book?', done: acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId };
+      return { reply: text || 'How else can I help you book?', done: acc.booked ? false : acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId };
     }
     return { reply: 'Thanks for calling! A team member will follow up shortly. Goodbye.', done: true, booked: acc.booked, appointmentId: acc.appointmentId };
   }
@@ -399,11 +400,11 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         }
         acc.booked = true;
         acc.appointmentId = b.id || null;
-        return `SUCCESS. Appointment created (id ${b.id}). Confirm the service, day and time back to the caller warmly and tell them a text confirmation is on its way.`;
+        return `SUCCESS. The appointment is booked (id ${b.id}). Warmly confirm the service, day and time back to the caller and let them know a text confirmation is on the way. Do NOT end the call yet: after confirming, ask if there is anything else you can help with, and wait for their reply.`;
       }
       if (name === 'end_call') {
         acc.wantEnd = true;
-        return 'OK. Give a short, warm goodbye now.';
+        return 'Give a warm, unhurried goodbye now, a friendly sentence or two: thank them by name if you know it, wish them a lovely day, and if they booked remind them the text confirmation is coming and that they can call back anytime.';
       }
       return `Unknown tool ${name}.`;
     } catch (e) {

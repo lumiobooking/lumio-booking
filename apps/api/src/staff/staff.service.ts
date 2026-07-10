@@ -67,7 +67,7 @@ export class StaffService {
   private async myStaffRecord(user: AuthenticatedUser) {
     const staff = await this.prisma.staffMember.findFirst({
       where: { tenantId: this.tenantId(user), userId: user.userId },
-      select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatarUrl: true },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatarUrl: true, tipQrUrl: true, tipHandle: true },
     });
     if (!staff) throw new NotFoundException('No staff profile is linked to your account');
     return staff;
@@ -87,8 +87,10 @@ export class StaffService {
         lastName: dto.lastName ?? undefined,
         phone: dto.phone ?? undefined,
         avatarUrl: dto.avatarUrl === undefined ? undefined : (dto.avatarUrl || null),
+        tipQrUrl: dto.tipQrUrl === undefined ? undefined : (dto.tipQrUrl || null),
+        tipHandle: dto.tipHandle === undefined ? undefined : (dto.tipHandle?.trim() || null),
       },
-      select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatarUrl: true },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatarUrl: true, tipQrUrl: true, tipHandle: true },
     });
     await this.audit.log({ tenantId: this.tenantId(user), userId: user.userId, action: 'staff.self_profile_updated', resourceType: 'staff', resourceId: me.id });
     return updated;

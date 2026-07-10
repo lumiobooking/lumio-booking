@@ -24,4 +24,15 @@ export class UpdateMyProfileDto {
   @IsString()
   @MaxLength(700000) // small uploaded image stored as a data: URL
   avatarUrl?: string;
+
+  // The technician's own direct-tip QR (Venmo/Zelle/Cash App), a small data URL.
+  @IsOptional()
+  @IsString()
+  @MaxLength(900000)
+  tipQrUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  tipHandle?: string;
 }

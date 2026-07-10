@@ -48,6 +48,7 @@ export function StaffShell({ children, title = 'My Bookings' }: { children: Reac
           <a href="/staff/bookings" style={navBtn}>My bookings</a>
           <a href="/staff/reviews" style={navBtn}>My reviews</a>
           <a href="/staff/profile" style={navBtn}>My profile</a>
+          <a href="/staff/tips" style={navBtn}>💸 Tips</a>
           <button
             onClick={logout}
             style={{

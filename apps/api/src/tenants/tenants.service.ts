@@ -450,6 +450,20 @@ export class TenantsService {
     return plan;
   }
 
+  async deletePlan(user: AuthenticatedUser, id: string) {
+    const exists = await this.prisma.plan.findUnique({ where: { id } });
+    if (!exists) throw new BadRequestException('Plan not found');
+    // Detach salons on this plan (planId is nullable) and remove its subscription
+    // rows (planId is required, so they must go) before deleting the plan.
+    await this.prisma.$transaction([
+      this.prisma.tenant.updateMany({ where: { planId: id }, data: { planId: null } }),
+      this.prisma.subscription.deleteMany({ where: { planId: id } }),
+      this.prisma.plan.delete({ where: { id } }),
+    ]);
+    await this.audit.log({ tenantId: null, userId: user.userId, action: 'plan.deleted', resourceType: 'plan', resourceId: id });
+    return { ok: true };
+  }
+
   private planData(dto: PlanInput) {
     // Keep legacy priceCents in sync with the monthly price for older readers.
     const monthly = dto.priceMonthlyCents ?? dto.priceCents ?? 0;

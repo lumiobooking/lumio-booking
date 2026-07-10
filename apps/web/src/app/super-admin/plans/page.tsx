@@ -78,6 +78,18 @@ export default function PlansPage() {
     }
   }
 
+  async function deletePlan(id: string, name: string) {
+    if (!token) return;
+    if (typeof window !== 'undefined' && !window.confirm('Delete plan "' + name + '"? Any salon on it will be set to no plan.')) return;
+    setError(null);
+    try {
+      await apiFetch('/tenants/plans/' + id, { method: 'DELETE', token });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete plan');
+    }
+  }
+
   if (!ready || !token || user?.role !== 'SUPER_ADMIN') {
     return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>Loading…</div>;
   }
@@ -127,7 +139,7 @@ export default function PlansPage() {
                       </div>
                     </td>
                     <td style={td}><span style={{ color: p.isActive ? '#22c55e' : '#94a3b8' }}>{p.isActive ? 'Active' : 'Inactive'}</span></td>
-                    <td style={td}><button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...primary, padding: '6px 12px', fontSize: 12, background: editId === p.id ? '#475569' : '#6366f1' }}>{editId === p.id ? 'Close' : 'Edit'}</button></td>
+                    <td style={td}><div style={{ display: 'flex', gap: 6 }}><button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...primary, padding: '6px 12px', fontSize: 12, background: editId === p.id ? '#475569' : '#6366f1' }}>{editId === p.id ? 'Close' : 'Edit'}</button><button onClick={() => deletePlan(p.id, p.name)} style={{ ...ghost, padding: '6px 10px', fontSize: 12, borderColor: '#7f1d1d', color: '#fca5a5' }}>Delete</button></div></td>
                   </tr>
                   {editId === p.id && (
                     <tr><td colSpan={5} style={{ padding: 16, background: '#0f172a' }}>

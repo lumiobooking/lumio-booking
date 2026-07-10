@@ -48,6 +48,11 @@ export class TenantsController {
     return this.tenantsService.updatePlan(user, id, dto);
   }
 
+  @Delete('plans/:id')
+  deletePlan(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.tenantsService.deletePlan(user, id);
+  }
+
   // ---- Multi-branch (chain) groups. Static 'groups' routes before ':id'. ----
   @Get('groups')
   listGroups() {

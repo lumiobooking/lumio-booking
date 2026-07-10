@@ -73,6 +73,12 @@ function Inner() {
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   // Month grid vs. detailed single-day timeline.
   const [mode, setMode] = useState<'month' | 'day' | 'staff'>('month');
+  // Day view: a scannable card grid (best for busy days) or a time-axis timeline.
+  const [dayLayout, setDayLayout] = useState<'grid' | 'timeline'>(() => {
+    if (typeof window === 'undefined') return 'grid';
+    return window.localStorage.getItem('lumio_day_layout') === 'timeline' ? 'timeline' : 'grid';
+  });
+  const pickDayLayout = (v: 'grid' | 'timeline') => { setDayLayout(v); try { window.localStorage.setItem('lumio_day_layout', v); } catch { /* ignore */ } };
   const [dayDate, setDayDate] = useState<Date>(today);
   const goDay = useCallback((d: Date) => {
     const dd = new Date(d); dd.setHours(0, 0, 0, 0);
@@ -269,7 +275,17 @@ function Inner() {
           <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
         )
       ) : mode === 'day' ? (
-        <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
+              <button onClick={() => pickDayLayout('grid')} style={segBtn(dayLayout === 'grid')}>▦ {lang === 'vi' ? 'Lưới' : 'Grid'}</button>
+              <button onClick={() => pickDayLayout('timeline')} style={segBtn(dayLayout === 'timeline')}>☰ {lang === 'vi' ? 'Dòng thời gian' : 'Timeline'}</button>
+            </div>
+          </div>
+          {dayLayout === 'grid'
+            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
+            : <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />}
+        </div>
       ) : isMobile ? (
         /* Phones: day-by-day agenda — nearest day to today on top, paginated. */
         orderedMonthDays.length === 0 ? (
@@ -529,6 +545,100 @@ function DayView({ date, items, tz, isMobile, onOpen, today }: {
         </div>
       )}
       <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('cal.dayHint')}</p>
+    </div>
+  );
+}
+
+// Day view as a scannable card grid — grouped by morning / afternoon / evening,
+// wrapping into as many columns as fit. Much easier to read on a busy day than a
+// squished time-axis.
+function DayGrid({ date, items, tz, isMobile, onOpen, today }: {
+  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date;
+}) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const hourInTz = (iso: string) => {
+    const d = new Date(iso);
+    if (!tz) return d.getHours();
+    const parts = new Intl.DateTimeFormat('en-US', { hour: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
+    return Number(parts.find((x) => x.type === 'hour')?.value ?? 0) % 24;
+  };
+
+  const isToday = date.getTime() === today.getTime();
+  const revenue = items.reduce((sum, b) => sum + (b.status === 'CANCELLED' || b.status === 'NO_SHOW' ? 0 : b.priceCents), 0);
+  const currency = items[0]?.currency ?? 'USD';
+  const sorted = [...items].sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
+  const nowTs = Date.now();
+  const nextId = isToday ? (sorted.find((b) => new Date(b.endTime).getTime() > nowTs)?.id ?? null) : null;
+
+  const periods: { label: string; list: Booking[] }[] = [
+    { label: L('Buổi sáng', 'Morning'), list: [] },
+    { label: L('Buổi chiều', 'Afternoon'), list: [] },
+    { label: L('Buổi tối', 'Evening'), list: [] },
+  ];
+  for (const b of sorted) { const h = hourInTz(b.startTime); periods[h < 12 ? 0 : h < 17 ? 1 : 2].list.push(b); }
+
+  return (
+    <div>
+      <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.15)}.cal-day-card:active{transform:scale(.99)}`}</style>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10 }}>
+        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: '#94a3b8' }}>{t('cal.apptWord')}</span></span>
+        <span style={{ color: '#334155' }}>|</span>
+        <span style={{ fontSize: 14 }}><span style={{ color: '#94a3b8' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{ ...ui.card, textAlign: 'center', color: '#64748b', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {periods.map((pg, i) => pg.list.length === 0 ? null : (
+            <div key={i}>
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, color: '#64748b', textTransform: 'uppercase', marginBottom: 8 }}>{pg.label} · {pg.list.length}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10 }}>
+                {pg.list.map((b) => {
+                  const m = statusBucket(b.status);
+                  const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
+                  const struck = b.status === 'CANCELLED';
+                  const client = b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—';
+                  const tech = b.assignedStaff ? b.assignedStaff.firstName : t('cal.unassigned');
+                  const initial = b.assignedStaff ? b.assignedStaff.firstName.charAt(0).toUpperCase() : '?';
+                  const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : '#475569';
+                  const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
+                  const isNext = b.id === nextId;
+                  return (
+                    <div key={b.id} onClick={() => onOpen(b)} className="cal-day-card"
+                      style={{ background: dim ? '#161f30' : '#111a2c', border: `1px solid ${m.color}44`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
+                        padding: '10px 12px', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
+                        boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.3)',
+                        display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 13.5, fontWeight: 800, color: '#f1f5f9', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
+                          <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>· {durMin}m</span>
+                        </span>
+                        <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
+                      </div>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                      <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? '—'}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={{ width: 22, height: 22, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
+                          <span style={{ fontSize: 12, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
+                        </span>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: '#22c55e', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>{t('cal.dayHint')}</p>
     </div>
   );
 }

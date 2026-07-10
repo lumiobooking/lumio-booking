@@ -73,7 +73,7 @@ export class StatsService {
         select: { startTime: true, source: true },
       }),
       this.prisma.walkIn.findMany({
-        where: { tenantId, createdAt: { gte: from, lte: to }, status: { not: WalkInStatus.CANCELLED } },
+        where: { tenantId, createdAt: { gte: from, lte: to }, status: { not: WalkInStatus.CANCELLED }, appointmentId: null },
         select: { createdAt: true },
       }),
       this.prisma.order.findMany({

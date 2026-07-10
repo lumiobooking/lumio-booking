@@ -736,6 +736,12 @@ model WalkIn {
   stationId    String?
   stationRef   Station? @relation("WalkInStation", fields: [stationId], references: [id], onDelete: SetNull)
 
+  // Denormalized channel (walkin | online | hotline | messenger | staff) for the
+  // unified floor tag + accurate stats. appointmentId links this floor ticket back
+  // to the online booking it was checked in from (null for a plain walk-in).
+  source        String?
+  appointmentId String?
+
   // Services finished; customer is off the chair, waiting to pay (bill still open).
   // Frees the chair + tech immediately; checkout still closes it out normally.
   awaitingPayment Boolean @default(false)

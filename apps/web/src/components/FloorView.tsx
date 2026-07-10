@@ -8,18 +8,29 @@ import { useLiveRefresh } from '../lib/useLiveRefresh';
 
 interface WItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface Serving {
-  id: string; customerName: string | null; phone: string | null; assignedAt: string | null; stationId: string | null; awaitingPayment: boolean;
+  id: string; customerName: string | null; phone: string | null; assignedAt: string | null; stationId: string | null; awaitingPayment: boolean; source: string | null; appointmentId: string | null;
   items: WItem[]; service: { id: string; name: string } | null; assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
 }
 interface Waiting { id: string; customerName: string | null; phone: string | null; createdAt: string; partySize: number; service: { id: string; name: string } | null }
 interface StaffTurn { id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean }
-interface Board { waiting: Waiting[]; serving: Serving[]; staff: StaffTurn[]; nextUpStaffId: string | null }
+interface Booked { id: string; startTime: string; source: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null }
+interface Board { waiting: Waiting[]; serving: Serving[]; booked: Booked[]; staff: StaffTurn[]; nextUpStaffId: string | null }
 interface Station { id: string; name: string; stationType: { id: string; name: string; sortOrder: number } | null; isActive: boolean; sortOrder: number }
 interface Svc { id: string; name: string; priceCents: number; durationMinutes: number }
 
 function fullName(s: { firstName: string; lastName: string | null } | null) { return s ? `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}` : ''; }
 function minsSince(iso: string | null) { return iso ? Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000)) : 0; }
 function initials(name: string) { return (name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase(); }
+function srcMeta(source: string | null | undefined, vi: boolean) {
+  const m: Record<string, { label: string; c: string; bg: string }> = {
+    walkin: { label: vi ? 'Vãng lai' : 'Walk-in', c: '#fbbf24', bg: 'rgba(245,158,11,0.15)' },
+    online: { label: 'Online', c: '#a5b4fc', bg: 'rgba(99,102,241,0.18)' },
+    hotline: { label: 'Hotline', c: '#4ade80', bg: 'rgba(34,197,94,0.15)' },
+    messenger: { label: 'Messenger', c: '#60a5fa', bg: 'rgba(59,130,246,0.15)' },
+    staff: { label: vi ? 'Nhân viên' : 'Staff', c: '#c4b5fd', bg: 'rgba(167,139,250,0.15)' },
+  };
+  return m[source || 'walkin'] || m.walkin;
+}
 
 export function FloorView({ token, lang }: { token: string | null; lang: string }) {
   const vi = lang === 'vi';
@@ -72,6 +83,16 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
     try { await apiFetch('/walkins', { method: 'POST', token, body: { ...body, autoAssign: true } }); setQuick(false); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not create'); }
   }
+
+  const tag = (source?: string | null) => {
+    const m = srcMeta(source, vi);
+    return <span style={{ fontSize: 10, fontWeight: 700, color: m.c, background: m.bg, borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>{m.label}</span>;
+  };
+  const seatBooked = async (id: string) => {
+    setError(null);
+    try { await apiFetch(`/walkins/seat-appointment/${id}`, { method: 'POST', token }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not check in'); }
+  };
 
   if (!board) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
 
@@ -128,6 +149,27 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
           ))}
       </div>
 
+      {board.booked && board.booked.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{vi ? 'Đã hẹn hôm nay · chờ tới' : 'Booked today · not arrived'}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {board.booked.map((b) => {
+              const time = new Date(b.startTime).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: 'numeric', minute: '2-digit' });
+              return (
+                <div key={b.id} style={{ background: '#111827', border: '1px solid #334155', borderRadius: 12, padding: '9px 11px', minWidth: 190 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.customerName || (vi ? 'Khách' : 'Guest')} · {time}</div>
+                    {tag(b.source)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.serviceName ?? ''}{b.staff ? ` · ${b.staff.name}` : ''}</div>
+                  <button onClick={() => seatBooked(b.id)} style={{ ...ui.primaryBtn, width: '100%', padding: '7px', fontSize: 13 }}>{vi ? 'Nhận khách' : 'Seat'}</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {noChair.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>{vi ? 'Đang làm, chưa có ghế — chọn ghế bên dưới (hoặc kéo vào ô ghế trống):' : 'In service, no chair — pick a chair below (or drag onto a free chair):'}</div>
@@ -135,7 +177,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
             {noChair.map((w) => (
               <div key={w.id} style={{ background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 12px', minWidth: 200 }}>
                 <div draggable onDragStart={() => setDragId(w.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(w.id)} style={{ cursor: 'grab' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</span>{tag(w.source)}</div>
                   <div style={{ fontSize: 11, color: '#94a3b8' }}>{fullName(w.assignedStaff)} · {formatPrice(w.items.reduce((a, it) => a + it.priceCents, 0), currency)}</div>
                 </div>
                 <select value="" onChange={(e) => e.target.value && move(w.id, e.target.value)} style={{ ...ui.input, width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '5px 8px', fontSize: 12 }}>
@@ -166,8 +208,8 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                   <div key={st.id} className="fl-tile" draggable onDragStart={() => setDragId(occ.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(occ.id)}
                     style={{ ...ui.card, padding: '10px 12px', cursor: 'pointer', minHeight: 118, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: '#64748b' }}>{st.name}</span>
-                      <span style={{ fontSize: 11, color: tColor, background: tBg, borderRadius: 20, padding: '2px 8px' }}>{elapsed}′{exp > 0 ? ` / ${exp}′` : ''}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><span style={{ fontSize: 12, color: '#64748b' }}>{st.name}</span>{tag(occ.source)}</div>
+                      <span style={{ fontSize: 11, color: tColor, background: tBg, borderRadius: 20, padding: '2px 8px', flexShrink: 0 }}>{elapsed}′{exp > 0 ? ` / ${exp}′` : ''}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                       <span style={ava}>{initials(occ.customerName || 'W')}</span>
@@ -205,11 +247,11 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {waitingPay.map((w) => {
               const total = w.items.reduce((a, it) => a + it.priceCents, 0);
-              const href = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
+              const href = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&appointmentId=${w.appointmentId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
               return (
                 <div key={w.id} style={{ background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', minWidth: 230 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                    <button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0 }}>{w.customerName || 'Walk-in'}</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</button>{tag(w.source)}</div>
                     <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{formatPrice(total, currency)}</div>
                   </div>
                   <div style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px' }}>{fullName(w.assignedStaff)} · {vi ? 'chờ' : 'waited'} {minsSince(w.assignedAt)}′</div>
@@ -320,7 +362,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
   const items = w.items ?? [];
   const subtotal = items.reduce((a, it) => a + it.priceCents, 0);
   const techName = (id: string | null) => (id ? (staff.find((s) => s.id === id)?.name ?? fullName(w.assignedStaff)) : (vi ? 'Chưa gán' : 'Unassigned'));
-  const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
+  const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&appointmentId=${w.appointmentId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
   const content = (
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(540px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>

@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomersService } from '../customers/customers.service';
 import { SettingsService } from '../settings/settings.service';
+import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 export interface AddWalkInDto {
@@ -134,6 +135,7 @@ export class WalkinsService {
         items: items as unknown as Prisma.InputJsonValue,
         station: dto.station?.trim().slice(0, 24) || null,
         stationId,
+        source: 'walkin',
         status: assigned ? WalkInStatus.SERVING : WalkInStatus.WAITING,
         assignedAt: assigned ? new Date() : null,
       },
@@ -202,6 +204,23 @@ export class WalkinsService {
       for (const tech of this.lineTechs(sv)) busy.add(tech);
     }
 
+    // Today's online bookings not yet arrived — shown in the floor's "Booked today"
+    // strip so walk-ins and appointments live on one screen.
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const bookedRaw = await this.prisma.appointment.findMany({
+      where: { tenantId, startTime: { gte: today, lt: tomorrow }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED] } },
+      select: { id: true, startTime: true, source: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: { startTime: 'asc' }, take: 60,
+    });
+    const booked = bookedRaw.map((a) => ({
+      id: a.id,
+      startTime: a.startTime,
+      source: normalizeSource(a.source),
+      customerName: a.customer ? `${a.customer.firstName}${a.customer.lastName ? ' ' + a.customer.lastName : ''}`.trim() : null,
+      serviceName: a.service?.name ?? null,
+      staff: a.assignedStaff ? { id: a.assignedStaff.id, name: `${a.assignedStaff.firstName}${a.assignedStaff.lastName ? ' ' + a.assignedStaff.lastName : ''}` } : null,
+    }));
+
     const board = staff.map((s) => ({
       id: s.id,
       name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
@@ -216,7 +235,44 @@ export class WalkinsService {
       ? available.reduce((a, b) => (b.turns < a.turns ? b : a)).id
       : null;
 
-    return { waiting, serving, staff: board.map((s) => ({ ...s, nextUp: s.id === nextUpStaffId })), nextUpStaffId };
+    return { waiting, serving, booked, staff: board.map((s) => ({ ...s, nextUp: s.id === nextUpStaffId })), nextUpStaffId };
+  }
+
+  /** Check in an online booking: place the customer on a chair as a floor ticket
+   *  linked back to the appointment, and mark the appointment ARRIVED. Everything
+   *  else (running ticket, checkout, turns) then works exactly like a walk-in. */
+  async seatAppointment(user: AuthenticatedUser, appointmentId: string) {
+    const tenantId = this.tenantId(user);
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: {
+        id: true, customerId: true, source: true, assignedStaffId: true,
+        customer: { select: { firstName: true, lastName: true, phone: true } },
+        service: { select: { id: true, name: true } },
+      },
+    });
+    if (!appt) throw new NotFoundException('Appointment not found');
+    const custName = appt.customer ? `${appt.customer.firstName}${appt.customer.lastName ? ' ' + appt.customer.lastName : ''}`.trim() : null;
+    const items = appt.service ? [await this.buildItem(tenantId, appt.service.id, appt.assignedStaffId ?? null)] : [];
+    const stationId = await this.freeStationId(tenantId, this.svcMatchText(appt.service?.name, null));
+    const walkIn = await this.prisma.walkIn.create({
+      data: {
+        tenantId,
+        appointmentId: appt.id,
+        customerId: appt.customerId,
+        customerName: custName,
+        phone: appt.customer?.phone ?? null,
+        assignedStaffId: appt.assignedStaffId ?? null,
+        items: items as unknown as Prisma.InputJsonValue,
+        source: normalizeSource(appt.source),
+        stationId,
+        status: WalkInStatus.SERVING,
+        assignedAt: new Date(),
+      },
+      include: INCLUDE,
+    });
+    await this.prisma.appointment.update({ where: { id: appt.id }, data: { status: AppointmentStatus.ARRIVED, arrivedAt: new Date() } });
+    return walkIn;
   }
 
   private async mine(user: AuthenticatedUser, id: string) {

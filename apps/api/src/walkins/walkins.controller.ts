@@ -87,6 +87,11 @@ export class WalkinsController {
     return this.walkins.waitPayment(user, id);
   }
 
+  @Post('seat-appointment/:id')
+  seatAppointment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.walkins.seatAppointment(user, id);
+  }
+
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
     return this.walkins.addService(user, id, dto.serviceId, dto.staffId);

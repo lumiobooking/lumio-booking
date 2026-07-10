@@ -134,6 +134,19 @@ function Inner() {
   }, [token, view]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Walk-ins live outside the appointment list; surface a live count so the
+  // calendar's "today" line reflects them too (managed in the Floor view).
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    const tick = () => apiFetch<{ serving?: unknown[]; waiting?: unknown[] }>('/walkins/board', { token })
+      .then((b) => { if (alive) setWalkinNow((b.serving?.length ?? 0) + (b.waiting?.length ?? 0)); })
+      .catch(() => {});
+    tick();
+    const iv = window.setInterval(tick, 30000);
+    return () => { alive = false; window.clearInterval(iv); };
+  }, [token]);
   useLiveRefresh(load, 15000); // new bookings appear within ~15s, no reload needed
 
   const toggleFull = useCallback(() => {
@@ -192,6 +205,7 @@ function Inner() {
   const monthSafePage = Math.min(monthPage, monthPageCount - 1);
   const monthPageDays = orderedMonthDays.slice(monthSafePage * MONTH_PAGE_SIZE, monthSafePage * MONTH_PAGE_SIZE + MONTH_PAGE_SIZE);
 
+  const [walkinNow, setWalkinNow] = useState(0);
   const todayStats = useMemo(() => {
     const list = byDay.get(cellKey(today)) ?? [];
     const count = (k: string) => list.filter((b) => statusBucket(b.status).key === k).length;
@@ -286,6 +300,7 @@ function Inner() {
           {t('cal.todayLabel')}: <strong style={{ color: '#e2e8f0' }}>{todayStats.total}</strong> {t('cal.apptWord')}
           {todayStats.pending > 0 && <> · <span style={{ color: '#f59e0b' }}>{todayStats.pending} {t('cal.stPending')}</span></>}
           {todayStats.arrived > 0 && <> · <span style={{ color: '#10b981' }}>{todayStats.arrived} {t('cal.stArrived')}</span></>}
+          {walkinNow > 0 && <> · <span style={{ color: '#f59e0b' }}>{walkinNow} {lang === 'vi' ? 'khách vãng lai' : 'walk-in'}</span></>}
         </div>
       </div>
 

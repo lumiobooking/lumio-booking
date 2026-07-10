@@ -236,6 +236,7 @@ model Tenant {
   walkIns           WalkIn[]
   stations          Station[]
   stationTypes      StationType[]
+  heldBills         HeldBill[]
   supplyItems       SupplyItem[]
   supplyMovements   SupplyMovement[]
   products          Product[]
@@ -1533,6 +1534,24 @@ model Order {
   @@index([tenantId, createdAt])
   @@index([tenantId, source])
   @@map("orders")
+}
+
+/// A parked/held POS cart ("bill chờ"): the cashier suspends a sale-in-progress to
+/// serve someone else, then recalls it. Server-side + tenant-scoped so any register
+/// (or a page reload) can recall it. payload = the full cart snapshot.
+model HeldBill {
+  id              String @id @default(uuid())
+  tenantId        String
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  label           String?
+  customerId      String?
+  totalCents      Int     @default(0)
+  payload         Json    @default("{}")
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("held_bills")
 }
 
 /// One line on a ticket — a service or a retail product, with the technician

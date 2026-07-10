@@ -8,7 +8,7 @@ import { useLiveRefresh } from '../lib/useLiveRefresh';
 
 interface WItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface Serving {
-  id: string; customerName: string | null; phone: string | null; assignedAt: string | null; stationId: string | null;
+  id: string; customerName: string | null; phone: string | null; assignedAt: string | null; stationId: string | null; awaitingPayment: boolean;
   items: WItem[]; service: { id: string; name: string } | null; assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
 }
 interface Waiting { id: string; customerName: string | null; phone: string | null; createdAt: string; partySize: number; service: { id: string; name: string } | null }
@@ -66,6 +66,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
     window.setTimeout(() => setLastDone((cur) => (cur && cur.id === id ? null : cur)), 15000);
   };
   async function reactivate(id: string) { setLastDone(null); await call(`${id}/reactivate`, 'PATCH'); }
+  const waitPay = async (id: string) => { await call(`${id}/wait-payment`, 'PATCH'); setOpenId(null); };
   async function createBill(body: Record<string, unknown>) {
     setError(null);
     try { await apiFetch('/walkins', { method: 'POST', token, body: { ...body, autoAssign: true } }); setQuick(false); await load(); }
@@ -77,7 +78,8 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
   const active = stations.filter((s) => s.isActive);
   const occByStation = new Map<string, Serving>();
   for (const s of board.serving) if (s.stationId) occByStation.set(s.stationId, s);
-  const noChair = board.serving.filter((s) => !s.stationId);
+  const noChair = board.serving.filter((s) => !s.stationId && !s.awaitingPayment);
+  const waitingPay = board.serving.filter((s) => s.awaitingPayment);
   const idle = board.staff.filter((s) => !s.busy);
   const freeCount = active.length - occByStation.size;
   const freeStations = active.filter((s) => !occByStation.has(s.id));
@@ -197,6 +199,34 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
         </div>
       ))}
 
+      {waitingPay.length > 0 && (
+        <div style={{ marginTop: 6, marginBottom: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', margin: '0 0 8px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'} ({waitingPay.length})</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {waitingPay.map((w) => {
+              const total = w.items.reduce((a, it) => a + it.priceCents, 0);
+              const href = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
+              return (
+                <div key={w.id} style={{ background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', minWidth: 230 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                    <button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0 }}>{w.customerName || 'Walk-in'}</button>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{formatPrice(total, currency)}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px' }}>{fullName(w.assignedStaff)} · {vi ? 'chờ' : 'waited'} {minsSince(w.assignedAt)}′</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <a href={href} style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>{vi ? '💳 Thu ngân' : '💳 Checkout'}</a>
+                    <select value="" onChange={(e) => e.target.value && move(w.id, e.target.value)} style={{ ...ui.input, width: 'auto', padding: '8px', fontSize: 12 }}>
+                      <option value="">{vi ? 'Về ghế…' : 'To chair…'}</option>
+                      {freeStations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {board.waiting.length > 0 && (
         <div style={{ marginTop: 6 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{vi ? 'Đang chờ' : 'Waiting'} ({board.waiting.length})</div>
@@ -216,7 +246,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
       {quick && <QuickBill vi={vi} services={services} currency={currency} onClose={() => setQuick(false)} onCreate={createBill} />}
       {openWalkIn && (
         <TicketSheet vi={vi} w={openWalkIn} stations={active.filter((s) => !occByStation.has(s.id) || s.id === openWalkIn.stationId)} staff={board.staff} services={services} currency={currency}
-          onClose={() => setOpenId(null)} onAdd={addLine} onRemove={removeLine} onMove={move} onDone={() => done(openWalkIn.id)} />
+          onClose={() => setOpenId(null)} onAdd={addLine} onRemove={removeLine} onMove={move} onDone={() => done(openWalkIn.id)} onWaitPay={() => waitPay(openWalkIn.id)} />
       )}
     </div>
   );
@@ -280,10 +310,10 @@ function QuickBill({ vi, services, currency, onClose, onCreate }: {
   return typeof document === 'undefined' ? null : createPortal(content, document.body);
 }
 
-function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAdd, onRemove, onMove, onDone }: {
+function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAdd, onRemove, onMove, onDone, onWaitPay }: {
   vi: boolean; w: Serving; stations: Station[]; staff: StaffTurn[]; services: Svc[]; currency: string;
   onClose: () => void; onAdd: (id: string, serviceId: string, staffId: string) => void; onRemove: (id: string, lineId: string) => void;
-  onMove: (id: string, stationId: string) => void; onDone: () => void;
+  onMove: (id: string, stationId: string) => void; onDone: () => void; onWaitPay: () => void;
 }) {
   const [techId, setTechId] = useState('');
   const [pendingSvc, setPendingSvc] = useState<Svc | null>(null);
@@ -344,12 +374,16 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <a href={checkoutHref} style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{vi ? '💳 Thu ngân' : '💳 Checkout'} · {formatPrice(subtotal, currency)}</a>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={onWaitPay} title={vi ? 'Khách xong — rời ghế cho khách mới, giữ bill để tính sau' : 'Free the chair, keep the bill open to pay later'}
+              style={{ ...ui.primaryBtn, flex: 1, background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '11px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'}</button>
             <button
               onClick={() => { if (window.confirm(vi ? 'Kết thúc khách này mà KHÔNG thu tiền? Chỉ dùng khi khách bỏ về hoặc không tính tiền.' : 'Finish this client WITHOUT taking payment? Only use this for a walk-out or a comp.')) onDone(); }}
               title={vi ? 'Kết thúc không thu tiền' : 'Finish without payment'}
-              style={{ ...ui.primaryBtn, background: '#334155', padding: '12px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
+              style={{ ...ui.primaryBtn, background: '#334155', padding: '11px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
           </div>
-          <p style={{ fontSize: 11, color: '#64748b', margin: '10px 0 0', lineHeight: 1.5 }}>{vi ? 'Thu ngân = tính tiền rồi tự kết thúc, ghế được giải phóng. Xong = kết thúc KHÔNG thu tiền (khách rời ghế, không có hoá đơn).' : 'Checkout takes payment then finishes and frees the chair. Done finishes with no sale.'}</p>
+          <p style={{ fontSize: 11, color: '#64748b', margin: '10px 0 0', lineHeight: 1.5 }}>{vi ? 'Chờ thanh toán = khách xong, rời ghế cho khách mới, bill vẫn mở để tính sau. Thu ngân = tính tiền & kết thúc. Xong = kết thúc KHÔNG thu tiền.' : 'Waiting to pay frees the chair, bill stays open. Checkout takes payment & finishes. Done finishes with no sale.'}</p>
         </div>
       </div>
     </div>

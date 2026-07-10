@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { useIsMobile } from '../../../lib/responsive';
 import { SalonShell } from '../../../components/SalonShell';
@@ -81,6 +82,8 @@ function Register() {
   const [query, setQuery] = useState('');
   const [catFilter, setCatFilter] = useState<string | null>(null); // service category id, null = all
   const [cart, setCart] = useState<Line[]>([]);
+  const [heldBills, setHeldBills] = useState<{ id: string; label: string | null; totalCents: number; payload: unknown; createdAt: string }[]>([]);
+  const [showHeld, setShowHeld] = useState(false);
   const [orderDiscount, setOrderDiscount] = useState('');
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
   const [tendered, setTendered] = useState('');
@@ -341,6 +344,38 @@ function Register() {
     setGiftCard(null); setGiftInput(''); setScanInput(''); setScanMsg(null);
     setTipLogInput({}); setTipLogged({});
     setMobileView('catalog');
+  }
+
+  // ---- Held bills ("bill chờ"): park a cart to serve someone else, recall later ----
+  const loadHeld = useCallback(async () => {
+    if (!token) return;
+    try { setHeldBills(await apiFetch('/pos/held', { token })); } catch { /* ignore */ }
+  }, [token]);
+  useEffect(() => { loadHeld(); }, [loadHeld]);
+  async function park() {
+    if (cart.length === 0) return;
+    try {
+      await apiFetch('/pos/held', { method: 'POST', token, body: {
+        label: customerLabel || bookingCustomer || 'Walk-in',
+        totalCents: money.total,
+        payload: { cart, customerId, customerLabel, orderDiscount },
+      } });
+      clearCart();
+      await loadHeld();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not hold this ticket'); }
+  }
+  function recall(h: { id: string; payload: unknown }) {
+    if (cart.length > 0 && !window.confirm(lang === 'vi' ? 'Thay giỏ hàng hiện tại bằng bill này?' : 'Replace the current cart with this bill?')) return;
+    const pp = (h.payload || {}) as { cart?: Line[]; customerId?: string | null; customerLabel?: string | null; orderDiscount?: string };
+    setCart(Array.isArray(pp.cart) ? pp.cart.map((l) => ({ ...l, uid: `u${uidSeq++}` })) : []);
+    setCustomerId(pp.customerId ?? null);
+    setCustomerLabel(pp.customerLabel ?? null);
+    setOrderDiscount(pp.orderDiscount ?? '');
+    setShowHeld(false);
+    apiFetch(`/pos/held/${h.id}`, { method: 'DELETE', token }).then(loadHeld).catch(() => {});
+  }
+  async function deleteHeld(id: string) {
+    try { await apiFetch(`/pos/held/${id}`, { method: 'DELETE', token }); await loadHeld(); } catch { /* ignore */ }
   }
 
   // Resolve a scanned/typed barcode to a product and add it. Matches the full
@@ -784,6 +819,8 @@ function Register() {
             <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
             🖨️ {t('po.printReception')}
           </label>
+          <button onClick={park} disabled={cart.length === 0} title={lang === 'vi' ? 'Giữ bill hiện tại để phục vụ khách khác' : 'Hold the current ticket to serve someone else'} style={{ ...ghost, opacity: cart.length ? 1 : 0.5, cursor: cart.length ? 'pointer' : 'default' }}>⏸️ {lang === 'vi' ? 'Giữ bill' : 'Hold'}</button>
+          <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` (${heldBills.length})` : ''}</button>
           <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
         </div>
       </div>
@@ -1181,6 +1218,29 @@ function Register() {
           onClose={() => setShowScanner(false)}
         />
       )}
+
+      {showHeld && typeof document !== 'undefined' && createPortal(
+        <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #1e293b' }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>{lang === 'vi' ? 'Bill đang giữ' : 'Held bills'} {heldBills.length ? `(${heldBills.length})` : ''}</div>
+              <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ padding: 12 }}>
+              {heldBills.length === 0 ? <div style={{ color: '#64748b', fontSize: 13, padding: 8 }}>{lang === 'vi' ? 'Chưa có bill nào được giữ.' : 'No held bills.'}</div>
+                : heldBills.map((h) => (
+                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px', borderBottom: '1px solid #1e293b' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.label || 'Walk-in'}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatPrice(h.totalCents, currency)} · {new Date(h.createdAt).toLocaleTimeString(lang === 'vi' ? 'vi-VN' : 'en-US', { hour: 'numeric', minute: '2-digit' })}</div>
+                    </div>
+                    <button onClick={() => recall(h)} style={{ ...ui.primaryBtn, padding: '7px 14px' }}>{lang === 'vi' ? 'Mở lại' : 'Recall'}</button>
+                    <button onClick={() => deleteHeld(h.id)} aria-label="delete" style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 18, cursor: 'pointer' }}>×</button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>, document.body)}
     </section>
   );
 }

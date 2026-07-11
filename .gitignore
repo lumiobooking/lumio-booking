@@ -38,3 +38,6 @@ coverage/
 # Misc
 .cache/
 tmp/
+
+# Built WordPress plugin package (generated)
+lumio-booking-*.zip

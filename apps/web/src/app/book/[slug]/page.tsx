@@ -205,6 +205,7 @@ export default function PublicBookingPage() {
   const slug = String(params?.slug ?? '');
   const base = `${API_URL}/public/salons/${encodeURIComponent(slug)}`;
   const isMobile = useIsMobile();
+  const embedded = useEmbedded();
 
   const [salon, setSalon] = useState<Salon | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -373,7 +374,7 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div style={{ ...(isMobile ? wrapMobile : wrap), ['--accent' as string]: accent } as React.CSSProperties}>
+      <div style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { height: 'auto', minHeight: 0, boxShadow: 'none' } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
           <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
@@ -415,7 +416,7 @@ export default function PublicBookingPage() {
           </aside>
         )}
 
-        <section style={isMobile ? contentMobile : content}>
+        <section style={{ ...(isMobile ? contentMobile : content), ...(embedded ? { overflow: 'visible', minHeight: 0 } : {}) }}>
           {step === 1 && (
             <>
               <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
@@ -1147,7 +1148,12 @@ function Shell({ children }: { children: React.ReactNode }) {
     // Tell the host page how tall we are so its iframe can shrink to fit the
     // form (no empty space below). The WordPress embed listens for this message.
     const post = () => {
-      const h = Math.ceil(document.documentElement.getBoundingClientRect().height);
+      const doc = document.documentElement;
+      const h = Math.max(
+        Math.ceil(doc.getBoundingClientRect().height),
+        doc.scrollHeight,
+        document.body ? document.body.scrollHeight : 0,
+      );
       try { window.parent.postMessage({ type: 'lumio-embed-height', height: h }, '*'); } catch { /* ignore */ }
     };
     post();

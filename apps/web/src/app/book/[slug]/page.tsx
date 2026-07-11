@@ -374,7 +374,7 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { height: 'auto', minHeight: 0, boxShadow: 'none' } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
+      <div style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none' } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
           <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
@@ -416,7 +416,7 @@ export default function PublicBookingPage() {
           </aside>
         )}
 
-        <section style={{ ...(isMobile ? contentMobile : content), ...(embedded ? { overflow: 'visible', minHeight: 0 } : {}) }}>
+        <section style={isMobile ? contentMobile : content}>
           {step === 1 && (
             <>
               <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
@@ -943,9 +943,9 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
   // + content height lets the iframe shrink to fit the form.
   const wide = isMobile || embedded;
   return (
-    <div style={(embedded || isMobile) ? frameRootEmbed : frameRoot}>
+    <div style={isMobile ? frameRootEmbed : frameRoot}>
       <h2 style={stepTitle}>{title}</h2>
-      <div style={(embedded || isMobile) ? scrollAreaEmbed : scrollArea}>{children}</div>
+      <div style={isMobile ? scrollAreaEmbed : scrollArea}>{children}</div>
       <div style={embedded ? footerEmbed : (isMobile ? footerMobile : footer)}>
         {onBack ? <button onClick={onBack} style={{ ...ghostBtn, ...(wide ? { flexShrink: 0 } : {}) }}>Back</button> : (isMobile && !embedded ? null : <span />)}
         <button onClick={onContinue} disabled={!canContinue}

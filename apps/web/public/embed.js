@@ -58,9 +58,17 @@
       var y = parseInt(d.y, 10) || 0;
       var bh = parseInt(d.h, 10) || 0;
       var r = hit.el.getBoundingClientRect();
+      var vh = window.innerHeight || 0;
       var pageY = window.pageYOffset || document.documentElement.scrollTop || 0;
-      var target = pageY + r.top + y + bh + 24 - (window.innerHeight || 0);
-      if (target > pageY) {
+      var barTop = pageY + r.top + y;      // action bar, in page coordinates
+      var barBot = barTop + bh;
+      var target = null;
+      if (barBot + 24 > pageY + vh) {
+        target = barBot + 24 - vh;         // bar is below the fold -> come up to it
+      } else if (barTop - 24 < pageY) {
+        target = Math.max(0, barTop - 90); // bar is ABOVE the fold (the form just got
+      }                                    // shorter) -> come back down to it
+      if (target !== null && Math.abs(target - pageY) > 4) {
         try { window.scrollTo({ top: target, behavior: 'smooth' }); }
         catch (err) { window.scrollTo(0, target); }
       }

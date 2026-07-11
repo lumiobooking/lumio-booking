@@ -8,7 +8,7 @@
 // (busy ones are greyed out) so the same tech can't be double-booked.
 // ===========================================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState, FormEvent } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
@@ -952,15 +952,38 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
   // long service list.
   const footerRef = useRef<HTMLDivElement | null>(null);
   const prevCan = useRef(canContinue);
+  const reveal = useCallback(() => {
+    const el = footerRef.current;
+    if (!embedded || !el) return;
+    const y = Math.round(el.getBoundingClientRect().top + (window.scrollY || 0));
+    try { window.parent.postMessage({ type: 'lumio-embed-reveal', y, h: el.offsetHeight }, '*'); } catch { /* ignore */ }
+  }, [embedded]);
   useEffect(() => {
     const was = prevCan.current;
     prevCan.current = canContinue;
-    if (!embedded || !canContinue || was) return;
-    const el = footerRef.current;
-    if (!el) return;
-    const y = Math.round(el.getBoundingClientRect().top + (window.scrollY || 0));
-    try { window.parent.postMessage({ type: 'lumio-embed-reveal', y, h: el.offsetHeight }, '*'); } catch { /* ignore */ }
-  }, [canContinue, embedded]);
+    if (!canContinue || was) return;
+    reveal();
+  }, [canContinue, reveal]);
+
+  // When the form SHRINKS (the visitor pressed "Done", "Show less", or removed a
+  // service) the host page keeps its old scroll offset — which now points below the
+  // widget, so the site appeared to jump to its own footer. Re-anchor on the action
+  // bar every time we get shorter.
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const prevH = useRef(0);
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!embedded || !el || typeof ResizeObserver === 'undefined') return;
+    prevH.current = el.getBoundingClientRect().height;
+    const ro = new ResizeObserver(() => {
+      const h = el.getBoundingClientRect().height;
+      const was = prevH.current;
+      prevH.current = h;
+      if (was && h < was - 24) reveal();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [embedded, reveal]);
   // Inside an iframe, a touch scroll that reaches the end of this inner list does NOT
   // chain out to the host page (iOS especially), so the site feels "stuck" until you
   // find a spot outside the form. Forward the overscroll to the parent, which then
@@ -988,7 +1011,7 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
   // host page scrolls exactly as it would over any other block on the site.
   const native = embedded;
   return (
-    <div style={native ? (isMobile ? frameRootEmbed : frameRootEmbedDesktop) : frameRoot}>
+    <div ref={frameRef} style={native ? (isMobile ? frameRootEmbed : frameRootEmbedDesktop) : frameRoot}>
       <h2 style={stepTitle}>{title}</h2>
       <div ref={scrollRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove}
         style={native ? scrollAreaEmbed : scrollArea}>{children}</div>

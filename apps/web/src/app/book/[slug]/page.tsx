@@ -400,7 +400,7 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div className="lumio-book" style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none' } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
+      <div className="lumio-book" style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none' } : {}), ...(embedded && !isMobile ? { height: 'auto', minHeight: 520 } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
           <div style={{ background: ACCENT, color: 'white', padding: embedded ? '12px 14px' : '16px 18px' }}>
@@ -982,11 +982,16 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
       try { window.parent.postMessage({ type: 'lumio-embed-scroll', dy }, '*'); } catch { /* ignore */ }
     }
   };
+  // An iframe with its own inner scroller swallows the wheel/touch gesture: the visitor
+  // scrolls "inside" the form and the host page stays put. Since the steps are short now
+  // (6 rows max), an embed never uses an inner scroller — it grows to its content and the
+  // host page scrolls exactly as it would over any other block on the site.
+  const native = embedded;
   return (
-    <div style={isMobile ? frameRootEmbed : frameRoot}>
+    <div style={native ? (isMobile ? frameRootEmbed : frameRootEmbedDesktop) : frameRoot}>
       <h2 style={stepTitle}>{title}</h2>
       <div ref={scrollRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove}
-        style={{ ...(isMobile ? scrollAreaEmbed : scrollArea), ...(embedded && !isMobile ? { overscrollBehavior: 'contain' as const } : {}) }}>{children}</div>
+        style={native ? scrollAreaEmbed : scrollArea}>{children}</div>
       <div ref={footerRef} style={embedded ? footerEmbed : (isMobile ? footerMobile : footer)}>
         {onBack ? <button onClick={onBack} style={{ ...ghostBtn, ...(wide ? { flexShrink: 0 } : {}) }}>Back</button> : (isMobile && !embedded ? null : <span />)}
         <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
@@ -1381,6 +1386,7 @@ const footerMobile: React.CSSProperties = { position: 'fixed', left: 0, right: 0
 const footerEmbed: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #e2e8f0', paddingTop: 16, marginTop: 16 };
 const scrollAreaEmbed: React.CSSProperties = { flex: 'none', minHeight: 0, overflow: 'visible', paddingRight: 4 };
 const frameRootEmbed: React.CSSProperties = { minHeight: 0, display: 'flex', flexDirection: 'column', padding: 20 };
+const frameRootEmbedDesktop: React.CSSProperties = { minHeight: 0, display: 'flex', flexDirection: 'column', padding: 28 };
 const primaryBtn: React.CSSProperties = { padding: '11px 22px', borderRadius: 8, border: 'none', background: ACCENT, color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer' };
 const ghostBtn: React.CSSProperties = { padding: '11px 18px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontSize: 14, cursor: 'pointer' };
 const navBtn: React.CSSProperties = { width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: ACCENT, fontSize: 16, cursor: 'pointer' };

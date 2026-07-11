@@ -108,7 +108,7 @@ function Inner() {
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: 'numeric', minute: '2-digit' });
 
   return (
-    <section>
+    <section style={{ maxWidth: 640 }}>
       {error && <div style={ui.banner}>{error}</div>}
 
       {/* Anything waiting on the tech's answer is surfaced before the calendar. */}
@@ -149,7 +149,7 @@ function Inner() {
             return (
               <button key={i} onClick={() => setPicked(d)}
                 style={{
-                  aspectRatio: '1 / 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                  height: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
                   borderRadius: 10, cursor: 'pointer', padding: 2,
                   border: on ? '2px solid #6366f1' : isToday ? '1px solid #475569' : '1px solid transparent',
                   background: on ? 'rgba(99,102,241,0.16)' : live.length ? '#0f172a' : 'transparent',

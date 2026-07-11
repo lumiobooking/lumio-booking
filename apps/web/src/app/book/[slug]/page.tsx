@@ -1080,6 +1080,27 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
   const matches = (s: Service) => !q || `${s.name} ${s.description ?? ''}`.toLowerCase().includes(q);
   const inCat = (catId: string) => services.filter((s) => s.categoryId === catId);
 
+  // A long menu used to render every service at once, pushing the Continue button
+  // far down the page (painful in the embed on a phone). In the default "All" view
+  // we now show COLLAPSED category groups; tapping one opens just that group.
+  // Search and the category chips still show a flat list, unchanged.
+  const groups = [
+    ...(featured.length > 0 ? [{ key: 'popular', title: '⭐ Popular', items: featured }] : []),
+    ...categories.map((c) => ({ key: c.id, title: c.name, items: inCat(c.id) })),
+    ...(uncategorised.length > 0 ? [{ key: 'none', title: 'Other', items: uncategorised }] : []),
+  ].filter((g) => g.items.length > 0);
+  const [openCat, setOpenCat] = useState<string | null>(() => {
+    if (groups.length === 1) return groups[0].key; // nothing to collapse
+    return groups.find((g) => g.items.some((x) => x.id === selectedId))?.key ?? null;
+  });
+  // Keep the group that holds the current choice open (e.g. after picking from search).
+  useEffect(() => {
+    if (!selectedId) return;
+    const g = groups.find((x) => x.items.some((x2) => x2.id === selectedId));
+    if (g) setOpenCat(g.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   const chip = (key: string, label: string) => (
     <button key={key} type="button" onClick={() => setActiveCat(key)}
       style={{ whiteSpace: 'nowrap', fontSize: 13, padding: '7px 14px', borderRadius: 999, cursor: 'pointer',
@@ -1122,6 +1143,26 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
     );
   };
 
+  const groupRow = (g: { key: string; title: string; items: Service[] }) => {
+    const isOpen = openCat === g.key;
+    const chosen = g.items.find((x) => x.id === selectedId);
+    return (
+      <div key={g.key} style={{ marginBottom: 8 }}>
+        <button type="button" className="lumio-opt" onClick={() => setOpenCat(isOpen ? null : g.key)}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+            border: chosen ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: isOpen ? '#f8fafc' : 'white' }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{g.title}</span>
+            {chosen && <span style={{ display: 'block', fontSize: 12, color: ACCENT, fontWeight: 600, marginTop: 2 }}>✓ {chosen.name}</span>}
+          </span>
+          <span style={{ flexShrink: 0, fontSize: 12, color: '#64748b', background: '#f1f5f9', borderRadius: 999, padding: '2px 8px' }}>{g.items.length}</span>
+          <span style={{ flexShrink: 0, color: '#94a3b8', fontSize: 11, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>▶</span>
+        </button>
+        {isOpen && <div style={{ marginTop: 8 }}>{g.items.map(card)}</div>}
+      </div>
+    );
+  };
+
   let body: React.ReactNode;
   if (q) {
     const all = services.filter(matches);
@@ -1136,9 +1177,10 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
   } else {
     body = (
       <>
-        {featured.length > 0 && section('⭐ Popular', featured)}
-        {categories.map((c) => section(c.name, inCat(c.id)))}
-        {section('Other', uncategorised)}
+        {openCat === null && groups.length > 1 && (
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px' }}>Tap a category to see its services, or search above.</p>
+        )}
+        {groups.map(groupRow)}
       </>
     );
   }

@@ -50,7 +50,24 @@
       return;
     }
 
-    // 3) Bring the widget into view (used when a step changes and the form is
+    // 3) Reveal the form's action bar (Back/Continue). The form asks for this the
+    //    moment a choice enables Continue, so the visitor never has to hunt for it at
+    //    the bottom of a long service list. y/h are the bar's position inside the
+    //    iframe; we scroll the host page just enough to bring it on screen.
+    if (d.type === 'lumio-embed-reveal') {
+      var y = parseInt(d.y, 10) || 0;
+      var bh = parseInt(d.h, 10) || 0;
+      var r = hit.el.getBoundingClientRect();
+      var pageY = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var target = pageY + r.top + y + bh + 24 - (window.innerHeight || 0);
+      if (target > pageY) {
+        try { window.scrollTo({ top: target, behavior: 'smooth' }); }
+        catch (err) { window.scrollTo(0, target); }
+      }
+      return;
+    }
+
+    // 4) Bring the widget into view (used when a step changes and the form is
     //    partly off-screen).
     if (d.type === 'lumio-embed-scroll-into-view') {
       try { hit.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }

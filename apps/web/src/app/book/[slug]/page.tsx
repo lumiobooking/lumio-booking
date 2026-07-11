@@ -206,15 +206,6 @@ export default function PublicBookingPage() {
   const base = `${API_URL}/public/salons/${encodeURIComponent(slug)}`;
   const isMobile = useIsMobile();
   const embedded = useEmbedded();
-  // An iframe cannot read the host page's viewport, so size the mobile widget from
-  // the device screen: roomy enough to fill the phone, short enough that the pinned
-  // Back/Continue bar still fits on screen (no scrolling the host page to reach it).
-  const [embedH, setEmbedH] = useState(600);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.screen) return;
-    const h = window.screen.height || 700;
-    setEmbedH(Math.max(520, Math.min(720, Math.round(h * 0.78))));
-  }, []);
 
   const [salon, setSalon] = useState<Salon | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -368,6 +359,16 @@ export default function PublicBookingPage() {
     setPaymentType('PAY_LATER'); setResult(null); setError(null);
   }
 
+  // Embedded: when the step changes, bring the widget back to the top of the screen
+  // so the new step starts in view (the host page does the scrolling).
+  const prevStep = useRef(step);
+  useEffect(() => {
+    const changed = prevStep.current !== step;
+    prevStep.current = step;
+    if (!changed || !embedded) return;
+    try { window.parent.postMessage({ type: 'lumio-embed-scroll-into-view' }, '*'); } catch { /* ignore */ }
+  }, [step, embedded]);
+
   if (loading) return <Shell><Center>Loading…</Center></Shell>;
   if (loadError) return <Shell><Center>{loadError}</Center></Shell>;
   if (salon && salon.businessType === 'RESTAURANT') return <RestaurantReserve slug={slug} salon={salon} />;
@@ -383,7 +384,7 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div className="lumio-book" style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none', ...(isMobile ? { height: embedH } : {}) } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
+      <div className="lumio-book" style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none' } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
           <div style={{ background: ACCENT, color: 'white', padding: embedded ? '12px 14px' : '16px 18px' }}>
@@ -425,7 +426,7 @@ export default function PublicBookingPage() {
           </aside>
         )}
 
-        <section key={step} className="lumio-step" style={{ ...(isMobile ? contentMobile : content), ...(isMobile && embedded ? { flex: 1, minHeight: 0, overflow: 'hidden' } : {}) }}>
+        <section key={step} className="lumio-step" style={isMobile ? contentMobile : content}>
           {step === 1 && (
             <>
               <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
@@ -951,6 +952,20 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
   // pinned to the bottom of a tall iframe, leaving a big empty gap. Static footer
   // + content height lets the iframe shrink to fit the form.
   const wide = isMobile || embedded;
+  // Embedded: the moment a choice enables Continue, ask the host page to scroll the
+  // action bar into view, so the visitor never has to hunt for it at the end of a
+  // long service list.
+  const footerRef = useRef<HTMLDivElement | null>(null);
+  const prevCan = useRef(canContinue);
+  useEffect(() => {
+    const was = prevCan.current;
+    prevCan.current = canContinue;
+    if (!embedded || !canContinue || was) return;
+    const el = footerRef.current;
+    if (!el) return;
+    const y = Math.round(el.getBoundingClientRect().top + (window.scrollY || 0));
+    try { window.parent.postMessage({ type: 'lumio-embed-reveal', y, h: el.offsetHeight }, '*'); } catch { /* ignore */ }
+  }, [canContinue, embedded]);
   // Inside an iframe, a touch scroll that reaches the end of this inner list does NOT
   // chain out to the host page (iOS especially), so the site feels "stuck" until you
   // find a spot outside the form. Forward the overscroll to the parent, which then
@@ -961,6 +976,7 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
   const onTouchMove = (e: React.TouchEvent) => {
     const el = scrollRef.current;
     if (!embedded || !el) return;
+    if (el.scrollHeight <= el.clientHeight + 1) return; // no inner scroller -> let the page scroll natively
     const y = e.touches[0]?.clientY ?? 0;
     const dy = lastY.current - y; // > 0 = swiping up (content scrolls down)
     lastY.current = y;
@@ -972,11 +988,11 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
     }
   };
   return (
-    <div style={(isMobile && !embedded) ? frameRootEmbed : { ...frameRoot, ...(isMobile ? { padding: 18 } : {}) }}>
+    <div style={isMobile ? frameRootEmbed : frameRoot}>
       <h2 style={stepTitle}>{title}</h2>
       <div ref={scrollRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove}
-        style={{ ...((isMobile && !embedded) ? scrollAreaEmbed : scrollArea), ...(embedded ? { overscrollBehavior: 'contain' as const } : {}) }}>{children}</div>
-      <div style={embedded ? footerEmbed : (isMobile ? footerMobile : footer)}>
+        style={{ ...(isMobile ? scrollAreaEmbed : scrollArea), ...(embedded && !isMobile ? { overscrollBehavior: 'contain' as const } : {}) }}>{children}</div>
+      <div ref={footerRef} style={embedded ? footerEmbed : (isMobile ? footerMobile : footer)}>
         {onBack ? <button onClick={onBack} style={{ ...ghostBtn, ...(wide ? { flexShrink: 0 } : {}) }}>Back</button> : (isMobile && !embedded ? null : <span />)}
         <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
           style={{ ...primaryBtn, ...(wide ? { flex: 1, padding: '13px 22px', fontSize: 15 } : {}), opacity: canContinue ? 1 : 0.5, cursor: canContinue ? 'pointer' : 'not-allowed' }}>

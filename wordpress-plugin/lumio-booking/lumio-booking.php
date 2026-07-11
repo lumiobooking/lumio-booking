@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings, then add the [lumio_booking] shortcode to any page.
- * Version:           0.5.0
+ * Version:           0.6.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Lumio
@@ -134,7 +134,7 @@ if (!function_exists('lumio_booking_base')) {
         $html .= 'style="width:100%;min-height:' . $height . 'px;border:0;border-radius:16px;overflow:hidden;background:transparent;display:block;"></iframe>';
         $html .= '</div>';
         // Auto-resize: match the iframe to the form's reported content height.
-        $html .= '<script>(function(){var f=document.getElementById(' . wp_json_encode($fid) . ');if(!f){return;}var o=' . wp_json_encode($origin) . ';window.addEventListener("message",function(e){if(o&&e.origin!==o){return;}var d=e.data;if(!d||d.type!=="lumio-embed-height"){return;}var h=parseInt(d.height,10);if(h&&h>120){f.style.height=h+"px";f.style.minHeight="0px";}});})();</script>';
+        $html .= '<script>(function(){var f=document.getElementById(' . wp_json_encode($fid) . ');if(!f){return;}var o=' . wp_json_encode($origin) . ';window.addEventListener("message",function(e){if(o&&e.origin!==o){return;}var d=e.data;if(!d){return;}if(d.type==="lumio-embed-height"){var h=parseInt(d.height,10);if(h&&h>120){f.style.height=h+"px";f.style.minHeight="0px";}return;}if(d.type==="lumio-embed-scroll"){var dy=parseInt(d.dy,10);if(dy){window.scrollBy(0,dy);}return;}});})();</script>';
         return $html;
     }
     add_shortcode('lumio_booking', 'lumio_booking_shortcode');

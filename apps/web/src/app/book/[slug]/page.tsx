@@ -951,10 +951,31 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
   // pinned to the bottom of a tall iframe, leaving a big empty gap. Static footer
   // + content height lets the iframe shrink to fit the form.
   const wide = isMobile || embedded;
+  // Inside an iframe, a touch scroll that reaches the end of this inner list does NOT
+  // chain out to the host page (iOS especially), so the site feels "stuck" until you
+  // find a spot outside the form. Forward the overscroll to the parent, which then
+  // scrolls the website for us (the WordPress embed listens for this).
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const lastY = useRef(0);
+  const onTouchStart = (e: React.TouchEvent) => { lastY.current = e.touches[0]?.clientY ?? 0; };
+  const onTouchMove = (e: React.TouchEvent) => {
+    const el = scrollRef.current;
+    if (!embedded || !el) return;
+    const y = e.touches[0]?.clientY ?? 0;
+    const dy = lastY.current - y; // > 0 = swiping up (content scrolls down)
+    lastY.current = y;
+    if (!dy) return;
+    const atTop = el.scrollTop <= 0;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    if ((dy > 0 && atBottom) || (dy < 0 && atTop)) {
+      try { window.parent.postMessage({ type: 'lumio-embed-scroll', dy }, '*'); } catch { /* ignore */ }
+    }
+  };
   return (
     <div style={(isMobile && !embedded) ? frameRootEmbed : { ...frameRoot, ...(isMobile ? { padding: 18 } : {}) }}>
       <h2 style={stepTitle}>{title}</h2>
-      <div style={(isMobile && !embedded) ? scrollAreaEmbed : scrollArea}>{children}</div>
+      <div ref={scrollRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove}
+        style={{ ...((isMobile && !embedded) ? scrollAreaEmbed : scrollArea), ...(embedded ? { overscrollBehavior: 'contain' as const } : {}) }}>{children}</div>
       <div style={embedded ? footerEmbed : (isMobile ? footerMobile : footer)}>
         {onBack ? <button onClick={onBack} style={{ ...ghostBtn, ...(wide ? { flexShrink: 0 } : {}) }}>Back</button> : (isMobile && !embedded ? null : <span />)}
         <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"

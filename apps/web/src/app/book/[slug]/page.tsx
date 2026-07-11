@@ -248,6 +248,22 @@ export default function PublicBookingPage() {
   // Extra services chosen for the SAME visit. Each gets its own discount + the
   // weekday promo for its own category. (Excludes the primary service.)
   const extraServices = services.filter((s) => s.id !== serviceId && extraServiceIds.includes(s.id));
+  // One cart for the visitor. Under the hood the first pick stays the "primary"
+  // service (add-ons and staff eligibility hang off it) — the form never shows that.
+  const pickedServiceIds = serviceId ? [serviceId, ...extraServiceIds.filter((x) => x !== serviceId)] : [];
+  const toggleService = (id: string) => {
+    setStaffId('');
+    if (id === serviceId) {
+      const rest = extraServiceIds.filter((x) => x !== id);
+      setServiceId(rest[0] ?? '');
+      setExtraServiceIds(rest.slice(1));
+      setAddonIds([]);
+      return;
+    }
+    if (extraServiceIds.includes(id)) { setExtraServiceIds((p) => p.filter((x) => x !== id)); return; }
+    if (!serviceId) { setServiceId(id); setAddonIds([]); return; }
+    setExtraServiceIds((p) => [...p, id]);
+  };
   const extraLines = extraServices.map((s) => {
     const net = svcNetCents(s);
     const wd = promoPctFor(salon, selectedDate, s.categoryId ?? null);
@@ -439,13 +455,13 @@ export default function PublicBookingPage() {
           )}
 
           {step === 2 && (
-            <StepFrame title="Choose a service" canContinue={!!serviceId} onContinue={() => service && setStep(3)} onBack={() => setStep(1)}>
+            <StepFrame title="Choose services" canContinue={!!serviceId} onContinue={() => service && setStep(3)} onBack={() => setStep(1)}>
               <ServiceMenu
                 services={services} categories={categories}
                 search={svcSearch} setSearch={setSvcSearch}
                 activeCat={activeCat} setActiveCat={setActiveCat}
-                selectedId={serviceId}
-                onSelect={(id) => { setServiceId(id); setAddonIds([]); setStaffId(''); }}
+                selectedIds={pickedServiceIds}
+                onToggle={toggleService}
                 fmt={fmt}
               />
               {serviceAddons.length > 0 && (
@@ -466,14 +482,6 @@ export default function PublicBookingPage() {
                     })}
                   </div>
                 </div>
-              )}
-              {service && services.filter((s) => s.id !== serviceId).length > 0 && (
-                <AddMoreServices
-                  services={services.filter((s) => s.id !== serviceId)}
-                  selectedIds={extraServiceIds}
-                  onToggle={(id) => { setExtraServiceIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); setStaffId(''); }}
-                  fmt={fmt}
-                />
               )}
               {service && serviceDiscount > 0 && (
                 <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'linear-gradient(90deg,#fee2e2,#fef3c7)', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1057,21 +1065,26 @@ function Row({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
   return <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 14 }}><span style={{ color: '#64748b' }}>{k}</span><span style={{ color: '#1e293b', fontWeight: bold ? 700 : 500 }}>{v}</span></div>;
 }
 
-function ServiceMenu({ services, categories, search, setSearch, activeCat, setActiveCat, selectedId, onSelect, fmt }: {
+function ServiceMenu({ services, categories, search, setSearch, activeCat, setActiveCat, selectedIds, onToggle, fmt }: {
   services: Service[]; categories: Category[]; search: string; setSearch: (v: string) => void;
-  activeCat: string; setActiveCat: (v: string) => void; selectedId: string; onSelect: (id: string) => void; fmt: (c: number) => string;
+  activeCat: string; setActiveCat: (v: string) => void; selectedIds: string[]; onToggle: (id: string) => void; fmt: (c: number) => string;
 }) {
+  // How the big booking apps do it (Fresha, Booksy, Square, Treatwell): ONE cart.
+  // A visitor ticks as many services as they want for the same visit — there is no
+  // "main service" then a separate "add more" list. Rules that keep the form short
+  // on a phone: category tabs, a search box, never more than 6 rows at a time, and
+  // the picker folds away into a tidy cart as soon as something is chosen.
+  const PAGE = 6;
   const featured = services.filter((s) => s.isFeatured);
   const uncategorised = services.filter((s) => !s.categoryId);
+  const inCat = (catId: string) => services.filter((s) => s.categoryId === catId);
   const q = search.trim().toLowerCase();
   const matches = (s: Service) => !q || `${s.name} ${s.description ?? ''}`.toLowerCase().includes(q);
-  const inCat = (catId: string) => services.filter((s) => s.categoryId === catId);
-  const chosen = services.find((s) => s.id === selectedId) || null;
 
-  // How the big booking apps (Fresha, Booksy, Square) show a menu on a phone:
-  // never dump the whole price list. Category TABS on top, ONE short list below,
-  // and the moment a service is picked the list collapses to a single line — so the
-  // total and the Continue button are always right under the visitor's thumb.
+  const picked = selectedIds
+    .map((id) => services.find((s) => s.id === id))
+    .filter((s): s is Service => !!s);
+
   const tabs: { key: string; label: string }[] = [
     ...(featured.length > 0 ? [{ key: 'popular', label: '⭐ Popular' }] : []),
     ...categories.filter((c) => inCat(c.id).length > 0).map((c) => ({ key: c.id, label: c.name })),
@@ -1079,15 +1092,10 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
   ];
   const active = tabs.some((t) => t.key === activeCat) ? activeCat : (tabs[0]?.key ?? 'all');
 
-  const [picking, setPicking] = useState(!selectedId);
-  useEffect(() => { if (!selectedId) setPicking(true); }, [selectedId]);
-
-  // Never show more than a screenful at once — even a category with 20 services
-  // stays 6 rows tall, with a "Show more" button underneath. Keeps the Continue
-  // button in view no matter how big the salon's menu is.
-  const PAGE = 6;
+  const [open, setOpen] = useState(picked.length === 0);
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => { setLimit(PAGE); }, [activeCat, search]);
+  useEffect(() => { if (selectedIds.length === 0) setOpen(true); }, [selectedIds.length]);
 
   const listFor = (key: string): Service[] => {
     if (key === 'popular') return featured;
@@ -1097,163 +1105,113 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
   };
   const visible = q ? services.filter(matches) : listFor(active);
 
-  // ---- Picked: one tidy line + Change ----------------------------------------
-  if (chosen && !picking) {
-    const d = svcDiscount(chosen); const net = svcNetCents(chosen);
-    return (
-      <div style={{ marginBottom: 16 }}>
-        <span style={fieldLabel}>Your service:</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, border: `2px solid ${ACCENT}`, background: 'rgba(99,102,241,0.05)' }}>
-          <span style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: ACCENT, color: 'white', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700 }}>✓</span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{chosen.name}</span>
-            <span style={{ display: 'block', fontSize: 13, color: '#64748b', marginTop: 2 }}>
-              {chosen.durationMinutes} min ·{' '}
-              {d > 0 && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 4 }}>{fmt(chosen.priceCents)}</span>}
-              <b style={{ color: d > 0 ? '#dc2626' : '#1e293b' }}>{chosen.priceFrom ? 'from ' : ''}{fmt(net)}</b>
-            </span>
-          </span>
-          <button type="button" onClick={() => { setSearch(''); setPicking(true); }}
-            style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: ACCENT, background: 'white', border: `1px solid ${ACCENT}`, borderRadius: 999, padding: '7px 14px', cursor: 'pointer' }}>
-            Change
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const cartMin = picked.reduce((n, s) => n + s.durationMinutes, 0);
+  const cartCents = picked.reduce((n, s) => n + svcNetCents(s), 0);
 
-  // ---- Picking: tabs + one short list ----------------------------------------
+  const pick = (id: string) => {
+    const first = selectedIds.length === 0;
+    onToggle(id);
+    setSearch('');
+    if (first) setOpen(false); // first choice → fold the list away, Continue comes into view
+  };
+
   return (
     <div style={{ marginBottom: 16 }}>
-      {tabs.length > 1 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 10 }}>
-          {tabs.map((t) => {
-            const on = !q && active === t.key;
-            return (
-              <button key={t.key} type="button" onClick={() => { setSearch(''); setActiveCat(t.key); }}
-                style={{ whiteSpace: 'nowrap', fontSize: 13, padding: '8px 14px', borderRadius: 999, cursor: 'pointer',
-                  border: on ? `1px solid ${ACCENT}` : '1px solid #e2e8f0',
-                  background: on ? ACCENT : 'white', color: on ? 'white' : '#475569', fontWeight: 600 }}>
-                {t.label}
-              </button>
-            );
-          })}
+      {/* ---------- The cart ---------- */}
+      {picked.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={fieldLabel}>Your services ({picked.length}):</span>
+            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{cartMin} min · {fmt(cartCents)}</span>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {picked.map((s) => {
+              const d = svcDiscount(s);
+              return (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 12px 12px 14px', borderRadius: 12, border: `2px solid ${ACCENT}`, background: 'rgba(99,102,241,0.05)' }}>
+                  <span style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, background: ACCENT, color: 'white', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>✓</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{s.name}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                      {s.durationMinutes} min ·{' '}
+                      {d > 0 && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 4 }}>{fmt(s.priceCents)}</span>}
+                      <b style={{ color: d > 0 ? '#dc2626' : '#1e293b' }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
+                    </span>
+                  </span>
+                  <button type="button" onClick={() => onToggle(s.id)} aria-label={`Remove ${s.name}`} title="Remove"
+                    style={{ flexShrink: 0, width: 30, height: 30, borderRadius: '50%', border: '1px solid #e2e8f0', background: 'white', color: '#94a3b8', fontSize: 15, lineHeight: 1, cursor: 'pointer' }}>
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {!open && (
+            <button type="button" onClick={() => setOpen(true)}
+              style={{ width: '100%', marginTop: 8, padding: '12px', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 700, color: ACCENT, background: 'white', border: `1px dashed ${ACCENT}` }}>
+              + Add another service
+            </button>
+          )}
         </div>
       )}
-      <div style={{ position: 'relative', marginBottom: 10 }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search services…" style={{ ...field, paddingLeft: 36 }} />
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>⌕</span>
-      </div>
-      {visible.length === 0 ? (
-        <p style={{ color: '#94a3b8', fontSize: 14, margin: '8px 0' }}>No services match “{search}”.</p>
-      ) : visible.slice(0, limit).map((s) => {
-        const d = svcDiscount(s); const net = svcNetCents(s); const on = s.id === selectedId;
-        return (
-          <button key={s.id} type="button" className="lumio-opt"
-            onClick={() => { onSelect(s.id); setSearch(''); setPicking(false); }}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', marginBottom: 6,
-              border: on ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: on ? 'rgba(99,102,241,0.06)' : 'white' }}>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                {s.name}
-                {s.isFeatured && <span style={{ marginLeft: 6, background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>POPULAR</span>}
-              </span>
-              <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 }}>{s.durationMinutes} min</span>
-            </span>
-            <span style={{ textAlign: 'right', flexShrink: 0 }}>
-              {d > 0 && <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', textDecoration: 'line-through' }}>{fmt(s.priceCents)}</span>}
-              <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: d > 0 ? '#dc2626' : '#1e293b' }}>{s.priceFrom ? 'from ' : ''}{fmt(net)}</span>
-            </span>
-            <span style={{ flexShrink: 0, color: '#cbd5e1', fontSize: 15 }}>›</span>
-          </button>
-        );
-      })}
 
-      {visible.length > PAGE && (
-        limit < visible.length ? (
-          <button type="button" onClick={() => setLimit((v) => v + PAGE)}
-            style={{ width: '100%', marginTop: 4, padding: '11px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-              color: ACCENT, background: 'white', border: `1px dashed ${ACCENT}` }}>
-            Show more ({visible.length - limit})
-          </button>
-        ) : (
-          <button type="button" onClick={() => setLimit(PAGE)}
-            style={{ width: '100%', marginTop: 4, padding: '11px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              color: '#64748b', background: 'white', border: '1px solid #e2e8f0' }}>
-            Show less
-          </button>
-        )
-      )}
-    </div>
-  );
-}
-/**
- * "Add more services" — same rules as the main menu: collapsed by default, a search
- * box, and never more than 6 rows on screen (Show more / Show less). A salon with a
- * 40-service menu must not push the Continue button off the visitor's screen.
- * Anything already ticked floats to the top so it can never hide behind "Show more".
- */
-function AddMoreServices({ services, selectedIds, onToggle, fmt }: {
-  services: Service[]; selectedIds: string[]; onToggle: (id: string) => void; fmt: (c: number) => string;
-}) {
-  const PAGE = 6;
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
-  const [limit, setLimit] = useState(PAGE);
-  useEffect(() => { setLimit(PAGE); }, [q]);
-
-  const needle = q.trim().toLowerCase();
-  const hit = (s: Service) => !needle || `${s.name} ${s.description ?? ''}`.toLowerCase().includes(needle);
-  const list = services.filter(hit);
-  // Ticked first, so a chosen extra is always visible.
-  const ordered = [...list.filter((s) => selectedIds.includes(s.id)), ...list.filter((s) => !selectedIds.includes(s.id))];
-  const n = selectedIds.length;
-
-  return (
-    <div style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-      <button type="button" onClick={() => setOpen((v) => !v)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '13px 14px', background: 'white', border: 0, cursor: 'pointer', textAlign: 'left' }}>
-        <span style={{ color: ACCENT, fontSize: 16, fontWeight: 800 }}>+</span>
-        <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-          Add more services{n > 0 ? '' : ' (optional)'}
-        </span>
-        {n > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: 'white', background: ACCENT, borderRadius: 999, padding: '2px 9px' }}>{n} added</span>}
-        <span style={{ color: '#94a3b8', fontSize: 11, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>▶</span>
-      </button>
-
+      {/* ---------- The picker ---------- */}
       {open && (
-        <div style={{ padding: '0 12px 12px' }}>
-          <div style={{ position: 'relative', margin: '2px 0 10px' }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search services…" style={{ ...field, paddingLeft: 36 }} />
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>⌕</span>
-          </div>
-
-          {ordered.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 14, margin: '8px 0' }}>No services match “{q}”.</p>
-          ) : (
-            <div style={{ display: 'grid', gap: 6 }}>
-              {ordered.slice(0, limit).map((s) => {
-                const on = selectedIds.includes(s.id);
-                const d = svcDiscount(s);
+        <div>
+          {tabs.length > 1 && (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 10 }}>
+              {tabs.map((t) => {
+                const on = !q && active === t.key;
                 return (
-                  <button key={s.id} type="button" onClick={() => onToggle(s.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
-                      border: `1px solid ${on ? ACCENT : '#e2e8f0'}`, background: on ? 'rgba(99,102,241,0.06)' : 'white' }}>
-                    <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: `2px solid ${on ? ACCENT : '#cbd5e1'}`, background: on ? ACCENT : 'white', color: 'white', display: 'grid', placeItems: 'center', fontSize: 12 }}>{on ? '✓' : ''}</span>
-                    <span style={{ flex: 1, minWidth: 0, color: '#1e293b', fontSize: 14, fontWeight: 500 }}>{s.name}</span>
-                    <span style={{ flexShrink: 0, color: '#64748b', fontSize: 12 }}>{s.durationMinutes}m</span>
-                    <span style={{ flexShrink: 0, color: d > 0 ? '#dc2626' : '#16a34a', fontSize: 14, fontWeight: 700 }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</span>
+                  <button key={t.key} type="button" onClick={() => { setSearch(''); setActiveCat(t.key); }}
+                    style={{ whiteSpace: 'nowrap', fontSize: 13, padding: '8px 14px', borderRadius: 999, cursor: 'pointer',
+                      border: on ? `1px solid ${ACCENT}` : '1px solid #e2e8f0',
+                      background: on ? ACCENT : 'white', color: on ? 'white' : '#475569', fontWeight: 600 }}>
+                    {t.label}
                   </button>
                 );
               })}
             </div>
           )}
 
-          {ordered.length > PAGE && (
-            limit < ordered.length ? (
+          <div style={{ position: 'relative', marginBottom: 10 }}>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search services…" style={{ ...field, paddingLeft: 36 }} />
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>⌕</span>
+          </div>
+
+          {visible.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: 14, margin: '8px 0' }}>No services match “{search}”.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {visible.slice(0, limit).map((s) => {
+                const d = svcDiscount(s); const on = selectedIds.includes(s.id);
+                return (
+                  <button key={s.id} type="button" className="lumio-opt" onClick={() => pick(s.id)}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                      border: on ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: on ? 'rgba(99,102,241,0.06)' : 'white' }}>
+                    <span style={{ width: 19, height: 19, borderRadius: 6, flexShrink: 0, border: `2px solid ${on ? ACCENT : '#cbd5e1'}`, background: on ? ACCENT : 'white', color: 'white', display: 'grid', placeItems: 'center', fontSize: 12 }}>{on ? '✓' : ''}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                        {s.name}
+                        {s.isFeatured && <span style={{ marginLeft: 6, background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>POPULAR</span>}
+                      </span>
+                      <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 }}>{s.durationMinutes} min</span>
+                    </span>
+                    <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                      {d > 0 && <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', textDecoration: 'line-through' }}>{fmt(s.priceCents)}</span>}
+                      <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: d > 0 ? '#dc2626' : '#1e293b' }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {visible.length > PAGE && (
+            limit < visible.length ? (
               <button type="button" onClick={() => setLimit((v) => v + PAGE)}
                 style={{ width: '100%', marginTop: 8, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: ACCENT, background: 'white', border: `1px dashed ${ACCENT}` }}>
-                Show more ({ordered.length - limit})
+                Show more ({visible.length - limit})
               </button>
             ) : (
               <button type="button" onClick={() => setLimit(PAGE)}
@@ -1262,12 +1220,18 @@ function AddMoreServices({ services, selectedIds, onToggle, fmt }: {
               </button>
             )
           )}
+
+          {picked.length > 0 && (
+            <button type="button" onClick={() => setOpen(false)}
+              style={{ width: '100%', marginTop: 8, padding: '12px', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 700, color: 'white', background: '#1e293b', border: 0 }}>
+              Done · {picked.length} selected
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 }
-
 function TechCard({ selected, onClick, label, avatar, subtitle, disabled }: { selected: boolean; onClick: () => void; label: string; avatar: string | null; subtitle?: string; disabled?: boolean }) {
   const initial = (label || '?').trim().charAt(0).toUpperCase();
   const subColor = disabled ? '#ef4444' : subtitle === 'Available' ? '#16a34a' : '#64748b';

@@ -1095,6 +1095,13 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
   const [picking, setPicking] = useState(!selectedId);
   useEffect(() => { if (!selectedId) setPicking(true); }, [selectedId]);
 
+  // Never show more than a screenful at once — even a category with 20 services
+  // stays 6 rows tall, with a "Show more" button underneath. Keeps the Continue
+  // button in view no matter how big the salon's menu is.
+  const PAGE = 6;
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => { setLimit(PAGE); }, [activeCat, search]);
+
   const listFor = (key: string): Service[] => {
     if (key === 'popular') return featured;
     if (key === 'none') return uncategorised;
@@ -1152,7 +1159,7 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
       </div>
       {visible.length === 0 ? (
         <p style={{ color: '#94a3b8', fontSize: 14, margin: '8px 0' }}>No services match “{search}”.</p>
-      ) : visible.map((s) => {
+      ) : visible.slice(0, limit).map((s) => {
         const d = svcDiscount(s); const net = svcNetCents(s); const on = s.id === selectedId;
         return (
           <button key={s.id} type="button" className="lumio-opt"
@@ -1174,6 +1181,22 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
           </button>
         );
       })}
+
+      {visible.length > PAGE && (
+        limit < visible.length ? (
+          <button type="button" onClick={() => setLimit((v) => v + PAGE)}
+            style={{ width: '100%', marginTop: 4, padding: '11px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              color: ACCENT, background: 'white', border: `1px dashed ${ACCENT}` }}>
+            Show more ({visible.length - limit})
+          </button>
+        ) : (
+          <button type="button" onClick={() => setLimit(PAGE)}
+            style={{ width: '100%', marginTop: 4, padding: '11px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              color: '#64748b', background: 'white', border: '1px solid #e2e8f0' }}>
+            Show less
+          </button>
+        )
+      )}
     </div>
   );
 }

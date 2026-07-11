@@ -325,7 +325,13 @@ export class VoiceService {
     }
 
     const tenant = await this.prisma.tenant.findUnique({ where: { id: line.tenantId }, select: { name: true } });
-    return this.aiOrNoAnswer(line, tenant?.name || 'our salon');
+    const salonName = tenant?.name || 'our salon';
+
+    // "Ring people only" means exactly that: nobody picked up → voicemail/notice,
+    // never the assistant.
+    if (String(line.mode || 'ai') === 'forward') return this.noAnswerTwiml(line, salonName);
+
+    return this.aiOrNoAnswer(line, salonName);
   }
 
   /** Twilio posts the finished voicemail recording here. Save it and text the salon. */

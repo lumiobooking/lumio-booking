@@ -34,6 +34,24 @@ export class VoiceWebhookController {
     return this.svc.handleTurn(body || {}, miss || '0');
   }
 
+  /** After we ring the salon's own phones: nobody answered / busy → AI or voicemail. */
+  @Public()
+  @Post('after-dial')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  afterDial(@Body() body: Record<string, string>) {
+    return this.svc.handleAfterDial(body || {});
+  }
+
+  /** The caller finished leaving a voicemail (Twilio <Record> action). */
+  @Public()
+  @Post('voicemail')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  voicemail(@Body() body: Record<string, string>) {
+    return this.svc.handleVoicemail(body || {});
+  }
+
   /** Twilio "call status changes" callback → records the billed call duration. */
   @Public()
   @Post('status')

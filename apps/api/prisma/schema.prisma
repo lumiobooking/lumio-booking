@@ -1356,6 +1356,30 @@ model VoiceLine {
   voice         String? // optional Twilio <Say> voice name
   aiInstruction String? // extra brand-voice guidance for the agent
 
+  // ---- Call routing (all enforced server-side, so behaviour is exact) -------
+  // mode:
+  //   ai         – the AI answers immediately (salon forwards on no-answer/busy
+  //                at the carrier, so a human already had a chance to pick up)
+  //   ring_first – Lumio rings the salon's own phones first for `ringSeconds`,
+  //                and the AI only takes over on no-answer / busy / declined.
+  //                This is the exact-control setup: rings + busy are OURS, not
+  //                the carrier's.
+  //   forward    – never use the AI: ring the humans, then voicemail/announce.
+  mode           String  @default("ai")
+  forwardNumbers String? // comma-separated E.164 rung before the AI (ring_first/forward)
+  ringSeconds    Int     @default(20) // how long the humans ring (~6 s per ring)
+
+  // When the AI is allowed to answer at all.
+  //   always | business_hours | after_hours | custom
+  schedule    String @default("always")
+  customHours Json? // [{day:0-6, enabled, start:"HH:MM", end:"HH:MM"}] when schedule = custom
+
+  // What happens when the AI must NOT answer (off, out of schedule, over cap)
+  // and no human picked up: voicemail | message | hangup
+  noAnswerAction String  @default("voicemail")
+  awayMessage    String? // spoken before the voicemail beep / as the announcement
+  voicemailSms   String? // where to text a voicemail alert (defaults to the admin phone)
+
   // Monthly plan limits (Super Admin set). 0 = unlimited. Overage in cents.
   monthlyCents       Int     @default(0) // AI Hotline add-on subscription fee / month (0 = bundled in plan)
   includedMinutes    Int     @default(0)
@@ -1379,9 +1403,10 @@ model VoiceCall {
   fromNumber    String? // caller's number (E.164)
   toNumber      String? // the Lumio number dialed
   transcript    Json    @default("[]") // [{role,content}] conversation turns
-  outcome       String  @default("in_progress") // in_progress|booked|info|no_action|handoff|error
+  outcome       String  @default("in_progress") // in_progress|booked|info|no_action|handoff|error|forwarded|voicemail
   appointmentId String?
   durationSec   Int?
+  recordingUrl  String? // voicemail recording (Twilio), when the caller left one
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

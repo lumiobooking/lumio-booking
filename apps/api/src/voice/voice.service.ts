@@ -3,6 +3,7 @@ import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
@@ -57,6 +58,12 @@ function normNum(v: string | null | undefined): string {
 }
 
 type Turn = { role: 'user' | 'assistant'; content: string };
+export interface UpdateVoiceInput {
+  enabled?: boolean; greeting?: string; language?: string; aiInstruction?: string;
+  mode?: string; forwardNumbers?: string; ringSeconds?: number;
+  schedule?: string; customHours?: { day: number; enabled?: boolean; start?: string; end?: string }[];
+  noAnswerAction?: string; awayMessage?: string; voicemailSms?: string;
+}
 interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 export interface VoiceUsage {
@@ -80,6 +87,7 @@ export class VoiceService {
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
     private readonly settings: SettingsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private apiBase(): string {
@@ -114,6 +122,115 @@ export class VoiceService {
     return this.twiml(`<Say${this.sayAttr(voice)}>${xml(text)}</Say><Pause length="1"/><Hangup/>`);
   }
 
+  // ---- call routing ---------------------------------------------------------
+  /** The salon's own phones we ring before (or instead of) the AI. A number equal
+   *  to the Lumio number is dropped — that would forward straight back to us and
+   *  loop the call. */
+  private humanNumbers(line: { forwardNumbers: string | null; lumioNumber: string | null }): string[] {
+    const lumio = normNum(line.lumioNumber);
+    return String(line.forwardNumbers || '')
+      .split(/[,;\n]/)
+      .map((x) => toE164(x))
+      .filter((x) => x && normNum(x) !== lumio)
+      .slice(0, 5);
+  }
+
+  /** Salon-local day (0=Sun) and minutes-since-midnight, DST-safe. */
+  private localNow(tz: string): { day: number; minutes: number } {
+    try {
+      const p = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit',
+      }).formatToParts(new Date());
+      const wd = String(p.find((x) => x.type === 'weekday')?.value || 'Sun');
+      const h = Number(p.find((x) => x.type === 'hour')?.value || 0);
+      const mi = Number(p.find((x) => x.type === 'minute')?.value || 0);
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      return { day: Math.max(0, days.indexOf(wd)), minutes: (h === 24 ? 0 : h) * 60 + mi };
+    } catch {
+      const d = new Date();
+      return { day: d.getDay(), minutes: d.getHours() * 60 + d.getMinutes() };
+    }
+  }
+
+  private hhmmToMin(v: unknown, fallback: number): number {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || ''));
+    if (!m) return fallback;
+    const h = Math.min(23, Math.max(0, Number(m[1])));
+    const mi = Math.min(59, Math.max(0, Number(m[2])));
+    return h * 60 + mi;
+  }
+
+  /**
+   * Is the AI allowed to answer RIGHT NOW? Exact, salon-timezone aware.
+   *   always         → yes
+   *   business_hours → only while the salon is open
+   *   after_hours    → only while the salon is closed (nights, days off, holidays)
+   *   custom         → the salon's own per-weekday windows
+   */
+  private async aiWindowOpen(line: { schedule: string; customHours: unknown }, tenantId: string): Promise<boolean> {
+    const sched = String(line.schedule || 'always');
+    if (sched === 'always') return true;
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const tz = tenant?.timezone || 'America/Los_Angeles';
+    const now = this.localNow(tz);
+
+    if (sched === 'custom') {
+      const rows = Array.isArray(line.customHours) ? (line.customHours as Record<string, unknown>[]) : [];
+      const row = rows.find((r) => Number(r?.day) === now.day);
+      if (!row || row.enabled === false) return false;
+      const start = this.hhmmToMin(row.start, 0);
+      const end = this.hhmmToMin(row.end, 24 * 60);
+      // An overnight window (e.g. 18:00 → 09:00) wraps past midnight.
+      return end > start ? now.minutes >= start && now.minutes < end : now.minutes >= start || now.minutes < end;
+    }
+
+    // business_hours / after_hours follow the salon's real opening hours + days off.
+    const rules = await this.settings.getBookingRules(tenantId);
+    const h = rules.businessHours?.[now.day];
+    let open = !!h && !h.closed && now.minutes >= h.openMinutes && now.minutes < h.closeMinutes;
+    if (open && Array.isArray(rules.daysOff) && rules.daysOff.length) {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      if (rules.daysOff.includes(today)) open = false; // holiday → treated as closed
+    }
+    return sched === 'business_hours' ? open : !open;
+  }
+
+  /** Ring the salon's own phones. When nobody picks up (or the line is busy /
+   *  declined) Twilio calls `action`, where we decide: AI, voicemail, or bye. */
+  private dialHumans(nums: string[], line: { ringSeconds: number; lumioNumber: string | null }): string {
+    const timeout = Math.min(60, Math.max(5, Number(line.ringSeconds) || 20));
+    const action = `${this.apiBase()}/api/voice/after-dial`;
+    const callerId = toE164(line.lumioNumber);
+    const cid = callerId ? ` callerId="${xml(callerId)}"` : '';
+    const list = nums.map((n) => `<Number>${xml(n)}</Number>`).join('');
+    return this.twiml(
+      `<Dial timeout="${timeout}" answerOnBridge="true"${cid} action="${action}" method="POST">${list}</Dial>`,
+    );
+  }
+
+  /** Nobody is going to answer: leave a voicemail, play a notice, or hang up. */
+  private noAnswerTwiml(
+    line: { noAnswerAction: string; awayMessage: string | null; voice: string | null; language: string },
+    salonName: string,
+  ): string {
+    const voice = line.voice || null;
+    const act = String(line.noAnswerAction || 'voicemail');
+    const msg = (line.awayMessage && line.awayMessage.trim())
+      || `Thanks for calling ${salonName}. We can't take your call right now.`;
+    if (act === 'hangup') return this.sayHangup(msg, voice);
+    if (act === 'message') {
+      return this.sayHangup(`${msg} Please call back during our business hours. Goodbye.`, voice);
+    }
+    // voicemail (default)
+    const action = `${this.apiBase()}/api/voice/voicemail`;
+    return this.twiml(
+      `<Say${this.sayAttr(voice)}>${xml(msg)} Please leave your name, number and message after the beep, and we'll call you right back.</Say>` +
+      `<Record maxLength="120" playBeep="true" trim="trim-silence" timeout="4" action="${action}" method="POST"/>` +
+      `<Say${this.sayAttr(voice)}>We didn't get a message. Goodbye.</Say><Hangup/>`,
+    );
+  }
+
   // ---- inbound call (Twilio webhook) --------------------------------------
   /** First webhook when a forwarded call reaches the salon's Lumio number. */
   async handleIncoming(body: Record<string, string>): Promise<string> {
@@ -121,19 +238,12 @@ export class VoiceService {
     const from = normNum(body.From);
     const callSid = String(body.CallSid || '');
     const line = to ? await this.prisma.voiceLine.findFirst({ where: { lumioNumber: to } }) : null;
-    if (!line || !line.enabled) {
+    if (!line) {
       return this.sayHangup('Sorry, we are not able to take this call right now. Please try again later. Goodbye.', null);
-    }
-    // Hard cap: stop taking NEW calls once over the included minutes (a call
-    // already in progress is never cut off). Overage is still recorded otherwise.
-    if (line.hardCap && line.includedMinutes > 0) {
-      const u = await this.usageForTenant(line.tenantId);
-      if (u.aiMinutes >= line.includedMinutes) {
-        return this.sayHangup('Sorry, our automated booking line is not available right now. Please call back a little later. Goodbye.', line.voice || null);
-      }
     }
     const tenant = await this.prisma.tenant.findUnique({ where: { id: line.tenantId }, select: { name: true } });
     const salonName = tenant?.name || 'our salon';
+
     // Log the call session (idempotent on callSid).
     if (callSid) {
       await this.prisma.voiceCall.upsert({
@@ -142,10 +252,113 @@ export class VoiceService {
         create: { callSid, tenantId: line.tenantId, fromNumber: from || null, toNumber: to || null, transcript: [] as unknown as Prisma.InputJsonValue },
       }).catch(() => undefined);
     }
+
+    const humans = this.humanNumbers(line);
+    const mode = String(line.mode || 'ai');
+
+    // "forward" = never let the AI speak: ring the humans, then voicemail/notice.
+    if (mode === 'forward') {
+      return humans.length ? this.dialHumans(humans, line) : this.noAnswerTwiml(line, salonName);
+    }
+
+    // "ring_first" = Lumio rings the salon's own phones FIRST. Rings and busy are
+    // decided here, not by the carrier, so the salon gets exactly what it set.
+    // The AI (or voicemail) only takes over from /voice/after-dial.
+    if (mode === 'ring_first' && humans.length) {
+      return this.dialHumans(humans, line);
+    }
+
+    // "ai" (or ring_first with nobody to ring): the assistant answers now — if it
+    // is allowed to at this moment.
+    return this.aiOrNoAnswer(line, salonName);
+  }
+
+  /** Start the AI conversation when it's allowed to answer; otherwise fall back
+   *  to voicemail / a notice. One place, so every path obeys the same rules. */
+  private async aiOrNoAnswer(
+    line: {
+      tenantId: string; enabled: boolean; hardCap: boolean; includedMinutes: number; schedule: string;
+      customHours: unknown; greeting: string | null; language: string; voice: string | null;
+      noAnswerAction: string; awayMessage: string | null;
+    },
+    salonName: string,
+  ): Promise<string> {
+    if (!line.enabled) return this.noAnswerTwiml(line, salonName);
+
+    // Outside the salon's chosen AI hours → the AI stays silent.
+    const open = await this.aiWindowOpen(line, line.tenantId);
+    if (!open) return this.noAnswerTwiml(line, salonName);
+
+    // Hard cap: stop taking NEW AI calls once over the included minutes (a call
+    // already in progress is never cut off). Overage is still recorded otherwise.
+    if (line.hardCap && line.includedMinutes > 0) {
+      const u = await this.usageForTenant(line.tenantId);
+      if (u.aiMinutes >= line.includedMinutes) return this.noAnswerTwiml(line, salonName);
+    }
+
     // ALWAYS disclose the automated assistant up front (CA/TX AI-disclosure laws).
     const disclosure = `Hi, thanks for calling ${salonName}! Just so you know, you're speaking with our friendly automated booking assistant.`;
     const greeting = (line.greeting && line.greeting.trim()) || 'How can I help you book an appointment today?';
     return this.sayGather(`${disclosure} ${greeting}`, 0, line.language || 'en-US', line.voice || null);
+  }
+
+  /**
+   * Twilio calls this when the <Dial> to the salon's own phones finishes.
+   *   completed → a human took the call: we're done.
+   *   no-answer / busy / failed / canceled → hand over to the AI (if it may
+   *   answer now), else voicemail / notice.
+   */
+  async handleAfterDial(body: Record<string, string>): Promise<string> {
+    const callSid = String(body.CallSid || '');
+    const status = String(body.DialCallStatus || '').toLowerCase();
+    const to = normNum(body.To);
+    const line = to ? await this.prisma.voiceLine.findFirst({ where: { lumioNumber: to } }) : null;
+    if (!line) return this.twiml('<Hangup/>');
+
+    if (status === 'completed' || status === 'answered') {
+      if (callSid) {
+        await this.prisma.voiceCall
+          .updateMany({ where: { callSid }, data: { outcome: 'forwarded' } })
+          .catch(() => undefined);
+      }
+      return this.twiml('<Hangup/>'); // a human handled it
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: line.tenantId }, select: { name: true } });
+    return this.aiOrNoAnswer(line, tenant?.name || 'our salon');
+  }
+
+  /** Twilio posts the finished voicemail recording here. Save it and text the salon. */
+  async handleVoicemail(body: Record<string, string>): Promise<string> {
+    const callSid = String(body.CallSid || '');
+    const url = String(body.RecordingUrl || '');
+    const from = normNum(body.From);
+    const to = normNum(body.To);
+    const line = to ? await this.prisma.voiceLine.findFirst({ where: { lumioNumber: to } }) : null;
+
+    if (line && url) {
+      if (callSid) {
+        await this.prisma.voiceCall
+          .updateMany({ where: { callSid }, data: { outcome: 'voicemail', recordingUrl: `${url}.mp3` } })
+          .catch(() => undefined);
+      }
+      // Text whoever the salon nominated (falls back to the admin phone).
+      try {
+        const n = await this.settings.getNotificationSettings(line.tenantId);
+        const to2 = toE164(line.voicemailSms || n.adminPhone || '');
+        if (to2) {
+          await this.notifications.send({
+            tenantId: line.tenantId,
+            channel: NotificationChannel.SMS,
+            recipient: to2,
+            body: `New voicemail from ${from || 'a caller'}: ${url}.mp3`,
+            twilio: n.twilio,
+            relatedType: 'voice',
+          });
+        }
+      } catch { /* a failed alert must never break the call */ }
+    }
+    return this.twiml(`<Say${this.sayAttr(line?.voice || null)}>Thank you. We got your message and will call you back shortly. Goodbye.</Say><Hangup/>`);
   }
 
   /** Each subsequent turn: caller's transcribed speech arrives in SpeechResult. */
@@ -226,7 +439,9 @@ export class VoiceService {
     const callWindow = until ? { gte: since, lt: until } : { gte: since };
     const [calls, line] = await Promise.all([
       this.prisma.voiceCall.findMany({
-        where: { tenantId, createdAt: callWindow },
+        // Calls a HUMAN picked up (mode "ring first") are not AI usage — the salon
+        // must never be billed AI minutes for calls its own staff answered.
+        where: { tenantId, createdAt: callWindow, outcome: { not: 'forwarded' } },
         select: { durationSec: true, createdAt: true, updatedAt: true },
       }),
       this.prisma.voiceLine.findUnique({
@@ -468,23 +683,71 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
       greeting: line?.greeting ?? '',
       language: line?.language ?? 'en-US',
       aiInstruction: line?.aiInstruction ?? '',
+      mode: line?.mode ?? 'ai',
+      forwardNumbers: line?.forwardNumbers ?? '',
+      ringSeconds: line?.ringSeconds ?? 20,
+      schedule: line?.schedule ?? 'always',
+      customHours: (line?.customHours as unknown) ?? null,
+      noAnswerAction: line?.noAnswerAction ?? 'voicemail',
+      awayMessage: line?.awayMessage ?? '',
+      voicemailSms: line?.voicemailSms ?? '',
       aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       webhookUrl: `${this.apiBase()}/api/voice/incoming`,
       calls,
     };
   }
 
-  async updateSettings(
-    user: AuthenticatedUser,
-    dto: { enabled?: boolean; greeting?: string; language?: string; aiInstruction?: string },
-  ) {
+  async updateSettings(user: AuthenticatedUser, dto: UpdateVoiceInput) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.voiceLine.findUnique({ where: { tenantId } });
+
+    const MODES = ['ai', 'ring_first', 'forward'];
+    const SCHEDULES = ['always', 'business_hours', 'after_hours', 'custom'];
+    const ACTIONS = ['voicemail', 'message', 'hangup'];
+
+    // Clean the phone list: valid E.164 only, never the Lumio number itself
+    // (that would forward the call straight back to us and loop forever).
+    const lumio = normNum(cur?.lumioNumber);
+    let forwardNumbers = cur?.forwardNumbers ?? null;
+    if (typeof dto.forwardNumbers === 'string') {
+      const list = dto.forwardNumbers
+        .split(/[,;\n]/)
+        .map((x) => toE164(x))
+        .filter((x) => x && normNum(x) !== lumio);
+      if (dto.forwardNumbers.trim() && list.length === 0) {
+        throw new BadRequestException('None of those phone numbers look valid. Use a full number, e.g. +1 403 555 0123 — and it cannot be your Lumio hotline number.');
+      }
+      forwardNumbers = list.slice(0, 5).join(',') || null;
+    }
+
+    const mode = typeof dto.mode === 'string' && MODES.includes(dto.mode) ? dto.mode : cur?.mode ?? 'ai';
+    if ((mode === 'ring_first' || mode === 'forward') && !forwardNumbers) {
+      throw new BadRequestException('Add at least one phone number to ring before the assistant takes over.');
+    }
+
     const data = {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur?.enabled ?? false,
       greeting: typeof dto.greeting === 'string' ? dto.greeting.slice(0, 500) : cur?.greeting ?? null,
       language: typeof dto.language === 'string' && dto.language.trim() ? dto.language.trim().slice(0, 12) : cur?.language ?? 'en-US',
       aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur?.aiInstruction ?? null,
+      mode,
+      forwardNumbers,
+      ringSeconds: typeof dto.ringSeconds === 'number' ? Math.min(60, Math.max(5, Math.round(dto.ringSeconds))) : cur?.ringSeconds ?? 20,
+      schedule: typeof dto.schedule === 'string' && SCHEDULES.includes(dto.schedule) ? dto.schedule : cur?.schedule ?? 'always',
+      customHours: Array.isArray(dto.customHours)
+        ? (dto.customHours
+            .filter((r) => r && Number.isInteger(r.day) && r.day >= 0 && r.day <= 6)
+            .slice(0, 7)
+            .map((r) => ({
+              day: r.day,
+              enabled: r.enabled !== false,
+              start: /^\d{1,2}:\d{2}$/.test(String(r.start)) ? String(r.start) : '18:00',
+              end: /^\d{1,2}:\d{2}$/.test(String(r.end)) ? String(r.end) : '09:00',
+            })) as unknown as Prisma.InputJsonValue)
+        : (cur?.customHours as Prisma.InputJsonValue | undefined) ?? Prisma.JsonNull,
+      noAnswerAction: typeof dto.noAnswerAction === 'string' && ACTIONS.includes(dto.noAnswerAction) ? dto.noAnswerAction : cur?.noAnswerAction ?? 'voicemail',
+      awayMessage: typeof dto.awayMessage === 'string' ? dto.awayMessage.slice(0, 500) : cur?.awayMessage ?? null,
+      voicemailSms: typeof dto.voicemailSms === 'string' ? (toE164(dto.voicemailSms) || null) : cur?.voicemailSms ?? null,
     };
     if (data.enabled && !cur?.lumioNumber) {
       throw new BadRequestException('No Lumio phone number is assigned yet. Contact Lumio to provision your AI hotline number.');

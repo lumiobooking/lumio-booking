@@ -1,5 +1,13 @@
 'use client';
 
+// The technician's own chair. Everything a tech is allowed to do with the client
+// in front of them, and nothing else: see who they have, seat them in a chair,
+// add the services they actually performed (credited to THEM), send the client to
+// the front desk to pay, and close the ticket (which credits their turn).
+//
+// Calls /my-chair/* — a route with no `walkins` capability gate, because a
+// TECHNICIAN must never see the front-desk board or the salon's totals.
+
 import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
@@ -8,10 +16,12 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 
-interface Svc { id: string; name: string; priceCents: number }
+interface Svc { id: string; name: string; priceCents: number; durationMinutes: number }
+interface ChairOpt { id: string; name: string; type: string; takenBy: string | null }
 interface Item { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface Chair {
-  id: string; customerName: string | null; phone: string | null; assignedAt: string | null; station: string | null;
+  id: string; customerName: string | null; phone: string | null; assignedAt: string | null;
+  station: string | null; stationId: string | null; awaitingPayment?: boolean;
   items: Item[]; service: { id: string; name: string } | null;
 }
 interface SalonClient { id: string; customerName: string | null; station: string | null }
@@ -35,20 +45,24 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const vi = lang === 'vi';
   const [data, setData] = useState<MyChair | null>(null);
   const [services, setServices] = useState<Svc[]>([]);
+  const [chairs, setChairs] = useState<ChairOpt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [mine, svc] = await Promise.all([
-        apiFetch<MyChair>('/walkins/my', { token }),
-        apiFetch<Svc[]>('/services', { token }).catch(() => [] as Svc[]),
+      const [mine, svc, ch] = await Promise.all([
+        apiFetch<MyChair>('/my-chair', { token }),
+        apiFetch<Svc[]>('/my-chair/services', { token }).catch(() => [] as Svc[]),
+        apiFetch<ChairOpt[]>('/my-chair/chairs', { token }).catch(() => [] as ChairOpt[]),
       ]);
-      setData(mine); setServices(svc); setError(null);
+      setData(mine); setServices(svc); setChairs(ch); setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -56,28 +70,36 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(load, 15000);
 
+  // The undo bar for an accidental "Done" only lives for 20 seconds.
+  useEffect(() => {
+    if (!undo) return;
+    const id = window.setTimeout(() => setUndo(null), 20000);
+    return () => window.clearTimeout(id);
+  }, [undo]);
+
   const currency = data?.currency ?? 'USD';
-  const myStaffId = data?.staffId ?? '';
 
-  async function addService(id: string, serviceId: string) {
+  const act = useCallback(async (id: string, path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: Record<string, unknown>) => {
     setError(null); setBusyId(id);
-    try { await apiFetch(`/walkins/${id}/services`, { method: 'POST', token, body: { serviceId, staffId: myStaffId || undefined } }); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not add'); }
+    try { await apiFetch(path, { method, token, body }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
     finally { setBusyId(null); }
-  }
-  async function removeService(id: string, lineId: string) {
-    setError(null);
-    try { await apiFetch(`/walkins/${id}/services/${lineId}`, { method: 'DELETE', token }); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not remove'); }
-  }
+  }, [token, load]);
 
-  if (loading && !data) return <p style={{ color: '#94a3b8' }}>Loading...</p>;
+  const addService = (id: string, serviceId: string) => act(id, `/my-chair/${id}/services`, 'POST', { serviceId });
+  const removeService = (id: string, lineId: string) => act(id, `/my-chair/${id}/services/${lineId}`, 'DELETE');
+  const setChair = (id: string, stationId: string) => act(id, `/my-chair/${id}/chair`, 'PATCH', { stationId });
+  const toPay = (id: string) => act(id, `/my-chair/${id}/wait-payment`, 'PATCH');
+  const finish = async (id: string, name: string) => { await act(id, `/my-chair/${id}/done`, 'PATCH'); setUndo({ id, name }); };
+  const undoDone = (id: string) => { setUndo(null); act(id, `/my-chair/${id}/reactivate`, 'PATCH'); };
+
+  if (loading && !data) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
 
   const serving = data?.serving ?? [];
   const others = data?.salon ?? [];
 
   return (
-    <div>
+    <div style={{ paddingBottom: undo ? 76 : 0 }}>
       <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('sc.subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}
 
@@ -89,8 +111,9 @@ function Inner() {
       ) : (
         <div style={{ display: 'grid', gap: 14 }}>
           {serving.map((w) => (
-            <ChairCard key={w.id} w={w} services={services} currency={currency} t={t}
-              busy={busyId === w.id} onAdd={addService} onRemove={removeService} />
+            <ChairCard key={w.id} w={w} services={services} chairs={chairs} currency={currency} t={t} vi={vi}
+              busy={busyId === w.id}
+              onAdd={addService} onRemove={removeService} onChair={setChair} onPay={toPay} onDone={finish} />
           ))}
         </div>
       )}
@@ -110,6 +133,19 @@ function Inner() {
 
       {serving.length > 0 && (
         <p style={{ color: '#64748b', fontSize: 12, marginTop: 16, lineHeight: 1.5 }}>{t('sc.hint')}</p>
+      )}
+
+      {undo && (
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', alignItems: 'center', gap: 12,
+          padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))', background: '#1e293b', borderTop: '1px solid #334155' }}>
+          <span style={{ flex: 1, minWidth: 0, color: '#e2e8f0', fontSize: 14 }}>
+            {vi ? 'Đã xong' : 'Finished'}: <b>{undo.name}</b>
+          </span>
+          <button onClick={() => undoDone(undo.id)}
+            style={{ flexShrink: 0, padding: '10px 18px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', fontWeight: 700, cursor: 'pointer' }}>
+            {vi ? '↩ Hoàn tác' : '↩ Undo'}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -141,25 +177,55 @@ function ServicePicker({ services, currency, busy, onPick, onCancel, t }: {
   );
 }
 
-function ChairCard({ w, services, currency, t, busy, onAdd, onRemove }: {
-  w: Chair; services: Svc[]; currency: string; t: (k: string) => string; busy: boolean;
+function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove, onChair, onPay, onDone }: {
+  w: Chair; services: Svc[]; chairs: ChairOpt[]; currency: string; t: (k: string) => string; vi: boolean; busy: boolean;
   onAdd: (id: string, serviceId: string) => void; onRemove: (id: string, lineId: string) => void;
+  onChair: (id: string, stationId: string) => void; onPay: (id: string) => void; onDone: (id: string, name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const items = w.items ?? [];
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
   const mins = minsSince(w.assignedAt);
+  const name = w.customerName || t('sc.walkin');
+  const chair = chairs.find((c) => c.id === w.stationId);
+
   return (
     <div style={{ ...ui.card, padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {w.customerName || t('sc.walkin')}
-            {w.station && <span style={{ fontSize: 12, fontWeight: 700, color: '#c7d2fe', background: '#312e81', borderRadius: 6, padding: '2px 8px' }}>{t('wi.stationShort')} {w.station}</span>}
-          </div>
+          <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0' }}>{name}</div>
           {mins > 0 && <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{mins}m {t('sc.inChair')}</div>}
         </div>
         {w.phone && <a href={`tel:${w.phone}`} style={{ color: '#818cf8', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>}
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+          {vi ? 'Ghế / bàn khách đang ngồi' : 'Chair the client is sitting in'}
+        </label>
+        <select value={w.stationId ?? ''} disabled={busy} onChange={(e) => onChair(w.id, e.target.value)}
+          style={{ ...ui.input, width: '100%', cursor: 'pointer' }}>
+          <option value="">{vi ? '— Chưa chọn ghế —' : '— No chair yet —'}</option>
+          {chairs.map((c) => {
+            const taken = !!c.takenBy && c.id !== w.stationId;
+            return (
+              <option key={c.id} value={c.id} disabled={taken}>
+                {c.name}{c.type ? ' · ' + c.type : ''}{taken ? (vi ? ' — đang có khách' : ' — in use') : ''}
+              </option>
+            );
+          })}
+        </select>
+        {chairs.length === 0 && (
+          <p style={{ color: '#fbbf24', fontSize: 12, margin: '6px 0 0' }}>
+            {vi ? 'Tiệm chưa khai báo ghế. Nhờ quản lý thêm ở mục Ghế.' : 'No chairs set up yet. Ask your manager to add them under Chairs.'}
+          </p>
+        )}
+        {chair && (
+          <p style={{ color: '#a5b4fc', fontSize: 12, margin: '6px 0 0' }}>
+            {vi ? 'Đang ngồi' : 'Seated at'}: <b>{chair.name}</b>{chair.type ? ' · ' + chair.type : ''}
+          </p>
+        )}
       </div>
 
       <div style={{ border: '1px solid #263041', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }}>
@@ -184,6 +250,34 @@ function ChairCard({ w, services, currency, t, busy, onAdd, onRemove }: {
       ) : (
         <ServicePicker services={services} currency={currency} busy={busy} t={t}
           onPick={(sid) => { onAdd(w.id, sid); setAdding(false); }} onCancel={() => setAdding(false)} />
+      )}
+
+      {!adding && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button onClick={() => onPay(w.id)} disabled={busy || !!w.awaitingPayment}
+            style={{ ...ghost, flex: 1, padding: '12px', opacity: w.awaitingPayment ? 0.5 : 1 }}>
+            {w.awaitingPayment
+              ? (vi ? '⏳ Đang chờ trả tiền' : '⏳ Waiting to pay')
+              : (vi ? '💵 Ra quầy trả tiền' : '💵 Send to pay')}
+          </button>
+          {!confirm ? (
+            <button onClick={() => setConfirm(true)} disabled={busy}
+              style={{ ...ghost, flex: 1, padding: '12px', borderColor: '#16a34a', color: '#4ade80' }}>
+              {vi ? '✓ Xong khách' : '✓ Finish'}
+            </button>
+          ) : (
+            <button onClick={() => { setConfirm(false); onDone(w.id, name); }} disabled={busy}
+              style={{ flex: 1, padding: '12px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+              {vi ? 'Chắc chắn xong?' : 'Confirm finish?'}
+            </button>
+          )}
+        </div>
+      )}
+      {confirm && (
+        <p style={{ color: '#94a3b8', fontSize: 12, margin: '8px 0 0' }}>
+          {vi ? 'Xong khách sẽ nhả ghế và tính một lượt cho thợ. Bấm lại để xác nhận — lỡ tay vẫn hoàn tác được.'
+              : 'Finishing frees the chair and credits your turn. Tap again to confirm — you can still undo.'}
+        </p>
       )}
     </div>
   );

@@ -1079,128 +1079,101 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
   const q = search.trim().toLowerCase();
   const matches = (s: Service) => !q || `${s.name} ${s.description ?? ''}`.toLowerCase().includes(q);
   const inCat = (catId: string) => services.filter((s) => s.categoryId === catId);
+  const chosen = services.find((s) => s.id === selectedId) || null;
 
-  // A long menu used to render every service at once, pushing the Continue button
-  // far down the page (painful in the embed on a phone). In the default "All" view
-  // we now show COLLAPSED category groups; tapping one opens just that group.
-  // Search and the category chips still show a flat list, unchanged.
-  const groups = [
-    ...(featured.length > 0 ? [{ key: 'popular', title: '⭐ Popular', items: featured }] : []),
-    ...categories.map((c) => ({ key: c.id, title: c.name, items: inCat(c.id) })),
-    ...(uncategorised.length > 0 ? [{ key: 'none', title: 'Other', items: uncategorised }] : []),
-  ].filter((g) => g.items.length > 0);
-  const [openCat, setOpenCat] = useState<string | null>(() => {
-    if (groups.length === 1) return groups[0].key; // nothing to collapse
-    return groups.find((g) => g.items.some((x) => x.id === selectedId))?.key ?? null;
-  });
-  // Keep the group that holds the current choice open (e.g. after picking from search).
-  useEffect(() => {
-    if (!selectedId) return;
-    const g = groups.find((x) => x.items.some((x2) => x2.id === selectedId));
-    if (g) setOpenCat(g.key);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  // How the big booking apps (Fresha, Booksy, Square) show a menu on a phone:
+  // never dump the whole price list. Category TABS on top, ONE short list below,
+  // and the moment a service is picked the list collapses to a single line — so the
+  // total and the Continue button are always right under the visitor's thumb.
+  const tabs: { key: string; label: string }[] = [
+    ...(featured.length > 0 ? [{ key: 'popular', label: '⭐ Popular' }] : []),
+    ...categories.filter((c) => inCat(c.id).length > 0).map((c) => ({ key: c.id, label: c.name })),
+    ...(uncategorised.length > 0 ? [{ key: 'none', label: 'Other' }] : []),
+  ];
+  const active = tabs.some((t) => t.key === activeCat) ? activeCat : (tabs[0]?.key ?? 'all');
 
-  const chip = (key: string, label: string) => (
-    <button key={key} type="button" onClick={() => setActiveCat(key)}
-      style={{ whiteSpace: 'nowrap', fontSize: 13, padding: '7px 14px', borderRadius: 999, cursor: 'pointer',
-        border: activeCat === key ? `1px solid ${ACCENT}` : '1px solid #e2e8f0',
-        background: activeCat === key ? ACCENT : 'white', color: activeCat === key ? 'white' : '#475569', fontWeight: 600 }}>
-      {label}
-    </button>
-  );
+  const [picking, setPicking] = useState(!selectedId);
+  useEffect(() => { if (!selectedId) setPicking(true); }, [selectedId]);
 
-  const card = (s: Service) => {
-    const d = svcDiscount(s); const net = svcNetCents(s); const on = s.id === selectedId;
-    return (
-      <button key={s.id} type="button" className="lumio-opt" onClick={() => onSelect(s.id)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', marginBottom: 8,
-          border: on ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: on ? '#eef2ff' : 'white' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-            {s.name}
-            {s.isFeatured && <span style={{ marginLeft: 6, background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>POPULAR</span>}
-          </div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{s.durationMinutes} min</div>
-        </div>
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          {d > 0 && <div style={{ fontSize: 12, color: '#94a3b8', textDecoration: 'line-through' }}>{fmt(s.priceCents)}</div>}
-          <div style={{ fontSize: 14, fontWeight: 700, color: d > 0 ? '#dc2626' : '#1e293b' }}>{s.priceFrom ? 'from ' : ''}{fmt(net)}</div>
-        </div>
-        <span style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, border: `2px solid ${on ? ACCENT : '#cbd5e1'}`, background: on ? ACCENT : 'white', color: 'white', display: 'grid', placeItems: 'center', fontSize: 13 }}>{on ? '✓' : ''}</span>
-      </button>
-    );
+  const listFor = (key: string): Service[] => {
+    if (key === 'popular') return featured;
+    if (key === 'none') return uncategorised;
+    const inc = inCat(key);
+    return inc.length ? inc : services;
   };
+  const visible = q ? services.filter(matches) : listFor(active);
 
-  const section = (title: string, list: Service[]) => {
-    const items = list.filter(matches);
-    if (items.length === 0) return null;
+  // ---- Picked: one tidy line + Change ----------------------------------------
+  if (chosen && !picking) {
+    const d = svcDiscount(chosen); const net = svcNetCents(chosen);
     return (
-      <div key={title} style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, margin: '4px 0 8px' }}>{title}</div>
-        {items.map(card)}
-      </div>
-    );
-  };
-
-  const groupRow = (g: { key: string; title: string; items: Service[] }) => {
-    const isOpen = openCat === g.key;
-    const chosen = g.items.find((x) => x.id === selectedId);
-    return (
-      <div key={g.key} style={{ marginBottom: 8 }}>
-        <button type="button" className="lumio-opt" onClick={() => setOpenCat(isOpen ? null : g.key)}
-          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-            border: chosen ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: isOpen ? '#f8fafc' : 'white' }}>
+      <div style={{ marginBottom: 16 }}>
+        <span style={fieldLabel}>Your service:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, border: `2px solid ${ACCENT}`, background: 'rgba(99,102,241,0.05)' }}>
+          <span style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: ACCENT, color: 'white', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700 }}>✓</span>
           <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{g.title}</span>
-            {chosen && <span style={{ display: 'block', fontSize: 12, color: ACCENT, fontWeight: 600, marginTop: 2 }}>✓ {chosen.name}</span>}
+            <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{chosen.name}</span>
+            <span style={{ display: 'block', fontSize: 13, color: '#64748b', marginTop: 2 }}>
+              {chosen.durationMinutes} min ·{' '}
+              {d > 0 && <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 4 }}>{fmt(chosen.priceCents)}</span>}
+              <b style={{ color: d > 0 ? '#dc2626' : '#1e293b' }}>{chosen.priceFrom ? 'from ' : ''}{fmt(net)}</b>
+            </span>
           </span>
-          <span style={{ flexShrink: 0, fontSize: 12, color: '#64748b', background: '#f1f5f9', borderRadius: 999, padding: '2px 8px' }}>{g.items.length}</span>
-          <span style={{ flexShrink: 0, color: '#94a3b8', fontSize: 11, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>▶</span>
-        </button>
-        {isOpen && <div style={{ marginTop: 8 }}>{g.items.map(card)}</div>}
+          <button type="button" onClick={() => { setSearch(''); setPicking(true); }}
+            style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: ACCENT, background: 'white', border: `1px solid ${ACCENT}`, borderRadius: 999, padding: '7px 14px', cursor: 'pointer' }}>
+            Change
+          </button>
+        </div>
       </div>
-    );
-  };
-
-  let body: React.ReactNode;
-  if (q) {
-    const all = services.filter(matches);
-    body = all.length ? all.map(card) : <p style={{ color: '#94a3b8', fontSize: 14 }}>No services match “{search}”.</p>;
-  } else if (activeCat === 'popular') {
-    body = section('Popular', featured);
-  } else if (activeCat === 'none') {
-    body = section('Other', uncategorised);
-  } else if (activeCat !== 'all') {
-    const c = categories.find((x) => x.id === activeCat);
-    body = section(c?.name ?? 'Services', inCat(activeCat));
-  } else {
-    body = (
-      <>
-        {openCat === null && groups.length > 1 && (
-          <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px' }}>Tap a category to see its services, or search above.</p>
-        )}
-        {groups.map(groupRow)}
-      </>
     );
   }
 
+  // ---- Picking: tabs + one short list ----------------------------------------
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ position: 'relative', marginBottom: 12 }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search services…"
-          style={{ ...field, paddingLeft: 36 }} />
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>⌕</span>
-      </div>
-      {(categories.length > 0 || featured.length > 0) && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 8 }}>
-          {chip('all', 'All')}
-          {featured.length > 0 && chip('popular', 'Popular')}
-          {categories.map((c) => chip(c.id, c.name))}
-          {uncategorised.length > 0 && chip('none', 'Other')}
+      {tabs.length > 1 && (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 10 }}>
+          {tabs.map((t) => {
+            const on = !q && active === t.key;
+            return (
+              <button key={t.key} type="button" onClick={() => { setSearch(''); setActiveCat(t.key); }}
+                style={{ whiteSpace: 'nowrap', fontSize: 13, padding: '8px 14px', borderRadius: 999, cursor: 'pointer',
+                  border: on ? `1px solid ${ACCENT}` : '1px solid #e2e8f0',
+                  background: on ? ACCENT : 'white', color: on ? 'white' : '#475569', fontWeight: 600 }}>
+                {t.label}
+              </button>
+            );
+          })}
         </div>
       )}
-      <div>{body}</div>
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search services…" style={{ ...field, paddingLeft: 36 }} />
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>⌕</span>
+      </div>
+      {visible.length === 0 ? (
+        <p style={{ color: '#94a3b8', fontSize: 14, margin: '8px 0' }}>No services match “{search}”.</p>
+      ) : visible.map((s) => {
+        const d = svcDiscount(s); const net = svcNetCents(s); const on = s.id === selectedId;
+        return (
+          <button key={s.id} type="button" className="lumio-opt"
+            onClick={() => { onSelect(s.id); setSearch(''); setPicking(false); }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', marginBottom: 6,
+              border: on ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: on ? 'rgba(99,102,241,0.06)' : 'white' }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+                {s.name}
+                {s.isFeatured && <span style={{ marginLeft: 6, background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>POPULAR</span>}
+              </span>
+              <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 2 }}>{s.durationMinutes} min</span>
+            </span>
+            <span style={{ textAlign: 'right', flexShrink: 0 }}>
+              {d > 0 && <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', textDecoration: 'line-through' }}>{fmt(s.priceCents)}</span>}
+              <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: d > 0 ? '#dc2626' : '#1e293b' }}>{s.priceFrom ? 'from ' : ''}{fmt(net)}</span>
+            </span>
+            <span style={{ flexShrink: 0, color: '#cbd5e1', fontSize: 15 }}>›</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1236,6 +1209,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   // background + padding so the form blends into the host site instead of
   // showing a light panel around it. Standalone /book/:slug keeps the backdrop.
   const [embedded, setEmbedded] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     let emb = false;
     try { emb = window.self !== window.top; } catch { emb = true; }
@@ -1246,23 +1220,26 @@ function Shell({ children }: { children: React.ReactNode }) {
     document.body.style.background = 'transparent';
     // Tell the host page how tall we are so its iframe can shrink to fit the
     // form (no empty space below). The WordPress embed listens for this message.
+    document.body.style.margin = '0';
+    // Measure the FORM element, never the document. Once the host page sets the
+    // iframe height, <html>/<body> stretch to fill it — so document heights can
+    // only ever grow, and the iframe stayed tall after a step got shorter
+    // (that was the big empty white area under the form).
     const post = () => {
-      const doc = document.documentElement;
-      const h = Math.max(
-        Math.ceil(doc.getBoundingClientRect().height),
-        doc.scrollHeight,
-        document.body ? document.body.scrollHeight : 0,
-      );
+      const el = rootRef.current;
+      if (!el) return;
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      if (h < 120) return;
       try { window.parent.postMessage({ type: 'lumio-embed-height', height: h }, '*'); } catch { /* ignore */ }
     };
     post();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(post) : null;
-    if (ro) ro.observe(document.documentElement);
+    if (ro && rootRef.current) ro.observe(rootRef.current);
     const iv = window.setInterval(post, 800);
     window.addEventListener('resize', post);
     return () => { if (ro) ro.disconnect(); window.clearInterval(iv); window.removeEventListener('resize', post); };
   }, []);
-  return <><style>{BOOK_CSS}</style><div style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : '#eef1f6', display: 'grid', placeItems: 'center', padding: embedded ? 0 : 16 }}>{children}</div></>;
+  return <><style>{BOOK_CSS}</style><div ref={rootRef} style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : '#eef1f6', display: 'grid', placeItems: 'center', padding: embedded ? 0 : 16 }}>{children}</div></>;
 }
 function useEmbedded(): boolean {
   const [emb, setEmb] = useState(false);

@@ -57,6 +57,12 @@ function Inner() {
   const [mode, setMode] = useState<'cal' | 'list'>('cal');
   const [autoPicked, setAutoPicked] = useState(false);
 
+  // A month grid full of chips needs room. On a phone the tech starts on the list
+  // (the grid is still one tap away, and scrolls sideways).
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 720) setMode('list');
+  }, []);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
@@ -185,7 +191,7 @@ function Inner() {
   );
 
   return (
-    <section style={{ width: '100%', maxWidth: 640 }}>
+    <section style={{ width: '100%', maxWidth: 900 }}>
       {error && <div style={ui.banner}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -237,39 +243,60 @@ function Inner() {
         </button>
       </div>
 
-      {/* Month grid */}
-      <div style={{ ...ui.card, padding: 10, marginBottom: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
-          {dayNames.map((d) => (
-            <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748b', padding: '2px 0' }}>{d}</div>
-          ))}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+      {/* Month grid — same visual language as the salon's admin calendar: every
+          booking is a chip inside the day, colour-coded by status, so the tech can
+          read the month at a glance instead of decoding a number badge. */}
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 12, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, minWidth: 680,
+          background: '#243044', border: '1px solid #243044', borderRadius: 12, overflow: 'hidden' }}>
+          {dayNames.map((d, i) => {
+            const weekend = i >= 5;
+            return (
+              <div key={d} style={{ background: '#1e293b', textAlign: 'center', padding: '9px 0', fontSize: 11.5,
+                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 700, color: weekend ? '#8ea2c4' : '#94a3b8' }}>{d}</div>
+            );
+          })}
           {cells.map((d, i) => {
-            if (!d) return <div key={i} />;
+            if (!d) return <div key={i} style={{ background: '#0b1322', minHeight: 116, opacity: 0.5 }} />;
             const list = byDay.get(ymd(d)) ?? [];
-            const live = list.filter((b) => !DEAD.includes(b.status));
             const isToday = sameDay(d, today);
             const on = sameDay(d, picked);
-            const needsMe = live.some((b) => b.status === 'ASSIGNED');
+            const dow = d.getDay();
+            const weekend = dow === 0 || dow === 6;
+            const bg = isToday ? '#151f38' : weekend ? '#0d1526' : '#0f172a';
             return (
-              <button key={i} onClick={() => setPicked(d)}
-                style={{
-                  height: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-                  borderRadius: 10, cursor: 'pointer', padding: 2,
-                  border: on ? '2px solid #6366f1' : isToday ? '1px solid #475569' : '1px solid transparent',
-                  background: on ? 'rgba(99,102,241,0.16)' : live.length ? '#0f172a' : 'transparent',
-                  color: on ? '#e2e8f0' : '#cbd5e1',
-                }}>
-                <span style={{ fontSize: 13, fontWeight: isToday || on ? 800 : 500 }}>{d.getDate()}</span>
-                {live.length > 0 && (
-                  <span style={{
-                    minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, fontSize: 10, fontWeight: 800,
-                    display: 'grid', placeItems: 'center',
-                    background: needsMe ? '#3b82f6' : '#334155', color: '#fff',
-                  }}>{live.length}</span>
-                )}
-              </button>
+              <div key={i} onClick={() => setPicked(d)}
+                style={{ background: bg, minHeight: 116, minWidth: 0, overflow: 'hidden', padding: 7, cursor: 'pointer',
+                  boxShadow: on ? 'inset 0 0 0 2px #6366f1' : isToday ? 'inset 0 0 0 1.5px #4f46e5' : undefined }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                  <span style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999,
+                    fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : '#cbd5e1',
+                    background: isToday ? '#6366f1' : 'transparent' }}>{d.getDate()}</span>
+                  {list.length > 0 && <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>{list.length}</span>}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {list.slice(0, 4).map((b) => {
+                    const colour = STATUS_COLORS[b.status] ?? '#94a3b8';
+                    const dead = DEAD.includes(b.status);
+                    return (
+                      <div key={b.id} title={`${b.status} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5,
+                          background: `${colour}1f`, borderLeft: `3px solid ${colour}`, opacity: dead ? 0.55 : 1, overflow: 'hidden',
+                          textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
+                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: colour, flexShrink: 0 }}>{hhmm(b.startTime)}</span>
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#dbe2ea' }}>
+                          {name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {list.length > 4 && (
+                    <div style={{ fontSize: 10.5, color: '#818cf8', fontWeight: 600, padding: '2px 4px 0' }}>
+                      +{list.length - 4} {vi ? 'nữa' : 'more'}
+                    </div>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>

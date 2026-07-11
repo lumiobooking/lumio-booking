@@ -468,25 +468,12 @@ export default function PublicBookingPage() {
                 </div>
               )}
               {service && services.filter((s) => s.id !== serviceId).length > 0 && (
-                <details style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px' }}>
-                  <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                    ➕ Add more services{extraServices.length > 0 ? ` (${extraServices.length} added)` : ' (optional)'}
-                  </summary>
-                  <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                    {services.filter((s) => s.id !== serviceId).map((s) => {
-                      const on = extraServiceIds.includes(s.id);
-                      return (
-                        <button key={s.id} type="button" onClick={() => { setExtraServiceIds((p) => p.includes(s.id) ? p.filter((x) => x !== s.id) : [...p, s.id]); setStaffId(''); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, cursor: 'pointer', textAlign: 'left', border: `1px solid ${on ? ACCENT : '#e2e8f0'}`, background: on ? '#eef2ff' : 'white' }}>
-                          <span style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${on ? ACCENT : '#cbd5e1'}`, background: on ? ACCENT : 'white', color: 'white', display: 'grid', placeItems: 'center', fontSize: 12 }}>{on ? '✓' : ''}</span>
-                          <span style={{ flex: 1, color: '#1e293b', fontSize: 14 }}>{s.name}</span>
-                          <span style={{ color: '#64748b', fontSize: 13 }}>{s.durationMinutes}m</span>
-                          <span style={{ color: '#16a34a', fontSize: 14, fontWeight: 600 }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </details>
+                <AddMoreServices
+                  services={services.filter((s) => s.id !== serviceId)}
+                  selectedIds={extraServiceIds}
+                  onToggle={(id) => { setExtraServiceIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); setStaffId(''); }}
+                  fmt={fmt}
+                />
               )}
               {service && serviceDiscount > 0 && (
                 <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'linear-gradient(90deg,#fee2e2,#fef3c7)', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1200,6 +1187,87 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
     </div>
   );
 }
+/**
+ * "Add more services" — same rules as the main menu: collapsed by default, a search
+ * box, and never more than 6 rows on screen (Show more / Show less). A salon with a
+ * 40-service menu must not push the Continue button off the visitor's screen.
+ * Anything already ticked floats to the top so it can never hide behind "Show more".
+ */
+function AddMoreServices({ services, selectedIds, onToggle, fmt }: {
+  services: Service[]; selectedIds: string[]; onToggle: (id: string) => void; fmt: (c: number) => string;
+}) {
+  const PAGE = 6;
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => { setLimit(PAGE); }, [q]);
+
+  const needle = q.trim().toLowerCase();
+  const hit = (s: Service) => !needle || `${s.name} ${s.description ?? ''}`.toLowerCase().includes(needle);
+  const list = services.filter(hit);
+  // Ticked first, so a chosen extra is always visible.
+  const ordered = [...list.filter((s) => selectedIds.includes(s.id)), ...list.filter((s) => !selectedIds.includes(s.id))];
+  const n = selectedIds.length;
+
+  return (
+    <div style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '13px 14px', background: 'white', border: 0, cursor: 'pointer', textAlign: 'left' }}>
+        <span style={{ color: ACCENT, fontSize: 16, fontWeight: 800 }}>+</span>
+        <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
+          Add more services{n > 0 ? '' : ' (optional)'}
+        </span>
+        {n > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: 'white', background: ACCENT, borderRadius: 999, padding: '2px 9px' }}>{n} added</span>}
+        <span style={{ color: '#94a3b8', fontSize: 11, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>▶</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 12px 12px' }}>
+          <div style={{ position: 'relative', margin: '2px 0 10px' }}>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search services…" style={{ ...field, paddingLeft: 36 }} />
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>⌕</span>
+          </div>
+
+          {ordered.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontSize: 14, margin: '8px 0' }}>No services match “{q}”.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {ordered.slice(0, limit).map((s) => {
+                const on = selectedIds.includes(s.id);
+                const d = svcDiscount(s);
+                return (
+                  <button key={s.id} type="button" onClick={() => onToggle(s.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                      border: `1px solid ${on ? ACCENT : '#e2e8f0'}`, background: on ? 'rgba(99,102,241,0.06)' : 'white' }}>
+                    <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: `2px solid ${on ? ACCENT : '#cbd5e1'}`, background: on ? ACCENT : 'white', color: 'white', display: 'grid', placeItems: 'center', fontSize: 12 }}>{on ? '✓' : ''}</span>
+                    <span style={{ flex: 1, minWidth: 0, color: '#1e293b', fontSize: 14, fontWeight: 500 }}>{s.name}</span>
+                    <span style={{ flexShrink: 0, color: '#64748b', fontSize: 12 }}>{s.durationMinutes}m</span>
+                    <span style={{ flexShrink: 0, color: d > 0 ? '#dc2626' : '#16a34a', fontSize: 14, fontWeight: 700 }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {ordered.length > PAGE && (
+            limit < ordered.length ? (
+              <button type="button" onClick={() => setLimit((v) => v + PAGE)}
+                style={{ width: '100%', marginTop: 8, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: ACCENT, background: 'white', border: `1px dashed ${ACCENT}` }}>
+                Show more ({ordered.length - limit})
+              </button>
+            ) : (
+              <button type="button" onClick={() => setLimit(PAGE)}
+                style={{ width: '100%', marginTop: 8, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#64748b', background: 'white', border: '1px solid #e2e8f0' }}>
+                Show less
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TechCard({ selected, onClick, label, avatar, subtitle, disabled }: { selected: boolean; onClick: () => void; label: string; avatar: string | null; subtitle?: string; disabled?: boolean }) {
   const initial = (label || '?').trim().charAt(0).toUpperCase();
   const subColor = disabled ? '#ef4444' : subtitle === 'Available' ? '#16a34a' : '#64748b';

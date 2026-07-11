@@ -206,6 +206,15 @@ export default function PublicBookingPage() {
   const base = `${API_URL}/public/salons/${encodeURIComponent(slug)}`;
   const isMobile = useIsMobile();
   const embedded = useEmbedded();
+  // An iframe cannot read the host page's viewport, so size the mobile widget from
+  // the device screen: roomy enough to fill the phone, short enough that the pinned
+  // Back/Continue bar still fits on screen (no scrolling the host page to reach it).
+  const [embedH, setEmbedH] = useState(600);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.screen) return;
+    const h = window.screen.height || 700;
+    setEmbedH(Math.max(520, Math.min(720, Math.round(h * 0.78))));
+  }, []);
 
   const [salon, setSalon] = useState<Salon | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -374,12 +383,12 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div className="lumio-book" style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none', ...(isMobile ? { height: 620 } : {}) } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
+      <div className="lumio-book" style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none', ...(isMobile ? { height: embedH } : {}) } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
-          <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
+          <div style={{ background: ACCENT, color: 'white', padding: embedded ? '12px 14px' : '16px 18px' }}>
             <div style={{ fontSize: 17, fontWeight: 700 }}>{salon?.name}</div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+            <div style={{ display: 'flex', gap: 6, marginTop: embedded ? 9 : 12 }}>
               {steps.map((s) => (
                 <div key={s.n} style={{ flex: 1, height: 6, borderRadius: 999, background: step >= s.n ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.30)' }} />
               ))}
@@ -388,7 +397,7 @@ export default function PublicBookingPage() {
               <div style={{ fontSize: 12, opacity: 0.95 }}>
                 {step > 4 ? 'Done' : `Step ${Math.min(step, 4)} of 4 · ${currentLabel}`}
               </div>
-              <InstallAppButton label="Get the app" />
+              {!embedded && <InstallAppButton label="Get the app" />}
             </div>
           </div>
         ) : (
@@ -404,7 +413,7 @@ export default function PublicBookingPage() {
               );
             })}
             <div style={{ marginTop: 'auto', paddingTop: 24 }}>
-              <InstallAppButton label="Install this booking app" />
+              {!embedded && <InstallAppButton label="Install this booking app" />}
             </div>
             <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, opacity: 0.85, paddingTop: 16, color: 'white', textDecoration: 'none' }}>
               Powered by <span style={{ fontWeight: 700 }}>Lumio Booking</span>

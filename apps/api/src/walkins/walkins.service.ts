@@ -345,6 +345,52 @@ export class WalkinsService {
     return w;
   }
 
+  /** The staff member row for the signed-in user (null for a salon admin without one). */
+  private async staffOf(user: AuthenticatedUser): Promise<string | null> {
+    const tenantId = this.tenantId(user);
+    const staff = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true } });
+    return staff?.id ?? null;
+  }
+
+  /** Add a service line and ALWAYS credit it to the signed-in technician — a tech
+   *  can never (accidentally or otherwise) put their work on someone else's turn count. */
+  async addServiceAsMe(user: AuthenticatedUser, id: string, serviceId: string) {
+    const mine = await this.staffOf(user);
+    return this.addService(user, id, serviceId, mine ?? undefined);
+  }
+
+  /** The salon's price list, trimmed to what the staff app needs. */
+  async servicesForChair(user: AuthenticatedUser) {
+    return this.prisma.service.findMany({
+      where: { tenantId: this.tenantId(user), isActive: true },
+      select: { id: true, name: true, priceCents: true, durationMinutes: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  /** Every chair in the salon + who is sitting in it right now (for the tech's chair picker). */
+  async chairsForChair(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const [stations, serving] = await Promise.all([
+      this.prisma.station.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true, sortOrder: true, stationType: { select: { name: true } } },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+      this.prisma.walkIn.findMany({
+        where: { tenantId, status: WalkInStatus.SERVING, awaitingPayment: false, stationId: { not: null } },
+        select: { stationId: true, customerName: true },
+      }),
+    ]);
+    const busy = new Map(serving.map((w) => [w.stationId as string, w.customerName]));
+    return stations.map((st) => ({
+      id: st.id,
+      name: st.name,
+      type: st.stationType?.name ?? '',
+      takenBy: busy.get(st.id) ?? null,
+    }));
+  }
+
   /** The signed-in tech's own in-service clients (their chair) — for the staff app. */
   async myChair(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);

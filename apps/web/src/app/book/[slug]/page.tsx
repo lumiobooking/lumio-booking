@@ -374,7 +374,7 @@ export default function PublicBookingPage() {
 
   return (
     <Shell>
-      <div style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none' } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
+      <div className="lumio-book" style={{ ...(isMobile ? wrapMobile : wrap), ...(embedded ? { boxShadow: 'none' } : {}), ['--accent' as string]: accent } as React.CSSProperties}>
         {isMobile ? (
           /* Compact mobile header: salon name + progress bar + current step */
           <div style={{ background: ACCENT, color: 'white', padding: '16px 18px' }}>
@@ -416,7 +416,7 @@ export default function PublicBookingPage() {
           </aside>
         )}
 
-        <section style={isMobile ? contentMobile : content}>
+        <section key={step} className="lumio-step" style={isMobile ? contentMobile : content}>
           {step === 1 && (
             <>
               <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
@@ -757,7 +757,7 @@ function StepDateTime({ rules, deals, dateDeals, selectedDate, slot, onPickDate,
               {times.map((s, i) => {
                 const sel = slot && s.start.getTime() === slot.start.getTime();
                 return (
-                  <button key={i} onClick={() => onPickSlot(s)}
+                  <button key={i} className="lumio-opt" onClick={() => onPickSlot(s)}
                     style={{ padding: '10px 6px', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontWeight: sel ? 700 : 400,
                       border: `1px solid ${sel ? ACCENT : '#e2e8f0'}`, background: sel ? ACCENT : 'white', color: sel ? 'white' : '#1e293b' }}>
                     {fmtTime(s.start)}
@@ -948,7 +948,7 @@ function StepFrame({ title, children, canContinue, onContinue, onBack }: { title
       <div style={isMobile ? scrollAreaEmbed : scrollArea}>{children}</div>
       <div style={embedded ? footerEmbed : (isMobile ? footerMobile : footer)}>
         {onBack ? <button onClick={onBack} style={{ ...ghostBtn, ...(wide ? { flexShrink: 0 } : {}) }}>Back</button> : (isMobile && !embedded ? null : <span />)}
-        <button onClick={onContinue} disabled={!canContinue}
+        <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
           style={{ ...primaryBtn, ...(wide ? { flex: 1, padding: '13px 22px', fontSize: 15 } : {}), opacity: canContinue ? 1 : 0.5, cursor: canContinue ? 'pointer' : 'not-allowed' }}>
           Continue
         </button>
@@ -1046,7 +1046,7 @@ function ServiceMenu({ services, categories, search, setSearch, activeCat, setAc
   const card = (s: Service) => {
     const d = svcDiscount(s); const net = svcNetCents(s); const on = s.id === selectedId;
     return (
-      <button key={s.id} type="button" onClick={() => onSelect(s.id)}
+      <button key={s.id} type="button" className="lumio-opt" onClick={() => onSelect(s.id)}
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', marginBottom: 8,
           border: on ? `2px solid ${ACCENT}` : '1px solid #e2e8f0', background: on ? '#eef2ff' : 'white' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1120,7 +1120,7 @@ function TechCard({ selected, onClick, label, avatar, subtitle, disabled }: { se
   const initial = (label || '?').trim().charAt(0).toUpperCase();
   const subColor = disabled ? '#ef4444' : subtitle === 'Available' ? '#16a34a' : '#64748b';
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={disabled ? 'Already booked at this time' : undefined}
+    <button type="button" className="lumio-opt" onClick={onClick} disabled={disabled} title={disabled ? 'Already booked at this time' : undefined}
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 8px', borderRadius: 10,
         cursor: disabled ? 'not-allowed' : 'pointer', border: `2px solid ${selected ? ACCENT : '#e2e8f0'}`,
         background: disabled ? '#f1f5f9' : selected ? '#eef2ff' : 'white', opacity: disabled ? 0.65 : 1 }}>
@@ -1132,6 +1132,17 @@ function TechCard({ selected, onClick, label, avatar, subtitle, disabled }: { se
     </button>
   );
 }
+const BOOK_CSS = `
+@keyframes lumioIn { from { opacity: 0; transform: translateY(12px) scale(.99); } to { opacity: 1; transform: none; } }
+@keyframes lumioStep { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.lumio-book { animation: lumioIn .5s cubic-bezier(.2,.75,.25,1) both; }
+.lumio-book button { transition: transform .12s ease, box-shadow .2s ease, filter .18s ease, border-color .15s ease, background .15s ease; }
+.lumio-book button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
+.lumio-step { animation: lumioStep .34s ease both; }
+.lumio-opt:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15,23,42,0.10); border-color: var(--accent, #6366f1) !important; }
+.lumio-cta:hover:not(:disabled) { filter: brightness(1.05); box-shadow: 0 10px 24px rgba(0,0,0,0.18); }
+@media (prefers-reduced-motion: reduce) { .lumio-book, .lumio-step { animation: none !important; } }
+`;
 function Shell({ children }: { children: React.ReactNode }) {
   // When shown inside an iframe (the WordPress plugin embed), drop the page
   // background + padding so the form blends into the host site instead of
@@ -1163,7 +1174,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     window.addEventListener('resize', post);
     return () => { if (ro) ro.disconnect(); window.clearInterval(iv); window.removeEventListener('resize', post); };
   }, []);
-  return <div style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : '#eef1f6', display: 'grid', placeItems: 'center', padding: embedded ? 0 : 16 }}>{children}</div>;
+  return <><style>{BOOK_CSS}</style><div style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : '#eef1f6', display: 'grid', placeItems: 'center', padding: embedded ? 0 : 16 }}>{children}</div></>;
 }
 function useEmbedded(): boolean {
   const [emb, setEmb] = useState(false);

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { Preset } from '../lib/emailPresets';
 
 export interface Campaign {
   id: string; name: string; subject: string; status: string;
@@ -51,7 +52,7 @@ const STATUS: Record<string, { label: string; c: string }> = {
   failed:  { label: 'Failed',  c: '#ef4444' },
 };
 
-export function EmailCampaigns({ base, vi, defaultFromName }: { base: string; vi: boolean; defaultFromName?: string }) {
+export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { base: string; vi: boolean; defaultFromName?: string; presets?: Preset[] }) {
   const { token } = useAuth();
   const [d, setD] = useState<Draft>({ ...EMPTY, fromName: defaultFromName ?? '' });
   const [list, setList] = useState<Campaign[]>([]);
@@ -153,6 +154,21 @@ export function EmailCampaigns({ base, vi, defaultFromName }: { base: string; vi
             {t('Soạn email', 'Compose')}
           </div>
 
+          {presets.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={ui.label}>{t('Mẫu có sẵn — bấm một cái là điền hết, rồi sửa lại tuỳ ý', 'Ready-made templates — one click fills everything, then edit')}</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {presets.map((p) => (
+                  <button key={p.label} onClick={() => setD({ ...EMPTY, ...p.draft, fromName: p.draft.fromName || d.fromName || defaultFromName || '' })}
+                    style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+                      border: '1px dashed #6366f1', background: 'rgba(99,102,241,0.10)', color: '#c7d2fe' }}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {field(t('Người gửi (khách sẽ thấy tên này)', 'Sender name (what customers see)'), null,
             <input value={d.fromName} onChange={(e) => setD({ ...d, fromName: e.target.value })}
               placeholder={t('Lux Nail Spa', 'Lux Nail Spa')} style={{ ...ui.input, width: '100%' }} />)}
@@ -175,10 +191,10 @@ export function EmailCampaigns({ base, vi, defaultFromName }: { base: string; vi
               style={{ ...ui.input, width: '100%' }} />)}
 
           {field(t('Nội dung', 'Body'),
-            t('Cách một dòng trống để xuống đoạn mới. Gõ {{name}} để tự điền tên khách.',
-              'Leave a blank line between paragraphs. Type {{name}} to drop in the customer’s name.'),
-            <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={7}
-              style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6 }} />)}
+            t('Dòng trống = đoạn mới. {{name}} = tên khách. Ngoài ra: "## Tiêu đề", "- gạch đầu dòng", "[[NOTE]] ghi chú", "[[DIVIDER]]", và thẻ giá: "[[PLAN]] Tên | $45/tháng | mô tả | ý 1; ý 2" (dùng [[PLAN*]] cho gói muốn làm nổi bật).',
+              'Blank line = new paragraph. {{name}} = customer name. Also: "## Heading", "- bullet", "[[NOTE]] small print", "[[DIVIDER]]", and price cards: "[[PLAN]] Name | $45/mo | tagline | item; item" (use [[PLAN*]] for the one you want highlighted).'),
+            <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={10}
+              style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace, monospace', fontSize: 13 }} />)}
 
           {field(t('Ảnh (dán link ảnh)', 'Image (paste a link)'),
             t('Bắt buộc bắt đầu bằng https://', 'Must start with https://'),

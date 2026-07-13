@@ -6,6 +6,7 @@
 import { SalonShell } from '../../../components/SalonShell';
 import { EmailCampaigns } from '../../../components/EmailCampaigns';
 import { useLang } from '../../../lib/i18n';
+import { SALON_PRESETS } from '../../../lib/emailPresets';
 
 export default function SalonEmailPage() {
   const { lang } = useLang();
@@ -19,7 +20,7 @@ export default function SalonEmailPage() {
             ? 'Soạn một email đẹp, dán danh sách email khách hàng, bấm gửi. Mail đi từ chính địa chỉ của tiệm (Brevo / Gmail / SMTP đã kết nối trong Cài đặt → Thông báo). Mọi lần gửi đều được lưu lại.'
             : 'Compose a polished email, paste your customer list, hit send. It goes out from your own address (the Brevo / Gmail / SMTP you connected under Settings → Notifications). Every send is logged.'}
         </p>
-        <EmailCampaigns base="/email-campaigns" vi={vi} />
+        <EmailCampaigns base="/email-campaigns" vi={vi} presets={SALON_PRESETS} />
       </section>
     </SalonShell>
   );

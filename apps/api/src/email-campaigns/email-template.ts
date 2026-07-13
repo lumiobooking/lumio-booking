@@ -40,16 +40,115 @@ export function fillTokens(text: string, vars: { name?: string | null; brand?: s
     .replace(/\{\{\s*brand\s*\}\}/gi, vars.brand || '');
 }
 
+/**
+ * A tiny markup so a plain textarea can produce a real marketing email — pricing
+ * cards and all — without ever exposing HTML to the person writing it:
+ *
+ *   ## Heading                                   a section title
+ *   - A benefit                                  a green-tick bullet
+ *   [[PLAN]]  Name | $45/mo | tagline | a; b; c  a price card
+ *   [[PLAN*]] ...                                the SAME, highlighted (the offer)
+ *   [[NOTE]] small print                         a soft grey note box
+ *   [[DIVIDER]]                                  a hairline
+ *   anything else                                a normal paragraph
+ */
+function renderBody(raw: string, accent: string, vars: { name?: string | null; brand?: string }): string {
+  const lines = raw.replace(/\r/g, '').split('\n');
+  const out: string[] = [];
+  let bullets: string[] = [];
+  let plans: string[] = [];
+  let para: string[] = [];
+
+  const flushPara = () => {
+    if (!para.length) return;
+    const text = esc(fillTokens(para.join('\n'), vars)).replace(/\n/g, '<br/>');
+    out.push(`<p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#334155">${text}</p>`);
+    para = [];
+  };
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    out.push(
+      `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 18px">` +
+      bullets.map((b) =>
+        `<tr>` +
+        `<td valign="top" width="24" style="padding:5px 0;color:${accent};font-weight:800;font-size:15px">&#10003;</td>` +
+        `<td style="padding:5px 0;font-size:15.5px;line-height:1.6;color:#334155">${esc(fillTokens(b, vars))}</td>` +
+        `</tr>`).join('') +
+      `</table>`,
+    );
+    bullets = [];
+  };
+  const flushPlans = () => {
+    if (!plans.length) return;
+    const cards = plans.map((spec) => {
+      const star = spec.startsWith('*');
+      const body = star ? spec.slice(1) : spec;
+      const [name = '', price = '', tag = '', feats = ''] = body.split('|').map((x) => x.trim());
+      const items = feats.split(';').map((x) => x.trim()).filter(Boolean);
+      const bg = star ? `${accent}0f` : '#ffffff';
+      const border = star ? `2px solid ${accent}` : '1px solid #e2e8f0';
+      return (
+        `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px;background:${bg};border:${border};border-radius:14px">` +
+        `<tr><td style="padding:18px 20px">` +
+          `<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>` +
+            `<td style="font-size:17px;font-weight:800;color:#0f172a">${esc(name)}</td>` +
+            `<td align="right" style="font-size:19px;font-weight:800;color:${accent};white-space:nowrap">${esc(price)}</td>` +
+          `</tr></table>` +
+          (tag ? `<div style="margin-top:4px;font-size:13.5px;color:#64748b">${esc(tag)}</div>` : '') +
+          (items.length
+            ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:10px">` +
+              items.map((it) =>
+                `<tr>` +
+                `<td valign="top" width="20" style="padding:3px 0;color:${accent};font-weight:800;font-size:13px">&#10003;</td>` +
+                `<td style="padding:3px 0;font-size:14px;line-height:1.55;color:#475569">${esc(it)}</td>` +
+                `</tr>`).join('') +
+              `</table>`
+            : '') +
+        `</td></tr></table>`
+      );
+    }).join('');
+    out.push(cards);
+    plans = [];
+  };
+  const flushAll = () => { flushPara(); flushBullets(); flushPlans(); };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) { flushAll(); continue; }
+
+    if (line.startsWith('[[PLAN*]]')) { flushPara(); flushBullets(); plans.push('*' + line.slice(9).trim()); continue; }
+    if (line.startsWith('[[PLAN]]'))  { flushPara(); flushBullets(); plans.push(line.slice(8).trim()); continue; }
+    if (line.startsWith('[[NOTE]]')) {
+      flushAll();
+      out.push(`<div style="margin:0 0 18px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13.5px;line-height:1.6;color:#64748b">${esc(fillTokens(line.slice(8).trim(), vars))}</div>`);
+      continue;
+    }
+    if (line.startsWith('[[DIVIDER]]')) {
+      flushAll();
+      out.push('<div style="height:1px;background:#e2e8f0;margin:6px 0 22px"></div>');
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      flushAll();
+      out.push(`<h2 style="margin:6px 0 12px;font-size:19px;font-weight:800;color:#0f172a">${esc(fillTokens(line.slice(3).trim(), vars))}</h2>`);
+      continue;
+    }
+    if (line.startsWith('- ')) { flushPara(); flushPlans(); bullets.push(line.slice(2).trim()); continue; }
+
+    flushBullets(); flushPlans();
+    para.push(line);
+  }
+  flushAll();
+  return out.join('');
+}
+
 export function renderCampaignHtml(c: CampaignContent): string {
   const accent = /^#[0-9a-f]{6}$/i.test(String(c.brandColor || '')) ? String(c.brandColor) : '#6366f1';
   const brand = esc(c.brandName || 'Lumio');
   const heading = c.heading ? esc(fillTokens(c.heading, { name: c.recipientName, brand: c.brandName })) : '';
-  const paragraphs = String(c.body || '')
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => `<p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#334155">${esc(fillTokens(p, { name: c.recipientName, brand: c.brandName })).replace(/\n/g, '<br/>')}</p>`)
-    .join('');
+  const paragraphs = renderBody(String(c.body || ''), accent, {
+    name: c.recipientName, brand: c.brandName,
+  });
   const img = safeUrl(c.imageUrl);
   const cta = safeUrl(c.ctaUrl);
   const logo = safeUrl(c.logoUrl);
@@ -104,7 +203,24 @@ ${c.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0
 export function renderCampaignText(c: CampaignContent): string {
   const lines: string[] = [];
   if (c.heading) lines.push(fillTokens(c.heading, { name: c.recipientName, brand: c.brandName }), '');
-  if (c.body) lines.push(fillTokens(c.body, { name: c.recipientName, brand: c.brandName }), '');
+  if (c.body) {
+    const plain = fillTokens(c.body, { name: c.recipientName, brand: c.brandName })
+      .split('\n')
+      .map((l) => l.trim())
+      .map((l) => {
+        if (l.startsWith('[[PLAN*]]') || l.startsWith('[[PLAN]]')) {
+          const [name = '', price = '', tag = '', feats = ''] = l.replace(/^\[\[PLAN\*?\]\]/, '').split('|').map((x) => x.trim());
+          return `* ${name} — ${price}${tag ? ` (${tag})` : ''}${feats ? `\n   - ${feats.split(';').map((x) => x.trim()).filter(Boolean).join('\n   - ')}` : ''}`;
+        }
+        if (l.startsWith('[[NOTE]]')) return l.slice(8).trim();
+        if (l.startsWith('[[DIVIDER]]')) return '---';
+        if (l.startsWith('## ')) return l.slice(3).trim().toUpperCase();
+        if (l.startsWith('- ')) return `* ${l.slice(2).trim()}`;
+        return l;
+      })
+      .join('\n');
+    lines.push(plain, '');
+  }
   const cta = safeUrl(c.ctaUrl);
   if (cta) lines.push(`${c.ctaLabel || 'Open'}: ${cta}`, '');
   if (c.footerNote) lines.push(c.footerNote, '');

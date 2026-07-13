@@ -5,6 +5,7 @@
 
 import { EmailCampaigns } from '../../../components/EmailCampaigns';
 import { useAuth } from '../../../lib/auth';
+import { LUMIO_PRESETS } from '../../../lib/emailPresets';
 
 export default function AdminEmailPage() {
   const { logout } = useAuth();
@@ -23,7 +24,7 @@ export default function AdminEmailPage() {
             <button onClick={logout} style={btn}>Log out</button>
           </div>
         </div>
-        <EmailCampaigns base="/admin/email-campaigns" vi={false} defaultFromName="Lumio Booking" />
+        <EmailCampaigns base="/admin/email-campaigns" vi={true} defaultFromName="Lumio Agency" presets={LUMIO_PRESETS} />
       </div>
     </main>
   );

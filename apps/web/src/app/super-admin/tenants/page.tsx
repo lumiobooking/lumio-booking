@@ -175,6 +175,9 @@ export default function TenantsPage() {
           <a href="/super-admin/invoices" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Invoices
           </a>
+          <a href="/super-admin/email" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            Email marketing
+          </a>
           <button onClick={() => setShowForm((s) => !s)} style={primaryBtn}>
             {showForm ? 'Close' : '+ New salon'}
           </button>

@@ -42,6 +42,7 @@ const GROUPS: NavGroup[] = [
   ] },
   { id: 'growth', label: 'Marketing & AI', icon: '📣', items: [
     { href: '/salon/marketing', label: 'Marketing', icon: '📣' },
+    { href: '/salon/email', label: 'Email marketing', icon: '✉️' },
     { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
     { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
     { href: '/salon/messenger', label: 'Messenger bot', icon: '🤖' },

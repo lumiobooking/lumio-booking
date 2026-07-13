@@ -63,9 +63,36 @@ export function safeUrl(u?: string | null): string {
  * for, and "Kính chào anh chị," for the ones we only have an email address for —
  * instead of an awkward "Kính chào there,".
  */
+/**
+ * Contacts are imported as "Mr Viet", "Ms. Oanh Le", "Anh Tuấn" — the honorific is
+ * part of the pasted name. We strip it, because the greeting supplies its own
+ * ("A/C Ms. Oanh Le" would read badly), and because we never actually know whether
+ * a name belongs to a man or a woman.
+ */
+function bareName(raw: string): string {
+  let n = raw.trim().replace(/^["']|["']$/g, '');
+  const HON = /^(mr|mrs|ms|miss|mister|madam|anh|ch[iị]|c[oô]|ch[uú]|b[aá]c|em)\.?\s+/i;
+  while (HON.test(n)) n = n.replace(HON, '').trim();
+  return n;
+}
+
+/**
+ * {{name}}            → the recipient's name, or "there" if we don't have one.
+ * {{name|anh chị}}    → the recipient's name, or "anh chị" if we don't have one.
+ * {{greet}}           → "A/C Tuấn" when we have a name, plain "A/C" when we don't.
+ * {{greet|Anh chị}}   → same, with your own honorific instead of "A/C".
+ *
+ * {{greet}} is what makes one greeting line work for a whole mixed list: we rarely
+ * know if a contact is a man or a woman, so "A/C" carries both, and the line still
+ * reads naturally for the contacts we only have an email address for.
+ */
 export function fillTokens(text: string, vars: { name?: string | null; brand?: string }): string {
-  const name = String(vars.name ?? '').trim();
+  const name = bareName(String(vars.name ?? ''));
   return String(text)
+    .replace(/\{\{\s*greet\s*(?:\|([^}]*))?\}\}/gi, (_m, hon?: string) => {
+      const h = (hon ?? '').trim() || 'A/C';
+      return name ? `${h} ${name}` : h;
+    })
     .replace(/\{\{\s*name\s*(?:\|([^}]*))?\}\}/gi, (_m, fb?: string) => name || (fb ?? '').trim() || 'there')
     .replace(/\{\{\s*brand\s*\}\}/gi, vars.brand || '');
 }

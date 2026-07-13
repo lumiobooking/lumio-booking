@@ -544,8 +544,8 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
               style={{ ...ui.input, width: '100%' }} />)}
 
           {field(t('Nội dung', 'Body'),
-            t('Dòng trống = đoạn mới. {{name}} = tên khách; {{name|anh chị}} = có tên thì chào tên, không có tên thì chào "anh chị". Ngoài ra: "## Tiêu đề", "- gạch đầu dòng", "[[NOTE]] ghi chú", "[[DIVIDER]]", và thẻ giá: "[[PLAN]] Tên | $45/tháng | mô tả | ý 1; ý 2" (dùng [[PLAN*]] cho gói muốn làm nổi bật).',
-              'Blank line = new paragraph. {{name}} = customer name; {{name|there}} = the name if you have it, "there" if you don\'t. Also: "## Heading", "- bullet", "[[NOTE]] small print", "[[DIVIDER]]", and price cards: "[[PLAN]] Name | $45/mo | tagline | item; item" (use [[PLAN*]] for the one you want highlighted).'),
+            t('Dòng trống = đoạn mới. {{greet}} = "A/C Tuấn" (có tên) hoặc "A/C" (chưa có tên) — dùng cho lời chào. {{name}} = tên khách; {{name|anh chị}} = không có tên thì thay bằng "anh chị". Ngoài ra: "## Tiêu đề", "- gạch đầu dòng", "[[NOTE]] ghi chú", "[[DIVIDER]]", và thẻ giá: "[[PLAN]] Tên | $45/tháng | mô tả | ý 1; ý 2" (dùng [[PLAN*]] cho gói muốn làm nổi bật).',
+              'Blank line = new paragraph. {{greet}} = "A/C Tuan" with a name, plain "A/C" without one — use it in the greeting. {{name}} = customer name; {{name|there}} = falls back to "there". Also: "## Heading", "- bullet", "[[NOTE]] small print", "[[DIVIDER]]", and price cards: "[[PLAN]] Name | $45/mo | tagline | item; item" (use [[PLAN*]] for the one you want highlighted).'),
             <>
               <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={10}
                 style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace, monospace', fontSize: 13,

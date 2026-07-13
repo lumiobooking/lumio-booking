@@ -7,6 +7,7 @@
 //   [[PLAN*]] …           → the SAME card, highlighted (use it for the offer)
 //   [[NOTE]] text         → soft grey note box
 //   [[DIVIDER]]           → hairline
+// URLs, phone numbers and email addresses inside the copy are auto-linked.
 
 export interface Preset {
   label: string;
@@ -16,155 +17,194 @@ export interface Preset {
   };
 }
 
-const LUMIO_FOOTER = 'Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731 · (512) 886-8189 · support@lumioagency.com';
+const FOOTER = 'Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731 · (512) 886-8189 · support@lumioagency.com';
 const AUDIT = 'https://lumioagency.com/#contact';
+
+/** The signature block — a real person, reachable three ways. */
+const SIGN_VN = `[[DIVIDER]]
+
+Anh chị cứ nhắn thẳng cho em, không cần qua ai cả:
+
+- **Việt Nguyễn** — Founder, Lumio Agency LLC
+- Gọi hoặc nhắn tin: (512) 886-8189
+- Facebook: https://www.facebook.com/vietnguyen.lumio
+- Email: support@lumioagency.com
+- Website: https://lumioagency.com  ·  Phần mềm: https://lumiobooking.com
+
+Em cảm ơn anh chị đã dành thời gian đọc tới đây.
+
+Trân trọng,
+Việt Nguyễn`;
+
+const SIGN_EN = `[[DIVIDER]]
+
+Reply to this email, or reach me directly — you'll get me, not a call centre:
+
+- **Viet Nguyen** — Founder, Lumio Agency LLC
+- Call or text: (512) 886-8189
+- Facebook: https://www.facebook.com/vietnguyen.lumio
+- Email: support@lumioagency.com
+- Website: https://lumioagency.com  ·  Software: https://lumiobooking.com
+
+Thank you for reading this far.
+
+Warm regards,
+Viet Nguyen`;
 
 /** Lumio → salon owners. Platform (Super Admin) campaigns. */
 export const LUMIO_PRESETS: Preset[] = [
   {
-    label: '💎 Trọn gói marketing — $179 (VN)',
+    label: '💎 Chào dịch vụ tổng thể (VN)',
     draft: {
-      name: 'All-in-One $179 — pitch (VN)',
-      subject: 'Trọn gói online cho tiệm — $179/tháng (thay vì $393)',
-      fromName: 'Lumio Agency',
-      preheader: 'Social + Google Maps + LumioBooking, một giá. Website chỉ $150. Không hợp đồng dài hạn.',
-      heading: 'Anh chị lo chuyên môn. Phần online để Lumio lo.',
-      body: `Chào anh chị,
+      name: 'Chào dịch vụ tổng thể — VN',
+      subject: 'Tiệm anh chị đang mất khách ở chỗ nào? Em chỉ giúp anh chị xem',
+      fromName: 'Việt Nguyễn · Lumio Agency',
+      preheader: 'Google Maps · Social · Website · Phần mềm đặt lịch — từ $179/tháng. Audit miễn phí, không ràng buộc.',
+      heading: 'Anh chị lo tay nghề. Phần online, để em lo.',
+      body: `Kính chào anh/chị,
 
-Em là Lumio Agency — công ty ở Austin, Texas, chuyên làm online cho tiệm nail, spa và nhà hàng người Việt tại Mỹ & Canada.
+Em là **Việt Nguyễn**, người sáng lập **Lumio Agency** — công ty đăng ký tại Austin, Texas. Em và đội ngũ của em chuyên lo phần online cho tiệm nail, spa và nhà hàng của người Việt mình tại Mỹ và Canada.
 
-Em viết email này vì em thấy chủ tiệm nào cũng gặp đúng mấy chuyện sau:
+Em viết email này không phải để bán hàng vội. Em chỉ muốn hỏi anh chị một câu:
 
-- Khách tìm trên Google Maps mà không thấy tiệm mình
-- Facebook, TikTok bỏ trống, cả tháng không có bài mới
-- Khách muốn đặt lịch thì phải gọi điện, gọi không ai bắt máy là mất khách
-- Website cũ, chậm, mở trên điện thoại nhìn không chuyên nghiệp
-- Và đau nhất: không biết tiền marketing đang đi về đâu
+**Tháng vừa rồi, tiệm mình mất bao nhiêu khách mà không hề hay biết?**
 
-## Bình thường, mỗi thứ là một gói riêng
+Em hỏi vậy vì chủ tiệm nào em gặp cũng đang rơi khách ở đúng mấy chỗ này:
 
-[[PLAN]] Lumio Social Care | $45/tháng | Chăm sóc tất cả kênh social | FB, IG, TikTok, Shorts, Yelp; Nội dung đều đặn ~2 ngày/lần; Theo mẫu ngành, chỉnh riêng cho tiệm
-[[PLAN]] Lumio Growth (Map) | $279/tháng | Tăng hiển thị Google Maps | Google Maps SEO chuyên sâu; Tối ưu Google Business Profile; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt gọi & lượt chỉ đường
-[[PLAN]] LumioBooking Pro | $69/tháng | Phần mềm quản lý tiệm | Đặt lịch online 24/7; POS & thanh toán; AI trả lời điện thoại và Messenger; Lương thợ, tip, báo cáo nguồn khách
+- Khách mở Google Maps tìm tiệm nail gần nhà — **tiệm mình không hiện ra**, tiệm bên cạnh hiện
+- Facebook, TikTok bỏ trống cả tháng — khách lạ vào xem, thấy bài cuối từ năm ngoái, họ đi luôn
+- Khách gọi tới lúc tiệm đang đông, **không ai bắt máy** — khách gọi tiệm khác
+- Website cũ, mở trên điện thoại chữ bé xíu, khách thoát ra trong 3 giây
+- Và đau nhất: **tiền quảng cáo đổ ra mà không biết đi về đâu**
 
-[[NOTE]] Cộng lại: $393/tháng.
+Mỗi cái đó, một mình thì nhỏ. Cộng lại cả tháng thì đó là **tiền thật** đi ra khỏi cửa tiệm.
 
-## Tháng này Lumio gộp tất cả lại — một giá
+## Lumio làm gì cho tiệm anh chị
 
-[[PLAN*]] Lumio All-in-One | $179/tháng | Tất cả những gì bên trên, một giá duy nhất | Social đa kênh (FB · IG · TikTok · Yelp); Google Maps SEO + tối ưu hồ sơ Google; LumioBooking Pro đầy đủ tính năng; Báo cáo minh bạch hằng tháng, kèm ảnh chụp nguồn; Hỗ trợ song ngữ Việt – Anh
+[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Nền tảng — social đều tay và hệ thống đặt lịch | Social đa kênh: FB, IG, TikTok, Shorts, Yelp; Nội dung đều đặn ~2 ngày/lần; Tối ưu hồ sơ Google Business Profile; Link in bio + duyệt nội dung trước khi đăng; Phần mềm LumioBooking đặt lịch online 24/7; Báo cáo tháng ngắn gọn, dễ hiểu
+[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Đầy đủ nhất — thêm Google Maps SEO chuyên sâu | Bao gồm toàn bộ gói $179; Google Maps SEO chuyên sâu — để khách tìm là thấy tiệm mình; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch kèm ảnh chụp màn hình nguồn
 
-[[NOTE]] Tiết kiệm $214 mỗi tháng. Giá ra mắt, áp dụng cho số lượng tiệm giới hạn — khoá giá suốt thời gian anh chị còn dùng.
+[[NOTE]] Cả hai gói đều đã bao gồm phần mềm LumioBooking — đặt lịch online, nhắc khách tự động, POS tính tiền, quản lý thợ và báo cáo nguồn khách. Anh chị không phải trả thêm đồng nào cho phần mềm.
 
-[[DIVIDER]]
+## Và website — chỉ $150, trả một lần
 
-## Và website — chỉ $150
+Website riêng cho tiệm: nhanh, đẹp, **chuẩn điện thoại**, song ngữ Việt – Anh, gắn sẵn nút Đặt lịch nối thẳng vào LumioBooking. Anh chị **sở hữu website và tên miền**, đứng tên anh chị.
 
-Website riêng cho tiệm: nhanh, chuẩn điện thoại, song ngữ Việt – Anh, gắn thẳng nút đặt lịch LumioBooking. Trả một lần $150, không phí ẩn.
+[[NOTE]] $150 trả một lần. Không phí ẩn, không ràng buộc.
 
-## Vì sao anh chị nên tin Lumio
+## Vì sao anh chị nên tin em
 
-- Anh chị sở hữu 100% tài khoản — Google, Facebook, website đều đứng tên anh chị
-- Không hợp đồng dài hạn, huỷ bất cứ lúc nào
-- Không hứa "top 1 Google". Lumio chỉ báo cáo số liệu đã xác minh, kèm ảnh chụp màn hình
-- Doanh nghiệp đăng ký thật: Lumio Agency LLC, Austin, Texas — anh chị gọi được, ghé được
+- Anh chị **sở hữu 100% tài khoản** — Google, Facebook, website đều đứng tên anh chị. Ngừng hợp tác lúc nào cũng giữ nguyên tất cả
+- **Không hợp đồng dài hạn.** Em khuyến nghị tối thiểu 3 tháng để công việc kịp có tác dụng, không phải để trói anh chị
+- Em **không hứa "top 1 Google"** — ai hứa điều đó là không thật thà. Em chỉ báo cáo số liệu đã xác minh, kèm ảnh chụp màn hình nguồn
+- **Doanh nghiệp thật:** Lumio Agency LLC, đăng ký tại Texas, văn phòng ở 5900 Balcones Drive STE 100, Austin, TX. Anh chị gọi được, ghé được, nhìn mặt được
 
-Anh chị chưa cần quyết gì cả. Cứ đặt một buổi **audit miễn phí** — Lumio xem hiện trạng tiệm anh chị trên Google và Facebook, chỉ ra chỗ đang mất khách, rồi gợi ý bước tiếp theo. Không ràng buộc.
+## Bước tiếp theo rất nhẹ nhàng
 
-Cảm ơn anh chị đã đọc tới đây.
+Anh chị **chưa cần quyết gì cả, cũng chưa tốn đồng nào.**
 
-Việt Nguyễn
-Founder, Lumio Agency`,
-      ctaLabel: 'Đặt lịch audit miễn phí →',
+Em xin **20 phút** để làm một buổi **audit miễn phí**: em xem hồ sơ Google, Facebook và website của tiệm mình, chỉ ra chính xác chỗ đang mất khách, rồi nói thẳng anh chị nên làm gì trước, làm gì sau. Nếu anh chị thấy chưa cần Lumio, em vẫn gửi anh chị bản đánh giá đó — miễn phí, giữ luôn.
+
+Anh chị chỉ cần bấm nút bên dưới, hoặc nhắn thẳng cho em.
+
+${SIGN_VN}`,
+      ctaLabel: 'Nhận audit miễn phí (20 phút) →',
       ctaUrl: AUDIT,
-      footerNote: LUMIO_FOOTER,
+      footerNote: FOOTER,
     },
   },
   {
-    label: '💎 All-in-One $179 (EN)',
+    label: '💎 Full-service pitch (EN)',
     draft: {
-      name: 'All-in-One $179 — pitch (EN)',
-      subject: 'Everything your salon needs online — $179/mo (instead of $393)',
-      fromName: 'Lumio Agency',
-      preheader: 'Social + Google Maps + booking software, one price. Website only $150. No long contract.',
-      heading: 'You run the salon. We run the online side.',
-      body: `Hi {{name}},
+      name: 'Full-service pitch — EN',
+      subject: 'Where is your salon losing customers? Let me show you — free',
+      fromName: 'Viet Nguyen · Lumio Agency',
+      preheader: 'Google Maps · Social · Website · Booking software — from $179/mo. Free audit, no strings.',
+      heading: 'You handle the craft. I’ll handle the online side.',
+      body: `Dear {{name}},
 
-We're Lumio Agency — an Austin, Texas company that handles the online side for nail salons, spas and restaurants across the US & Canada.
+My name is **Viet Nguyen**. I founded **Lumio Agency**, a registered company in Austin, Texas. My team and I run the online side for Vietnamese-owned nail salons, spas and restaurants across the US and Canada.
 
-Most owners we meet are stuck on the same five things:
+I'm not writing to rush you into anything. I just want to ask you one question:
 
-- Customers search Google Maps and don't find you
-- Facebook and TikTok sit empty for weeks
-- People have to call to book — and a missed call is a lost customer
-- The website is old, slow, and looks wrong on a phone
-- And the worst one: no idea where the marketing money actually goes
+**How many customers did your salon lose last month without ever knowing it?**
 
-## Normally these are three separate plans
+I ask because every owner I meet is losing people in the same five places:
 
-[[PLAN]] Lumio Social Care | $45/mo | All your social channels, handled | FB, IG, TikTok, Shorts, Yelp; Fresh content every ~2 days; Industry templates, tailored to your shop
-[[PLAN]] Lumio Growth (Map) | $279/mo | Get found on Google Maps | In-depth Google Maps SEO; Google Business Profile optimisation; Review strategy + local signals; Calls & directions tracking
-[[PLAN]] LumioBooking Pro | $69/mo | The software that runs your shop | 24/7 online booking; POS & payments; AI that answers your phone and Messenger; Payroll, tips, and where your customers came from
+- Someone opens Google Maps looking for a nail salon nearby — **your shop doesn't come up**, the one next door does
+- Facebook and TikTok sit empty for months. A new customer looks you up, sees a post from last year, and moves on
+- The phone rings while everyone's hands are busy — **nobody picks up** — and that customer calls someone else
+- Your website is old, and on a phone the text is tiny. People leave in three seconds
+- And the worst one: **money goes into marketing and nobody knows where it lands**
 
-[[NOTE]] That's $393 a month.
+Any one of these is small. Add them up over a month and it is **real money** walking out of your door.
 
-## This month, all of it — one price
+## What Lumio does for you
 
-[[PLAN*]] Lumio All-in-One | $179/mo | Everything above, one price | Multi-channel social (FB · IG · TikTok · Yelp); Google Maps SEO + profile optimisation; LumioBooking Pro, every feature; Honest monthly reporting with source screenshots; Bilingual support, English & Vietnamese
+[[PLAN]] Lumio Boost + LumioBooking | $179/mo | The foundation — steady social and a real booking system | Multi-channel social: FB, IG, TikTok, Shorts, Yelp; Fresh content every ~2 days; Google Business Profile optimisation; Link in bio + you approve content before it posts; LumioBooking software — 24/7 online booking; A short, plain-English monthly report
+[[PLAN*]] Lumio Growth (Pro) | $279/mo | The full package — adds deep Google Maps SEO | Everything in the $179 plan; In-depth Google Maps SEO — so people searching actually find you; Review strategy + local signals; Tracking for impressions, calls and directions; Honest reporting with source screenshots
 
-[[NOTE]] That's $214 saved every month. Launch pricing, limited number of shops — and your price is locked for as long as you stay.
+[[NOTE]] Both plans already include the LumioBooking software — online booking, automatic reminders, POS checkout, staff management and customer-source reporting. You don't pay extra for it.
 
-[[DIVIDER]]
+## And a website — just $150, one payment
 
-## And a website — just $150
+A proper website for your shop: fast, **built for phones first**, bilingual English/Vietnamese, with your booking button wired straight into LumioBooking. **You own the site and the domain**, in your name.
 
-Fast, mobile-first, bilingual, with your LumioBooking button built in. One payment of $150. No hidden fees.
+[[NOTE]] $150, one time. No hidden fees, no lock-in.
 
-## Why owners trust us
+## Why you can trust me
 
-- You own 100% of your accounts — Google, Facebook, the website, all in your name
-- No long-term contract. Cancel any time
-- We never promise "#1 on Google". We report verified numbers only, with screenshots
-- A real registered business: Lumio Agency LLC, Austin, Texas — call us, or come see us
+- **You own 100% of your accounts** — Google, Facebook, the website, all in your name. Walk away any time and you keep everything
+- **No long-term contract.** I suggest 3 months minimum so the work has time to land — not to tie you down
+- I will **never promise "#1 on Google."** Anyone who does isn't being straight with you. I report verified numbers only, with screenshots of the source
+- **A real business:** Lumio Agency LLC, registered in Texas, office at 5900 Balcones Drive STE 100, Austin, TX. Call me, email me, or come see me
 
-You don't have to decide anything today. Book a **free audit** — we'll look at your Google and Facebook presence, show you exactly where customers are slipping away, and tell you what we'd do next. No strings.
+## The next step is easy
 
-Thanks for reading this far.
+You don't have to decide anything today, and it costs you nothing.
 
-Viet Nguyen
-Founder, Lumio Agency`,
-      ctaLabel: 'Book a free audit →',
+Give me **20 minutes** for a **free audit**: I'll go through your Google profile, your social pages and your website, show you exactly where customers are slipping away, and tell you straight what to fix first. If you decide Lumio isn't for you, keep the audit anyway — it's yours.
+
+Just tap the button below, or reach me directly.
+
+${SIGN_EN}`,
+      ctaLabel: 'Get my free 20-minute audit →',
       ctaUrl: AUDIT,
-      footerNote: LUMIO_FOOTER,
+      footerNote: FOOTER,
     },
   },
   {
     label: '🖥️ Website $150 (VN)',
     draft: {
-      name: 'Website $150 (VN)',
-      subject: 'Website riêng cho tiệm — $150, trả một lần',
-      fromName: 'Lumio Agency',
+      name: 'Website $150 — VN',
+      subject: 'Website riêng cho tiệm — $150, trả một lần, anh chị sở hữu luôn',
+      fromName: 'Việt Nguyễn · Lumio Agency',
       preheader: 'Nhanh, chuẩn điện thoại, song ngữ Việt – Anh, gắn sẵn nút đặt lịch. Không phí ẩn.',
-      heading: 'Tiệm anh chị xứng đáng có một website tử tế',
-      body: `Chào anh chị,
+      heading: 'Tiệm mình xứng đáng có một website tử tế',
+      body: `Kính chào anh/chị,
 
-Khách lạ tìm thấy tiệm trên Google, bấm vào website — và thấy một trang cũ, chậm, mở trên điện thoại chữ bé tí. Họ thoát ra, bấm vào tiệm kế bên.
+Em là **Việt Nguyễn**, founder của **Lumio Agency** ở Austin, Texas.
 
-Lumio làm website cho tiệm với đúng một mức giá: **$150, trả một lần.**
+Em kể anh chị nghe một chuyện xảy ra mỗi ngày: khách lạ tìm thấy tiệm mình trên Google, tò mò bấm vào website — và thấy một trang cũ, chậm, mở trên điện thoại chữ bé xíu. Ba giây sau họ thoát ra, bấm vào tiệm kế bên.
 
-## Anh chị nhận được gì
+Cái website đó **không làm mất tiền của anh chị**. Nó chỉ lặng lẽ **đẩy khách sang tiệm khác** thôi.
 
-- Website nhanh, đẹp, **chuẩn điện thoại** (90% khách xem bằng điện thoại)
-- **Song ngữ Việt – Anh**, khách nào cũng đọc được
-- Gắn sẵn **nút Đặt lịch** nối thẳng vào LumioBooking — khách đặt được ngay trên web
-- Chuẩn Google: tên tiệm, địa chỉ, giờ mở cửa, bản đồ, đánh giá
-- Anh chị **sở hữu website và tên miền** — đứng tên anh chị, không phải tên Lumio
+## Lumio làm website cho tiệm — đúng một mức giá
 
-[[NOTE]] $150 trả một lần. Không phí ẩn, không ràng buộc. Anh chị chỉ trả thêm phí tên miền + hosting theo giá gốc.
+[[PLAN*]] Website trọn gói | $150 | Trả một lần, không phí ẩn | Nhanh, đẹp, **chuẩn điện thoại** — 9/10 khách xem bằng điện thoại; Song ngữ Việt – Anh; Gắn sẵn nút Đặt lịch nối thẳng LumioBooking; Chuẩn Google: tên tiệm, địa chỉ, giờ mở cửa, bản đồ, đánh giá; Anh chị sở hữu website và tên miền, đứng tên anh chị
 
-Anh chị gửi em tên tiệm và link Google Maps, em xem rồi báo lại chính xác website tiệm anh chị sẽ trông như thế nào.`,
-      ctaLabel: 'Nhận bản demo miễn phí →',
+[[NOTE]] $150 trả một lần. Anh chị chỉ trả thêm phí tên miền và hosting theo giá gốc — em không ăn chênh lệch.
+
+## Em làm gì tiếp theo
+
+Anh chị nhắn cho em **tên tiệm + link Google Maps**. Trong vòng 48 tiếng em gửi lại anh chị bản phác thảo website của tiệm mình — nhìn tận mắt rồi hãy quyết.
+
+Không thích thì thôi, em không làm phiền anh chị nữa.
+
+${SIGN_VN}`,
+      ctaLabel: 'Xem bản demo website của tiệm →',
       ctaUrl: AUDIT,
-      footerNote: LUMIO_FOOTER,
+      footerNote: FOOTER,
     },
   },
 ];
@@ -175,19 +215,19 @@ export const SALON_PRESETS: Preset[] = [
     label: '🎁 Ưu đãi cho khách quen',
     draft: {
       name: 'Ưu đãi khách quen',
-      subject: 'Cảm ơn {{name}} — tặng chị 20% cho lần tới',
+      subject: 'Cảm ơn {{name}} — tiệm tặng chị 20% cho lần tới',
       fromName: '',
-      preheader: 'Ưu đãi riêng cho khách quen. Đặt lịch online chỉ mất 40 giây.',
+      preheader: 'Ưu đãi riêng cho khách quen. Đặt lịch online chỉ mất chưa tới một phút.',
       heading: 'Cảm ơn {{name}} đã tin tưởng tiệm',
       body: `Chào {{name}},
 
-Cảm ơn chị đã ghé tiệm. Để cảm ơn khách quen, tiệm gửi chị một ưu đãi nhỏ:
+Cảm ơn chị đã ghé tiệm. Để cảm ơn khách quen, tiệm xin gửi chị một ưu đãi nhỏ:
 
 - **Giảm 20%** cho lần hẹn tiếp theo
 - Áp dụng cho tất cả dịch vụ
-- Đặt lịch online, chọn đúng thợ chị thích
+- Đặt lịch online, chọn đúng người thợ chị quen
 
-Chỉ cần bấm nút bên dưới, chọn ngày giờ, xong trong chưa tới một phút.
+Chỉ cần bấm nút bên dưới, chọn ngày giờ — xong trong chưa tới một phút.
 
 Hẹn gặp lại chị!`,
       ctaLabel: 'Đặt lịch ngay →',

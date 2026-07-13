@@ -26,6 +26,26 @@ export interface CampaignContent {
 const esc = (s: string) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/**
+ * Turn plain URLs and phone numbers in the copy into real links — a signature is
+ * useless if the reader can't tap the phone number from their inbox. Runs AFTER
+ * esc(), so it only ever sees already-escaped text.
+ */
+function linkify(escaped: string, accent: string): string {
+  return escaped
+    // **bold** — the one bit of formatting worth having inside a sentence
+    .replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#0f172a">$1</strong>')
+    .replace(/(https?:\/\/[^\s<)"']+)/g, (m) => {
+      const clean = m.replace(/[.,;:]+$/, '');
+      const tail = m.slice(clean.length);
+      return `<a href="${clean}" style="color:${accent};font-weight:600;text-decoration:underline">${clean}</a>${tail}`;
+    })
+    .replace(/(\(\d{3}\)\s?\d{3}[-.\s]?\d{4})/g, (m) =>
+      `<a href="tel:+1${m.replace(/\D/g, '')}" style="color:${accent};font-weight:600;text-decoration:none">${m}</a>`)
+    .replace(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g, (m) =>
+      `<a href="mailto:${m}" style="color:${accent};font-weight:600;text-decoration:underline">${m}</a>`);
+}
+
 /** Only http(s) links may ever be rendered — no javascript: or data: URLs. */
 export function safeUrl(u?: string | null): string {
   const v = String(u ?? '').trim();
@@ -61,7 +81,7 @@ function renderBody(raw: string, accent: string, vars: { name?: string | null; b
 
   const flushPara = () => {
     if (!para.length) return;
-    const text = esc(fillTokens(para.join('\n'), vars)).replace(/\n/g, '<br/>');
+    const text = linkify(esc(fillTokens(para.join('\n'), vars)), accent).replace(/\n/g, '<br/>');
     out.push(`<p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#334155">${text}</p>`);
     para = [];
   };
@@ -72,7 +92,7 @@ function renderBody(raw: string, accent: string, vars: { name?: string | null; b
       bullets.map((b) =>
         `<tr>` +
         `<td valign="top" width="24" style="padding:5px 0;color:${accent};font-weight:800;font-size:15px">&#10003;</td>` +
-        `<td style="padding:5px 0;font-size:15.5px;line-height:1.6;color:#334155">${esc(fillTokens(b, vars))}</td>` +
+        `<td style="padding:5px 0;font-size:15.5px;line-height:1.6;color:#334155">${linkify(esc(fillTokens(b, vars)), accent)}</td>` +
         `</tr>`).join('') +
       `</table>`,
     );
@@ -100,7 +120,7 @@ function renderBody(raw: string, accent: string, vars: { name?: string | null; b
               items.map((it) =>
                 `<tr>` +
                 `<td valign="top" width="20" style="padding:3px 0;color:${accent};font-weight:800;font-size:13px">&#10003;</td>` +
-                `<td style="padding:3px 0;font-size:14px;line-height:1.55;color:#475569">${esc(it)}</td>` +
+                `<td style="padding:3px 0;font-size:14px;line-height:1.55;color:#475569">${linkify(esc(it), accent)}</td>` +
                 `</tr>`).join('') +
               `</table>`
             : '') +
@@ -120,7 +140,7 @@ function renderBody(raw: string, accent: string, vars: { name?: string | null; b
     if (line.startsWith('[[PLAN]]'))  { flushPara(); flushBullets(); plans.push(line.slice(8).trim()); continue; }
     if (line.startsWith('[[NOTE]]')) {
       flushAll();
-      out.push(`<div style="margin:0 0 18px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13.5px;line-height:1.6;color:#64748b">${esc(fillTokens(line.slice(8).trim(), vars))}</div>`);
+      out.push(`<div style="margin:0 0 18px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13.5px;line-height:1.6;color:#64748b">${linkify(esc(fillTokens(line.slice(8).trim(), vars)), accent)}</div>`);
       continue;
     }
     if (line.startsWith('[[DIVIDER]]')) {

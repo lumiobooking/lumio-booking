@@ -326,6 +326,93 @@ ${SIGN_VN}`,
 
   // ---------------------------------------------------------------- EN + phụ
   {
+    // The full pitch. This is the one that has to survive a side-by-side with the
+    // agency down the road — so it carries the two tables the others don't: what each
+    // plan gives, and what happens if you do it yourself / hire a normal agency / hire us.
+    label: '📊 FORM 4 · Bảng so sánh gói + so với đối thủ (VN)',
+    goal: 'Nâng giá trị gói lên tối đa. Cho khách thấy trọn bộ dịch vụ, so sánh 3 gói với nhau, và so Lumio với “tự làm” và “agency thường”.',
+    who: 'Khách ẤM — đã nói chuyện, đang phân vân chọn gói, hoặc đang so Lumio với một agency khác.',
+    draft: {
+      name: 'FORM 4 — So sánh gói + đối thủ (VN)',
+      subject: 'Trọn bộ dịch vụ Lumio — anh chị xem thử gói nào hợp với tiệm mình',
+      fromName: 'Việt Nguyễn · Lumio Agency',
+      preheader: 'Ba gói, một bảng so sánh, và một câu trả lời thẳng: vì sao Lumio khác agency thường. Chỉ từ $45/tháng.',
+      heading: 'Anh chị đang ở chặng nào, mình bắt đầu từ chặng đó',
+      body: `Kính chào anh/chị,
+
+Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Cảm ơn anh chị đã dành thời gian cho em.
+
+Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng, để anh chị tự cân — em không giấu gì cả.
+
+## Ba gói — và mỗi gói giải quyết nỗi đau nào
+
+[[PLAN]] Lumio Social Care | $45/tháng | Cho tiệm “sống lại” trên mạng | **Chữa:** trang Facebook, TikTok bỏ trống, khách vào xem tưởng tiệm đã dẹp; Đăng đều FB, IG, TikTok, Shorts, Yelp — nội dung mới ~2 ngày/lần; Theo mẫu của ngành nail, chỉnh riêng cho tiệm mình; Anh chị duyệt trước khi đăng, không đăng bừa
+[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Cho khách đặt được lịch, kể cả lúc tiệm đang bận | **Chữa:** khách gọi lúc 7 giờ tối không ai bắt máy, khách bỏ đi mà mình không hay; Trọn phần social ở gói $45; Tối ưu hồ sơ Google Business Profile; **Trọn bộ phần mềm LumioBooking** — đặt lịch online 24/7, AI trả lời điện thoại, bot Messenger, POS tính tiền, chia lượt thợ, tính lương và tip; Báo cáo tháng gọn gàng, dễ hiểu
+[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Cho khách **tìm là thấy** tiệm mình | **Chữa:** khách gõ “nail salon near me” mà tiệm mình không hiện ra — nỗi đau đắt nhất, vì mình mất khách mà không bao giờ biết; **Bao gồm trọn vẹn gói $179**; Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường về tiệm; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
+
+[[NOTE]] Website riêng cho tiệm: **$150, trả một lần** — chuẩn điện thoại, song ngữ Việt – Anh, gắn sẵn nút Đặt lịch. Tên miền và website **đứng tên anh chị**.
+
+## Bảng so sánh ba gói
+
+[[TABLE]] Anh chị nhận được gì | $45 | $179 | $279 Pro
+[[ROW]] Đăng bài đều đặn FB · IG · TikTok · Yelp | ✓ | ✓ | ✓
+[[ROW]] Nội dung chỉnh riêng cho tiệm, duyệt trước khi đăng | ✓ | ✓ | ✓
+[[ROW]] Tối ưu hồ sơ Google Business Profile | ✕ | ✓ | ✓
+[[ROW]] **Phần mềm LumioBooking** (đặt lịch 24/7) | ✕ | ✓ | ✓
+[[ROW]] **AI trả lời điện thoại** khi tiệm bận | ✕ | ✓ | ✓
+[[ROW]] Bot Messenger trả lời khách lúc nửa đêm | ✕ | ✓ | ✓
+[[ROW]] POS tính tiền · chia lượt thợ · lương & tip | ✕ | ✓ | ✓
+[[ROW]] Báo cáo khách đến từ nguồn nào | ✕ | ✓ | ✓
+[[ROW]] **Google Maps SEO chuyên sâu** | ✕ | ✕ | ✓
+[[ROW]] Chiến lược đánh giá + tín hiệu local | ✕ | ✕ | ✓
+[[ROW]] Theo dõi lượt gọi · lượt chỉ đường | ✕ | ✕ | ✓
+[[ROW]] Báo cáo kèm ảnh chụp màn hình nguồn | ✕ | ✕ | ✓
+
+[[DIVIDER]]
+
+## Còn nếu anh chị so Lumio với chỗ khác
+
+Em không nói xấu ai. Em chỉ bày ba lựa chọn ra cạnh nhau, anh chị tự nhìn.
+
+[[TABLE]] | Tự làm | Agency thường | Lumio
+[[ROW]] Có người đăng bài đều đặn | ✕ | ✓ | ✓
+[[ROW]] Có người lo Google Maps | ✕ | ✓ | ✓
+[[ROW]] **Có người bắt máy khi tiệm bận** | ✕ | ✕ | ✓
+[[ROW]] **Khách đặt được lịch online 24/7** | ✕ | ✕ | ✓
+[[ROW]] **Biết chính xác khách đến từ nguồn nào** | ✕ | ✕ | ✓
+[[ROW]] **Nối được đồng quảng cáo với cái bill** | ✕ | ✕ | ✓
+[[ROW]] Phần mềm quản lý tiệm đi kèm | ✕ | ✕ | ✓
+[[ROW]] Nói tiếng Việt, gọi là gặp người thật | ✕ | — | ✓
+[[ROW]] Không hứa “top 1 Google” | — | ✕ | ✓
+[[ROW]] Anh chị sở hữu 100% tài khoản | ✓ | — | ✓
+[[ROW]] Không hợp đồng dài hạn | ✓ | ✕ | ✓
+
+[[NOTE]] Xin phép ví von cho dễ hình dung: agency thường **đổ nước vào một chiếc xô thủng** — họ kéo khách tới cửa rồi thôi, khách gọi vào không ai bắt máy thì họ cũng chẳng hay. Em **vá cái xô lại trước đã**, rồi mới đổ nước vào.
+
+## Vì sao chỉ Lumio làm được chuyện đó
+
+Vì **phần mềm vận hành tiệm là do chính em viết ra.** Không đơn vị marketing nào có được thứ này — họ đi thuê phần mềm của người khác, hoặc không có gì cả.
+
+- Em **không chỉ kéo khách tới cửa**, em lo luôn đoạn khách bước vào: AI bắt máy, bot Messenger, xếp ghế, chia lượt thợ, tính tiền, tính lương
+- Cuối tháng em **không khoe “lượt hiển thị”** — mấy con số đó không nuôi được ai. Em chỉ thẳng: **khách này đến từ Google Maps, đã chi $95**
+- Em nghĩ từng chi tiết **từ trong tiệm ra ngoài đường** — vì em làm phần mềm cho tiệm nail, không phải cho tiệm cắt tóc bên Mỹ
+- Lỗi gì em **sửa được ngay trong ngày**
+
+## Em xin thưa thật lòng
+
+Anh chị chưa muốn đi xa thì **bắt đầu ở gói $45** cũng được — cho trang tiệm sống lại trước đã. Khi nào thấy hiệu quả, mình nâng lên. Em không ép, và cũng không có hợp đồng nào trói anh chị cả.
+
+Còn nếu anh chị muốn em nói thẳng: **gói $279 là gói đáng tiền nhất**, vì nó chữa đúng cái nỗi đau đắt nhất — khách tìm mà không thấy tiệm mình.
+
+Anh chị cứ gọi cho em, mình xem tiệm mình đang hụt ở đâu rồi hãy quyết.
+
+${SIGN_VN}`,
+      ctaLabel: 'Liên hệ với em để được tư vấn →',
+      ctaUrl: AUDIT,
+      footerNote: FOOTER,
+    },
+  },
+  {
     label: '🇺🇸 EN · Free audit (kéo khách liên hệ)',
     goal: 'Same as Form 1, in English — get a reply, give away a free audit.',
     who: 'Cold list — owners who don’t read Vietnamese.',

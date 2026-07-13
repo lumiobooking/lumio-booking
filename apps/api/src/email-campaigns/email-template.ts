@@ -70,7 +70,13 @@ export function fillTokens(text: string, vars: { name?: string | null; brand?: s
  *   [[PLAN*]] ...                                the SAME, highlighted (the offer)
  *   [[NOTE]] small print                         a soft grey note box
  *   [[DIVIDER]]                                  a hairline
+ *   [[TABLE]] Tính năng | Tự làm | Agency | Lumio   a comparison table (header row)
+ *   [[ROW]] Đăng bài đều đặn | ✕ | ✓ | ✓            …and its rows
  *   anything else                                a normal paragraph
+ *
+ * In a table, a lone ✓ / ✕ / — is coloured automatically, and the LAST column is
+ * tinted with the brand colour — because in a comparison table the last column is
+ * always us, and the eye should land there.
  */
 function renderBody(raw: string, accent: string, vars: { name?: string | null; brand?: string }): string {
   const lines = raw.replace(/\r/g, '').split('\n');
@@ -78,6 +84,8 @@ function renderBody(raw: string, accent: string, vars: { name?: string | null; b
   let bullets: string[] = [];
   let plans: string[] = [];
   let para: string[] = [];
+  let thead: string[] = [];
+  let trows: string[][] = [];
 
   const flushPara = () => {
     if (!para.length) return;
@@ -130,14 +138,46 @@ function renderBody(raw: string, accent: string, vars: { name?: string | null; b
     out.push(cards);
     plans = [];
   };
-  const flushAll = () => { flushPara(); flushBullets(); flushPlans(); };
+  const flushTable = () => {
+    if (!thead.length) return;
+    const cell = (v: string, last: boolean, head: boolean) => {
+      const txt = v.trim();
+      const mark = /^(✓|✔|yes|có)$/i.test(txt) ? `<span style="color:#16a34a;font-weight:800">&#10003;</span>`
+        : /^(✕|✖|x|no|không)$/i.test(txt) ? `<span style="color:#cbd5e1;font-weight:800">&#10007;</span>`
+        : /^[-—–]$/.test(txt) ? `<span style="color:#cbd5e1">&mdash;</span>`
+        : esc(txt).replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#0f172a">$1</strong>');
+      const align = head ? 'left' : /^(✓|✔|✕|✖|x|[-—–])$/i.test(txt) ? 'center' : 'left';
+      const bg = head ? (last ? accent : '#0f172a') : last ? `${accent}0d` : '#ffffff';
+      const col = head ? '#ffffff' : '#334155';
+      return `<td align="${align}" style="padding:10px 12px;border-bottom:1px solid #e2e8f0;background:${bg};color:${col};font-size:13.5px;${head ? 'font-weight:800;font-size:12.5px;letter-spacing:0.3px' : ''}">${mark}</td>`;
+    };
+    const head = `<tr>${thead.map((h, i) => cell(h, i === thead.length - 1, true)).join('')}</tr>`;
+    const body = trows.map((r) =>
+      `<tr>${r.map((c, i) => cell(c, i === thead.length - 1, false)).join('')}</tr>`).join('');
+    out.push(
+      `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 18px;border:1px solid #e2e8f0;border-radius:12px;border-collapse:separate;overflow:hidden">${head}${body}</table>`,
+    );
+    thead = [];
+    trows = [];
+  };
+
+  const flushAll = () => { flushPara(); flushBullets(); flushPlans(); flushTable(); };
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line) { flushAll(); continue; }
 
-    if (line.startsWith('[[PLAN*]]')) { flushPara(); flushBullets(); plans.push('*' + line.slice(9).trim()); continue; }
-    if (line.startsWith('[[PLAN]]'))  { flushPara(); flushBullets(); plans.push(line.slice(8).trim()); continue; }
+    if (line.startsWith('[[TABLE]]')) {
+      flushAll();
+      thead = line.slice(9).split('|').map((x) => x.trim());
+      continue;
+    }
+    if (line.startsWith('[[ROW]]')) {
+      if (thead.length) trows.push(line.slice(7).split('|').map((x) => x.trim()));
+      continue;
+    }
+    if (line.startsWith('[[PLAN*]]')) { flushPara(); flushBullets(); flushTable(); plans.push('*' + line.slice(9).trim()); continue; }
+    if (line.startsWith('[[PLAN]]'))  { flushPara(); flushBullets(); flushTable(); plans.push(line.slice(8).trim()); continue; }
     if (line.startsWith('[[NOTE]]')) {
       flushAll();
       out.push(`<div style="margin:0 0 18px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13.5px;line-height:1.6;color:#64748b">${linkify(esc(fillTokens(line.slice(8).trim(), vars)), accent)}</div>`);
@@ -153,9 +193,9 @@ function renderBody(raw: string, accent: string, vars: { name?: string | null; b
       out.push(`<h2 style="margin:6px 0 12px;font-size:19px;font-weight:800;color:#0f172a">${esc(fillTokens(line.slice(3).trim(), vars))}</h2>`);
       continue;
     }
-    if (line.startsWith('- ')) { flushPara(); flushPlans(); bullets.push(line.slice(2).trim()); continue; }
+    if (line.startsWith('- ')) { flushPara(); flushPlans(); flushTable(); bullets.push(line.slice(2).trim()); continue; }
 
-    flushBullets(); flushPlans();
+    flushBullets(); flushPlans(); flushTable();
     para.push(line);
   }
   flushAll();
@@ -232,6 +272,8 @@ export function renderCampaignText(c: CampaignContent): string {
           const [name = '', price = '', tag = '', feats = ''] = l.replace(/^\[\[PLAN\*?\]\]/, '').split('|').map((x) => x.trim());
           return `* ${name} — ${price}${tag ? ` (${tag})` : ''}${feats ? `\n   - ${feats.split(';').map((x) => x.trim()).filter(Boolean).join('\n   - ')}` : ''}`;
         }
+        if (l.startsWith('[[TABLE]]')) return l.slice(9).split('|').map((x) => x.trim()).join(' | ');
+        if (l.startsWith('[[ROW]]')) return '  ' + l.slice(7).split('|').map((x) => x.trim()).join(' | ');
         if (l.startsWith('[[NOTE]]')) return l.slice(8).trim();
         if (l.startsWith('[[DIVIDER]]')) return '---';
         if (l.startsWith('## ')) return l.slice(3).trim().toUpperCase();

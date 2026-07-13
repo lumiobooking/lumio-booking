@@ -218,7 +218,7 @@ export default function HomePage() {
         </div>
 
         {plans.length === 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 360px))', gap: 24, justifyContent: 'center', marginTop: 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : `repeat(${Math.min(STATIC_PLANS.length, 3)}, minmax(0, 1fr))`, gap: 20, alignItems: 'start', justifyContent: 'center', marginTop: 40 }}>
             {STATIC_PLANS.map((p) => (
               <div key={p.name} style={{ ...priceCard, ...(p.hi ? priceCardHi : {}) }}>
                 {p.hi && <span style={popularBadge}>MOST POPULAR</span>}
@@ -241,7 +241,15 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(280px, ${plans.length > 1 ? '380px' : '420px'}))`, gap: 24, justifyContent: 'center', marginTop: 40 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: mobile
+              ? '1fr'
+              : plans.length === 1
+                ? 'minmax(0, 420px)'
+                : `repeat(${Math.min(plans.length, 3)}, minmax(0, 1fr))`,
+            gap: 20, alignItems: 'start', justifyContent: 'center', marginTop: 40,
+          }}>
             {plans.map((p) => {
               const cents = yearly ? p.priceYearlyCents : p.priceMonthlyCents;
               const per = yearly ? '/year' : '/month';
@@ -365,7 +373,7 @@ const pill: React.CSSProperties = { display: 'inline-block', background: '#e0e7f
 const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: 'none', cursor: 'pointer' };
 const ghostBtn: React.CSSProperties = { background: '#fff', color: INK, fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: '1.5px solid #cbd5e1', cursor: 'pointer' };
 const featureCard: React.CSSProperties = { background: '#fff', border: '1px solid #eef2f7', borderRadius: 16, padding: 24, boxShadow: '0 1px 3px rgba(15,23,42,0.04)' };
-const priceCard: React.CSSProperties = { position: 'relative', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 20, padding: 30, boxShadow: '0 4px 20px rgba(15,23,42,0.05)' };
+const priceCard: React.CSSProperties = { position: 'relative', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 20, padding: 26, boxShadow: '0 4px 20px rgba(15,23,42,0.05)' };
 const priceCardHi: React.CSSProperties = { border: `2px solid ${INDIGO}`, boxShadow: '0 12px 36px rgba(99,102,241,0.18)' };
 const popularBadge: React.CSSProperties = { position: 'absolute', top: -12, right: 24, background: INDIGO, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, padding: '4px 12px', borderRadius: 999 };
 

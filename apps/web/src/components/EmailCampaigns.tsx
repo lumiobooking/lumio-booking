@@ -98,6 +98,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
   const composeRef = useRef<HTMLDivElement | null>(null);
   const [tab, setTab] = useState<Tab>('compose');
   const [importText, setImportText] = useState('');
+  const [repliedText, setRepliedText] = useState('');
   const [auto, setAuto] = useState<Automation | null>(null);
 
   const t = (v: string, e: string) => (vi ? v : e);
@@ -206,6 +207,21 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
       setOk(t(`Đã thêm ${r.added} người mới, cập nhật ${r.updated} người cũ. ${r.invalid} dòng sai định dạng bị bỏ qua.`,
               `${r.added} new, ${r.updated} updated. ${r.invalid} bad lines skipped.`));
     } catch (e) { setError(e instanceof Error ? e.message : 'Import failed'); }
+    finally { setBusy(false); }
+  }
+
+  /** Paste the addresses of everyone who got back to you — by email, or by phone. */
+  async function markRepliedBulk() {
+    setError(null); setOk(null); setBusy(true);
+    try {
+      const r = await apiFetch<{ marked: number }>(`${base}/contacts/replied`, {
+        method: 'POST', token, body: { list: repliedText },
+      });
+      setRepliedText('');
+      await loadList();
+      setOk(t(`Đã đánh dấu ${r.marked} người đã phản hồi. Hệ thống sẽ không gửi nhắc tự động cho họ nữa.`,
+              `${r.marked} marked as replied. The follow-up will never chase them again.`));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusy(false); }
   }
 
@@ -539,6 +555,24 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             {t('Người đã có trong danh bạ sẽ được cập nhật tên, không bị nhân đôi. Xuất CSV từ Excel rồi dán thẳng vào đây cũng được.',
                'Existing people are updated, never duplicated. You can export a CSV from Excel and paste it straight in.')}
           </p>
+        </div>
+
+        {/* Mark replies in bulk — works today, no DNS setup needed. */}
+        <div style={{ ...ui.card, marginBottom: 16, borderColor: '#b45309' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+            {t('💬 Đánh dấu người đã phản hồi', '💬 Mark people who replied')}
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.65 }}>
+            {t('Dán email của những người đã trả lời thư, hoặc đã gọi điện cho anh chị. Hệ thống sẽ NGỪNG gửi nhắc tự động cho họ ngay lập tức — một lá thư máy rơi vào hộp thư của người vừa nói chuyện với anh chị hôm qua là cách nhanh nhất để mất họ.',
+               'Paste the addresses of anyone who replied — or who phoned you. The follow-up stops for them immediately. An automated “just checking in” landing after a real conversation is the fastest way to lose a prospect.')}
+          </p>
+          <textarea value={repliedText} onChange={(e) => setRepliedText(e.target.value)} rows={3}
+            placeholder={'tuan@gmail.com\nmai@yahoo.com'}
+            style={{ ...ui.input, width: '100%', resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 13 }} />
+          <button onClick={markRepliedBulk} disabled={busy || !repliedText.trim()}
+            style={{ ...ui.primaryBtn, background: '#b45309', opacity: busy || !repliedText.trim() ? 0.5 : 1 }}>
+            {t('Đánh dấu đã phản hồi — ngừng nhắc', 'Mark as replied — stop chasing')}
+          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>

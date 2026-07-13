@@ -9,6 +9,7 @@ interface Status {
   stripe: { hasKey: boolean; hasWebhook: boolean; live: boolean };
   paypal: { hasClient: boolean; hasWebhook: boolean; env: string };
   email?: { hasKey: boolean; senderEmail: string; senderName: string; logoUrl?: string };
+  inbound?: { domain: string; forwardTo: string; webhookUrl: string; ready: boolean };
   webhookStripeUrl: string;
   webhookPaypalUrl: string;
 }
@@ -42,6 +43,8 @@ export default function GatewaysPage() {
   const [brevoSender, setBrevoSender] = useState('');
   const [brevoName, setBrevoName] = useState('');
   const [brandLogo, setBrandLogo] = useState('');
+  const [inDomain, setInDomain] = useState('');
+  const [inFwd, setInFwd] = useState('');
   const [testEmail, setTestEmail] = useState('');
   const [diag, setDiag] = useState<Diag | null>(null);
 
@@ -56,7 +59,7 @@ export default function GatewaysPage() {
     try {
       const s = await apiFetch<Status>('/billing/config', { token });
       setSt(s); setPpEnv(s.paypal.env || 'live');
-      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setBrandLogo(s.email?.logoUrl || '');
+      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setBrandLogo(s.email?.logoUrl || ''); setInDomain(s.inbound?.domain || ''); setInFwd(s.inbound?.forwardTo || '');
     }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
   }, [token]);
@@ -245,6 +248,59 @@ export default function GatewaysPage() {
         </div>
       </section>
 
+      {/* Auto-detecting replies. Without this, "replied" has to be ticked by hand —
+          and a follow-up robot that keeps chasing someone who already answered is
+          the fastest way to lose a prospect. */}
+      <section style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 18, margin: 0 }}>↩ Auto-detect replies (stops the follow-up robot)</h2>
+          <span style={{ fontSize: 13 }}>{st ? dot(!!st.inbound?.ready) : '…'}</span>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px', lineHeight: 1.7 }}>
+          Today a reply lands in your Gmail and the system never sees it — so you have to tick “Replied” by hand.
+          Point a <b>subdomain</b> at Brevo&rsquo;s inbound parsing and every reply comes back through Lumio instead:
+          the contact is marked as replied automatically, the follow-up stops for them forever, and the message is
+          forwarded to your real inbox so nothing is lost.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <label style={lbl}>Reply subdomain</label>
+            <input style={inp} value={inDomain} onChange={(e) => setInDomain(e.target.value)} placeholder="reply.lumioagency.com" />
+          </div>
+          <div>
+            <label style={lbl}>Forward replies to</label>
+            <input style={inp} value={inFwd} onChange={(e) => setInFwd(e.target.value)} placeholder="service.lumioagency@gmail.com" />
+          </div>
+        </div>
+        <button onClick={() => save({ inboundDomain: inDomain, inboundForwardTo: inFwd })} disabled={busy} style={primaryBtn}>
+          Save reply detection
+        </button>
+
+        {st?.inbound?.webhookUrl && (
+          <div style={hintBox}>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
+              Two things to do once, in Brevo &amp; your DNS:
+            </div>
+            <ol style={{ margin: 0, paddingLeft: 18, color: '#cbd5e1', fontSize: 12.5, lineHeight: 1.9 }}>
+              <li>
+                DNS: add an <b>MX record</b> for <code style={code}>{inDomain || 'reply.yourdomain.com'}</code> pointing to{' '}
+                <code style={code}>in.mailin.fr</code> (priority 10). Brevo shows the exact host under
+                Senders &amp; IP → Inbound parsing.
+              </li>
+              <li>
+                Brevo → <b>Inbound parsing</b> → set the webhook URL to:
+                <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
+                  <code style={{ ...code, flex: 1, wordBreak: 'break-all' }}>{st.inbound.webhookUrl}</code>
+                  <button onClick={() => navigator.clipboard?.writeText(st.inbound!.webhookUrl)} style={ghost}>Copy</button>
+                </div>
+                <span style={{ color: '#f87171' }}>Treat this URL as a password — anyone holding it can mark contacts as replied.</span>
+              </li>
+            </ol>
+          </div>
+        )}
+      </section>
+
       <p style={{ color: '#64748b', fontSize: 12 }}>Tip: start with Stripe TEST keys + the test card 4242 4242 4242 4242 to verify, then switch to LIVE keys to receive real money. Renewals are automatic.</p>
     </main>
   );
@@ -259,6 +315,7 @@ const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', paddi
 const lbl: React.CSSProperties = { display: 'block', fontSize: 13, color: '#cbd5e1', marginBottom: 4 };
 const primaryBtn: React.CSSProperties = { padding: '9px 16px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' };
 const ghost: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer', textDecoration: 'none' };
+const code: React.CSSProperties = { background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '3px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#a5b4fc' };
 const hintBox: React.CSSProperties = { marginTop: 14, paddingTop: 12, borderTop: '1px solid #334155' };
 const codeBox: React.CSSProperties = { flex: 1, background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: '#cbd5e1', overflowX: 'auto', whiteSpace: 'nowrap' };
 const savedTag: React.CSSProperties = { marginLeft: 6, fontSize: 11, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '0 6px' };

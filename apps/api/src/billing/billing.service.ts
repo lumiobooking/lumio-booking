@@ -40,19 +40,19 @@ export class BillingService {
 
   /** Super Admin: gateway connection status + webhook URLs for the UI. */
   async gatewayStatus() {
-    const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv, brevoKey, brevoSender, brevoName, brandLogo, inDomain, inToken, inFwd] = await Promise.all([
+    const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv, brevoKey, brevoSender, brevoName, replyTo, inDomain, inToken, inFwd] = await Promise.all([
       this.platform.get('stripe_secret_key'), this.platform.get('stripe_webhook_secret'),
       this.platform.get('paypal_client_id'), this.platform.get('paypal_secret'),
       this.platform.get('paypal_webhook_id'), this.platform.get('paypal_env'),
       this.platform.get('brevo_api_key'), this.platform.get('brevo_sender_email'), this.platform.get('brevo_sender_name'),
-      this.platform.get('brand_logo_url'),
+      this.platform.get('reply_to'),
       this.platform.get('inbound_domain'), this.platform.get('inbound_token'), this.platform.get('inbound_forward_to'),
     ]);
     const apiBase = (this.config.get<string>('RENDER_EXTERNAL_URL') ?? this.config.get<string>('KEEPALIVE_SELF_URL') ?? '').replace(/\/$/, '');
     return {
       stripe: { hasKey: !!stripeKey, hasWebhook: !!stripeHook, live: (stripeKey ?? '').startsWith('sk_live') },
       paypal: { hasClient: !!(ppId && ppSecret), hasWebhook: !!ppHook, env: ppEnv ?? 'live' },
-      email: { hasKey: !!(brevoKey && brevoSender), senderEmail: brevoSender ?? '', senderName: brevoName ?? '', logoUrl: brandLogo ?? '' },
+      email: { hasKey: !!(brevoKey && brevoSender), senderEmail: brevoSender ?? '', senderName: brevoName ?? '', replyTo: replyTo ?? '' },
       inbound: {
         domain: inDomain ?? '',
         forwardTo: inFwd ?? '',
@@ -211,7 +211,7 @@ export class BillingService {
       brevo_api_key: dto.brevoApiKey,
       brevo_sender_email: dto.brevoSenderEmail,
       brevo_sender_name: dto.brevoSenderName,
-      brand_logo_url: dto.brandLogoUrl,
+      reply_to: dto.replyTo,
       inbound_domain: dto.inboundDomain,
       inbound_forward_to: dto.inboundForwardTo,
       // Generated once, never shown again in full — it is the only thing guarding

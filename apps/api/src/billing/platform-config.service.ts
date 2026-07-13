@@ -24,6 +24,10 @@ export class PlatformConfigService {
     brevo_sender_name: 'BREVO_SENDER_NAME',
     // Logo shown at the top of Lumio's own emails (invoices + marketing campaigns).
     brand_logo_url: 'BRAND_LOGO_URL',
+    // Where a customer's reply lands when they hit "Reply". The sender address is a
+    // no-reply domain address verified in Brevo; this is the human inbox we actually
+    // read. Without it, replies would go back to the sending address and be lost.
+    reply_to: 'BRAND_REPLY_TO',
     // Auto-detecting replies: a subdomain whose MX points at Brevo Inbound Parsing.
     // Replies land there, Brevo posts them to our webhook, and the contact is
     // marked as 'replied' — which permanently stops the follow-up robot.

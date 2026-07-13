@@ -8,7 +8,7 @@ import { apiFetch } from '../../../lib/api';
 interface Status {
   stripe: { hasKey: boolean; hasWebhook: boolean; live: boolean };
   paypal: { hasClient: boolean; hasWebhook: boolean; env: string };
-  email?: { hasKey: boolean; senderEmail: string; senderName: string; logoUrl?: string };
+  email?: { hasKey: boolean; senderEmail: string; senderName: string; replyTo?: string };
   inbound?: { domain: string; forwardTo: string; webhookUrl: string; ready: boolean };
   webhookStripeUrl: string;
   webhookPaypalUrl: string;
@@ -42,6 +42,7 @@ export default function GatewaysPage() {
   const [brevoKey, setBrevoKey] = useState('');
   const [brevoSender, setBrevoSender] = useState('');
   const [brevoName, setBrevoName] = useState('');
+  const [replyTo, setReplyTo] = useState('');
   const [inDomain, setInDomain] = useState('');
   const [inFwd, setInFwd] = useState('');
   const [testEmail, setTestEmail] = useState('');
@@ -58,7 +59,7 @@ export default function GatewaysPage() {
     try {
       const s = await apiFetch<Status>('/billing/config', { token });
       setSt(s); setPpEnv(s.paypal.env || 'live');
-      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setInDomain(s.inbound?.domain || ''); setInFwd(s.inbound?.forwardTo || '');
+      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setReplyTo(s.email?.replyTo || ''); setInDomain(s.inbound?.domain || ''); setInFwd(s.inbound?.forwardTo || '');
     }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
   }, [token]);
@@ -196,6 +197,13 @@ export default function GatewaysPage() {
           <div><label style={lbl}>Sender name</label>
             <input style={inp} value={brevoName} onChange={(e) => setBrevoName(e.target.value)} placeholder="Viet Nguyen · Lumio Agency" /></div>
           <div style={{ gridColumn: '1 / -1' }}>
+            <label style={lbl}>Reply-to — where customer replies land</label>
+            <input style={inp} value={replyTo} onChange={(e) => setReplyTo(e.target.value)} placeholder="vietnguyen.lumio@gmail.com" />
+            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: -6, marginBottom: 8 }}>
+              The address a customer's “Reply” goes to. Used for every Lumio email — invoices and campaigns — unless a campaign sets its own. Leave the campaign's Reply-to box empty and it uses this one.
+            </div>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', marginBottom: 4 }}>
               <span style={{ fontSize: 20, fontWeight: 800, color: '#2563eb', letterSpacing: '-0.4px' }}>Lumio Agency</span>
               <span style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>
@@ -204,7 +212,7 @@ export default function GatewaysPage() {
             </div>
           </div>
         </div>
-        <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName })} disabled={busy} style={primaryBtn}>Save email</button>
+        <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName, replyTo })} disabled={busy} style={primaryBtn}>Save email</button>
 
         <div style={hintBox}>
           <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Send yourself a test to confirm it works before month-end:</div>

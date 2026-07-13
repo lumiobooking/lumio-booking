@@ -575,9 +575,11 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <input value={d.footerNote} onChange={(e) => setD({ ...d, footerNote: e.target.value })}
               style={{ ...ui.input, width: '100%' }} />)}
 
-          {field(t('Trả lời về địa chỉ (tuỳ chọn)', 'Reply-to address (optional)'), null,
+          {field(t('Trả lời về địa chỉ (tuỳ chọn)', 'Reply-to address (optional)'),
+            t('Để trống là được — thư trả lời sẽ về đúng địa chỉ mặc định đã cài trong phần cài đặt email của hệ thống.',
+              'Leave blank and replies go to the default reply-to set in the platform email settings.'),
             <input value={d.replyTo} onChange={(e) => setD({ ...d, replyTo: e.target.value })}
-              placeholder="salon@gmail.com" style={{ ...ui.input, width: '100%' }} />)}
+              placeholder={t('Mặc định của hệ thống', 'Platform default')} style={{ ...ui.input, width: '100%' }} />)}
 
           <div style={{ height: 1, background: '#1e293b', margin: '6px 0 16px' }} />
 

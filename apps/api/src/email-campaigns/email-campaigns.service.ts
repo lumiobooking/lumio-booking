@@ -174,18 +174,22 @@ export class EmailCampaignsService {
   // ---- how this scope actually sends mail -----------------------------------
   private async mailerFor(tenantId: string | null, fromName: string, replyTo?: string | null) {
     if (!tenantId) {
-      const [apiKey, senderEmail, senderName] = await Promise.all([
+      const [apiKey, senderEmail, senderName, defaultReplyTo] = await Promise.all([
         this.platform.get('brevo_api_key'),
         this.platform.get('brevo_sender_email'),
         this.platform.get('brevo_sender_name'),
+        this.platform.get('reply_to'),
       ]);
       if (!apiKey || !senderEmail) {
         throw new BadRequestException('Platform email is not configured yet. Add the Brevo API key + sender in Super Admin → Billing settings.');
       }
+      // Leave the Reply-to box empty and replies still reach the inbox we actually
+      // read — the platform default. Only then do we fall back to the sender address.
+      const reply = replyTo || defaultReplyTo || senderEmail;
       return {
-        brevo: { apiKey, senderEmail, senderName: fromName || senderName || 'Lumio Booking', replyTo: replyTo || senderEmail },
+        brevo: { apiKey, senderEmail, senderName: fromName || senderName || 'Lumio Booking', replyTo: reply },
         senderName: fromName || senderName || 'Lumio Booking',
-        replyTo: replyTo || senderEmail,
+        replyTo: reply,
       };
     }
     // Exactly the shapes the notification providers expect (same mapping the

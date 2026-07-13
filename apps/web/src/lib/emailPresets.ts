@@ -25,7 +25,7 @@ const SIGN_VN = `[[DIVIDER]]
 
 Anh chị cứ nhắn thẳng cho em, không cần qua ai cả:
 
-- **Việt Nguyễn** — Founder, Lumio Agency LLC
+- **Việt Nguyễn** — Lumio Agency LLC, Austin, Texas
 - Gọi hoặc nhắn tin: (512) 886-8189
 - Facebook: https://www.facebook.com/vietnguyen.lumio
 - Email: support@lumioagency.com
@@ -34,13 +34,14 @@ Anh chị cứ nhắn thẳng cho em, không cần qua ai cả:
 Em cảm ơn anh chị đã dành thời gian đọc tới đây.
 
 Trân trọng,
-Việt Nguyễn`;
+Việt Nguyễn
+Lumio Agency`;
 
 const SIGN_EN = `[[DIVIDER]]
 
 Reply to this email, or reach me directly — you'll get me, not a call centre:
 
-- **Viet Nguyen** — Founder, Lumio Agency LLC
+- **Viet Nguyen** — Lumio Agency LLC, Austin, Texas
 - Call or text: (512) 886-8189
 - Facebook: https://www.facebook.com/vietnguyen.lumio
 - Email: support@lumioagency.com
@@ -49,7 +50,8 @@ Reply to this email, or reach me directly — you'll get me, not a call centre:
 Thank you for reading this far.
 
 Warm regards,
-Viet Nguyen`;
+Viet Nguyen
+Lumio Agency`;
 
 /** Lumio → salon owners. Platform (Super Admin) campaigns. */
 export const LUMIO_PRESETS: Preset[] = [
@@ -57,13 +59,13 @@ export const LUMIO_PRESETS: Preset[] = [
     label: '💎 Chào dịch vụ tổng thể (VN)',
     draft: {
       name: 'Chào dịch vụ tổng thể — VN',
-      subject: 'Tiệm anh chị đang mất khách ở chỗ nào? Em chỉ giúp anh chị xem',
+      subject: 'Tiệm anh chị đang mất khách ở chỗ nào? Em chỉ giúp anh chị xem — miễn phí',
       fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Google Maps · Social · Website · Phần mềm đặt lịch — từ $179/tháng. Audit miễn phí, không ràng buộc.',
+      preheader: 'Google Maps · Social · Website · Phần mềm đặt lịch — chỉ từ $45/tháng. Audit miễn phí, không ràng buộc.',
       heading: 'Anh chị lo tay nghề. Phần online, để em lo.',
       body: `Kính chào anh/chị,
 
-Em là **Việt Nguyễn**, người sáng lập **Lumio Agency** — công ty đăng ký tại Austin, Texas. Em và đội ngũ của em chuyên lo phần online cho tiệm nail, spa và nhà hàng của người Việt mình tại Mỹ và Canada.
+Em là **Việt Nguyễn**, bên **Lumio Agency** — công ty đăng ký tại Austin, Texas. Em và đội ngũ của em chuyên lo phần online cho tiệm nail, spa và nhà hàng của người Việt mình tại Mỹ và Canada.
 
 Em viết email này không phải để bán hàng vội. Em chỉ muốn hỏi anh chị một câu:
 
@@ -81,10 +83,13 @@ Mỗi cái đó, một mình thì nhỏ. Cộng lại cả tháng thì đó là 
 
 ## Lumio làm gì cho tiệm anh chị
 
+[[PLAN]] Lumio Social Care | $45/tháng | Bắt đầu nhẹ nhàng — chỉ lo phần social | Đăng đều FB, IG, TikTok, Shorts, Yelp; Nội dung mới ~2 ngày/lần, không để trang chết; Theo mẫu ngành, chỉnh riêng cho tiệm mình; Chưa gồm Google Maps SEO và báo cáo
 [[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Nền tảng — social đều tay và hệ thống đặt lịch | Social đa kênh: FB, IG, TikTok, Shorts, Yelp; Nội dung đều đặn ~2 ngày/lần; Tối ưu hồ sơ Google Business Profile; Link in bio + duyệt nội dung trước khi đăng; Phần mềm LumioBooking đặt lịch online 24/7; Báo cáo tháng ngắn gọn, dễ hiểu
 [[PLAN*]] Lumio Growth (Pro) | $279/tháng | Đầy đủ nhất — thêm Google Maps SEO chuyên sâu | Bao gồm toàn bộ gói $179; Google Maps SEO chuyên sâu — để khách tìm là thấy tiệm mình; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch kèm ảnh chụp màn hình nguồn
 
-[[NOTE]] Cả hai gói đều đã bao gồm phần mềm LumioBooking — đặt lịch online, nhắc khách tự động, POS tính tiền, quản lý thợ và báo cáo nguồn khách. Anh chị không phải trả thêm đồng nào cho phần mềm.
+[[NOTE]] Gói $179 và $279 đều **đã bao gồm phần mềm LumioBooking** — đặt lịch online, nhắc khách tự động, POS tính tiền, quản lý thợ và báo cáo nguồn khách. Anh chị không phải trả thêm đồng nào cho phần mềm.
+
+Anh chị chưa muốn đi xa? **Bắt đầu ở gói $45** cũng được — để trang social của tiệm sống lại trước đã. Khi nào thấy hiệu quả thì nâng lên, em không ép.
 
 ## Và website — chỉ $150, trả một lần
 
@@ -119,11 +124,11 @@ ${SIGN_VN}`,
       name: 'Full-service pitch — EN',
       subject: 'Where is your salon losing customers? Let me show you — free',
       fromName: 'Viet Nguyen · Lumio Agency',
-      preheader: 'Google Maps · Social · Website · Booking software — from $179/mo. Free audit, no strings.',
+      preheader: 'Google Maps · Social · Website · Booking software — from just $45/mo. Free audit, no strings.',
       heading: 'You handle the craft. I’ll handle the online side.',
       body: `Dear {{name}},
 
-My name is **Viet Nguyen**. I founded **Lumio Agency**, a registered company in Austin, Texas. My team and I run the online side for Vietnamese-owned nail salons, spas and restaurants across the US and Canada.
+My name is **Viet Nguyen**, from **Lumio Agency** — a registered company in Austin, Texas. My team and I run the online side for Vietnamese-owned nail salons, spas and restaurants across the US and Canada.
 
 I'm not writing to rush you into anything. I just want to ask you one question:
 
@@ -141,10 +146,13 @@ Any one of these is small. Add them up over a month and it is **real money** wal
 
 ## What Lumio does for you
 
+[[PLAN]] Lumio Social Care | $45/mo | Start small — social only | FB, IG, TikTok, Shorts, Yelp posted for you; Fresh content every ~2 days, never a dead page; Industry templates, tailored to your shop; No Maps SEO or reporting at this level
 [[PLAN]] Lumio Boost + LumioBooking | $179/mo | The foundation — steady social and a real booking system | Multi-channel social: FB, IG, TikTok, Shorts, Yelp; Fresh content every ~2 days; Google Business Profile optimisation; Link in bio + you approve content before it posts; LumioBooking software — 24/7 online booking; A short, plain-English monthly report
 [[PLAN*]] Lumio Growth (Pro) | $279/mo | The full package — adds deep Google Maps SEO | Everything in the $179 plan; In-depth Google Maps SEO — so people searching actually find you; Review strategy + local signals; Tracking for impressions, calls and directions; Honest reporting with source screenshots
 
-[[NOTE]] Both plans already include the LumioBooking software — online booking, automatic reminders, POS checkout, staff management and customer-source reporting. You don't pay extra for it.
+[[NOTE]] The $179 and $279 plans **already include the LumioBooking software** — online booking, automatic reminders, POS checkout, staff management and customer-source reporting. You never pay extra for it.
+
+Not ready for all that? **Start at $45** and just bring your social pages back to life. Move up when you see it working — I won't push you.
 
 ## And a website — just $150, one payment
 
@@ -183,7 +191,7 @@ ${SIGN_EN}`,
       heading: 'Tiệm mình xứng đáng có một website tử tế',
       body: `Kính chào anh/chị,
 
-Em là **Việt Nguyễn**, founder của **Lumio Agency** ở Austin, Texas.
+Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas.
 
 Em kể anh chị nghe một chuyện xảy ra mỗi ngày: khách lạ tìm thấy tiệm mình trên Google, tò mò bấm vào website — và thấy một trang cũ, chậm, mở trên điện thoại chữ bé xíu. Ba giây sau họ thoát ra, bấm vào tiệm kế bên.
 

@@ -6,22 +6,23 @@
 //   [[PLAN]]  Name | Price | tagline | feat; feat; feat      → price card
 //   [[PLAN*]] …           → the SAME card, highlighted
 //   [[NOTE]] text         → soft grey note box
+//   [[TABLE]] a | b | c   → table header, then [[ROW]] … for each row
 //   [[DIVIDER]]           → hairline
 //   **bold**, URLs, phone numbers and emails are rendered automatically.
 //
-// WHY THE COPY READS THE WAY IT DOES — the audience is a Vietnamese salon owner in
-// the US/Canada, and everything below is written for how they actually behave:
-//   · They read email on a phone, standing, between two clients. The first two
-//     lines have to do all the work.
-//   · They have been burned by agencies promising "#1 on Google" and locking them
-//     into contracts. So we promise less, out loud, and say what we will NOT do.
-//   · Trust in this community travels by word of mouth and by feeling respected.
-//     So we open with a proper greeting, we honour their craft, and we never talk
-//     down to them about "digital marketing".
-//   · They decide at night, after closing, often husband and wife together. So we
-//     invite a text at 10pm, not a "discovery call".
-//   · A cold email that names a price gets deleted. Price only appears in FORM 3,
-//     which is for people who already replied.
+// TONE — this is the part to protect when editing.
+// The reader is a Vietnamese salon owner in the US/Canada, reading on a phone,
+// standing, between two clients. So every line is written to sound like a younger
+// person from the same community talking to them with respect, NOT like a salesman:
+//   · Warm, gentle, unhurried. No pressure, no scare tactics, no blunt one-liners.
+//   · We never say "em nói thẳng", "mình bàn 10 phút", "cái tiệm" — those read curt
+//     or peer-level. It is always "anh chị", "em", "tiệm mình", "em xin phép".
+//   · We honour their craft first, and we admit what we will NOT do, before we ask
+//     for anything at all.
+//   · Nothing is designed to frighten them. Where a real problem exists we describe
+//     it softly, as something we can fix together — not as money burning.
+//   · A cold email that names a price gets deleted. Price only appears in FORM 3 and
+//     FORM 4, which are for people who already replied.
 
 export interface Preset {
   label: string;
@@ -42,7 +43,7 @@ const AUDIT = 'https://lumioagency.com/#contact';
 /** A real person, reachable three ways, at an hour that suits a salon owner. */
 const SIGN_VN = `[[DIVIDER]]
 
-Anh chị cứ nhắn thẳng cho em — kể cả 10 giờ đêm, khi tiệm đã đóng cửa. Em đọc hết.
+Anh chị cứ nhắn cho em bất cứ lúc nào ạ — kể cả mười giờ đêm, khi tiệm đã đóng cửa. Em đọc hết, và em trả lời bằng tiếng Việt.
 
 - **Việt Nguyễn** — Lumio Agency LLC, Austin, Texas
 - Điện thoại (gọi hoặc nhắn tin đều được): (512) 886-8189
@@ -51,7 +52,7 @@ Anh chị cứ nhắn thẳng cho em — kể cả 10 giờ đêm, khi tiệm đ
 - Email: support@lumioagency.com
 - Website: https://lumioagency.com  ·  Phần mềm: https://lumiobooking.com
 
-Kính chúc anh chị và tiệm mình một mùa thật nhiều khách.
+Chúc anh chị và tiệm mình luôn nhiều khách, nhiều sức khoẻ.
 
 Trân trọng,
 Việt Nguyễn
@@ -59,7 +60,7 @@ Lumio Agency`;
 
 const SIGN_EN = `[[DIVIDER]]
 
-Message me any time — even at 10pm after you close. I read every one.
+Message me any time — even at 10pm, after you close. I read every one.
 
 - **Viet Nguyen** — Lumio Agency LLC, Austin, Texas
 - Phone (call or text): (512) 886-8189
@@ -68,7 +69,7 @@ Message me any time — even at 10pm after you close. I read every one.
 - Email: support@lumioagency.com
 - Website: https://lumioagency.com  ·  Software: https://lumiobooking.com
 
-Wishing you and your shop a busy season.
+Wishing you and your shop a busy, healthy season.
 
 Warm regards,
 Viet Nguyen
@@ -76,71 +77,69 @@ Lumio Agency`;
 
 export const LUMIO_PRESETS: Preset[] = [
   // ------------------------------------------------------------------ FORM 1
-  // Cold. No price anywhere. One job: earn a reply. The hook is a scene the owner
-  // has lived a hundred times — the empty chair nobody counted as a lost customer.
+  // Cold. No price anywhere. One job: earn a reply. The scene is told gently — the
+  // quiet chair, not "money burning". Nothing here is meant to frighten the reader.
   {
     label: '🎯 FORM 1 · Chạm nỗi đau — kéo khách liên hệ (VN)',
-    goal: 'Kéo khách trả lời email. Không nhắc giá — chỉ kể nỗi đau và tặng bản đánh giá miễn phí.',
+    goal: 'Kéo khách trả lời email. Không nhắc giá — chỉ kể một câu chuyện quen thuộc và tặng bản đánh giá miễn phí.',
     who: 'Danh sách LẠNH — tiệm chưa từng biết Lumio. Gửi tối thứ Ba/Tư, 8–10 giờ tối.',
     draft: {
       name: 'FORM 1 — Chạm nỗi đau (VN)',
-      subject: 'Chiếc ghế trống tối thứ Sáu — không ai tính là mất khách',
+      subject: 'Chiếc ghế trống tối thứ Sáu — mình thường không để ý tới nó',
       fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Em xin phép hai phút của anh chị. Không bán gì cả — chỉ là một câu chuyện và một lời mời.',
-      heading: 'Có những khách mình mất, mà không bao giờ biết là đã mất',
-      body: `Kính chào anh/chị,
+      preheader: 'Em xin phép hai phút của anh chị. Em không bán gì cả — chỉ có một câu chuyện và một lời mời nhỏ.',
+      heading: 'Có những người khách mình lỡ mất, mà mình không hề hay',
+      body: `Kính chào anh chị,
 
-Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Em xin phép làm phiền anh chị chừng hai phút thôi ạ.
+Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Em xin phép anh chị chừng hai phút thôi ạ.
 
-Em kể anh chị nghe một chuyện.
+Em kể anh chị nghe một chuyện nhỏ.
 
 Tối thứ Sáu, bảy giờ. Tiệm mình còn hai ghế trống. Cách tiệm ba con đường, có một người khách vừa tan làm, mở điện thoại lên gõ: **“nail salon near me”**.
 
-Màn hình hiện ra ba cái tên. Không có tên tiệm mình.
+Màn hình hiện ra ba cái tên. Lần đó, chưa có tên tiệm mình.
 
-Người khách đó bấm vào tiệm đầu tiên, đặt lịch, rồi cất điện thoại. Cô ấy **không hề biết là tiệm mình tồn tại**. Và tối đó, hai chiếc ghế trong tiệm mình vẫn trống.
+Người khách ấy bấm vào tiệm đầu tiên, đặt lịch, rồi cất điện thoại. Cô ấy **chưa từng biết là tiệm mình có ở đó**. Và tối hôm ấy, hai chiếc ghế của tiệm mình vẫn để trống.
 
-Không biết anh chị có bao giờ ngồi tính lại hai chiếc ghế đó không ạ?
-
-Em đoán là không ạ — bởi có ai gọi tới đâu mà mình biết. **Đó là những người khách mình mất đi mà chẳng bao giờ hay** — và chuyện ấy cứ lặng lẽ lặp lại mỗi tối, suốt cả năm trời.
+Chuyện này thường mình không để ý, vì có ai gọi tới đâu mà mình biết. Nó cứ diễn ra rất lặng lẽ, tối này qua tối khác.
 
 ## Anh chị thử tự trả lời trong đầu, năm câu này
 
-- Gõ “nail salon near me” trên điện thoại — tiệm mình đứng ở đâu?
+- Gõ “nail salon near me” trên điện thoại — tiệm mình đang đứng ở đâu ạ?
 - Bài đăng gần nhất trên Facebook hoặc TikTok của tiệm là **từ bao giờ**?
 - Tuần rồi tiệm mình có **bao nhiêu cuộc gọi nhỡ** lúc đang đông khách?
-- Mở website tiệm bằng điện thoại — mất mấy giây? Chữ có đọc nổi không?
+- Mở website tiệm bằng điện thoại — mất mấy giây, chữ có dễ đọc không ạ?
 - Tháng rồi khách **mới** đến từ đâu: Google, Facebook, hay đi ngang qua?
 
-[[NOTE]] Nếu có **từ hai câu trở lên anh chị không trả lời được** — thì đó chính là chỗ tiền đang lặng lẽ đi ra khỏi cửa tiệm, mỗi tháng.
+[[NOTE]] Nếu có **hai câu trở lên anh chị chưa trả lời được** thì cũng bình thường thôi ạ — đó chỉ là những chỗ tiệm mình chưa có ai lo giúp, và đều là chỗ sửa được.
 
-Và em xin thưa một điều: **tay nghề của anh chị không hề có vấn đề gì cả.** Khách đã ngồi xuống ghế rồi là anh chị giữ được họ. Chỗ đang hụt nằm ở đoạn **trước khi khách ngồi xuống** — cái đoạn mà anh chị còn đang bận cầm cây cọ, chẳng ai lo giúp.
+Em xin nói rõ một điều: **tay nghề của anh chị không có gì phải bàn cả.** Khách đã ngồi xuống ghế rồi thì anh chị giữ được họ. Chỗ còn thiếu nằm ở **đoạn trước khi khách ngồi xuống** — cái đoạn mà anh chị đang bận cầm cây cọ, chưa ai đỡ giúp.
 
 ## Em xin làm giúp anh chị một bản đánh giá — không lấy tiền
 
-Em viết lá thư này không phải để bán cho anh chị thứ gì cả. Em chỉ muốn gửi tới anh chị một thứ dùng được ngay:
+Em viết lá thư này không phải để bán cho anh chị thứ gì. Em chỉ muốn gửi anh chị một thứ dùng được ngay:
 
-- **Vị trí tiệm mình trên Google Maps**, theo đúng 5 câu mà khách hay gõ nhất
-- **So sánh hồ sơ Google của tiệm với 3 tiệm gần nhất** — hơn thua chỗ nào, thấy bằng mắt
-- **Chấm điểm website**: tốc độ, hiển thị trên điện thoại, kèm ảnh chụp màn hình
-- **Ước lượng số khách có thể đang mất mỗi tháng** — em nói rõ cách tính, không bịa số
-- **Ba việc nên làm trước tiên.** Anh chị **tự làm cũng được** — không cần thuê em
+- **Vị trí tiệm mình trên Google Maps**, theo 5 câu mà khách hay gõ nhất
+- **So sánh hồ sơ Google của tiệm với 3 tiệm gần nhất** — hơn thua chỗ nào, nhìn là thấy
+- **Chấm điểm website**: tốc độ, hiển thị trên điện thoại, có kèm ảnh chụp màn hình
+- **Ước lượng số khách tiệm mình có thể đang lỡ mỗi tháng** — em ghi rõ cách tính, không bịa số
+- **Ba việc nên làm trước tiên.** Anh chị **tự làm cũng được** ạ — không cần thuê em
 
-[[NOTE]] Bản đánh giá đó là **của anh chị**, giữ luôn. Xem xong thấy tự xử lý được thì cứ tự làm — em không gọi làm phiền, không nài nỉ một câu nào.
+[[NOTE]] Bản đánh giá đó là **của anh chị**, anh chị giữ luôn. Xem xong thấy tự xoay được thì cứ tự làm, em không gọi làm phiền anh chị đâu ạ.
 
 ## Anh chị chỉ cần làm một việc rất nhỏ
 
-Trả lời email này đúng **hai dòng**:
+Anh chị trả lời email này đúng **hai dòng**:
 
 > **Tên tiệm** · **Link Google Maps** (hoặc số điện thoại tiệm)
 
-Trong **48 tiếng** em gửi lại bản đánh giá. Không họp hành, không ai gọi điện làm phiền anh chị.
+Trong **48 tiếng** em gửi lại bản đánh giá. Không họp hành gì cả, cũng không ai gọi điện làm phiền anh chị.
 
-Hoặc tiện hơn thì anh chị nhắn thẳng cho em ở số bên dưới — em trả lời bằng tiếng Việt, và em trả lời nhanh.
+Hoặc tiện hơn thì anh chị nhắn thẳng cho em ở số bên dưới — em trả lời bằng tiếng Việt, và em trả lời nhanh ạ.
 
 ${SIGN_VN}
 
-P.S. Nếu anh chị chỉ tò mò muốn biết **tiệm mình đang đứng thứ mấy trên Google Maps** thôi, thì nhắn em **số điện thoại tiệm** là đủ. Em tra rồi nhắn lại cho anh chị **ngay trong hôm nay** — không cần cam kết gì hết.`,
+P.S. Nếu anh chị chỉ tò mò muốn biết **tiệm mình đang đứng thứ mấy trên Google Maps**, thì nhắn em **số điện thoại tiệm** là đủ ạ. Em tra rồi nhắn lại cho anh chị **ngay trong hôm nay** — anh chị không cần cam kết gì cả.`,
       ctaLabel: 'Nhận bản đánh giá miễn phí →',
       ctaUrl: AUDIT,
       footerNote: FOOTER,
@@ -148,88 +147,88 @@ P.S. Nếu anh chị chỉ tò mò muốn biết **tiệm mình đang đứng th
   },
 
   // ------------------------------------------------------------------ FORM 2
-  // Trust first. For the owner who is not in pain today, or who has been burned by
-  // an agency before. It sells nothing — it explains who we are, what we refuse to
-  // do, and honours their craft. The ask is a conversation, not a purchase.
+  // Trust first. For the owner who is not in pain today, or who has been burned by an
+  // agency before. It sells nothing — it honours their work, says what we refuse to
+  // do, and asks only for a conversation.
   {
     label: '🤝 FORM 2 · Thư đồng hương — xây niềm tin (VN)',
     goal: 'Xây niềm tin, xin một cuộc nói chuyện. Nói rõ 3 điều KHÔNG làm + 4 điều xin hứa.',
-    who: 'Người KHÔNG trả lời Form 1 (gửi sau 7–10 ngày), hoặc tiệm từng bị agency khác làm mất niềm tin.',
+    who: 'Người CHƯA trả lời Form 1 (gửi sau 7–10 ngày), hoặc tiệm từng bị agency khác làm mất niềm tin.',
     draft: {
       name: 'FORM 2 — Thư đồng hương (VN)',
-      subject: 'Anh chị giỏi nghề. Chỉ là chưa ai lo giúp anh chị phần online',
+      subject: 'Anh chị giỏi nghề — chỉ là phần online chưa có ai lo giúp',
       fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Một lá thư, không phải một lời chào hàng. Bốn điều em xin hứa — và ba điều em từ chối làm.',
+      preheader: 'Một lá thư, không phải một lời chào hàng. Bốn điều em xin hứa — và ba điều em xin phép không làm.',
       heading: 'Thư gửi anh chị — người đã dựng nên tiệm mình bằng chính đôi tay',
-      body: `Kính chào anh/chị,
+      body: `Kính chào anh chị,
 
 Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas.
 
-Lá thư này em viết không phải để chào hàng. Em viết vì có đôi điều muốn được thưa với anh chị cho trọn vẹn.
+Lá thư này em viết không phải để chào hàng ạ. Em viết vì có vài điều em muốn được chia sẻ với anh chị cho trọn vẹn.
 
-Em biết tiệm của anh chị **không phải tự nhiên mà có**. Đó là mười mấy tiếng đứng mỗi ngày. Là mùi hoá chất quen tới mức không còn ngửi thấy nữa. Là những buổi tối về nhà lưng mỏi rã rời, mà sáng hôm sau vẫn mở cửa đúng giờ. Là một chỗ đứng mà anh chị **tự tay giành lấy** ở xứ người, chứ chẳng ai cho không.
+Em biết tiệm của anh chị **không phải tự nhiên mà có**. Đó là mười mấy tiếng đứng mỗi ngày. Là mùi hoá chất quen tới mức không còn ngửi thấy nữa. Là những buổi tối về nhà lưng mỏi rã rời, mà sáng hôm sau vẫn mở cửa đúng giờ. Là một chỗ đứng anh chị **tự tay gây dựng** ở xứ người.
 
-Vậy nên em xin thưa thật lòng: **tay nghề của anh chị không có gì phải bàn.** Khách đã ngồi xuống ghế của anh chị một lần là họ quay lại. Thứ còn thiếu **không nằm bên trong tiệm** — nó nằm ở ngoài kia, chỗ những người khách chưa từng biết tới tiệm mình.
+Nên em xin nói thật lòng: **tay nghề của anh chị thì không có gì phải bàn.** Khách ngồi xuống ghế một lần là họ quay lại. Thứ còn thiếu **không nằm bên trong tiệm** — nó nằm ở ngoài kia, chỗ những người khách chưa từng biết tới tiệm mình.
 
-## Và em cũng biết vì sao anh chị ngại
+## Em cũng hiểu vì sao anh chị ngại
 
-Vì đã có người tới, hứa với anh chị **“lên top 1 Google”**. Rồi bắt ký hợp đồng. Rồi tự động trừ tiền thẻ mỗi tháng. Rồi im. Gọi không ai bắt máy. Hỏi thì trả lời bằng thứ tiếng Anh đầy chữ khó hiểu.
+Vì đã từng có người tới, hứa với anh chị **“lên top 1 Google”**. Rồi ký hợp đồng. Rồi mỗi tháng thẻ vẫn bị trừ tiền. Rồi im. Gọi thì không ai bắt máy, hỏi thì trả lời bằng những chữ tiếng Anh khó hiểu.
 
-Sau lần ấy, chỉ nghe tới hai chữ **“marketing”** là anh chị đã thấy mệt. Em hiểu điều đó, và em **không trách anh chị một chút nào cả.**
+Sau lần đó, nghe tới hai chữ **“marketing”** là anh chị đã thấy mệt rồi. Em rất hiểu điều đó ạ.
 
-## Nên em xin nói trước — ba điều em KHÔNG làm
+## Nên em xin thưa trước — ba điều em xin phép KHÔNG làm
 
-- Em **không hứa “top 1 Google”**. Ai hứa với anh chị điều đó là người đó không thành thật. Không ai kiểm soát được Google
-- Em **không giữ tài khoản của anh chị**. Google, Facebook, website — tất cả đứng tên anh chị. Ngày nào anh chị ngưng, anh chị **mang đi hết**, em không giữ lại một thứ gì
-- Em **không trói anh chị vào hợp đồng dài**. Em xin tối thiểu ba tháng, chỉ vì công việc cần từng đó thời gian mới thấy kết quả — chứ không phải để giữ chân anh chị
+- Em **không hứa “top 1 Google”**. Không ai kiểm soát được Google, nên ai hứa điều đó là chưa thành thật với anh chị
+- Em **không giữ tài khoản của anh chị**. Google, Facebook, website — tất cả đứng tên anh chị. Ngày nào anh chị ngưng, anh chị **mang đi hết**, em không giữ lại thứ gì
+- Em **không trói anh chị vào hợp đồng dài**. Em xin tối thiểu ba tháng, chỉ vì công việc cần chừng đó thời gian mới thấy kết quả — chứ không phải để giữ chân anh chị
 
-## Điều mà không một đơn vị marketing nào làm được cho anh chị
+## Điều mà em nghĩ ít nơi làm được cho anh chị
 
-Em xin phép nói rõ để anh chị dễ so sánh.
+Em xin phép nói rõ, để anh chị dễ so sánh ạ.
 
-Agency khác chạy quảng cáo, đăng bài, rồi **hết việc**. Khách thấy quảng cáo, gọi vào tiệm lúc bảy giờ tối — không ai bắt máy. Khách bỏ đi. **Agency đó không biết, và cũng không quan tâm** — vì phần đó không phải việc của họ.
+Nhiều nơi chạy quảng cáo, đăng bài, rồi **xong việc**. Khách thấy quảng cáo, gọi vào tiệm lúc bảy giờ tối — không ai bắt máy, khách bỏ đi. Bên đó thường **không biết chuyện ấy**, vì phần đó không thuộc phạm vi của họ.
 
 Lumio khác ở đúng một chỗ: **phần mềm vận hành tiệm là do chính em viết ra.**
 
 - Em **không chỉ kéo khách tới cửa** — em lo luôn đoạn khách bước vào: đặt lịch online 24/7, **AI bắt máy** khi tiệm bận, bot trả lời Messenger lúc nửa đêm, xếp ghế, chia lượt thợ, tính tiền, tính lương
-- Vì phần mềm là **của em**, em **nối được quảng cáo với cái bill**. Cuối tháng em không khoe anh chị "lượt hiển thị" hay "lượt tương tác" — mấy con số đó không nuôi được ai. Em chỉ thẳng: **khách này đến từ Google Maps, đã chi $95**
-- Em làm **từ trong tiệm ra ngoài đường**, không phải từ ngoài đường nhìn vào. Vì em đã ngồi nghĩ từng chi tiết nhỏ: ghế nào cho dịch vụ nào, thợ nào tới lượt, tip chia sao cho thợ khỏi cãi nhau, bill chờ khi quầy đông
-- Phần mềm là của em nên **lỗi gì em sửa được ngay trong ngày**. Em không đi thuê phần mềm của người khác rồi bán lại cho anh chị
+- Vì phần mềm là **của em**, em **nối được quảng cáo với cái bill**. Cuối tháng em không khoe anh chị “lượt hiển thị” hay “lượt tương tác” — mấy con số đó khó mà giúp gì cho tiệm. Em chỉ rõ: **khách này đến từ Google Maps, đã chi $95**
+- Em làm **từ trong tiệm ra ngoài đường**, chứ không phải từ ngoài nhìn vào. Em ngồi nghĩ từng chi tiết nhỏ: ghế nào cho dịch vụ nào, thợ nào tới lượt, tip chia sao cho anh em vui vẻ, bill chờ khi quầy đông
+- Phần mềm là của em nên **có trục trặc gì em sửa được ngay trong ngày**. Em không đi thuê phần mềm của người khác rồi bán lại cho anh chị
 
-[[NOTE]] Xin phép ví von cho dễ hình dung: nhiều nơi **đổ nước vào một chiếc xô thủng**. Em xin vá cái xô lại trước đã, rồi mới đổ nước vào.
+[[NOTE]] Xin phép ví von cho dễ hình dung ạ: nhiều nơi **đổ nước vào một chiếc xô thủng**. Em xin vá cái xô lại trước, rồi mới đổ nước vào.
 
-## Nỗi đau của anh chị — và em xử lý ở đâu
+## Những chỗ tiệm hay vướng — và em đỡ giúp anh chị ở đâu
 
-- **Điện thoại reo lúc tiệm đông, không ai bắt máy** → AI trả lời 24/7: chào khách, hỏi dịch vụ, xem giờ trống, **chốt lịch**, rồi nhắn tin xác nhận. Không mất khách vì bận nữa
-- **Khách gõ “nail salon near me” mà không thấy tiệm mình** → Google Maps SEO chuyên sâu, tối ưu hồ sơ Google, chiến lược đánh giá
-- **Facebook, TikTok bỏ trống cả tháng** → nội dung mới đều đặn ~2 ngày/lần, anh chị duyệt trước khi đăng
+- **Điện thoại reo lúc tiệm đông, chưa ai kịp bắt máy** → AI trả lời 24/7: chào khách, hỏi dịch vụ, xem giờ trống, **chốt lịch**, rồi nhắn tin xác nhận
+- **Khách gõ “nail salon near me” mà chưa thấy tiệm mình** → Google Maps SEO chuyên sâu, tối ưu hồ sơ Google, chiến lược đánh giá
+- **Facebook, TikTok để trống cả tháng** → nội dung mới đều đặn khoảng 2 ngày một lần, anh chị duyệt trước khi đăng
 - **Khách nhắn Messenger lúc 11 giờ đêm** → bot trả lời trong 2 giây, chốt lịch luôn. Anh chị ngủ, tiệm vẫn nhận khách
-- **Thợ cãi nhau chuyện chia khách** → hệ thống **tự chia lượt**, công khai, ai cũng thấy con số của mình
-- **Cuối tháng không biết tiền quảng cáo đi đâu** → báo cáo nguồn khách chính xác: bao nhiêu khách từ Google, từ Facebook, từ hotline, và mỗi nguồn đẻ ra bao nhiêu tiền
-- **Website cũ, khách mở trên điện thoại rồi thoát trong 3 giây** → website $150, chuẩn điện thoại, gắn sẵn nút đặt lịch
+- **Anh em thợ đôi khi tị nhau chuyện chia khách** → hệ thống **tự chia lượt**, công khai, ai cũng thấy con số của mình
+- **Cuối tháng chưa rõ tiền quảng cáo đi về đâu** → báo cáo nguồn khách rõ ràng: bao nhiêu khách từ Google, từ Facebook, từ hotline, và mỗi nguồn mang về bao nhiêu tiền
+- **Website cũ, khách mở trên điện thoại rồi thoát ngay** → website $150, chuẩn điện thoại, gắn sẵn nút đặt lịch
 
-## Và bốn điều em xin hứa
+## Và bốn điều em xin hứa với anh chị
 
-- Anh chị **sở hữu 100% tài khoản** — Google, Facebook, website đều đứng tên anh chị. Ngừng hợp tác lúc nào cũng mang đi hết
-- **Không hợp đồng dài hạn.** Em xin tối thiểu 3 tháng chỉ vì công việc cần từng đó thời gian mới có tác dụng — không phải để trói anh chị
-- Em **không hứa “top 1 Google”**. Ai hứa điều đó là không thành thật. Em chỉ báo cáo số đã xác minh, kèm ảnh chụp màn hình nguồn
+- Anh chị **sở hữu 100% tài khoản** — Google, Facebook, website đều đứng tên anh chị. Ngưng hợp tác lúc nào cũng mang đi hết
+- **Không hợp đồng dài hạn.** Em xin tối thiểu 3 tháng chỉ vì công việc cần chừng đó thời gian mới có tác dụng
+- Em **không hứa “top 1 Google”** — em chỉ báo cáo số đã xác minh, kèm ảnh chụp màn hình nguồn
 - **Anh chị gọi là gặp em** — không phải tổng đài, không phải nhân viên đọc kịch bản. Người Việt, nói tiếng Việt, hiểu nghề nail
 
-[[NOTE]] Anh chị hỏi bất cứ chủ tiệm nào đang làm với Lumio — em sẵn sàng cho số để anh chị gọi hỏi thẳng họ, không cần qua em.
+[[NOTE]] Anh chị muốn hỏi thăm bất cứ chủ tiệm nào đang làm với Lumio, em xin gửi số để anh chị gọi hỏi trực tiếp, không cần qua em ạ.
 
-## Em xin anh chị một điều duy nhất
+## Em chỉ xin anh chị một điều
 
-Không phải tiền. Là **một cuộc nói chuyện**.
+Không phải tiền ạ. Chỉ là **một cuộc nói chuyện**.
 
-Anh chị gọi hoặc nhắn cho em lúc nào cũng được — **kể cả mười giờ đêm, khi tiệm đã đóng cửa**. Em xin được nghe tiệm mình đang vướng chỗ nào, rồi em thưa thật anh chị nên làm gì trước, làm gì sau.
+Anh chị gọi hoặc nhắn cho em lúc nào cũng được — **kể cả mười giờ đêm, khi tiệm đã đóng cửa**. Em xin được nghe tiệm mình đang vướng ở đâu, rồi em thưa lại với anh chị nên làm gì trước, làm gì sau.
 
-Nếu sau đó anh chị thấy **chưa cần tới Lumio** — em vẫn cảm ơn anh chị đã dành thời gian, và em vẫn để lại cho anh chị vài việc để tự làm.
+Nếu sau đó anh chị thấy **chưa cần tới Lumio**, em vẫn cảm ơn anh chị đã dành thời gian, và em vẫn để lại vài việc để anh chị tự làm cho tiệm.
 
-Về phần em thì chẳng mất gì. Còn anh chị thì có thêm một người trong nghề, nói cùng thứ tiếng, để hỏi mỗi khi cần tới.
+Về phần em thì không mất gì cả. Còn anh chị thì có thêm một người trong nghề, nói cùng thứ tiếng, để hỏi mỗi khi cần.
 
 ${SIGN_VN}
 
-P.S. Anh chị đang bận thì cứ để email này đó. Khi nào tiệm vắng khách một buổi chiều nào đó, anh chị mở ra đọc lại — em vẫn ở đây.`,
+P.S. Anh chị đang bận thì cứ để lá thư này đó ạ. Hôm nào tiệm vắng khách một buổi chiều, anh chị mở ra đọc lại — em vẫn ở đây.`,
       ctaLabel: 'Liên hệ với em — miễn phí →',
       ctaUrl: AUDIT,
       footerNote: FOOTER,
@@ -237,85 +236,84 @@ P.S. Anh chị đang bận thì cứ để email này đó. Khi nào tiệm vắ
   },
 
   // ------------------------------------------------------------------ FORM 3
-  // The quote — but told as a journey, not a price list. Only send this to someone
-  // who already replied. $45 first, so $179 and $279 look reasonable; the Pro card
-  // is the highlighted one, because that is where the eye should land.
+  // The quote — told as a journey, not a price list. Warm-list only. $45 first, so
+  // $179 and $279 land softly; the Pro card is highlighted, gently.
   {
     label: '📋 FORM 3 · Báo giá kể chuyện (VN)',
     goal: 'Chốt đơn. Bảng giá kể thành 3 chặng đường: $45 → $179 → $279 (+ website $150).',
     who: 'Khách ẤM — đã trả lời, đã nói chuyện, đã hỏi giá. Đừng gửi cho danh sách lạnh.',
     draft: {
       name: 'FORM 3 — Báo giá kể chuyện (VN)',
-      subject: 'Ba chặng đường để tiệm mình được khách tìm thấy — em xin trình bày',
+      subject: 'Ba chặng đường để khách tìm thấy tiệm mình — em xin trình bày',
       fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Anh chị đang ở chặng nào, em bắt đầu từ chặng đó. Chỉ từ $45/tháng. Không hợp đồng dài.',
-      heading: 'Không ai đi hết con đường trong một bước',
-      body: `Kính chào anh/chị,
+      preheader: 'Anh chị đang ở chặng nào, mình bắt đầu từ chặng đó ạ. Chỉ từ $45/tháng, không hợp đồng dài.',
+      heading: 'Mình cứ đi từ từ, không ai đi hết con đường trong một bước',
+      body: `Kính chào anh chị,
 
-Cảm ơn anh chị đã dành thời gian cho em.
+Cảm ơn anh chị đã dành thời gian cho em ạ.
 
-Như em có thưa, em không bán cho anh chị **một gói dịch vụ**. Em muốn cùng anh chị đi **một chặng đường** — và anh chị đang đứng ở đâu, thì mình bắt đầu từ đó.
+Như em đã thưa, em không muốn bán cho anh chị **một gói dịch vụ**. Em mong được cùng anh chị đi **một chặng đường** — anh chị đang đứng ở đâu, thì mình bắt đầu từ đó.
 
 Em xin kể ba chặng, bằng đúng những gì em thấy ở các tiệm em từng làm.
 
-## Chặng thứ nhất — cho tiệm “còn sống” trên mạng
+## Chặng thứ nhất — cho tiệm mình “sống lại” trên mạng
 
-Khách lạ mở Facebook của tiệm ra xem. Bài đăng gần nhất: **tháng Tư năm ngoái**. Họ đóng lại. Trong đầu họ, tiệm mình **đã dẹp rồi**.
+Khách lạ mở Facebook của tiệm ra xem. Bài đăng gần nhất là **tháng Tư năm ngoái**. Họ đóng lại, và trong đầu họ, tiệm mình **có khi đã nghỉ rồi**.
 
-Chặng này em không làm gì to tát. Em chỉ làm cho tiệm mình **sống lại** trên mạng — đều đặn, tử tế, để ai ghé qua cũng thấy đây là một tiệm đang hoạt động, có người chăm.
+Chặng này em không làm gì to tát cả. Em chỉ làm cho trang của tiệm **sống lại** — đều đặn, tử tế, để ai ghé qua cũng thấy đây là một tiệm đang mở cửa, có người chăm.
 
 [[PLAN]] Lumio Social Care | $45/tháng | Chặng 1 — cho tiệm sống lại trên mạng | Đăng đều Facebook, Instagram, TikTok, Shorts, Yelp; Nội dung mới khoảng 2 ngày một lần; Theo mẫu của ngành, chỉnh riêng cho tiệm mình; Chưa gồm Google Maps SEO và báo cáo
 
-[[NOTE]] $45 một tháng. Bằng đúng **một bộ móng**. Anh chị làm một bộ là đủ trả cho cả tháng.
+[[NOTE]] $45 một tháng, bằng đúng **một bộ móng** ạ. Anh chị làm một bộ là đủ cho cả tháng rồi.
 
 ## Chặng thứ hai — cho khách đặt được lịch, kể cả lúc mình đang bận
 
-Khách gọi tới lúc bảy giờ tối, tiệm đông kín, sáu cái tay đang bận. Không ai bắt máy. Khách gọi tiệm khác. **Đó là tiền đi ra khỏi cửa, mà không ai nhìn thấy.**
+Khách gọi tới lúc bảy giờ tối, tiệm đông kín, sáu cái tay đang bận. Chưa ai kịp bắt máy, khách gọi tiệm khác. Vậy là mình lỡ mất một người khách, mà cũng không hay.
 
-Chặng này, ngoài social, em đưa vào tiệm mình **hệ thống LumioBooking** — khách tự đặt lịch trên điện thoại, hai mươi bốn trên bảy, kể cả lúc tiệm đã đóng cửa. Có sơ đồ ghế, có POS tính tiền, có chia lượt thợ, có lương và tip, có báo cáo khách đến từ đâu.
+Chặng này, ngoài phần social, em đưa vào tiệm **hệ thống LumioBooking** — khách tự đặt lịch trên điện thoại, hai mươi bốn trên bảy, kể cả lúc tiệm đã đóng cửa. Có sơ đồ ghế, có POS tính tiền, có chia lượt thợ, có lương và tip, có báo cáo khách đến từ đâu.
 
 [[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Chặng 2 — nền tảng vững, khách tự đặt được lịch | Toàn bộ phần social ở chặng 1; Tối ưu hồ sơ Google Business Profile; Link in bio, duyệt nội dung trước khi đăng; **Phần mềm LumioBooking** — đặt lịch 24/7, sơ đồ ghế, POS, chia lượt thợ, lương và tip; Báo cáo tháng ngắn gọn, dễ hiểu
 
 ## Chặng thứ ba — cho khách **tìm là thấy**
 
-Đây là chặng khó nhất, và cũng là chặng đáng tiền nhất.
+Đây là chặng khó nhất, và cũng là chặng em quý nhất.
 
-Khách gõ “nail salon near me”. Trên màn hình điện thoại của họ chỉ có **ba cái tên**. Ai đứng trong ba cái tên đó, người ấy có khách. Còn lại, dù tay nghề giỏi tới đâu, cũng **không tồn tại** trong mắt người khách đó.
+Khách gõ “nail salon near me”. Trên màn hình điện thoại của họ chỉ có **ba cái tên**. Ai nằm trong ba cái tên đó thì có khách. Còn lại, dù tay nghề giỏi tới đâu, người khách ấy cũng chưa có dịp biết tới mình.
 
-Chặng này em làm Google Maps SEO chuyên sâu, xây chiến lược đánh giá, và theo dõi từng lượt gọi, từng lượt bấm chỉ đường về tiệm — để anh chị **nhìn thấy** tiền mình bỏ ra đang đẻ ra cái gì.
+Chặng này em làm Google Maps SEO chuyên sâu, xây chiến lược đánh giá, và theo dõi từng lượt gọi, từng lượt bấm chỉ đường về tiệm — để anh chị **nhìn thấy** đồng tiền mình bỏ ra đang mang về điều gì.
 
 [[PLAN*]] Lumio Growth (Pro) | $279/tháng | Chặng 3 — khách tìm là thấy, gọi tới là có người nghe | **Bao gồm trọn vẹn chặng 2** (social + LumioBooking); **AI Hotline — nghe máy 24/7 khi tiệm bận, chốt lịch giùm** *(chỉ có ở gói này)*; **Bot Messenger AI trả lời khách lúc nửa đêm** *(chỉ có ở gói này)*; Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
 
-[[NOTE]] Em **không hứa “top 1 Google”** — ai hứa điều đó là không thành thật. Em hứa **làm đúng việc, làm đều, và báo cáo bằng số thật.**
+[[NOTE]] Em **không hứa “top 1 Google”** ạ. Em chỉ xin hứa **làm đúng việc, làm đều tay, và báo cáo bằng số thật.**
 
 [[DIVIDER]]
 
-## Còn website — em xin để riêng ra, $150
+## Còn website, em xin để riêng ra — $150
 
-Không tính theo tháng. **Một lần $150**, xong là của anh chị.
+Không tính theo tháng ạ. **Một lần $150**, xong là của anh chị.
 
 Website nhanh, đẹp, **chuẩn điện thoại** (chín trên mười khách xem bằng điện thoại), song ngữ Việt – Anh, gắn sẵn nút Đặt lịch nối thẳng vào LumioBooking. **Tên miền và website đứng tên anh chị.**
 
 [[DIVIDER]]
 
-## Vì sao trả tiền cho Lumio chứ không phải agency khác
+## Vì sao anh chị nên chọn Lumio
 
-Agency khác chạy quảng cáo xong là **hết việc**. Khách thấy quảng cáo, gọi vào tiệm lúc bảy giờ tối, không ai bắt máy — khách bỏ đi. Họ không biết, và cũng không quan tâm.
+Nhiều nơi chạy quảng cáo xong là **xong việc**. Khách thấy quảng cáo, gọi vào tiệm lúc bảy giờ tối, chưa ai kịp bắt máy — khách bỏ đi, và bên đó cũng không hay.
 
-Lumio khác đúng một chỗ: **phần mềm vận hành tiệm là do chính em viết ra.**
+Lumio khác ở đúng một chỗ: **phần mềm vận hành tiệm là do chính em viết ra.**
 
 - Em không chỉ kéo khách tới cửa — em lo luôn đoạn khách bước vào: **AI bắt máy**, bot trả lời Messenger, xếp ghế, chia lượt thợ, tính tiền, tính lương
-- Vì phần mềm là **của em**, em **nối được đồng quảng cáo với cái bill**: cuối tháng em không khoe “lượt hiển thị”, em chỉ thẳng **khách này đến từ Google Maps và đã chi $95**
-- Em nghĩ từng chi tiết **từ trong tiệm ra ngoài đường** — ghế nào cho dịch vụ nào, thợ nào tới lượt, tip chia sao cho thợ khỏi cãi nhau. Vì em làm phần mềm cho tiệm nail, không phải cho tiệm cắt tóc bên Mỹ
-- Lỗi gì em **sửa được ngay trong ngày** — em không thuê phần mềm của người khác rồi bán lại cho anh chị
+- Vì phần mềm là **của em**, em **nối được đồng quảng cáo với cái bill**: cuối tháng em không khoe “lượt hiển thị”, em chỉ rõ **khách này đến từ Google Maps và đã chi $95**
+- Em nghĩ từng chi tiết **từ trong tiệm ra ngoài đường** — ghế nào cho dịch vụ nào, thợ nào tới lượt, tip chia sao cho anh em vui vẻ. Vì em làm phần mềm cho tiệm nail, chứ không phải phần mềm chung chung
+- Có trục trặc gì em **sửa được ngay trong ngày** — em không thuê phần mềm của người khác rồi bán lại cho anh chị
 
-[[NOTE]] Agency khác đổ nước vào một cái xô thủng. **Em vá cái xô trước, rồi mới đổ nước.**
+[[NOTE]] Nói ngắn gọn ạ: nhiều nơi đổ nước vào một cái xô thủng. **Em xin vá cái xô trước, rồi mới đổ nước.**
 
-## Anh chị không cần chọn hôm nay
+## Anh chị không cần quyết hôm nay đâu ạ
 
-Anh chị đọc xong, thấy mình đang ở chặng nào thì nhắn em chặng đó. Hoặc anh chị gọi cho em. Em xin mười phút để nghe tiệm mình đang vướng chỗ nào, rồi em thưa thật anh chị nên bắt đầu từ đâu — **có khi em khuyên anh chị chưa cần chi đồng nào cả**, nếu em thấy vậy là đúng.
+Anh chị đọc xong, thấy tiệm mình đang ở chặng nào thì nhắn em chặng đó. Hoặc anh chị gọi cho em, em xin được nghe tiệm mình đang vướng ở đâu rồi thưa lại nên bắt đầu từ đâu — **có khi em lại khuyên anh chị chưa cần chi đồng nào**, nếu em thấy như vậy là hợp lý hơn.
 
-Em xin chân thành cảm ơn anh chị đã đọc tới tận đây. Với em, chừng ấy thời gian anh chị dành cho lá thư này đã là một sự trân trọng lớn.
+Em xin chân thành cảm ơn anh chị đã đọc tới đây. Với em, chừng ấy thời gian anh chị dành cho lá thư này đã là một sự trân trọng lớn rồi ạ.
 
 ${SIGN_VN}`,
       ctaLabel: 'Liên hệ với em để được tư vấn →',
@@ -324,11 +322,11 @@ ${SIGN_VN}`,
     },
   },
 
-  // ---------------------------------------------------------------- EN + phụ
+  // ------------------------------------------------------------------ FORM 4
+  // The full pitch. This is the one that has to survive a side-by-side with the
+  // agency down the road — so it carries the two tables the others don't: what each
+  // plan gives, and what happens if you do it yourself / hire a normal agency / hire us.
   {
-    // The full pitch. This is the one that has to survive a side-by-side with the
-    // agency down the road — so it carries the two tables the others don't: what each
-    // plan gives, and what happens if you do it yourself / hire a normal agency / hire us.
     label: '📊 FORM 4 · Bảng so sánh gói + so với đối thủ (VN)',
     goal: 'Nâng giá trị gói lên tối đa. Cho khách thấy trọn bộ dịch vụ, so sánh 3 gói với nhau, và so Lumio với “tự làm” và “agency thường”.',
     who: 'Khách ẤM — đã nói chuyện, đang phân vân chọn gói, hoặc đang so Lumio với một agency khác.',
@@ -336,19 +334,19 @@ ${SIGN_VN}`,
       name: 'FORM 4 — So sánh gói + đối thủ (VN)',
       subject: 'Trọn bộ dịch vụ Lumio — anh chị xem thử gói nào hợp với tiệm mình',
       fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Ba gói, một bảng so sánh, và một câu trả lời thẳng: vì sao Lumio khác agency thường. Chỉ từ $45/tháng.',
+      preheader: 'Ba gói, một bảng so sánh rõ ràng, và lý do Lumio khác với agency thường. Chỉ từ $45/tháng.',
       heading: 'Anh chị đang ở chặng nào, mình bắt đầu từ chặng đó',
-      body: `Kính chào anh/chị,
+      body: `Kính chào anh chị,
 
-Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Cảm ơn anh chị đã dành thời gian cho em.
+Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Cảm ơn anh chị đã dành thời gian cho em ạ.
 
-Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng, để anh chị tự cân — em không giấu gì cả.
+Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây thật rõ ràng, để anh chị tự cân nhắc — em không giấu gì cả.
 
-## Ba gói — và mỗi gói giải quyết nỗi đau nào
+## Ba gói — và mỗi gói đỡ giúp anh chị chuyện gì
 
-[[PLAN]] Lumio Social Care | $45/tháng | Cho tiệm “sống lại” trên mạng | **Chữa:** trang Facebook, TikTok bỏ trống, khách vào xem tưởng tiệm đã dẹp; Đăng đều FB, IG, TikTok, Shorts, Yelp — nội dung mới ~2 ngày/lần; Theo mẫu của ngành nail, chỉnh riêng cho tiệm mình; Anh chị duyệt trước khi đăng, không đăng bừa
-[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Cho khách tự đặt được lịch, khỏi phải gọi điện | **Chữa:** khách muốn đặt lịch phải gọi, gọi không ai bắt máy là mất khách; Trọn phần social ở gói $45; Tối ưu hồ sơ Google Business Profile; **Phần mềm LumioBooking** — đặt lịch online 24/7, POS tính tiền, sơ đồ ghế, chia lượt thợ, tính lương và tip; Báo cáo tháng gọn gàng, dễ hiểu
-[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Khách **tìm là thấy** — và gọi tới là có người bắt máy | **Chữa:** khách gõ “nail salon near me” mà tiệm mình không hiện ra; và khách gọi lúc tiệm đông thì không ai nghe máy — hai nỗi đau đắt nhất, vì mình mất khách mà không bao giờ biết; **Bao gồm trọn vẹn gói $179**; **AI Hotline — nghe máy 24/7, chốt lịch, nhắn tin xác nhận** (chỉ có ở gói này); **Bot Messenger AI — trả lời khách lúc nửa đêm** (chỉ có ở gói này); Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
+[[PLAN]] Lumio Social Care | $45/tháng | Cho tiệm “sống lại” trên mạng | **Đỡ giúp anh chị:** trang Facebook, TikTok để trống, khách vào xem tưởng tiệm đã nghỉ; Đăng đều FB, IG, TikTok, Shorts, Yelp — nội dung mới ~2 ngày/lần; Theo mẫu của ngành nail, chỉnh riêng cho tiệm mình; Anh chị duyệt trước khi đăng, không đăng bừa
+[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Cho khách tự đặt được lịch, khỏi phải gọi điện | **Đỡ giúp anh chị:** khách muốn đặt lịch phải gọi, mà lúc tiệm đông thì chưa ai kịp bắt máy; Trọn phần social ở gói $45; Tối ưu hồ sơ Google Business Profile; **Phần mềm LumioBooking** — đặt lịch online 24/7, POS tính tiền, sơ đồ ghế, chia lượt thợ, tính lương và tip; Báo cáo tháng gọn gàng, dễ hiểu
+[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Khách **tìm là thấy** — và gọi tới là có người bắt máy | **Đỡ giúp anh chị:** khách gõ “nail salon near me” mà chưa thấy tiệm mình, và khách gọi lúc tiệm đông thì chưa ai nghe được — hai chỗ thiệt thòi lớn nhất, vì mình lỡ mất khách mà không hay; **Bao gồm trọn vẹn gói $179**; **AI Hotline — nghe máy 24/7, chốt lịch, nhắn tin xác nhận** (chỉ có ở gói này); **Bot Messenger AI — trả lời khách lúc nửa đêm** (chỉ có ở gói này); Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
 
 [[NOTE]] Website riêng cho tiệm: **$150, trả một lần** — chuẩn điện thoại, song ngữ Việt – Anh, gắn sẵn nút Đặt lịch. Tên miền và website **đứng tên anh chị**.
 
@@ -372,42 +370,42 @@ Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng,
 
 ## Trong gói của em có sẵn cả một HỆ THỐNG — không chỉ là dịch vụ marketing
 
-Đây là chỗ khác biệt lớn nhất, và em xin bày rõ từng thứ một. Mỗi dòng dưới đây là **một nỗi đau có thật của tiệm**, và **một hệ thống em đã dựng sẵn để chữa nó**.
+Đây là chỗ khác biệt lớn nhất, em xin bày rõ từng thứ một. Mỗi dòng dưới đây là **một chuyện các tiệm hay gặp**, và **một hệ thống em đã dựng sẵn để lo giúp anh chị**.
 
-[[TABLE]] Nỗi đau của tiệm | Hệ thống Lumio đã có sẵn | Agency khác
-[[ROW]] Điện thoại reo lúc tiệm đông, không ai bắt máy | **AI Hotline** — nghe máy 24/7, hỏi dịch vụ, xem giờ trống, **chốt lịch**, nhắn tin xác nhận *(gói Pro $279)* | ✕
+[[TABLE]] Chuyện tiệm hay gặp | Hệ thống Lumio đã có sẵn | Agency khác
+[[ROW]] Điện thoại reo lúc tiệm đông, chưa ai kịp bắt máy | **AI Hotline** — nghe máy 24/7, hỏi dịch vụ, xem giờ trống, **chốt lịch**, nhắn tin xác nhận *(gói Pro $279)* | ✕
 [[ROW]] Khách nhắn Messenger lúc 11 giờ đêm | **Bot Messenger AI** — trả lời trong 2 giây, chốt lịch luôn, đúng thứ tiếng khách nhắn *(gói Pro $279)* | ✕
 [[ROW]] Khách phải gọi điện mới đặt được lịch | **Form đặt lịch nhúng thẳng vào website** — khách tự đặt trong 40 giây | ✕
 [[ROW]] Khách hẹn rồi không tới, ghế trống giờ cao điểm | **Đặt cọc online** + **nhắc lịch tự động** qua SMS và email | ✕
-[[ROW]] Lễ tân rối, không biết ghế nào trống, thợ nào rảnh | **Sơ đồ ghế** — cả tiệm trên một màn hình, ai đang làm ghế nào, làm được mấy phút | ✕
-[[ROW]] Thợ cãi nhau chuyện chia khách | **Hệ thống tự chia lượt** — công khai, ai cũng thấy con số của mình | ✕
-[[ROW]] Khách nhảy từ ghế pedi qua bàn mani, hai thợ chung một bill | **Bill chạy theo khách** — thợ thứ hai tự thêm dịch vụ, **mỗi thợ vẫn đủ lượt** | ✕
-[[ROW]] Lễ tân quên tính một dịch vụ, tiệm mất tiền | **POS tự điền bill** từ những gì thợ đã làm — không gõ lại, không sót | ✕
-[[ROW]] Cuối tuần ngồi cộng tay lương và tip tới 11 giờ đêm | **Tính lương & tip tự động**, có **mã QR nhận tip riêng** cho từng thợ | ✕
-[[ROW]] Khách quên tiệm, lâu không quay lại | **Điểm thưởng khách quen** + **chương trình khách giới thiệu khách** | ✕
-[[ROW]] Đánh giá Google không ai trả lời | **AI soạn sẵn câu trả lời** cho từng đánh giá — anh chị đọc, bấm duyệt, 3 giây | ✕
-[[ROW]] Khách huỷ, ghế trống không ai lấp | **Danh sách chờ tự động lấp chỗ** | ✕
-[[ROW]] Hết hàng mà không hay | **Quản lý kho** — cảnh báo khi sắp hết | ✕
-[[ROW]] **Không biết tiền quảng cáo đi đâu** | **Báo cáo nguồn khách** — mỗi lịch hẹn, mỗi cái bill đều gắn nguồn từ giây đầu tiên | ✕
-[[ROW]] Chủ đi vắng là mù thông tin | **App cho chủ và cho thợ** — xem tiệm từ điện thoại, thợ xem đúng khách của mình | ✕
-[[ROW]] Có 2–3 tiệm, quản lý rối | **Nhiều chi nhánh**, mỗi tiệm một kho dữ liệu riêng, chuyển qua lại một cú chạm | ✕
+[[ROW]] Lễ tân chưa nắm được ghế nào trống, thợ nào rảnh | **Sơ đồ ghế** — cả tiệm trên một màn hình, ai đang làm ghế nào, làm được mấy phút | ✕
+[[ROW]] Anh em thợ đôi khi tị nhau chuyện chia khách | **Hệ thống tự chia lượt** — công khai, ai cũng thấy con số của mình | ✕
+[[ROW]] Khách chuyển từ ghế pedi qua bàn mani, hai thợ chung một bill | **Bill chạy theo khách** — thợ thứ hai tự thêm dịch vụ, **mỗi thợ vẫn đủ lượt** | ✕
+[[ROW]] Lễ tân lỡ quên tính một dịch vụ | **POS tự điền bill** từ những gì thợ đã làm — không gõ lại, không sót | ✕
+[[ROW]] Cuối tuần ngồi cộng tay lương và tip tới khuya | **Tính lương & tip tự động**, có **mã QR nhận tip riêng** cho từng thợ | ✕
+[[ROW]] Khách lâu không quay lại | **Điểm thưởng khách quen** + **chương trình khách giới thiệu khách** | ✕
+[[ROW]] Đánh giá Google chưa ai trả lời | **AI soạn sẵn câu trả lời** cho từng đánh giá — anh chị đọc, bấm duyệt, 3 giây | ✕
+[[ROW]] Khách huỷ, ghế trống chưa ai lấp | **Danh sách chờ tự động lấp chỗ** | ✕
+[[ROW]] Hết hàng mà chưa hay | **Quản lý kho** — báo trước khi sắp hết | ✕
+[[ROW]] **Chưa rõ tiền quảng cáo mang về được gì** | **Báo cáo nguồn khách** — mỗi lịch hẹn, mỗi cái bill đều gắn nguồn từ giây đầu tiên | ✕
+[[ROW]] Chủ đi vắng, khó nắm tình hình tiệm | **App cho chủ và cho thợ** — xem tiệm từ điện thoại, thợ xem đúng khách của mình | ✕
+[[ROW]] Có 2–3 tiệm, quản lý hơi rối | **Nhiều chi nhánh**, mỗi tiệm một kho dữ liệu riêng, chuyển qua lại một cú chạm | ✕
 
-[[NOTE]] Mười sáu hệ thống ở trên **đã chạy thật, đang có tiệm dùng hằng ngày** — không phải kế hoạch, không phải sắp có.
+[[NOTE]] Mười sáu hệ thống ở trên **đã chạy thật, đang có tiệm dùng mỗi ngày** — không phải kế hoạch, không phải “sắp có” ạ.
 
-Gói **$179** đã có sẵn phần lớn trong số đó — anh chị **không trả thêm một đồng nào** cho phần mềm. Riêng **AI Hotline** và **Bot Messenger AI** chỉ có ở gói **Pro $279**, vì hai thứ này tốn chi phí cuộc gọi và xử lý AI mỗi ngày.
+Gói **$179** đã có sẵn phần lớn trong số đó — anh chị **không phải trả thêm đồng nào** cho phần mềm. Riêng **AI Hotline** và **Bot Messenger AI** thì chỉ có ở gói **Pro $279**, vì hai thứ này tốn chi phí cuộc gọi và xử lý AI mỗi ngày ạ.
 
 [[DIVIDER]]
 
-## Còn nếu anh chị so Lumio với chỗ khác
+## Nếu anh chị muốn so Lumio với chỗ khác
 
-Em không nói xấu ai. Em chỉ bày ba lựa chọn ra cạnh nhau, anh chị tự nhìn.
+Em xin phép không nói gì tới ai cả. Em chỉ bày ba lựa chọn ra cạnh nhau, anh chị nhìn rồi tự cân ạ.
 
 [[TABLE]] | Tự làm | Agency thường | Lumio
 [[ROW]] Có người đăng bài đều đặn | ✕ | ✓ | ✓
 [[ROW]] Có người lo Google Maps | ✕ | ✓ | ✓
 [[ROW]] **Có người bắt máy khi tiệm bận** | ✕ | ✕ | ✓
 [[ROW]] **Khách đặt được lịch online 24/7** | ✕ | ✕ | ✓
-[[ROW]] **Biết chính xác khách đến từ nguồn nào** | ✕ | ✕ | ✓
+[[ROW]] **Biết rõ khách đến từ nguồn nào** | ✕ | ✕ | ✓
 [[ROW]] **Nối được đồng quảng cáo với cái bill** | ✕ | ✕ | ✓
 [[ROW]] Phần mềm quản lý tiệm đi kèm | ✕ | ✕ | ✓
 [[ROW]] Nói tiếng Việt, gọi là gặp người thật | ✕ | — | ✓
@@ -415,24 +413,24 @@ Em không nói xấu ai. Em chỉ bày ba lựa chọn ra cạnh nhau, anh chị
 [[ROW]] Anh chị sở hữu 100% tài khoản | ✓ | — | ✓
 [[ROW]] Không hợp đồng dài hạn | ✓ | ✕ | ✓
 
-[[NOTE]] Xin phép ví von cho dễ hình dung: agency thường **đổ nước vào một chiếc xô thủng** — họ kéo khách tới cửa rồi thôi, khách gọi vào không ai bắt máy thì họ cũng chẳng hay. Em **vá cái xô lại trước đã**, rồi mới đổ nước vào.
+[[NOTE]] Xin phép ví von cho dễ hình dung ạ: nhiều nơi **đổ nước vào một chiếc xô thủng** — kéo khách tới cửa rồi thôi, khách gọi vào chưa ai bắt máy thì cũng không hay. Em **vá cái xô lại trước**, rồi mới đổ nước vào.
 
-## Vì sao chỉ Lumio làm được chuyện đó
+## Vì sao em làm được chuyện đó
 
-Vì **phần mềm vận hành tiệm là do chính em viết ra.** Không đơn vị marketing nào có được thứ này — họ đi thuê phần mềm của người khác, hoặc không có gì cả.
+Vì **phần mềm vận hành tiệm là do chính em viết ra.** Đa số các nơi khác đi thuê phần mềm của người ta, nên phần trong tiệm họ khó với tới được.
 
 - Em **không chỉ kéo khách tới cửa**, em lo luôn đoạn khách bước vào: AI bắt máy, bot Messenger, xếp ghế, chia lượt thợ, tính tiền, tính lương
-- Cuối tháng em **không khoe “lượt hiển thị”** — mấy con số đó không nuôi được ai. Em chỉ thẳng: **khách này đến từ Google Maps, đã chi $95**
-- Em nghĩ từng chi tiết **từ trong tiệm ra ngoài đường** — vì em làm phần mềm cho tiệm nail, không phải cho tiệm cắt tóc bên Mỹ
-- Lỗi gì em **sửa được ngay trong ngày**
+- Cuối tháng em **không khoe “lượt hiển thị”** — mấy con số đó khó giúp gì cho tiệm. Em chỉ rõ: **khách này đến từ Google Maps, đã chi $95**
+- Em nghĩ từng chi tiết **từ trong tiệm ra ngoài đường** — vì em làm phần mềm cho tiệm nail, chứ không phải phần mềm chung chung
+- Có trục trặc gì em **sửa được ngay trong ngày**
 
-## Em xin thưa thật lòng
+## Em xin chia sẻ thật lòng với anh chị
 
-Anh chị chưa muốn đi xa thì **bắt đầu ở gói $45** cũng được — cho trang tiệm sống lại trước đã. Khi nào thấy hiệu quả, mình nâng lên. Em không ép, và cũng không có hợp đồng nào trói anh chị cả.
+Anh chị chưa muốn đi xa thì **bắt đầu ở gói $45** cũng được ạ — cho trang tiệm sống lại trước đã. Khi nào thấy ổn, mình nâng lên sau. Em không giục, và cũng không có hợp đồng nào trói anh chị cả.
 
-Còn nếu anh chị muốn em nói thẳng: **gói $279 là gói đáng tiền nhất**. Vì nó vừa chữa cái nỗi đau đắt nhất — khách tìm mà không thấy tiệm mình — vừa có **trọn bộ mười sáu hệ thống ở trên** để giữ chân người khách đó lại, sau khi họ đã tìm thấy anh chị.
+Còn nếu anh chị hỏi em nên chọn gói nào, thì em xin nghiêng về **gói $279**. Vì gói đó vừa lo được chỗ thiệt thòi lớn nhất — khách tìm mà chưa thấy tiệm mình — vừa có **trọn bộ mười sáu hệ thống ở trên** để giữ chân người khách ấy lại, sau khi họ đã tìm thấy anh chị.
 
-Anh chị cứ gọi cho em, mình xem tiệm mình đang hụt ở đâu rồi hãy quyết.
+Anh chị cứ gọi cho em, mình cùng xem tiệm mình đang hụt ở đâu rồi hãy quyết ạ.
 
 ${SIGN_VN}`,
       ctaLabel: 'Liên hệ với em để được tư vấn →',
@@ -458,33 +456,33 @@ Friday night, 7pm. Someone is standing three blocks from your salon. They pull o
 
 Did your shop come up?
 
-If it didn't, that customer **doesn't know you exist**. They tapped the first salon on the list. And the empty chair in your shop that night — **nobody counted it as a lost customer**, because nobody ever called.
+If it didn't, that customer simply **doesn't know you exist** yet. They tapped the first salon on the list. And the quiet chair in your shop that night — nobody counted it, because nobody ever called.
 
 ## Try answering these five questions
 
 - Type “nail salon near me” on your phone — where does your salon land?
 - When was the **last post** on your Facebook or TikTok?
 - How many **missed calls** did you have last week?
-- Open your website on a phone — how many seconds? Can you even read it?
+- Open your website on a phone — how many seconds? Is it easy to read?
 - Where did last month's new customers come from — Google, Facebook, or walking past?
 
-[[NOTE]] If you couldn't answer **two or more** of those, that is exactly where money is quietly leaking out of your business every month.
+[[NOTE]] If two or more of those are hard to answer, that's perfectly normal — it simply means nobody has been looking after that side of the business yet. All of it is fixable.
 
 ## Let me put together a free audit for you
 
-I'm not emailing to sell you anything. I want to hand you something you can use today:
+I'm not emailing to sell you anything. I'd just like to hand you something you can use today:
 
 - **Where you rank on Google Maps** for the 5 searches your customers actually use
 - **Your Google profile vs. the 3 salons nearest you** — where you win, where you lose
 - **A website health score**: speed and mobile display, with screenshots
-- **An estimate of the customers you may be losing each month** — with the maths shown
+- **An estimate of the customers you may be missing each month** — with the maths shown
 - **The 3 things to fix first.** You can **do them yourself** — you don't need to hire me
 
-[[NOTE]] The audit is **yours to keep**. If you read it and decide you can handle it in-house, go right ahead — I won't chase you.
+[[NOTE]] The audit is **yours to keep**. If you read it and decide you can handle it in-house, please do — I won't chase you.
 
 ## Why free?
 
-The honest answer: when you see that I do careful work and tell you the truth, I hope you will remember me on the day you actually need someone. That is the whole plan. And because I prepare each one by hand, **I only take 5 salons a week**.
+The honest answer: when you see that I do careful work and tell you the truth, I hope you'll remember me on the day you actually need someone. That's the whole plan. And because I prepare each one by hand, **I only take 5 salons a week**.
 
 ## All you have to do
 
@@ -506,25 +504,25 @@ P.S. Only curious where you rank right now? Just send your salon's phone number 
       name: 'Website $150 — VN',
       subject: 'Website riêng cho tiệm — $150, trả một lần, anh chị sở hữu luôn',
       fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Nhanh, chuẩn điện thoại, song ngữ Việt – Anh, gắn sẵn nút đặt lịch. Không phí ẩn.',
+      preheader: 'Nhanh, chuẩn điện thoại, song ngữ Việt – Anh, gắn sẵn nút đặt lịch. Không có phí ẩn.',
       heading: 'Tiệm mình xứng đáng có một website tử tế',
-      body: `Kính chào anh/chị,
+      body: `Kính chào anh chị,
 
 Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas.
 
-Em kể anh chị nghe chuyện xảy ra mỗi ngày: khách lạ tìm thấy tiệm mình trên Google, tò mò bấm vào website — rồi thấy một trang cũ, chậm, mở trên điện thoại chữ bé xíu. Ba giây sau họ thoát ra, bấm vào tiệm kế bên.
+Em kể anh chị nghe một chuyện nhỏ hay gặp: khách lạ tìm thấy tiệm mình trên Google, tò mò bấm vào website — rồi thấy một trang cũ, hơi chậm, mở trên điện thoại chữ bé xíu. Vài giây sau họ thoát ra, bấm sang tiệm bên cạnh.
 
-Cái website đó **không lấy tiền của anh chị**. Nó chỉ lặng lẽ **đẩy khách sang tiệm khác** thôi.
+Cái website đó **không lấy đồng nào của anh chị** cả. Nó chỉ lặng lẽ để khách đi sang chỗ khác thôi ạ.
 
 [[PLAN*]] Website trọn gói | $150 | Trả một lần, không phí ẩn | Nhanh, đẹp, **chuẩn điện thoại** — chín trên mười khách xem bằng điện thoại; Song ngữ Việt – Anh; Gắn sẵn nút Đặt lịch nối thẳng LumioBooking; Chuẩn Google: tên tiệm, địa chỉ, giờ mở cửa, bản đồ, đánh giá; **Website và tên miền đứng tên anh chị**
 
-[[NOTE]] $150 trả một lần. Anh chị chỉ trả thêm phí tên miền và hosting **theo giá gốc** — em không ăn chênh lệch một đồng nào.
+[[NOTE]] $150 trả một lần ạ. Anh chị chỉ trả thêm phí tên miền và hosting **theo giá gốc** — em không lấy chênh lệch đồng nào.
 
 ## Em xin làm thế này
 
-Anh chị nhắn cho em **tên tiệm và link Google Maps**. Trong 48 tiếng em gửi lại **bản phác thảo website của tiệm mình** — anh chị nhìn tận mắt rồi hãy quyết.
+Anh chị nhắn cho em **tên tiệm và link Google Maps**. Trong 48 tiếng em gửi lại **bản phác thảo website của tiệm mình** — anh chị nhìn tận mắt rồi hãy quyết ạ.
 
-Không ưng thì thôi ạ, em không làm phiền anh chị nữa.
+Nếu chưa ưng thì cũng không sao cả, em xin phép không làm phiền anh chị nữa.
 
 ${SIGN_VN}`,
       ctaLabel: 'Xem bản demo website của tiệm →',
@@ -534,7 +532,7 @@ ${SIGN_VN}`,
   },
 ];
 
-/** A salon → its own customers. One template per real reason to email. */
+/** A salon → its own customers. Warm, unhurried, never pushy. */
 export const SALON_PRESETS: Preset[] = [
   {
     label: '🎁 Ưu đãi cho khách quen',
@@ -542,21 +540,21 @@ export const SALON_PRESETS: Preset[] = [
     who: 'Khách đã từng tới tiệm.',
     draft: {
       name: 'Ưu đãi khách quen',
-      subject: 'Cảm ơn {{name}} — tiệm tặng chị 20% cho lần tới',
+      subject: 'Cảm ơn {{name}} — tiệm xin gửi chị 20% cho lần tới',
       fromName: '',
-      preheader: 'Ưu đãi riêng cho khách quen. Đặt lịch online chỉ mất chưa tới một phút.',
-      heading: 'Cảm ơn {{name}} đã tin tưởng tiệm',
+      preheader: 'Một chút quà nhỏ cho khách quen. Đặt lịch online chưa tới một phút ạ.',
+      heading: 'Cảm ơn {{name}} đã thương tiệm',
       body: `Chào {{name}},
 
-Cảm ơn chị đã ghé tiệm. Để cảm ơn khách quen, tiệm xin gửi chị một ưu đãi nhỏ:
+Cảm ơn chị đã ghé tiệm mình. Tiệm xin gửi chị một chút quà nhỏ, gọi là cảm ơn khách quen:
 
 - **Giảm 20%** cho lần hẹn tiếp theo
 - Áp dụng cho tất cả dịch vụ
 - Đặt lịch online, chọn đúng người thợ chị quen
 
-Chỉ cần bấm nút bên dưới, chọn ngày giờ — xong trong chưa tới một phút.
+Chị chỉ cần bấm nút bên dưới, chọn ngày giờ — xong trong chưa tới một phút ạ.
 
-Hẹn gặp lại chị!`,
+Tiệm mong sớm được gặp lại chị!`,
       ctaLabel: 'Đặt lịch ngay →',
       ctaUrl: '',
       footerNote: '',
@@ -565,26 +563,26 @@ Hẹn gặp lại chị!`,
   {
     label: '💔 Khách lâu chưa quay lại',
     goal: 'Gọi khách cũ trở lại. Nhẹ nhàng, không trách móc, có lý do để quay lại.',
-    who: 'Khách 2–6 tháng chưa tới. Đây là nhóm dễ kéo về nhất, rẻ hơn tìm khách mới rất nhiều.',
+    who: 'Khách 2–6 tháng chưa tới. Đây là nhóm dễ kéo về nhất, nhẹ hơn tìm khách mới rất nhiều.',
     draft: {
       name: 'Khách lâu chưa quay lại',
-      subject: '{{name}} ơi, lâu rồi tiệm không gặp chị',
+      subject: '{{name}} ơi, lâu rồi tiệm chưa được gặp chị',
       fromName: '',
-      preheader: 'Tiệm vẫn giữ ghế cho chị. Lần này tiệm tặng chị một ưu đãi nhỏ.',
-      heading: 'Lâu rồi tiệm không gặp {{name}}',
+      preheader: 'Tiệm vẫn giữ ghế cho chị. Lần này tiệm xin gửi chị một ưu đãi nhỏ.',
+      heading: 'Lâu rồi tiệm chưa được gặp {{name}}',
       body: `Chào {{name}},
 
-Tiệm coi lại sổ, thấy đã lâu chị chưa ghé. Tiệm nhớ chị đó ạ.
+Tiệm xem lại sổ, thấy đã lâu chưa được đón chị. Tiệm nhớ chị lắm ạ.
 
-Không biết dạo này chị bận, hay có điều gì lần trước tiệm làm chưa vừa ý chị? Nếu có, chị cứ nói thẳng với tiệm — tiệm nghe và sửa, thật lòng.
+Chắc dạo này chị bận nhiều. Mà nếu có điều gì lần trước tiệm làm chưa vừa ý chị, chị cứ nói với tiệm một tiếng — tiệm xin lắng nghe và sửa, thật lòng ạ.
 
-Còn nếu chỉ vì chị bận quá, thì tiệm xin gửi chị một lý do để ghé lại:
+Còn nếu chỉ vì chị bận quá, thì tiệm xin gửi chị một lý do nho nhỏ để ghé lại:
 
 - **Giảm 25%** cho lần hẹn tới — riêng cho chị
 - Chị chọn đúng người thợ quen như mọi khi
 - Đặt lịch online, không phải gọi điện chờ máy
 
-Ghế của chị vẫn ở đó.`,
+Ghế của chị vẫn luôn ở đó ạ.`,
       ctaLabel: 'Đặt lịch — giữ ưu đãi 25% →',
       ctaUrl: '',
       footerNote: '',
@@ -592,17 +590,17 @@ Ghế của chị vẫn ở đó.`,
   },
   {
     label: '✨ Giới thiệu dịch vụ mới',
-    goal: 'Bán thêm dịch vụ mới cho khách sẵn có — nhóm dễ bán nhất.',
+    goal: 'Giới thiệu dịch vụ mới tới khách sẵn có — nhóm dễ mời nhất.',
     who: 'Toàn bộ khách hàng của tiệm.',
     draft: {
       name: 'Dịch vụ mới',
       subject: 'Tiệm vừa có dịch vụ mới — mời {{name}} thử trước',
       fromName: '',
-      preheader: 'Khách quen được thử trước, và được ưu đãi trong tuần đầu.',
+      preheader: 'Khách quen được thử trước, và có ưu đãi trong tuần đầu ạ.',
       heading: 'Tiệm có dịch vụ mới — mời {{name}} thử trước',
       body: `Chào {{name}},
 
-Tiệm vừa nhận thêm một dịch vụ mới, và tiệm muốn khách quen như chị là người thử trước.
+Tiệm vừa nhận thêm một dịch vụ mới, và tiệm muốn khách quen như chị là người được thử trước.
 
 ## [Tên dịch vụ mới]
 
@@ -610,7 +608,7 @@ Tiệm vừa nhận thêm một dịch vụ mới, và tiệm muốn khách quen
 - [Điểm hay thứ hai]
 - [Thời gian làm khoảng ... phút]
 
-**Tuần đầu tiên**, tiệm dành riêng cho khách quen mức giá giới thiệu. Chị đặt lịch sớm để chọn được giờ đẹp nhé.`,
+**Tuần đầu tiên**, tiệm xin dành riêng cho khách quen mức giá giới thiệu. Chị đặt lịch sớm để chọn được giờ đẹp nhé ạ.`,
       ctaLabel: 'Đặt lịch thử dịch vụ mới →',
       ctaUrl: '',
       footerNote: '',
@@ -624,19 +622,19 @@ Tiệm vừa nhận thêm một dịch vụ mới, và tiệm muốn khách quen
       name: 'Khuyến mãi dịp lễ',
       subject: 'Tuần lễ sắp tới tiệm kín lịch nhanh lắm — {{name}} giữ chỗ trước nhé',
       fromName: '',
-      preheader: 'Giờ đẹp hết rất nhanh trong tuần lễ. Đặt trước cho chắc.',
-      heading: '{{name}} ơi, giữ chỗ trước tuần lễ nhé',
+      preheader: 'Giờ đẹp thường hết rất nhanh trong tuần lễ. Chị đặt trước cho thong thả ạ.',
+      heading: '{{name}} ơi, chị giữ chỗ trước tuần lễ nhé',
       body: `Chào {{name}},
 
-Năm nào cũng vậy — tuần trước lễ là tiệm kín lịch. Khách gọi tới thì chỉ còn những giờ không ai muốn.
+Năm nào cũng vậy ạ — tuần trước lễ là tiệm kín lịch, khách gọi tới thì chỉ còn những giờ không được đẹp.
 
-Nên tiệm nhắn chị trước, để chị chọn giờ đẹp:
+Nên tiệm xin nhắn chị sớm, để chị chọn được giờ ưng ý:
 
-- Đặt lịch trước ngày [__], tiệm giảm **[__]%**
-- Chọn đúng người thợ chị quen
+- Đặt lịch trước ngày [__], tiệm xin giảm **[__]%**
+- Chị chọn đúng người thợ quen
 - Tiệm sẽ nhắn nhắc chị trước ngày hẹn
 
-Chị bấm nút bên dưới, chọn giờ mình thích — chưa tới một phút.`,
+Chị bấm nút bên dưới, chọn giờ mình thích — chưa tới một phút ạ.`,
       ctaLabel: 'Giữ chỗ ngay →',
       ctaUrl: '',
       footerNote: '',
@@ -644,27 +642,27 @@ Chị bấm nút bên dưới, chọn giờ mình thích — chưa tới một p
   },
   {
     label: '🤝 Nhờ khách giới thiệu bạn bè',
-    goal: 'Lấy khách mới bằng khách cũ — nguồn khách rẻ nhất và trung thành nhất.',
+    goal: 'Lấy khách mới bằng khách cũ — nguồn khách nhẹ nhàng và bền nhất.',
     who: 'Khách quen, khách hài lòng, khách đã đánh giá 5 sao.',
     draft: {
       name: 'Giới thiệu bạn bè',
-      subject: '{{name}} giới thiệu bạn — cả hai cùng được ưu đãi',
+      subject: '{{name}} giới thiệu bạn — cả hai cùng có ưu đãi',
       fromName: '',
-      preheader: 'Chị được giảm, bạn của chị cũng được giảm. Cảm ơn chị đã tin tiệm.',
-      heading: 'Cảm ơn {{name}} — tiệm xin gửi chị lời cảm ơn thật',
+      preheader: 'Chị được giảm, bạn của chị cũng được giảm. Cảm ơn chị đã thương tiệm.',
+      heading: 'Cảm ơn {{name}} — tiệm xin gửi chị lời cảm ơn thật lòng',
       body: `Chào {{name}},
 
-Tiệm sống được tới hôm nay là nhờ những khách như chị — tới đều, và nói tốt cho tiệm với bạn bè.
+Tiệm đi được tới hôm nay là nhờ những khách như chị — ghé đều, và thương tiệm nên nói tốt với bạn bè.
 
-Nên tiệm muốn cảm ơn chị cho đàng hoàng:
+Nên tiệm xin cảm ơn chị cho đàng hoàng ạ:
 
 - Chị giới thiệu một người bạn → **bạn của chị được giảm [__]%** cho lần đầu
 - Và **chị cũng được giảm [__]%** cho lần hẹn kế tiếp
 - Không giới hạn số người chị giới thiệu
 
-Chị chỉ cần bảo bạn nhắc tên chị khi tới tiệm là được.
+Chị chỉ cần dặn bạn nhắc tên chị khi tới tiệm là được ạ.
 
-Cảm ơn chị nhiều ạ.`,
+Cảm ơn chị nhiều lắm.`,
       ctaLabel: 'Gửi lịch đặt cho bạn bè →',
       ctaUrl: '',
       footerNote: '',

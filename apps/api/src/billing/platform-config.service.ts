@@ -24,6 +24,12 @@ export class PlatformConfigService {
     brevo_sender_name: 'BREVO_SENDER_NAME',
     // Logo shown at the top of Lumio's own emails (invoices + marketing campaigns).
     brand_logo_url: 'BRAND_LOGO_URL',
+    // Auto-detecting replies: a subdomain whose MX points at Brevo Inbound Parsing.
+    // Replies land there, Brevo posts them to our webhook, and the contact is
+    // marked as 'replied' — which permanently stops the follow-up robot.
+    inbound_domain: 'INBOUND_DOMAIN',
+    inbound_token: 'INBOUND_TOKEN',
+    inbound_forward_to: 'INBOUND_FORWARD_TO',
   };
 
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}

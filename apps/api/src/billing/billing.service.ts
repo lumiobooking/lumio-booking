@@ -39,18 +39,26 @@ export class BillingService {
 
   /** Super Admin: gateway connection status + webhook URLs for the UI. */
   async gatewayStatus() {
-    const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv, brevoKey, brevoSender, brevoName, brandLogo] = await Promise.all([
+    const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv, brevoKey, brevoSender, brevoName, brandLogo, inDomain, inToken, inFwd] = await Promise.all([
       this.platform.get('stripe_secret_key'), this.platform.get('stripe_webhook_secret'),
       this.platform.get('paypal_client_id'), this.platform.get('paypal_secret'),
       this.platform.get('paypal_webhook_id'), this.platform.get('paypal_env'),
       this.platform.get('brevo_api_key'), this.platform.get('brevo_sender_email'), this.platform.get('brevo_sender_name'),
       this.platform.get('brand_logo_url'),
+      this.platform.get('inbound_domain'), this.platform.get('inbound_token'), this.platform.get('inbound_forward_to'),
     ]);
     const apiBase = (this.config.get<string>('RENDER_EXTERNAL_URL') ?? this.config.get<string>('KEEPALIVE_SELF_URL') ?? '').replace(/\/$/, '');
     return {
       stripe: { hasKey: !!stripeKey, hasWebhook: !!stripeHook, live: (stripeKey ?? '').startsWith('sk_live') },
       paypal: { hasClient: !!(ppId && ppSecret), hasWebhook: !!ppHook, env: ppEnv ?? 'live' },
       email: { hasKey: !!(brevoKey && brevoSender), senderEmail: brevoSender ?? '', senderName: brevoName ?? '', logoUrl: brandLogo ?? '' },
+      inbound: {
+        domain: inDomain ?? '',
+        forwardTo: inFwd ?? '',
+        // The URL Brevo posts replies to. The token is in the path — treat it as a secret.
+        webhookUrl: inToken ? `${apiBase || ''}/api/public/email/inbound/${inToken}` : '',
+        ready: !!(inDomain && inToken),
+      },
       webhookStripeUrl: apiBase ? `${apiBase}/api/billing/webhook/stripe` : '/api/billing/webhook/stripe',
       webhookPaypalUrl: apiBase ? `${apiBase}/api/billing/webhook/paypal` : '/api/billing/webhook/paypal',
     };
@@ -203,6 +211,13 @@ export class BillingService {
       brevo_sender_email: dto.brevoSenderEmail,
       brevo_sender_name: dto.brevoSenderName,
       brand_logo_url: dto.brandLogoUrl,
+      inbound_domain: dto.inboundDomain,
+      inbound_forward_to: dto.inboundForwardTo,
+      // Generated once, never shown again in full — it is the only thing guarding
+      // an endpoint that can mark contacts as replied.
+      inbound_token: dto.inboundDomain && !(await this.platform.get('inbound_token'))
+        ? randomUUID().replace(/-/g, '')
+        : undefined,
     });
     return this.gatewayStatus();
   }

@@ -143,17 +143,30 @@ export class EmailCampaignsService {
         replyTo: replyTo || senderEmail,
       };
     }
+    // Exactly the shapes the notification providers expect (same mapping the
+    // booking-confirmation emails use), so a campaign goes out on the salon's own
+    // Brevo / Gmail / SMTP connection — their address, their reputation.
     const n = await this.settings.getNotificationSettings(tenantId);
-    const ready = !!(n.brevo?.apiKey && n.brevo?.senderEmail)
-      || !!(n.smtp?.user && n.smtp?.pass)
-      || !!(n.gmail?.clientId && n.gmail?.refreshToken);
-    if (!ready) {
+    const brand = await this.brandFor(tenantId);
+    const sender = fromName || n.senderName || brand.brandName;
+    const reply = replyTo || n.replyTo || n.senderEmail || undefined;
+
+    const smtp = n.smtp.user && n.smtp.pass
+      ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure,
+          replyTo: reply, from: `${sender} <${n.senderEmail || n.smtp.user}>` }
+      : undefined;
+    const brevo = n.brevo.apiKey && n.senderEmail
+      ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, senderName: n.brevo.senderName || sender, replyTo: reply }
+      : undefined;
+    const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+      ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken,
+          senderEmail: n.gmail.senderEmail, senderName: sender, replyTo: reply }
+      : undefined;
+
+    if (!smtp && !brevo && !gmail) {
       throw new BadRequestException('No email connection for this salon yet. Connect Brevo, Gmail or SMTP in Settings → Notifications first.');
     }
-    return {
-      brevo: n.brevo, smtp: n.smtp, gmail: n.gmail, mailService: n.mailService,
-      senderName: fromName, replyTo: replyTo || undefined,
-    };
+    return { brevo, smtp, gmail, mailService: n.mailService, senderName: sender, replyTo: reply };
   }
 
   // ---- CRUD ----------------------------------------------------------------

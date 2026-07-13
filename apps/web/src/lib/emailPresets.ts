@@ -370,6 +370,32 @@ Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng,
 
 [[DIVIDER]]
 
+## Trong gói của em có sẵn cả một HỆ THỐNG — không chỉ là dịch vụ marketing
+
+Đây là chỗ khác biệt lớn nhất, và em xin bày rõ từng thứ một. Mỗi dòng dưới đây là **một nỗi đau có thật của tiệm**, và **một hệ thống em đã dựng sẵn để chữa nó**.
+
+[[TABLE]] Nỗi đau của tiệm | Hệ thống Lumio đã có sẵn | Agency khác
+[[ROW]] Điện thoại reo lúc tiệm đông, không ai bắt máy | **AI Hotline** — nghe máy 24/7, hỏi dịch vụ, xem giờ trống, **chốt lịch**, nhắn tin xác nhận | ✕
+[[ROW]] Khách nhắn Messenger lúc 11 giờ đêm | **Bot Messenger AI** — trả lời trong 2 giây, chốt lịch luôn, đúng thứ tiếng khách nhắn | ✕
+[[ROW]] Khách phải gọi điện mới đặt được lịch | **Form đặt lịch nhúng thẳng vào website** — khách tự đặt trong 40 giây | ✕
+[[ROW]] Khách hẹn rồi không tới, ghế trống giờ cao điểm | **Đặt cọc online** + **nhắc lịch tự động** qua SMS và email | ✕
+[[ROW]] Lễ tân rối, không biết ghế nào trống, thợ nào rảnh | **Sơ đồ ghế** — cả tiệm trên một màn hình, ai đang làm ghế nào, làm được mấy phút | ✕
+[[ROW]] Thợ cãi nhau chuyện chia khách | **Hệ thống tự chia lượt** — công khai, ai cũng thấy con số của mình | ✕
+[[ROW]] Khách nhảy từ ghế pedi qua bàn mani, hai thợ chung một bill | **Bill chạy theo khách** — thợ thứ hai tự thêm dịch vụ, **mỗi thợ vẫn đủ lượt** | ✕
+[[ROW]] Lễ tân quên tính một dịch vụ, tiệm mất tiền | **POS tự điền bill** từ những gì thợ đã làm — không gõ lại, không sót | ✕
+[[ROW]] Cuối tuần ngồi cộng tay lương và tip tới 11 giờ đêm | **Tính lương & tip tự động**, có **mã QR nhận tip riêng** cho từng thợ | ✕
+[[ROW]] Khách quên tiệm, lâu không quay lại | **Điểm thưởng khách quen** + **chương trình khách giới thiệu khách** | ✕
+[[ROW]] Đánh giá Google không ai trả lời | **AI soạn sẵn câu trả lời** cho từng đánh giá — anh chị đọc, bấm duyệt, 3 giây | ✕
+[[ROW]] Khách huỷ, ghế trống không ai lấp | **Danh sách chờ tự động lấp chỗ** | ✕
+[[ROW]] Hết hàng mà không hay | **Quản lý kho** — cảnh báo khi sắp hết | ✕
+[[ROW]] **Không biết tiền quảng cáo đi đâu** | **Báo cáo nguồn khách** — mỗi lịch hẹn, mỗi cái bill đều gắn nguồn từ giây đầu tiên | ✕
+[[ROW]] Chủ đi vắng là mù thông tin | **App cho chủ và cho thợ** — xem tiệm từ điện thoại, thợ xem đúng khách của mình | ✕
+[[ROW]] Có 2–3 tiệm, quản lý rối | **Nhiều chi nhánh**, mỗi tiệm một kho dữ liệu riêng, chuyển qua lại một cú chạm | ✕
+
+[[NOTE]] Mười sáu hệ thống ở trên **đã chạy thật, đang có tiệm dùng hằng ngày** — không phải kế hoạch, không phải sắp có. Và tất cả **nằm sẵn trong gói $179 và $279**, anh chị **không trả thêm một đồng nào** cho phần mềm.
+
+[[DIVIDER]]
+
 ## Còn nếu anh chị so Lumio với chỗ khác
 
 Em không nói xấu ai. Em chỉ bày ba lựa chọn ra cạnh nhau, anh chị tự nhìn.
@@ -402,7 +428,7 @@ Vì **phần mềm vận hành tiệm là do chính em viết ra.** Không đơn
 
 Anh chị chưa muốn đi xa thì **bắt đầu ở gói $45** cũng được — cho trang tiệm sống lại trước đã. Khi nào thấy hiệu quả, mình nâng lên. Em không ép, và cũng không có hợp đồng nào trói anh chị cả.
 
-Còn nếu anh chị muốn em nói thẳng: **gói $279 là gói đáng tiền nhất**, vì nó chữa đúng cái nỗi đau đắt nhất — khách tìm mà không thấy tiệm mình.
+Còn nếu anh chị muốn em nói thẳng: **gói $279 là gói đáng tiền nhất**. Vì nó vừa chữa cái nỗi đau đắt nhất — khách tìm mà không thấy tiệm mình — vừa có **trọn bộ mười sáu hệ thống ở trên** để giữ chân người khách đó lại, sau khi họ đã tìm thấy anh chị.
 
 Anh chị cứ gọi cho em, mình xem tiệm mình đang hụt ở đâu rồi hãy quyết.
 

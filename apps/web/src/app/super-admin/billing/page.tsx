@@ -42,7 +42,6 @@ export default function GatewaysPage() {
   const [brevoKey, setBrevoKey] = useState('');
   const [brevoSender, setBrevoSender] = useState('');
   const [brevoName, setBrevoName] = useState('');
-  const [brandLogo, setBrandLogo] = useState('');
   const [inDomain, setInDomain] = useState('');
   const [inFwd, setInFwd] = useState('');
   const [testEmail, setTestEmail] = useState('');
@@ -59,7 +58,7 @@ export default function GatewaysPage() {
     try {
       const s = await apiFetch<Status>('/billing/config', { token });
       setSt(s); setPpEnv(s.paypal.env || 'live');
-      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setBrandLogo(s.email?.logoUrl || ''); setInDomain(s.inbound?.domain || ''); setInFwd(s.inbound?.forwardTo || '');
+      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setInDomain(s.inbound?.domain || ''); setInFwd(s.inbound?.forwardTo || '');
     }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
   }, [token]);
@@ -197,21 +196,15 @@ export default function GatewaysPage() {
           <div><label style={lbl}>Sender name</label>
             <input style={inp} value={brevoName} onChange={(e) => setBrevoName(e.target.value)} placeholder="Viet Nguyen · Lumio Agency" /></div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <label style={lbl}>Logo URL (shown at the top of every Lumio email)</label>
-            <input style={inp} value={brandLogo} onChange={(e) => setBrandLogo(e.target.value)} placeholder="https://lumioagency.com/…/logo.png" />
-            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: -6, marginBottom: 8 }}>
-              A square PNG, at least 128×128, on a public https:// link. Without it the email opens with a blank space where the logo should be — which reads as amateur, or as a scam.
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', marginBottom: 4 }}>
+              <span style={{ fontSize: 20, fontWeight: 800, color: '#2563eb', letterSpacing: '-0.4px' }}>Lumio Agency</span>
+              <span style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>
+                Email header. It is a text wordmark, not an image — image logos get blocked or squashed by mail clients, so the header used to look broken. Text renders the same everywhere.
+              </span>
             </div>
-            {brandLogo && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', marginBottom: 8 }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={brandLogo} alt="logo" style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'contain', background: '#fff' }} />
-                <span style={{ fontSize: 12, color: '#94a3b8' }}>Preview — if you see a broken image here, customers will too.</span>
-              </div>
-            )}
           </div>
         </div>
-        <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName, brandLogoUrl: brandLogo })} disabled={busy} style={primaryBtn}>Save email</button>
+        <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName })} disabled={busy} style={primaryBtn}>Save email</button>
 
         <div style={hintBox}>
           <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Send yourself a test to confirm it works before month-end:</div>

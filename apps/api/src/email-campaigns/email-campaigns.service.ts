@@ -106,13 +106,11 @@ export class EmailCampaignsService {
   // ---- content -------------------------------------------------------------
   private async brandFor(tenantId: string | null): Promise<{ brandName: string; brandColor: string; logoUrl: string | null }> {
     if (!tenantId) {
-      // Lumio's own campaigns: a real logo at the top of the email. An email with a
-      // blank space where a logo should be reads as amateur — or as a scam.
-      const [name, logo] = await Promise.all([
-        this.platform.get('brevo_sender_name'),
-        this.platform.get('brand_logo_url'),
-      ]);
-      return { brandName: name || 'Lumio Agency', brandColor: '#2563eb', logoUrl: logo || null };
+      // Lumio's own campaigns: a TEXT wordmark in the header, never an image.
+      // Logo files get squashed by the fixed width, blocked by default in Outlook /
+      // Gmail's "images off" mode, and render as a broken box on retina — the header
+      // looked wrong in the inbox. Text renders identically in every mail client.
+      return { brandName: 'Lumio Agency', brandColor: '#2563eb', logoUrl: null };
     }
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true } });
     const b = this.settings.brandingFrom(t?.branding) as { primaryColor?: string; logoUrl?: string };

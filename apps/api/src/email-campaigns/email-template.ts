@@ -211,7 +211,6 @@ export function renderCampaignHtml(c: CampaignContent): string {
   });
   const img = safeUrl(c.imageUrl);
   const cta = safeUrl(c.ctaUrl);
-  const logo = safeUrl(c.logoUrl);
   const unsub = safeUrl(c.unsubscribeUrl);
 
   return `<!DOCTYPE html>
@@ -225,9 +224,7 @@ ${c.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
       <tr><td style="height:5px;background:${accent}"></td></tr>
       <tr><td style="padding:26px 32px 0;text-align:center">
-        ${logo
-          ? `<img src="${logo}" alt="${brand}" width="64" style="width:64px;height:auto;border-radius:12px;display:inline-block"/>`
-          : `<div style="font-size:20px;font-weight:800;color:${accent};letter-spacing:-0.2px">${brand}</div>`}
+        <div style="font-size:26px;font-weight:800;color:${accent};letter-spacing:-0.6px;line-height:1.2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">${brand}</div>
       </td></tr>
       ${heading ? `<tr><td style="padding:20px 32px 0">
         <h1 style="margin:0;font-size:26px;line-height:1.28;font-weight:800;color:#0f172a;text-align:center">${heading}</h1>

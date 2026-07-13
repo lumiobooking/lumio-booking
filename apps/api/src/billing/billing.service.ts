@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { BillingInterval, SubscriptionStatus, TenantStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';

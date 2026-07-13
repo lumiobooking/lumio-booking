@@ -155,6 +155,24 @@ export class EmailCampaignsService {
     return { html: renderCampaignHtml(c) };
   }
 
+  /**
+   * The return address for ONE letter to ONE person.
+   *
+   * If an inbound domain is configured, every email gets its own reply address —
+   * `reply+<recipientId>@reply.lumioagency.com`. When the prospect hits Reply, the
+   * answer lands on our side: we know exactly WHO replied, mark them, and the
+   * follow-up robot goes quiet for them forever. The message is then forwarded to
+   * the real inbox, so nothing is lost.
+   *
+   * Without the inbound domain, we fall back to the plain reply-to and replies are
+   * invisible to the system — which is why they have to be ticked by hand today.
+   */
+  private async replyAddressFor(recipientId: string, fallback?: string | null): Promise<string | undefined> {
+    const domain = (await this.platform.get('inbound_domain'))?.trim().toLowerCase();
+    if (!domain) return fallback || undefined;
+    return `reply+${recipientId}@${domain}`;
+  }
+
   // ---- how this scope actually sends mail -----------------------------------
   private async mailerFor(tenantId: string | null, fromName: string, replyTo?: string | null) {
     if (!tenantId) {
@@ -343,6 +361,7 @@ export class EmailCampaignsService {
           recipientName: r.name,
           unsubscribeUrl: `${webBase()}/unsubscribe/${r.id}`,
         });
+        const replyTo = await this.replyAddressFor(r.id, c.replyTo);
         const res = await this.notifications.sendEmailRaw({
           tenantId: c.tenantId ?? '',
           channel: NotificationChannel.EMAIL,
@@ -351,6 +370,7 @@ export class EmailCampaignsService {
           body: renderCampaignText(content),
           html: renderCampaignHtml(content),
           ...mailer,
+          ...(replyTo ? { replyTo, brevo: mailer.brevo ? { ...mailer.brevo, replyTo } : undefined } : {}),
         });
         if (res.success) sent++; else failed++;
         await this.prisma.emailCampaignRecipient.update({
@@ -617,6 +637,7 @@ export class EmailCampaignsService {
         imageUrl: step.imageUrl, ctaLabel: step.ctaLabel, ctaUrl: step.ctaUrl, footerNote: step.footerNote,
       }, { recipientName: c.name, unsubscribeUrl: `${webBase()}/unsubscribe/${rec.id}` });
 
+      const replyTo = await this.replyAddressFor(rec.id, a.replyTo);
       const res = await this.notifications.sendEmailRaw({
         tenantId: tenantId ?? '',
         channel: NotificationChannel.EMAIL,
@@ -625,6 +646,7 @@ export class EmailCampaignsService {
         body: renderCampaignText(content),
         html: renderCampaignHtml(content),
         ...mailer,
+        ...(replyTo ? { replyTo, brevo: mailer.brevo ? { ...mailer.brevo, replyTo } : undefined } : {}),
       });
 
       if (res.success) sent++; else failed++;
@@ -683,6 +705,121 @@ export class EmailCampaignsService {
     if (c.status === 'sending') throw new BadRequestException('This campaign is still sending.');
     await this.prisma.emailCampaign.delete({ where: { id: c.id } });
     return { ok: true };
+  }
+
+  // ---- inbound replies ------------------------------------------------------
+  /**
+   * A reply came back. Two ways to know who it was from:
+   *   1. the address it was sent TO — reply+<recipientId>@… — which is exact
+   *   2. failing that, the address it came FROM, matched against the contact list
+   *
+   * Marking them 'replied' is the whole point: an automated "just following up"
+   * landing after a real conversation is the fastest way to lose a prospect.
+   * Then we forward the message to the real inbox, so the reply is never trapped
+   * inside the software.
+   */
+  async handleInboundReply(payload: unknown): Promise<{ matched: number }> {
+    const items = this.inboundItems(payload);
+    let matched = 0;
+
+    for (const it of items) {
+      const from = (it.from || '').toLowerCase().trim();
+      const to = (it.to || '').toLowerCase();
+
+      // 1 — the exact recipient row, from the reply+<id>@ address
+      let contactEmail: string | null = null;
+      let tenantId: string | null | undefined;
+      const m = /reply\+([a-z0-9-]{8,})@/i.exec(to);
+      if (m) {
+        const rec = await this.prisma.emailCampaignRecipient.findUnique({
+          where: { id: m[1] },
+          select: { email: true, tenantId: true },
+        });
+        if (rec) { contactEmail = rec.email; tenantId = rec.tenantId; }
+      }
+      // 2 — fall back to matching the sender against the address book
+      if (!contactEmail && from) {
+        const c = await this.prisma.emailContact.findFirst({
+          where: { email: from },
+          select: { email: true, tenantId: true },
+        });
+        if (c) { contactEmail = c.email; tenantId = c.tenantId; }
+      }
+      if (!contactEmail) continue;
+
+      const scope = this.scopeKey(tenantId ?? null);
+      await this.prisma.emailContact.updateMany({
+        where: { scope, email: contactEmail, replied: false },
+        data: { replied: true, repliedAt: new Date() },
+      }).catch(() => undefined);
+      matched++;
+      this.logger.log(`reply from ${contactEmail} → follow-up stopped`);
+
+      // Forward it on, so the reply lands in a human's inbox too.
+      await this.forwardReply(contactEmail, it).catch(() => undefined);
+    }
+    return { matched };
+  }
+
+  /** Brevo's inbound parsing posts { items: [{ From, To, Subject, RawTextBody, … }] }.
+   *  Different providers shape this differently, so be forgiving about it. */
+  private inboundItems(payload: unknown): { from: string; to: string; subject: string; text: string }[] {
+    const p = payload as Record<string, unknown>;
+    const raw = Array.isArray(p?.items) ? p.items : Array.isArray(payload) ? payload : [payload];
+    const one = (x: unknown) => {
+      const o = (x ?? {}) as Record<string, unknown>;
+      const addr = (v: unknown): string => {
+        if (typeof v === 'string') return v;
+        if (Array.isArray(v)) return v.map(addr).join(', ');
+        const oo = (v ?? {}) as Record<string, unknown>;
+        return String(oo.Address ?? oo.address ?? oo.email ?? '');
+      };
+      return {
+        from: addr(o.From ?? o.from ?? o.sender),
+        to: addr(o.To ?? o.to ?? o.recipient),
+        subject: String(o.Subject ?? o.subject ?? ''),
+        text: String(o.RawTextBody ?? o.text ?? o.TextBody ?? o.RawHtmlBody ?? ''),
+      };
+    };
+    return raw.map(one).filter((x) => x.from || x.to);
+  }
+
+  private async forwardReply(contactEmail: string, it: { from: string; subject: string; text: string }) {
+    const [apiKey, senderEmail, senderName, forwardTo] = await Promise.all([
+      this.platform.get('brevo_api_key'),
+      this.platform.get('brevo_sender_email'),
+      this.platform.get('brevo_sender_name'),
+      this.platform.get('inbound_forward_to'),
+    ]);
+    if (!apiKey || !senderEmail || !forwardTo) return;
+    await this.notifications.sendEmailRaw({
+      tenantId: '',
+      channel: NotificationChannel.EMAIL,
+      recipient: forwardTo,
+      subject: `[Trả lời] ${it.subject || '(no subject)'} — ${contactEmail}`,
+      body: `${contactEmail} vừa trả lời email của bạn.\n\n${it.text}`,
+      html: `<p style="font-family:Arial;font-size:14px;color:#334155">
+               <b>${contactEmail}</b> vừa trả lời email của bạn — hệ thống đã đánh dấu “đã phản hồi” và <b>ngừng gửi nhắc tự động</b> cho người này.
+             </p>
+             <pre style="font-family:ui-monospace,monospace;font-size:13px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;white-space:pre-wrap">${
+               String(it.text).replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch] as string))
+             }</pre>`,
+      brevo: { apiKey, senderEmail, senderName: senderName || 'Lumio', replyTo: it.from || undefined },
+      senderName: senderName || 'Lumio',
+      replyTo: it.from || undefined,
+    });
+  }
+
+  /** Bulk "these people answered me" — for replies that arrived before the inbound
+   *  domain was set up, or that came in by phone. */
+  async markRepliedBulk(tenantId: string | null, raw: string) {
+    const { people } = this.parseRecipients(raw || '');
+    if (!people.length) throw new BadRequestException('No valid email address in that list.');
+    const r = await this.prisma.emailContact.updateMany({
+      where: { scope: this.scopeKey(tenantId), email: { in: people.map((p) => p.email) } },
+      data: { replied: true, repliedAt: new Date() },
+    });
+    return { marked: r.count };
   }
 
   // ---- public unsubscribe ---------------------------------------------------

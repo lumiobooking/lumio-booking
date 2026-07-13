@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { EmailCampaignsService, CampaignInput } from './email-campaigns.service';
@@ -7,6 +7,8 @@ import { Caps } from '../auth/decorators/caps.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { PlatformConfigService } from '../billing/platform-config.service';
+import { SkipRateLimit } from '../common/security/rate-limit.guard';
 import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
 import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
@@ -89,6 +91,12 @@ export class EmailCampaignsController {
     return this.svc.importContacts(this.tid(user), dto.list);
   }
 
+  /** "These people got back to me" — paste the addresses, stop chasing them. */
+  @Post('contacts/replied')
+  markReplied(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportDto) {
+    return this.svc.markRepliedBulk(this.tid(user), dto.list);
+  }
+
   @Patch('contacts/:id')
   updateContact(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ContactDto) {
     return this.svc.updateContact(this.tid(user), id, dto);
@@ -162,6 +170,11 @@ export class AdminEmailCampaignsController {
     return this.svc.importContacts(null, dto.list);
   }
 
+  @Post('contacts/replied')
+  markReplied(@Body() dto: ImportDto) {
+    return this.svc.markRepliedBulk(null, dto.list);
+  }
+
   @Patch('contacts/:id')
   updateContact(@Param('id') id: string, @Body() dto: ContactDto) {
     return this.svc.updateContact(null, id, dto);
@@ -222,5 +235,31 @@ export class UnsubscribeController {
   @Post(':id')
   unsubscribe(@Param('id') id: string) {
     return this.svc.unsubscribe(id);
+  }
+}
+
+/**
+ * Inbound replies (Brevo Inbound Parsing posts here).
+ *
+ * The secret token sits in the URL — nothing else guards this endpoint, so a wrong
+ * token must look exactly like a missing route. Marking a contact "replied" only
+ * ever STOPS mail, never sends any, so the blast radius of a leaked token is small
+ * by design.
+ */
+@Controller('public/email/inbound')
+export class InboundReplyController {
+  constructor(
+    private readonly svc: EmailCampaignsService,
+    private readonly platform: PlatformConfigService,
+  ) {}
+
+  @Public()
+  @SkipRateLimit()
+  @Post(':token')
+  @HttpCode(200)
+  async inbound(@Param('token') token: string, @Body() body: unknown) {
+    const expected = await this.platform.get('inbound_token');
+    if (!expected || token !== expected) throw new NotFoundException();
+    return this.svc.handleInboundReply(body);
   }
 }

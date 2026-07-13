@@ -56,7 +56,137 @@ Lumio Agency`;
 /** Lumio → salon owners. Platform (Super Admin) campaigns. */
 export const LUMIO_PRESETS: Preset[] = [
   {
-    label: '💎 Chào dịch vụ tổng thể (VN)',
+    // FORM 2 — the lead magnet. Not one price anywhere on purpose: the only job of
+    // this email is to get a reply. Price kills replies on a cold email.
+    label: '🎯 FORM 2 · Audit miễn phí — kéo khách liên hệ (VN)',
+    draft: {
+      name: 'Audit miễn phí — lead magnet (VN)',
+      subject: 'Khách gõ “nail salon near me” — tiệm mình có hiện ra không ạ?',
+      fromName: 'Việt Nguyễn · Lumio Agency',
+      preheader: 'Em xem giúp anh chị miễn phí. Không bán gì cả — chỉ cần nhắn em tên tiệm.',
+      heading: 'Có thể tiệm mình đang mất khách mà không hay biết',
+      body: `Kính chào anh/chị,
+
+Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Em xin phép làm phiền anh chị đúng hai phút.
+
+Tối thứ Sáu, 7 giờ. Một người khách đứng cách tiệm mình ba con đường, mở điện thoại gõ **“nail salon near me”**.
+
+Tiệm mình có hiện ra không?
+
+Nếu không — người khách đó **không biết là mình tồn tại**. Họ bấm vào tiệm hiện lên đầu tiên. Và cái ghế trống trong tiệm mình tối đó, **không ai tính là mất khách cả** — vì có ai gọi tới đâu mà biết.
+
+## Anh chị thử tự trả lời 5 câu này
+
+- Gõ “nail salon near me” trên điện thoại — tiệm mình đứng ở đâu?
+- Bài đăng gần nhất trên Facebook / TikTok của tiệm là **từ bao giờ**?
+- Tuần rồi tiệm mình có **bao nhiêu cuộc gọi nhỡ**?
+- Mở website tiệm trên điện thoại — mất mấy giây? Chữ có đọc được không?
+- Tháng rồi khách mới đến từ đâu — Google, Facebook, hay đi ngang qua?
+
+[[NOTE]] Nếu có **từ 2 câu trở lên anh chị không trả lời được** — thì đó chính là chỗ tiền đang lặng lẽ chảy ra khỏi tiệm mỗi tháng.
+
+## Em xin làm giúp anh chị một bản đánh giá — miễn phí
+
+Em không gửi email này để bán gì cả. Em muốn tặng anh chị một thứ dùng được ngay:
+
+- **Vị trí tiệm mình trên Google Maps** với 5 từ khoá mà khách hay tìm nhất
+- **So sánh hồ sơ Google** của tiệm với 3 tiệm gần nhất — hơn thua ở đâu, thấy rõ
+- **Chấm điểm website**: tốc độ, hiển thị trên điện thoại — kèm ảnh chụp màn hình
+- **Ước tính số khách có thể đang mất mỗi tháng** — em nói rõ cách tính, không bịa
+- **3 việc nên làm ngay.** Anh chị **tự làm cũng được** — không cần thuê em
+
+[[NOTE]] Bản đánh giá này là **của anh chị**. Nếu xem xong anh chị thấy tự xử lý được, cứ tự làm — em không gọi làm phiền, không nài nỉ.
+
+## Vì sao em làm không công?
+
+Nói thẳng: vì em tin rằng khi anh chị thấy em làm việc tử tế và nói thật, có ngày cần tới thì anh chị sẽ nhớ tới em. Chỉ vậy thôi.
+
+Và vì em làm bằng tay chứ không phải máy chạy tự động, nên **mỗi tuần em chỉ nhận 5 tiệm**.
+
+## Anh chị chỉ cần làm một việc
+
+Trả lời email này đúng **hai dòng**:
+
+> **Tên tiệm** · **Link Google Maps** (hoặc số điện thoại tiệm)
+
+Trong vòng **48 tiếng**, em gửi lại bản đánh giá. Không họp hành, không ai gọi điện làm phiền anh chị.
+
+Hoặc nếu tiện hơn, anh chị nhắn thẳng cho em qua điện thoại hay Facebook bên dưới — em trả lời nhanh, bằng tiếng Việt.
+
+${SIGN_VN}
+
+P.S. Nếu anh chị chỉ tò mò muốn biết **tiệm mình đang đứng thứ mấy trên Google Maps**, nhắn em số điện thoại tiệm thôi cũng được. Em tra rồi nhắn lại cho anh chị **ngay trong hôm nay** — không cần cam kết gì hết.`,
+      ctaLabel: 'Nhận bản đánh giá miễn phí →',
+      ctaUrl: AUDIT,
+      footerNote: FOOTER,
+    },
+  },
+  {
+    label: '🎯 FORM 2 · Free audit — lead magnet (EN)',
+    draft: {
+      name: 'Free audit — lead magnet (EN)',
+      subject: 'Someone just searched “nail salon near me” — did you show up?',
+      fromName: 'Viet Nguyen · Lumio Agency',
+      preheader: 'I’ll check it for you, free. Nothing to buy — just send me your salon name.',
+      heading: 'You may be losing customers without ever knowing it',
+      body: `Dear {{name}},
+
+My name is **Viet Nguyen**, from **Lumio Agency** in Austin, Texas. Two minutes of your time, that's all I'm asking for.
+
+Friday night, 7pm. Someone is standing three blocks from your salon. They pull out their phone and type **“nail salon near me.”**
+
+Did your shop come up?
+
+If it didn't, that customer **doesn't know you exist**. They tapped the first salon on the list. And the empty chair in your shop that night? **Nobody counted it as a lost customer** — because nobody ever called.
+
+## Try answering these five questions
+
+- Type “nail salon near me” on your phone — where does your salon land?
+- When was the **last post** on your Facebook or TikTok?
+- How many **missed calls** did you have last week?
+- Open your website on a phone — how many seconds? Can you even read it?
+- Where did last month's new customers come from — Google, Facebook, or walking past?
+
+[[NOTE]] If you couldn't answer **two or more** of those — that is exactly where money is quietly leaking out of your business every month.
+
+## Let me put together a free audit for you
+
+I'm not emailing to sell you anything. I want to hand you something you can use today:
+
+- **Where you rank on Google Maps** for the 5 searches your customers actually use
+- **Your Google profile vs. the 3 salons nearest you** — exactly where you win and lose
+- **A website health score**: speed and mobile display, with screenshots
+- **An estimate of how many customers you may be losing each month** — with the maths shown, not invented
+- **The 3 things to fix first.** You can **do them yourself** — you don't need to hire me
+
+[[NOTE]] The audit is **yours to keep**. If you read it and decide you can handle it in-house, go right ahead — I won't chase you or call you.
+
+## Why would I do this for free?
+
+Straight answer: because when you see that I do honest work and tell you the truth, you'll remember me the day you actually need someone. That's the whole plan.
+
+And because I do these by hand — not with software — **I only take 5 salons a week**.
+
+## All you have to do is this
+
+Reply to this email with **two lines**:
+
+> **Salon name** · **Google Maps link** (or your salon's phone number)
+
+Within **48 hours** I'll send the audit back. No meeting, no sales call, nobody hounding you.
+
+Or just call or message me directly using the details below. I answer fast, in English or Vietnamese.
+
+${SIGN_EN}
+
+P.S. If you're only curious about **where you currently rank on Google Maps**, just send me your salon's phone number. I'll look it up and text you back **today** — no commitment of any kind.`,
+      ctaLabel: 'Get my free audit →',
+      ctaUrl: AUDIT,
+      footerNote: FOOTER,
+    },
+  },
+  {
+    label: '📋 FORM 1 · Báo giá đầy đủ (VN)',
     draft: {
       name: 'Chào dịch vụ tổng thể — VN',
       subject: 'Tiệm anh chị đang mất khách ở chỗ nào? Em chỉ giúp anh chị xem — miễn phí',
@@ -119,7 +249,7 @@ ${SIGN_VN}`,
     },
   },
   {
-    label: '💎 Full-service pitch (EN)',
+    label: '📋 FORM 1 · Full pricing (EN)',
     draft: {
       name: 'Full-service pitch — EN',
       subject: 'Where is your salon losing customers? Let me show you — free',
@@ -182,7 +312,7 @@ ${SIGN_EN}`,
     },
   },
   {
-    label: '🖥️ Website $150 (VN)',
+    label: '🖥️ Phụ · Website $150 (VN)',
     draft: {
       name: 'Website $150 — VN',
       subject: 'Website riêng cho tiệm — $150, trả một lần, anh chị sở hữu luôn',

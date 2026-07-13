@@ -349,6 +349,67 @@ export class EmailCampaignsService {
     }).catch(() => undefined);
   }
 
+  /**
+   * The address book: one row per PERSON, not per send.
+   *
+   * "Did this shop already get an email from me, how many times, which template,
+   * and did it land?" — that question is the whole job of a cold-outreach tool,
+   * and it cannot be answered by a list of campaigns. So we fold every recipient
+   * row down to the address and count.
+   */
+  async contacts(tenantId: string | null) {
+    const rows = await this.prisma.emailCampaignRecipient.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 20000,
+      select: {
+        email: true, status: true, error: true, sentAt: true, createdAt: true,
+        campaign: { select: { id: true, name: true, subject: true } },
+      },
+    });
+
+    const suppressed = new Set(
+      (await this.prisma.emailSuppression.findMany({
+        where: { scope: this.scopeKey(tenantId) },
+        select: { email: true },
+      })).map((r: { email: string }) => r.email),
+    );
+
+    type Row = {
+      email: string;
+      sends: number; sent: number; failed: number; skipped: number;
+      lastStatus: string; lastAt: string | null; lastError: string | null;
+      lastCampaign: string; unsubscribed: boolean;
+    };
+    const byEmail = new Map<string, Row>();
+
+    for (const r of rows as {
+      email: string; status: string; error: string | null; sentAt: Date | null; createdAt: Date;
+      campaign: { id: string; name: string; subject: string } | null;
+    }[]) {
+      let row = byEmail.get(r.email);
+      if (!row) {
+        // rows come newest-first, so the FIRST one we see is the latest send
+        row = {
+          email: r.email,
+          sends: 0, sent: 0, failed: 0, skipped: 0,
+          lastStatus: r.status,
+          lastAt: (r.sentAt ?? r.createdAt)?.toISOString() ?? null,
+          lastError: r.error,
+          lastCampaign: r.campaign?.name || r.campaign?.subject || '—',
+          unsubscribed: suppressed.has(r.email),
+        };
+        byEmail.set(r.email, row);
+      }
+      row.sends++;
+      if (r.status === 'sent') row.sent++;
+      else if (r.status === 'failed') row.failed++;
+      else if (r.status === 'skipped') row.skipped++;
+    }
+
+    return [...byEmail.values()].sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
+  }
+
   async remove(tenantId: string | null, id: string) {
     const c = await this.prisma.emailCampaign.findFirst({ where: { id, tenantId }, select: { id: true, status: true } });
     if (!c) throw new NotFoundException('Campaign not found');

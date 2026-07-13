@@ -20,6 +20,13 @@ export interface Campaign {
   sentAt: string | null; createdAt: string;
 }
 interface Recipient { id: string; email: string; status: string; error: string | null; sentAt: string | null }
+interface Contact {
+  email: string;
+  sends: number; sent: number; failed: number; skipped: number;
+  lastStatus: string; lastAt: string | null; lastError: string | null;
+  lastCampaign: string; unsubscribed: boolean;
+}
+type ContactFilter = 'all' | 'ok' | 'failed' | 'unsub';
 interface CampaignDetail extends Campaign { html: string | null; recipients: Recipient[] }
 
 interface Draft {
@@ -67,11 +74,19 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
   const [chosen, setChosen] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
+  // The address book
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [cFilter, setCFilter] = useState<ContactFilter>('all');
+  const [cQuery, setCQuery] = useState('');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const composeRef = useRef<HTMLDivElement | null>(null);
+
   const t = (v: string, e: string) => (vi ? v : e);
 
   const loadList = useCallback(async () => {
     if (!token) return;
     try { setList(await apiFetch<Campaign[]>(base, { token })); } catch { /* ignore */ }
+    try { setContacts(await apiFetch<Contact[]>(`${base}/contacts`, { token })); } catch { /* ignore */ }
   }, [token, base]);
   useEffect(() => { loadList(); }, [loadList]);
 
@@ -136,6 +151,56 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
     finally { setBusy(false); }
   }
 
+  // ---- address book: filters, selection, and "send to these again" ---------
+  const stats = useMemo(() => ({
+    all: contacts.length,
+    ok: contacts.filter((c) => c.lastStatus === 'sent' && !c.unsubscribed).length,
+    failed: contacts.filter((c) => c.lastStatus === 'failed' && !c.unsubscribed).length,
+    unsub: contacts.filter((c) => c.unsubscribed).length,
+  }), [contacts]);
+
+  const visibleContacts = useMemo(() => {
+    const q = cQuery.trim().toLowerCase();
+    return contacts.filter((c) => {
+      if (q && !c.email.includes(q)) return false;
+      if (cFilter === 'ok') return c.lastStatus === 'sent' && !c.unsubscribed;
+      if (cFilter === 'failed') return c.lastStatus === 'failed' && !c.unsubscribed;
+      if (cFilter === 'unsub') return c.unsubscribed;
+      return true;
+    });
+  }, [contacts, cFilter, cQuery]);
+
+  // An unsubscribed address can never be picked — not by "select all", not by hand.
+  const pickable = visibleContacts.filter((c) => !c.unsubscribed);
+  const allPicked = pickable.length > 0 && pickable.every((c) => picked.has(c.email));
+  const toggleAll = () => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (allPicked) pickable.forEach((c) => next.delete(c.email));
+      else pickable.forEach((c) => next.add(c.email));
+      return next;
+    });
+  };
+  const togglePick = (email: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email); else next.add(email);
+      return next;
+    });
+  };
+
+  /** Drop the picked addresses into the composer. The template is deliberately NOT
+   *  reused: someone who ignored Form 1 should get Form 2, not Form 1 again. */
+  const reuse = () => {
+    setD({ ...d, recipients: [...picked].join(', ') });
+    setPicked(new Set());
+    setPickOpen(true);
+    setChosen(null);
+    setOk(t('Đã đưa danh sách vào ô soạn thảo. Chọn MỘT MẪU KHÁC (đừng gửi lại đúng mẫu cũ), hoặc tự viết, rồi gửi.',
+            'Addresses loaded into the composer. Pick a DIFFERENT template (don’t resend the same one), or write your own, then send.'));
+    composeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const field = (label: string, hint: string | null, node: React.ReactNode) => (
     <div style={{ marginBottom: 14 }}>
       <label style={ui.label}>{label}</label>
@@ -151,7 +216,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* ---------------- compose ---------------- */}
-        <div style={{ ...ui.card }}>
+        <div ref={composeRef} style={{ ...ui.card }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 14 }}>
             {t('Soạn email', 'Compose')}
           </div>
@@ -315,6 +380,122 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ---------------- address book ---------------- */}
+      <div style={{ marginTop: 22 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>
+            {t('Danh bạ đã gửi', 'Everyone you have emailed')}
+          </span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            {t(`${contacts.length} địa chỉ`, `${contacts.length} addresses`)}
+          </span>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px' }}>
+          {t('Gộp theo từng người: đã gửi mấy lần, mẫu nào, lần cuối có tới nơi không. Tick để gửi lại — chọn mẫu khác hoặc tự viết.',
+             'One row per person: how many times, which template, and whether the last one landed. Tick to send again — with a different template, or your own words.')}
+        </p>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          {([
+            ['all', t(`Tất cả (${stats.all})`, `All (${stats.all})`), '#818cf8'],
+            ['ok', t(`✅ Đã tới (${stats.ok})`, `✅ Delivered (${stats.ok})`), '#22c55e'],
+            ['failed', t(`❌ Lỗi (${stats.failed})`, `❌ Failed (${stats.failed})`), '#ef4444'],
+            ['unsub', t(`🚫 Đã huỷ nhận (${stats.unsub})`, `🚫 Unsubscribed (${stats.unsub})`), '#94a3b8'],
+          ] as [ContactFilter, string, string][]).map(([k, label, col]) => {
+            const on = cFilter === k;
+            return (
+              <button key={k} onClick={() => { setCFilter(k); setPicked(new Set()); }}
+                style={{ padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
+                  border: `1px solid ${on ? col : '#334155'}`, background: on ? col : 'transparent', color: on ? '#0b1120' : '#cbd5e1' }}>
+                {label}
+              </button>
+            );
+          })}
+          <input value={cQuery} onChange={(e) => setCQuery(e.target.value)}
+            placeholder={t('Tìm email…', 'Search an address…')}
+            style={{ ...ui.input, marginBottom: 0, flex: 1, minWidth: 180 }} />
+        </div>
+
+        {visibleContacts.length === 0 ? (
+          <div style={{ ...ui.card, color: '#64748b', fontSize: 13.5 }}>
+            {t('Chưa có ai trong nhóm này.', 'Nobody in this group yet.')}
+          </div>
+        ) : (
+          <div style={{ ...ui.card, padding: 0, overflow: 'hidden' }}>
+            {/* header row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
+              <input type="checkbox" checked={allPicked} onChange={toggleAll}
+                style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {t('Địa chỉ', 'Address')}
+              </span>
+              <span style={{ width: 70, textAlign: 'center', fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                {t('Số lần', 'Sends')}
+              </span>
+              <span style={{ width: 190, fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                {t('Lần cuối', 'Last send')}
+              </span>
+            </div>
+
+            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              {visibleContacts.map((c) => {
+                const on = picked.has(c.email);
+                const dot = c.unsubscribed ? '#94a3b8' : c.lastStatus === 'sent' ? '#22c55e' : c.lastStatus === 'failed' ? '#ef4444' : '#f59e0b';
+                return (
+                  <label key={c.email}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: '1px solid #1e293b',
+                      cursor: c.unsubscribed ? 'not-allowed' : 'pointer', background: on ? 'rgba(99,102,241,0.10)' : 'transparent',
+                      opacity: c.unsubscribed ? 0.55 : 1 }}>
+                    <input type="checkbox" checked={on} disabled={c.unsubscribed}
+                      onChange={() => togglePick(c.email)}
+                      style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13.5, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.email}
+                        {c.unsubscribed && <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>({t('đã huỷ nhận', 'unsubscribed')})</span>}
+                      </span>
+                      {c.lastError && !c.unsubscribed && (
+                        <span title={c.lastError} style={{ display: 'block', fontSize: 11.5, color: '#f87171', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {c.lastError}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ width: 70, textAlign: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, color: c.sends > 1 ? '#fbbf24' : '#94a3b8' }}>{c.sends}×</span>
+                    </span>
+                    <span style={{ width: 190, flexShrink: 0, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 12, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.lastCampaign}
+                      </span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                        {c.lastAt ? new Date(c.lastAt).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* the whole point: take these people back to the composer */}
+        {picked.size > 0 && (
+          <div style={{ position: 'sticky', bottom: 12, zIndex: 20, marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            padding: '12px 16px', borderRadius: 12, background: '#1e293b', border: '1px solid #6366f1', boxShadow: '0 10px 30px rgba(2,6,23,0.5)' }}>
+            <span style={{ flex: 1, minWidth: 160, fontSize: 14, color: '#e2e8f0' }}>
+              {t(`Đã chọn ${picked.size} người`, `${picked.size} selected`)}
+            </span>
+            <button onClick={() => setPicked(new Set())}
+              style={{ ...ui.primaryBtn, background: '#334155' }}>{t('Bỏ chọn', 'Clear')}</button>
+            <button onClick={reuse}
+              style={{ ...ui.primaryBtn, background: '#16a34a' }}>
+              {t(`Gửi lại cho ${picked.size} người →`, `Email these ${picked.size} again →`)}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ---------------- outbox ---------------- */}

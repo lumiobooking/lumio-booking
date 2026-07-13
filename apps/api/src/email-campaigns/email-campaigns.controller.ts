@@ -59,6 +59,12 @@ export class EmailCampaignsController {
     return this.svc.list(this.tid(user));
   }
 
+  /** Everyone we have ever emailed, folded down to one row per address. */
+  @Get('contacts')
+  contacts(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.contacts(this.tid(user));
+  }
+
   @Get(':id')
   getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.getOne(this.tid(user), id);
@@ -94,6 +100,11 @@ export class AdminEmailCampaignsController {
   @Get()
   list() {
     return this.svc.list(null);
+  }
+
+  @Get('contacts')
+  contacts() {
+    return this.svc.contacts(null);
   }
 
   @Get(':id')

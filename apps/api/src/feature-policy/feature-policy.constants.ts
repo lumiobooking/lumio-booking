@@ -19,6 +19,9 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: 'reviews', label: 'Reviews & rewards (anti-fraud)', hrefs: ['/salon/reviews', '/salon/reviews-replies'], default: 'salon' },
   { key: 'marketing', label: 'Marketing & campaigns', hrefs: ['/salon/marketing'], default: 'salon' },
   { key: 'integrations', label: 'Integrations & API keys', hrefs: ['/salon/integrations'], default: 'salon' },
+  // Off unless Lumio switches it on for a salon (sold as an add-on): bulk email
+  // marketing is easy to abuse and puts our sending reputation on the line.
+  { key: 'emailMarketing', label: 'Email marketing (bulk campaigns)', hrefs: ['/salon/email'], default: 'platform' },
 ];
 
 export const FEATURE_KEYS = FEATURE_DEFS.map((f) => f.key);

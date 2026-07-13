@@ -252,6 +252,7 @@ model Tenant {
   tipLogs              TipLog[]
   voiceLine            VoiceLine?
   voiceCalls           VoiceCall[]
+  emailCampaigns       EmailCampaign[]
   invoices             Invoice[]
 
   tables             RestaurantTable[]
@@ -1802,4 +1803,87 @@ model PushSubscription {
 
   @@index([tenantId])
   @@map("push_subscriptions")
+}
+
+// ===========================================================================
+// Email marketing — bulk "hello, here's what we do" campaigns.
+//
+// Two scopes share one engine:
+//   tenantId = null  → a PLATFORM campaign (Lumio pitching salons)
+//   tenantId = <id>  → a SALON campaign (the salon emailing its own customers)
+// Off by default for salons; Super Admin turns it on per tenant (featurePolicy).
+//
+// Every send is written to email_campaign_recipients — that IS the outbox: who
+// it went to, when, and whether it landed or bounced.
+// ===========================================================================
+model EmailCampaign {
+  id       String  @id @default(uuid())
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name    String // internal label ("July promo")
+  subject String
+  // Sender identity
+  fromName String
+  replyTo  String?
+
+  // Content blocks the template is built from (kept structured, not raw HTML, so
+  // a salon can never break the layout — and we can restyle every past campaign).
+  preheader  String? // the grey line shown next to the subject in an inbox
+  heading    String?
+  body       String? // paragraphs, blank-line separated
+  imageUrl   String?
+  ctaLabel   String?
+  ctaUrl     String?
+  footerNote String?
+  html       String? // rendered snapshot, exactly what was sent
+
+  status  String    @default("draft") // draft | sending | sent | failed
+  total   Int       @default(0)
+  sent    Int       @default(0)
+  failed  Int       @default(0)
+  skipped Int       @default(0) // unsubscribed / duplicate
+  sentAt  DateTime?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  recipients EmailCampaignRecipient[]
+
+  @@index([tenantId, createdAt])
+  @@map("email_campaigns")
+}
+
+model EmailCampaignRecipient {
+  id         String        @id @default(uuid())
+  campaignId String
+  campaign   EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tenantId   String? // mirrors the campaign's scope, so history stays tenant-filterable
+
+  email  String
+  name   String?
+  status String  @default("pending") // pending | sent | failed | skipped
+  error  String?
+  sentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([tenantId, email])
+  @@map("email_campaign_recipients")
+}
+
+// One row per person who clicked "unsubscribe". scope = tenantId, or 'platform'
+// for Lumio's own campaigns. Checked before every send — no exceptions.
+model EmailSuppression {
+  id     String @id @default(uuid())
+  scope  String
+  email  String
+  reason String @default("unsubscribed")
+
+  createdAt DateTime @default(now())
+
+  @@unique([scope, email])
+  @@map("email_suppressions")
 }

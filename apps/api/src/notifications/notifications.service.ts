@@ -73,6 +73,55 @@ export class NotificationsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Send ONE email through exactly the same provider chain as send(), but WITHOUT
+   * writing a notifications row. Bulk email marketing keeps its own outbox
+   * (email_campaign_recipients) — otherwise a 500-recipient blast would bury the
+   * salon's booking confirmations in their notification history.
+   */
+  async sendEmailRaw(input: SendNotificationInput): Promise<{ success: boolean; error?: string; provider: string }> {
+    const provider = this.emailProviderFor(input);
+    try {
+      const r = await provider.sendEmail({
+        to: input.recipient,
+        subject: input.subject ?? '',
+        body: input.body,
+        html: input.html,
+      });
+      return { success: !!r.success, error: r.error ?? undefined, provider: provider.name };
+    } catch (err) {
+      return { success: false, error: String(err), provider: provider.name };
+    }
+  }
+
+  /** Email provider preference (per salon), shared by send() and sendEmailRaw(). */
+  private emailProviderFor(input: SendNotificationInput): EmailProvider {
+    const svc = input.mailService;
+    const brevoReady = !!(input.brevo?.apiKey && input.brevo?.senderEmail);
+    const smtpReady = !!(input.smtp?.user && input.smtp?.pass);
+    const gmailReady = !!(input.gmail?.clientId && input.gmail?.clientSecret && input.gmail?.refreshToken && input.gmail?.senderEmail);
+    if (svc === 'brevo' && brevoReady) return new BrevoEmailProvider(input.brevo!);
+    if (svc === 'smtp' && smtpReady) return new SmtpEmailProvider(input.smtp!);
+    if (svc === 'gmail' && gmailReady) return new GmailOAuthProvider(input.gmail!);
+    if (svc === 'off') return this.email;
+    if (gmailReady) return new GmailOAuthProvider(input.gmail!);
+    if (brevoReady) return new BrevoEmailProvider(input.brevo!);
+    if (smtpReady) return new SmtpEmailProvider(input.smtp!);
+    const gmail = envGmailProvider(
+      input.senderName || parseSenderName(input.smtp?.from),
+      input.replyTo || input.smtp?.replyTo || input.brevo?.replyTo,
+    );
+    if (gmail) return gmail;
+    const envKey = process.env.BREVO_API_KEY;
+    const envSender = process.env.BREVO_SENDER_EMAIL;
+    if (envKey && envSender) {
+      const name = input.senderName || parseSenderName(input.smtp?.from) || process.env.BREVO_SENDER_NAME || 'Lumio Booking';
+      const replyTo = input.replyTo || input.smtp?.replyTo || input.brevo?.replyTo;
+      return new BrevoEmailProvider({ apiKey: envKey, senderEmail: envSender, senderName: name, replyTo });
+    }
+    return this.email;
+  }
+
   async send(input: SendNotificationInput) {
     let status: NotificationStatus = NotificationStatus.PENDING;
     let error: string | null = null;

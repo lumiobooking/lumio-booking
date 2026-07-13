@@ -19,7 +19,10 @@ class CampaignDto implements CampaignInput {
   @IsOptional() @IsString() @MaxLength(160) replyTo?: string;
   @IsOptional() @IsString() @MaxLength(200) preheader?: string;
   @IsOptional() @IsString() @MaxLength(200) heading?: string;
-  @IsOptional() @IsString() @MaxLength(8000) body?: string;
+  // A full pitch with price cards and two comparison tables runs well past 8k —
+  // FORM 4 alone is ~7.6k before the salon owner edits a word. 40k is roomy but
+  // still far below anything that would hurt the mail provider.
+  @IsOptional() @IsString() @MaxLength(40000) body?: string;
   @IsOptional() @IsString() @MaxLength(500) imageUrl?: string;
   @IsOptional() @IsString() @MaxLength(60) ctaLabel?: string;
   @IsOptional() @IsString() @MaxLength(500) ctaUrl?: string;
@@ -51,7 +54,10 @@ class PreviewDto {
   @IsOptional() @IsString() @MaxLength(200) subject?: string;
   @IsOptional() @IsString() @MaxLength(200) preheader?: string;
   @IsOptional() @IsString() @MaxLength(200) heading?: string;
-  @IsOptional() @IsString() @MaxLength(8000) body?: string;
+  // A full pitch with price cards and two comparison tables runs well past 8k —
+  // FORM 4 alone is ~7.6k before the salon owner edits a word. 40k is roomy but
+  // still far below anything that would hurt the mail provider.
+  @IsOptional() @IsString() @MaxLength(40000) body?: string;
   @IsOptional() @IsString() @MaxLength(500) imageUrl?: string;
   @IsOptional() @IsString() @MaxLength(60) ctaLabel?: string;
   @IsOptional() @IsString() @MaxLength(500) ctaUrl?: string;

@@ -64,17 +64,37 @@ const EMPTY: Draft = {
 };
 
 const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]{2,}$/;
-function parseList(raw: string): { valid: string[]; invalid: string[] } {
-  const parts = raw.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+function parseList(raw: string): { valid: string[]; invalid: string[]; named: number } {
   const seen = new Set<string>();
-  const valid: string[] = []; const invalid: string[] = [];
-  for (const p of parts) {
-    if (!EMAIL_RE.test(p)) { invalid.push(p); continue; }
-    if (seen.has(p)) continue;
-    seen.add(p); valid.push(p);
+  const valid: string[] = []; const invalid: string[] = []; let named = 0;
+
+  const push = (email: string, name: string | null) => {
+    const e = email.trim().replace(/^[<"']+|[>"']+$/g, '').toLowerCase();
+    if (!EMAIL_RE.test(e)) { if (e) invalid.push(e); return; }
+    if (seen.has(e)) return;
+    seen.add(e); valid.push(e);
+    if ((name || '').trim()) named++;
+  };
+
+  for (const line of String(raw || '').split(/[\n;]+/)) {
+    const l = line.trim();
+    if (!l) continue;
+    const angled = /^(.*?)<([^>]+)>$/.exec(l);          // Anh Tuấn <a@b.com>
+    if (angled) { push(angled[2], angled[1]); continue; }
+    const cells = l.split(/[,\t]/).map((x) => x.trim()).filter(Boolean);
+    if (cells.length >= 2) {                             // a@b.com, Anh Tuấn  ·  Anh Tuấn, a@b.com
+      const emailCell = cells.find((c) => c.includes('@'));
+      const nameCell = cells.find((c) => c !== emailCell);
+      if (emailCell) { push(emailCell, nameCell ?? null); continue; }
+    }
+    for (const chunk of l.split(/\s+/)) push(chunk, null); // bare addresses on one line
   }
-  return { valid, invalid };
+  return { valid, invalid, named };
 }
+
+/** The server rejects anything longer; we stop it here so nobody presses Send and
+ *  wonders why no email arrived. */
+const BODY_MAX = 40000;
 
 const STATUS: Record<string, { label: string; c: string }> = {
   draft:   { label: 'Draft',   c: '#94a3b8' },
@@ -148,7 +168,9 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
   }, [token, base, d.subject, d.preheader, d.heading, d.body, d.imageUrl, d.ctaLabel, d.ctaUrl, d.footerNote]);
 
   const parsed = useMemo(() => parseList(d.recipients), [d.recipients]);
-  const canSend = !!d.subject.trim() && !!d.fromName.trim() && parsed.valid.length > 0;
+  const [showBad, setShowBad] = useState(false);
+  const bodyOver = d.body.length > BODY_MAX;
+  const canSend = !!d.subject.trim() && !!d.fromName.trim() && parsed.valid.length > 0 && !bodyOver;
 
   const payload = () => ({
     name: d.name || d.subject, subject: d.subject, fromName: d.fromName, replyTo: d.replyTo || undefined,
@@ -524,8 +546,15 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           {field(t('Nội dung', 'Body'),
             t('Dòng trống = đoạn mới. {{name}} = tên khách; {{name|anh chị}} = có tên thì chào tên, không có tên thì chào "anh chị". Ngoài ra: "## Tiêu đề", "- gạch đầu dòng", "[[NOTE]] ghi chú", "[[DIVIDER]]", và thẻ giá: "[[PLAN]] Tên | $45/tháng | mô tả | ý 1; ý 2" (dùng [[PLAN*]] cho gói muốn làm nổi bật).',
               'Blank line = new paragraph. {{name}} = customer name; {{name|there}} = the name if you have it, "there" if you don\'t. Also: "## Heading", "- bullet", "[[NOTE]] small print", "[[DIVIDER]]", and price cards: "[[PLAN]] Name | $45/mo | tagline | item; item" (use [[PLAN*]] for the one you want highlighted).'),
-            <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={10}
-              style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace, monospace', fontSize: 13 }} />)}
+            <>
+              <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={10}
+                style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace, monospace', fontSize: 13,
+                  border: bodyOver ? '1px solid #ef4444' : undefined }} />
+              <div style={{ textAlign: 'right', fontSize: 11.5, marginTop: 4, color: bodyOver ? '#ef4444' : '#64748b', fontWeight: bodyOver ? 700 : 400 }}>
+                {d.body.length.toLocaleString()} / {BODY_MAX.toLocaleString()}
+                {bodyOver && ' — ' + t('Nội dung quá dài, hệ thống sẽ không gửi. Anh chị cắt bớt giúp em.', 'Too long — this will not send. Please trim it.')}
+              </div>
+            </>)}
 
           {field(t('Ảnh (dán link ảnh)', 'Image (paste a link)'),
             t('Bắt buộc bắt đầu bằng https://', 'Must start with https://'),
@@ -580,9 +609,23 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           )}
 
           {d.recipients.trim() && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '-6px 0 14px' }}>
-              <span style={pill('#22c55e')}>{parsed.valid.length} {t('địa chỉ hợp lệ', 'valid')}</span>
-              {parsed.invalid.length > 0 && <span style={pill('#ef4444')}>{parsed.invalid.length} {t('sai định dạng', 'invalid')}</span>}
+            <div style={{ margin: '-6px 0 14px' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span style={pill('#22c55e')}>{parsed.valid.length} {t('địa chỉ hợp lệ', 'valid')}</span>
+                {parsed.named > 0 && <span style={pill('#6366f1')}>{parsed.named} {t('có tên (thư sẽ chào đúng tên)', 'with a name')}</span>}
+                {parsed.invalid.length > 0 && (
+                  <button onClick={() => setShowBad((v) => !v)} style={{ ...pill('#ef4444'), cursor: 'pointer' }}>
+                    {parsed.invalid.length} {t('dòng không đọc được', 'unreadable')} {showBad ? '▲' : '▼'}
+                  </button>
+                )}
+              </div>
+              {showBad && parsed.invalid.length > 0 && (
+                <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #7f1d1d',
+                  fontSize: 12, color: '#fca5a5', fontFamily: 'ui-monospace, monospace', maxHeight: 120, overflow: 'auto' }}>
+                  {parsed.invalid.slice(0, 30).map((x, i) => <div key={i}>{x}</div>)}
+                  {parsed.invalid.length > 30 && <div>…</div>}
+                </div>
+              )}
             </div>
           )}
 

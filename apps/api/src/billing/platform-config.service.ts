@@ -22,6 +22,8 @@ export class PlatformConfigService {
     brevo_api_key: 'BREVO_API_KEY',
     brevo_sender_email: 'BREVO_SENDER_EMAIL',
     brevo_sender_name: 'BREVO_SENDER_NAME',
+    // Logo shown at the top of Lumio's own emails (invoices + marketing campaigns).
+    brand_logo_url: 'BRAND_LOGO_URL',
   };
 
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}

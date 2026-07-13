@@ -83,7 +83,13 @@ export class EmailCampaignsService {
   // ---- content -------------------------------------------------------------
   private async brandFor(tenantId: string | null): Promise<{ brandName: string; brandColor: string; logoUrl: string | null }> {
     if (!tenantId) {
-      return { brandName: 'Lumio Booking', brandColor: '#6366f1', logoUrl: null };
+      // Lumio's own campaigns: a real logo at the top of the email. An email with a
+      // blank space where a logo should be reads as amateur — or as a scam.
+      const [name, logo] = await Promise.all([
+        this.platform.get('brevo_sender_name'),
+        this.platform.get('brand_logo_url'),
+      ]);
+      return { brandName: name || 'Lumio Agency', brandColor: '#2563eb', logoUrl: logo || null };
     }
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true } });
     const b = this.settings.brandingFrom(t?.branding) as { primaryColor?: string; logoUrl?: string };

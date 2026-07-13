@@ -8,7 +8,7 @@ import { apiFetch } from '../../../lib/api';
 interface Status {
   stripe: { hasKey: boolean; hasWebhook: boolean; live: boolean };
   paypal: { hasClient: boolean; hasWebhook: boolean; env: string };
-  email?: { hasKey: boolean; senderEmail: string; senderName: string };
+  email?: { hasKey: boolean; senderEmail: string; senderName: string; logoUrl?: string };
   webhookStripeUrl: string;
   webhookPaypalUrl: string;
 }
@@ -41,6 +41,7 @@ export default function GatewaysPage() {
   const [brevoKey, setBrevoKey] = useState('');
   const [brevoSender, setBrevoSender] = useState('');
   const [brevoName, setBrevoName] = useState('');
+  const [brandLogo, setBrandLogo] = useState('');
   const [testEmail, setTestEmail] = useState('');
   const [diag, setDiag] = useState<Diag | null>(null);
 
@@ -55,7 +56,7 @@ export default function GatewaysPage() {
     try {
       const s = await apiFetch<Status>('/billing/config', { token });
       setSt(s); setPpEnv(s.paypal.env || 'live');
-      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || '');
+      setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setBrandLogo(s.email?.logoUrl || '');
     }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
   }, [token]);
@@ -191,9 +192,23 @@ export default function GatewaysPage() {
           <div><label style={lbl}>Sender email (verified in Brevo)</label>
             <input style={inp} value={brevoSender} onChange={(e) => setBrevoSender(e.target.value)} placeholder="billing@yourdomain.com" /></div>
           <div><label style={lbl}>Sender name</label>
-            <input style={inp} value={brevoName} onChange={(e) => setBrevoName(e.target.value)} placeholder="Lumio Booking" /></div>
+            <input style={inp} value={brevoName} onChange={(e) => setBrevoName(e.target.value)} placeholder="Viet Nguyen · Lumio Agency" /></div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={lbl}>Logo URL (shown at the top of every Lumio email)</label>
+            <input style={inp} value={brandLogo} onChange={(e) => setBrandLogo(e.target.value)} placeholder="https://lumioagency.com/…/logo.png" />
+            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: -6, marginBottom: 8 }}>
+              A square PNG, at least 128×128, on a public https:// link. Without it the email opens with a blank space where the logo should be — which reads as amateur, or as a scam.
+            </div>
+            {brandLogo && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', marginBottom: 8 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={brandLogo} alt="logo" style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'contain', background: '#fff' }} />
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>Preview — if you see a broken image here, customers will too.</span>
+              </div>
+            )}
+          </div>
         </div>
-        <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName })} disabled={busy} style={primaryBtn}>Save email</button>
+        <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName, brandLogoUrl: brandLogo })} disabled={busy} style={primaryBtn}>Save email</button>
 
         <div style={hintBox}>
           <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Send yourself a test to confirm it works before month-end:</div>

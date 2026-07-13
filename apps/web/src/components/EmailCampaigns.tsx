@@ -36,6 +36,7 @@ interface Contact {
   unsubscribed: boolean;
 }
 type ContactFilter = 'all' | 'new' | 'ok' | 'failed' | 'replied' | 'unsub';
+type PickTarget = 'all' | 'new' | 'silent' | 'failed';
 type Tab = 'compose' | 'contacts' | 'auto' | 'outbox';
 
 interface Automation {
@@ -291,6 +292,23 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
     });
   };
 
+  /** Load a whole group out of the address book, names included. Nobody who
+   *  unsubscribed or already replied is ever in these lists. */
+  const pickTargets = (k: PickTarget): Contact[] => contacts.filter((c) => {
+    if (c.unsubscribed || c.replied) return false;      // never chase these two
+    if (k === 'new') return c.sends === 0;
+    if (k === 'silent') return c.sends > 0 && c.lastStatus !== 'failed';
+    if (k === 'failed') return c.lastStatus === 'failed';
+    return true;
+  });
+  const asLines = (rows: Contact[]) => rows.map((c) => (c.name ? `${c.name} <${c.email}>` : c.email)).join('\n');
+  const fillFromContacts = (k: PickTarget) => {
+    const rows = pickTargets(k);
+    setD((prev) => ({ ...prev, recipients: asLines(rows) }));
+    setOk(t(`Đã đưa ${rows.length} người vào ô người nhận. Chọn mẫu, xem trước, gửi thử, rồi gửi thật.`,
+            `${rows.length} people loaded. Pick a template, preview, send yourself a test, then send.`));
+  };
+
   /** Drop the picked addresses into the composer. The template is deliberately NOT
    *  reused: someone who ignored Form 1 should get Form 2, not Form 1 again. */
   const reuse = () => {
@@ -458,12 +476,32 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
 
           <div style={{ height: 1, background: '#1e293b', margin: '6px 0 16px' }} />
 
-          {field(t('Danh sách email khách hàng', 'Customer email list'),
-            t('Dán cả loạt — cách nhau bằng dấu phẩy, dấu cách hoặc xuống dòng. Hệ thống tự lọc trùng và địa chỉ sai.',
-              'Paste them all — separated by commas, spaces or new lines. Duplicates and bad addresses are filtered out.'),
-            <textarea value={d.recipients} onChange={(e) => setD({ ...d, recipients: e.target.value })} rows={5}
-              placeholder={'anna@gmail.com, kevin@yahoo.com\nmai@outlook.com'}
+          {field(t('Người nhận — mỗi dòng một người (có tên càng tốt)', 'Recipients — one per line (a name is better)'),
+            t('Có tên thì thư sẽ chào đúng tên khách, và tỉ lệ mở cao hơn hẳn. Gõ {{name}} trong nội dung là chỗ đó tự điền tên. Hệ thống tự lọc trùng và địa chỉ sai.',
+              'With a name, the letter greets them properly and gets opened far more. Type {{name}} in the body and it fills in. Duplicates and bad addresses are filtered out.'),
+            <textarea value={d.recipients} onChange={(e) => setD({ ...d, recipients: e.target.value })} rows={6}
+              placeholder={'Anh Tuấn <tuan@gmail.com>\nChị Mai, mai@yahoo.com\nkevin@outlook.com'}
               style={{ ...ui.input, width: '100%', resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 13 }} />)}
+
+          {/* Pull people straight out of the address book — the whole point of having one. */}
+          {contacts.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '-6px 0 14px' }}>
+              <span style={{ fontSize: 12, color: '#64748b', alignSelf: 'center' }}>{t('Lấy nhanh từ danh bạ:', 'Pull from contacts:')}</span>
+              {([
+                ['all', t(`Tất cả (${pickTargets('all').length})`, `All (${pickTargets('all').length})`)],
+                ['new', t(`Chưa từng gửi (${pickTargets('new').length})`, `Never emailed (${pickTargets('new').length})`)],
+                ['silent', t(`Đã gửi, chưa phản hồi (${pickTargets('silent').length})`, `Emailed, no reply (${pickTargets('silent').length})`)],
+                ['failed', t(`Bị lỗi (${pickTargets('failed').length})`, `Failed (${pickTargets('failed').length})`)],
+              ] as [PickTarget, string][]).map(([k, label]) => (
+                <button key={k} onClick={() => fillFromContacts(k)} disabled={pickTargets(k).length === 0}
+                  style={{ padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                    border: '1px dashed #6366f1', background: 'rgba(99,102,241,0.10)', color: '#c7d2fe',
+                    opacity: pickTargets(k).length === 0 ? 0.4 : 1 }}>
+                  + {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {d.recipients.trim() && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '-6px 0 14px' }}>
@@ -606,6 +644,22 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             placeholder={t('Tìm tên hoặc email…', 'Search a name or address…')}
             style={{ ...ui.input, marginBottom: 0, flex: 1, minWidth: 180 }} />
         </div>
+
+        {visibleContacts.filter((c) => !c.unsubscribed && !c.replied).length > 0 && (
+          <button
+            onClick={() => {
+              const rows = visibleContacts.filter((c) => !c.unsubscribed && !c.replied);
+              setD((prev) => ({ ...prev, recipients: asLines(rows) }));
+              setTab('compose');
+              setPickOpen(true);
+              setOk(t(`Đã đưa ${rows.length} người vào ô người nhận. Chọn mẫu, xem trước, gửi thử, rồi gửi thật.`,
+                      `${rows.length} people loaded into the composer.`));
+            }}
+            style={{ ...ui.primaryBtn, width: '100%', marginBottom: 12, background: '#16a34a', padding: '13px', fontSize: 14.5 }}>
+            {t(`✉️ Soạn thư gửi cả nhóm này (${visibleContacts.filter((c) => !c.unsubscribed && !c.replied).length} người) →`,
+               `✉️ Write to this whole group (${visibleContacts.filter((c) => !c.unsubscribed && !c.replied).length}) →`)}
+          </button>
+        )}
 
         {visibleContacts.length === 0 ? (
           <div style={{ ...ui.card, color: '#64748b', fontSize: 13.5 }}>{t('Chưa có ai trong nhóm này.', 'Nobody in this group yet.')}</div>

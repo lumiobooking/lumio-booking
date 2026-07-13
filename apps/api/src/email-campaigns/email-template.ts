@@ -54,9 +54,19 @@ export function safeUrl(u?: string | null): string {
 }
 
 /** "Hi {{name}}," style tokens the salon can drop into the heading or body. */
+/**
+ * {{name}}            → the recipient's name, or "there" if we don't have one.
+ * {{name|anh chị}}    → the recipient's name, or "anh chị" if we don't have one.
+ *
+ * The fallback form is what makes a greeting work on a mixed list: "Kính chào
+ * {{name|anh chị}}," reads "Kính chào anh Tuấn," for the contacts we have a name
+ * for, and "Kính chào anh chị," for the ones we only have an email address for —
+ * instead of an awkward "Kính chào there,".
+ */
 export function fillTokens(text: string, vars: { name?: string | null; brand?: string }): string {
+  const name = String(vars.name ?? '').trim();
   return String(text)
-    .replace(/\{\{\s*name\s*\}\}/gi, (vars.name || 'there').trim() || 'there')
+    .replace(/\{\{\s*name\s*(?:\|([^}]*))?\}\}/gi, (_m, fb?: string) => name || (fb ?? '').trim() || 'there')
     .replace(/\{\{\s*brand\s*\}\}/gi, vars.brand || '');
 }
 
@@ -218,7 +228,7 @@ export function renderCampaignHtml(c: CampaignContent): string {
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${esc(c.subject)}</title></head>
 <body style="margin:0;padding:0;background:#f1f5f9;-webkit-font-smoothing:antialiased">
-${c.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(c.preheader)}</div>` : ''}
+${c.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(fillTokens(c.preheader, { name: c.recipientName, brand: c.brandName }))}</div>` : ''}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 12px">
   <tr><td align="center">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">

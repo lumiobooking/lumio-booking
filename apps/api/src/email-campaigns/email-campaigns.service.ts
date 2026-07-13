@@ -5,7 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
 import { PlatformConfigService } from '../billing/platform-config.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { CampaignContent, renderCampaignHtml, renderCampaignText, safeUrl } from './email-template';
+import { CampaignContent, fillTokens, renderCampaignHtml, renderCampaignText, safeUrl } from './email-template';
 
 export interface CampaignInput {
   name?: string;
@@ -275,7 +275,7 @@ export class EmailCampaignsService {
       tenantId: tenantId ?? '',
       channel: NotificationChannel.EMAIL,
       recipient: to,
-      subject: `[TEST] ${data.subject}`,
+      subject: `[TEST] ${fillTokens(data.subject, { name: 'Anna', brand: c.brandName })}`,
       body: renderCampaignText(c),
       html: renderCampaignHtml(c),
       ...mailer,
@@ -364,7 +364,7 @@ export class EmailCampaignsService {
           tenantId: c.tenantId ?? '',
           channel: NotificationChannel.EMAIL,
           recipient: r.email,
-          subject: c.subject,
+          subject: fillTokens(c.subject, { name: r.name, brand: content.brandName }),
           body: renderCampaignText(content),
           html: renderCampaignHtml(content),
           ...mailer,
@@ -686,7 +686,7 @@ export class EmailCampaignsService {
         tenantId: tenantId ?? '',
         channel: NotificationChannel.EMAIL,
         recipient: c.email,
-        subject: step.subject ?? '',
+        subject: fillTokens(step.subject ?? '', { name: c.name, brand: content.brandName }),
         body: renderCampaignText(content),
         html: renderCampaignHtml(content),
         ...mailer,

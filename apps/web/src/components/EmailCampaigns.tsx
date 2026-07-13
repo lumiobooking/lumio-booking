@@ -522,8 +522,8 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
               style={{ ...ui.input, width: '100%' }} />)}
 
           {field(t('Nội dung', 'Body'),
-            t('Dòng trống = đoạn mới. {{name}} = tên khách. Ngoài ra: "## Tiêu đề", "- gạch đầu dòng", "[[NOTE]] ghi chú", "[[DIVIDER]]", và thẻ giá: "[[PLAN]] Tên | $45/tháng | mô tả | ý 1; ý 2" (dùng [[PLAN*]] cho gói muốn làm nổi bật).',
-              'Blank line = new paragraph. {{name}} = customer name. Also: "## Heading", "- bullet", "[[NOTE]] small print", "[[DIVIDER]]", and price cards: "[[PLAN]] Name | $45/mo | tagline | item; item" (use [[PLAN*]] for the one you want highlighted).'),
+            t('Dòng trống = đoạn mới. {{name}} = tên khách; {{name|anh chị}} = có tên thì chào tên, không có tên thì chào "anh chị". Ngoài ra: "## Tiêu đề", "- gạch đầu dòng", "[[NOTE]] ghi chú", "[[DIVIDER]]", và thẻ giá: "[[PLAN]] Tên | $45/tháng | mô tả | ý 1; ý 2" (dùng [[PLAN*]] cho gói muốn làm nổi bật).',
+              'Blank line = new paragraph. {{name}} = customer name; {{name|there}} = the name if you have it, "there" if you don\'t. Also: "## Heading", "- bullet", "[[NOTE]] small print", "[[DIVIDER]]", and price cards: "[[PLAN]] Name | $45/mo | tagline | item; item" (use [[PLAN*]] for the one you want highlighted).'),
             <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={10}
               style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace, monospace', fontSize: 13 }} />)}
 
@@ -553,8 +553,8 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           <div style={{ height: 1, background: '#1e293b', margin: '6px 0 16px' }} />
 
           {field(t('Người nhận — mỗi dòng một người (có tên càng tốt)', 'Recipients — one per line (a name is better)'),
-            t('Có tên thì thư sẽ chào đúng tên khách, và tỉ lệ mở cao hơn hẳn. Gõ {{name}} trong nội dung là chỗ đó tự điền tên. Hệ thống tự lọc trùng và địa chỉ sai.',
-              'With a name, the letter greets them properly and gets opened far more. Type {{name}} in the body and it fills in. Duplicates and bad addresses are filtered out.'),
+            t('Có tên thì thư sẽ chào đúng tên khách, và tỉ lệ mở cao hơn hẳn. Trong nội dung, {{name|anh chị}} sẽ tự điền tên khách — ai chưa có tên thì thư vẫn chào "anh chị" bình thường. Hệ thống tự lọc trùng và địa chỉ sai.',
+              'With a name, the letter greets them properly and gets opened far more. In the body, {{name|there}} fills in the name — and still reads naturally for the contacts you have no name for. Duplicates and bad addresses are filtered out.'),
             <textarea value={d.recipients} onChange={(e) => setD({ ...d, recipients: e.target.value })} rows={6}
               placeholder={'Anh Tuấn <tuan@gmail.com>\nChị Mai, mai@yahoo.com\nkevin@outlook.com'}
               style={{ ...ui.input, width: '100%', resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 13 }} />)}

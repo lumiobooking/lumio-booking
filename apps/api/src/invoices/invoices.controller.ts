@@ -74,4 +74,10 @@ export class AdminInvoicesController {
   testEmail(@Body() body: { email?: string }) {
     return this.svc.sendTestEmail(body?.email || '');
   }
+
+  /** Ask Brevo what is actually wrong when a test doesn't arrive. */
+  @Post('email-diagnose')
+  diagnose() {
+    return this.svc.diagnoseEmail();
+  }
 }

@@ -270,11 +270,119 @@ export class InvoicesService {
       <p style="color:#334155;font-size:14px">If you can read this, your Lumio invoice email is set up correctly. Real month-end and plan-renewal invoices will look like this and include a secure payment link.</p>
       <div style="margin:18px 0"><a href="${publicWebBase()}/invoice/sample" style="background:#4f46e5;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:700;display:inline-block">Sample &ldquo;View &amp; pay&rdquo; button</a></div>
     </div>`;
+    // Without a real Brevo key the send would fall through to the MOCK provider,
+    // which "succeeds" and sends nothing — the worst possible outcome, because the
+    // screen says ✓ and the inbox stays empty. Refuse instead.
+    if (!brevo) {
+      return { sent: false, via: 'none', error: 'Platform email is not configured. Save the Brevo API key + sender email above first.' };
+    }
     const rec = (await this.notifications.send({
       tenantId: tenant.id, channel: NotificationChannel.EMAIL, recipient: to,
       subject: 'Lumio — invoice email test', body: 'Your Lumio invoice email is set up correctly.',
-      html, senderName: 'Lumio Booking', replyTo: brevo?.senderEmail, brevo,
+      html, senderName: 'Lumio Booking', replyTo: brevo.senderEmail, brevo,
     })) as { status?: string; error?: string | null };
-    return { sent: rec?.status === 'SENT', via: brevo ? 'Brevo (in-app key)' : 'env fallback / mock', error: rec?.error || undefined };
+    return { sent: rec?.status === 'SENT', via: 'Brevo', error: rec?.error || undefined };
+  }
+
+  /**
+   * Ask Brevo itself what's wrong. "I pressed send and nothing arrived" has four
+   * usual causes and guessing between them wastes an afternoon:
+   *   1. the API key is wrong / revoked
+   *   2. the Brevo account hasn't been activated for sending yet (very common on
+   *      brand-new accounts — Brevo reviews them by hand)
+   *   3. the sender address was never verified in Brevo
+   *   4. it sent fine and it's sitting in the spam folder
+   * This checks 1–3 against Brevo's own API so we can say which one it is.
+   */
+  async diagnoseEmail(): Promise<{
+    ok: boolean;
+    key: { ok: boolean; detail: string };
+    sender: { ok: boolean; detail: string };
+    domain: { ok: boolean; detail: string };
+    advice: string;
+  }> {
+    const cfg = await this.platformBrevo();
+    if (!cfg) {
+      return {
+        ok: false,
+        key: { ok: false, detail: 'No API key saved.' },
+        sender: { ok: false, detail: 'No sender email saved.' },
+        domain: { ok: false, detail: '—' },
+        advice: 'Paste your Brevo API key and sender email above, then Save.',
+      };
+    }
+    const H = { 'api-key': cfg.apiKey, accept: 'application/json' };
+
+    // 1 — is the key valid, and is the account allowed to send?
+    let key = { ok: false, detail: '' };
+    try {
+      const r = await fetch('https://api.brevo.com/v3/account', { headers: H });
+      const body = await r.text();
+      if (r.ok) {
+        const j = JSON.parse(body) as { email?: string; companyName?: string; plan?: { credits?: number; type?: string }[] };
+        const credits = j.plan?.[0]?.credits;
+        key = { ok: true, detail: `Valid — Brevo account ${j.email ?? ''}${typeof credits === 'number' ? ` · ${credits} email credits left today` : ''}` };
+      } else if (r.status === 401) {
+        key = { ok: false, detail: 'Brevo rejected the API key (401). Create a new key: Brevo → SMTP & API → API Keys.' };
+      } else {
+        key = { ok: false, detail: `Brevo ${r.status}: ${body.slice(0, 160)}` };
+      }
+    } catch (e) {
+      key = { ok: false, detail: `Could not reach Brevo: ${String(e).slice(0, 120)}` };
+    }
+
+    // 2 — is THIS sender address verified? An unverified sender is silently rejected.
+    let sender = { ok: false, detail: 'Not checked (fix the API key first).' };
+    if (key.ok) {
+      try {
+        const r = await fetch('https://api.brevo.com/v3/senders', { headers: H });
+        const j = (await r.json().catch(() => ({}))) as { senders?: { email?: string; active?: boolean }[] };
+        const list = j.senders ?? [];
+        const hit = list.find((x) => (x.email || '').toLowerCase() === cfg.senderEmail.toLowerCase());
+        if (!hit) {
+          sender = {
+            ok: false,
+            detail: `“${cfg.senderEmail}” is NOT in your Brevo senders list${list.length ? ` (found: ${list.map((x) => x.email).join(', ').slice(0, 120)})` : ''}. Add it in Brevo → Senders & IP → Senders, then click the verification link Brevo emails you.`,
+          };
+        } else if (hit.active === false) {
+          sender = { ok: false, detail: `“${cfg.senderEmail}” exists in Brevo but is not verified yet. Open the verification email Brevo sent to that address.` };
+        } else {
+          sender = { ok: true, detail: `“${cfg.senderEmail}” is verified in Brevo.` };
+        }
+      } catch (e) {
+        sender = { ok: false, detail: `Could not read the sender list: ${String(e).slice(0, 120)}` };
+      }
+    }
+
+    // 3 — is the sending domain authenticated (SPF/DKIM)? Not fatal, but without it
+    //     marketing mail lands in spam, which looks exactly like "nothing arrived".
+    let domain = { ok: false, detail: 'Not checked.' };
+    if (key.ok) {
+      const dom = cfg.senderEmail.split('@')[1] || '';
+      try {
+        const r = await fetch('https://api.brevo.com/v3/senders/domains', { headers: H });
+        const j = (await r.json().catch(() => ({}))) as { domains?: { domain_name?: string; authenticated?: boolean; verified?: boolean }[] };
+        const hit = (j.domains ?? []).find((d) => (d.domain_name || '').toLowerCase() === dom.toLowerCase());
+        if (!hit) {
+          domain = { ok: false, detail: `Domain “${dom}” is not authenticated in Brevo. Mail will send, but bulk campaigns will land in spam. Brevo → Senders & IP → Domains → Authenticate.` };
+        } else if (hit.authenticated) {
+          domain = { ok: true, detail: `Domain “${dom}” is authenticated (SPF/DKIM).` };
+        } else {
+          domain = { ok: false, detail: `Domain “${dom}” is added but NOT authenticated — add the DNS records Brevo gives you.` };
+        }
+      } catch {
+        domain = { ok: false, detail: 'Could not read the domain list.' };
+      }
+    }
+
+    const ok = key.ok && sender.ok;
+    const advice = !key.ok
+      ? 'Fix the API key first — nothing can send until Brevo accepts it.'
+      : !sender.ok
+        ? 'Brevo will reject every send until this exact sender address is verified.'
+        : !domain.ok
+          ? 'Sending works. But authenticate the domain (SPF/DKIM) before any bulk campaign, or your mail will land in spam.'
+          : 'Everything checks out. If a test still doesn’t arrive, look in Spam / Promotions, and check Brevo → Transactional → Logs.';
+    return { ok, key, sender, domain, advice };
   }
 }

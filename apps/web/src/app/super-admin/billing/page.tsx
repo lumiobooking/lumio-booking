@@ -13,6 +13,14 @@ interface Status {
   webhookPaypalUrl: string;
 }
 
+interface Diag {
+  ok: boolean;
+  key: { ok: boolean; detail: string };
+  sender: { ok: boolean; detail: string };
+  domain: { ok: boolean; detail: string };
+  advice: string;
+}
+
 export default function GatewaysPage() {
   const { token, user, ready } = useAuth();
   const router = useRouter();
@@ -34,6 +42,7 @@ export default function GatewaysPage() {
   const [brevoSender, setBrevoSender] = useState('');
   const [brevoName, setBrevoName] = useState('');
   const [testEmail, setTestEmail] = useState('');
+  const [diag, setDiag] = useState<Diag | null>(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -70,6 +79,14 @@ export default function GatewaysPage() {
       setMsg('✓ Saved. Connection status updated below.');
       setStripeKey(''); setStripeHook(''); setPpId(''); setPpSecret(''); setPpHook('');
     } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  async function diagnose() {
+    setBusy(true); setErr(null); setMsg(null); setDiag(null);
+    try {
+      setDiag(await apiFetch<Diag>('/admin/invoices/email-diagnose', { method: 'POST', token }));
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Check failed'); }
     finally { setBusy(false); }
   }
 
@@ -183,7 +200,33 @@ export default function GatewaysPage() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input style={{ ...inp, marginBottom: 0, flex: 1, minWidth: 200 }} value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="your@email.com" />
             <button onClick={sendTest} disabled={busy || !testEmail} style={ghost}>Send test</button>
+            <button onClick={diagnose} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: '#a5b4fc' }}>
+              Check setup with Brevo
+            </button>
           </div>
+
+          {/* "I pressed send and nothing arrived" — ask Brevo itself why. */}
+          {diag && (
+            <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+              {([
+                ['API key', diag.key],
+                ['Sender verified', diag.sender],
+                ['Domain (SPF/DKIM)', diag.domain],
+              ] as [string, { ok: boolean; detail: string }][]).map(([label, r]) => (
+                <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 8,
+                  background: '#0f172a', border: `1px solid ${r.ok ? '#166534' : '#7f1d1d'}` }}>
+                  <span style={{ flexShrink: 0, fontSize: 14 }}>{r.ok ? '✅' : '❌'}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{label}</span>
+                    <span style={{ display: 'block', fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.55, marginTop: 2 }}>{r.detail}</span>
+                  </span>
+                </div>
+              ))}
+              <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.10)', border: '1px solid #b45309', color: '#fde68a', fontSize: 12.5, lineHeight: 1.55 }}>
+                <b>Next:</b> {diag.advice}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

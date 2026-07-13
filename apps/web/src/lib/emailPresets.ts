@@ -272,9 +272,9 @@ Chặng này em không làm gì to tát. Em chỉ làm cho tiệm mình **sống
 
 Khách gọi tới lúc bảy giờ tối, tiệm đông kín, sáu cái tay đang bận. Không ai bắt máy. Khách gọi tiệm khác. **Đó là tiền đi ra khỏi cửa, mà không ai nhìn thấy.**
 
-Chặng này, ngoài social, em đưa vào tiệm mình **hệ thống LumioBooking** — khách tự đặt lịch trên điện thoại, hai mươi bốn trên bảy, kể cả lúc tiệm đóng cửa. Có AI trả lời điện thoại và Messenger giùm. Có POS tính tiền, có lương thợ, có báo cáo khách đến từ đâu.
+Chặng này, ngoài social, em đưa vào tiệm mình **hệ thống LumioBooking** — khách tự đặt lịch trên điện thoại, hai mươi bốn trên bảy, kể cả lúc tiệm đã đóng cửa. Có sơ đồ ghế, có POS tính tiền, có chia lượt thợ, có lương và tip, có báo cáo khách đến từ đâu.
 
-[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Chặng 2 — nền tảng vững, khách đặt được lịch | Toàn bộ phần social ở chặng 1; Tối ưu hồ sơ Google Business Profile; Link in bio, duyệt nội dung trước khi đăng; **Trọn bộ phần mềm LumioBooking** — đặt lịch 24/7, AI nghe điện thoại, POS, quản lý thợ; Báo cáo tháng ngắn gọn, dễ hiểu
+[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Chặng 2 — nền tảng vững, khách tự đặt được lịch | Toàn bộ phần social ở chặng 1; Tối ưu hồ sơ Google Business Profile; Link in bio, duyệt nội dung trước khi đăng; **Phần mềm LumioBooking** — đặt lịch 24/7, sơ đồ ghế, POS, chia lượt thợ, lương và tip; Báo cáo tháng ngắn gọn, dễ hiểu
 
 ## Chặng thứ ba — cho khách **tìm là thấy**
 
@@ -284,7 +284,7 @@ Khách gõ “nail salon near me”. Trên màn hình điện thoại của họ
 
 Chặng này em làm Google Maps SEO chuyên sâu, xây chiến lược đánh giá, và theo dõi từng lượt gọi, từng lượt bấm chỉ đường về tiệm — để anh chị **nhìn thấy** tiền mình bỏ ra đang đẻ ra cái gì.
 
-[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Chặng 3 — để khách tìm là thấy tiệm mình | **Bao gồm trọn vẹn chặng 2** (social + LumioBooking); Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
+[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Chặng 3 — khách tìm là thấy, gọi tới là có người nghe | **Bao gồm trọn vẹn chặng 2** (social + LumioBooking); **AI Hotline — nghe máy 24/7 khi tiệm bận, chốt lịch giùm** *(chỉ có ở gói này)*; **Bot Messenger AI trả lời khách lúc nửa đêm** *(chỉ có ở gói này)*; Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
 
 [[NOTE]] Em **không hứa “top 1 Google”** — ai hứa điều đó là không thành thật. Em hứa **làm đúng việc, làm đều, và báo cáo bằng số thật.**
 
@@ -347,8 +347,8 @@ Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng,
 ## Ba gói — và mỗi gói giải quyết nỗi đau nào
 
 [[PLAN]] Lumio Social Care | $45/tháng | Cho tiệm “sống lại” trên mạng | **Chữa:** trang Facebook, TikTok bỏ trống, khách vào xem tưởng tiệm đã dẹp; Đăng đều FB, IG, TikTok, Shorts, Yelp — nội dung mới ~2 ngày/lần; Theo mẫu của ngành nail, chỉnh riêng cho tiệm mình; Anh chị duyệt trước khi đăng, không đăng bừa
-[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Cho khách đặt được lịch, kể cả lúc tiệm đang bận | **Chữa:** khách gọi lúc 7 giờ tối không ai bắt máy, khách bỏ đi mà mình không hay; Trọn phần social ở gói $45; Tối ưu hồ sơ Google Business Profile; **Trọn bộ phần mềm LumioBooking** — đặt lịch online 24/7, AI trả lời điện thoại, bot Messenger, POS tính tiền, chia lượt thợ, tính lương và tip; Báo cáo tháng gọn gàng, dễ hiểu
-[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Cho khách **tìm là thấy** tiệm mình | **Chữa:** khách gõ “nail salon near me” mà tiệm mình không hiện ra — nỗi đau đắt nhất, vì mình mất khách mà không bao giờ biết; **Bao gồm trọn vẹn gói $179**; Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường về tiệm; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
+[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Cho khách tự đặt được lịch, khỏi phải gọi điện | **Chữa:** khách muốn đặt lịch phải gọi, gọi không ai bắt máy là mất khách; Trọn phần social ở gói $45; Tối ưu hồ sơ Google Business Profile; **Phần mềm LumioBooking** — đặt lịch online 24/7, POS tính tiền, sơ đồ ghế, chia lượt thợ, tính lương và tip; Báo cáo tháng gọn gàng, dễ hiểu
+[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Khách **tìm là thấy** — và gọi tới là có người bắt máy | **Chữa:** khách gõ “nail salon near me” mà tiệm mình không hiện ra; và khách gọi lúc tiệm đông thì không ai nghe máy — hai nỗi đau đắt nhất, vì mình mất khách mà không bao giờ biết; **Bao gồm trọn vẹn gói $179**; **AI Hotline — nghe máy 24/7, chốt lịch, nhắn tin xác nhận** (chỉ có ở gói này); **Bot Messenger AI — trả lời khách lúc nửa đêm** (chỉ có ở gói này); Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
 
 [[NOTE]] Website riêng cho tiệm: **$150, trả một lần** — chuẩn điện thoại, song ngữ Việt – Anh, gắn sẵn nút Đặt lịch. Tên miền và website **đứng tên anh chị**.
 
@@ -359,8 +359,8 @@ Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng,
 [[ROW]] Nội dung chỉnh riêng cho tiệm, duyệt trước khi đăng | ✓ | ✓ | ✓
 [[ROW]] Tối ưu hồ sơ Google Business Profile | ✕ | ✓ | ✓
 [[ROW]] **Phần mềm LumioBooking** (đặt lịch 24/7) | ✕ | ✓ | ✓
-[[ROW]] **AI trả lời điện thoại** khi tiệm bận | ✕ | ✓ | ✓
-[[ROW]] Bot Messenger trả lời khách lúc nửa đêm | ✕ | ✓ | ✓
+[[ROW]] **AI Hotline — nghe máy 24/7 khi tiệm bận** | ✕ | ✕ | ✓
+[[ROW]] **Bot Messenger AI** trả lời khách lúc nửa đêm | ✕ | ✕ | ✓
 [[ROW]] POS tính tiền · chia lượt thợ · lương & tip | ✕ | ✓ | ✓
 [[ROW]] Báo cáo khách đến từ nguồn nào | ✕ | ✓ | ✓
 [[ROW]] **Google Maps SEO chuyên sâu** | ✕ | ✕ | ✓
@@ -375,8 +375,8 @@ Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng,
 Đây là chỗ khác biệt lớn nhất, và em xin bày rõ từng thứ một. Mỗi dòng dưới đây là **một nỗi đau có thật của tiệm**, và **một hệ thống em đã dựng sẵn để chữa nó**.
 
 [[TABLE]] Nỗi đau của tiệm | Hệ thống Lumio đã có sẵn | Agency khác
-[[ROW]] Điện thoại reo lúc tiệm đông, không ai bắt máy | **AI Hotline** — nghe máy 24/7, hỏi dịch vụ, xem giờ trống, **chốt lịch**, nhắn tin xác nhận | ✕
-[[ROW]] Khách nhắn Messenger lúc 11 giờ đêm | **Bot Messenger AI** — trả lời trong 2 giây, chốt lịch luôn, đúng thứ tiếng khách nhắn | ✕
+[[ROW]] Điện thoại reo lúc tiệm đông, không ai bắt máy | **AI Hotline** — nghe máy 24/7, hỏi dịch vụ, xem giờ trống, **chốt lịch**, nhắn tin xác nhận *(gói Pro $279)* | ✕
+[[ROW]] Khách nhắn Messenger lúc 11 giờ đêm | **Bot Messenger AI** — trả lời trong 2 giây, chốt lịch luôn, đúng thứ tiếng khách nhắn *(gói Pro $279)* | ✕
 [[ROW]] Khách phải gọi điện mới đặt được lịch | **Form đặt lịch nhúng thẳng vào website** — khách tự đặt trong 40 giây | ✕
 [[ROW]] Khách hẹn rồi không tới, ghế trống giờ cao điểm | **Đặt cọc online** + **nhắc lịch tự động** qua SMS và email | ✕
 [[ROW]] Lễ tân rối, không biết ghế nào trống, thợ nào rảnh | **Sơ đồ ghế** — cả tiệm trên một màn hình, ai đang làm ghế nào, làm được mấy phút | ✕
@@ -392,7 +392,9 @@ Anh chị hỏi em nên chọn gói nào. Em xin bày hết ra đây, rõ ràng,
 [[ROW]] Chủ đi vắng là mù thông tin | **App cho chủ và cho thợ** — xem tiệm từ điện thoại, thợ xem đúng khách của mình | ✕
 [[ROW]] Có 2–3 tiệm, quản lý rối | **Nhiều chi nhánh**, mỗi tiệm một kho dữ liệu riêng, chuyển qua lại một cú chạm | ✕
 
-[[NOTE]] Mười sáu hệ thống ở trên **đã chạy thật, đang có tiệm dùng hằng ngày** — không phải kế hoạch, không phải sắp có. Và tất cả **nằm sẵn trong gói $179 và $279**, anh chị **không trả thêm một đồng nào** cho phần mềm.
+[[NOTE]] Mười sáu hệ thống ở trên **đã chạy thật, đang có tiệm dùng hằng ngày** — không phải kế hoạch, không phải sắp có.
+
+Gói **$179** đã có sẵn phần lớn trong số đó — anh chị **không trả thêm một đồng nào** cho phần mềm. Riêng **AI Hotline** và **Bot Messenger AI** chỉ có ở gói **Pro $279**, vì hai thứ này tốn chi phí cuộc gọi và xử lý AI mỗi ngày.
 
 [[DIVIDER]]
 

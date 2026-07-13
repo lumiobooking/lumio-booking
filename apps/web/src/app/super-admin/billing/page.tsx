@@ -159,10 +159,15 @@ export default function GatewaysPage() {
       {/* Invoice email (Brevo) — Lumio → salons */}
       <section style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 18, margin: 0 }}>✉ Invoice email (sends from Lumio)</h2>
+          <h2 style={{ fontSize: 18, margin: 0 }}>✉ Platform email — invoices AND email marketing</h2>
           <span style={{ fontSize: 13 }}>{st ? dot(!!st.email?.hasKey) : '…'}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px' }}>The address Lumio sends month-end &amp; renewal invoices FROM. Free key at brevo.com → SMTP &amp; API → API Keys (~300 emails/day free). Verify your sender email in Brevo first.</p>
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px' }}>
+          The address <b>every Lumio email goes out FROM</b> — month-end invoices, renewal invoices, and <b>every Email marketing campaign you send</b>.
+          Free key at brevo.com → SMTP &amp; API → API Keys (~300 emails/day free).
+          Verify your sender address in Brevo first (Senders &amp; IP → Senders), and authenticate your domain (SPF/DKIM) or your campaigns will land in spam.
+          A personal @gmail.com address cannot be used as the sender for bulk mail — use an address on your own domain.
+        </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Brevo API key {st?.email?.hasKey && <span style={savedTag}>saved</span>}</label>
             <input style={inp} type="password" value={brevoKey} onChange={(e) => setBrevoKey(e.target.value)} placeholder={st?.email?.hasKey ? '•••••••• (leave blank to keep)' : 'xkeysib-…'} /></div>

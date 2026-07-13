@@ -1,13 +1,27 @@
-// Ready-made campaigns. One click fills the whole composer, then you edit.
+// Ready-made campaigns. One click fills the composer; everything stays editable.
 //
 // The Body uses the tiny markup the email renderer understands:
 //   ## Heading            → section title
 //   - text                → green-tick bullet
 //   [[PLAN]]  Name | Price | tagline | feat; feat; feat      → price card
-//   [[PLAN*]] …           → the SAME card, highlighted (use it for the offer)
+//   [[PLAN*]] …           → the SAME card, highlighted
 //   [[NOTE]] text         → soft grey note box
 //   [[DIVIDER]]           → hairline
-// URLs, phone numbers and email addresses inside the copy are auto-linked.
+//   **bold**, URLs, phone numbers and emails are rendered automatically.
+//
+// WHY THE COPY READS THE WAY IT DOES — the audience is a Vietnamese salon owner in
+// the US/Canada, and everything below is written for how they actually behave:
+//   · They read email on a phone, standing, between two clients. The first two
+//     lines have to do all the work.
+//   · They have been burned by agencies promising "#1 on Google" and locking them
+//     into contracts. So we promise less, out loud, and say what we will NOT do.
+//   · Trust in this community travels by word of mouth and by feeling respected.
+//     So we open with a proper greeting, we honour their craft, and we never talk
+//     down to them about "digital marketing".
+//   · They decide at night, after closing, often husband and wife together. So we
+//     invite a text at 10pm, not a "discovery call".
+//   · A cold email that names a price gets deleted. Price only appears in FORM 3,
+//     which is for people who already replied.
 
 export interface Preset {
   label: string;
@@ -20,18 +34,16 @@ export interface Preset {
 const FOOTER = 'Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731 · (512) 886-8189 · support@lumioagency.com';
 const AUDIT = 'https://lumioagency.com/#contact';
 
-/** The signature block — a real person, reachable three ways. */
+/** A real person, reachable three ways, at an hour that suits a salon owner. */
 const SIGN_VN = `[[DIVIDER]]
 
-Anh chị cứ nhắn thẳng cho em, không cần qua ai cả:
+Anh chị cứ nhắn thẳng cho em — kể cả 10 giờ đêm, khi tiệm đã đóng cửa. Em đọc hết.
 
 - **Việt Nguyễn** — Lumio Agency LLC, Austin, Texas
 - Gọi hoặc nhắn tin: (512) 886-8189
 - Facebook: https://www.facebook.com/vietnguyen.lumio
 - Email: support@lumioagency.com
-- Website: https://lumioagency.com  ·  Phần mềm: https://lumiobooking.com
-
-Em cảm ơn anh chị đã dành thời gian đọc tới đây.
+- https://lumioagency.com  ·  https://lumiobooking.com
 
 Trân trọng,
 Việt Nguyễn
@@ -39,105 +51,240 @@ Lumio Agency`;
 
 const SIGN_EN = `[[DIVIDER]]
 
-Reply to this email, or reach me directly — you'll get me, not a call centre:
+Message me any time — even at 10pm after you close. I read every one.
 
 - **Viet Nguyen** — Lumio Agency LLC, Austin, Texas
 - Call or text: (512) 886-8189
 - Facebook: https://www.facebook.com/vietnguyen.lumio
 - Email: support@lumioagency.com
-- Website: https://lumioagency.com  ·  Software: https://lumiobooking.com
-
-Thank you for reading this far.
+- https://lumioagency.com  ·  https://lumiobooking.com
 
 Warm regards,
 Viet Nguyen
 Lumio Agency`;
 
-/** Lumio → salon owners. Platform (Super Admin) campaigns. */
 export const LUMIO_PRESETS: Preset[] = [
+  // ------------------------------------------------------------------ FORM 1
+  // Cold. No price anywhere. One job: earn a reply. The hook is a scene the owner
+  // has lived a hundred times — the empty chair nobody counted as a lost customer.
   {
-    // FORM 2 — the lead magnet. Not one price anywhere on purpose: the only job of
-    // this email is to get a reply. Price kills replies on a cold email.
-    label: '🎯 FORM 2 · Audit miễn phí — kéo khách liên hệ (VN)',
+    label: '🎯 FORM 1 · Chạm nỗi đau — kéo khách liên hệ (VN)',
     draft: {
-      name: 'Audit miễn phí — lead magnet (VN)',
-      subject: 'Khách gõ “nail salon near me” — tiệm mình có hiện ra không ạ?',
+      name: 'FORM 1 — Chạm nỗi đau (VN)',
+      subject: 'Chiếc ghế trống tối thứ Sáu — không ai tính là mất khách',
       fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Em xem giúp anh chị miễn phí. Không bán gì cả — chỉ cần nhắn em tên tiệm.',
-      heading: 'Có thể tiệm mình đang mất khách mà không hay biết',
+      preheader: 'Em xin phép hai phút của anh chị. Không bán gì cả — chỉ là một câu chuyện và một lời mời.',
+      heading: 'Có những khách mình mất, mà không bao giờ biết là đã mất',
       body: `Kính chào anh/chị,
 
-Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Em xin phép làm phiền anh chị đúng hai phút.
+Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas. Em xin phép làm phiền anh chị đúng hai phút — rồi thôi.
 
-Tối thứ Sáu, 7 giờ. Một người khách đứng cách tiệm mình ba con đường, mở điện thoại gõ **“nail salon near me”**.
+Em kể anh chị nghe một chuyện.
 
-Tiệm mình có hiện ra không?
+Tối thứ Sáu, bảy giờ. Tiệm mình còn hai ghế trống. Cách tiệm ba con đường, có một người khách vừa tan làm, mở điện thoại lên gõ: **“nail salon near me”**.
 
-Nếu không — người khách đó **không biết là mình tồn tại**. Họ bấm vào tiệm hiện lên đầu tiên. Và cái ghế trống trong tiệm mình tối đó, **không ai tính là mất khách cả** — vì có ai gọi tới đâu mà biết.
+Màn hình hiện ra ba cái tên. Không có tên tiệm mình.
 
-## Anh chị thử tự trả lời 5 câu này
+Người khách đó bấm vào tiệm đầu tiên, đặt lịch, rồi cất điện thoại. Cô ấy **không hề biết là tiệm mình tồn tại**. Và tối đó, hai chiếc ghế trong tiệm mình vẫn trống.
+
+Anh chị có bao giờ ngồi tính hai cái ghế đó không ạ?
+
+Em đoán là không. Vì có ai gọi tới đâu mà biết. **Đó là loại khách mình mất mà không bao giờ biết là đã mất** — và nó lặp lại mỗi tối, âm thầm, suốt cả năm.
+
+## Anh chị thử tự trả lời trong đầu, năm câu này
 
 - Gõ “nail salon near me” trên điện thoại — tiệm mình đứng ở đâu?
-- Bài đăng gần nhất trên Facebook / TikTok của tiệm là **từ bao giờ**?
-- Tuần rồi tiệm mình có **bao nhiêu cuộc gọi nhỡ**?
-- Mở website tiệm trên điện thoại — mất mấy giây? Chữ có đọc được không?
-- Tháng rồi khách mới đến từ đâu — Google, Facebook, hay đi ngang qua?
+- Bài đăng gần nhất trên Facebook hoặc TikTok của tiệm là **từ bao giờ**?
+- Tuần rồi tiệm mình có **bao nhiêu cuộc gọi nhỡ** lúc đang đông khách?
+- Mở website tiệm bằng điện thoại — mất mấy giây? Chữ có đọc nổi không?
+- Tháng rồi khách **mới** đến từ đâu: Google, Facebook, hay đi ngang qua?
 
-[[NOTE]] Nếu có **từ 2 câu trở lên anh chị không trả lời được** — thì đó chính là chỗ tiền đang lặng lẽ chảy ra khỏi tiệm mỗi tháng.
+[[NOTE]] Nếu có **từ hai câu trở lên anh chị không trả lời được** — thì đó chính là chỗ tiền đang lặng lẽ đi ra khỏi cửa tiệm, mỗi tháng.
 
-## Em xin làm giúp anh chị một bản đánh giá — miễn phí
+Em nói thẳng điều này: **tay nghề của anh chị không có vấn đề gì cả.** Khách ngồi xuống ghế rồi là anh chị giữ được họ. Vấn đề nằm ở đoạn **trước khi họ ngồi xuống** — đoạn mà anh chị đang bận cầm cây cọ, không ai lo giúp.
 
-Em không gửi email này để bán gì cả. Em muốn tặng anh chị một thứ dùng được ngay:
+## Em xin làm giúp anh chị một bản đánh giá — không lấy tiền
 
-- **Vị trí tiệm mình trên Google Maps** với 5 từ khoá mà khách hay tìm nhất
-- **So sánh hồ sơ Google** của tiệm với 3 tiệm gần nhất — hơn thua ở đâu, thấy rõ
-- **Chấm điểm website**: tốc độ, hiển thị trên điện thoại — kèm ảnh chụp màn hình
-- **Ước tính số khách có thể đang mất mỗi tháng** — em nói rõ cách tính, không bịa
-- **3 việc nên làm ngay.** Anh chị **tự làm cũng được** — không cần thuê em
+Em không viết email này để bán gì hết. Em muốn gửi anh chị một thứ dùng được ngay:
 
-[[NOTE]] Bản đánh giá này là **của anh chị**. Nếu xem xong anh chị thấy tự xử lý được, cứ tự làm — em không gọi làm phiền, không nài nỉ.
+- **Vị trí tiệm mình trên Google Maps**, theo đúng 5 câu mà khách hay gõ nhất
+- **So sánh hồ sơ Google của tiệm với 3 tiệm gần nhất** — hơn thua chỗ nào, thấy bằng mắt
+- **Chấm điểm website**: tốc độ, hiển thị trên điện thoại, kèm ảnh chụp màn hình
+- **Ước lượng số khách có thể đang mất mỗi tháng** — em nói rõ cách tính, không bịa số
+- **Ba việc nên làm trước tiên.** Anh chị **tự làm cũng được** — không cần thuê em
 
-## Vì sao em làm không công?
+[[NOTE]] Bản đánh giá đó là **của anh chị**, giữ luôn. Xem xong thấy tự xử lý được thì cứ tự làm — em không gọi làm phiền, không nài nỉ một câu nào.
 
-Nói thẳng: vì em tin rằng khi anh chị thấy em làm việc tử tế và nói thật, có ngày cần tới thì anh chị sẽ nhớ tới em. Chỉ vậy thôi.
-
-Và vì em làm bằng tay chứ không phải máy chạy tự động, nên **mỗi tuần em chỉ nhận 5 tiệm**.
-
-## Anh chị chỉ cần làm một việc
+## Anh chị chỉ cần làm một việc rất nhỏ
 
 Trả lời email này đúng **hai dòng**:
 
 > **Tên tiệm** · **Link Google Maps** (hoặc số điện thoại tiệm)
 
-Trong vòng **48 tiếng**, em gửi lại bản đánh giá. Không họp hành, không ai gọi điện làm phiền anh chị.
+Trong **48 tiếng** em gửi lại bản đánh giá. Không họp hành, không ai gọi điện làm phiền anh chị.
 
-Hoặc nếu tiện hơn, anh chị nhắn thẳng cho em qua điện thoại hay Facebook bên dưới — em trả lời nhanh, bằng tiếng Việt.
+Hoặc tiện hơn thì anh chị nhắn thẳng cho em ở số bên dưới — em trả lời bằng tiếng Việt, và em trả lời nhanh.
 
 ${SIGN_VN}
 
-P.S. Nếu anh chị chỉ tò mò muốn biết **tiệm mình đang đứng thứ mấy trên Google Maps**, nhắn em số điện thoại tiệm thôi cũng được. Em tra rồi nhắn lại cho anh chị **ngay trong hôm nay** — không cần cam kết gì hết.`,
+P.S. Nếu anh chị chỉ tò mò muốn biết **tiệm mình đang đứng thứ mấy trên Google Maps** thôi, thì nhắn em **số điện thoại tiệm** là đủ. Em tra rồi nhắn lại cho anh chị **ngay trong hôm nay** — không cần cam kết gì hết.`,
       ctaLabel: 'Nhận bản đánh giá miễn phí →',
       ctaUrl: AUDIT,
       footerNote: FOOTER,
     },
   },
+
+  // ------------------------------------------------------------------ FORM 2
+  // Trust first. For the owner who is not in pain today, or who has been burned by
+  // an agency before. It sells nothing — it explains who we are, what we refuse to
+  // do, and honours their craft. The ask is a conversation, not a purchase.
   {
-    label: '🎯 FORM 2 · Free audit — lead magnet (EN)',
+    label: '🤝 FORM 2 · Thư đồng hương — xây niềm tin (VN)',
     draft: {
-      name: 'Free audit — lead magnet (EN)',
+      name: 'FORM 2 — Thư đồng hương (VN)',
+      subject: 'Anh chị giỏi nghề. Chỉ là chưa ai lo giúp anh chị phần online',
+      fromName: 'Việt Nguyễn · Lumio Agency',
+      preheader: 'Một lá thư, không phải một lời chào hàng. Bốn điều em xin hứa — và ba điều em từ chối làm.',
+      heading: 'Thư gửi anh chị — người đã dựng nên cái tiệm bằng chính đôi tay mình',
+      body: `Kính chào anh/chị,
+
+Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas.
+
+Lá thư này em viết không phải để bán hàng. Em viết vì có mấy điều muốn thưa với anh chị cho tử tế.
+
+Em biết cái tiệm của anh chị **không phải tự nhiên mà có**. Nó là mười mấy tiếng đứng mỗi ngày. Là mùi hoá chất quen tới mức không còn ngửi thấy. Là những buổi tối về nhà, lưng mỏi rã, mà sáng hôm sau vẫn mở cửa đúng giờ. Là một chỗ đứng mà anh chị **giành lấy được** ở xứ người, chứ không ai cho.
+
+Em nói thẳng: **tay nghề của anh chị không có gì phải bàn.** Khách đã ngồi xuống ghế của anh chị rồi là họ quay lại. Cái mà anh chị thiếu **không nằm trong cái tiệm** — nó nằm ở ngoài kia, chỗ mà khách chưa biết tới tiệm mình.
+
+## Và em cũng biết vì sao anh chị ngại
+
+Vì đã có người tới, hứa với anh chị **“lên top 1 Google”**. Rồi bắt ký hợp đồng. Rồi tự động trừ tiền thẻ mỗi tháng. Rồi im. Gọi không ai bắt máy. Hỏi thì trả lời bằng thứ tiếng Anh đầy chữ khó hiểu.
+
+Sau lần đó, nghe tới hai chữ **“marketing”** là anh chị mệt. Em hiểu. Và em **không trách anh chị một chút nào.**
+
+## Nên em xin nói trước — ba điều em KHÔNG làm
+
+- Em **không hứa “top 1 Google”**. Ai hứa với anh chị điều đó là người đó không thành thật. Không ai kiểm soát được Google
+- Em **không giữ tài khoản của anh chị**. Google, Facebook, website — tất cả đứng tên anh chị. Ngày nào anh chị ngưng, anh chị **mang đi hết**, em không giữ lại một thứ gì
+- Em **không trói anh chị vào hợp đồng dài**. Em xin tối thiểu ba tháng, chỉ vì công việc cần từng đó thời gian mới thấy kết quả — chứ không phải để giữ chân anh chị
+
+## Và bốn điều em xin hứa
+
+- **Em là người Việt, em nói tiếng Việt.** Anh chị gọi là gặp em, không phải gặp tổng đài
+- **Em báo cáo bằng số thật**, kèm ảnh chụp màn hình nguồn. Không có số nào là số em nghĩ ra
+- **Em làm thật, làm đều.** Không phải tháng đầu rầm rộ rồi tháng sau biến mất
+- **Lumio Agency LLC là công ty đăng ký thật** tại Texas, có văn phòng ở 5900 Balcones Drive STE 100, Austin, TX. Anh chị gọi được, ghé được, nhìn mặt em được
+
+[[NOTE]] Anh chị hỏi bất cứ chủ tiệm nào đang làm với Lumio — em sẵn sàng cho số để anh chị gọi hỏi thẳng họ, không cần qua em.
+
+## Em xin anh chị một điều duy nhất
+
+Không phải tiền. Là **một cuộc nói chuyện**.
+
+Anh chị gọi cho em, hoặc nhắn cho em, lúc nào cũng được — **kể cả mười giờ đêm khi tiệm đã đóng cửa**. Em nghe anh chị kể tiệm mình đang vướng ở đâu, rồi em nói thật anh chị nên làm gì trước, làm gì sau.
+
+Nếu sau cuộc nói chuyện đó anh chị thấy **chưa cần tới Lumio** — em vẫn cảm ơn anh chị đã cho em thời gian, và em vẫn để lại cho anh chị vài việc để tự làm.
+
+Em không mất gì cả. Còn anh chị thì có thêm một người biết nghề, nói cùng tiếng, để hỏi khi cần.
+
+${SIGN_VN}
+
+P.S. Anh chị đang bận thì cứ để email này đó. Khi nào tiệm vắng khách một buổi chiều nào đó, anh chị mở ra đọc lại — em vẫn ở đây.`,
+      ctaLabel: 'Nói chuyện với em — không mất gì →',
+      ctaUrl: AUDIT,
+      footerNote: FOOTER,
+    },
+  },
+
+  // ------------------------------------------------------------------ FORM 3
+  // The quote — but told as a journey, not a price list. Only send this to someone
+  // who already replied. $45 first, so $179 and $279 look reasonable; the Pro card
+  // is the highlighted one, because that is where the eye should land.
+  {
+    label: '📋 FORM 3 · Báo giá kể chuyện (VN)',
+    draft: {
+      name: 'FORM 3 — Báo giá kể chuyện (VN)',
+      subject: 'Ba chặng đường để tiệm mình được khách tìm thấy — em xin trình bày',
+      fromName: 'Việt Nguyễn · Lumio Agency',
+      preheader: 'Anh chị đang ở chặng nào, em bắt đầu từ chặng đó. Chỉ từ $45/tháng. Không hợp đồng dài.',
+      heading: 'Không ai đi hết con đường trong một bước',
+      body: `Kính chào anh/chị,
+
+Cảm ơn anh chị đã dành thời gian cho em.
+
+Như em có thưa, em không bán cho anh chị **một gói dịch vụ**. Em muốn cùng anh chị đi **một chặng đường** — và anh chị đang đứng ở đâu, thì mình bắt đầu từ đó.
+
+Em xin kể ba chặng, bằng đúng những gì em thấy ở các tiệm em từng làm.
+
+## Chặng thứ nhất — cho tiệm “còn sống” trên mạng
+
+Khách lạ mở Facebook của tiệm ra xem. Bài đăng gần nhất: **tháng Tư năm ngoái**. Họ đóng lại. Trong đầu họ, tiệm mình **đã dẹp rồi**.
+
+Chặng này em không làm gì to tát. Em chỉ làm cho tiệm mình **sống lại** trên mạng — đều đặn, tử tế, để ai ghé qua cũng thấy đây là một tiệm đang hoạt động, có người chăm.
+
+[[PLAN]] Lumio Social Care | $45/tháng | Chặng 1 — cho tiệm sống lại trên mạng | Đăng đều Facebook, Instagram, TikTok, Shorts, Yelp; Nội dung mới khoảng 2 ngày một lần; Theo mẫu của ngành, chỉnh riêng cho tiệm mình; Chưa gồm Google Maps SEO và báo cáo
+
+[[NOTE]] $45 một tháng. Bằng đúng **một bộ móng**. Anh chị làm một bộ là đủ trả cho cả tháng.
+
+## Chặng thứ hai — cho khách đặt được lịch, kể cả lúc mình đang bận
+
+Khách gọi tới lúc bảy giờ tối, tiệm đông kín, sáu cái tay đang bận. Không ai bắt máy. Khách gọi tiệm khác. **Đó là tiền đi ra khỏi cửa, mà không ai nhìn thấy.**
+
+Chặng này, ngoài social, em đưa vào tiệm mình **hệ thống LumioBooking** — khách tự đặt lịch trên điện thoại, hai mươi bốn trên bảy, kể cả lúc tiệm đóng cửa. Có AI trả lời điện thoại và Messenger giùm. Có POS tính tiền, có lương thợ, có báo cáo khách đến từ đâu.
+
+[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Chặng 2 — nền tảng vững, khách đặt được lịch | Toàn bộ phần social ở chặng 1; Tối ưu hồ sơ Google Business Profile; Link in bio, duyệt nội dung trước khi đăng; **Trọn bộ phần mềm LumioBooking** — đặt lịch 24/7, AI nghe điện thoại, POS, quản lý thợ; Báo cáo tháng ngắn gọn, dễ hiểu
+
+## Chặng thứ ba — cho khách **tìm là thấy**
+
+Đây là chặng khó nhất, và cũng là chặng đáng tiền nhất.
+
+Khách gõ “nail salon near me”. Trên màn hình điện thoại của họ chỉ có **ba cái tên**. Ai đứng trong ba cái tên đó, người ấy có khách. Còn lại, dù tay nghề giỏi tới đâu, cũng **không tồn tại** trong mắt người khách đó.
+
+Chặng này em làm Google Maps SEO chuyên sâu, xây chiến lược đánh giá, và theo dõi từng lượt gọi, từng lượt bấm chỉ đường về tiệm — để anh chị **nhìn thấy** tiền mình bỏ ra đang đẻ ra cái gì.
+
+[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Chặng 3 — để khách tìm là thấy tiệm mình | **Bao gồm trọn vẹn chặng 2** (social + LumioBooking); Google Maps SEO chuyên sâu; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch, kèm ảnh chụp màn hình nguồn
+
+[[NOTE]] Em **không hứa “top 1 Google”** — ai hứa điều đó là không thành thật. Em hứa **làm đúng việc, làm đều, và báo cáo bằng số thật.**
+
+[[DIVIDER]]
+
+## Còn website — em xin để riêng ra, $150
+
+Không tính theo tháng. **Một lần $150**, xong là của anh chị.
+
+Website nhanh, đẹp, **chuẩn điện thoại** (chín trên mười khách xem bằng điện thoại), song ngữ Việt – Anh, gắn sẵn nút Đặt lịch nối thẳng vào LumioBooking. **Tên miền và website đứng tên anh chị.**
+
+## Anh chị không cần chọn hôm nay
+
+Anh chị đọc xong, thấy mình đang ở chặng nào thì nhắn em chặng đó. Hoặc gọi cho em, mình nói chuyện mười phút, em nói thật anh chị nên bắt đầu từ đâu — **có khi em khuyên anh chị chưa cần chi đồng nào cả**, nếu em thấy vậy là đúng.
+
+Em cảm ơn anh chị đã đọc tới đây. Với em, đó đã là một sự tôn trọng lớn rồi.
+
+${SIGN_VN}`,
+      ctaLabel: 'Gọi cho em — mình bàn 10 phút →',
+      ctaUrl: AUDIT,
+      footerNote: FOOTER,
+    },
+  },
+
+  // ---------------------------------------------------------------- EN + phụ
+  {
+    label: '🇺🇸 EN · Free audit (kéo khách liên hệ)',
+    draft: {
+      name: 'EN — Free audit',
       subject: 'Someone just searched “nail salon near me” — did you show up?',
       fromName: 'Viet Nguyen · Lumio Agency',
       preheader: 'I’ll check it for you, free. Nothing to buy — just send me your salon name.',
       heading: 'You may be losing customers without ever knowing it',
       body: `Dear {{name}},
 
-My name is **Viet Nguyen**, from **Lumio Agency** in Austin, Texas. Two minutes of your time, that's all I'm asking for.
+My name is **Viet Nguyen**, from **Lumio Agency** in Austin, Texas. Two minutes of your time, that's all I ask.
 
 Friday night, 7pm. Someone is standing three blocks from your salon. They pull out their phone and type **“nail salon near me.”**
 
 Did your shop come up?
 
-If it didn't, that customer **doesn't know you exist**. They tapped the first salon on the list. And the empty chair in your shop that night? **Nobody counted it as a lost customer** — because nobody ever called.
+If it didn't, that customer **doesn't know you exist**. They tapped the first salon on the list. And the empty chair in your shop that night — **nobody counted it as a lost customer**, because nobody ever called.
 
 ## Try answering these five questions
 
@@ -147,166 +294,32 @@ If it didn't, that customer **doesn't know you exist**. They tapped the first sa
 - Open your website on a phone — how many seconds? Can you even read it?
 - Where did last month's new customers come from — Google, Facebook, or walking past?
 
-[[NOTE]] If you couldn't answer **two or more** of those — that is exactly where money is quietly leaking out of your business every month.
+[[NOTE]] If you couldn't answer **two or more** of those, that is exactly where money is quietly leaking out of your business every month.
 
 ## Let me put together a free audit for you
 
 I'm not emailing to sell you anything. I want to hand you something you can use today:
 
 - **Where you rank on Google Maps** for the 5 searches your customers actually use
-- **Your Google profile vs. the 3 salons nearest you** — exactly where you win and lose
+- **Your Google profile vs. the 3 salons nearest you** — where you win, where you lose
 - **A website health score**: speed and mobile display, with screenshots
-- **An estimate of how many customers you may be losing each month** — with the maths shown, not invented
+- **An estimate of the customers you may be losing each month** — with the maths shown
 - **The 3 things to fix first.** You can **do them yourself** — you don't need to hire me
 
-[[NOTE]] The audit is **yours to keep**. If you read it and decide you can handle it in-house, go right ahead — I won't chase you or call you.
+[[NOTE]] The audit is **yours to keep**. If you read it and decide you can handle it in-house, go right ahead — I won't chase you.
 
-## Why would I do this for free?
+## Why free?
 
-Straight answer: because when you see that I do honest work and tell you the truth, you'll remember me the day you actually need someone. That's the whole plan.
+Straight answer: because when you see that I do honest work and tell you the truth, you'll remember me the day you need someone. That's the whole plan. And because I do these by hand, **I only take 5 salons a week**.
 
-And because I do these by hand — not with software — **I only take 5 salons a week**.
+## All you have to do
 
-## All you have to do is this
-
-Reply to this email with **two lines**:
-
-> **Salon name** · **Google Maps link** (or your salon's phone number)
-
-Within **48 hours** I'll send the audit back. No meeting, no sales call, nobody hounding you.
-
-Or just call or message me directly using the details below. I answer fast, in English or Vietnamese.
+Reply with **two lines**: **Salon name** · **Google Maps link** (or your phone number). Within **48 hours** the audit is in your inbox. No meeting, no sales call.
 
 ${SIGN_EN}
 
-P.S. If you're only curious about **where you currently rank on Google Maps**, just send me your salon's phone number. I'll look it up and text you back **today** — no commitment of any kind.`,
+P.S. Only curious where you rank right now? Just send your salon's phone number — I'll look it up and text you back **today**, no commitment.`,
       ctaLabel: 'Get my free audit →',
-      ctaUrl: AUDIT,
-      footerNote: FOOTER,
-    },
-  },
-  {
-    label: '📋 FORM 1 · Báo giá đầy đủ (VN)',
-    draft: {
-      name: 'Chào dịch vụ tổng thể — VN',
-      subject: 'Tiệm anh chị đang mất khách ở chỗ nào? Em chỉ giúp anh chị xem — miễn phí',
-      fromName: 'Việt Nguyễn · Lumio Agency',
-      preheader: 'Google Maps · Social · Website · Phần mềm đặt lịch — chỉ từ $45/tháng. Audit miễn phí, không ràng buộc.',
-      heading: 'Anh chị lo tay nghề. Phần online, để em lo.',
-      body: `Kính chào anh/chị,
-
-Em là **Việt Nguyễn**, bên **Lumio Agency** — công ty đăng ký tại Austin, Texas. Em và đội ngũ của em chuyên lo phần online cho tiệm nail, spa và nhà hàng của người Việt mình tại Mỹ và Canada.
-
-Em viết email này không phải để bán hàng vội. Em chỉ muốn hỏi anh chị một câu:
-
-**Tháng vừa rồi, tiệm mình mất bao nhiêu khách mà không hề hay biết?**
-
-Em hỏi vậy vì chủ tiệm nào em gặp cũng đang rơi khách ở đúng mấy chỗ này:
-
-- Khách mở Google Maps tìm tiệm nail gần nhà — **tiệm mình không hiện ra**, tiệm bên cạnh hiện
-- Facebook, TikTok bỏ trống cả tháng — khách lạ vào xem, thấy bài cuối từ năm ngoái, họ đi luôn
-- Khách gọi tới lúc tiệm đang đông, **không ai bắt máy** — khách gọi tiệm khác
-- Website cũ, mở trên điện thoại chữ bé xíu, khách thoát ra trong 3 giây
-- Và đau nhất: **tiền quảng cáo đổ ra mà không biết đi về đâu**
-
-Mỗi cái đó, một mình thì nhỏ. Cộng lại cả tháng thì đó là **tiền thật** đi ra khỏi cửa tiệm.
-
-## Lumio làm gì cho tiệm anh chị
-
-[[PLAN]] Lumio Social Care | $45/tháng | Bắt đầu nhẹ nhàng — chỉ lo phần social | Đăng đều FB, IG, TikTok, Shorts, Yelp; Nội dung mới ~2 ngày/lần, không để trang chết; Theo mẫu ngành, chỉnh riêng cho tiệm mình; Chưa gồm Google Maps SEO và báo cáo
-[[PLAN]] Lumio Boost + LumioBooking | $179/tháng | Nền tảng — social đều tay và hệ thống đặt lịch | Social đa kênh: FB, IG, TikTok, Shorts, Yelp; Nội dung đều đặn ~2 ngày/lần; Tối ưu hồ sơ Google Business Profile; Link in bio + duyệt nội dung trước khi đăng; Phần mềm LumioBooking đặt lịch online 24/7; Báo cáo tháng ngắn gọn, dễ hiểu
-[[PLAN*]] Lumio Growth (Pro) | $279/tháng | Đầy đủ nhất — thêm Google Maps SEO chuyên sâu | Bao gồm toàn bộ gói $179; Google Maps SEO chuyên sâu — để khách tìm là thấy tiệm mình; Chiến lược đánh giá + tín hiệu local; Theo dõi lượt hiển thị, lượt gọi, lượt chỉ đường; Báo cáo minh bạch kèm ảnh chụp màn hình nguồn
-
-[[NOTE]] Gói $179 và $279 đều **đã bao gồm phần mềm LumioBooking** — đặt lịch online, nhắc khách tự động, POS tính tiền, quản lý thợ và báo cáo nguồn khách. Anh chị không phải trả thêm đồng nào cho phần mềm.
-
-Anh chị chưa muốn đi xa? **Bắt đầu ở gói $45** cũng được — để trang social của tiệm sống lại trước đã. Khi nào thấy hiệu quả thì nâng lên, em không ép.
-
-## Và website — chỉ $150, trả một lần
-
-Website riêng cho tiệm: nhanh, đẹp, **chuẩn điện thoại**, song ngữ Việt – Anh, gắn sẵn nút Đặt lịch nối thẳng vào LumioBooking. Anh chị **sở hữu website và tên miền**, đứng tên anh chị.
-
-[[NOTE]] $150 trả một lần. Không phí ẩn, không ràng buộc.
-
-## Vì sao anh chị nên tin em
-
-- Anh chị **sở hữu 100% tài khoản** — Google, Facebook, website đều đứng tên anh chị. Ngừng hợp tác lúc nào cũng giữ nguyên tất cả
-- **Không hợp đồng dài hạn.** Em khuyến nghị tối thiểu 3 tháng để công việc kịp có tác dụng, không phải để trói anh chị
-- Em **không hứa "top 1 Google"** — ai hứa điều đó là không thật thà. Em chỉ báo cáo số liệu đã xác minh, kèm ảnh chụp màn hình nguồn
-- **Doanh nghiệp thật:** Lumio Agency LLC, đăng ký tại Texas, văn phòng ở 5900 Balcones Drive STE 100, Austin, TX. Anh chị gọi được, ghé được, nhìn mặt được
-
-## Bước tiếp theo rất nhẹ nhàng
-
-Anh chị **chưa cần quyết gì cả, cũng chưa tốn đồng nào.**
-
-Em xin **20 phút** để làm một buổi **audit miễn phí**: em xem hồ sơ Google, Facebook và website của tiệm mình, chỉ ra chính xác chỗ đang mất khách, rồi nói thẳng anh chị nên làm gì trước, làm gì sau. Nếu anh chị thấy chưa cần Lumio, em vẫn gửi anh chị bản đánh giá đó — miễn phí, giữ luôn.
-
-Anh chị chỉ cần bấm nút bên dưới, hoặc nhắn thẳng cho em.
-
-${SIGN_VN}`,
-      ctaLabel: 'Nhận audit miễn phí (20 phút) →',
-      ctaUrl: AUDIT,
-      footerNote: FOOTER,
-    },
-  },
-  {
-    label: '📋 FORM 1 · Full pricing (EN)',
-    draft: {
-      name: 'Full-service pitch — EN',
-      subject: 'Where is your salon losing customers? Let me show you — free',
-      fromName: 'Viet Nguyen · Lumio Agency',
-      preheader: 'Google Maps · Social · Website · Booking software — from just $45/mo. Free audit, no strings.',
-      heading: 'You handle the craft. I’ll handle the online side.',
-      body: `Dear {{name}},
-
-My name is **Viet Nguyen**, from **Lumio Agency** — a registered company in Austin, Texas. My team and I run the online side for Vietnamese-owned nail salons, spas and restaurants across the US and Canada.
-
-I'm not writing to rush you into anything. I just want to ask you one question:
-
-**How many customers did your salon lose last month without ever knowing it?**
-
-I ask because every owner I meet is losing people in the same five places:
-
-- Someone opens Google Maps looking for a nail salon nearby — **your shop doesn't come up**, the one next door does
-- Facebook and TikTok sit empty for months. A new customer looks you up, sees a post from last year, and moves on
-- The phone rings while everyone's hands are busy — **nobody picks up** — and that customer calls someone else
-- Your website is old, and on a phone the text is tiny. People leave in three seconds
-- And the worst one: **money goes into marketing and nobody knows where it lands**
-
-Any one of these is small. Add them up over a month and it is **real money** walking out of your door.
-
-## What Lumio does for you
-
-[[PLAN]] Lumio Social Care | $45/mo | Start small — social only | FB, IG, TikTok, Shorts, Yelp posted for you; Fresh content every ~2 days, never a dead page; Industry templates, tailored to your shop; No Maps SEO or reporting at this level
-[[PLAN]] Lumio Boost + LumioBooking | $179/mo | The foundation — steady social and a real booking system | Multi-channel social: FB, IG, TikTok, Shorts, Yelp; Fresh content every ~2 days; Google Business Profile optimisation; Link in bio + you approve content before it posts; LumioBooking software — 24/7 online booking; A short, plain-English monthly report
-[[PLAN*]] Lumio Growth (Pro) | $279/mo | The full package — adds deep Google Maps SEO | Everything in the $179 plan; In-depth Google Maps SEO — so people searching actually find you; Review strategy + local signals; Tracking for impressions, calls and directions; Honest reporting with source screenshots
-
-[[NOTE]] The $179 and $279 plans **already include the LumioBooking software** — online booking, automatic reminders, POS checkout, staff management and customer-source reporting. You never pay extra for it.
-
-Not ready for all that? **Start at $45** and just bring your social pages back to life. Move up when you see it working — I won't push you.
-
-## And a website — just $150, one payment
-
-A proper website for your shop: fast, **built for phones first**, bilingual English/Vietnamese, with your booking button wired straight into LumioBooking. **You own the site and the domain**, in your name.
-
-[[NOTE]] $150, one time. No hidden fees, no lock-in.
-
-## Why you can trust me
-
-- **You own 100% of your accounts** — Google, Facebook, the website, all in your name. Walk away any time and you keep everything
-- **No long-term contract.** I suggest 3 months minimum so the work has time to land — not to tie you down
-- I will **never promise "#1 on Google."** Anyone who does isn't being straight with you. I report verified numbers only, with screenshots of the source
-- **A real business:** Lumio Agency LLC, registered in Texas, office at 5900 Balcones Drive STE 100, Austin, TX. Call me, email me, or come see me
-
-## The next step is easy
-
-You don't have to decide anything today, and it costs you nothing.
-
-Give me **20 minutes** for a **free audit**: I'll go through your Google profile, your social pages and your website, show you exactly where customers are slipping away, and tell you straight what to fix first. If you decide Lumio isn't for you, keep the audit anyway — it's yours.
-
-Just tap the button below, or reach me directly.
-
-${SIGN_EN}`,
-      ctaLabel: 'Get my free 20-minute audit →',
       ctaUrl: AUDIT,
       footerNote: FOOTER,
     },
@@ -323,21 +336,19 @@ ${SIGN_EN}`,
 
 Em là **Việt Nguyễn**, bên **Lumio Agency** ở Austin, Texas.
 
-Em kể anh chị nghe một chuyện xảy ra mỗi ngày: khách lạ tìm thấy tiệm mình trên Google, tò mò bấm vào website — và thấy một trang cũ, chậm, mở trên điện thoại chữ bé xíu. Ba giây sau họ thoát ra, bấm vào tiệm kế bên.
+Em kể anh chị nghe chuyện xảy ra mỗi ngày: khách lạ tìm thấy tiệm mình trên Google, tò mò bấm vào website — rồi thấy một trang cũ, chậm, mở trên điện thoại chữ bé xíu. Ba giây sau họ thoát ra, bấm vào tiệm kế bên.
 
-Cái website đó **không làm mất tiền của anh chị**. Nó chỉ lặng lẽ **đẩy khách sang tiệm khác** thôi.
+Cái website đó **không lấy tiền của anh chị**. Nó chỉ lặng lẽ **đẩy khách sang tiệm khác** thôi.
 
-## Lumio làm website cho tiệm — đúng một mức giá
+[[PLAN*]] Website trọn gói | $150 | Trả một lần, không phí ẩn | Nhanh, đẹp, **chuẩn điện thoại** — chín trên mười khách xem bằng điện thoại; Song ngữ Việt – Anh; Gắn sẵn nút Đặt lịch nối thẳng LumioBooking; Chuẩn Google: tên tiệm, địa chỉ, giờ mở cửa, bản đồ, đánh giá; **Website và tên miền đứng tên anh chị**
 
-[[PLAN*]] Website trọn gói | $150 | Trả một lần, không phí ẩn | Nhanh, đẹp, **chuẩn điện thoại** — 9/10 khách xem bằng điện thoại; Song ngữ Việt – Anh; Gắn sẵn nút Đặt lịch nối thẳng LumioBooking; Chuẩn Google: tên tiệm, địa chỉ, giờ mở cửa, bản đồ, đánh giá; Anh chị sở hữu website và tên miền, đứng tên anh chị
+[[NOTE]] $150 trả một lần. Anh chị chỉ trả thêm phí tên miền và hosting **theo giá gốc** — em không ăn chênh lệch một đồng nào.
 
-[[NOTE]] $150 trả một lần. Anh chị chỉ trả thêm phí tên miền và hosting theo giá gốc — em không ăn chênh lệch.
+## Em xin làm thế này
 
-## Em làm gì tiếp theo
+Anh chị nhắn cho em **tên tiệm và link Google Maps**. Trong 48 tiếng em gửi lại **bản phác thảo website của tiệm mình** — anh chị nhìn tận mắt rồi hãy quyết.
 
-Anh chị nhắn cho em **tên tiệm + link Google Maps**. Trong vòng 48 tiếng em gửi lại anh chị bản phác thảo website của tiệm mình — nhìn tận mắt rồi hãy quyết.
-
-Không thích thì thôi, em không làm phiền anh chị nữa.
+Không ưng thì thôi ạ, em không làm phiền anh chị nữa.
 
 ${SIGN_VN}`,
       ctaLabel: 'Xem bản demo website của tiệm →',

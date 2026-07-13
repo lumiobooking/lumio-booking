@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { NotificationChannel } from '@prisma/client';
+import { NotificationChannel, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
@@ -62,22 +62,45 @@ export class EmailCampaignsService {
     return tenantId ?? 'platform';
   }
 
-  /** Split a pasted blob into clean, de-duplicated addresses. */
-  parseRecipients(raw: string): { emails: string[]; invalid: string[] } {
-    const parts = String(raw || '')
-      .split(/[\s,;]+/)
-      .map((x) => x.trim().replace(/^[<"']+|[>"']+$/g, '').toLowerCase())
-      .filter(Boolean);
+  /**
+   * One line = one person. A name may ride along, because "Chào anh Tuấn" opens far
+   * more mail than "Chào bạn". All of these work:
+   *     a@b.com
+   *     Anh Tuấn <a@b.com>
+   *     a@b.com, Anh Tuấn
+   *     Anh Tuấn, a@b.com
+   */
+  parseRecipients(raw: string): { people: { email: string; name: string | null }[]; invalid: string[] } {
+    const lines = String(raw || '').split(/[\n;]+/);
     const seen = new Set<string>();
-    const emails: string[] = [];
+    const people: { email: string; name: string | null }[] = [];
     const invalid: string[] = [];
-    for (const p of parts) {
-      if (!EMAIL_RE.test(p)) { invalid.push(p); continue; }
-      if (seen.has(p)) continue;
-      seen.add(p);
-      emails.push(p);
+
+    const push = (email: string, name: string | null) => {
+      const e = email.trim().replace(/^[<"']+|[>"']+$/g, '').toLowerCase();
+      if (!EMAIL_RE.test(e)) { if (e) invalid.push(e); return; }
+      if (seen.has(e)) return;
+      seen.add(e);
+      people.push({ email: e, name: (name || '').trim().replace(/^["']|["']$/g, '') || null });
+    };
+
+    for (const line of lines) {
+      const l = line.trim();
+      if (!l) continue;
+      // "Anh Tuấn <a@b.com>"
+      const angled = /^(.*?)<([^>]+)>$/.exec(l);
+      if (angled) { push(angled[2], angled[1]); continue; }
+      // comma / tab separated — whichever side looks like an email wins
+      const cells = l.split(/[,\t]/).map((x) => x.trim()).filter(Boolean);
+      if (cells.length >= 2) {
+        const emailCell = cells.find((c) => c.includes('@'));
+        const nameCell = cells.find((c) => c !== emailCell);
+        if (emailCell) { push(emailCell, nameCell ?? null); continue; }
+      }
+      // a bare list of addresses on one line
+      for (const chunk of l.split(/\s+/)) push(chunk, null);
     }
-    return { emails, invalid };
+    return { people, invalid };
   }
 
   // ---- content -------------------------------------------------------------
@@ -252,7 +275,8 @@ export class EmailCampaignsService {
    */
   async send(tenantId: string | null, userId: string | undefined, dto: CampaignInput) {
     const data = this.clean(dto);
-    const { emails, invalid } = this.parseRecipients(dto.recipients || '');
+    const { people, invalid } = this.parseRecipients(dto.recipients || '');
+    const emails = people.map((p) => p.email);
     if (emails.length === 0) throw new BadRequestException('Paste at least one valid email address.');
     if (emails.length > MAX_RECIPIENTS) throw new BadRequestException(`Too many addresses (${emails.length}). The limit per send is ${MAX_RECIPIENTS}.`);
 
@@ -280,14 +304,18 @@ export class EmailCampaignsService {
     });
 
     await this.prisma.emailCampaignRecipient.createMany({
-      data: emails.map((email) => ({
+      data: people.map((p) => ({
         campaignId: campaign.id,
         tenantId,
-        email,
-        status: suppressed.has(email) ? 'skipped' : 'pending',
-        error: suppressed.has(email) ? 'Unsubscribed' : null,
+        email: p.email,
+        name: p.name,
+        status: suppressed.has(p.email) ? 'skipped' : 'pending',
+        error: suppressed.has(p.email) ? 'Unsubscribed' : null,
       })),
     });
+
+    // Whoever we email becomes a contact — that list is what the follow-up runs on.
+    await this.upsertContacts(tenantId, people);
 
     // Fire and forget: the UI polls the campaign for progress.
     void this.run(campaign.id).catch((e) => this.logger.error(`campaign ${campaign.id} failed: ${String(e).slice(0, 200)}`));
@@ -338,6 +366,18 @@ export class EmailCampaignsService {
       if (i + BATCH < pending.length) await new Promise((r) => setTimeout(r, 400)); // be a good citizen
     }
 
+    // Keep the address book honest: how many letters has this person had, and when.
+    const okEmails = (await this.prisma.emailCampaignRecipient.findMany({
+      where: { campaignId, status: 'sent' },
+      select: { email: true },
+    })).map((r: { email: string }) => r.email);
+    if (okEmails.length) {
+      await this.prisma.emailContact.updateMany({
+        where: { scope: this.scopeKey(c.tenantId), email: { in: okEmails } },
+        data: { sends: { increment: 1 }, lastSentAt: new Date() },
+      }).catch(() => undefined);
+    }
+
     // Store what was actually sent, so the history can show the real thing later.
     const snapshot = await this.content(c.tenantId, c, { recipientName: null, unsubscribeUrl: null });
     await this.prisma.emailCampaign.update({
@@ -349,65 +389,292 @@ export class EmailCampaignsService {
     }).catch(() => undefined);
   }
 
-  /**
-   * The address book: one row per PERSON, not per send.
-   *
-   * "Did this shop already get an email from me, how many times, which template,
-   * and did it land?" — that question is the whole job of a cold-outreach tool,
-   * and it cannot be answered by a list of campaigns. So we fold every recipient
-   * row down to the address and count.
-   */
+  // =========================================================================
+  // The address book
+  // =========================================================================
+
+  private async upsertContacts(tenantId: string | null, people: { email: string; name: string | null }[]) {
+    const scope = this.scopeKey(tenantId);
+    for (const p of people) {
+      await this.prisma.emailContact.upsert({
+        where: { scope_email: { scope, email: p.email } },
+        // never overwrite a name we already have with a blank one
+        update: p.name ? { name: p.name } : {},
+        create: { scope, tenantId, email: p.email, name: p.name },
+      }).catch(() => undefined);
+    }
+  }
+
+  /** One row per PERSON: name, how many letters they've had, where they are in the
+   *  follow-up, and whether they replied (which stops the robot). */
   async contacts(tenantId: string | null) {
-    const rows = await this.prisma.emailCampaignRecipient.findMany({
+    const scope = this.scopeKey(tenantId);
+    const [rows, supp] = await Promise.all([
+      this.prisma.emailContact.findMany({
+        where: { scope },
+        orderBy: [{ replied: 'asc' }, { lastSentAt: 'desc' }],
+        take: 5000,
+      }),
+      this.prisma.emailSuppression.findMany({ where: { scope }, select: { email: true } }),
+    ]);
+    const unsub = new Set(supp.map((r: { email: string }) => r.email));
+
+    // last outcome per address, so a bounce is visible in the list
+    const last = await this.prisma.emailCampaignRecipient.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'desc' },
       take: 20000,
-      select: {
-        email: true, status: true, error: true, sentAt: true, createdAt: true,
-        campaign: { select: { id: true, name: true, subject: true } },
-      },
+      select: { email: true, status: true, error: true, campaign: { select: { name: true, subject: true } } },
     });
-
-    const suppressed = new Set(
-      (await this.prisma.emailSuppression.findMany({
-        where: { scope: this.scopeKey(tenantId) },
-        select: { email: true },
-      })).map((r: { email: string }) => r.email),
-    );
-
-    type Row = {
-      email: string;
-      sends: number; sent: number; failed: number; skipped: number;
-      lastStatus: string; lastAt: string | null; lastError: string | null;
-      lastCampaign: string; unsubscribed: boolean;
-    };
-    const byEmail = new Map<string, Row>();
-
-    for (const r of rows as {
-      email: string; status: string; error: string | null; sentAt: Date | null; createdAt: Date;
-      campaign: { id: string; name: string; subject: string } | null;
-    }[]) {
-      let row = byEmail.get(r.email);
-      if (!row) {
-        // rows come newest-first, so the FIRST one we see is the latest send
-        row = {
-          email: r.email,
-          sends: 0, sent: 0, failed: 0, skipped: 0,
-          lastStatus: r.status,
-          lastAt: (r.sentAt ?? r.createdAt)?.toISOString() ?? null,
-          lastError: r.error,
-          lastCampaign: r.campaign?.name || r.campaign?.subject || '—',
-          unsubscribed: suppressed.has(r.email),
-        };
-        byEmail.set(r.email, row);
+    const lastBy = new Map<string, { status: string; error: string | null; campaign: string }>();
+    for (const r of last as { email: string; status: string; error: string | null; campaign: { name: string; subject: string } | null }[]) {
+      if (!lastBy.has(r.email)) {
+        lastBy.set(r.email, { status: r.status, error: r.error, campaign: r.campaign?.name || r.campaign?.subject || '—' });
       }
-      row.sends++;
-      if (r.status === 'sent') row.sent++;
-      else if (r.status === 'failed') row.failed++;
-      else if (r.status === 'skipped') row.skipped++;
     }
 
-    return [...byEmail.values()].sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
+    return (rows as {
+      id: string; email: string; name: string | null; company: string | null; note: string | null;
+      replied: boolean; repliedAt: Date | null; sends: number; lastSentAt: Date | null; lastStep: number;
+    }[]).map((c) => {
+      const l = lastBy.get(c.email);
+      return {
+        id: c.id,
+        email: c.email,
+        name: c.name,
+        company: c.company,
+        note: c.note,
+        replied: c.replied,
+        repliedAt: c.repliedAt?.toISOString() ?? null,
+        sends: c.sends,
+        lastStep: c.lastStep,
+        lastSentAt: c.lastSentAt?.toISOString() ?? null,
+        lastStatus: l?.status ?? (c.sends > 0 ? 'sent' : 'new'),
+        lastError: l?.error ?? null,
+        lastCampaign: l?.campaign ?? '—',
+        unsubscribed: unsub.has(c.email),
+      };
+    });
+  }
+
+  /** Paste or upload a list — "Anh Tuấn <a@b.com>", "a@b.com, Anh Tuấn", or a CSV. */
+  async importContacts(tenantId: string | null, raw: string) {
+    const { people, invalid } = this.parseRecipients(raw || '');
+    if (!people.length) throw new BadRequestException('No valid email address found in that list.');
+    const before = await this.prisma.emailContact.count({ where: { scope: this.scopeKey(tenantId) } });
+    await this.upsertContacts(tenantId, people);
+    const after = await this.prisma.emailContact.count({ where: { scope: this.scopeKey(tenantId) } });
+    return { added: after - before, updated: people.length - (after - before), invalid: invalid.length };
+  }
+
+  async updateContact(tenantId: string | null, id: string, dto: { name?: string; company?: string; note?: string; replied?: boolean }) {
+    const scope = this.scopeKey(tenantId);
+    const c = await this.prisma.emailContact.findFirst({ where: { id, scope }, select: { id: true, replied: true } });
+    if (!c) throw new NotFoundException('Contact not found');
+    const data: Record<string, unknown> = {};
+    if (typeof dto.name === 'string') data.name = dto.name.slice(0, 80) || null;
+    if (typeof dto.company === 'string') data.company = dto.company.slice(0, 120) || null;
+    if (typeof dto.note === 'string') data.note = dto.note.slice(0, 300) || null;
+    if (typeof dto.replied === 'boolean') {
+      data.replied = dto.replied;
+      data.repliedAt = dto.replied ? new Date() : null;
+    }
+    await this.prisma.emailContact.update({ where: { id: c.id }, data });
+    return this.contacts(tenantId);
+  }
+
+  async deleteContact(tenantId: string | null, id: string) {
+    await this.prisma.emailContact.deleteMany({ where: { id, scope: this.scopeKey(tenantId) } });
+    return { ok: true };
+  }
+
+  // =========================================================================
+  // The follow-up automation
+  // =========================================================================
+
+  async getAutomation(tenantId: string | null) {
+    const scope = this.scopeKey(tenantId);
+    const a = await this.prisma.emailAutomation.findUnique({ where: { scope } });
+    const due = await this.dueContacts(tenantId, a);
+    return {
+      enabled: a?.enabled ?? false,
+      name: a?.name ?? 'Follow-up',
+      everyDays: a?.everyDays ?? 30,
+      dailyCap: a?.dailyCap ?? 100,
+      fromName: a?.fromName ?? '',
+      replyTo: a?.replyTo ?? '',
+      steps: (a?.steps as unknown as CampaignInput[]) ?? [],
+      lastRunAt: a?.lastRunAt?.toISOString() ?? null,
+      sentTotal: a?.sentTotal ?? 0,
+      dueNow: due.length,
+    };
+  }
+
+  async saveAutomation(tenantId: string | null, dto: {
+    enabled?: boolean; name?: string; everyDays?: number; dailyCap?: number;
+    fromName?: string; replyTo?: string; steps?: CampaignInput[];
+  }) {
+    const scope = this.scopeKey(tenantId);
+    const steps = Array.isArray(dto.steps) ? dto.steps.slice(0, 5).map((x) => this.clean(x)) : undefined;
+    if (dto.enabled && (!steps || steps.length === 0)) {
+      throw new BadRequestException('Add at least one letter before switching the follow-up on.');
+    }
+    if (dto.enabled) await this.mailerFor(tenantId, (dto.fromName || '').trim(), dto.replyTo);
+
+    const data = {
+      name: (dto.name || 'Follow-up').slice(0, 80),
+      enabled: !!dto.enabled,
+      everyDays: Math.min(180, Math.max(7, Math.round(dto.everyDays ?? 30))),
+      dailyCap: Math.min(500, Math.max(10, Math.round(dto.dailyCap ?? 100))),
+      fromName: (dto.fromName || '').slice(0, 80),
+      replyTo: (dto.replyTo || '').slice(0, 160) || null,
+      ...(steps ? { steps: steps as unknown as Prisma.InputJsonValue } : {}),
+    };
+    await this.prisma.emailAutomation.upsert({
+      where: { scope },
+      update: data,
+      create: { scope, tenantId, ...data, steps: (steps ?? []) as unknown as Prisma.InputJsonValue },
+    });
+    return this.getAutomation(tenantId);
+  }
+
+  /**
+   * Who is due a letter today?
+   *   · never replied            — the moment someone answers, the robot shuts up
+   *   · never unsubscribed
+   *   · still has a letter left in the sequence
+   *   · and the gap since their last letter has passed
+   */
+  private async dueContacts(tenantId: string | null, a: { everyDays: number; dailyCap: number; steps: unknown } | null) {
+    if (!a) return [];
+    const steps = Array.isArray(a.steps) ? (a.steps as CampaignInput[]) : [];
+    if (!steps.length) return [];
+    const scope = this.scopeKey(tenantId);
+    const cutoff = new Date(Date.now() - a.everyDays * 86400_000);
+
+    const supp = await this.prisma.emailSuppression.findMany({ where: { scope }, select: { email: true } });
+    const unsub = new Set(supp.map((r: { email: string }) => r.email));
+
+    const rows = await this.prisma.emailContact.findMany({
+      where: {
+        scope,
+        replied: false,
+        lastStep: { lt: steps.length },
+        OR: [{ lastSentAt: null }, { lastSentAt: { lt: cutoff } }],
+      },
+      orderBy: { lastSentAt: 'asc' },
+      take: a.dailyCap,
+    });
+    return (rows as { id: string; email: string; name: string | null; lastStep: number }[])
+      .filter((c) => !unsub.has(c.email));
+  }
+
+  /** The daily run. Safe to call twice — a contact who just got a letter is no longer due. */
+  async runAutomation(tenantId: string | null): Promise<{ sent: number; failed: number; due: number }> {
+    const scope = this.scopeKey(tenantId);
+    const a = await this.prisma.emailAutomation.findUnique({ where: { scope } });
+    if (!a || !a.enabled) return { sent: 0, failed: 0, due: 0 };
+
+    const steps = Array.isArray(a.steps) ? (a.steps as unknown as CampaignInput[]) : [];
+    const due = await this.dueContacts(tenantId, a);
+    if (!due.length) {
+      await this.prisma.emailAutomation.update({ where: { scope }, data: { lastRunAt: new Date() } }).catch(() => undefined);
+      return { sent: 0, failed: 0, due: 0 };
+    }
+
+    const mailer = await this.mailerFor(tenantId, a.fromName || '', a.replyTo);
+    let sent = 0;
+    let failed = 0;
+
+    for (const c of due) {
+      const step = steps[Math.min(c.lastStep, steps.length - 1)];
+      if (!step) continue;
+      const campaign = await this.prisma.emailCampaign.create({
+        data: {
+          tenantId,
+          name: `${a.name} · ${step.subject ?? ''}`.slice(0, 120),
+          subject: step.subject ?? '',
+          fromName: a.fromName || '',
+          replyTo: a.replyTo,
+          preheader: step.preheader ?? null,
+          heading: step.heading ?? null,
+          body: step.body ?? null,
+          imageUrl: step.imageUrl ?? null,
+          ctaLabel: step.ctaLabel ?? null,
+          ctaUrl: step.ctaUrl ?? null,
+          footerNote: step.footerNote ?? null,
+          status: 'sending',
+          total: 1,
+        },
+      });
+      const rec = await this.prisma.emailCampaignRecipient.create({
+        data: { campaignId: campaign.id, tenantId, email: c.email, name: c.name, status: 'pending' },
+      });
+
+      const content = await this.content(tenantId, {
+        subject: step.subject ?? '',
+        preheader: step.preheader, heading: step.heading, body: step.body,
+        imageUrl: step.imageUrl, ctaLabel: step.ctaLabel, ctaUrl: step.ctaUrl, footerNote: step.footerNote,
+      }, { recipientName: c.name, unsubscribeUrl: `${webBase()}/unsubscribe/${rec.id}` });
+
+      const res = await this.notifications.sendEmailRaw({
+        tenantId: tenantId ?? '',
+        channel: NotificationChannel.EMAIL,
+        recipient: c.email,
+        subject: step.subject ?? '',
+        body: renderCampaignText(content),
+        html: renderCampaignHtml(content),
+        ...mailer,
+      });
+
+      if (res.success) sent++; else failed++;
+      await this.prisma.emailCampaignRecipient.update({
+        where: { id: rec.id },
+        data: {
+          status: res.success ? 'sent' : 'failed',
+          error: res.success ? null : (res.error || 'send failed').slice(0, 300),
+          sentAt: res.success ? new Date() : null,
+        },
+      }).catch(() => undefined);
+      await this.prisma.emailCampaign.update({
+        where: { id: campaign.id },
+        data: {
+          status: res.success ? 'sent' : 'failed',
+          sent: res.success ? 1 : 0,
+          failed: res.success ? 0 : 1,
+          sentAt: new Date(),
+          html: renderCampaignHtml(content),
+        },
+      }).catch(() => undefined);
+
+      if (res.success) {
+        await this.prisma.emailContact.update({
+          where: { id: c.id },
+          data: { sends: { increment: 1 }, lastSentAt: new Date(), lastStep: { increment: 1 } },
+        }).catch(() => undefined);
+      }
+      await new Promise((r) => setTimeout(r, 300)); // be a good citizen with the provider
+    }
+
+    await this.prisma.emailAutomation.update({
+      where: { scope },
+      data: { lastRunAt: new Date(), sentTotal: { increment: sent } },
+    }).catch(() => undefined);
+
+    this.logger.log(`automation ${scope}: sent ${sent}, failed ${failed}`);
+    return { sent, failed, due: due.length };
+  }
+
+  /** Every enabled automation across the platform — called by the daily cron. */
+  async runAllAutomations() {
+    const rows = await this.prisma.emailAutomation.findMany({
+      where: { enabled: true },
+      select: { scope: true, tenantId: true },
+    });
+    for (const r of rows as { scope: string; tenantId: string | null }[]) {
+      await this.runAutomation(r.tenantId).catch((e) =>
+        this.logger.error(`automation ${r.scope} failed: ${String(e).slice(0, 160)}`));
+    }
   }
 
   async remove(tenantId: string | null, id: string) {

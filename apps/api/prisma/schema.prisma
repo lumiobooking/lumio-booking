@@ -253,6 +253,8 @@ model Tenant {
   voiceLine            VoiceLine?
   voiceCalls           VoiceCall[]
   emailCampaigns       EmailCampaign[]
+  emailContacts        EmailContact[]
+  emailAutomations     EmailAutomation[]
   invoices             Invoice[]
 
   tables             RestaurantTable[]
@@ -1886,4 +1888,68 @@ model EmailSuppression {
 
   @@unique([scope, email])
   @@map("email_suppressions")
+}
+
+// ===========================================================================
+// The outreach list.
+//
+// A campaign is a one-off blast; a CONTACT is a person you are working on over
+// months. Keeping them apart is what makes follow-up possible: we can count how
+// many times someone has heard from us, which step they're on, and — the one that
+// matters most — whether they have replied. The moment they reply, the robot must
+// shut up. Nothing burns a prospect faster than an automated "just following up"
+// landing after they already picked up the phone.
+// ===========================================================================
+model EmailContact {
+  id       String  @id @default(uuid())
+  scope    String // tenantId, or 'platform' for Lumio's own list
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  email   String
+  name    String? // "Anh Tuấn" → used for the greeting
+  company String? // salon name, when we know it
+  note    String?
+
+  // Follow-up state
+  replied    Boolean   @default(false) // they answered → automation skips them forever
+  repliedAt  DateTime?
+  sends      Int       @default(0)
+  lastSentAt DateTime?
+  lastStep   Int       @default(0) // which follow-up step they last received
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([scope, email])
+  @@index([tenantId])
+  @@index([scope, replied])
+  @@map("email_contacts")
+}
+
+// One follow-up programme per scope: "every N days, send the next letter — but only
+// to people who have not replied, not unsubscribed, and have not finished the run."
+model EmailAutomation {
+  id       String  @id @default(uuid())
+  scope    String  @unique
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String  @default("Follow-up")
+  enabled   Boolean @default(false)
+  everyDays Int     @default(30) // gap between letters, per person
+  dailyCap  Int     @default(100) // never blast more than this in one day
+  fromName  String  @default("")
+  replyTo   String?
+
+  // steps[0] goes to a brand-new contact, steps[1] to someone who ignored step 0…
+  steps Json @default("[]")
+
+  lastRunAt DateTime?
+  sentTotal Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("email_automations")
 }

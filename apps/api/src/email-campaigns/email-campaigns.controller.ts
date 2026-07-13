@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { EmailCampaignsService, CampaignInput } from './email-campaigns.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -26,6 +26,24 @@ class CampaignDto implements CampaignInput {
 }
 class TestDto extends CampaignDto {
   @IsEmail() to!: string;
+}
+class ImportDto {
+  @IsString() @MaxLength(200000) list!: string;
+}
+class ContactDto {
+  @IsOptional() @IsString() @MaxLength(80) name?: string;
+  @IsOptional() @IsString() @MaxLength(120) company?: string;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
+  @IsOptional() @IsBoolean() replied?: boolean;
+}
+class AutomationDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(80) name?: string;
+  @IsOptional() @IsInt() @Min(7) @Max(180) everyDays?: number;
+  @IsOptional() @IsInt() @Min(10) @Max(500) dailyCap?: number;
+  @IsOptional() @IsString() @MaxLength(80) fromName?: string;
+  @IsOptional() @IsString() @MaxLength(160) replyTo?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(5) steps?: CampaignDto[];
 }
 class PreviewDto {
   @IsOptional() @IsString() @MaxLength(200) subject?: string;
@@ -63,6 +81,38 @@ export class EmailCampaignsController {
   @Get('contacts')
   contacts(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.contacts(this.tid(user));
+  }
+
+  // ---- the address book ----------------------------------------------------
+  @Post('contacts/import')
+  importContacts(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportDto) {
+    return this.svc.importContacts(this.tid(user), dto.list);
+  }
+
+  @Patch('contacts/:id')
+  updateContact(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ContactDto) {
+    return this.svc.updateContact(this.tid(user), id, dto);
+  }
+
+  @Delete('contacts/:id')
+  deleteContact(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.deleteContact(this.tid(user), id);
+  }
+
+  // ---- the follow-up -------------------------------------------------------
+  @Get('automation')
+  getAutomation(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getAutomation(this.tid(user));
+  }
+
+  @Post('automation')
+  saveAutomation(@CurrentUser() user: AuthenticatedUser, @Body() dto: AutomationDto) {
+    return this.svc.saveAutomation(this.tid(user), dto);
+  }
+
+  @Post('automation/run')
+  runAutomation(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.runAutomation(this.tid(user));
   }
 
   @Get(':id')
@@ -105,6 +155,36 @@ export class AdminEmailCampaignsController {
   @Get('contacts')
   contacts() {
     return this.svc.contacts(null);
+  }
+
+  @Post('contacts/import')
+  importContacts(@Body() dto: ImportDto) {
+    return this.svc.importContacts(null, dto.list);
+  }
+
+  @Patch('contacts/:id')
+  updateContact(@Param('id') id: string, @Body() dto: ContactDto) {
+    return this.svc.updateContact(null, id, dto);
+  }
+
+  @Delete('contacts/:id')
+  deleteContact(@Param('id') id: string) {
+    return this.svc.deleteContact(null, id);
+  }
+
+  @Get('automation')
+  getAutomation() {
+    return this.svc.getAutomation(null);
+  }
+
+  @Post('automation')
+  saveAutomation(@Body() dto: AutomationDto) {
+    return this.svc.saveAutomation(null, dto);
+  }
+
+  @Post('automation/run')
+  runAutomation() {
+    return this.svc.runAutomation(null);
   }
 
   @Get(':id')

@@ -177,12 +177,37 @@ Sau lần đó, nghe tới hai chữ **“marketing”** là anh chị mệt. Em
 - Em **không giữ tài khoản của anh chị**. Google, Facebook, website — tất cả đứng tên anh chị. Ngày nào anh chị ngưng, anh chị **mang đi hết**, em không giữ lại một thứ gì
 - Em **không trói anh chị vào hợp đồng dài**. Em xin tối thiểu ba tháng, chỉ vì công việc cần từng đó thời gian mới thấy kết quả — chứ không phải để giữ chân anh chị
 
+## Điều mà không một đơn vị marketing nào làm được cho anh chị
+
+Em nói thẳng để anh chị so sánh.
+
+Agency khác chạy quảng cáo, đăng bài, rồi **hết việc**. Khách thấy quảng cáo, gọi vào tiệm lúc bảy giờ tối — không ai bắt máy. Khách bỏ đi. **Agency đó không biết, và cũng không quan tâm** — vì phần đó không phải việc của họ.
+
+Lumio khác ở đúng một chỗ: **em tự viết phần mềm vận hành cái tiệm.**
+
+- Em **không chỉ kéo khách tới cửa** — em lo luôn đoạn khách bước vào: đặt lịch online 24/7, **AI bắt máy** khi tiệm bận, bot trả lời Messenger lúc nửa đêm, xếp ghế, chia lượt thợ, tính tiền, tính lương
+- Vì phần mềm là **của em**, em **nối được quảng cáo với cái bill**. Cuối tháng em không khoe anh chị "lượt hiển thị" hay "lượt tương tác" — mấy con số đó không nuôi được ai. Em chỉ thẳng: **khách này đến từ Google Maps, đã chi $95**
+- Em làm **từ trong tiệm ra ngoài đường**, không phải từ ngoài đường nhìn vào. Vì em đã ngồi nghĩ từng chi tiết nhỏ: ghế nào cho dịch vụ nào, thợ nào tới lượt, tip chia sao cho thợ khỏi cãi nhau, bill chờ khi quầy đông
+- Phần mềm là của em nên **lỗi gì em sửa được ngay trong ngày**. Em không đi thuê phần mềm của người khác rồi bán lại cho anh chị
+
+[[NOTE]] Nói gọn: agency khác **đổ nước vào một cái xô thủng**. Em vá cái xô trước, rồi mới đổ nước.
+
+## Nỗi đau của anh chị — và em xử lý ở đâu
+
+- **Điện thoại reo lúc tiệm đông, không ai bắt máy** → AI trả lời 24/7: chào khách, hỏi dịch vụ, xem giờ trống, **chốt lịch**, rồi nhắn tin xác nhận. Không mất khách vì bận nữa
+- **Khách gõ “nail salon near me” mà không thấy tiệm mình** → Google Maps SEO chuyên sâu, tối ưu hồ sơ Google, chiến lược đánh giá
+- **Facebook, TikTok bỏ trống cả tháng** → nội dung mới đều đặn ~2 ngày/lần, anh chị duyệt trước khi đăng
+- **Khách nhắn Messenger lúc 11 giờ đêm** → bot trả lời trong 2 giây, chốt lịch luôn. Anh chị ngủ, tiệm vẫn nhận khách
+- **Thợ cãi nhau chuyện chia khách** → hệ thống **tự chia lượt**, công khai, ai cũng thấy con số của mình
+- **Cuối tháng không biết tiền quảng cáo đi đâu** → báo cáo nguồn khách chính xác: bao nhiêu khách từ Google, từ Facebook, từ hotline, và mỗi nguồn đẻ ra bao nhiêu tiền
+- **Website cũ, khách mở trên điện thoại rồi thoát trong 3 giây** → website $150, chuẩn điện thoại, gắn sẵn nút đặt lịch
+
 ## Và bốn điều em xin hứa
 
-- **Em là người Việt, em nói tiếng Việt.** Anh chị gọi là gặp em, không phải gặp tổng đài
-- **Em báo cáo bằng số thật**, kèm ảnh chụp màn hình nguồn. Không có số nào là số em nghĩ ra
-- **Em làm thật, làm đều.** Không phải tháng đầu rầm rộ rồi tháng sau biến mất
-- **Lumio Agency LLC là công ty đăng ký thật** tại Texas, có văn phòng ở 5900 Balcones Drive STE 100, Austin, TX. Anh chị gọi được, ghé được, nhìn mặt em được
+- Anh chị **sở hữu 100% tài khoản** — Google, Facebook, website đều đứng tên anh chị. Ngừng hợp tác lúc nào cũng mang đi hết
+- **Không hợp đồng dài hạn.** Em xin tối thiểu 3 tháng chỉ vì công việc cần từng đó thời gian mới có tác dụng — không phải để trói anh chị
+- Em **không hứa “top 1 Google”**. Ai hứa điều đó là không thành thật. Em chỉ báo cáo số đã xác minh, kèm ảnh chụp màn hình nguồn
+- **Anh chị gọi là gặp em** — không phải tổng đài, không phải nhân viên đọc kịch bản. Người Việt, nói tiếng Việt, hiểu nghề nail
 
 [[NOTE]] Anh chị hỏi bất cứ chủ tiệm nào đang làm với Lumio — em sẵn sàng cho số để anh chị gọi hỏi thẳng họ, không cần qua em.
 
@@ -264,6 +289,21 @@ Chặng này em làm Google Maps SEO chuyên sâu, xây chiến lược đánh g
 Không tính theo tháng. **Một lần $150**, xong là của anh chị.
 
 Website nhanh, đẹp, **chuẩn điện thoại** (chín trên mười khách xem bằng điện thoại), song ngữ Việt – Anh, gắn sẵn nút Đặt lịch nối thẳng vào LumioBooking. **Tên miền và website đứng tên anh chị.**
+
+[[DIVIDER]]
+
+## Vì sao trả tiền cho Lumio chứ không phải agency khác
+
+Agency khác chạy quảng cáo xong là **hết việc**. Khách thấy quảng cáo, gọi vào tiệm lúc bảy giờ tối, không ai bắt máy — khách bỏ đi. Họ không biết, và cũng không quan tâm.
+
+Lumio khác đúng một chỗ: **em tự viết phần mềm vận hành cái tiệm.**
+
+- Em không chỉ kéo khách tới cửa — em lo luôn đoạn khách bước vào: **AI bắt máy**, bot trả lời Messenger, xếp ghế, chia lượt thợ, tính tiền, tính lương
+- Vì phần mềm là **của em**, em **nối được đồng quảng cáo với cái bill**: cuối tháng em không khoe “lượt hiển thị”, em chỉ thẳng **khách này đến từ Google Maps và đã chi $95**
+- Em nghĩ từng chi tiết **từ trong tiệm ra ngoài đường** — ghế nào cho dịch vụ nào, thợ nào tới lượt, tip chia sao cho thợ khỏi cãi nhau. Vì em làm phần mềm cho tiệm nail, không phải cho tiệm cắt tóc bên Mỹ
+- Lỗi gì em **sửa được ngay trong ngày** — em không thuê phần mềm của người khác rồi bán lại cho anh chị
+
+[[NOTE]] Agency khác đổ nước vào một cái xô thủng. **Em vá cái xô trước, rồi mới đổ nước.**
 
 ## Anh chị không cần chọn hôm nay
 

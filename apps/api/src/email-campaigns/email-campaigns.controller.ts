@@ -85,6 +85,22 @@ export class EmailCampaignsController {
     return this.svc.contacts(this.tid(user));
   }
 
+  // ---- my own templates ----------------------------------------------------
+  @Get('templates')
+  templates(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.templates(this.tid(user));
+  }
+
+  @Post('templates')
+  saveTemplate(@CurrentUser() user: AuthenticatedUser, @Body() dto: CampaignDto) {
+    return this.svc.saveTemplate(this.tid(user), dto);
+  }
+
+  @Delete('templates/:id')
+  deleteTemplate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.deleteTemplate(this.tid(user), id);
+  }
+
   // ---- the address book ----------------------------------------------------
   @Post('contacts/import')
   importContacts(@CurrentUser() user: AuthenticatedUser, @Body() dto: ImportDto) {
@@ -163,6 +179,21 @@ export class AdminEmailCampaignsController {
   @Get('contacts')
   contacts() {
     return this.svc.contacts(null);
+  }
+
+  @Get('templates')
+  templates() {
+    return this.svc.templates(null);
+  }
+
+  @Post('templates')
+  saveTemplate(@Body() dto: CampaignDto) {
+    return this.svc.saveTemplate(null, dto);
+  }
+
+  @Delete('templates/:id')
+  deleteTemplate(@Param('id') id: string) {
+    return this.svc.deleteTemplate(null, id);
   }
 
   @Post('contacts/import')

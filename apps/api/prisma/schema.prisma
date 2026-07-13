@@ -254,6 +254,7 @@ model Tenant {
   voiceCalls           VoiceCall[]
   emailCampaigns       EmailCampaign[]
   emailContacts        EmailContact[]
+  emailTemplates       EmailTemplate[]
   emailAutomations     EmailAutomation[]
   invoices             Invoice[]
 
@@ -1952,4 +1953,32 @@ model EmailAutomation {
   updatedAt DateTime @updatedAt
 
   @@map("email_automations")
+}
+
+// A template the user saved themselves. The built-in forms live in code (so they can
+// be improved for everyone), but anything the user edits must be savable HERE — or
+// every tweak would need a deploy, and their work would be lost on the next one.
+model EmailTemplate {
+  id       String  @id @default(uuid())
+  scope    String // tenantId, or 'platform'
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name    String
+  subject String
+  fromName   String  @default("")
+  replyTo    String?
+  preheader  String?
+  heading    String?
+  body       String?
+  imageUrl   String?
+  ctaLabel   String?
+  ctaUrl     String?
+  footerNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scope, updatedAt])
+  @@map("email_templates")
 }

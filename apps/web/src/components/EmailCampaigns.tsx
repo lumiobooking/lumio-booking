@@ -37,6 +37,13 @@ interface Contact {
 }
 type ContactFilter = 'all' | 'new' | 'ok' | 'failed' | 'replied' | 'unsub';
 type PickTarget = 'all' | 'new' | 'silent' | 'failed';
+
+/** A template the user saved themselves — same shape as a draft, plus an id. */
+interface SavedTemplate {
+  id: string; name: string; subject: string; fromName: string; replyTo: string | null;
+  preheader: string | null; heading: string | null; body: string | null; imageUrl: string | null;
+  ctaLabel: string | null; ctaUrl: string | null; footerNote: string | null; updatedAt: string;
+}
 type Tab = 'compose' | 'contacts' | 'auto' | 'outbox';
 
 interface Automation {
@@ -101,6 +108,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
   const [importText, setImportText] = useState('');
   const [repliedText, setRepliedText] = useState('');
   const [auto, setAuto] = useState<Automation | null>(null);
+  const [mine, setMine] = useState<SavedTemplate[]>([]);
 
   const t = (v: string, e: string) => (vi ? v : e);
 
@@ -109,6 +117,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
     try { setList(await apiFetch<Campaign[]>(base, { token })); } catch { /* ignore */ }
     try { setContacts(await apiFetch<Contact[]>(`${base}/contacts`, { token })); } catch { /* ignore */ }
     try { setAuto(await apiFetch<Automation>(`${base}/automation`, { token })); } catch { /* ignore */ }
+    try { setMine(await apiFetch<SavedTemplate[]>(`${base}/templates`, { token })); } catch { /* ignore */ }
   }, [token, base]);
   useEffect(() => { loadList(); }, [loadList]);
 
@@ -265,6 +274,44 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
     } catch (e) { setError(e instanceof Error ? e.message : 'Run failed'); }
     finally { setBusy(false); }
   }
+  /** Save whatever is in the composer as MY template — so an edit survives a deploy
+   *  and can be reused without retyping. Same name = overwrite. */
+  async function saveTemplate() {
+    if (!d.subject.trim()) { setError(t('Điền tiêu đề trước đã ạ.', 'Give the letter a subject first.')); return; }
+    const name = window.prompt(t('Đặt tên cho mẫu này:', 'Name this template:'), d.name || d.subject);
+    if (!name) return;
+    setError(null); setOk(null); setBusy(true);
+    try {
+      setMine(await apiFetch<SavedTemplate[]>(`${base}/templates`, {
+        method: 'POST', token, body: { ...d, name, recipients: undefined },
+      }));
+      setD((prev) => ({ ...prev, name }));
+      setOk(t(`Đã lưu mẫu “${name}” vào hệ thống. Lần sau bấm một cái là dùng lại được.`,
+              `Saved “${name}”. It’s in the picker now.`));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  const useTemplate = (tpl: SavedTemplate) => {
+    setD({
+      ...EMPTY,
+      name: tpl.name, subject: tpl.subject, fromName: tpl.fromName || defaultFromName || '',
+      replyTo: tpl.replyTo ?? '', preheader: tpl.preheader ?? '', heading: tpl.heading ?? '',
+      body: tpl.body ?? '', imageUrl: tpl.imageUrl ?? '', ctaLabel: tpl.ctaLabel ?? '',
+      ctaUrl: tpl.ctaUrl ?? '', footerNote: tpl.footerNote ?? '',
+      recipients: d.recipients, // keep whoever is already loaded
+    });
+    setChosen(tpl.name);
+    setPickOpen(false);
+    setTab('compose');
+  };
+
+  async function deleteTemplate(tpl: SavedTemplate) {
+    if (!window.confirm(t(`Xoá mẫu “${tpl.name}”?`, `Delete “${tpl.name}”?`))) return;
+    try { setMine(await apiFetch<SavedTemplate[]>(`${base}/templates/${tpl.id}`, { method: 'DELETE', token })); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Delete failed'); }
+  }
+
   /** Turn the letter currently in the composer into a step of the follow-up. */
   const addStepFromDraft = () => {
     if (!auto) return;
@@ -397,6 +444,35 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
 
               {pickOpen && (
                 <div style={{ padding: 10, display: 'grid', gap: 8 }}>
+                  {mine.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 2px 0' }}>
+                        {t('⭐ Mẫu của tôi (đã lưu trong hệ thống)', '⭐ My templates (saved)')}
+                      </div>
+                      {mine.map((tpl) => (
+                        <div key={tpl.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10,
+                            border: chosen === tpl.name ? '1px solid #fbbf24' : '1px solid #1e293b',
+                            background: chosen === tpl.name ? 'rgba(251,191,36,0.10)' : '#0f172a' }}>
+                          <button onClick={() => useTemplate(tpl)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+                            <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{tpl.name}</span>
+                            <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {tpl.subject}
+                            </span>
+                            <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                              {t('Sửa lần cuối', 'Edited')} {new Date(tpl.updatedAt).toLocaleDateString(vi ? 'vi-VN' : 'en-US')}
+                            </span>
+                          </button>
+                          <button onClick={() => deleteTemplate(tpl)} title={t('Xoá mẫu', 'Delete')}
+                            style={{ flexShrink: 0, background: 'none', border: 0, color: '#ef4444', fontSize: 20, cursor: 'pointer' }}>&times;</button>
+                        </div>
+                      ))}
+                      <div style={{ height: 1, background: '#1e293b', margin: '6px 0' }} />
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 2px 0' }}>
+                        {t('Mẫu có sẵn của Lumio', 'Built-in templates')}
+                      </div>
+                    </>
+                  )}
                   {presets.map((p) => {
                     const on = chosen === p.label;
                     return (
@@ -540,11 +616,18 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                'Every email carries an unsubscribe link. Anyone who opts out is skipped on every future send — US/Canada email law requires it.')}
           </p>
 
-          <button onClick={addStepFromDraft} disabled={busy || !d.subject.trim()}
-            style={{ width: '100%', marginTop: 10, padding: '11px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-              border: '1px dashed #6366f1', background: 'transparent', color: '#c7d2fe', opacity: d.subject.trim() ? 1 : 0.5 }}>
-            {t('🔁 Dùng lá thư này cho chuỗi gửi tự động →', '🔁 Add this letter to the follow-up sequence →')}
-          </button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <button onClick={saveTemplate} disabled={busy || !d.subject.trim()}
+              style={{ flex: 1, minWidth: 180, padding: '11px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                border: '1px dashed #fbbf24', background: 'rgba(251,191,36,0.08)', color: '#fde68a', opacity: d.subject.trim() ? 1 : 0.5 }}>
+              {t('💾 Lưu thành mẫu của tôi', '💾 Save as my template')}
+            </button>
+            <button onClick={addStepFromDraft} disabled={busy || !d.subject.trim()}
+              style={{ flex: 1, minWidth: 180, padding: '11px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                border: '1px dashed #6366f1', background: 'transparent', color: '#c7d2fe', opacity: d.subject.trim() ? 1 : 0.5 }}>
+              {t('🔁 Thêm vào chuỗi tự động', '🔁 Add to the follow-up')}
+            </button>
+          </div>
         </div>
 
         {/* ---------------- live preview ---------------- */}

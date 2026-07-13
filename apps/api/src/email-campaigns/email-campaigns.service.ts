@@ -410,6 +410,52 @@ export class EmailCampaignsService {
   }
 
   // =========================================================================
+  // Templates the user saved themselves
+  // =========================================================================
+
+  async templates(tenantId: string | null) {
+    return this.prisma.emailTemplate.findMany({
+      where: { scope: this.scopeKey(tenantId) },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  /** Save the letter currently in the composer. Overwrites when the name matches,
+   *  so "save" behaves the way people expect it to. */
+  async saveTemplate(tenantId: string | null, dto: CampaignInput & { id?: string }) {
+    const scope = this.scopeKey(tenantId);
+    const data = this.clean(dto);
+    const name = (dto.name || data.subject).trim().slice(0, 120);
+
+    const existing = dto.id
+      ? await this.prisma.emailTemplate.findFirst({ where: { id: dto.id, scope }, select: { id: true } })
+      : await this.prisma.emailTemplate.findFirst({ where: { scope, name }, select: { id: true } });
+
+    const payload = {
+      name,
+      subject: data.subject,
+      fromName: data.fromName,
+      replyTo: data.replyTo,
+      preheader: data.preheader,
+      heading: data.heading,
+      body: data.body,
+      imageUrl: data.imageUrl,
+      ctaLabel: data.ctaLabel,
+      ctaUrl: data.ctaUrl,
+      footerNote: data.footerNote,
+    };
+    if (existing) await this.prisma.emailTemplate.update({ where: { id: existing.id }, data: payload });
+    else await this.prisma.emailTemplate.create({ data: { scope, tenantId, ...payload } });
+    return this.templates(tenantId);
+  }
+
+  async deleteTemplate(tenantId: string | null, id: string) {
+    await this.prisma.emailTemplate.deleteMany({ where: { id, scope: this.scopeKey(tenantId) } });
+    return this.templates(tenantId);
+  }
+
+  // =========================================================================
   // The address book
   // =========================================================================
 

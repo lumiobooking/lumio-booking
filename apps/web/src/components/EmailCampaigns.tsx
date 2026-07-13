@@ -63,6 +63,8 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
   const [ok, setOk] = useState<string | null>(null);
   const [testTo, setTestTo] = useState('');
   const [confirm, setConfirm] = useState(false);
+  const [pickOpen, setPickOpen] = useState(true);
+  const [chosen, setChosen] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
   const t = (v: string, e: string) => (vi ? v : e);
@@ -154,18 +156,53 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             {t('Soạn email', 'Compose')}
           </div>
 
+          {/* Pick the template by what you're TRYING TO DO, not by what it's called.
+              The wrong template on the wrong list is how a campaign lands in spam. */}
           {presets.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={ui.label}>{t('Mẫu có sẵn — bấm một cái là điền hết, rồi sửa lại tuỳ ý', 'Ready-made templates — one click fills everything, then edit')}</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {presets.map((p) => (
-                  <button key={p.label} onClick={() => setD({ ...EMPTY, ...p.draft, fromName: p.draft.fromName || d.fromName || defaultFromName || '' })}
-                    style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
-                      border: '1px dashed #6366f1', background: 'rgba(99,102,241,0.10)', color: '#c7d2fe' }}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
+            <div style={{ marginBottom: 18, border: '1px solid #334155', borderRadius: 12, overflow: 'hidden' }}>
+              <button onClick={() => setPickOpen((v) => !v)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+                  background: 'rgba(99,102,241,0.10)', border: 0, cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontSize: 16 }}>📨</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
+                    {t('Chọn mẫu theo nhu cầu', 'Pick a template by what you need')}
+                  </span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                    {chosen
+                      ? t(`Đang dùng: ${chosen}`, `Using: ${chosen}`)
+                      : t(`${presets.length} mẫu — bấm một cái là điền hết, sửa lại thoải mái`, `${presets.length} templates — one click fills everything, then edit`)}
+                  </span>
+                </span>
+                <span style={{ color: '#94a3b8', fontSize: 12, transform: pickOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>▶</span>
+              </button>
+
+              {pickOpen && (
+                <div style={{ padding: 10, display: 'grid', gap: 8 }}>
+                  {presets.map((p) => {
+                    const on = chosen === p.label;
+                    return (
+                      <button key={p.label}
+                        onClick={() => {
+                          setD({ ...EMPTY, ...p.draft, fromName: p.draft.fromName || d.fromName || defaultFromName || '' });
+                          setChosen(p.label);
+                          setPickOpen(false);
+                        }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 10,
+                          border: on ? '1px solid #6366f1' : '1px solid #1e293b',
+                          background: on ? 'rgba(99,102,241,0.12)' : '#0f172a' }}>
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0', marginBottom: 5 }}>{p.label}</span>
+                        <span style={{ display: 'block', fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.55 }}>
+                          <b style={{ color: '#a5b4fc' }}>{t('Mục tiêu:', 'Goal:')}</b> {p.goal}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.55, marginTop: 3 }}>
+                          <b style={{ color: '#fbbf24' }}>{t('Gửi cho:', 'Send to:')}</b> {p.who}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

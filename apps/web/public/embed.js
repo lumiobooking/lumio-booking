@@ -107,9 +107,16 @@
    * pinned to the screen, and light up the category you are actually reading —
    * exactly like the hosted booking page, without ever trapping the scroll.
    * ---------------------------------------------------------------------- */
-  var ticking = false;
+  /* Feed the widget its screen position on EVERY animation frame while the page is
+   * moving — not just on 'scroll' events. During momentum scrolling (iOS) scroll
+   * events arrive late and in clumps; a widget pinned to them visibly stutters and
+   * trails behind. A short rAF loop, running only while the page actually moves,
+   * costs nothing and gives the widget a value per frame. */
+  var lastY = -1;
+  var idle = 0;
+  var looping = false;
+
   function broadcast() {
-    ticking = false;
     var list = L.frames || [];
     for (var i = 0; i < list.length; i++) {
       var el = document.getElementById(list[i].id);
@@ -124,15 +131,26 @@
       } catch (err) { /* cross-origin during load */ }
     }
   }
-  function onScroll() {
-    if (ticking) return;
-    ticking = true;
-    (window.requestAnimationFrame || window.setTimeout)(broadcast, 16);
+
+  function frame() {
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    if (y !== lastY) { lastY = y; idle = 0; broadcast(); }
+    else if (++idle > 20) { looping = false; return; }   // ~330ms still -> stop
+    (window.requestAnimationFrame || function (f) { setTimeout(f, 16); })(frame);
   }
-  window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', onScroll, { passive: true });
-  // A slow heartbeat only — enough to catch a lazy-loaded frame or a layout shift.
-  // Anything faster fights the rAF updates above and shows up as a stutter.
-  window.setInterval(broadcast, 1000);
+
+  function kick() {
+    idle = 0;
+    if (looping) return;
+    looping = true;
+    (window.requestAnimationFrame || function (f) { setTimeout(f, 16); })(frame);
+  }
+
+  window.addEventListener('scroll', kick, { passive: true });
+  window.addEventListener('touchmove', kick, { passive: true });
+  window.addEventListener('wheel', kick, { passive: true });
+  window.addEventListener('resize', function () { lastY = -1; kick(); }, { passive: true });
+  window.setInterval(function () { lastY = -1; kick(); }, 1200); // lazy frames / layout shifts
+
   broadcast();
 })();

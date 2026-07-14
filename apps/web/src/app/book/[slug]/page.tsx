@@ -668,7 +668,6 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
 
   const bar = (
     <div ref={(node) => { ref.current = node; if (pinRef) pinRef.current = node; }} className="lumio-bar" style={{
-      background: 'rgba(255,255,255,.94)',
       padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12,
       ...(embedded
         ? {
@@ -677,14 +676,14 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
             // form. We translate it instead, using the host's viewport position, so it
             // floats above the fold exactly like the fixed bar on the hosted page.
             position: 'relative', zIndex: 40, marginTop: 12, borderRadius: 18,
-            willChange: 'transform',
+            background: '#fff',
             boxShadow: `0 20px 44px -14px rgba(15,42,82,0.38), 0 0 0 1px ${tint(accent, 0.10)}`,
-            backdropFilter: 'saturate(1.5) blur(10px)', WebkitBackdropFilter: 'saturate(1.5) blur(10px)',
             ['--accent' as string]: accent,
             ['--accent-dark' as string]: shade(accent, 0.28),
             ['--accent-glow' as string]: tint(accent, 0.55),
           }
         : {
+            background: 'rgba(255,255,255,.94)',
             position: 'fixed', left: 10, right: 10, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
             zIndex: 2147483000, borderRadius: 20,
             boxShadow: `0 20px 44px -14px rgba(15,42,82,0.38), 0 0 0 1px ${tint(accent, 0.10)}`,
@@ -1455,6 +1454,7 @@ const BOOK_CSS = `
 /* the main call to action: a soft light sweeps across it, once, when it turns on */
 .lumio-cta { position: relative; overflow: hidden; }
 .lumio-cta:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 30px -12px var(--accent-glow, rgba(99,102,241,.75)); }
+.lumio-bar .lumio-cta::after { animation-duration: 4.5s; }
 .lumio-cta:not(:disabled)::after {
   content: ''; position: absolute; top: 0; bottom: 0; width: 38%;
   background: linear-gradient(100deg, transparent, rgba(255,255,255,.42), transparent);
@@ -1549,6 +1549,14 @@ function usePin(
       if (el) { el.style.transform = ''; off.current = 0; }
       return;
     }
+    const el0 = elRef.current;
+    if (el0) {
+      // Promote once, and let a very short transition absorb any frame the host
+      // could not deliver — the difference between "stepping" and "gliding".
+      el0.style.willChange = 'transform';
+      el0.style.backfaceVisibility = 'hidden';
+      el0.style.transition = 'transform .1s cubic-bezier(.22,.61,.36,1)';
+    }
     return subscribe((v) => {
       const el = elRef.current;
       if (!el) return;
@@ -1562,9 +1570,9 @@ function usePin(
       } else {
         want = v.height ? Math.min(0, (-v.top + v.height - h - gap) - base) : 0;
       }
-      if (Math.abs(want - off.current) < 0.5) return;
+      if (Math.abs(want - off.current) < 0.25) return;
       off.current = want;
-      el.style.transform = want ? `translate3d(0, ${want}px, 0)` : '';
+      el.style.transform = `translate3d(0, ${want}px, 0)`;
     });
   }, [subscribe, enabled, mode, gap]);
 

@@ -83,7 +83,14 @@ interface Addon { id: string; name: string; durationMinutes: number; priceCents:
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
 interface Staff { id: string; firstName: string; lastName: string | null; avatarUrl: string | null }
-interface Availability { eligibleStaffIds: string[]; staffBusy: Record<string, { start: string; end: string }[]> }
+interface Availability {
+  eligibleStaffIds: string[];
+  staffBusy: Record<string, { start: string; end: string }[]>;
+  /** The salon has no technician on file at all — every open slot is bookable and the
+   *  shop assigns someone afterwards. Without this, an empty team read as "fully
+   *  booked" and the salon could not take a single online appointment. */
+  noStaff?: boolean;
+}
 type Slot = { start: Date; end: Date };
 type Step = 1 | 2 | 3 | 4 | 5; // 1 services · 2 tech · 3 time · 4 confirm · 5 done
 
@@ -257,7 +264,7 @@ export default function PublicBookingPage() {
       for (const r of valid.slice(1)) eligible = eligible.filter((id) => r.eligibleStaffIds.includes(id));
       const staffBusy: Record<string, { start: string; end: string }[]> = {};
       for (const r of valid) for (const [id, arr] of Object.entries(r.staffBusy)) (staffBusy[id] ||= []).push(...arr);
-      setAvail({ eligibleStaffIds: eligible, staffBusy });
+      setAvail({ eligibleStaffIds: eligible, staffBusy, noStaff: valid.every((r) => r.noStaff) });
     }).catch(() => setAvail(null));
   }, [base, selectedDate, serviceId, extraServiceIds]);
 
@@ -1100,6 +1107,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
   // least one technician who can do every picked service is free.
   const isFree = useCallback((s: Slot) => {
     if (!avail) return true;
+    if (avail.noStaff) return true;   // no team on file — the shop books the slot itself
     if (staffId) return !overlaps(s, avail.staffBusy[staffId] ?? []);
     return avail.eligibleStaffIds.some((id) => !overlaps(s, avail.staffBusy[id] ?? []));
   }, [avail, staffId]);
@@ -1171,7 +1179,15 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
         </div>
       )}
 
-      {groups.length === 0 || !anyFree ? (
+      {avail && !avail.noStaff && avail.eligibleStaffIds.length === 0 ? (
+        <div style={{ padding: '22px 16px', textAlign: 'center', borderRadius: 14, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
+          <div style={{ fontSize: 26, marginBottom: 6 }}>🛠️</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>This service isn&apos;t linked to a technician yet.</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>
+            Please pick another service{salon?.contactPhone ? <> or call <b>{salon.contactPhone}</b></> : ''} — the shop can book you by phone.
+          </div>
+        </div>
+      ) : groups.length === 0 || !anyFree ? (
         <div style={{ padding: '26px 0', textAlign: 'center', color: '#94a3b8' }}>
           <div style={{ fontSize: 30, marginBottom: 6 }}>😔</div>
           <div style={{ fontSize: 14 }}>No times left on this day. Try the next one.</div>

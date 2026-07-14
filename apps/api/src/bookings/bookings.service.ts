@@ -925,7 +925,25 @@ export class BookingsService {
     });
     const ids = eligible.map((s) => s.id);
     if (ids.length === 0) {
-      return { eligibleStaffIds: [], staffBusy: {} as Record<string, { start: string; end: string }[]> };
+      // Two very different situations, and they used to look identical to the booking
+      // page — which silently showed "no times left" on every single day:
+      //
+      //  · The salon has NO bookable technician at all (a brand-new shop, or a solo
+      //    owner who never created a staff record). Bookings are still perfectly
+      //    valid — they come in as PENDING and the salon assigns someone later. So
+      //    every open slot must be offered. `noStaff` tells the form exactly that.
+      //
+      //  · The salon HAS technicians, but none of them is linked to this service.
+      //    That is a setup mistake; the form says so instead of pretending the day
+      //    is full.
+      const anyStaff = await this.prisma.staffMember.count({
+        where: { tenantId, isActive: true, takesAppointments: true },
+      });
+      return {
+        eligibleStaffIds: [],
+        staffBusy: {} as Record<string, { start: string; end: string }[]>,
+        noStaff: anyStaff === 0,
+      };
     }
 
     // Wide window around the date so we catch the whole local day regardless of

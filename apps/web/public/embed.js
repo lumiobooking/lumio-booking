@@ -131,6 +131,8 @@
   }
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', onScroll, { passive: true });
-  window.setInterval(broadcast, 500);   // covers lazy-loaded frames + layout shifts
+  // A slow heartbeat only — enough to catch a lazy-loaded frame or a layout shift.
+  // Anything faster fights the rAF updates above and shows up as a stutter.
+  window.setInterval(broadcast, 1000);
   broadcast();
 })();

@@ -307,11 +307,11 @@ export default function PublicBookingPage() {
   useEffect(() => { if (!embedded) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step, embedded]);
 
   // ---- where we are on the visitor's screen (embed only) ---------------------
-  const host = useHostViewport(embedded);
+  const { subscribe, enabled: pinning } = useHostViewport(embedded);
   const leftRef = useRef<HTMLDivElement | null>(null);
-  const cartPin = usePinTop(embedded && !isMobile ? host : null, 14);
-  const barPin = usePinBottom(embedded && isMobile ? host : null, 10);
-  // the summary is pinned inside the column that holds the menu
+  const cartPin = usePin(subscribe, pinning && !isMobile, 'top', 14);
+  const barPin = usePin(subscribe, pinning && isMobile, 'bottom', 10);
+  // the summary travels down the column that holds the menu, and stops at its end
   useEffect(() => { cartPin.boxRef.current = leftRef.current; }, [cartPin.boxRef, step]);
 
     // ---- validation -----------------------------------------------------------
@@ -444,7 +444,7 @@ export default function PublicBookingPage() {
                   <ServicePicker
                     services={services} categories={categories} selectedIds={pickedServiceIds}
                     onToggle={toggleService} fmt={fmt} accent={accent}
-                    host={embedded ? host : null} stickyTop={64}
+                    subscribe={subscribe} pinning={pinning} stickyTop={64}
                   />
                   {serviceAddons.length > 0 && (
                     <div style={{ marginTop: 22 }}>
@@ -500,12 +500,7 @@ export default function PublicBookingPage() {
             {/* -------- right: the cart, always in view -------- */}
             {!isMobile && (
               embedded ? (
-                <div ref={cartPin.elRef} style={{
-                  marginTop: 14, willChange: 'transform',
-                  transform: cartPin.off ? `translate3d(0, ${cartPin.off}px, 0)` : undefined,
-                  maxHeight: host?.height ? Math.max(360, host.height - 40) : undefined,
-                  display: 'flex',
-                }}>
+                <div ref={cartPin.elRef} style={{ marginTop: 14, willChange: 'transform', display: 'flex', maxHeight: '86vh' }}>
                   {summary}
                 </div>
               ) : (
@@ -522,7 +517,7 @@ export default function PublicBookingPage() {
           <MobileBar
             embedded={embedded} count={cartLines.length} totalCents={totalCents} fmt={fmt}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
-            pinRef={barPin.elRef} pinOffset={barPin.off}
+            pinRef={barPin.elRef}
           />
         )}
 
@@ -651,11 +646,11 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
 }
 
 /** Mobile: floating action bar. Always on screen, never behind the content. */
-function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, pinOffset }: {
+function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef }: {
   embedded: boolean; count: number; totalCents: number; fmt: (c: number) => string; durationMinutes: number;
   canContinue: boolean; label: string; onContinue: () => void; accent: string;
   /** Embed only: keeps the bar floating above the fold while the form is on screen. */
-  pinRef?: React.MutableRefObject<HTMLDivElement | null>; pinOffset?: number;
+  pinRef?: React.MutableRefObject<HTMLDivElement | null>;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -683,7 +678,6 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
             // floats above the fold exactly like the fixed bar on the hosted page.
             position: 'relative', zIndex: 40, marginTop: 12, borderRadius: 18,
             willChange: 'transform',
-            transform: pinOffset ? `translate3d(0, ${pinOffset}px, 0)` : undefined,
             boxShadow: `0 20px 44px -14px rgba(15,42,82,0.38), 0 0 0 1px ${tint(accent, 0.10)}`,
             backdropFilter: 'saturate(1.5) blur(10px)', WebkitBackdropFilter: 'saturate(1.5) blur(10px)',
             ['--accent' as string]: accent,
@@ -782,13 +776,13 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
 // Step 1 · Services: sticky category tabs + one section per category.
 // Scrolling moves the tabs (scroll-spy); tapping a tab scrolls to the section.
 // ---------------------------------------------------------------------------
-function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, host, stickyTop }: {
+function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, subscribe, pinning, stickyTop }: {
   services: Service[]; categories: Category[]; selectedIds: string[];
   onToggle: (id: string) => void; fmt: (c: number) => string; accent: string;
-  /** Embed only: the widget's position on the visitor's screen. With it, the tabs
-   *  can follow the scroll and stay pinned even though the iframe itself never
-   *  scrolls — the host page does. */
-  host: { top: number; height: number } | null;
+  /** Embed only: the host page's viewport feed. The tabs follow the scroll and stay
+   *  pinned with it, even though the iframe itself never scrolls. */
+  subscribe: (fn: HostSub) => () => void;
+  pinning: boolean;
   stickyTop: number;
 }) {
   const groups = useMemo(() => {
@@ -808,7 +802,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
 
   // Scroll-spy — hosted page: read the window scroll.
   useEffect(() => {
-    if (q.trim() || host) return;
+    if (q.trim() || pinning) return;
     const onScroll = () => {
       let current = groups[0]?.id ?? '';
       for (const g of groups) {
@@ -820,24 +814,24 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [groups, q, host]);
+  }, [groups, q, pinning]);
 
-  // Scroll-spy — embed: the iframe never scrolls, so use the position the host page
-  // reports. `host.top` is the frame's offset from the top of the visitor's screen.
+  // Scroll-spy — embed: the iframe never scrolls, so read the host's viewport feed.
+  // setActive only fires when the category actually changes, so this costs nothing.
   useEffect(() => {
-    if (q.trim() || !host) return;
-    let current = groups[0]?.id ?? '';
-    for (const g of groups) {
-      const el = sectionRefs.current[g.id];
-      if (!el) continue;
-      const onScreen = host.top + el.offsetTop;   // section's y on the visitor's screen
-      if (onScreen - 150 <= 0) current = g.id;
-    }
-    setActive((prev) => (prev === current ? prev : current));
-  }, [groups, q, host]);
+    if (q.trim() || !pinning) return;
+    return subscribe((v) => {
+      let current = groups[0]?.id ?? '';
+      for (const g of groups) {
+        const el = sectionRefs.current[g.id];
+        if (el && v.top + el.offsetTop - 150 <= 0) current = g.id;
+      }
+      setActive((prev) => (prev === current ? prev : current));
+    });
+  }, [groups, q, pinning, subscribe]);
 
   // Pin the tab strip: sticky on the hosted page, transform inside an embed.
-  const pin = usePinTop(host, 8);
+  const pin = usePin(subscribe, pinning, 'top', 8);
 
   // Keep the active tab visible in the horizontal strip.
   useEffect(() => {
@@ -851,7 +845,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
     setActive(id);
     const el = sectionRefs.current[id];
     if (!el) return;
-    if (host) {
+    if (pinning) {
       // The host page owns the scroll — ask it to come to this section.
       try { window.parent.postMessage({ type: 'lumio-embed-scroll-to', y: Math.max(0, el.offsetTop - 70) }, '*'); } catch { /* ignore */ }
       return;
@@ -867,11 +861,10 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
   return (
     <div ref={pin.boxRef}>
       <div ref={(node) => { tabsRef.current = node; pin.elRef.current = node; }} className="lumio-tabs" style={{
-        position: host ? 'relative' : 'sticky', top: host ? undefined : stickyTop, zIndex: 6, background: '#fff',
+        position: pinning ? 'relative' : 'sticky', top: pinning ? undefined : stickyTop, zIndex: 6, background: '#fff',
         display: 'flex', gap: 8, overflowX: 'auto', padding: '10px 0 12px',
         boxShadow: '0 10px 10px -10px rgba(15,42,82,0.08)',
-        willChange: host ? 'transform' : undefined,
-        transform: host && pin.off ? `translate3d(0, ${pin.off}px, 0)` : undefined,
+        willChange: pinning ? 'transform' : undefined,
       }}>
         {groups.map((g) => {
           const on = active === g.id && !search;
@@ -1485,63 +1478,97 @@ const BOOK_CSS = `
 }
 `;
 
+type HostView = { top: number; height: number };
+type HostSub = (v: HostView) => void;
+
 /**
- * Where the widget sits inside the HOST page's screen (embed only).
- * `top` is the iframe's offset from the top of the visitor's screen (negative once
- * they scroll past it); `height` is their screen height. This is the one number an
- * iframe can never work out for itself, and it is what lets us pin things.
+ * The host page tells us, on every scroll frame, where the frame sits on the
+ * visitor's screen. We deliberately DO NOT put that in React state: it arrives ~60
+ * times a second, and re-rendering the whole booking form at 60fps is exactly what
+ * made the pinned bar stutter. Subscribers get the raw value and write to the DOM
+ * themselves — one style write per frame, no reconciliation, no jank.
  */
-function useHostViewport(embedded: boolean): { top: number; height: number } | null {
-  const [v, setV] = useState<{ top: number; height: number } | null>(null);
+function useHostViewport(embedded: boolean) {
+  const subs = useRef<Set<HostSub>>(new Set());
+  const last = useRef<HostView | null>(null);
+
   useEffect(() => {
     if (!embedded) return;
+    let frame = 0;
+    let pending: HostView | null = null;
+    const flush = () => {
+      frame = 0;
+      const v = pending;
+      pending = null;
+      if (!v) return;
+      last.current = v;
+      subs.current.forEach((fn) => fn(v));
+    };
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { type?: string; top?: number; height?: number } | null;
       if (!d || d.type !== 'lumio-host-viewport' || typeof d.top !== 'number') return;
-      setV({ top: d.top, height: d.height || 0 });
+      pending = { top: d.top, height: d.height || 0 };
+      if (!frame) frame = window.requestAnimationFrame(flush);   // one write per frame
     };
     window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
+    return () => { window.removeEventListener('message', onMsg); if (frame) cancelAnimationFrame(frame); };
   }, [embedded]);
-  return v;
+
+  const subscribe = useCallback((fn: HostSub) => {
+    if (!embedded) return () => {};
+    subs.current.add(fn);
+    if (last.current) fn(last.current);
+    const set = subs.current;
+    return () => { set.delete(fn); };
+  }, [embedded]);
+
+  return { subscribe, enabled: embedded, last };
 }
 
 /**
  * `position: sticky` cannot work inside a content-sized iframe (nothing scrolls in
- * there). So we fake it honestly: translate the element down as the host page
- * scrolls, never past the bottom of the block it belongs to. Same visual result,
- * and the page keeps scrolling normally — no trapped scroll, no sealed box.
+ * there). So we pin honestly: translate the element as the host page scrolls, never
+ * past the block it belongs to. Written straight to the node — no state, no re-render.
+ *
+ *   mode 'top'    — tabs, summary card: follow the top of the screen.
+ *   mode 'bottom' — the action bar: float just above the fold.
  */
-function usePinTop(host: { top: number; height: number } | null, gap: number) {
+function usePin(
+  subscribe: (fn: HostSub) => () => void,
+  enabled: boolean,
+  mode: 'top' | 'bottom',
+  gap: number,
+) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
-  const [off, setOff] = useState(0);
-  useEffect(() => {
-    if (!host) { if (off) setOff(0); return; }
-    const el = elRef.current, box = boxRef.current;
-    if (!el || !box) return;
-    const base = el.getBoundingClientRect().top - off;              // where it really sits
-    const room = box.getBoundingClientRect().bottom - el.offsetHeight - base;
-    const want = Math.min(Math.max(0, -host.top + gap - base), Math.max(0, room));
-    if (Math.abs(want - off) > 0.5) setOff(want);
-  }, [host, off]);
-  return { elRef, boxRef, off };
-}
+  const off = useRef(0);
 
-/** Same idea, anchored to the BOTTOM of the screen: the action bar floats above the
- *  fold while the form is on screen, then settles back into the page. */
-function usePinBottom(host: { top: number; height: number } | null, gap: number) {
-  const elRef = useRef<HTMLDivElement | null>(null);
-  const [off, setOff] = useState(0);
   useEffect(() => {
-    if (!host || !host.height) { if (off) setOff(0); return; }
-    const el = elRef.current;
-    if (!el) return;
-    const base = el.getBoundingClientRect().top - off;
-    const want = Math.min(0, (-host.top + host.height - el.offsetHeight - gap) - base);
-    if (Math.abs(want - off) > 0.5) setOff(want);
-  }, [host, off]);
-  return { elRef, off };
+    if (!enabled) {
+      const el = elRef.current;
+      if (el) { el.style.transform = ''; off.current = 0; }
+      return;
+    }
+    return subscribe((v) => {
+      const el = elRef.current;
+      if (!el) return;
+      const h = el.offsetHeight;
+      const base = el.getBoundingClientRect().top - off.current;   // its real place in the form
+      let want: number;
+      if (mode === 'top') {
+        const box = boxRef.current;
+        const room = box ? box.getBoundingClientRect().bottom - h - base : 0;
+        want = Math.min(Math.max(0, -v.top + gap - base), Math.max(0, room));
+      } else {
+        want = v.height ? Math.min(0, (-v.top + v.height - h - gap) - base) : 0;
+      }
+      if (Math.abs(want - off.current) < 0.5) return;
+      off.current = want;
+      el.style.transform = want ? `translate3d(0, ${want}px, 0)` : '';
+    });
+  }, [subscribe, enabled, mode, gap]);
+
+  return { elRef, boxRef };
 }
 
 /** A progress rail the reference doesn't have: the visitor always knows how many

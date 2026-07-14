@@ -15,7 +15,14 @@ body {
   margin: 0;
   padding: 0;
   max-width: 100%;
+  /* Guard against horizontal overflow — but NOT with `hidden`.
+   * `overflow-x: hidden` turns <body> into a scroll container, and that silently
+   * kills every `position: sticky` element on the page (sticky headers, sticky
+   * summary panels: they just scroll away). `clip` gives the same protection
+   * without creating a scroll container. The `hidden` line stays first as a
+   * fallback for old browsers that don't know `clip`. */
   overflow-x: hidden;
+  overflow-x: clip;
   -webkit-text-size-adjust: 100%;
 }
 

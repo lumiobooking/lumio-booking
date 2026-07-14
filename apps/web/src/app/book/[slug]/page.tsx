@@ -340,7 +340,10 @@ export default function PublicBookingPage() {
   // Desktop embed: the frame has no viewport of its own, so `sticky` does nothing.
   // We pin the header and the summary to the visitor's screen with a transform,
   // bounded by the block each of them belongs to.
-  const headerPin = usePin(subscribe, pinning, 'top', 0);
+  // The header is NOT pinned in an embed on purpose: it carries no controls the
+  // visitor needs while scrolling a menu (the salon's own site header is right
+  // above it anyway), and one more transformed layer per frame is one more thing
+  // for the phone to composite. It scrolls away like any other block.
   const cartPin = usePin(subscribe, pinning, 'top', 14);
 
     // ---- validation -----------------------------------------------------------
@@ -411,10 +414,10 @@ export default function PublicBookingPage() {
 
   return (
     <Shell accent={accent} fullscreen={fullscreen}>
-      <div ref={headerPin.boxRef} className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
+      <div className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
         {/* Top bar — salon name (step 1) or the step name with a back arrow.
-            Hosted page / full-screen: real `sticky`. Desktop embed: pinned by transform. */}
-        <div ref={headerPin.elRef} style={{ position: asPage ? 'sticky' : 'relative', top: asPage ? 0 : undefined, zIndex: 30, flexShrink: 0,
+            Sticky only where a real viewport exists (hosted page / full-screen). */}
+        <div style={{ position: asPage ? 'sticky' : 'static', top: 0, zIndex: 30, flexShrink: 0,
           background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`,
           color: '#fff',
           borderRadius: fullscreen ? 0 : '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',

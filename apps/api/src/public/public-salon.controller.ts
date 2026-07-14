@@ -57,18 +57,23 @@ export class PublicSalonController {
       throw new NotFoundException('Salon not found');
     }
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit, areaRows] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, areaRows, extra] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
       this.settings.getDepositSettings(tenant.id),
       this.prisma.restaurantTable.findMany({ where: { tenantId: tenant.id, isActive: true, area: { not: null } }, select: { area: true }, distinct: ['area'] }),
+      // The booking widget shows the shop card (name · address · phone) next to the
+      // cart, the way every modern booking site does — so the visitor always knows
+      // which shop they are booking.
+      this.settings.getCompanyExtra(tenant.id).catch(() => ({} as { address?: string })),
     ]);
     return {
       name: tenant.name,
       slug: tenant.slug,
       businessType: tenant.businessType,
       contactPhone: tenant.contactPhone,
+      address: (extra as { address?: string })?.address || null,
       areas: areaRows.map((a: { area: string | null }) => a.area).filter((x: string | null): x is string => !!x),
       timezone: tenant.timezone,
       branding: this.settings.brandingFrom(tenant.branding),

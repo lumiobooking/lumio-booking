@@ -406,6 +406,15 @@ export default function PublicBookingPage() {
               {step === 1 && (
                 <>
                   <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
+                  {/* Services come first — the duration and the technician depend on them, so
+                      every time we offer later is a time that can really be booked. But the
+                      visitor still wants to know "is there room this week?" before reading a
+                      menu, so the day strip lives here too. Picking a day here only pre-fills
+                      step 3; it never locks in a slot. */}
+                  <WhenStrip
+                    rules={rules} salon={salon} services={services} accent={accent}
+                    selectedDate={selectedDate} onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
+                  />
                   <ServicePicker
                     services={services} categories={categories} selectedIds={pickedServiceIds}
                     onToggle={toggleService} fmt={fmt} accent={accent} spy={!embedded}
@@ -629,6 +638,53 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
         style={{ ...ctaBtn, width: 'auto', padding: '12px 20px', opacity: canContinue ? 1 : 0.45, cursor: canContinue ? 'pointer' : 'not-allowed' }}>
         {label} →
       </button>
+    </div>
+  );
+}
+
+/** "When do you want to come in?" — a 7-day strip shown above the menu, with the
+ *  first free time of the chosen day. Answers the visitor's real first question
+ *  (is there room?) without forcing them to pick a time before a service. */
+function WhenStrip({ rules, salon, services, selectedDate, onPickDate, accent }: {
+  rules: BookingRules; salon: Salon | null; services: Service[]; selectedDate: Date | null;
+  onPickDate: (d: Date) => void; accent: string;
+}) {
+  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const shortest = useMemo(() => Math.max(15, Math.min(...(services.length ? services.map((s) => s.durationMinutes) : [30]))), [services]);
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => new Date(today.getTime() + i * 86400000)), [today]);
+  const active = selectedDate ?? null;
+  const first = active ? generateSlots(active, shortest, rules)[0] : null;
+
+  return (
+    <div style={{ border: '1px solid #e6eaf2', borderRadius: 14, padding: '12px 14px', marginBottom: 16, background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 800, color: INK }}>📅 When would you like to come in?</span>
+        {active && (
+          <span style={{ fontSize: 12.5, color: first ? '#16a34a' : '#94a3b8', fontWeight: 700 }}>
+            {first ? `Earliest ${fmtTime(first.start)}` : 'Closed'}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+        {days.map((d) => {
+          const closed = isClosedDay(d, rules);
+          const on = !!active && sameDay(d, active);
+          const deal = promoPctFor(salon, d, null);
+          return (
+            <button key={d.toISOString()} type="button" disabled={closed} onClick={() => onPickDate(d)}
+              style={{ display: 'grid', justifyItems: 'center', gap: 2, padding: '7px 2px', borderRadius: 10, border: 'none', position: 'relative',
+                cursor: closed ? 'not-allowed' : 'pointer', background: on ? accent : 'transparent',
+                color: on ? '#fff' : closed ? '#cbd5e1' : INK }}>
+              <span style={{ fontSize: 15.5, fontWeight: 800, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
+              <span style={{ fontSize: 10.5, opacity: on ? 0.95 : 0.6 }}>{DOW_SHORT[d.getDay()]}</span>
+              {!on && deal > 0 && !closed && <span style={{ position: 'absolute', top: 1, right: 5, fontSize: 9, fontWeight: 800, color: '#16a34a' }}>-{deal}%</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
+        Pick the day now if you like — you&apos;ll choose the exact time after the service, so every time we show you is really free.
+      </div>
     </div>
   );
 }

@@ -21,6 +21,23 @@
     el.style.minHeight = '0px';
   }
 
+  /** App mode is meant to feel like the real booking page, so the frame gets the
+   *  room the real page has: full width of the content column (up to 1200px), a
+   *  soft card shadow, rounded corners. The plugin's own wrapper caps at 980px,
+   *  which made the two-column layout feel cramped — we widen it from here so no
+   *  salon ever has to update the WordPress plugin. */
+  function stageApp(el) {
+    try {
+      el.style.borderRadius = '20px';
+      el.style.boxShadow = '0 30px 70px -40px rgba(15,42,82,.45)';
+      var wrap = el.parentNode;
+      if (wrap && wrap.style && /lumio-booking-embed/.test(wrap.className || '')) {
+        wrap.style.maxWidth = '1200px';
+        wrap.style.width = '100%';
+      }
+    } catch (err) { /* styling is best-effort */ }
+  }
+
   function frameFor(source) {
     var list = L.frames || [];
     for (var i = 0; i < list.length; i++) {
@@ -50,6 +67,7 @@
       };
       hit.el.__lumioApp = cfg;
       sizeApp(hit.el, cfg);
+      stageApp(hit.el);
       if (!L.resizeWired) {
         L.resizeWired = 1;
         window.addEventListener('resize', function () {

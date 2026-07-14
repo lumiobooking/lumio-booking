@@ -129,7 +129,7 @@ if (!function_exists('lumio_booking_base')) {
         $origin = ($scheme && $host) ? $scheme . '://' . $host : '';
         $fid    = 'lumio-booking-' . wp_rand(1000, 99999);
 
-        $html  = '<div class="lumio-booking-embed" style="width:100%;max-width:980px;margin:0 auto;">';
+        $html  = '<div class="lumio-booking-embed" style="width:100%;max-width:1200px;margin:0 auto;">';
         $html .= '<iframe id="' . esc_attr($fid) . '" src="' . $src . '" loading="lazy" title="Book an appointment" allow="payment" ';
         $html .= 'style="width:100%;min-height:' . $height . 'px;border:0;border-radius:16px;overflow:hidden;background:transparent;display:block;"></iframe>';
         $html .= '</div>';

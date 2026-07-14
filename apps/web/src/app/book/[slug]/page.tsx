@@ -401,7 +401,7 @@ export default function PublicBookingPage() {
         <div style={{ position: embedded ? 'static' : 'sticky', top: 0, zIndex: 30, flexShrink: 0,
           background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`,
           color: '#fff',
-          borderRadius: embedded ? '14px 14px 0 0' : '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',
+          borderRadius: '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',
           display: 'flex', alignItems: 'center', gap: 13, marginBottom: 0,
           boxShadow: `0 14px 34px -18px ${tint(accent, 0.95)}, inset 0 1px 0 rgba(255,255,255,0.22)` }}>
           {step > 1 && step < 5 && (
@@ -452,7 +452,7 @@ export default function PublicBookingPage() {
               onWheel={onScrollerWheel} onTouchStart={onScrollerTouchStart} onTouchMove={onScrollerTouchMove}
               style={{
                 background: '#fff',
-                borderRadius: embedded ? '0 0 14px 14px' : '0 0 18px 18px',
+                borderRadius: '0 0 18px 18px',
                 padding: isMobile ? '14px 14px 18px' : '18px 24px 24px',
                 minWidth: 0, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)',
                 ...(embedded ? { overflowY: 'auto', minHeight: 0, position: 'relative' } : {}),
@@ -1547,7 +1547,7 @@ function Shell({ children, accent }: { children: React.ReactNode; accent: string
     document.body.style.height = '100%';
     document.body.style.overflow = 'hidden';
     const ask = () => {
-      try { window.parent.postMessage({ type: 'lumio-embed-app', min: 540, max: 900, ratio: 0.86 }, '*'); } catch { /* ignore */ }
+      try { window.parent.postMessage({ type: 'lumio-embed-app', min: 600, max: 1120, ratio: 0.92 }, '*'); } catch { /* ignore */ }
     };
     ask();
     const iv = window.setInterval(ask, 1500);   // survives a late-loading embed.js
@@ -1558,17 +1558,18 @@ function Shell({ children, accent }: { children: React.ReactNode; accent: string
     <>
       <style>{BOOK_CSS}</style>
       <div ref={rootRef} className="lumio-shell" style={{
-        minHeight: embedded ? '100vh' : '100vh',
+        minHeight: '100vh',
         height: embedded ? '100vh' : undefined,
         display: embedded ? 'flex' : undefined,
         flexDirection: embedded ? 'column' : undefined,
         overflow: embedded ? 'hidden' : undefined,
-        // A page that glows a little around the edges, in the salon's own colour.
-        background: embedded ? 'transparent'
-          : `radial-gradient(1100px 520px at 12% -8%, ${tint(accent, 0.16)}, transparent 60%),
+        // The same stage in both places: a page that glows a little around the edges,
+        // in the salon's own colour. The embed used to be transparent and flat, which
+        // is why it felt like a widget bolted onto the site instead of the booking page.
+        background: `radial-gradient(1100px 520px at 12% -8%, ${tint(accent, 0.16)}, transparent 60%),
              radial-gradient(900px 500px at 105% 8%, ${tint(accent, 0.10)}, transparent 55%),
              linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%)`,
-        padding: embedded ? 0 : 16,
+        padding: embedded ? 12 : 16,
         fontFamily: FONT,
         ['--accent' as string]: accent,
         ['--accent-glow' as string]: tint(accent, 0.55),

@@ -14,6 +14,13 @@
   if (L.ready) return; // already wired (e.g. script included twice)
   L.ready = 1;
 
+  function sizeApp(el, cfg) {
+    var vh = window.innerHeight || 800;
+    var h = Math.max(cfg.min, Math.min(cfg.max, Math.round(vh * cfg.ratio)));
+    el.style.height = h + 'px';
+    el.style.minHeight = '0px';
+  }
+
   function frameFor(source) {
     var list = L.frames || [];
     for (var i = 0; i < list.length; i++) {
@@ -31,8 +38,34 @@
     if (!hit) return;                                   // not one of our widgets
     if (hit.origin && e.origin !== hit.origin) return;  // wrong origin
 
-    // 1) Auto-height: match the iframe to the form's real content height.
+    // 0) App mode: the widget asks for a FIXED viewport-sized frame and scrolls its
+    //    own menu inside it — that is the only way the sticky header, the sticky
+    //    category tabs and the "tabs follow the scroll" behaviour can work inside an
+    //    iframe (an iframe sized to its content never scrolls, so nothing can stick).
+    if (d.type === 'lumio-embed-app') {
+      var cfg = {
+        min: parseInt(d.min, 10) || 520,
+        max: parseInt(d.max, 10) || 900,
+        ratio: parseFloat(d.ratio) || 0.86,
+      };
+      hit.el.__lumioApp = cfg;
+      sizeApp(hit.el, cfg);
+      if (!L.resizeWired) {
+        L.resizeWired = 1;
+        window.addEventListener('resize', function () {
+          var list = L.frames || [];
+          for (var i = 0; i < list.length; i++) {
+            var el = document.getElementById(list[i].id);
+            if (el && el.__lumioApp) sizeApp(el, el.__lumioApp);
+          }
+        });
+      }
+      return;
+    }
+
+    // 1) Auto-height (classic mode): match the iframe to the form's content height.
     if (d.type === 'lumio-embed-height') {
+      if (hit.el.__lumioApp) return; // app mode owns the height
       var h = parseInt(d.height, 10);
       if (h && h > 120) {
         hit.el.style.height = h + 'px';
@@ -55,6 +88,7 @@
     //    the bottom of a long service list. y/h are the bar's position inside the
     //    iframe; we scroll the host page just enough to bring it on screen.
     if (d.type === 'lumio-embed-reveal') {
+      if (hit.el.__lumioApp) return; // the action bar is always visible in app mode
       var y = parseInt(d.y, 10) || 0;
       var bh = parseInt(d.h, 10) || 0;
       var r = hit.el.getBoundingClientRect();

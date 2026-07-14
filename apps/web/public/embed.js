@@ -14,6 +14,37 @@
   if (L.ready) return; // already wired (e.g. script included twice)
   L.ready = 1;
 
+  var saved = null;
+
+  function expand(el) {
+    if (el.__lumioFull) return;
+    el.__lumioFull = 1;
+    el.__lumioPrev = el.getAttribute('style') || '';
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    saved = { y: y, body: document.body.getAttribute('style') || '' };
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;' +
+      'z-index:2147483000;border:0;border-radius:0;margin:0;background:#fff;display:block;';
+    // Lock the page behind it (iOS needs the position trick, overflow alone is ignored).
+    document.body.style.position = 'fixed';
+    document.body.style.top = (-y) + 'px';
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function collapse(el) {
+    if (!el.__lumioFull) return;
+    el.__lumioFull = 0;
+    el.setAttribute('style', el.__lumioPrev || '');
+    if (saved) {
+      document.body.setAttribute('style', saved.body);
+      window.scrollTo(0, saved.y);
+      saved = null;
+    }
+    try { el.scrollIntoView({ block: 'center' }); } catch (err) { /* ignore */ }
+  }
+
   function frameFor(source) {
     var list = L.frames || [];
     for (var i = 0; i < list.length; i++) {
@@ -34,6 +65,7 @@
     // 1) Auto-height: match the iframe to the form's real content height, so the
     //    HOST page scrolls the form exactly like any other block on the site.
     if (d.type === 'lumio-embed-height') {
+      if (hit.el.__lumioFull) return;    // full-screen owns the size
       var h = parseInt(d.height, 10);
       if (h && h > 120) {
         hit.el.style.height = h + 'px';
@@ -84,7 +116,15 @@
       return;
     }
 
-    // 5) Jump to a position inside the form (a category tab was tapped). y is in the
+    // 5) Full-screen: on a phone the widget asks to take over the screen. The frame
+    //    becomes a fixed, viewport-sized layer ON THE SALON'S OWN SITE (no redirect),
+    //    which gives the form a real viewport — so its sticky header, its scrolling
+    //    menu and its bottom action bar behave EXACTLY like the hosted booking page.
+    //    Faking all that inside a content-sized iframe never feels right.
+    if (d.type === 'lumio-embed-expand') { expand(hit.el); return; }
+    if (d.type === 'lumio-embed-collapse') { collapse(hit.el); return; }
+
+    // 6) Jump to a position inside the form (a category tab was tapped). y is in the
     //    form's own coordinates; we scroll the HOST page to it.
     if (d.type === 'lumio-embed-scroll-to') {
       var yy = parseInt(d.y, 10) || 0;

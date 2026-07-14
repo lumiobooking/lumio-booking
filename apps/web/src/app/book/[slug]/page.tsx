@@ -306,8 +306,37 @@ export default function PublicBookingPage() {
   }, [step, embedded]);
   useEffect(() => { if (!embedded) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step, embedded]);
 
-  // ---- where we are on the visitor's screen (embed only) ---------------------
-  const { subscribe, enabled: pinning } = useHostViewport(embedded);
+  // ---- embed on a phone: a launcher card that opens the form full-screen -------
+  // Inside a content-sized iframe there is no viewport, so sticky headers and fixed
+  // action bars can only ever be faked — and on a phone the fake always loses: the
+  // page fights the scroll and the Continue button hides at the end of the menu.
+  // So on a phone the embed shows a card; tapping it makes the frame take over the
+  // screen (still on the salon's site) and from that moment the form has a real
+  // viewport and behaves exactly like the hosted booking page.
+  const [expanded, setExpanded] = useState(false);
+  const launcher = embedded && isMobile && !expanded;
+  const fullscreen = embedded && isMobile && expanded;
+  /** true when the form owns a real viewport: hosted page, or a full-screen embed. */
+  const asPage = !embedded || fullscreen;
+
+  const openFull = () => {
+    try { window.parent.postMessage({ type: 'lumio-embed-expand' }, '*'); } catch { /* ignore */ }
+    setExpanded(true);
+  };
+  const closeFull = () => {
+    try { window.parent.postMessage({ type: 'lumio-embed-collapse' }, '*'); } catch { /* ignore */ }
+    setExpanded(false);
+  };
+  useEffect(() => {
+    if (!fullscreen) return;
+    document.documentElement.style.height = 'auto';
+    document.body.style.height = 'auto';
+    document.body.style.overflow = 'auto';
+    window.scrollTo(0, 0);
+  }, [fullscreen]);
+
+  // ---- where we are on the visitor's screen (desktop embed only) ---------------
+  const { subscribe, enabled: pinning } = useHostViewport(embedded && !isMobile);
   const leftRef = useRef<HTMLDivElement | null>(null);
   const cartPin = usePin(subscribe, pinning && !isMobile, 'top', 14);
   const barPin = usePin(subscribe, pinning && isMobile, 'bottom', 10);
@@ -319,8 +348,8 @@ export default function PublicBookingPage() {
   const emailOk = !form.email.trim() || isValidEmail(form.email);
   const infoOk = form.firstName.trim().length > 0 && phoneOk && emailOk;
 
-  if (loading) return <Shell accent="#6366f1"><BookingSkeleton /></Shell>;
-  if (loadError) return <Shell accent="#6366f1"><Center>{loadError}</Center></Shell>;
+  if (loading) return <Shell accent="#6366f1" fullscreen={false}><BookingSkeleton /></Shell>;
+  if (loadError) return <Shell accent="#6366f1" fullscreen={false}><Center>{loadError}</Center></Shell>;
   if (salon && salon.businessType === 'RESTAURANT') return <RestaurantReserve slug={slug} salon={salon} />;
 
   const canContinue =
@@ -371,15 +400,24 @@ export default function PublicBookingPage() {
     />
   );
 
+  // The phone embed, before it is opened: one tap, and the real thing appears.
+  if (launcher) {
+    return (
+      <Shell accent={accent} fullscreen={false}>
+        <Launcher salon={salon} accent={accent} onOpen={openFull} rules={rules} services={services} />
+      </Shell>
+    );
+  }
+
   return (
-    <Shell accent={accent}>
+    <Shell accent={accent} fullscreen={fullscreen}>
       <div className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
         {/* Top bar — salon name (step 1) or the step name with a back arrow */}
         {/* Header stays put while the menu scrolls under it. */}
-        <div style={{ position: embedded ? 'static' : 'sticky', top: 0, zIndex: 30, flexShrink: 0,
+        <div style={{ position: asPage ? 'sticky' : 'static', top: 0, zIndex: 30, flexShrink: 0,
           background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`,
           color: '#fff',
-          borderRadius: '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',
+          borderRadius: fullscreen ? 0 : '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',
           display: 'flex', alignItems: 'center', gap: 13, marginBottom: 0,
           boxShadow: `0 14px 34px -18px ${tint(accent, 0.95)}, inset 0 1px 0 rgba(255,255,255,0.22)` }}>
           {step > 1 && step < 5 && (
@@ -404,6 +442,9 @@ export default function PublicBookingPage() {
             </button>
           )}
           {step === 1 && !embedded && !isMobile && <InstallAppButton label="Get the app" />}
+          {fullscreen && (
+            <button onClick={closeFull} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 17, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+          )}
         </div>
 
         {step === 5 ? (
@@ -444,7 +485,7 @@ export default function PublicBookingPage() {
                   <ServicePicker
                     services={services} categories={categories} selectedIds={pickedServiceIds}
                     onToggle={toggleService} fmt={fmt} accent={accent}
-                    subscribe={subscribe} pinning={pinning} stickyTop={64}
+                    subscribe={subscribe} pinning={pinning} stickyTop={fullscreen ? 58 : 64}
                   />
                   {serviceAddons.length > 0 && (
                     <div style={{ marginTop: 22 }}>
@@ -515,13 +556,13 @@ export default function PublicBookingPage() {
         {/* Mobile: the action bar floats above everything and is never hidden. */}
         {isMobile && step < 5 && (
           <MobileBar
-            embedded={embedded} count={cartLines.length} totalCents={totalCents} fmt={fmt}
+            embedded={!asPage} count={cartLines.length} totalCents={totalCents} fmt={fmt}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
             pinRef={barPin.elRef}
           />
         )}
 
-        {!embedded && (
+        {asPage && (
           <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
             style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(104px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: '#94a3b8', textDecoration: 'none' }}>
             Powered by <span style={{ color: accent, fontWeight: 700 }}>Lumio Booking</span>
@@ -603,6 +644,71 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         </button>
       </div>
     </aside>
+  );
+}
+
+/**
+ * The phone embed, closed. A card the visitor actually wants to tap: shop name,
+ * the next free slot, what they get — and one big button that opens the real form
+ * over the whole screen, still on the salon's own website.
+ */
+function Launcher({ salon, accent, onOpen, rules, services }: {
+  salon: Salon | null; accent: string; onOpen: () => void; rules: BookingRules; services: Service[];
+}) {
+  const soon = useMemo(() => {
+    const shortest = Math.max(15, Math.min(...(services.length ? services.map((s) => s.durationMinutes) : [30])));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (let i = 0; i <= Math.min(rules.maxAdvanceDays, 21); i++) {
+      const d = new Date(today.getTime() + i * 86400000);
+      const first = generateSlots(d, shortest, rules)[0];
+      if (first) return `${i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })} at ${fmtTime(first.start)}`;
+    }
+    return null;
+  }, [rules, services]);
+
+  const from = services.length ? Math.min(...services.map((s) => svcNetCents(s))) : 0;
+
+  return (
+    <div className="lumio-book" style={{ ['--accent' as string]: accent } as React.CSSProperties}>
+      <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: `0 26px 60px -34px rgba(15,42,82,.5), 0 0 0 1px ${tint(accent, 0.10)}` }}>
+        <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '16px 16px 18px', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <Logo url={salon?.branding?.logoUrl} size={44} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salon?.name}</div>
+            <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} className="lumio-dot" />
+              Book online · confirmed in seconds
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: '16px 16px 18px' }}>
+          {soon && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#166534', fontSize: 12.5, fontWeight: 800, marginBottom: 12 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
+              Next opening {soon}
+            </div>
+          )}
+          <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+            {[['🗓️', 'Pick your service, tech and time'], ['⚡', 'Instant confirmation by text'], ['💳', 'Pay online or at the shop']].map(([i, t]) => (
+              <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13.5, color: INK, fontWeight: 600 }}>
+                <span style={{ width: 30, height: 30, borderRadius: 9, background: tint(accent, 0.10), display: 'grid', placeItems: 'center', fontSize: 14, flexShrink: 0 }}>{i}</span>
+                {t}
+              </div>
+            ))}
+          </div>
+          <button onClick={onOpen} className="lumio-cta" style={{ ...ctaBtn, fontSize: 16, padding: '16px 18px' }}>
+            Book now{from > 0 ? '' : ''} →
+          </button>
+          {salon?.contactPhone && (
+            <a href={`tel:${salon.contactPhone.replace(/[^0-9+]/g, '')}`}
+              style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px', borderRadius: 999, border: `1px solid ${tint(accent, 0.30)}`, color: accent, fontWeight: 700, fontSize: 13.5, textDecoration: 'none' }}>
+              📞 Call {salon.contactPhone}
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1630,14 +1736,16 @@ function BookingSkeleton() {
     </div>
   );
 }
-function Shell({ children, accent }: { children: React.ReactNode; accent: string }) {
+function Shell({ children, accent, fullscreen }: { children: React.ReactNode; accent: string; fullscreen: boolean }) {
   const [embedded, setEmbedded] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     let emb = false;
     try { emb = window.self !== window.top; } catch { emb = true; }
     setEmbedded(emb);
-    if (!emb) return;
+    // Full-screen: the frame is the screen now. Stop reporting a height (the host
+    // ignores it anyway) and let the document scroll like any normal page.
+    if (!emb || fullscreen) return;
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
     document.body.style.margin = '0';
@@ -1663,20 +1771,20 @@ function Shell({ children, accent }: { children: React.ReactNode; accent: string
     const iv = window.setInterval(post, 400);
     window.addEventListener('resize', post);
     return () => { if (ro) ro.disconnect(); window.clearInterval(iv); window.removeEventListener('resize', post); };
-  }, []);
+  }, [fullscreen]);
 
   return (
     <>
       <style>{BOOK_CSS}</style>
       <div ref={rootRef} className="lumio-shell" style={{
-        minHeight: embedded ? 0 : '100vh',
+        minHeight: embedded && !fullscreen ? 0 : '100vh',
         // The same stage in both places: a page that glows a little around the edges,
         // in the salon's own colour. The embed used to be transparent and flat, which
         // is why it felt like a widget bolted onto the site instead of the booking page.
         background: `radial-gradient(1100px 520px at 12% -8%, ${tint(accent, 0.16)}, transparent 60%),
              radial-gradient(900px 500px at 105% 8%, ${tint(accent, 0.10)}, transparent 55%),
              linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%)`,
-        padding: embedded ? 12 : 16,
+        padding: fullscreen ? 0 : embedded ? 12 : 16,
         fontFamily: FONT,
         ['--accent' as string]: accent,
         ['--accent-glow' as string]: tint(accent, 0.55),

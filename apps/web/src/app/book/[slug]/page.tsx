@@ -21,8 +21,29 @@ import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
-const INK = '#0f2a52';        // deep navy used for headers/text, like the reference
+const INK = '#0f2a52';        // ink for text (headings, rows)
 const SOFT = '#f4f6fb';
+
+/** The salon's brand colour, softened — used for selected rows, chips, tints.
+ *  Every accent in this page comes from the tenant's own branding, never a
+ *  hard-coded palette, so a white-label salon keeps its identity. */
+function tint(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16);
+  if ([r, g, b].some(Number.isNaN)) return `rgba(99,102,241,${alpha})`;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+/** A darker shade of the accent for the header gradient. */
+function shade(hex: string, amount = 0.28): string {
+  const h = hex.replace('#', '');
+  const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const f = (i: number) => {
+    const v = parseInt(n.slice(i, i + 2), 16);
+    return Number.isNaN(v) ? 0 : Math.max(0, Math.round(v * (1 - amount)));
+  };
+  return `rgb(${f(0)}, ${f(2)}, ${f(4)})`;
+}
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number }
 interface BookingRules {
@@ -328,6 +349,7 @@ export default function PublicBookingPage() {
 
   const summary = (
     <CartPanel
+      fill={!embedded && !isMobile}
       salon={salon} lines={allLines} fmt={fmt} totalCents={totalCents} fullCents={fullCents}
       anyDiscount={anyDiscount} totalDuration={totalDuration} employee={employee} slot={slot} selectedDate={selectedDate}
       onRemove={removeLine} canContinue={canContinue} ctaLabel={ctaLabel} onContinue={goNext} step={step} accent={accent}
@@ -338,7 +360,12 @@ export default function PublicBookingPage() {
     <Shell accent={accent}>
       <div className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
         {/* Top bar — salon name (step 1) or the step name with a back arrow */}
-        <div style={{ background: INK, color: '#fff', borderRadius: embedded ? 12 : '14px 14px 0 0', padding: isMobile ? '12px 14px' : '14px 18px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: embedded ? 12 : 0 }}>
+        {/* Header stays put while the menu scrolls under it. */}
+        <div style={{ position: embedded ? 'static' : 'sticky', top: 0, zIndex: 30,
+          background: `linear-gradient(135deg, ${accent}, ${shade(accent)})`, color: '#fff',
+          borderRadius: embedded ? 12 : '14px 14px 0 0', padding: isMobile ? '12px 14px' : '15px 18px',
+          display: 'flex', alignItems: 'center', gap: 12, marginBottom: embedded ? 12 : 0,
+          boxShadow: '0 6px 20px rgba(15,42,82,0.16)' }}>
           {step > 1 && step < 5 && (
             <button onClick={goBack} aria-label="Back" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>←</button>
           )}
@@ -395,7 +422,7 @@ export default function PublicBookingPage() {
                               style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
                               <span style={{ flex: 1, textAlign: 'left' }}>
                                 <span style={rowTitle}>{a.name}</span>
-                                <span style={rowMeta}>⏳ {a.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span> <b style={{ color: '#b4820f' }}>+{fmt(a.priceCents)}</b></span>
+                                <span style={rowMeta}>⏳ {a.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span> <b style={{ color: accent }}>+{fmt(a.priceCents)}</b></span>
                               </span>
                               <PlusCheck on={on} accent={accent} />
                             </button>
@@ -435,7 +462,11 @@ export default function PublicBookingPage() {
             </div>
 
             {/* -------- right: the cart, always in view -------- */}
-            {!isMobile && <div style={{ position: 'sticky', top: 12 }}>{summary}</div>}
+            {!isMobile && (
+              <div style={{ position: 'sticky', top: embedded ? 0 : 78, height: embedded ? 'auto' : 'calc(100vh - 104px)', minHeight: 420 }}>
+                {summary}
+              </div>
+            )}
           </div>
         )}
 
@@ -463,14 +494,15 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean };
 
-function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent }: {
+function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
   totalDuration: number; employee: Staff | null; slot: Slot | null; selectedDate: Date | null;
-  onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string;
+  onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string; fill?: boolean;
 }) {
   return (
-    <aside style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 30px rgba(15,42,82,0.10)' }}>
-      <div style={{ background: INK, color: '#fff', padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+    <aside style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 30px rgba(15,42,82,0.10)',
+      height: fill ? '100%' : 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ background: `linear-gradient(135deg, ${accent}, ${shade(accent)})`, color: '#fff', padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', flexShrink: 0 }}>
         <span style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(255,255,255,0.16)', display: 'grid', placeItems: 'center', fontSize: 19, flexShrink: 0 }}>🏪</span>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15.5 }}>{salon?.name}</div>
@@ -479,9 +511,11 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         </div>
       </div>
 
-      <div style={{ padding: '6px 16px', maxHeight: 320, overflowY: 'auto' }}>
+      {/* The list takes whatever room is left, so the panel fills the page instead of
+          ending in a big white void — and the total + button stay pinned at the bottom. */}
+      <div style={{ padding: '6px 16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {lines.length === 0 ? (
-          <div style={{ padding: '26px 4px', color: '#94a3b8', fontSize: 13.5, textAlign: 'center' }}>No service selected yet.</div>
+          <EmptyCart accent={accent} salon={salon} />
         ) : lines.map((l) => (
           <div key={l.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: '1px solid #eef1f6' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -490,13 +524,13 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
                 {l.durationMinutes} min{employee && step >= 3 ? <> · <b style={{ color: accent }}>{employee.firstName}</b></> : null}
               </div>
             </div>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: '#b4820f', whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: accent, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
             <button onClick={() => onRemove(l.id)} aria-label="Remove" style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: '#e8edf6', color: INK, fontSize: 12, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>✕</button>
           </div>
         ))}
       </div>
 
-      <div style={{ padding: '12px 16px 16px', borderTop: '1px solid #eef1f6' }}>
+      <div style={{ padding: '12px 16px 16px', borderTop: '1px solid #eef1f6', flexShrink: 0, background: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontWeight: 800, color: INK, fontSize: 15 }}>Total</span>
           <span>
@@ -508,7 +542,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
           <span>🕐 Duration</span><span>{fmtDur(totalDuration)}</span>
         </div>
         {slot && selectedDate && (
-          <div style={{ marginTop: 12, background: '#fdf6e6', borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
+          <div style={{ marginTop: 12, background: tint(accent, 0.08), borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
             <div>📅 <b>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
             <div>🕐 {fmtTime(slot.start)} – {fmtTime(slot.end)} ({fmtDur(totalDuration)})</div>
           </div>
@@ -519,6 +553,45 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         </button>
       </div>
     </aside>
+  );
+}
+
+/** An empty cart used to be a tall white nothing. Now it explains what happens
+ *  next and why booking here is safe — the space works for the salon. */
+function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
+  const perks: [string, string, string][] = [
+    ['🕐', 'Book any time', 'Open 24/7 online — even when the shop is closed.'],
+    ['✅', 'Instant confirmation', 'You get a text the moment your spot is held.'],
+    ['💇', 'Pick your tech', 'Choose the person you always go to, or let us match you.'],
+    ['💳', 'Pay how you like', 'Online now, or at the shop when you arrive.'],
+  ];
+  return (
+    <div style={{ padding: '18px 2px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
+        <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🛍️</div>
+        <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>Pick a service to start</div>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>
+          Tap <b style={{ color: accent }}>＋</b> on any service. You can add more than one.
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
+        {perks.map(([icon, title, sub]) => (
+          <div key={title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 12, background: SOFT }}>
+            <span style={{ fontSize: 16, lineHeight: 1.2 }}>{icon}</span>
+            <span>
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: INK }}>{title}</span>
+              <span style={{ display: 'block', fontSize: 12, color: '#8fa0bb', marginTop: 2, lineHeight: 1.45 }}>{sub}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      {salon?.contactPhone && (
+        <a href={`tel:${salon.contactPhone.replace(/[^0-9+]/g, '')}`}
+          style={{ marginTop: 'auto', display: 'block', textAlign: 'center', padding: '11px 12px', borderRadius: 12, border: `1px solid ${tint(accent, 0.35)}`, color: accent, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+          📞 Rather talk to us? {salon.contactPhone}
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -550,7 +623,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
         <div style={{ fontSize: 12.5, color: '#64748b' }}>
           {count} service{count === 1 ? '' : 's'}{durationMinutes > 0 && <> · 🕐 {fmtDur(durationMinutes)}</>}
         </div>
-        <div style={{ fontSize: 17, fontWeight: 800, color: '#b4820f' }}>{fmt(totalCents)}</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: accent }}>{fmt(totalCents)}</div>
       </div>
       <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
         style={{ ...ctaBtn, width: 'auto', padding: '12px 20px', opacity: canContinue ? 1 : 0.45, cursor: canContinue ? 'pointer' : 'not-allowed' }}>
@@ -591,7 +664,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
       for (const g of groups) {
         const el = sectionRefs.current[g.id];
         if (!el) continue;
-        if (el.getBoundingClientRect().top - 140 <= 0) current = g.id;
+        if (el.getBoundingClientRect().top - 170 <= 0) current = g.id;
       }
       setActive((prev) => (prev === current ? prev : current));
     };
@@ -613,7 +686,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
     setActive(id);
     if (!spy) return; // embedded: tabs filter instead (see below)
     const el = sectionRefs.current[id];
-    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 90, behavior: 'smooth' });
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 128, behavior: 'smooth' });
   };
 
   const search = q.trim().toLowerCase();
@@ -623,13 +696,13 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
 
   return (
     <div>
-      <div ref={tabsRef} className="lumio-tabs" style={{ position: spy ? 'sticky' : 'static', top: 0, zIndex: 5, background: '#fff', display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 0 12px' }}>
+      <div ref={tabsRef} className="lumio-tabs" style={{ position: spy ? 'sticky' : 'static', top: 64, zIndex: 5, background: '#fff', display: 'flex', gap: 8, overflowX: 'auto', padding: '10px 0 12px', boxShadow: '0 10px 10px -10px rgba(15,42,82,0.08)' }}>
         {groups.map((g) => {
           const on = active === g.id && !search;
           return (
             <button key={g.id} data-tab={g.id} type="button" onClick={() => goTo(g.id)}
               style={{ padding: '9px 16px', borderRadius: 999, whiteSpace: 'nowrap', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
-                border: `1px solid ${on ? INK : '#e6eaf2'}`, background: on ? INK : '#fff', color: on ? '#fff' : '#5b6b85' }}>
+                border: `1px solid ${on ? accent : '#e6eaf2'}`, background: on ? accent : '#fff', color: on ? '#fff' : '#5b6b85' }}>
               {g.name}
             </button>
           );
@@ -642,7 +715,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
       )}
 
       {shown.map((g) => (
-        <div key={g.id} ref={(el) => { sectionRefs.current[g.id] = el; }} style={{ marginBottom: 22, scrollMarginTop: 90 }}>
+        <div key={g.id} ref={(el) => { sectionRefs.current[g.id] = el; }} style={{ marginBottom: 22, scrollMarginTop: 130 }}>
           <SectionLabel accent={accent}>{g.name}</SectionLabel>
           <div style={{ display: 'grid', gap: 10 }}>
             {g.items.map((s) => {
@@ -650,7 +723,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
               const disc = svcDiscount(s);
               return (
                 <button key={s.id} type="button" className="lumio-row" onClick={() => onToggle(s.id)}
-                  style={{ ...rowCard, borderColor: on ? '#e5b53c' : '#e6eaf2', background: on ? '#fdf6e6' : '#fff' }}>
+                  style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? tint(accent, 0.07) : '#fff' }}>
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                     <span style={rowTitle}>
                       {s.name}
@@ -660,7 +733,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                     <span style={rowMeta}>
                       ⏳ {s.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span>{' '}
                       {disc > 0 && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
-                      <b style={{ color: '#b4820f' }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
+                      <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
                     </span>
                   </span>
                   <PlusCheck on={on} accent={accent} />
@@ -687,15 +760,15 @@ function TechPicker({ staff, staffId, onPick, accent }: { staff: Staff[]; staffI
         const on = staffId === s.id;
         return (
           <button key={s.id || 'any'} type="button" className="lumio-row" onClick={() => onPick(s.id)}
-            style={{ ...rowCard, padding: '14px 16px', borderColor: on ? '#e5b53c' : '#e6eaf2', background: on ? '#fdf6e6' : '#fff' }}>
+            style={{ ...rowCard, padding: '14px 16px', borderColor: on ? accent : '#e6eaf2', background: on ? tint(accent, 0.07) : '#fff' }}>
             <Avatar name={label} url={s.avatarUrl} size={46} accent={accent} />
             <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12 }}>
               {s.id ? label : 'Any nail tech'}
               {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>First one free at your time</span>}
             </span>
             {on
-              ? <span style={{ width: 30, height: 30, borderRadius: '50%', background: '#c99a2e', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, flexShrink: 0 }}>✓</span>
-              : <span style={{ padding: '8px 18px', borderRadius: 999, border: `1px solid ${INK}`, color: INK, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>Select</span>}
+              ? <span style={{ width: 30, height: 30, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, flexShrink: 0 }}>✓</span>
+              : <span style={{ padding: '8px 18px', borderRadius: 999, border: `1px solid ${accent}`, color: accent, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>Select</span>}
           </button>
         );
       })}
@@ -771,7 +844,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       {/* month + jump-to-date */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontWeight: 800, color: INK, fontSize: 15 }}>
-          {selectedDate && <span style={{ color: '#c99a2e', marginRight: 8 }}>📅 {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
+          {selectedDate && <span style={{ color: accent, marginRight: 8 }}>📅 {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
           <span style={{ color: '#64748b', fontWeight: 600 }}>{MONTH_NAMES[stripStart.getMonth()]} {stripStart.getFullYear()}</span>
         </div>
         <label style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid #e6eaf2', display: 'grid', placeItems: 'center', cursor: 'pointer', color: INK }}>
@@ -798,7 +871,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
             return (
               <button key={d.toISOString()} type="button" disabled={closed} onClick={() => onPickDate(d)}
                 style={{ display: 'grid', justifyItems: 'center', gap: 2, padding: '8px 2px', borderRadius: 12, border: 'none', cursor: closed ? 'not-allowed' : 'pointer',
-                  background: on ? '#c99a2e' : 'transparent', color: on ? '#fff' : closed ? '#cbd5e1' : INK, position: 'relative' }}>
+                  background: on ? accent : 'transparent', color: on ? '#fff' : closed ? '#cbd5e1' : INK, position: 'relative' }}>
                 <span style={{ fontSize: 17, fontWeight: 800, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
                 <span style={{ fontSize: 11, opacity: on ? 0.95 : 0.6 }}>{DOW_SHORT[d.getDay()]}</span>
                 {!on && deal > 0 && !closed && <span style={{ position: 'absolute', top: 2, right: 6, fontSize: 9, fontWeight: 800, color: '#16a34a' }}>-{deal}%</span>}
@@ -834,8 +907,8 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
                     <button key={s.start.toISOString()} type="button" disabled={!free} onClick={() => onPickSlot(s)}
                       className={free ? 'lumio-row' : undefined}
                       style={{ padding: '12px 6px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: free ? 'pointer' : 'not-allowed',
-                        border: `1px solid ${on ? '#e5b53c' : '#e6eaf2'}`, background: on ? '#fdf6e6' : free ? '#fff' : '#f6f8fb',
-                        color: !free ? '#c3cbd8' : on ? '#b4820f' : INK, textDecoration: free ? 'none' : 'line-through' }}>
+                        border: `1px solid ${on ? accent : '#e6eaf2'}`, background: on ? tint(accent, 0.10) : free ? '#fff' : '#f6f8fb',
+                        color: !free ? '#c3cbd8' : on ? accent : INK, textDecoration: free ? 'none' : 'line-through' }}>
                       {fmtTime(s.start)}
                     </button>
                   );
@@ -887,7 +960,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           <span>Total</span><span>{fmt(totalCents)}</span>
         </div>
         {depositCents > 0 && (
-          <div style={{ marginTop: 8, fontSize: 13, color: '#b4820f', fontWeight: 700 }}>Deposit due today: {fmt(depositCents)}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 700 }}>Deposit due today: {fmt(depositCents)}</div>
         )}
       </Card>
 
@@ -1007,13 +1080,13 @@ function Avatar({ name, url, size, accent }: { name: string; url: string | null;
 }
 function PlusCheck({ on, accent }: { on: boolean; accent: string }) {
   return on
-    ? <span style={{ width: 34, height: 34, borderRadius: '50%', background: '#c99a2e', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 16, flexShrink: 0 }}>✓</span>
-    : <span style={{ width: 34, height: 34, borderRadius: '50%', border: `1.5px solid ${INK}`, color: INK, display: 'grid', placeItems: 'center', fontSize: 18, flexShrink: 0, background: '#fff' }}>+</span>;
+    ? <span style={{ width: 34, height: 34, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 16, flexShrink: 0 }}>✓</span>
+    : <span style={{ width: 34, height: 34, borderRadius: '50%', border: `1.5px solid ${accent}`, color: accent, display: 'grid', placeItems: 'center', fontSize: 18, flexShrink: 0, background: '#fff' }}>+</span>;
 }
 function SectionLabel({ children, accent }: { children: React.ReactNode; accent: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px' }}>
-      <span style={{ width: 4, height: 16, borderRadius: 2, background: '#c99a2e' }} />
+      <span style={{ width: 4, height: 16, borderRadius: 2, background: accent }} />
       <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: 0.6, color: accent, textTransform: 'uppercase' }}>{children}</span>
     </div>
   );
@@ -1144,7 +1217,7 @@ const BOOK_CSS = `
 @keyframes lumioIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .lumio-book { animation: lumioIn .4s cubic-bezier(.2,.75,.25,1) both; }
 .lumio-book button { transition: transform .12s ease, box-shadow .2s ease, border-color .15s ease, background .15s ease; }
-.lumio-row:hover:not(:disabled) { border-color: #c99a2e !important; box-shadow: 0 6px 18px rgba(15,42,82,0.08); }
+.lumio-row:hover:not(:disabled) { border-color: var(--accent, #6366f1) !important; box-shadow: 0 6px 18px rgba(15,42,82,0.08); }
 .lumio-cta:hover:not(:disabled) { filter: brightness(1.05); }
 .lumio-tabs::-webkit-scrollbar { height: 0; }
 @media (prefers-reduced-motion: reduce) { .lumio-book { animation: none !important; } }
@@ -1243,6 +1316,6 @@ const rowCard: React.CSSProperties = {
 const rowTitle: React.CSSProperties = { display: 'block', fontSize: 14.5, fontWeight: 800, color: INK, letterSpacing: 0.2, lineHeight: 1.35 };
 const rowMeta: React.CSSProperties = { display: 'block', fontSize: 12.5, color: '#7d8ba4', marginTop: 5 };
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #dbe2ee', background: '#fff', color: INK, fontSize: 14 };
-const ctaBtn: React.CSSProperties = { width: '100%', padding: '14px 18px', borderRadius: 999, border: 'none', background: '#c99a2e', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' };
-const primaryBtn: React.CSSProperties = { padding: '12px 22px', borderRadius: 999, border: 'none', background: '#c99a2e', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' };
+const ctaBtn: React.CSSProperties = { width: '100%', padding: '14px 18px', borderRadius: 999, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { padding: '12px 22px', borderRadius: 999, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' };
 const arrowBtn: React.CSSProperties = { width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: INK, fontSize: 18, cursor: 'pointer', flexShrink: 0 };

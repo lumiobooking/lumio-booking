@@ -382,7 +382,7 @@ export default function PublicBookingPage() {
 
   const summary = (
     <CartPanel
-      fill={!isMobile}
+      fill={!isMobile && !embedded}
       salon={salon} lines={allLines} fmt={fmt} totalCents={totalCents} fullCents={fullCents}
       anyDiscount={anyDiscount} totalDuration={totalDuration} employee={employee} slot={slot} selectedDate={selectedDate}
       onRemove={removeLine} canContinue={canContinue} ctaLabel={ctaLabel} onContinue={goNext} step={step} accent={accent}
@@ -529,7 +529,11 @@ export default function PublicBookingPage() {
             {/* -------- right: the cart, always in view -------- */}
             {!isMobile && (
               <div style={embedded
-                ? { minHeight: 0, height: '100%' }
+                // Embedded: the panel sizes itself to what is in it — two services is a
+                // short card, ten is a tall one — but it never shrinks below half the
+                // frame (a tiny floating card next to a long menu looks broken), and
+                // never grows past it (it scrolls inside instead).
+                ? { alignSelf: 'start', marginTop: 14, minHeight: '52%', maxHeight: '100%', display: 'flex' }
                 : { position: 'sticky', top: 92, height: 'calc(100vh - 124px)', minHeight: 420, marginTop: 16 }}>
                 {summary}
               </div>
@@ -569,7 +573,8 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
   return (
     <aside style={{ background: '#fff', borderRadius: 18, overflow: 'hidden',
       boxShadow: `0 30px 60px -34px rgba(15,42,82,.45), 0 0 0 1px ${tint(accent, 0.10)}`,
-      height: fill ? '100%' : 'auto', display: 'flex', flexDirection: 'column' }}>
+      height: fill ? '100%' : 'auto', maxHeight: '100%', width: '100%',
+      display: 'flex', flexDirection: 'column' }}>
       <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '15px 16px', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
         <Logo url={salon?.branding?.logoUrl} size={44} />
         <div style={{ minWidth: 0 }}>
@@ -639,7 +644,7 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
     ['💳', 'Pay how you like', 'Online now, or at the shop when you arrive.'],
   ];
   return (
-    <div style={{ padding: '18px 2px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ padding: '16px 2px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
         <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🛍️</div>
         <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>Pick a service to start</div>
@@ -660,7 +665,7 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
       </div>
       {salon?.contactPhone && (
         <a href={`tel:${salon.contactPhone.replace(/[^0-9+]/g, '')}`}
-          style={{ marginTop: 'auto', display: 'block', textAlign: 'center', padding: '11px 12px', borderRadius: 12, border: `1px solid ${tint(accent, 0.35)}`, color: accent, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+          style={{ marginTop: 12, display: 'block', textAlign: 'center', padding: '11px 12px', borderRadius: 12, border: `1px solid ${tint(accent, 0.35)}`, color: accent, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
           📞 Rather talk to us? {salon.contactPhone}
         </a>
       )}

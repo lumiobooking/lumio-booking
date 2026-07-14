@@ -15,6 +15,7 @@
 // ===========================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
@@ -501,7 +502,7 @@ export default function PublicBookingPage() {
 
         {!embedded && (
           <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
-            style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 96px' : '16px 0 8px', fontSize: 11.5, color: '#94a3b8', textDecoration: 'none' }}>
+            style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(104px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: '#94a3b8', textDecoration: 'none' }}>
             Powered by <span style={{ color: accent, fontWeight: 700 }}>Lumio Booking</span>
           </a>
         )}
@@ -627,6 +628,8 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
   embedded: boolean; count: number; totalCents: number; fmt: (c: number) => string; durationMinutes: number;
   canContinue: boolean; label: string; onContinue: () => void; accent: string;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   // In an iframe a fixed bar would pin itself to the bottom of the iframe box, so
   // inside an embed we let it flow right after the content and ask the host page to
   // scroll it into view instead (the WordPress embed listens for this).
@@ -639,27 +642,49 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
     try { window.parent.postMessage({ type: 'lumio-embed-reveal', y, h: ref.current.offsetHeight }, '*'); } catch { /* ignore */ }
   }, [canContinue, embedded]);
 
-  const boxed: React.CSSProperties = embedded
-    ? { marginTop: 12, borderRadius: 12, border: '1px solid #e6eaf2' }
-    : { position: 'fixed', left: 10, right: 10, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))', zIndex: 60, borderRadius: 18,
-        boxShadow: '0 18px 40px -14px rgba(15,42,82,0.35)', border: '1px solid rgba(255,255,255,.6)',
-        backdropFilter: 'saturate(1.4) blur(8px)', WebkitBackdropFilter: 'saturate(1.4) blur(8px)' };
-
-  return (
-    <div ref={ref} style={{ background: embedded ? '#fff' : 'rgba(255,255,255,.92)', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12, ...boxed }}>
-      <span style={{ width: 38, height: 38, borderRadius: 10, background: '#eef2fb', display: 'grid', placeItems: 'center', fontSize: 17, flexShrink: 0 }}>🛍️</span>
+  const bar = (
+    <div ref={ref} className="lumio-bar" style={{
+      background: embedded ? '#fff' : 'rgba(255,255,255,.94)',
+      padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12,
+      ...(embedded
+        ? { marginTop: 12, borderRadius: 14, border: '1px solid #e9edf4' }
+        : {
+            position: 'fixed', left: 10, right: 10, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
+            zIndex: 2147483000, borderRadius: 20,
+            boxShadow: `0 20px 44px -14px rgba(15,42,82,0.38), 0 0 0 1px ${tint(accent, 0.10)}`,
+            backdropFilter: 'saturate(1.5) blur(10px)', WebkitBackdropFilter: 'saturate(1.5) blur(10px)',
+            ['--accent' as string]: accent,
+            ['--accent-dark' as string]: shade(accent, 0.28),
+            ['--accent-glow' as string]: tint(accent, 0.55),
+          }),
+    } as React.CSSProperties}>
+      <span style={{ position: 'relative', width: 42, height: 42, borderRadius: 13, background: tint(accent, 0.10), display: 'grid', placeItems: 'center', fontSize: 18, flexShrink: 0 }}>
+        🛍️
+        {count > 0 && (
+          <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 19, height: 19, padding: '0 5px', borderRadius: 999,
+            background: accent, color: '#fff', fontSize: 11, fontWeight: 800, display: 'grid', placeItems: 'center',
+            boxShadow: `0 4px 10px -4px ${tint(accent, 0.95)}` }}>{count}</span>
+        )}
+      </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, color: '#64748b' }}>
-          {count} service{count === 1 ? '' : 's'}{durationMinutes > 0 && <> · 🕐 {fmtDur(durationMinutes)}</>}
+        <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>
+          {count === 0 ? 'No service yet' : `${count} service${count === 1 ? '' : 's'}`}{durationMinutes > 0 && <> · 🕐 {fmtDur(durationMinutes)}</>}
         </div>
-        <div style={{ fontSize: 17, fontWeight: 800, color: accent }}>{fmt(totalCents)}</div>
+        <div style={{ fontSize: 18, fontWeight: 800, color: INK, letterSpacing: -0.3 }}>{fmt(totalCents)}</div>
       </div>
       <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
-        style={{ ...ctaBtn, width: 'auto', padding: '12px 20px', opacity: canContinue ? 1 : 0.45, cursor: canContinue ? 'pointer' : 'not-allowed' }}>
+        style={{ ...ctaBtn, width: 'auto', padding: '13px 20px', fontSize: 14.5, whiteSpace: 'nowrap',
+          opacity: canContinue ? 1 : 0.42, cursor: canContinue ? 'pointer' : 'not-allowed' }}>
         {label} →
       </button>
     </div>
   );
+
+  // Fixed bars must live on <body>: any ancestor with a transform/filter/animation
+  // (a card fading in, a sticky header) turns itself into the containing block and
+  // the bar silently drops to the bottom of the CARD instead of the screen.
+  if (embedded || !mounted) return bar;
+  return createPortal(bar, document.body);
 }
 
 /**
@@ -1332,7 +1357,10 @@ const FONT = "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto,
  * customers are holding.
  */
 const BOOK_CSS = `
-@keyframes lumioIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+/* opacity only — a transform on this element would make it the containing block
+   for position:fixed children on iOS, and the floating action bar would drop to
+   the bottom of the card instead of sticking to the bottom of the screen. */
+@keyframes lumioIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes lumioPop { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes lumioShine { 0% { transform: translateX(-120%); } 60%, 100% { transform: translateX(220%); } }
 @keyframes lumioPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }

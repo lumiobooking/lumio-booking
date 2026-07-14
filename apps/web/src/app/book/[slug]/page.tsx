@@ -369,9 +369,7 @@ export default function PublicBookingPage() {
           {step > 1 && step < 5 && (
             <button onClick={goBack} aria-label="Back" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>←</button>
           )}
-          {step === 1 && (
-            <span style={{ width: 34, height: 34, borderRadius: 9, background: 'rgba(255,255,255,0.16)', display: 'grid', placeItems: 'center', fontSize: 17, flexShrink: 0 }}>🏪</span>
-          )}
+          {step === 1 && <Logo url={salon?.branding?.logoUrl} size={38} />}
           <div style={{ fontWeight: 800, fontSize: isMobile ? 16 : 18, letterSpacing: 0.2, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {step === 1 ? (salon?.name ?? barTitle) : barTitle}
           </div>
@@ -472,7 +470,7 @@ export default function PublicBookingPage() {
 
             {/* -------- right: the cart, always in view -------- */}
             {!isMobile && (
-              <div style={{ position: 'sticky', top: embedded ? 0 : 78, height: embedded ? 'auto' : 'calc(100vh - 104px)', minHeight: 420 }}>
+              <div style={{ position: 'sticky', top: embedded ? 0 : 92, height: embedded ? 'auto' : 'calc(100vh - 124px)', minHeight: 420, marginTop: 16 }}>
                 {summary}
               </div>
             )}
@@ -511,8 +509,8 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
   return (
     <aside style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 30px rgba(15,42,82,0.10)',
       height: fill ? '100%' : 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ background: `linear-gradient(135deg, ${accent}, ${shade(accent)})`, color: '#fff', padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', flexShrink: 0 }}>
-        <span style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(255,255,255,0.16)', display: 'grid', placeItems: 'center', fontSize: 19, flexShrink: 0 }}>🏪</span>
+      <div style={{ background: `linear-gradient(135deg, ${accent}, ${shade(accent)})`, color: '#fff', padding: '15px 16px', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
+        <Logo url={salon?.branding?.logoUrl} size={44} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15.5 }}>{salon?.name}</div>
           {salon?.address && <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 3, lineHeight: 1.45 }}>{salon.address}</div>}
@@ -1124,6 +1122,24 @@ function Field({ label, required, children }: { label: string; required?: boolea
     </label>
   );
 }
+/** The salon's own logo (Settings -> Branding -> Logo URL). Falls back to a
+ *  neutral shop mark so the header never looks broken while a salon has not
+ *  uploaded one yet. */
+function Logo({ url, size }: { url?: string | null; size: number }) {
+  const clean = (url ?? '').trim();
+  if (clean.startsWith('https://')) {
+    return (
+      <span style={{ width: size, height: size, borderRadius: 10, background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(15,42,82,0.18)' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={clean} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
+      </span>
+    );
+  }
+  return (
+    <span style={{ width: size, height: size, borderRadius: 10, background: 'rgba(255,255,255,0.18)', display: 'grid', placeItems: 'center', fontSize: size * 0.45, flexShrink: 0 }}>🏪</span>
+  );
+}
+
 function Avatar({ name, url, size, accent }: { name: string; url: string | null; size: number; accent: string }) {
   const initials = (name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('');
   // eslint-disable-next-line @next/next/no-img-element
@@ -1269,8 +1285,14 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
 // ---------------------------------------------------------------------------
 // Shell + helpers + styles
 // ---------------------------------------------------------------------------
+const FONT = "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const BOOK_CSS = `
 @keyframes lumioIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.lumio-book, .lumio-book button, .lumio-book input, .lumio-book select, .lumio-book textarea, .lumio-book a {
+  font-family: ${FONT};
+  -webkit-font-smoothing: antialiased;
+}
+.lumio-book h1, .lumio-book h2 { letter-spacing: -0.4px; }
 .lumio-book { animation: lumioIn .4s cubic-bezier(.2,.75,.25,1) both; }
 .lumio-book button { transition: transform .12s ease, box-shadow .2s ease, border-color .15s ease, background .15s ease; }
 .lumio-row:hover:not(:disabled) { border-color: var(--accent, #6366f1) !important; box-shadow: 0 6px 18px rgba(15,42,82,0.08); }
@@ -1308,7 +1330,7 @@ function Shell({ children, accent }: { children: React.ReactNode; accent: string
   return (
     <>
       <style>{BOOK_CSS}</style>
-      <div ref={rootRef} style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : SOFT, padding: embedded ? 0 : 16, ['--accent' as string]: accent } as React.CSSProperties}>
+      <div ref={rootRef} className="lumio-shell" style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : SOFT, padding: embedded ? 0 : 16, fontFamily: FONT, ['--accent' as string]: accent } as React.CSSProperties}>
         {children}
       </div>
     </>

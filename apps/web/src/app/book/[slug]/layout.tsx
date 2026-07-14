@@ -108,6 +108,16 @@ export default async function BookSlugLayout({ children, params }: { children: R
   const jsonLd = s ? buildJsonLd(s) : null;
   return (
     <>
+      {/* The booking page is the only thing a customer ever sees of the salon —
+          it gets a real typeface, not the OS default. Plus Jakarta Sans is
+          geometric, friendly and (unlike Poppins) ships a Vietnamese subset, so
+          salon names with dấu render correctly. */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      />
       {jsonLd && (
         // eslint-disable-next-line react/no-danger
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />

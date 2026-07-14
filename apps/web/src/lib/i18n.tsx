@@ -1291,6 +1291,11 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.br.accent': { en: 'Accent color', vi: 'Màu nhấn' },
   'se.br.logo': { en: 'Logo URL (optional)', vi: 'URL logo (tuỳ chọn)' },
   'se.br.save': { en: 'Save branding', vi: 'Lưu thương hiệu' },
+  'se.br.preview': { en: 'Booking page header — what your customers see', vi: 'Header trang đặt lịch — đúng như khách nhìn thấy' },
+  'se.br.logoHelp': {
+    en: 'Paste a public https:// link to a square PNG (at least 256×256, transparent background looks best). It shows in the booking header and next to the cart.',
+    vi: 'Dán link https:// công khai tới ảnh PNG vuông (tối thiểu 256×256, nền trong suốt là đẹp nhất). Logo sẽ hiện ở header trang đặt lịch và cạnh giỏ dịch vụ.',
+  },
   // Payments
   'se.pay.title': { en: 'Payments', vi: 'Thanh toán' },
   'se.pay.desc': { en: 'Currency, price display, accepted methods, and online gateways.', vi: 'Tiền tệ, cách hiển thị giá, phương thức chấp nhận và cổng thanh toán trực tuyến.' },

@@ -921,8 +921,26 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             <input style={ui.input} value={f.accentColor} onChange={(e) => setF({ ...f, accentColor: e.target.value })} />
           </div>
         </Field>
-        <Field label={t('se.br.logo')}><input style={ui.input} value={f.logoUrl} onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder="https://…" /></Field>
+        <Field label={t('se.br.logo')}><input style={ui.input} value={f.logoUrl} onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder="https://…/logo.png" /></Field>
       </div>
+
+      {/* Live preview of the booking-page header — what a customer actually sees. */}
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('se.br.preview')}</div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #334155' }}>
+          <div style={{ background: `linear-gradient(135deg, ${f.accentColor}, ${f.accentColor})`, padding: '13px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: 38, height: 38, borderRadius: 10, background: f.logoUrl?.trim().startsWith('https://') ? '#fff' : 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
+              {f.logoUrl?.trim().startsWith('https://')
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={f.logoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
+                : <span style={{ fontSize: 17 }}>🏪</span>}
+            </span>
+            <span style={{ color: '#fff', fontWeight: 800, fontSize: 16, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{data.company?.name || 'Your salon'}</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6, lineHeight: 1.55 }}>{t('se.br.logoHelp')}</div>
+      </div>
+
       <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('branding', f, 'Branding')}>{t('se.br.save')}</button>
     </Card>
   );

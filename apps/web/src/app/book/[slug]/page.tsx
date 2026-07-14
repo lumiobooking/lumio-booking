@@ -337,11 +337,11 @@ export default function PublicBookingPage() {
 
   // ---- where we are on the visitor's screen (desktop embed only) ---------------
   const { subscribe, enabled: pinning } = useHostViewport(embedded && !isMobile);
-  const leftRef = useRef<HTMLDivElement | null>(null);
-  const cartPin = usePin(subscribe, pinning && !isMobile, 'top', 14);
-  const barPin = usePin(subscribe, pinning && isMobile, 'bottom', 10);
-  // the summary travels down the column that holds the menu, and stops at its end
-  useEffect(() => { cartPin.boxRef.current = leftRef.current; }, [cartPin.boxRef, step]);
+  // Desktop embed: the frame has no viewport of its own, so `sticky` does nothing.
+  // We pin the header and the summary to the visitor's screen with a transform,
+  // bounded by the block each of them belongs to.
+  const headerPin = usePin(subscribe, pinning, 'top', 0);
+  const cartPin = usePin(subscribe, pinning, 'top', 14);
 
     // ---- validation -----------------------------------------------------------
   const phoneOk = isValidPhone(form.phone);
@@ -411,10 +411,10 @@ export default function PublicBookingPage() {
 
   return (
     <Shell accent={accent} fullscreen={fullscreen}>
-      <div className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
-        {/* Top bar — salon name (step 1) or the step name with a back arrow */}
-        {/* Header stays put while the menu scrolls under it. */}
-        <div style={{ position: asPage ? 'sticky' : 'static', top: 0, zIndex: 30, flexShrink: 0,
+      <div ref={headerPin.boxRef} className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
+        {/* Top bar — salon name (step 1) or the step name with a back arrow.
+            Hosted page / full-screen: real `sticky`. Desktop embed: pinned by transform. */}
+        <div ref={headerPin.elRef} style={{ position: asPage ? 'sticky' : 'relative', top: asPage ? 0 : undefined, zIndex: 30, flexShrink: 0,
           background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`,
           color: '#fff',
           borderRadius: fullscreen ? 0 : '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',
@@ -463,7 +463,7 @@ export default function PublicBookingPage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 360px', gap: isMobile ? 0 : 18, alignItems: 'start' }}>
             {/* -------- left: the actual picking (this is the scroller in an embed) -------- */}
-            <div ref={leftRef} style={{
+            <div ref={(node) => { cartPin.boxRef.current = node; }} style={{
               background: '#fff',
               borderRadius: '0 0 18px 18px',
               padding: isMobile ? '14px 14px 18px' : '18px 24px 24px',
@@ -541,7 +541,7 @@ export default function PublicBookingPage() {
             {/* -------- right: the cart, always in view -------- */}
             {!isMobile && (
               embedded ? (
-                <div ref={cartPin.elRef} style={{ marginTop: 14, willChange: 'transform', display: 'flex', maxHeight: '86vh' }}>
+                <div ref={cartPin.elRef} style={{ marginTop: 14, display: 'flex' }}>
                   {summary}
                 </div>
               ) : (
@@ -558,7 +558,6 @@ export default function PublicBookingPage() {
           <MobileBar
             embedded={!asPage} count={cartLines.length} totalCents={totalCents} fmt={fmt}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
-            pinRef={barPin.elRef}
           />
         )}
 
@@ -586,7 +585,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
   return (
     <aside style={{ background: '#fff', borderRadius: 18, overflow: 'hidden',
       boxShadow: `0 30px 60px -34px rgba(15,42,82,.45), 0 0 0 1px ${tint(accent, 0.10)}`,
-      height: fill ? '100%' : 'auto', maxHeight: '100%', width: '100%',
+      height: fill ? '100%' : 'auto', maxHeight: fill ? '100%' : '88vh', width: '100%',
       display: 'flex', flexDirection: 'column' }}>
       <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '15px 16px', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
         <Logo url={salon?.branding?.logoUrl} size={44} />

@@ -142,7 +142,7 @@ if (!function_exists('lumio_booking_base')) {
             . 'var L=window.LumioEmbed=window.LumioEmbed||{frames:[]};'
             . 'L.frames.push({id:' . wp_json_encode($fid) . ',origin:' . wp_json_encode($origin) . '});'
             . 'if(L.boot){return;}L.boot=1;'
-            . 'var s=document.createElement("script");s.src=' . wp_json_encode($site . '/embed.js') . ';s.async=true;document.head.appendChild(s);'
+            . 'var s=document.createElement("script");s.src=' . wp_json_encode($site . '/embed.js?v=4') . ';s.async=true;document.head.appendChild(s);'
             . 'setTimeout(function(){if(L.ready){return;}'
             . 'window.addEventListener("message",function(e){var d=e.data;if(!d||d.type!=="lumio-embed-height"){return;}'
             . 'for(var i=0;i<L.frames.length;i++){var fr=L.frames[i];if(fr.origin&&e.origin!==fr.origin){continue;}'

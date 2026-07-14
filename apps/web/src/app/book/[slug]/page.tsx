@@ -342,6 +342,12 @@ export default function PublicBookingPage() {
     step === 3 ? 'Select time' :
     step === 4 ? 'Confirm booking' : '';
 
+  const stepHint =
+    step === 1 ? 'Tap ＋ to add a service. You can pick more than one.' :
+    step === 2 ? 'Go with the person you know, or let us give you the first one free.' :
+    step === 3 ? `Every time below is really free${totalDuration ? ` for ${fmtDur(totalDuration)}` : ''}${employee ? ` with ${employee.firstName}` : ''}.` :
+    '';
+
   const barTitle =
     step === 1 ? 'BOOKING ONLINE' :
     step === 2 ? 'Select Professional' :
@@ -409,20 +415,18 @@ export default function PublicBookingPage() {
             {/* -------- left: the actual picking -------- */}
             <div style={{ background: '#fff', borderRadius: embedded ? 14 : (isMobile ? '0 0 18px 18px' : '0 0 18px 18px'), padding: isMobile ? '14px 14px 18px' : '18px 24px 24px', minWidth: 0, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)' }}>
               <Progress step={step} accent={accent} allowStaff={rules.allowCustomerChooseStaff} />
-              <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '10px 0 14px' }}>{stepTitle}</h1>
+              <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
+              {stepHint && <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#8fa0bb', lineHeight: 1.5 }}>{stepHint}</p>}
 
               {step === 1 && (
                 <>
                   <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
-                  {/* Services come first — the duration and the technician depend on them, so
-                      every time we offer later is a time that can really be booked. But the
-                      visitor still wants to know "is there room this week?" before reading a
-                      menu, so the day strip lives here too. Picking a day here only pre-fills
-                      step 3; it never locks in a slot. */}
-                  <WhenStrip
-                    rules={rules} salon={salon} services={services} accent={accent}
-                    selectedDate={selectedDate} onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
-                  />
+                  {/* A day picker used to sit here. It was removed on purpose: date and time
+                      belong together (nobody thinks "the 15th" — they think "tomorrow at 2"),
+                      and step 3 already asks for both. Two pickers for one answer made people
+                      wonder what they had missed. What the visitor actually needs at this
+                      point is a single fact — "is there room soon?" — so we state it. */}
+                  <SoonestBar rules={rules} services={services} accent={accent} />
                   <ServicePicker
                     services={services} categories={categories} selectedIds={pickedServiceIds}
                     onToggle={toggleService} fmt={fmt} accent={accent} spy={!embedded}
@@ -658,51 +662,51 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
   );
 }
 
-/** "When do you want to come in?" — a 7-day strip shown above the menu, with the
- *  first free time of the chosen day. Answers the visitor's real first question
- *  (is there room?) without forcing them to pick a time before a service. */
-function WhenStrip({ rules, salon, services, selectedDate, onPickDate, accent }: {
-  rules: BookingRules; salon: Salon | null; services: Service[]; selectedDate: Date | null;
-  onPickDate: (d: Date) => void; accent: string;
-}) {
-  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-  const shortest = useMemo(() => Math.max(15, Math.min(...(services.length ? services.map((s) => s.durationMinutes) : [30]))), [services]);
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => new Date(today.getTime() + i * 86400000)), [today]);
-  const active = selectedDate ?? null;
-  const first = active ? generateSlots(active, shortest, rules)[0] : null;
+/**
+ * One line, no interaction: the soonest free time and today's hours. It answers
+ * the only scheduling question a visitor has while reading a menu ("can I even
+ * get in?") without asking them to pick anything twice.
+ */
+function SoonestBar({ rules, services, accent }: { rules: BookingRules; services: Service[]; accent: string }) {
+  const info = useMemo(() => {
+    const shortest = Math.max(15, Math.min(...(services.length ? services.map((s) => s.durationMinutes) : [30])));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (let i = 0; i <= Math.min(rules.maxAdvanceDays, 21); i++) {
+      const d = new Date(today.getTime() + i * 86400000);
+      const first = generateSlots(d, shortest, rules)[0];
+      if (first) {
+        const when = i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' });
+        const h = rules.businessHours[d.getDay()];
+        const close = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h.closeMinutes / 60), h.closeMinutes % 60);
+        return { when, time: fmtTime(first.start), close: fmtTime(close), sameDay: i === 0 };
+      }
+    }
+    return null;
+  }, [rules, services]);
 
   return (
-    <div style={{ border: '1px solid #e6eaf2', borderRadius: 14, padding: '12px 14px', marginBottom: 16, background: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 800, color: INK }}>📅 When would you like to come in?</span>
-        {active && (
-          <span style={{ fontSize: 12.5, color: first ? '#16a34a' : '#94a3b8', fontWeight: 700 }}>
-            {first ? `Earliest ${fmtTime(first.start)}` : 'Closed'}
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 16,
+      padding: '10px 12px', borderRadius: 14,
+      background: `linear-gradient(120deg, ${tint(accent, 0.10)}, rgba(255,255,255,0))`,
+      border: `1px solid ${tint(accent, 0.18)}`,
+    }}>
+      {info ? (
+        <>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid #dcfce7', color: '#166534', fontSize: 12.5, fontWeight: 800, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
+            Next opening {info.when} at {info.time}
           </span>
-        )}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-        {days.map((d) => {
-          const closed = isClosedDay(d, rules);
-          const on = !!active && sameDay(d, active);
-          const deal = promoPctFor(salon, d, null);
-          return (
-            <button key={d.toISOString()} type="button" disabled={closed} onClick={() => onPickDate(d)}
-              style={{ display: 'grid', justifyItems: 'center', gap: 2, padding: '7px 2px', borderRadius: 10, border: 'none', position: 'relative',
-                cursor: closed ? 'not-allowed' : 'pointer',
-                background: on ? `linear-gradient(140deg, ${accent}, ${shade(accent, 0.28)})` : 'transparent',
-                boxShadow: on ? `0 10px 22px -12px ${tint(accent, 0.95)}` : 'none',
-                color: on ? '#fff' : closed ? '#cbd5e1' : INK }}>
-              <span style={{ fontSize: 15.5, fontWeight: 800, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
-              <span style={{ fontSize: 10.5, opacity: on ? 0.95 : 0.6 }}>{DOW_SHORT[d.getDay()]}</span>
-              {!on && deal > 0 && !closed && <span style={{ position: 'absolute', top: 1, right: 5, fontSize: 9, fontWeight: 800, color: '#16a34a' }}>-{deal}%</span>}
-            </button>
-          );
-        })}
-      </div>
-      <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 8 }}>
-        Pick the day now if you like — you&apos;ll choose the exact time after the service, so every time we show you is really free.
-      </div>
+          {info.sameDay && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid #e9edf4', color: '#5b6b85', fontSize: 12.5, fontWeight: 700 }}>
+              🕐 Open until {info.close}
+            </span>
+          )}
+        </>
+      ) : (
+        <span style={{ fontSize: 12.5, color: '#5b6b85', fontWeight: 700 }}>Pick a service — we&apos;ll show you every free time.</span>
+      )}
+      <span style={{ marginLeft: 'auto', fontSize: 12, color: '#8fa0bb' }}>Choose the time after your service ✨</span>
     </div>
   );
 }

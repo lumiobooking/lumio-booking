@@ -14,30 +14,6 @@
   if (L.ready) return; // already wired (e.g. script included twice)
   L.ready = 1;
 
-  function sizeApp(el, cfg) {
-    var vh = window.innerHeight || 800;
-    var h = Math.max(cfg.min, Math.min(cfg.max, Math.round(vh * cfg.ratio)));
-    el.style.height = h + 'px';
-    el.style.minHeight = '0px';
-  }
-
-  /** App mode is meant to feel like the real booking page, so the frame gets the
-   *  room the real page has: full width of the content column (up to 1200px), a
-   *  soft card shadow, rounded corners. The plugin's own wrapper caps at 980px,
-   *  which made the two-column layout feel cramped — we widen it from here so no
-   *  salon ever has to update the WordPress plugin. */
-  function stageApp(el) {
-    try {
-      el.style.borderRadius = '20px';
-      el.style.boxShadow = '0 30px 70px -40px rgba(15,42,82,.45)';
-      var wrap = el.parentNode;
-      if (wrap && wrap.style && /lumio-booking-embed/.test(wrap.className || '')) {
-        wrap.style.maxWidth = '1200px';
-        wrap.style.width = '100%';
-      }
-    } catch (err) { /* styling is best-effort */ }
-  }
-
   function frameFor(source) {
     var list = L.frames || [];
     for (var i = 0; i < list.length; i++) {
@@ -55,35 +31,9 @@
     if (!hit) return;                                   // not one of our widgets
     if (hit.origin && e.origin !== hit.origin) return;  // wrong origin
 
-    // 0) App mode: the widget asks for a FIXED viewport-sized frame and scrolls its
-    //    own menu inside it — that is the only way the sticky header, the sticky
-    //    category tabs and the "tabs follow the scroll" behaviour can work inside an
-    //    iframe (an iframe sized to its content never scrolls, so nothing can stick).
-    if (d.type === 'lumio-embed-app') {
-      var cfg = {
-        min: parseInt(d.min, 10) || 520,
-        max: parseInt(d.max, 10) || 900,
-        ratio: parseFloat(d.ratio) || 0.86,
-      };
-      hit.el.__lumioApp = cfg;
-      sizeApp(hit.el, cfg);
-      stageApp(hit.el);
-      if (!L.resizeWired) {
-        L.resizeWired = 1;
-        window.addEventListener('resize', function () {
-          var list = L.frames || [];
-          for (var i = 0; i < list.length; i++) {
-            var el = document.getElementById(list[i].id);
-            if (el && el.__lumioApp) sizeApp(el, el.__lumioApp);
-          }
-        });
-      }
-      return;
-    }
-
-    // 1) Auto-height (classic mode): match the iframe to the form's content height.
+    // 1) Auto-height: match the iframe to the form's real content height, so the
+    //    HOST page scrolls the form exactly like any other block on the site.
     if (d.type === 'lumio-embed-height') {
-      if (hit.el.__lumioApp) return; // app mode owns the height
       var h = parseInt(d.height, 10);
       if (h && h > 120) {
         hit.el.style.height = h + 'px';
@@ -106,7 +56,6 @@
     //    the bottom of a long service list. y/h are the bar's position inside the
     //    iframe; we scroll the host page just enough to bring it on screen.
     if (d.type === 'lumio-embed-reveal') {
-      if (hit.el.__lumioApp) return; // the action bar is always visible in app mode
       var y = parseInt(d.y, 10) || 0;
       var bh = parseInt(d.h, 10) || 0;
       var r = hit.el.getBoundingClientRect();
@@ -134,5 +83,54 @@
       catch (err) { hit.el.scrollIntoView(); }
       return;
     }
+
+    // 5) Jump to a position inside the form (a category tab was tapped). y is in the
+    //    form's own coordinates; we scroll the HOST page to it.
+    if (d.type === 'lumio-embed-scroll-to') {
+      var yy = parseInt(d.y, 10) || 0;
+      var rr = hit.el.getBoundingClientRect();
+      var py = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var to = Math.max(0, py + rr.top + yy - 12);
+      try { window.scrollTo({ top: to, behavior: 'smooth' }); }
+      catch (err) { window.scrollTo(0, to); }
+      return;
+    }
   });
+
+  /* -------------------------------------------------------------------------
+   * The form has no scrollbar of its own (the iframe is as tall as its content —
+   * that is what keeps the page scrolling naturally). So it cannot know what part
+   * of itself the visitor is looking at. We tell it, on every host scroll: where
+   * the frame sits in the viewport, and how tall the viewport is.
+   *
+   * With that one number the form can keep its category tabs and its action bar
+   * pinned to the screen, and light up the category you are actually reading —
+   * exactly like the hosted booking page, without ever trapping the scroll.
+   * ---------------------------------------------------------------------- */
+  var ticking = false;
+  function broadcast() {
+    ticking = false;
+    var list = L.frames || [];
+    for (var i = 0; i < list.length; i++) {
+      var el = document.getElementById(list[i].id);
+      if (!el || !el.contentWindow) continue;
+      var r = el.getBoundingClientRect();
+      try {
+        el.contentWindow.postMessage({
+          type: 'lumio-host-viewport',
+          top: Math.round(r.top),
+          height: Math.round(window.innerHeight || 0),
+        }, list[i].origin || '*');
+      } catch (err) { /* cross-origin during load */ }
+    }
+  }
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    (window.requestAnimationFrame || window.setTimeout)(broadcast, 16);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
+  window.setInterval(broadcast, 500);   // covers lazy-loaded frames + layout shifts
+  broadcast();
 })();

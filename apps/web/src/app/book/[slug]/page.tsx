@@ -306,33 +306,15 @@ export default function PublicBookingPage() {
   }, [step, embedded]);
   useEffect(() => { if (!embedded) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step, embedded]);
 
-  // ---- the scroller ----------------------------------------------------------
-  // Standalone: the page itself scrolls. Embedded: the left column scrolls inside a
-  // fixed-height frame — and when it runs out of scroll we hand the gesture to the
-  // host page, because an iframe cannot chain a scroll out on its own.
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const lastTouchY = useRef(0);
-  const getScrollRoot = useCallback(() => (embedded ? scrollerRef.current : null), [embedded]);
-  const forwardScroll = (dy: number) => {
-    try { window.parent.postMessage({ type: 'lumio-embed-scroll', dy }, '*'); } catch { /* ignore */ }
-  };
-  const edgeHit = (dy: number) => {
-    const el = scrollerRef.current;
-    if (!embedded || !el || !dy) return false;
-    const atTop = el.scrollTop <= 0;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-    return (dy > 0 && atBottom) || (dy < 0 && atTop);
-  };
-  const onScrollerWheel = (e: React.WheelEvent) => { if (edgeHit(e.deltaY)) forwardScroll(e.deltaY); };
-  const onScrollerTouchStart = (e: React.TouchEvent) => { lastTouchY.current = e.touches[0]?.clientY ?? 0; };
-  const onScrollerTouchMove = (e: React.TouchEvent) => {
-    const y = e.touches[0]?.clientY ?? 0;
-    const dy = lastTouchY.current - y;
-    lastTouchY.current = y;
-    if (edgeHit(dy)) forwardScroll(dy);
-  };
+  // ---- where we are on the visitor's screen (embed only) ---------------------
+  const host = useHostViewport(embedded);
+  const leftRef = useRef<HTMLDivElement | null>(null);
+  const cartPin = usePinTop(embedded && !isMobile ? host : null, 14);
+  const barPin = usePinBottom(embedded && isMobile ? host : null, 10);
+  // the summary is pinned inside the column that holds the menu
+  useEffect(() => { cartPin.boxRef.current = leftRef.current; }, [cartPin.boxRef, step]);
 
-  // ---- validation -----------------------------------------------------------
+    // ---- validation -----------------------------------------------------------
   const phoneOk = isValidPhone(form.phone);
   const emailOk = !form.email.trim() || isValidEmail(form.email);
   const infoOk = form.firstName.trim().length > 0 && phoneOk && emailOk;
@@ -391,11 +373,7 @@ export default function PublicBookingPage() {
 
   return (
     <Shell accent={accent}>
-      <div className="lumio-book" style={{
-        width: '100%', maxWidth: 1120, margin: '0 auto',
-        ...(embedded ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : {}),
-        ['--accent' as string]: accent,
-      } as React.CSSProperties}>
+      <div className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
         {/* Top bar — salon name (step 1) or the step name with a back arrow */}
         {/* Header stays put while the menu scrolls under it. */}
         <div style={{ position: embedded ? 'static' : 'sticky', top: 0, zIndex: 30, flexShrink: 0,
@@ -442,21 +420,14 @@ export default function PublicBookingPage() {
             </div>
           </div>
         ) : (
-          <div style={{
-            display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 360px', gap: isMobile ? 0 : 18,
-            alignItems: embedded ? 'stretch' : 'start',
-            ...(embedded ? { flex: 1, minHeight: 0 } : {}),
-          }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 360px', gap: isMobile ? 0 : 18, alignItems: 'start' }}>
             {/* -------- left: the actual picking (this is the scroller in an embed) -------- */}
-            <div ref={scrollerRef} className={embedded ? 'lumio-scroll' : undefined}
-              onWheel={onScrollerWheel} onTouchStart={onScrollerTouchStart} onTouchMove={onScrollerTouchMove}
-              style={{
-                background: '#fff',
-                borderRadius: '0 0 18px 18px',
-                padding: isMobile ? '14px 14px 18px' : '18px 24px 24px',
-                minWidth: 0, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)',
-                ...(embedded ? { overflowY: 'auto', minHeight: 0, position: 'relative' } : {}),
-              }}>
+            <div ref={leftRef} style={{
+              background: '#fff',
+              borderRadius: '0 0 18px 18px',
+              padding: isMobile ? '14px 14px 18px' : '18px 24px 24px',
+              minWidth: 0, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)',
+            }}>
               <Progress step={step} accent={accent} allowStaff={rules.allowCustomerChooseStaff} />
               <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
               {stepHint && <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#8fa0bb', lineHeight: 1.5 }}>{stepHint}</p>}
@@ -473,7 +444,7 @@ export default function PublicBookingPage() {
                   <ServicePicker
                     services={services} categories={categories} selectedIds={pickedServiceIds}
                     onToggle={toggleService} fmt={fmt} accent={accent}
-                    getScrollRoot={getScrollRoot} stickyTop={embedded ? 0 : 64}
+                    host={embedded ? host : null} stickyTop={64}
                   />
                   {serviceAddons.length > 0 && (
                     <div style={{ marginTop: 22 }}>
@@ -528,15 +499,20 @@ export default function PublicBookingPage() {
 
             {/* -------- right: the cart, always in view -------- */}
             {!isMobile && (
-              <div style={embedded
-                // Embedded: the panel sizes itself to what is in it — two services is a
-                // short card, ten is a tall one — but it never shrinks below half the
-                // frame (a tiny floating card next to a long menu looks broken), and
-                // never grows past it (it scrolls inside instead).
-                ? { alignSelf: 'start', marginTop: 14, minHeight: '52%', maxHeight: '100%', display: 'flex' }
-                : { position: 'sticky', top: 92, height: 'calc(100vh - 124px)', minHeight: 420, marginTop: 16 }}>
-                {summary}
-              </div>
+              embedded ? (
+                <div ref={cartPin.elRef} style={{
+                  marginTop: 14, willChange: 'transform',
+                  transform: cartPin.off ? `translate3d(0, ${cartPin.off}px, 0)` : undefined,
+                  maxHeight: host?.height ? Math.max(360, host.height - 40) : undefined,
+                  display: 'flex',
+                }}>
+                  {summary}
+                </div>
+              ) : (
+                <div style={{ position: 'sticky', top: 92, height: 'calc(100vh - 124px)', minHeight: 420, marginTop: 16 }}>
+                  {summary}
+                </div>
+              )
             )}
           </div>
         )}
@@ -546,6 +522,7 @@ export default function PublicBookingPage() {
           <MobileBar
             embedded={embedded} count={cartLines.length} totalCents={totalCents} fmt={fmt}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
+            pinRef={barPin.elRef} pinOffset={barPin.off}
           />
         )}
 
@@ -674,9 +651,11 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
 }
 
 /** Mobile: floating action bar. Always on screen, never behind the content. */
-function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent }: {
+function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, pinOffset }: {
   embedded: boolean; count: number; totalCents: number; fmt: (c: number) => string; durationMinutes: number;
   canContinue: boolean; label: string; onContinue: () => void; accent: string;
+  /** Embed only: keeps the bar floating above the fold while the form is on screen. */
+  pinRef?: React.MutableRefObject<HTMLDivElement | null>; pinOffset?: number;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -693,11 +672,24 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
   }, [canContinue, embedded]);
 
   const bar = (
-    <div ref={ref} className="lumio-bar" style={{
-      background: embedded ? '#fff' : 'rgba(255,255,255,.94)',
+    <div ref={(node) => { ref.current = node; if (pinRef) pinRef.current = node; }} className="lumio-bar" style={{
+      background: 'rgba(255,255,255,.94)',
       padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12,
       ...(embedded
-        ? { marginTop: 12, borderRadius: 14, border: '1px solid #e9edf4' }
+        ? {
+            // No `position: fixed` here — inside an iframe that would pin the bar to the
+            // bottom of the FRAME (which is taller than the screen), i.e. the end of the
+            // form. We translate it instead, using the host's viewport position, so it
+            // floats above the fold exactly like the fixed bar on the hosted page.
+            position: 'relative', zIndex: 40, marginTop: 12, borderRadius: 18,
+            willChange: 'transform',
+            transform: pinOffset ? `translate3d(0, ${pinOffset}px, 0)` : undefined,
+            boxShadow: `0 20px 44px -14px rgba(15,42,82,0.38), 0 0 0 1px ${tint(accent, 0.10)}`,
+            backdropFilter: 'saturate(1.5) blur(10px)', WebkitBackdropFilter: 'saturate(1.5) blur(10px)',
+            ['--accent' as string]: accent,
+            ['--accent-dark' as string]: shade(accent, 0.28),
+            ['--accent-glow' as string]: tint(accent, 0.55),
+          }
         : {
             position: 'fixed', left: 10, right: 10, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
             zIndex: 2147483000, borderRadius: 20,
@@ -790,13 +782,13 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
 // Step 1 · Services: sticky category tabs + one section per category.
 // Scrolling moves the tabs (scroll-spy); tapping a tab scrolls to the section.
 // ---------------------------------------------------------------------------
-function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, getScrollRoot, stickyTop }: {
+function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, host, stickyTop }: {
   services: Service[]; categories: Category[]; selectedIds: string[];
   onToggle: (id: string) => void; fmt: (c: number) => string; accent: string;
-  /** The element that actually scrolls: the page (null) or, inside an embed, the
-   *  left column. Everything below — the scroll-spy and the tab jumps — works off
-   *  this, so the embed behaves exactly like the hosted page. */
-  getScrollRoot: () => HTMLElement | null;
+  /** Embed only: the widget's position on the visitor's screen. With it, the tabs
+   *  can follow the scroll and stay pinned even though the iframe itself never
+   *  scrolls — the host page does. */
+  host: { top: number; height: number } | null;
   stickyTop: number;
 }) {
   const groups = useMemo(() => {
@@ -814,26 +806,38 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
 
   useEffect(() => { if (groups.length && !groups.some((g) => g.id === active)) setActive(groups[0].id); }, [groups, active]);
 
-  // Scroll-spy: the tab follows the section the visitor is actually looking at.
+  // Scroll-spy — hosted page: read the window scroll.
   useEffect(() => {
-    if (q.trim()) return;
-    const root = getScrollRoot();
-    const target: HTMLElement | Window = root ?? window;
+    if (q.trim() || host) return;
     const onScroll = () => {
-      const base = root ? root.getBoundingClientRect().top : 0;
-      const line = base + (root ? 96 : 170); // just under the sticky tabs
       let current = groups[0]?.id ?? '';
       for (const g of groups) {
         const el = sectionRefs.current[g.id];
-        if (!el) continue;
-        if (el.getBoundingClientRect().top - line <= 0) current = g.id;
+        if (el && el.getBoundingClientRect().top - 170 <= 0) current = g.id;
       }
       setActive((prev) => (prev === current ? prev : current));
     };
     onScroll();
-    target.addEventListener('scroll', onScroll as EventListener, { passive: true });
-    return () => target.removeEventListener('scroll', onScroll as EventListener);
-  }, [groups, q, getScrollRoot]);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [groups, q, host]);
+
+  // Scroll-spy — embed: the iframe never scrolls, so use the position the host page
+  // reports. `host.top` is the frame's offset from the top of the visitor's screen.
+  useEffect(() => {
+    if (q.trim() || !host) return;
+    let current = groups[0]?.id ?? '';
+    for (const g of groups) {
+      const el = sectionRefs.current[g.id];
+      if (!el) continue;
+      const onScreen = host.top + el.offsetTop;   // section's y on the visitor's screen
+      if (onScreen - 150 <= 0) current = g.id;
+    }
+    setActive((prev) => (prev === current ? prev : current));
+  }, [groups, q, host]);
+
+  // Pin the tab strip: sticky on the hosted page, transform inside an embed.
+  const pin = usePinTop(host, 8);
 
   // Keep the active tab visible in the horizontal strip.
   useEffect(() => {
@@ -847,9 +851,12 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
     setActive(id);
     const el = sectionRefs.current[id];
     if (!el) return;
-    const root = getScrollRoot();
-    if (root) root.scrollTo({ top: Math.max(0, el.offsetTop - 66), behavior: 'smooth' });
-    else window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 128, behavior: 'smooth' });
+    if (host) {
+      // The host page owns the scroll — ask it to come to this section.
+      try { window.parent.postMessage({ type: 'lumio-embed-scroll-to', y: Math.max(0, el.offsetTop - 70) }, '*'); } catch { /* ignore */ }
+      return;
+    }
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 128, behavior: 'smooth' });
   };
 
   const search = q.trim().toLowerCase();
@@ -858,11 +865,13 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
     : groups;
 
   return (
-    <div>
-      <div ref={tabsRef} className="lumio-tabs" style={{
-        position: 'sticky', top: stickyTop, zIndex: 5, background: '#fff',
+    <div ref={pin.boxRef}>
+      <div ref={(node) => { tabsRef.current = node; pin.elRef.current = node; }} className="lumio-tabs" style={{
+        position: host ? 'relative' : 'sticky', top: host ? undefined : stickyTop, zIndex: 6, background: '#fff',
         display: 'flex', gap: 8, overflowX: 'auto', padding: '10px 0 12px',
         boxShadow: '0 10px 10px -10px rgba(15,42,82,0.08)',
+        willChange: host ? 'transform' : undefined,
+        transform: host && pin.off ? `translate3d(0, ${pin.off}px, 0)` : undefined,
       }}>
         {groups.map((g) => {
           const on = active === g.id && !search;
@@ -1476,6 +1485,65 @@ const BOOK_CSS = `
 }
 `;
 
+/**
+ * Where the widget sits inside the HOST page's screen (embed only).
+ * `top` is the iframe's offset from the top of the visitor's screen (negative once
+ * they scroll past it); `height` is their screen height. This is the one number an
+ * iframe can never work out for itself, and it is what lets us pin things.
+ */
+function useHostViewport(embedded: boolean): { top: number; height: number } | null {
+  const [v, setV] = useState<{ top: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!embedded) return;
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; top?: number; height?: number } | null;
+      if (!d || d.type !== 'lumio-host-viewport' || typeof d.top !== 'number') return;
+      setV({ top: d.top, height: d.height || 0 });
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [embedded]);
+  return v;
+}
+
+/**
+ * `position: sticky` cannot work inside a content-sized iframe (nothing scrolls in
+ * there). So we fake it honestly: translate the element down as the host page
+ * scrolls, never past the bottom of the block it belongs to. Same visual result,
+ * and the page keeps scrolling normally — no trapped scroll, no sealed box.
+ */
+function usePinTop(host: { top: number; height: number } | null, gap: number) {
+  const elRef = useRef<HTMLDivElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [off, setOff] = useState(0);
+  useEffect(() => {
+    if (!host) { if (off) setOff(0); return; }
+    const el = elRef.current, box = boxRef.current;
+    if (!el || !box) return;
+    const base = el.getBoundingClientRect().top - off;              // where it really sits
+    const room = box.getBoundingClientRect().bottom - el.offsetHeight - base;
+    const want = Math.min(Math.max(0, -host.top + gap - base), Math.max(0, room));
+    if (Math.abs(want - off) > 0.5) setOff(want);
+  }, [host, off]);
+  return { elRef, boxRef, off };
+}
+
+/** Same idea, anchored to the BOTTOM of the screen: the action bar floats above the
+ *  fold while the form is on screen, then settles back into the page. */
+function usePinBottom(host: { top: number; height: number } | null, gap: number) {
+  const elRef = useRef<HTMLDivElement | null>(null);
+  const [off, setOff] = useState(0);
+  useEffect(() => {
+    if (!host || !host.height) { if (off) setOff(0); return; }
+    const el = elRef.current;
+    if (!el) return;
+    const base = el.getBoundingClientRect().top - off;
+    const want = Math.min(0, (-host.top + host.height - el.offsetHeight - gap) - base);
+    if (Math.abs(want - off) > 0.5) setOff(want);
+  }, [host, off]);
+  return { elRef, off };
+}
+
 /** A progress rail the reference doesn't have: the visitor always knows how many
  *  steps are left, which is the single cheapest way to lift completion rate. */
 function Progress({ step, accent, allowStaff }: { step: Step; accent: string; allowStaff: boolean }) {
@@ -1538,31 +1606,35 @@ function Shell({ children, accent }: { children: React.ReactNode; accent: string
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
     document.body.style.margin = '0';
-    // App mode: the host gives us a fixed, viewport-sized frame and we scroll our own
-    // menu inside it. That is what makes the embed behave EXACTLY like the hosted
-    // page — sticky header, sticky category tabs that follow the scroll, and an
-    // action bar that is always on screen. (A content-sized iframe never scrolls, so
-    // nothing inside it can ever stick.)
-    document.documentElement.style.height = '100%';
-    document.body.style.height = '100%';
-    document.body.style.overflow = 'hidden';
-    const ask = () => {
-      try { window.parent.postMessage({ type: 'lumio-embed-app', min: 600, max: 1120, ratio: 0.92 }, '*'); } catch { /* ignore */ }
+    // NO viewport lock here, on purpose.
+    //
+    // We tried it: `height: 100vh` + an inner scroller made the widget a sealed box —
+    // the iframe never grew, the host page could not be reached from inside it, and
+    // scrolling felt trapped. The form must stay as tall as its content so the SITE
+    // scrolls it, exactly like any other block on the page. Everything that needs to
+    // stay on screen (tabs, action bar, summary) is pinned with a transform instead,
+    // using the viewport position the host reports to us.
+    const post = () => {
+      const el = rootRef.current;
+      if (!el) return;
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      if (h < 120) return;
+      try { window.parent.postMessage({ type: 'lumio-embed-height', height: h }, '*'); } catch { /* ignore */ }
     };
-    ask();
-    const iv = window.setInterval(ask, 1500);   // survives a late-loading embed.js
-    window.setTimeout(() => window.clearInterval(iv), 9000);
-    return () => window.clearInterval(iv);
+    post();
+    // A single post is not enough: this is an SPA, every step changes the height.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(post) : null;
+    if (ro && rootRef.current) ro.observe(rootRef.current);
+    const iv = window.setInterval(post, 400);
+    window.addEventListener('resize', post);
+    return () => { if (ro) ro.disconnect(); window.clearInterval(iv); window.removeEventListener('resize', post); };
   }, []);
+
   return (
     <>
       <style>{BOOK_CSS}</style>
       <div ref={rootRef} className="lumio-shell" style={{
-        minHeight: '100vh',
-        height: embedded ? '100vh' : undefined,
-        display: embedded ? 'flex' : undefined,
-        flexDirection: embedded ? 'column' : undefined,
-        overflow: embedded ? 'hidden' : undefined,
+        minHeight: embedded ? 0 : '100vh',
         // The same stage in both places: a page that glows a little around the edges,
         // in the salon's own colour. The embed used to be transparent and flat, which
         // is why it felt like a widget bolted onto the site instead of the booking page.

@@ -310,7 +310,7 @@ export default function PublicBookingPage() {
   const emailOk = !form.email.trim() || isValidEmail(form.email);
   const infoOk = form.firstName.trim().length > 0 && phoneOk && emailOk;
 
-  if (loading) return <Shell accent="#6366f1"><Center>Loading…</Center></Shell>;
+  if (loading) return <Shell accent="#6366f1"><BookingSkeleton /></Shell>;
   if (loadError) return <Shell accent="#6366f1"><Center>{loadError}</Center></Shell>;
   if (salon && salon.businessType === 'RESTAURANT') return <RestaurantReserve slug={slug} salon={salon} />;
 
@@ -362,16 +362,25 @@ export default function PublicBookingPage() {
         {/* Top bar — salon name (step 1) or the step name with a back arrow */}
         {/* Header stays put while the menu scrolls under it. */}
         <div style={{ position: embedded ? 'static' : 'sticky', top: 0, zIndex: 30,
-          background: `linear-gradient(135deg, ${accent}, ${shade(accent)})`, color: '#fff',
-          borderRadius: embedded ? 12 : '14px 14px 0 0', padding: isMobile ? '12px 14px' : '15px 18px',
-          display: 'flex', alignItems: 'center', gap: 12, marginBottom: embedded ? 12 : 0,
-          boxShadow: '0 6px 20px rgba(15,42,82,0.16)' }}>
+          background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`,
+          color: '#fff',
+          borderRadius: embedded ? 14 : '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',
+          display: 'flex', alignItems: 'center', gap: 13, marginBottom: embedded ? 12 : 0,
+          boxShadow: `0 14px 34px -18px ${tint(accent, 0.95)}, inset 0 1px 0 rgba(255,255,255,0.22)` }}>
           {step > 1 && step < 5 && (
             <button onClick={goBack} aria-label="Back" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>←</button>
           )}
           {step === 1 && <Logo url={salon?.branding?.logoUrl} size={38} />}
-          <div style={{ fontWeight: 800, fontSize: isMobile ? 16 : 18, letterSpacing: 0.2, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {step === 1 ? (salon?.name ?? barTitle) : barTitle}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: isMobile ? 16 : 19, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {step === 1 ? (salon?.name ?? barTitle) : barTitle}
+            </div>
+            {step === 1 && (
+              <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 0 3px rgba(74,222,128,.25)' }} className="lumio-dot" />
+                Book online · confirmed in seconds
+              </div>
+            )}
           </div>
           {step === 3 && rules.allowCustomerChooseStaff && (
             <button onClick={() => setStep(2)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 6px 6px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
@@ -398,8 +407,9 @@ export default function PublicBookingPage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 360px', gap: isMobile ? 0 : 18, alignItems: 'start' }}>
             {/* -------- left: the actual picking -------- */}
-            <div style={{ background: '#fff', borderRadius: embedded ? 12 : (isMobile ? '0 0 14px 14px' : '0 0 14px 0'), padding: isMobile ? '16px 14px' : '22px 24px', marginTop: embedded && !isMobile ? 0 : 0, minWidth: 0 }}>
-              <h1 style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '2px 0 14px' }}>{stepTitle}</h1>
+            <div style={{ background: '#fff', borderRadius: embedded ? 14 : (isMobile ? '0 0 18px 18px' : '0 0 18px 18px'), padding: isMobile ? '14px 14px 18px' : '18px 24px 24px', minWidth: 0, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)' }}>
+              <Progress step={step} accent={accent} allowStaff={rules.allowCustomerChooseStaff} />
+              <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '10px 0 14px' }}>{stepTitle}</h1>
 
               {step === 1 && (
                 <>
@@ -507,9 +517,10 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
   onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string; fill?: boolean;
 }) {
   return (
-    <aside style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 30px rgba(15,42,82,0.10)',
+    <aside style={{ background: '#fff', borderRadius: 18, overflow: 'hidden',
+      boxShadow: `0 30px 60px -34px rgba(15,42,82,.45), 0 0 0 1px ${tint(accent, 0.10)}`,
       height: fill ? '100%' : 'auto', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ background: `linear-gradient(135deg, ${accent}, ${shade(accent)})`, color: '#fff', padding: '15px 16px', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
+      <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '15px 16px', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
         <Logo url={salon?.branding?.logoUrl} size={44} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15.5 }}>{salon?.name}</div>
@@ -520,7 +531,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
 
       {/* The list takes whatever room is left, so the panel fills the page instead of
           ending in a big white void — and the total + button stay pinned at the bottom. */}
-      <div style={{ padding: '6px 16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <div className="lumio-scroll" style={{ padding: '6px 16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {lines.length === 0 ? (
           <EmptyCart accent={accent} salon={salon} />
         ) : lines.map((l) => (
@@ -548,6 +559,11 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: '#94a3b8' }}>
           <span>🕐 Duration</span><span>{fmtDur(totalDuration)}</span>
         </div>
+        {anyDiscount && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, padding: '7px 10px', borderRadius: 10, background: '#ecfdf5', color: '#065f46', fontSize: 12.5, fontWeight: 800 }}>
+            <span>🎉 You save</span><span>{fmt(fullCents - totalCents)}</span>
+          </div>
+        )}
         {slot && selectedDate && (
           <div style={{ marginTop: 12, background: tint(accent, 0.08), borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
             <div>📅 <b>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
@@ -621,10 +637,12 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
 
   const boxed: React.CSSProperties = embedded
     ? { marginTop: 12, borderRadius: 12, border: '1px solid #e6eaf2' }
-    : { position: 'fixed', left: 10, right: 10, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))', zIndex: 60, borderRadius: 14, boxShadow: '0 10px 30px rgba(15,42,82,0.22)' };
+    : { position: 'fixed', left: 10, right: 10, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))', zIndex: 60, borderRadius: 18,
+        boxShadow: '0 18px 40px -14px rgba(15,42,82,0.35)', border: '1px solid rgba(255,255,255,.6)',
+        backdropFilter: 'saturate(1.4) blur(8px)', WebkitBackdropFilter: 'saturate(1.4) blur(8px)' };
 
   return (
-    <div ref={ref} style={{ background: '#fff', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12, ...boxed }}>
+    <div ref={ref} style={{ background: embedded ? '#fff' : 'rgba(255,255,255,.92)', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 12, ...boxed }}>
       <span style={{ width: 38, height: 38, borderRadius: 10, background: '#eef2fb', display: 'grid', placeItems: 'center', fontSize: 17, flexShrink: 0 }}>🛍️</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, color: '#64748b' }}>
@@ -671,7 +689,9 @@ function WhenStrip({ rules, salon, services, selectedDate, onPickDate, accent }:
           return (
             <button key={d.toISOString()} type="button" disabled={closed} onClick={() => onPickDate(d)}
               style={{ display: 'grid', justifyItems: 'center', gap: 2, padding: '7px 2px', borderRadius: 10, border: 'none', position: 'relative',
-                cursor: closed ? 'not-allowed' : 'pointer', background: on ? accent : 'transparent',
+                cursor: closed ? 'not-allowed' : 'pointer',
+                background: on ? `linear-gradient(140deg, ${accent}, ${shade(accent, 0.28)})` : 'transparent',
+                boxShadow: on ? `0 10px 22px -12px ${tint(accent, 0.95)}` : 'none',
                 color: on ? '#fff' : closed ? '#cbd5e1' : INK }}>
               <span style={{ fontSize: 15.5, fontWeight: 800, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
               <span style={{ fontSize: 10.5, opacity: on ? 0.95 : 0.6 }}>{DOW_SHORT[d.getDay()]}</span>
@@ -755,8 +775,11 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
           const on = active === g.id && !search;
           return (
             <button key={g.id} data-tab={g.id} type="button" onClick={() => goTo(g.id)}
-              style={{ padding: '9px 16px', borderRadius: 999, whiteSpace: 'nowrap', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
-                border: `1px solid ${on ? accent : '#e6eaf2'}`, background: on ? accent : '#fff', color: on ? '#fff' : '#5b6b85' }}>
+              style={{ padding: '10px 17px', borderRadius: 999, whiteSpace: 'nowrap', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
+                border: `1px solid ${on ? 'transparent' : '#e9edf4'}`,
+                background: on ? `linear-gradient(120deg, ${accent}, ${shade(accent, 0.25)})` : '#fff',
+                color: on ? '#fff' : '#5b6b85',
+                boxShadow: on ? `0 10px 22px -12px ${tint(accent, 0.95)}` : '0 2px 6px -4px rgba(15,42,82,.16)' }}>
               {g.name}
             </button>
           );
@@ -777,7 +800,8 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
               const disc = svcDiscount(s);
               return (
                 <button key={s.id} type="button" className="lumio-row" onClick={() => onToggle(s.id)}
-                  style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? tint(accent, 0.07) : '#fff' }}>
+                  style={{ ...rowCard, borderColor: on ? accent : '#e9edf4', background: on ? tint(accent, 0.06) : '#fff',
+                    boxShadow: on ? `0 10px 26px -16px ${tint(accent, 0.9)}, 0 0 0 3px ${tint(accent, 0.12)}` : rowCard.boxShadow }}>
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                     <span style={rowTitle}>
                       {s.name}
@@ -814,7 +838,8 @@ function TechPicker({ staff, staffId, onPick, accent }: { staff: Staff[]; staffI
         const on = staffId === s.id;
         return (
           <button key={s.id || 'any'} type="button" className="lumio-row" onClick={() => onPick(s.id)}
-            style={{ ...rowCard, padding: '14px 16px', borderColor: on ? accent : '#e6eaf2', background: on ? tint(accent, 0.07) : '#fff' }}>
+            style={{ ...rowCard, padding: '15px 16px', borderColor: on ? accent : '#e9edf4', background: on ? tint(accent, 0.06) : '#fff',
+              boxShadow: on ? `0 10px 26px -16px ${tint(accent, 0.9)}, 0 0 0 3px ${tint(accent, 0.12)}` : rowCard.boxShadow }}>
             <Avatar name={label} url={s.avatarUrl} size={46} accent={accent} />
             <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12 }}>
               {s.id ? label : 'Any nail tech'}
@@ -925,7 +950,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
             return (
               <button key={d.toISOString()} type="button" disabled={closed} onClick={() => onPickDate(d)}
                 style={{ display: 'grid', justifyItems: 'center', gap: 2, padding: '8px 2px', borderRadius: 12, border: 'none', cursor: closed ? 'not-allowed' : 'pointer',
-                  background: on ? accent : 'transparent', color: on ? '#fff' : closed ? '#cbd5e1' : INK, position: 'relative' }}>
+                  background: on ? `linear-gradient(140deg, ${accent}, ${shade(accent, 0.28)})` : 'transparent',
+                  boxShadow: on ? `0 10px 22px -12px ${tint(accent, 0.95)}` : 'none',
+                  color: on ? '#fff' : closed ? '#cbd5e1' : INK, position: 'relative' }}>
                 <span style={{ fontSize: 17, fontWeight: 800, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
                 <span style={{ fontSize: 11, opacity: on ? 0.95 : 0.6 }}>{DOW_SHORT[d.getDay()]}</span>
                 {!on && deal > 0 && !closed && <span style={{ position: 'absolute', top: 2, right: 6, fontSize: 9, fontWeight: 800, color: '#16a34a' }}>-{deal}%</span>}
@@ -952,16 +979,23 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
         <>
           {groups.map((g) => (
             <div key={g.label} style={{ marginBottom: 18 }}>
-              <div style={{ textAlign: 'center', fontWeight: 800, color: INK, fontSize: 13.5, marginBottom: 10 }}>{g.label}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <span style={{ flex: 1, height: 1, background: '#eef1f6' }} />
+                <span style={{ fontWeight: 800, color: INK, fontSize: 12.5, letterSpacing: 0.4 }}>
+                  {g.label === 'Morning' ? '🌤 ' : g.label === 'Afternoon' ? '☀️ ' : '🌙 '}{g.label.toUpperCase()}
+                </span>
+                <span style={{ flex: 1, height: 1, background: '#eef1f6' }} />
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                 {g.items.map((s) => {
                   const free = isFree(s);
                   const on = !!slot && slot.start.getTime() === s.start.getTime();
                   return (
                     <button key={s.start.toISOString()} type="button" disabled={!free} onClick={() => onPickSlot(s)}
-                      className={free ? 'lumio-row' : undefined}
-                      style={{ padding: '12px 6px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: free ? 'pointer' : 'not-allowed',
-                        border: `1px solid ${on ? accent : '#e6eaf2'}`, background: on ? tint(accent, 0.10) : free ? '#fff' : '#f6f8fb',
+                      className={free ? 'lumio-slot' : undefined}
+                      style={{ padding: '13px 6px', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: free ? 'pointer' : 'not-allowed',
+                        border: `1px solid ${on ? accent : '#e9edf4'}`, background: on ? tint(accent, 0.10) : free ? '#fff' : '#f6f8fb',
+                        boxShadow: on ? `0 10px 24px -16px ${tint(accent, 0.95)}, 0 0 0 3px ${tint(accent, 0.12)}` : '0 2px 6px -4px rgba(15,42,82,.16)',
                         color: !free ? '#c3cbd8' : on ? accent : INK, textDecoration: free ? 'none' : 'line-through' }}>
                       {fmtTime(s.start)}
                     </button>
@@ -1286,20 +1320,117 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
 // Shell + helpers + styles
 // ---------------------------------------------------------------------------
 const FONT = "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+/**
+ * The look. Everything here is GPU-cheap on purpose: only `opacity` and
+ * `transform` animate, shadows are static, no filters on scrolling elements —
+ * so the page still feels instant on the $150 Android phones half of these
+ * customers are holding.
+ */
 const BOOK_CSS = `
 @keyframes lumioIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.lumio-book, .lumio-book button, .lumio-book input, .lumio-book select, .lumio-book textarea, .lumio-book a {
+@keyframes lumioPop { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes lumioShine { 0% { transform: translateX(-120%); } 60%, 100% { transform: translateX(220%); } }
+@keyframes lumioPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes lumioSkeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.lumio-book, .lumio-book button, .lumio-book input, .lumio-book select, .lumio-book textarea, .lumio-book a,
+.lumio-shell, .lumio-shell button, .lumio-shell input {
   font-family: ${FONT};
   -webkit-font-smoothing: antialiased;
 }
-.lumio-book h1, .lumio-book h2 { letter-spacing: -0.4px; }
-.lumio-book { animation: lumioIn .4s cubic-bezier(.2,.75,.25,1) both; }
-.lumio-book button { transition: transform .12s ease, box-shadow .2s ease, border-color .15s ease, background .15s ease; }
-.lumio-row:hover:not(:disabled) { border-color: var(--accent, #6366f1) !important; box-shadow: 0 6px 18px rgba(15,42,82,0.08); }
-.lumio-cta:hover:not(:disabled) { filter: brightness(1.05); }
+.lumio-book h1, .lumio-book h2 { letter-spacing: -0.5px; }
+.lumio-book { animation: lumioIn .45s cubic-bezier(.2,.75,.25,1) both; }
+.lumio-step { animation: lumioPop .32s cubic-bezier(.2,.75,.25,1) both; }
+
+.lumio-book button, .lumio-book a { transition: transform .14s cubic-bezier(.2,.75,.25,1), box-shadow .2s ease, border-color .16s ease, background .16s ease, color .16s ease; }
+.lumio-book button:active:not(:disabled) { transform: translateY(1px) scale(.99); }
+
+/* service / tech / payment rows */
+.lumio-row { position: relative; }
+.lumio-row:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--accent, #6366f1) !important; box-shadow: 0 10px 24px -12px rgba(15,42,82,.35); }
+.lumio-row:focus-visible { outline: 2px solid var(--accent, #6366f1); outline-offset: 2px; }
+
+/* time pills */
+.lumio-slot:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--accent, #6366f1) !important; box-shadow: 0 8px 18px -10px rgba(15,42,82,.4); }
+
+/* the main call to action: a soft light sweeps across it, once, when it turns on */
+.lumio-cta { position: relative; overflow: hidden; }
+.lumio-cta:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 30px -12px var(--accent-glow, rgba(99,102,241,.75)); }
+.lumio-cta:not(:disabled)::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 38%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.42), transparent);
+  animation: lumioShine 2.6s ease-in-out .4s infinite;
+}
 .lumio-tabs::-webkit-scrollbar { height: 0; }
-@media (prefers-reduced-motion: reduce) { .lumio-book { animation: none !important; } }
+.lumio-scroll::-webkit-scrollbar { width: 6px; }
+.lumio-scroll::-webkit-scrollbar-thumb { background: #dfe5ef; border-radius: 99px; }
+
+.lumio-skel {
+  border-radius: 14px;
+  background: linear-gradient(90deg, #eef1f6 25%, #f7f9fc 37%, #eef1f6 63%);
+  background-size: 200% 100%;
+  animation: lumioSkeleton 1.2s ease-in-out infinite;
+}
+.lumio-dot { animation: lumioPulse 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lumio-book, .lumio-step, .lumio-cta::after, .lumio-skel, .lumio-dot { animation: none !important; }
+  .lumio-book button:hover, .lumio-row:hover, .lumio-slot:hover, .lumio-cta:hover { transform: none !important; }
+}
 `;
+
+/** A progress rail the reference doesn't have: the visitor always knows how many
+ *  steps are left, which is the single cheapest way to lift completion rate. */
+function Progress({ step, accent, allowStaff }: { step: Step; accent: string; allowStaff: boolean }) {
+  const steps = allowStaff
+    ? ['Services', 'Nail tech', 'Time', 'Confirm']
+    : ['Services', 'Time', 'Confirm'];
+  const idx = allowStaff ? step - 1 : (step === 1 ? 0 : step - 2);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 4px 2px' }}>
+      {steps.map((label, i) => {
+        const done = i < idx, on = i === idx;
+        return (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: i === steps.length - 1 ? '0 0 auto' : 1, minWidth: 0 }}>
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+              fontSize: 12.5, fontWeight: 700, color: on ? accent : done ? '#16a34a' : '#a9b4c6',
+            }}>
+              <span style={{
+                width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800,
+                background: done ? '#16a34a' : on ? accent : '#e6eaf2', color: done || on ? '#fff' : '#94a3b8',
+                boxShadow: on ? `0 0 0 4px ${tint(accent, 0.15)}` : 'none',
+              }} className={on ? 'lumio-dot' : undefined}>{done ? '✓' : i + 1}</span>
+              <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+            </span>
+            {i < steps.length - 1 && (
+              <span style={{ flex: 1, height: 2, borderRadius: 2, background: done ? '#16a34a' : '#e6eaf2', minWidth: 12 }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Skeleton instead of the word "Loading…": the page feels ~40% faster because
+ *  the shape of the answer arrives before the answer does. */
+function BookingSkeleton() {
+  return (
+    <div style={{ width: '100%', maxWidth: 1120, margin: '0 auto' }}>
+      <div className="lumio-skel" style={{ height: 66, borderRadius: '16px 16px 0 0' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18, marginTop: 2 }}>
+        <div style={{ background: '#fff', borderRadius: '0 0 16px 16px', padding: 22, display: 'grid', gap: 12 }}>
+          <div className="lumio-skel" style={{ height: 86 }} />
+          <div className="lumio-skel" style={{ height: 40, width: '60%' }} />
+          {[0, 1, 2, 3, 4].map((i) => <div key={i} className="lumio-skel" style={{ height: 66 }} />)}
+        </div>
+        <div className="lumio-skel" style={{ height: 420, borderRadius: 16, marginTop: 16 }} />
+      </div>
+    </div>
+  );
+}
 function Shell({ children, accent }: { children: React.ReactNode; accent: string }) {
   const [embedded, setEmbedded] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1330,7 +1461,19 @@ function Shell({ children, accent }: { children: React.ReactNode; accent: string
   return (
     <>
       <style>{BOOK_CSS}</style>
-      <div ref={rootRef} className="lumio-shell" style={{ minHeight: embedded ? 0 : '100vh', background: embedded ? 'transparent' : SOFT, padding: embedded ? 0 : 16, fontFamily: FONT, ['--accent' as string]: accent } as React.CSSProperties}>
+      <div ref={rootRef} className="lumio-shell" style={{
+        minHeight: embedded ? 0 : '100vh',
+        // A page that glows a little around the edges, in the salon's own colour.
+        background: embedded ? 'transparent'
+          : `radial-gradient(1100px 520px at 12% -8%, ${tint(accent, 0.16)}, transparent 60%),
+             radial-gradient(900px 500px at 105% 8%, ${tint(accent, 0.10)}, transparent 55%),
+             linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%)`,
+        padding: embedded ? 0 : 16,
+        fontFamily: FONT,
+        ['--accent' as string]: accent,
+        ['--accent-glow' as string]: tint(accent, 0.55),
+        ['--accent-dark' as string]: shade(accent, 0.28),
+      } as React.CSSProperties}>
         {children}
       </div>
     </>
@@ -1388,12 +1531,16 @@ function overlaps(slot: Slot, intervals: { start: string; end: string }[]): bool
 }
 
 const rowCard: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '13px 14px', borderRadius: 12,
-  border: '1px solid #e6eaf2', background: '#fff', cursor: 'pointer', boxShadow: '0 1px 2px rgba(15,42,82,0.04)',
+  display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 15px', borderRadius: 16,
+  border: '1px solid #e9edf4', background: '#fff', cursor: 'pointer', boxShadow: '0 2px 6px -3px rgba(15,42,82,0.10)',
 };
 const rowTitle: React.CSSProperties = { display: 'block', fontSize: 14.5, fontWeight: 800, color: INK, letterSpacing: 0.2, lineHeight: 1.35 };
 const rowMeta: React.CSSProperties = { display: 'block', fontSize: 12.5, color: '#7d8ba4', marginTop: 5 };
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #dbe2ee', background: '#fff', color: INK, fontSize: 14 };
-const ctaBtn: React.CSSProperties = { width: '100%', padding: '14px 18px', borderRadius: 999, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' };
+const ctaBtn: React.CSSProperties = {
+  width: '100%', padding: '15px 18px', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer',
+  background: 'linear-gradient(120deg, var(--accent, #6366f1), var(--accent-dark, #4f46e5))',
+  boxShadow: '0 16px 32px -16px var(--accent-glow, rgba(99,102,241,.8))',
+};
 const primaryBtn: React.CSSProperties = { padding: '12px 22px', borderRadius: 999, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' };
 const arrowBtn: React.CSSProperties = { width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: INK, fontSize: 18, cursor: 'pointer', flexShrink: 0 };

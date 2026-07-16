@@ -336,11 +336,17 @@ export const DEFAULT_COMPANY_EXTRA: CompanyExtra = { address: '', website: '' };
 export interface Branding {
   accentColor: string;
   logoUrl: string;
+  /** Optional seasonal accent overlay for the public booking page. 'off' keeps the
+   *  salon's own accent (the default — white-label first). 'auto' picks a festive
+   *  hue by the calendar date; a fixed value (holiday/valentine/fall/spring/winter)
+   *  pins one. It never touches the admin UI, only the customer-facing page. */
+  seasonalTheme: string;
 }
 
 export const DEFAULT_BRANDING: Branding = {
   accentColor: '#6366f1',
   logoUrl: '',
+  seasonalTheme: 'off',
 };
 
 // ===========================================================================

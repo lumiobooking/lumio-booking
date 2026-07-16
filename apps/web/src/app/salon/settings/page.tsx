@@ -21,7 +21,7 @@ interface GatewayView { enabled: boolean; connected: boolean; apiKey: string }
 interface SettingsData {
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string };
   booking: Booking;
-  branding: { accentColor: string; logoUrl: string };
+  branding: { accentColor: string; logoUrl: string; seasonalTheme?: string };
   gateways: Record<string, GatewayView>;
   notifications: {
     mailService: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail'; replyTo: string;
@@ -908,10 +908,23 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   );
 }
 
+const SEASON_HUES: Record<string, string> = { holiday: '#c81e3a', valentine: '#e8467f', spring: '#0ea371', fall: '#e07b1a', winter: '#2563eb' };
+function effectiveAccent(theme: string | undefined, base: string): string {
+  if (!theme || theme === 'off') return base;
+  if (theme !== 'auto') return SEASON_HUES[theme] || base;
+  const d = new Date(); const m = d.getMonth() + 1; const day = d.getDate();
+  if (m === 12 || (m === 1 && day <= 6)) return SEASON_HUES.holiday;
+  if (m === 2) return SEASON_HUES.valentine;
+  if (m >= 3 && m <= 5) return SEASON_HUES.spring;
+  if (m >= 9 && m <= 11) return SEASON_HUES.fall;
+  return base;
+}
 function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [f, setF] = useState(data.branding);
+  const season = f.seasonalTheme ?? 'off';
+  const prevAccent = effectiveAccent(season, f.accentColor);
   return (
     <Card title={t('se.br.title')} desc={t('se.br.desc')}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
@@ -922,13 +935,24 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           </div>
         </Field>
         <Field label={t('se.br.logo')}><input style={ui.input} value={f.logoUrl} onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder="https://…/logo.png" /></Field>
+        <Field label={lang === 'vi' ? 'Chủ đề theo mùa (trang khách)' : 'Seasonal theme (customer page)'}>
+          <select style={ui.input} value={season} onChange={(e) => setF({ ...f, seasonalTheme: e.target.value })}>
+            <option value="off">{lang === 'vi' ? 'Tắt — giữ màu thương hiệu' : 'Off — keep my brand color'}</option>
+            <option value="auto">{lang === 'vi' ? 'Tự động theo mùa (US/CA)' : 'Auto by season (US/CA)'}</option>
+            <option value="holiday">{lang === 'vi' ? 'Lễ cuối năm (đỏ)' : 'Holiday (red)'}</option>
+            <option value="valentine">Valentine</option>
+            <option value="spring">{lang === 'vi' ? 'Mùa xuân' : 'Spring'}</option>
+            <option value="fall">{lang === 'vi' ? 'Mùa thu' : 'Fall'}</option>
+            <option value="winter">{lang === 'vi' ? 'Mùa đông' : 'Winter'}</option>
+          </select>
+        </Field>
       </div>
 
       {/* Live preview of the booking-page header — what a customer actually sees. */}
       <div style={{ marginTop: 14 }}>
         <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('se.br.preview')}</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #334155' }}>
-          <div style={{ background: `linear-gradient(135deg, ${f.accentColor}, ${f.accentColor})`, padding: '13px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ background: `linear-gradient(135deg, ${prevAccent}, ${prevAccent})`, padding: '13px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 38, height: 38, borderRadius: 10, background: f.logoUrl?.trim().startsWith('https://') ? '#fff' : 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
               {f.logoUrl?.trim().startsWith('https://')
                 // eslint-disable-next-line @next/next/no-img-element

@@ -46,6 +46,30 @@ function shade(hex: string, amount = 0.28): string {
   return `rgb(${f(0)}, ${f(2)}, ${f(4)})`;
 }
 
+/**
+ * Optional festive accent for the customer-facing booking page. The salon opts in
+ * from Settings → Branding; 'off' (the default) keeps their own brand colour, so a
+ * white-label tenant is never overridden without asking. 'auto' rotates by the US/CA
+ * calendar; a fixed key pins one season. Admin screens are untouched.
+ */
+const SEASON_HUES: Record<string, string> = {
+  holiday: '#c81e3a',   // late-year holidays (red/green season)
+  valentine: '#e8467f', // February
+  spring: '#0ea371',    // spring / Easter
+  fall: '#e07b1a',      // autumn / Halloween
+  winter: '#2563eb',    // deep winter
+};
+function seasonalAccent(theme: string | undefined | null, base: string): string {
+  if (!theme || theme === 'off') return base;
+  if (theme !== 'auto') return SEASON_HUES[theme] || base;
+  const d = new Date(); const m = d.getMonth() + 1; const day = d.getDate();
+  if (m === 12 || (m === 1 && day <= 6)) return SEASON_HUES.holiday;
+  if (m === 2) return SEASON_HUES.valentine;
+  if (m >= 3 && m <= 5) return SEASON_HUES.spring;
+  if (m >= 9 && m <= 11) return SEASON_HUES.fall;
+  return base;
+}
+
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number }
 interface BookingRules {
   slotStepMinutes: number; minLeadHours: number; maxAdvanceDays: number;
@@ -76,8 +100,9 @@ interface DateDiscounts { enabled: boolean; rules: DateRule[] }
 interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
-  branding?: { accentColor: string; logoUrl: string }; booking?: BookingRules;
+  branding?: { accentColor: string; logoUrl: string; seasonalTheme?: string }; booking?: BookingRules;
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy;
+  rating?: { value: number; count: number } | null;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
@@ -183,7 +208,9 @@ export default function PublicBookingPage() {
   const [result, setResult] = useState<{ paymentStatus: string | null } | null>(null);
 
   const rules = salon?.booking ?? DEFAULT_RULES;
-  const accent = salon?.branding?.accentColor || '#6366f1';
+  const baseAccent = salon?.branding?.accentColor || '#6366f1';
+  // Effective accent = the salon's colour, unless they turned on a seasonal theme.
+  const accent = seasonalAccent(salon?.branding?.seasonalTheme, baseAccent);
   const service = services.find((s) => s.id === serviceId) ?? null;
   const employee = staff.find((s) => s.id === staffId) ?? null;
   const serviceAddons = service?.addons ?? [];
@@ -463,6 +490,13 @@ export default function PublicBookingPage() {
               </div>
             )}
           </div>
+          {step === 1 && salon?.rating && (
+            <span title={`${salon.rating.value} out of 5 · ${salon.rating.count} reviews`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', color: '#fff', fontSize: 13, fontWeight: 800, flexShrink: 0, whiteSpace: 'nowrap' }}>
+              <span style={{ color: '#fde047' }}>★</span>{salon.rating.value}
+              <span style={{ opacity: 0.75, fontWeight: 700 }}>· {salon.rating.count}</span>
+            </span>
+          )}
           {step === 3 && rules.allowCustomerChooseStaff && (
             <button onClick={() => setStep(2)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 6px 6px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
               <Avatar name={employee ? `${employee.firstName} ${employee.lastName ?? ''}` : 'Any'} url={employee?.avatarUrl ?? null} size={26} accent={accent} />
@@ -605,11 +639,50 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean; imageUrl?: string | null };
 
+/**
+ * A money figure that rolls from its old value to the new one over ~380ms. It keeps
+ * its own state so only this tiny span re-renders per frame — the cart list beside it
+ * does not. Respects prefers-reduced-motion by snapping instantly.
+ */
+function AnimatedMoney({ cents, fmt, style }: { cents: number; fmt: (c: number) => string; style?: React.CSSProperties }) {
+  const [disp, setDisp] = useState(cents);
+  const ref = useRef(cents);
+  useEffect(() => {
+    const from = ref.current, to = cents;
+    if (from === to) return;
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { ref.current = to; setDisp(to); return; }
+    const t0 = performance.now(); let raf = 0;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / 380);
+      const v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+      setDisp(v);
+      if (k < 1) raf = requestAnimationFrame(step); else ref.current = to;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [cents]);
+  return <span style={style}>{fmt(disp)}</span>;
+}
+
 function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
   totalDuration: number; employee: Staff | null; slot: Slot | null; selectedDate: Date | null;
   onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string; fill?: boolean;
 }) {
+  // On a desktop screen we show a small QR of this very page, so a visitor who found
+  // the salon on their laptop can scan and finish on their phone (where they'll get the
+  // SMS). Same QR service the tip/review screens already use.
+  const [pageUrl, setPageUrl] = useState('');
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    try { setPageUrl(window.location.href); } catch { /* ignore */ }
+    const mq = window.matchMedia('(min-width: 821px)');
+    const on = () => setWide(mq.matches); on();
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  const qrSrc = pageUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data=${encodeURIComponent(pageUrl)}` : '';
   return (
     <aside style={{ background: '#fff', borderRadius: 18, overflow: 'hidden',
       boxShadow: `0 30px 60px -34px rgba(15,42,82,.45), 0 0 0 1px ${tint(accent, 0.10)}`,
@@ -623,6 +696,8 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
           {salon?.contactPhone && <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 3 }}>📞 {salon.contactPhone}</div>}
         </div>
       </div>
+      {/* boarding-pass tear line: this is the "ticket stub" cue that sets the cart apart */}
+      <div className="lumio-perf" style={{ flexShrink: 0 }}><span className="lumio-tear" /></div>
 
       {/* The list takes whatever room is left, so the panel fills the page instead of
           ending in a big white void — and the total + button stay pinned at the bottom. */}
@@ -649,7 +724,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
           <span style={{ fontWeight: 800, color: INK, fontSize: 15 }}>Total</span>
           <span>
             {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', fontSize: 13, marginRight: 8 }}>{fmt(fullCents)}</span>}
-            <span style={{ fontWeight: 800, color: INK, fontSize: 17 }}>{fmt(totalCents)}</span>
+            <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 800, color: INK, fontSize: 17 }} />
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: '#94a3b8' }}>
@@ -664,6 +739,13 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
           <div style={{ marginTop: 12, background: tint(accent, 0.08), borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
             <div>📅 <b>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
             <div>🕐 {fmtTime(slot.start)} – {fmtTime(slot.end)} ({fmtDur(totalDuration)})</div>
+          </div>
+        )}
+        {wide && qrSrc && lines.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, background: SOFT, borderRadius: 12, padding: '8px 10px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qrSrc} width={44} height={44} alt="" style={{ borderRadius: 6, flexShrink: 0, background: '#fff' }} />
+            <div style={{ fontSize: 11.5, color: '#8a97b4', lineHeight: 1.4 }}>Scan to keep booking<br />on your phone</div>
           </div>
         )}
         <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
@@ -1467,7 +1549,7 @@ function ServiceThumb({ url }: { url?: string | null }) {
 
 function PlusCheck({ on, accent }: { on: boolean; accent: string }) {
   return on
-    ? <span style={{ width: 34, height: 34, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 16, flexShrink: 0 }}>✓</span>
+    ? <span className="lumio-added" style={{ width: 34, height: 34, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 16, flexShrink: 0, boxShadow: `0 6px 16px -6px ${tint(accent, 0.95)}` }}><span className="lumio-tick" style={{ lineHeight: 1 }}>✓</span></span>
     : <span style={{ width: 34, height: 34, borderRadius: '50%', border: `1.5px solid ${accent}`, color: accent, display: 'grid', placeItems: 'center', fontSize: 18, flexShrink: 0, background: '#fff' }}>+</span>;
 }
 function SectionLabel({ children, accent }: { children: React.ReactNode; accent: string }) {
@@ -1601,6 +1683,10 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
 // Shell + helpers + styles
 // ---------------------------------------------------------------------------
 const FONT = "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+// A characterful display face for headings only — this is the single biggest
+// "this isn't the same template as the salon down the street" signal. Body text
+// stays on Plus Jakarta Sans for legibility on cheap phones.
+const DISPLAY = "'Fraunces', 'Plus Jakarta Sans', Georgia, 'Times New Roman', serif";
 
 /**
  * The look. Everything here is GPU-cheap on purpose: only `opacity` and
@@ -1617,13 +1703,16 @@ const BOOK_CSS = `
 @keyframes lumioShine { 0% { transform: translateX(-120%); } 60%, 100% { transform: translateX(220%); } }
 @keyframes lumioPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @keyframes lumioSkeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes lumioTick { 0% { transform: scale(.2); opacity: 0; } 55% { transform: scale(1.35); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes lumioRing { 0% { transform: scale(.9); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes lumioBump { 0% { transform: translateY(0); } 40% { transform: translateY(-3px) scale(1.02); } 100% { transform: translateY(0); } }
 
 .lumio-book, .lumio-book button, .lumio-book input, .lumio-book select, .lumio-book textarea, .lumio-book a,
 .lumio-shell, .lumio-shell button, .lumio-shell input {
   font-family: ${FONT};
   -webkit-font-smoothing: antialiased;
 }
-.lumio-book h1, .lumio-book h2 { letter-spacing: -0.5px; }
+.lumio-book h1, .lumio-book h2 { font-family: ${DISPLAY}; font-optical-sizing: auto; letter-spacing: -0.4px; }
 .lumio-book { animation: lumioIn .45s cubic-bezier(.2,.75,.25,1) both; }
 .lumio-step { animation: lumioPop .32s cubic-bezier(.2,.75,.25,1) both; }
 
@@ -1663,6 +1752,18 @@ const BOOK_CSS = `
   .lumio-book, .lumio-step, .lumio-cta::after, .lumio-skel, .lumio-dot { animation: none !important; }
   .lumio-book button:hover, .lumio-row:hover, .lumio-slot:hover, .lumio-cta:hover { transform: none !important; }
 }
+
+/* the tick that springs in when a service is added to the pass */
+.lumio-tick { animation: lumioTick .34s cubic-bezier(.2,1.3,.4,1) both; }
+.lumio-added { animation: lumioRing .34s cubic-bezier(.2,1,.3,1); }
+.lumio-bump { animation: lumioBump .4s cubic-bezier(.2,.8,.3,1); }
+/* boarding-pass perforation: two half-circle notches biting into the ticket edge,
+   plus a dashed tear line, in the page background colour so it reads as a real stub */
+.lumio-perf { position: relative; height: 20px; }
+.lumio-perf::before, .lumio-perf::after { content: ''; position: absolute; top: -10px; width: 20px; height: 20px; border-radius: 50%; background: var(--stage, #eef2f8); box-shadow: inset 0 -1px 2px rgba(15,42,82,.06); }
+.lumio-perf::before { left: -10px; } .lumio-perf::after { right: -10px; }
+.lumio-tear { position: absolute; top: 9px; left: 12px; right: 12px; border-top: 2px dashed rgba(15,42,82,.14); }
+@media (prefers-reduced-motion: reduce) { .lumio-tick, .lumio-added, .lumio-bump { animation: none !important; } }
 `;
 
 type HostView = { top: number; height: number };
@@ -1862,14 +1963,19 @@ function Shell({ children, accent, fullscreen }: { children: React.ReactNode; ac
         // The same stage in both places: a page that glows a little around the edges,
         // in the salon's own colour. The embed used to be transparent and flat, which
         // is why it felt like a widget bolted onto the site instead of the booking page.
-        background: `radial-gradient(1100px 520px at 12% -8%, ${tint(accent, 0.16)}, transparent 60%),
-             radial-gradient(900px 500px at 105% 8%, ${tint(accent, 0.10)}, transparent 55%),
-             linear-gradient(180deg, #f7f9fd 0%, #eef2f8 100%)`,
+        // A soft gradient-mesh in the salon's own colour — three overlapping blobs
+        // instead of one flat wash, so the page has depth the flat-white competitors
+        // don't. Still just CSS gradients: zero paint cost while scrolling.
+        background: `radial-gradient(1200px 560px at 8% -10%, ${tint(accent, 0.20)}, transparent 58%),
+             radial-gradient(1000px 520px at 108% 4%, ${tint(accent, 0.13)}, transparent 55%),
+             radial-gradient(820px 620px at 78% 118%, ${tint(shade(accent, 0.32), 0.12)}, transparent 60%),
+             linear-gradient(180deg, #f8fafe 0%, #eef2f8 100%)`,
         padding: fullscreen ? 0 : embedded ? 12 : 16,
         fontFamily: FONT,
         ['--accent' as string]: accent,
         ['--accent-glow' as string]: tint(accent, 0.55),
         ['--accent-dark' as string]: shade(accent, 0.28),
+        ['--stage' as string]: '#eef2f8',
       } as React.CSSProperties}>
         {children}
       </div>

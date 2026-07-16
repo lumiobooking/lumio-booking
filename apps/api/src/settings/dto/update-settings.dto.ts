@@ -41,6 +41,7 @@ export class UpdateBookingRulesDto {
 export class UpdateBrandingDto {
   @IsOptional() @IsHexColor() accentColor?: string;
   @IsOptional() @IsString() @MaxLength(500) logoUrl?: string;
+  @IsOptional() @IsString() @MaxLength(20) seasonalTheme?: string;
 }
 
 /**

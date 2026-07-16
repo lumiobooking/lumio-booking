@@ -57,7 +57,7 @@ export class PublicSalonController {
       throw new NotFoundException('Salon not found');
     }
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit, areaRows, extra] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, areaRows, extra, ratingAgg] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
@@ -67,7 +67,12 @@ export class PublicSalonController {
       // cart, the way every modern booking site does — so the visitor always knows
       // which shop they are booking.
       this.settings.getCompanyExtra(tenant.id).catch(() => ({} as { address?: string })),
+      // Real aggregate rating (same source the SEO/structured-data endpoint uses). Shown
+      // as a trust badge on the booking page — only when the shop actually has reviews.
+      this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
     ]);
+    const ratingCount = (ratingAgg as { _count?: { _all?: number } } | null)?._count?._all ?? 0;
+    const ratingValue = (ratingAgg as { _avg?: { rating?: number | null } } | null)?._avg?.rating ?? 0;
     return {
       name: tenant.name,
       slug: tenant.slug,
@@ -81,6 +86,7 @@ export class PublicSalonController {
       weekdayDiscounts,
       dateDiscounts,
       deposit,
+      rating: ratingCount > 0 ? { value: Math.round(ratingValue * 10) / 10, count: ratingCount } : null,
     };
   }
 

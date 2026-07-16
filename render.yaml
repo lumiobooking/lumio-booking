@@ -20,6 +20,7 @@ services:
       npm install --include=dev &&
       npm run db:generate --workspace=apps/api &&
       npm run build --workspace=apps/api &&
+      (cd apps/api && npx prisma migrate resolve --rolled-back 20260714170000_service_image || true) &&
       npm run db:migrate:deploy --workspace=apps/api
     startCommand: node apps/api/dist/src/main.js
     healthCheckPath: /api/health

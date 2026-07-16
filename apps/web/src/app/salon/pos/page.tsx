@@ -296,8 +296,42 @@ function Register() {
         } catch { /* fall through to the single-service prefill below */ }
       }
       if (!alive) return;
-      // Booking checkout (or a walk-in with nothing logged yet): one service + tech.
       if (services.length === 0) return; // catalog not ready — effect re-runs on load
+
+      // Booking checkout: pull the WHOLE appointment — primary service + every extra
+      // service, each already carrying the technician the system auto-assigned. So a
+      // multi-service visit checks out with all lines and all techs pre-filled; the
+      // front desk just presses Pay. No re-adding services, no re-picking techs.
+      if (appointmentId) {
+        try {
+          const appt = await apiFetch<{
+            service: { id: string; name: string } | null;
+            assignedStaff: { id: string } | null;
+            addons?: Array<{ id?: string; name?: string; priceCents?: number; durationMinutes?: number; kind?: string; staffMemberId?: string }>;
+          }>(`/bookings/${appointmentId}`, { token });
+          if (alive && appt) {
+            const lines: Line[] = [];
+            if (appt.service) {
+              const s = services.find((x) => x.id === appt.service!.id);
+              const d = s?.discountPercent ?? 0;
+              const base = s?.priceCents ?? 0;
+              const unit = d > 0 ? Math.round((base * (100 - d)) / 100) : base;
+              lines.push({ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: appt.service.id, name: appt.service.name, origUnitPriceCents: base, unitPriceCents: unit, discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: appt.assignedStaff?.id ?? '' });
+            }
+            for (const it of appt.addons ?? []) {
+              const isSvc = it.kind === 'service';
+              lines.push({
+                uid: `u${uidSeq++}`, kind: 'SERVICE', refId: it.id ?? '', isAddon: !isSvc,
+                name: it.name ?? '', origUnitPriceCents: it.priceCents ?? 0, unitPriceCents: it.priceCents ?? 0,
+                discountPercent: 0, quantity: 1, tipCents: 0, staffMemberId: it.staffMemberId ?? '',
+              });
+            }
+            if (lines.length > 0) { setCart((c) => (c.length === 0 ? lines : c)); setPrefilled(true); return; }
+          }
+        } catch { /* fall through to the single-service param prefill */ }
+      }
+
+      // Fallback: one service + tech from the URL params.
       const sid = params.get('serviceId');
       const stid = params.get('staffId') || '';
       if (sid) {

@@ -1414,8 +1414,63 @@ export class BookingsService {
    * Auto-assign for the public booking flow (no acting user). Runs the engine
    * (fair round-robin + skill/availability/history rules) for a tenant booking.
    */
-  autoAssignForTenant(tenantId: string, bookingId: string) {
-    return this.reassign(tenantId, bookingId, null);
+  async autoAssignForTenant(tenantId: string, bookingId: string) {
+    // 1) Assign the PRIMARY service's technician (fair rotation, skill + availability).
+    const res = await this.reassign(tenantId, bookingId, null);
+    // 2) Multi-service visit: assign each EXTRA service to its own free specialist so a
+    //    salon where every tech does one specialty needs ZERO manual assignment. The
+    //    per-line tech is written into the appointment's line-item snapshot, and the POS
+    //    checkout reads it — the front desk just presses Pay.
+    await this.assignExtraServiceLines(tenantId, bookingId).catch(() => { /* best-effort */ });
+    return res;
+  }
+
+  /**
+   * For a multi-service appointment, give each extra service line the best free
+   * technician who can do THAT service — preferring someone not already used on this
+   * visit, so specialists spread across the services. Writes staffMemberId into the
+   * stored line items. Silent no-op for single-service visits.
+   */
+  private async assignExtraServiceLines(tenantId: string, bookingId: string): Promise<void> {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: bookingId, tenantId },
+      select: { id: true, startTime: true, endTime: true, assignedStaffId: true, preferredStaffId: true, addons: true },
+    });
+    if (!appt) return;
+    const lines = Array.isArray(appt.addons) ? [...(appt.addons as unknown as Array<Record<string, unknown>>)] : [];
+    const serviceLines = lines.filter((l) => l && l.kind === 'service');
+    if (serviceLines.length === 0) return;
+
+    const used = new Set<string>();
+    if (appt.assignedStaffId) used.add(appt.assignedStaffId);
+    let changed = false;
+
+    for (const line of serviceLines) {
+      if (line.staffMemberId) { used.add(String(line.staffMemberId)); continue; } // already set
+      const serviceId = String(line.id);
+      // Prefer a specialist not yet used on this visit; if none free, allow reuse.
+      const pick = async (exclude: string[]) => {
+        const { orderedStaffIds } = await this.assignment.rankEligibleStaff(
+          tenantId,
+          { id: appt.id, serviceId, startTime: appt.startTime, endTime: appt.endTime, preferredStaffId: appt.preferredStaffId },
+          exclude,
+        );
+        return orderedStaffIds[0] ?? null;
+      };
+      const staffId = (await pick([...used])) ?? (await pick([]));
+      if (staffId) {
+        line.staffMemberId = staffId;
+        used.add(staffId);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await this.prisma.appointment.updateMany({
+        where: { id: bookingId, tenantId },
+        data: { addons: lines as unknown as Prisma.InputJsonValue },
+      });
+    }
   }
 
   /**

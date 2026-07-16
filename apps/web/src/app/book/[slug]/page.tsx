@@ -213,6 +213,16 @@ export default function PublicBookingPage() {
   const accent = seasonalAccent(salon?.branding?.seasonalTheme, baseAccent);
   const service = services.find((s) => s.id === serviceId) ?? null;
   const employee = staff.find((s) => s.id === staffId) ?? null;
+  // The "choose your tech" step only earns its place when there are at least two
+  // people to pick between AND the salon allows choosing. A solo shop — or one with
+  // no team on file — skips it entirely: one less tap, and nothing to decide.
+  const chooseStaff = rules.allowCustomerChooseStaff && staff.length >= 2;
+  useEffect(() => {
+    // When the step is skipped, keep the (hidden) tech sensible: a one-person shop
+    // books that person by name; an empty team leaves it to the shop ("Any").
+    if (staff.length === 1) setStaffId((prev) => prev || staff[0].id);
+    else if (staff.length === 0) setStaffId('');
+  }, [staff]);
   const serviceAddons = service?.addons ?? [];
   const selectedAddons = serviceAddons.filter((a) => addonIds.includes(a.id));
   const fmt = useCallback((c: number) => fmtMoney(c, rules), [rules]);
@@ -418,14 +428,14 @@ export default function PublicBookingPage() {
     step === 1 ? (pickedServiceIds.length > 0 ? 'Book for Me' : 'Select a service') : 'Continue';
 
   const goNext = () => {
-    if (step === 1 && pickedServiceIds.length) setStep(rules.allowCustomerChooseStaff ? 2 : 3);
+    if (step === 1 && pickedServiceIds.length) setStep(chooseStaff ? 2 : 3);
     else if (step === 2) setStep(3);
     else if (step === 3 && slot) setStep(4);
     else if (step === 4) submit();
   };
   const goBack = () => {
     if (step === 2) setStep(1);
-    else if (step === 3) setStep(rules.allowCustomerChooseStaff ? 2 : 1);
+    else if (step === 3) setStep(chooseStaff ? 2 : 1);
     else if (step === 4) setStep(3);
   };
 
@@ -497,7 +507,7 @@ export default function PublicBookingPage() {
               <span style={{ opacity: 0.75, fontWeight: 700 }}>· {salon.rating.count}</span>
             </span>
           )}
-          {step === 3 && rules.allowCustomerChooseStaff && (
+          {step === 3 && chooseStaff && (
             <button onClick={() => setStep(2)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 6px 6px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
               <Avatar name={employee ? `${employee.firstName} ${employee.lastName ?? ''}` : 'Any'} url={employee?.avatarUrl ?? null} size={26} accent={accent} />
               {employee ? employee.firstName : 'Any nail tech'} ▾
@@ -531,7 +541,7 @@ export default function PublicBookingPage() {
               padding: isMobile ? '14px 14px 18px' : '18px 24px 24px',
               minWidth: 0, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)',
             }}>
-              <Progress step={step} accent={accent} allowStaff={rules.allowCustomerChooseStaff} />
+              <Progress step={step} accent={accent} allowStaff={chooseStaff} />
               <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
               {stepHint && <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#8fa0bb', lineHeight: 1.5 }}>{stepHint}</p>}
 

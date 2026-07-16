@@ -83,13 +83,22 @@ interface Addon { id: string; name: string; durationMinutes: number; priceCents:
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
 interface Staff { id: string; firstName: string; lastName: string | null; avatarUrl: string | null }
-interface Availability {
+interface ServiceAvail {
   eligibleStaffIds: string[];
   staffBusy: Record<string, { start: string; end: string }[]>;
-  /** The salon has no technician on file at all — every open slot is bookable and the
-   *  shop assigns someone afterwards. Without this, an empty team read as "fully
-   *  booked" and the salon could not take a single online appointment. */
   noStaff?: boolean;
+}
+interface Availability {
+  eligibleStaffIds: string[];   // union across services (for the specific-tech path)
+  staffBusy: Record<string, { start: string; end: string }[]>; // merged per tech
+  /** The salon has no technician on file at all — every open slot is bookable and the
+   *  shop assigns someone afterwards. */
+  noStaff?: boolean;
+  /** One entry per picked service. This is what makes a specialist salon work: with
+   *  "Any tech", a time is offered when EACH service has at least one free specialist
+   *  — not necessarily the same person. The front desk assigns the right tech to each
+   *  service line at check-in (the POS/walk-in board already supports per-line techs). */
+  perService: ServiceAvail[];
 }
 type Slot = { start: Date; end: Date };
 type Step = 1 | 2 | 3 | 4 | 5; // 1 services · 2 tech · 3 time · 4 confirm · 5 done
@@ -258,13 +267,22 @@ export default function PublicBookingPage() {
     Promise.all(ids.map((sid) =>
       fetch(`${base}/availability?serviceId=${encodeURIComponent(sid)}&date=${d}`).then((r) => r.json()).catch(() => null),
     )).then((results) => {
-      const valid = results.filter(Boolean) as Availability[];
+      const valid = results.filter(Boolean) as ServiceAvail[];
       if (valid.length === 0) { setAvail(null); return; }
-      let eligible = valid[0].eligibleStaffIds;
-      for (const r of valid.slice(1)) eligible = eligible.filter((id) => r.eligibleStaffIds.includes(id));
+      // Union of everyone who can do at least one of the services, plus each tech's
+      // merged busy times (their calendar is the same across services).
+      const unionIds = new Set<string>();
       const staffBusy: Record<string, { start: string; end: string }[]> = {};
-      for (const r of valid) for (const [id, arr] of Object.entries(r.staffBusy)) (staffBusy[id] ||= []).push(...arr);
-      setAvail({ eligibleStaffIds: eligible, staffBusy, noStaff: valid.every((r) => r.noStaff) });
+      for (const r of valid) {
+        for (const id of r.eligibleStaffIds) unionIds.add(id);
+        for (const [id, arr] of Object.entries(r.staffBusy)) (staffBusy[id] ||= []).push(...arr);
+      }
+      setAvail({
+        eligibleStaffIds: [...unionIds],
+        staffBusy,
+        noStaff: valid.every((r) => r.noStaff),
+        perService: valid,
+      });
     }).catch(() => setAvail(null));
   }, [base, selectedDate, serviceId, extraServiceIds]);
 
@@ -1109,9 +1127,15 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
   // least one technician who can do every picked service is free.
   const isFree = useCallback((s: Slot) => {
     if (!avail) return true;
-    if (avail.noStaff) return true;   // no team on file — the shop books the slot itself
+    if (avail.noStaff) return true;                 // no team on file — shop assigns later
+    // A specific tech was chosen → that one person must be free for the whole block.
     if (staffId) return !overlaps(s, avail.staffBusy[staffId] ?? []);
-    return avail.eligibleStaffIds.some((id) => !overlaps(s, avail.staffBusy[id] ?? []));
+    // "Any tech": bookable when EACH service has at least one eligible tech free — they
+    // may be different people (specialist salons). A service with no team of its own is
+    // treated as free (the shop assigns it afterwards).
+    return avail.perService.every((ps) =>
+      ps.noStaff || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
+    );
   }, [avail, staffId]);
 
   const groups: { label: string; items: Slot[] }[] = useMemo(() => {
@@ -1181,7 +1205,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
         </div>
       )}
 
-      {avail && !avail.noStaff && avail.eligibleStaffIds.length === 0 ? (
+      {avail && !avail.noStaff && avail.perService.some((ps) => !ps.noStaff && ps.eligibleStaffIds.length === 0) ? (
         <div style={{ padding: '22px 16px', textAlign: 'center', borderRadius: 14, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
           <div style={{ fontSize: 26, marginBottom: 6 }}>🛠️</div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>This service isn&apos;t linked to a technician yet.</div>

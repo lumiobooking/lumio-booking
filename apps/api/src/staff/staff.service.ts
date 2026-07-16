@@ -8,6 +8,7 @@ import { Prisma, UserRole, StaffRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashSecret } from '../auth/password.util';
+import { PosService } from '../pos/pos.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateStaffDto, WorkingHourDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
@@ -34,6 +35,7 @@ export class StaffService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly pos: PosService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -53,6 +55,115 @@ export class StaffService {
     if (count !== new Set(serviceIds).size) {
       throw new BadRequestException('One or more serviceIds are invalid for this tenant');
     }
+  }
+
+  /**
+   * Per-technician performance for the salon owner: what each tech did in a date
+   * range — completed visits, service revenue (list price of completed
+   * appointments), money actually collected & tips through POS, star rating,
+   * loyalty points, their #1 service, and their most recent customers with names
+   * and dates. Everything is scoped to the caller's tenant.
+   */
+  async performance(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
+    const tenantId = this.tenantId(user);
+    const now = new Date();
+    const from = fromStr ? new Date(fromStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = toStr ? new Date(toStr) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const [staff, appts, feedback] = await Promise.all([
+      this.prisma.staffMember.findMany({
+        where: { tenantId },
+        select: { id: true, firstName: true, lastName: true, avatarUrl: true, isActive: true, rewardPoints: true, commissionPercent: true },
+        orderBy: { firstName: 'asc' },
+      }),
+      // Completed visits in range, by the tech who actually did them.
+      this.prisma.appointment.findMany({
+        where: { tenantId, status: 'COMPLETED', assignedStaffId: { not: null }, startTime: { gte: from, lte: to } },
+        select: {
+          assignedStaffId: true, priceCents: true, startTime: true,
+          service: { select: { name: true } },
+          customer: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { startTime: 'desc' },
+      }),
+      this.prisma.feedback.groupBy({
+        by: ['staffId'],
+        where: { tenantId, staffId: { not: null }, createdAt: { gte: from, lte: to } },
+        _avg: { rating: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    // POS money (collected revenue + tips) per tech in the same range.
+    let posByStaff = new Map<string, { revenueCents: number; tipsCents: number }>();
+    try {
+      const rep = await this.pos.report(user, from.toISOString(), to.toISOString());
+      posByStaff = new Map(
+        (rep.staff ?? []).map((r: { staffId: string; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number }) =>
+          [r.staffId, { revenueCents: r.serviceRevenueCents + r.productRevenueCents, tipsCents: r.tipsCents }]),
+      );
+    } catch { /* POS optional */ }
+
+    const fb = new Map(feedback.map((f) => [f.staffId as string, { avg: f._avg.rating ?? 0, count: f._count._all }]));
+
+    type Acc = {
+      completed: number; serviceRevenueCents: number;
+      services: Map<string, number>;
+      recent: { name: string; date: string; service: string }[];
+    };
+    const acc = new Map<string, Acc>();
+    const blank = (): Acc => ({ completed: 0, serviceRevenueCents: 0, services: new Map(), recent: [] });
+    for (const a of appts) {
+      const id = a.assignedStaffId as string;
+      const x = acc.get(id) ?? blank();
+      x.completed += 1;
+      x.serviceRevenueCents += a.priceCents ?? 0;
+      const svc = a.service?.name ?? '—';
+      x.services.set(svc, (x.services.get(svc) ?? 0) + 1);
+      if (x.recent.length < 12) {
+        x.recent.push({
+          name: `${a.customer?.firstName ?? ''} ${a.customer?.lastName ?? ''}`.trim() || 'Guest',
+          date: a.startTime.toISOString(),
+          service: svc,
+        });
+      }
+      acc.set(id, x);
+    }
+
+    const rows = staff.map((s) => {
+      const x = acc.get(s.id) ?? blank();
+      const pos = posByStaff.get(s.id) ?? { revenueCents: 0, tipsCents: 0 };
+      const rev = fb.get(s.id) ?? { avg: 0, count: 0 };
+      let topService: { name: string; count: number } | null = null;
+      for (const [name, count] of x.services) if (!topService || count > topService.count) topService = { name, count };
+      return {
+        staffId: s.id,
+        name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
+        avatarUrl: s.avatarUrl,
+        isActive: s.isActive,
+        completed: x.completed,
+        serviceRevenueCents: x.serviceRevenueCents,   // list price of completed visits
+        collectedCents: pos.revenueCents,              // money actually taken via POS
+        tipsCents: pos.tipsCents,
+        rating: Math.round((rev.avg || 0) * 10) / 10,
+        reviewCount: rev.count,
+        points: s.rewardPoints ?? 0,
+        topService,
+        recent: x.recent,
+      };
+    });
+    // Best earners first; unused techs sink to the bottom.
+    rows.sort((a, b) => (b.collectedCents + b.serviceRevenueCents) - (a.collectedCents + a.serviceRevenueCents) || b.completed - a.completed);
+
+    const totals = rows.reduce((t, r) => ({
+      completed: t.completed + r.completed,
+      serviceRevenueCents: t.serviceRevenueCents + r.serviceRevenueCents,
+      collectedCents: t.collectedCents + r.collectedCents,
+      tipsCents: t.tipsCents + r.tipsCents,
+      reviewCount: t.reviewCount + r.reviewCount,
+    }), { completed: 0, serviceRevenueCents: 0, collectedCents: 0, tipsCents: 0, reviewCount: 0 });
+
+    return { range: { from: from.toISOString(), to: to.toISOString() }, rows, totals };
   }
 
   list(user: AuthenticatedUser) {

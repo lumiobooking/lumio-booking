@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Patch,
+  Query,
   Post,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
@@ -26,6 +27,17 @@ export class StaffController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.staffService.list(user);
+  }
+
+  // Per-technician performance (revenue, tips, reviews, points, top service,
+  // recent customers). Declared before ':id' so 'performance' isn't read as an id.
+  @Get('performance')
+  performance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.staffService.performance(user, from, to);
   }
 
   // ---- Self-service: a staff member views/edits their OWN profile photo. ----

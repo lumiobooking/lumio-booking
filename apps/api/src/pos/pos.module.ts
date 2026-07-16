@@ -11,5 +11,6 @@ import { GiftCardsModule } from '../gift-cards/gift-cards.module';
   imports: [SettingsModule, LoyaltyModule, GiftCardsModule], // tax/currency + loyalty + gift cards
   controllers: [PosController, HeldBillsController],
   providers: [PosService, HeldBillsService],
+  exports: [PosService],
 })
 export class PosModule {}

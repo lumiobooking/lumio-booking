@@ -29,6 +29,7 @@ export class CustomersService {
         email: true,
         phone: true,
         createdAt: true,
+        birthDate: true,
         loyaltyPoints: true,
         _count: { select: { appointments: true } },
       },

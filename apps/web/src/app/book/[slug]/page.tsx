@@ -562,7 +562,7 @@ export default function PublicBookingPage() {
                   {serviceAddons.length > 0 && (
                     <div style={{ marginTop: 22 }}>
                       <SectionLabel accent={accent}>Add-ons for {service?.name}</SectionLabel>
-                      <div style={{ display: 'grid', gap: 10 }}>
+                      <div style={{ display: 'grid', gap: 10, alignContent: 'start', alignItems: 'start', gridAutoRows: 'min-content' }}>
                         {serviceAddons.map((a) => {
                           const on = addonIds.includes(a.id);
                           return (
@@ -1011,10 +1011,13 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
   stickyTop: number;
 }) {
   const groups = useMemo(() => {
+    // Featured ("POPULAR") services float to the top of their category; everything
+    // else keeps its original order (stable sort).
+    const feat = (arr: Service[]) => [...arr].sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
     const named = categories
-      .map((c) => ({ id: c.id, name: c.name, items: services.filter((s) => s.categoryId === c.id) }))
+      .map((c) => ({ id: c.id, name: c.name, items: feat(services.filter((s) => s.categoryId === c.id)) }))
       .filter((g) => g.items.length > 0);
-    const loose = services.filter((s) => !s.categoryId || !categories.some((c) => c.id === s.categoryId));
+    const loose = feat(services.filter((s) => !s.categoryId || !categories.some((c) => c.id === s.categoryId)));
     return loose.length ? [...named, { id: 'other', name: 'Other services', items: loose }] : named;
   }, [services, categories]);
 
@@ -1114,7 +1117,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
       {shown.map((g) => (
         <div key={g.id} ref={(el) => { sectionRefs.current[g.id] = el; }} style={{ marginBottom: 22, scrollMarginTop: 130 }}>
           <SectionLabel accent={accent}>{g.name}</SectionLabel>
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 10, alignContent: 'start', alignItems: 'start', gridAutoRows: 'min-content' }}>
             {g.items.map((s) => {
               const on = selectedIds.includes(s.id);
               const disc = svcDiscount(s);

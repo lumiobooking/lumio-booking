@@ -48,6 +48,12 @@ export class BillingService {
       this.platform.get('reply_to'),
       this.platform.get('inbound_domain'), this.platform.get('inbound_token'), this.platform.get('inbound_forward_to'),
     ]);
+    const [stHost, stPort, stUser, stPass, stSecure, stBase, stPublic] = await Promise.all([
+      this.platform.get('storage_ftp_host'), this.platform.get('storage_ftp_port'),
+      this.platform.get('storage_ftp_user'), this.platform.get('storage_ftp_pass'),
+      this.platform.get('storage_ftp_secure'), this.platform.get('storage_ftp_base_path'),
+      this.platform.get('storage_public_base'),
+    ]);
     const apiBase = (this.config.get<string>('RENDER_EXTERNAL_URL') ?? this.config.get<string>('KEEPALIVE_SELF_URL') ?? '').replace(/\/$/, '');
     return {
       stripe: { hasKey: !!stripeKey, hasWebhook: !!stripeHook, live: (stripeKey ?? '').startsWith('sk_live') },
@@ -59,6 +65,12 @@ export class BillingService {
         // The URL Brevo posts replies to. The token is in the path — treat it as a secret.
         webhookUrl: inToken ? `${apiBase || ''}/api/public/email/inbound/${inToken}` : '',
         ready: !!(inDomain && inToken),
+      },
+      storage: {
+        host: stHost ?? '', port: stPort ?? '', user: stUser ?? '',
+        hasPass: !!stPass, secure: String(stSecure) === 'true',
+        basePath: stBase ?? '', publicBase: stPublic ?? '',
+        configured: !!(stHost && stUser && stPass && stPublic),
       },
       webhookStripeUrl: apiBase ? `${apiBase}/api/billing/webhook/stripe` : '/api/billing/webhook/stripe',
       webhookPaypalUrl: apiBase ? `${apiBase}/api/billing/webhook/paypal` : '/api/billing/webhook/paypal',
@@ -212,6 +224,13 @@ export class BillingService {
       brevo_sender_email: dto.brevoSenderEmail,
       brevo_sender_name: dto.brevoSenderName,
       reply_to: dto.replyTo,
+      storage_ftp_host: dto.storageFtpHost,
+      storage_ftp_port: dto.storageFtpPort,
+      storage_ftp_user: dto.storageFtpUser,
+      storage_ftp_pass: dto.storageFtpPass,   // blank => setMany leaves it unchanged
+      storage_ftp_secure: dto.storageFtpSecure,
+      storage_ftp_base_path: dto.storageFtpBasePath,
+      storage_public_base: dto.storagePublicBase,
       inbound_domain: dto.inboundDomain,
       inbound_forward_to: dto.inboundForwardTo,
       // Generated once, never shown again in full — it is the only thing guarding

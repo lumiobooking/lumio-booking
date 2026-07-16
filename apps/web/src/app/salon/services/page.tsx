@@ -426,7 +426,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </label>
 
-      <ImageField value={form.imageUrl} onChange={(v) => { setForm({ ...form, imageUrl: v }); setSaved(false); }} />
+      <ImageField value={form.imageUrl} onChange={(v) => { setForm({ ...form, imageUrl: v }); setSaved(false); }} token={token} />
 
       <div style={{ marginTop: 12 }}>
         <span style={ui.label}>{t('sv.staffWhoDo')}</span>
@@ -626,7 +626,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         />
       </label>
 
-      <ImageField value={form.imageUrl} onChange={(v) => setForm({ ...form, imageUrl: v })} />
+      <ImageField value={form.imageUrl} onChange={(v) => setForm({ ...form, imageUrl: v })} token={token} />
 
       <div style={{ marginTop: 12 }}>
         <span style={ui.label}>{t('sv.staffWhoDo')}</span>
@@ -675,7 +675,7 @@ async function compressImage(file: File, maxSide = 640, quality = 0.82): Promise
   return canvas.toDataURL('image/jpeg', quality);
 }
 
-function ImageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ImageField({ value, onChange, token }: { value: string; onChange: (v: string) => void; token: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -692,7 +692,14 @@ function ImageField({ value, onChange }: { value: string; onChange: (v: string) 
     setErr(null); setBusy(true);
     try {
       let out = await compressImage(file);
-      // Very large source → shrink harder so it always fits comfortably inline.
+      // If the salon has external image storage (Hostinger/S3) set up, push the photo
+      // there and keep only the URL — the database never carries the image bytes.
+      // If storage isn't configured, we keep the small compressed image inline.
+      try {
+        const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: out } });
+        if (r?.url) { onChange(r.url); return; }
+      } catch { /* storage not configured or unreachable — fall back to inline */ }
+      // Inline fallback: shrink harder if the source was huge, then store the data URL.
       if (out.length > 650_000) out = await compressImage(file, 480, 0.72);
       if (out.length > 650_000) { setErr(t('sv.imgTooBig')); return; }
       onChange(out);

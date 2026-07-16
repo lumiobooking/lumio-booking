@@ -34,6 +34,15 @@ export class PlatformConfigService {
     inbound_domain: 'INBOUND_DOMAIN',
     inbound_token: 'INBOUND_TOKEN',
     inbound_forward_to: 'INBOUND_FORWARD_TO',
+    // Image storage over FTP/FTPS (e.g. Hostinger public_html) so uploaded photos
+    // live on the salon's own hosting/CDN instead of bloating the database.
+    storage_ftp_host: 'STORAGE_FTP_HOST',
+    storage_ftp_port: 'STORAGE_FTP_PORT',
+    storage_ftp_user: 'STORAGE_FTP_USER',
+    storage_ftp_pass: 'STORAGE_FTP_PASS',
+    storage_ftp_secure: 'STORAGE_FTP_SECURE',      // 'true' = FTPS (explicit TLS)
+    storage_ftp_base_path: 'STORAGE_FTP_BASE_PATH', // e.g. /public_html/uploads
+    storage_public_base: 'STORAGE_PUBLIC_BASE',     // e.g. https://lumioagency.com/uploads
   };
 
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}

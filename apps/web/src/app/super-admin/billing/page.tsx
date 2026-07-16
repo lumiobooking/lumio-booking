@@ -10,6 +10,7 @@ interface Status {
   paypal: { hasClient: boolean; hasWebhook: boolean; env: string };
   email?: { hasKey: boolean; senderEmail: string; senderName: string; replyTo?: string };
   inbound?: { domain: string; forwardTo: string; webhookUrl: string; ready: boolean };
+  storage?: { host: string; port: string; user: string; hasPass: boolean; secure: boolean; basePath: string; publicBase: string; configured: boolean };
   webhookStripeUrl: string;
   webhookPaypalUrl: string;
 }
@@ -43,6 +44,11 @@ export default function GatewaysPage() {
   const [brevoSender, setBrevoSender] = useState('');
   const [brevoName, setBrevoName] = useState('');
   const [replyTo, setReplyTo] = useState('');
+  // Image storage (Hostinger FTP/FTPS)
+  const [stHost, setStHost] = useState(''); const [stPort, setStPort] = useState('21');
+  const [stUser, setStUser] = useState(''); const [stPass, setStPass] = useState('');
+  const [stSecure, setStSecure] = useState(true); const [stBase, setStBase] = useState('');
+  const [stPublic, setStPublic] = useState(''); const [stTest, setStTest] = useState<{ ok: boolean; message: string } | null>(null);
   const [inDomain, setInDomain] = useState('');
   const [inFwd, setInFwd] = useState('');
   const [testEmail, setTestEmail] = useState('');
@@ -60,6 +66,7 @@ export default function GatewaysPage() {
       const s = await apiFetch<Status>('/billing/config', { token });
       setSt(s); setPpEnv(s.paypal.env || 'live');
       setBrevoSender(s.email?.senderEmail || ''); setBrevoName(s.email?.senderName || ''); setReplyTo(s.email?.replyTo || ''); setInDomain(s.inbound?.domain || ''); setInFwd(s.inbound?.forwardTo || '');
+      if (s.storage) { setStHost(s.storage.host || ''); setStPort(s.storage.port || '21'); setStUser(s.storage.user || ''); setStSecure(s.storage.secure); setStBase(s.storage.basePath || ''); setStPublic(s.storage.publicBase || ''); }
     }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
   }, [token]);
@@ -83,6 +90,17 @@ export default function GatewaysPage() {
       setMsg('✓ Saved. Connection status updated below.');
       setStripeKey(''); setStripeHook(''); setPpId(''); setPpSecret(''); setPpHook('');
     } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  async function testStorage() {
+    setBusy(true); setStTest(null); setErr(null);
+    try {
+      // Save first so the test uses the freshest values, then ping the host.
+      await save({ storageFtpHost: stHost, storageFtpPort: stPort, storageFtpUser: stUser, storageFtpPass: stPass, storageFtpSecure: String(stSecure), storageFtpBasePath: stBase, storagePublicBase: stPublic });
+      setStPass('');
+      setStTest(await apiFetch<{ ok: boolean; message: string }>('/uploads/storage/test', { method: 'POST', token }));
+    } catch (e) { setStTest({ ok: false, message: e instanceof Error ? e.message : 'Failed' }); }
     finally { setBusy(false); }
   }
 
@@ -300,6 +318,50 @@ export default function GatewaysPage() {
             </ol>
           </div>
         )}
+      </section>
+
+      {/* -------- Image storage (Hostinger FTP) -------- */}
+      <section style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h2 style={{ fontSize: 18, margin: 0 }}>🖼 Image storage (Hostinger / FTP)</h2>
+          <span style={{ fontSize: 13 }}>{st ? dot(!!st.storage?.configured) : '…'}</span>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 0 }}>
+          Optional. Point uploads at your own Hostinger space so photos are served from your domain instead of the database.
+          Leave empty to keep small photos stored inline.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Public URL of the upload folder</label>
+            <input style={inp} value={stPublic} onChange={(e) => setStPublic(e.target.value)} placeholder="https://lumioagency.com/uploads" />
+            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: -6, marginBottom: 8 }}>Where the folder below is reachable on the web. A photo becomes &lt;this&gt;/&lt;salon&gt;/&lt;file&gt;.jpg.</div>
+          </div>
+          <div><label style={lbl}>FTP host</label><input style={inp} value={stHost} onChange={(e) => setStHost(e.target.value)} placeholder="ftp.lumioagency.com" /></div>
+          <div><label style={lbl}>Port</label><input style={inp} value={stPort} onChange={(e) => setStPort(e.target.value)} placeholder="21" /></div>
+          <div><label style={lbl}>FTP username</label><input style={inp} value={stUser} onChange={(e) => setStUser(e.target.value)} placeholder="u123456.uploads" /></div>
+          <div><label style={lbl}>FTP password {st?.storage?.hasPass && <span style={savedTag}>saved</span>}</label>
+            <input style={inp} type="password" value={stPass} onChange={(e) => setStPass(e.target.value)} placeholder={st?.storage?.hasPass ? '•••••••• (leave blank to keep)' : ''} /></div>
+          <div><label style={lbl}>Folder path on the server</label><input style={inp} value={stBase} onChange={(e) => setStBase(e.target.value)} placeholder="/public_html/uploads" /></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 22 }}>
+            <input id="ftps" type="checkbox" checked={stSecure} onChange={(e) => setStSecure(e.target.checked)} style={{ width: 16, height: 16 }} />
+            <label htmlFor="ftps" style={{ fontSize: 13, color: '#cbd5e1' }}>Use FTPS (secure) — recommended</label>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+          <button onClick={() => save({ storageFtpHost: stHost, storageFtpPort: stPort, storageFtpUser: stUser, storageFtpPass: stPass, storageFtpSecure: String(stSecure), storageFtpBasePath: stBase, storagePublicBase: stPublic })} disabled={busy} style={primaryBtn}>Save storage</button>
+          <button onClick={testStorage} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: '#a5b4fc' }}>Test connection</button>
+        </div>
+        {stTest && (
+          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: stTest.ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: stTest.ok ? '#4ade80' : '#fca5a5', fontSize: 13 }}>
+            {stTest.ok ? '✓ ' : '✕ '}{stTest.message}
+          </div>
+        )}
+        <div style={hintBox}>
+          <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+            <b>Hostinger setup:</b> hPanel → Files → FTP Accounts → create an account, note the <b>host, username, password</b>.
+            Set the folder to a public one (e.g. <code style={code}>/public_html/uploads</code>) and the Public URL to the matching web address
+            (e.g. <code style={code}>https://yourdomain.com/uploads</code>). Press <b>Test connection</b> — a green tick means uploads will land there.
+          </div>
+        </div>
       </section>
 
       <p style={{ color: '#64748b', fontSize: 12 }}>Tip: start with Stripe TEST keys + the test card 4242 4242 4242 4242 to verify, then switch to LIVE keys to receive real money. Renewals are automatic.</p>

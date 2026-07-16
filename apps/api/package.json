@@ -33,7 +33,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "stripe": "^16.12.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "basic-ftp": "^5.0.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.0",
@@ -52,7 +53,11 @@
     "typescript": "^5.5.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {

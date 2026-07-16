@@ -10,7 +10,7 @@
     "start:prod": "node dist/src/main.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:deploy": "prisma migrate resolve --rolled-back 20260714170000_service_image || true; prisma migrate deploy",
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
     "test": "jest",

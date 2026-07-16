@@ -736,6 +736,26 @@ function Register() {
     localPrint(orderNumber);
   }
 
+  // What actually paid the bill, line by line — so a split (part cash, part card)
+  // prints "Cash $35 / Card $10" instead of a single lumped "Paid (CASH)".
+  function paidLines(): { label: string; cents: number }[] {
+    const nameOf = (m: string) => (m === 'CASH' ? 'Cash' : m === 'CARD' ? 'Card' : 'Transfer');
+    if (money.giftApplied > 0 && cart.length && money.due === 0) {
+      return [{ label: 'Gift card', cents: money.giftApplied }];
+    }
+    const lines: { label: string; cents: number }[] = [];
+    if (money.giftApplied > 0) lines.push({ label: 'Gift card', cents: money.giftApplied });
+    if (split) {
+      for (const p of parts) {
+        const c = Math.round((parseFloat(p.amount) || 0) * 100);
+        if (c > 0) lines.push({ label: nameOf(p.method), cents: c });
+      }
+    } else {
+      lines.push({ label: nameOf(payMethod), cents: payMethod === 'CASH' ? (money.tenderedCents || money.due) : money.due });
+    }
+    return lines;
+  }
+
   /** Plain-text receipt (≈32 cols) for the reception thermal printer. */
   function buildReceiptText(orderNumber: number | string): string {
     const W = 32;
@@ -760,7 +780,7 @@ function Register() {
     if (money.tax) o += row('Tax', formatPrice(money.tax, currency)) + '\n';
     if (money.tip) o += row('Tip', formatPrice(money.tip, currency)) + '\n';
     o += row('TOTAL', formatPrice(money.total, currency)) + '\n';
-    o += row(`Paid (${payMethod})`, formatPrice(money.tenderedCents || money.total, currency)) + '\n';
+    for (const pl of paidLines()) o += row(`Paid · ${pl.label}`, formatPrice(pl.cents, currency)) + '\n';
     if (money.change) o += row('Change', formatPrice(money.change, currency)) + '\n';
     o += sep + '\n' + center('Thank you!') + '\n';
     return o;
@@ -796,7 +816,7 @@ function Register() {
         ${money.tip ? line('Tip', formatPrice(money.tip, currency)) : ''}
         ${money.savings ? line('You saved', '-' + formatPrice(money.savings, currency)) : ''}
         ${line('TOTAL', formatPrice(money.total, currency), true)}
-        ${line('Paid (' + payMethod + ')', formatPrice(money.tenderedCents || money.total, currency))}
+        ${paidLines().map((pl) => line('Paid · ' + pl.label, formatPrice(pl.cents, currency))).join('')}
         ${money.change ? line('Change', formatPrice(money.change, currency)) : ''}
       </table><hr>
       <div class="center">Thank you!</div>

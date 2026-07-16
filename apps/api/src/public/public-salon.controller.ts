@@ -71,8 +71,18 @@ export class PublicSalonController {
       // as a trust badge on the booking page — only when the shop actually has reviews.
       this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
     ]);
-    const ratingCount = (ratingAgg as { _count?: { _all?: number } } | null)?._count?._all ?? 0;
-    const ratingValue = (ratingAgg as { _avg?: { rating?: number | null } } | null)?._avg?.rating ?? 0;
+    const brand = this.settings.brandingFrom(tenant.branding);
+    const autoCount = (ratingAgg as { _count?: { _all?: number } } | null)?._count?._all ?? 0;
+    const autoValue = (ratingAgg as { _avg?: { rating?: number | null } } | null)?._avg?.rating ?? 0;
+    // Which rating to show: the salon's manual figure (e.g. their Google rating), the
+    // live in-app aggregate, or nothing — their choice in Settings.
+    const mode = brand.ratingMode || 'auto';
+    const rating =
+      mode === 'off'
+        ? null
+        : mode === 'manual'
+          ? (brand.ratingCount > 0 ? { value: Math.round(brand.ratingValue * 10) / 10, count: brand.ratingCount } : null)
+          : (autoCount > 0 ? { value: Math.round(autoValue * 10) / 10, count: autoCount } : null);
     return {
       name: tenant.name,
       slug: tenant.slug,
@@ -81,12 +91,12 @@ export class PublicSalonController {
       address: (extra as { address?: string })?.address || null,
       areas: areaRows.map((a: { area: string | null }) => a.area).filter((x: string | null): x is string => !!x),
       timezone: tenant.timezone,
-      branding: this.settings.brandingFrom(tenant.branding),
+      branding: brand,
       booking,
       weekdayDiscounts,
       dateDiscounts,
       deposit,
-      rating: ratingCount > 0 ? { value: Math.round(ratingValue * 10) / 10, count: ratingCount } : null,
+      rating,
     };
   }
 

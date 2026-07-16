@@ -4,6 +4,7 @@ import {
   IsHexColor,
   IsIn,
   IsInt,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -42,6 +43,11 @@ export class UpdateBrandingDto {
   @IsOptional() @IsHexColor() accentColor?: string;
   @IsOptional() @IsString() @MaxLength(500) logoUrl?: string;
   @IsOptional() @IsString() @MaxLength(20) seasonalTheme?: string;
+  // Rating badge on the booking page: 'auto' = live from in-app reviews,
+  // 'manual' = the salon types in their own (e.g. Google) rating, 'off' = hidden.
+  @IsOptional() @IsIn(['auto', 'manual', 'off']) ratingMode?: string;
+  @IsOptional() @IsNumber() @Min(0) @Max(5) ratingValue?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1000000) ratingCount?: number;
 }
 
 /**

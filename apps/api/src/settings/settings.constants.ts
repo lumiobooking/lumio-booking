@@ -341,12 +341,20 @@ export interface Branding {
    *  hue by the calendar date; a fixed value (holiday/valentine/fall/spring/winter)
    *  pins one. It never touches the admin UI, only the customer-facing page. */
   seasonalTheme: string;
+  /** Rating badge source. 'auto' = aggregate of in-app reviews, 'manual' = the values
+   *  below (a salon showing its own Google rating), 'off' = no badge. */
+  ratingMode: string;
+  ratingValue: number;
+  ratingCount: number;
 }
 
 export const DEFAULT_BRANDING: Branding = {
   accentColor: '#6366f1',
   logoUrl: '',
   seasonalTheme: 'off',
+  ratingMode: 'auto',
+  ratingValue: 0,
+  ratingCount: 0,
 };
 
 // ===========================================================================

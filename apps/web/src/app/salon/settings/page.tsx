@@ -21,7 +21,7 @@ interface GatewayView { enabled: boolean; connected: boolean; apiKey: string }
 interface SettingsData {
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string };
   booking: Booking;
-  branding: { accentColor: string; logoUrl: string; seasonalTheme?: string };
+  branding: { accentColor: string; logoUrl: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
   gateways: Record<string, GatewayView>;
   notifications: {
     mailService: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail'; replyTo: string;
@@ -948,6 +948,33 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         </Field>
       </div>
 
+      <div style={{ marginTop: 12 }}>
+        <Field label={lang === 'vi' ? 'Badge đánh giá (trang khách)' : 'Rating badge (customer page)'}>
+          <select style={ui.input} value={f.ratingMode ?? 'auto'} onChange={(e) => setF({ ...f, ratingMode: e.target.value })}>
+            <option value="auto">{lang === 'vi' ? 'Tự động — từ đánh giá trong Lumio' : 'Auto — from in-app reviews'}</option>
+            <option value="manual">{lang === 'vi' ? 'Nhập tay — ví dụ rating Google của tiệm' : 'Manual — e.g. your Google rating'}</option>
+            <option value="off">{lang === 'vi' ? 'Ẩn badge' : 'Hide badge'}</option>
+          </select>
+        </Field>
+        {(f.ratingMode ?? 'auto') === 'manual' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
+            <Field label={lang === 'vi' ? 'Số sao (0–5)' : 'Stars (0–5)'}>
+              <input style={ui.input} type="number" min={0} max={5} step={0.1} value={f.ratingValue ?? 0}
+                onChange={(e) => setF({ ...f, ratingValue: Math.max(0, Math.min(5, parseFloat(e.target.value) || 0)) })} />
+            </Field>
+            <Field label={lang === 'vi' ? 'Số lượt đánh giá' : 'Number of reviews'}>
+              <input style={ui.input} type="number" min={0} step={1} value={f.ratingCount ?? 0}
+                onChange={(e) => setF({ ...f, ratingCount: Math.max(0, Math.round(parseFloat(e.target.value) || 0)) })} />
+            </Field>
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6, lineHeight: 1.55 }}>
+          {lang === 'vi'
+            ? 'Nhập tay: dùng để hiện đúng số sao Google của tiệm (Lumio không tự kéo review từ Google). Hãy nhập số thật của tiệm.'
+            : 'Manual lets you show your real Google rating (Lumio does not pull Google reviews automatically). Enter your true numbers.'}
+        </div>
+      </div>
+
       {/* Live preview of the booking-page header — what a customer actually sees. */}
       <div style={{ marginTop: 14 }}>
         <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('se.br.preview')}</div>
@@ -960,6 +987,9 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
                 : <span style={{ fontSize: 17 }}>🏪</span>}
             </span>
             <span style={{ color: '#fff', fontWeight: 800, fontSize: 16, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{data.company?.name || 'Your salon'}</span>
+            {(f.ratingMode ?? 'auto') === 'manual' && (f.ratingCount ?? 0) > 0 && (
+              <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.18)', color: '#fff', borderRadius: 999, padding: '5px 10px', fontSize: 12.5, fontWeight: 800, whiteSpace: 'nowrap' }}>★ {f.ratingValue ?? 0} · {f.ratingCount ?? 0}</span>
+            )}
           </div>
         </div>
         <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6, lineHeight: 1.55 }}>{t('se.br.logoHelp')}</div>

@@ -741,7 +741,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
             <div>🕐 {fmtTime(slot.start)} – {fmtTime(slot.end)} ({fmtDur(totalDuration)})</div>
           </div>
         )}
-        {wide && qrSrc && lines.length > 0 && (
+        {wide && qrSrc && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, background: SOFT, borderRadius: 12, padding: '8px 10px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qrSrc} width={44} height={44} alt="" style={{ borderRadius: 6, flexShrink: 0, background: '#fff' }} />

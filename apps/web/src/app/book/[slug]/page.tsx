@@ -1011,14 +1011,18 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
   stickyTop: number;
 }) {
   const groups = useMemo(() => {
-    // Featured ("POPULAR") services float to the top of their category; everything
-    // else keeps its original order (stable sort).
+    // Featured services still sort to the top of their own category…
     const feat = (arr: Service[]) => [...arr].sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
     const named = categories
       .map((c) => ({ id: c.id, name: c.name, items: feat(services.filter((s) => s.categoryId === c.id)) }))
       .filter((g) => g.items.length > 0);
     const loose = feat(services.filter((s) => !s.categoryId || !categories.some((c) => c.id === s.categoryId)));
-    return loose.length ? [...named, { id: 'other', name: 'Other services', items: loose }] : named;
+    const base = loose.length ? [...named, { id: 'other', name: 'Other services', items: loose }] : named;
+    // …and a "Popular" group is pinned at the very top of the whole list, gathering
+    // every featured service (they also remain under their own category below — the
+    // way food-ordering apps surface popular items).
+    const popular = services.filter((s) => s.isFeatured);
+    return popular.length ? [{ id: '__popular', name: '⭐ Popular', items: popular }, ...base] : base;
   }, [services, categories]);
 
   const [active, setActive] = useState<string>(groups[0]?.id ?? '');

@@ -64,6 +64,12 @@ export class CreateServiceDto {
   @IsBoolean()
   priceFrom?: boolean;
 
+  // Optional photo shown on the booking menu. Empty string clears it.
+  @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  imageUrl?: string | null;
+
   // Technicians who can perform this service (staff_services join). Lets the
   // salon pick the team right when creating the service.
   @IsOptional()

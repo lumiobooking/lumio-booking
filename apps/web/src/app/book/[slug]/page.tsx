@@ -80,7 +80,7 @@ interface Salon {
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
-interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; addons: Addon[] }
+interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
 interface Staff { id: string; firstName: string; lastName: string | null; avatarUrl: string | null }
 interface Availability {
@@ -201,7 +201,7 @@ export default function PublicBookingPage() {
   const lineFor = (s: Service) => {
     const net = svcNetCents(s);
     const promo = promoPctFor(salon, selectedDate, s.categoryId ?? null);
-    return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, fullCents: s.priceCents, priceCents: Math.round((net * (100 - promo)) / 100) };
+    return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, fullCents: s.priceCents, priceCents: Math.round((net * (100 - promo)) / 100), imageUrl: s.imageUrl ?? null };
   };
   const cartLines = pickedServiceIds
     .map((id) => services.find((s) => s.id === id))
@@ -585,7 +585,7 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 // Right column: the cart. Shop card on top, one row per pick, total, CTA.
 // ---------------------------------------------------------------------------
-type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean };
+type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean; imageUrl?: string | null };
 
 function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
@@ -612,7 +612,8 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         {lines.length === 0 ? (
           <EmptyCart accent={accent} salon={salon} />
         ) : lines.map((l) => (
-          <div key={l.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: '1px solid #eef1f6' }}>
+          <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: '1px solid #eef1f6' }}>
+            <CartThumb url={l.imageUrl} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: INK, lineHeight: 1.35 }}>{l.name}</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
@@ -1011,6 +1012,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                 <button key={s.id} type="button" className="lumio-row" onClick={() => onToggle(s.id)}
                   style={{ ...rowCard, borderColor: on ? accent : '#e9edf4', background: on ? tint(accent, 0.06) : '#fff',
                     boxShadow: on ? `0 10px 26px -16px ${tint(accent, 0.9)}, 0 0 0 3px ${tint(accent, 0.12)}` : rowCard.boxShadow }}>
+                  <ServiceThumb url={s.imageUrl} />
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                     <span style={rowTitle}>
                       {s.name}
@@ -1254,10 +1256,13 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 
       <Card title="SERVICES">
         {lines.map((l) => (
-          <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #eef1f6' }}>
-            <div>
+          <div key={l.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #eef1f6' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <CartThumb url={l.imageUrl} />
+              <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: INK }}>{l.name}</div>
               <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{l.durationMinutes} min{employee && <> · 👤 <b style={{ color: accent }}>{employee.firstName}</b></>}</div>
+              </div>
             </div>
             <div style={{ fontSize: 14, fontWeight: 800, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
           </div>
@@ -1402,6 +1407,40 @@ function Avatar({ name, url, size, accent }: { name: string; url: string | null;
     </span>
   );
 }
+/**
+ * A small service photo on the booking menu. It appears only when the salon set a
+ * valid https image AND it actually loads; otherwise it renders nothing, so rows
+ * without a photo stay tight and the list never shows a broken image. 56px keeps
+ * it appetising without pushing the price and the ＋ button off a phone screen.
+ */
+/** 40px thumbnail for the cart / confirm list. Hidden when there is no photo. */
+function CartThumb({ url }: { url?: string | null }) {
+  const clean = (url ?? '').trim();
+  const [ok, setOk] = useState(clean.startsWith('https://'));
+  useEffect(() => { setOk(clean.startsWith('https://')); }, [clean]);
+  if (!ok) return null;
+  return (
+    <span style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9', display: 'block' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={clean} alt="" loading="lazy" onError={() => setOk(false)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+    </span>
+  );
+}
+
+function ServiceThumb({ url }: { url?: string | null }) {
+  const clean = (url ?? '').trim();
+  const [ok, setOk] = useState(clean.startsWith('https://'));
+  useEffect(() => { setOk(clean.startsWith('https://')); }, [clean]);
+  if (!ok) return null;
+  return (
+    <span style={{ width: 56, height: 56, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9', display: 'block' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={clean} alt="" loading="lazy" onError={() => setOk(false)}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+    </span>
+  );
+}
+
 function PlusCheck({ on, accent }: { on: boolean; accent: string }) {
   return on
     ? <span style={{ width: 34, height: 34, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 16, flexShrink: 0 }}>✓</span>

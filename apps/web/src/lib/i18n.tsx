@@ -433,6 +433,11 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'sv.popularLabel': { en: 'Popular', vi: 'Nổi bật' },
   'sv.fromPrice': { en: '"From" price', vi: 'Giá "từ"' },
   'sv.fDescription': { en: 'Description (optional)', vi: 'Mô tả (tuỳ chọn)' },
+  'sv.fImage': { en: 'Photo (optional)', vi: 'Hình ảnh (tuỳ chọn)' },
+  'sv.fImageHelp': {
+    en: 'Paste a public https:// link to a photo. Shown on the booking menu; leave empty and no picture appears.',
+    vi: 'Dán link https:// công khai của một tấm ảnh. Ảnh sẽ hiện trên menu đặt lịch; để trống thì không hiện ảnh.',
+  },
   'sv.saving': { en: 'Saving…', vi: 'Đang lưu…' },
   'sv.saveChanges': { en: 'Save changes', vi: 'Lưu thay đổi' },
   'sv.savedLive': { en: '✓ Saved — discount is now live on the booking page.', vi: '✓ Đã lưu — giảm giá đã hiển thị trên trang đặt lịch.' },

@@ -74,7 +74,7 @@ export class ServicesController {
   @Post('import')
   bulkImport(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string }> },
+    @Body() dto: { items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }> },
   ) {
     return this.servicesService.bulkImport(user, dto?.items ?? []);
   }

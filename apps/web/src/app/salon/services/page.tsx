@@ -23,6 +23,7 @@ interface Service {
   categoryId?: string | null;
   isFeatured?: boolean;
   priceFrom?: boolean;
+  imageUrl?: string | null;
   sortOrder?: number;
   staffServices?: { staffMemberId: string }[];
 }
@@ -346,6 +347,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
     categoryId: service.categoryId ?? '',
     isFeatured: service.isFeatured ?? false,
     priceFrom: service.priceFrom ?? false,
+    imageUrl: service.imageUrl ?? '',
   });
   const [staffIds, setStaffIds] = useState<string[]>(service.staffServices?.map((x) => x.staffMemberId) ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -369,6 +371,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
+          imageUrl: form.imageUrl.trim(),
           staffIds,
         },
       });
@@ -382,6 +385,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           categoryId: updated.categoryId ?? '',
           isFeatured: updated.isFeatured ?? false,
           priceFrom: updated.priceFrom ?? false,
+          imageUrl: updated.imageUrl ?? '',
         });
       }
       setSaved(true);
@@ -421,6 +425,8 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         <span style={ui.label}>{t('sv.fDescription')}</span>
         <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </label>
+
+      <ImageField value={form.imageUrl} onChange={(v) => { setForm({ ...form, imageUrl: v }); setSaved(false); }} />
 
       <div style={{ marginTop: 12 }}>
         <span style={ui.label}>{t('sv.staffWhoDo')}</span>
@@ -516,7 +522,7 @@ function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: stri
 function CreateServiceForm({ token, categories, staff, currency, onCreated }: { token: string; categories: Category[]; staff: Staff[]; currency: string; onCreated: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false });
+  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, imageUrl: '' });
   const [staffIds, setStaffIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -538,6 +544,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
+          imageUrl: form.imageUrl.trim() || undefined,
           staffIds,
         },
       });
@@ -619,6 +626,8 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         />
       </label>
 
+      <ImageField value={form.imageUrl} onChange={(v) => setForm({ ...form, imageUrl: v })} />
+
       <div style={{ marginTop: 12 }}>
         <span style={ui.label}>{t('sv.staffWhoDo')}</span>
         <StaffPicker all={staff} ids={staffIds} set={setStaffIds} />
@@ -629,6 +638,33 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         {submitting ? t('sv.creating') : t('sv.createService')}
       </button>
     </form>
+  );
+}
+
+/**
+ * Optional service photo. A public https:// image URL with a live thumbnail so the
+ * salon sees exactly what the customer will see. Empty = no image (the customer
+ * menu simply hides the picture, staying tidy).
+ */
+function ImageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const ok = /^https:\/\/\S+$/.test(value.trim());
+  return (
+    <label style={{ display: 'block', marginTop: 12 }}>
+      <span style={ui.label}>{t('sv.fImage')}</span>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <span style={{ width: 52, height: 52, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: '#0f172a', border: '1px solid #334155', color: '#475569', fontSize: 18 }}>
+          {ok
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={value.trim()} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            : '🖼️'}
+        </span>
+        <input style={{ ...ui.input, flex: 1 }} value={value} placeholder="https://…/photo.jpg"
+          onChange={(e) => onChange(e.target.value)} />
+      </div>
+      <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 5 }}>{t('sv.fImageHelp')}</div>
+    </label>
   );
 }
 

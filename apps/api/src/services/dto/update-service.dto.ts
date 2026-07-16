@@ -65,6 +65,12 @@ export class UpdateServiceDto {
   @IsBoolean()
   priceFrom?: boolean;
 
+  // Optional photo shown on the booking menu. Empty string clears it.
+  @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  imageUrl?: string | null;
+
   // Technicians who can perform this service. When provided, replaces the full
   // set (empty array clears all). Omit to leave staff assignments untouched.
   @IsOptional()

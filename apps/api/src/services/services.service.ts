@@ -12,6 +12,11 @@ import { CreateServiceAddonDto } from './dto/create-addon.dto';
  * caller's tenantId from the signed token and filters by it, so a salon can
  * only ever read/modify its own services.
  */
+function cleanImageUrl(v: string | null | undefined): string | null {
+  const s = (v ?? '').trim();
+  return /^https:\/\/\S+$/.test(s) ? s.slice(0, 600) : null;
+}
+
 @Injectable()
 export class ServicesService {
   constructor(
@@ -107,6 +112,10 @@ export class ServicesService {
     return service;
   }
 
+  // A service photo must be a public https:// URL or nothing at all — an http or
+  // junk value would render as a broken image on every customer's phone.
+  private cleanImageUrl = cleanImageUrl;
+
   async create(user: AuthenticatedUser, dto: CreateServiceDto) {
     const tenantId = this.tenantId(user);
     const staffIds = dto.staffIds ?? [];
@@ -127,6 +136,7 @@ export class ServicesService {
           sortOrder: dto.sortOrder ?? 0,
           isFeatured: dto.isFeatured ?? false,
           priceFrom: dto.priceFrom ?? false,
+          imageUrl: cleanImageUrl(dto.imageUrl),
         },
       });
       if (staffIds.length > 0) {
@@ -168,6 +178,7 @@ export class ServicesService {
       isFeatured: dto.isFeatured,
       priceFrom: dto.priceFrom,
     };
+    if (dto.imageUrl !== undefined) data.imageUrl = cleanImageUrl(dto.imageUrl);
     // categoryId: only touch when provided (null clears it).
     if (dto.categoryId !== undefined) {
       data.categoryId = dto.categoryId ? await this.validCategoryId(tenantId, dto.categoryId) : null;
@@ -222,7 +233,7 @@ export class ServicesService {
    */
   async bulkImport(
     user: AuthenticatedUser,
-    items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string }>,
+    items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }>,
   ) {
     const tenantId = this.tenantId(user);
     if (!Array.isArray(items) || items.length === 0) throw new BadRequestException('Nothing to import');
@@ -265,6 +276,7 @@ export class ServicesService {
           durationMinutes: Math.min(600, Math.max(5, Math.round(Number(raw.durationMinutes) || 30))),
           priceCents: Math.max(0, Math.round(Number(raw.priceCents) || 0)),
           priceFrom: !!raw.priceFrom,
+          imageUrl: cleanImageUrl(raw.imageUrl),
           categoryId, sortOrder: order, isActive: true, currency: 'USD',
         },
       });

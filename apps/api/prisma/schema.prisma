@@ -445,6 +445,7 @@ model Service {
   sortOrder  Int              @default(0)
   isFeatured Boolean          @default(false) // "Popular" highlight
   priceFrom  Boolean          @default(false) // show "from $X" (price varies)
+  imageUrl   String?          // optional photo shown on the booking menu; hidden when null
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

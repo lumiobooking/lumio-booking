@@ -842,6 +842,7 @@ export class BookingsService {
         categoryId: true,
         isFeatured: true,
         priceFrom: true,
+        imageUrl: true,
         sortOrder: true,
         addons: {
           where: { isActive: true },

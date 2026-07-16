@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -646,25 +646,88 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
  * salon sees exactly what the customer will see. Empty = no image (the customer
  * menu simply hides the picture, staying tidy).
  */
+/**
+ * Resize an uploaded photo down to a small JPEG entirely in the browser (no server
+ * storage needed) and hand back a data: URL. A menu thumbnail never needs more than
+ * ~640px, so this keeps each image to tens of KB — small enough to store inline.
+ */
+async function compressImage(file: File, maxSide = 640, quality = 0.82): Promise<string> {
+  const dataUrl: string = await new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result));
+    fr.onerror = () => rej(new Error('read failed'));
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error('decode failed'));
+    im.src = dataUrl;
+  });
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
 function ImageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const ok = /^https:\/\/\S+$/.test(value.trim());
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const show = value.trim();
+  const ok = /^https:\/\/\S+$/.test(show) || show.startsWith('data:image/');
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // let the same file be re-picked later
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setErr(t('sv.imgNotImage')); return; }
+    setErr(null); setBusy(true);
+    try {
+      let out = await compressImage(file);
+      // Very large source → shrink harder so it always fits comfortably inline.
+      if (out.length > 650_000) out = await compressImage(file, 480, 0.72);
+      if (out.length > 650_000) { setErr(t('sv.imgTooBig')); return; }
+      onChange(out);
+    } catch { setErr(t('sv.imgFailed')); }
+    finally { setBusy(false); }
+  }
+
   return (
-    <label style={{ display: 'block', marginTop: 12 }}>
+    <div style={{ marginTop: 12 }}>
       <span style={ui.label}>{t('sv.fImage')}</span>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <span style={{ width: 52, height: 52, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: '#0f172a', border: '1px solid #334155', color: '#475569', fontSize: 18 }}>
           {ok
             // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={value.trim()} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            ? <img src={show} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
             : '🖼️'}
         </span>
-        <input style={{ ...ui.input, flex: 1 }} value={value} placeholder="https://…/photo.jpg"
-          onChange={(e) => onChange(e.target.value)} />
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={busy}
+          style={{ ...ui.primaryBtn, padding: '9px 14px', whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
+          {busy ? t('sv.imgUploading') : `⬆ ${t('sv.imgUpload')}`}
+        </button>
+        {ok && (
+          <button type="button" onClick={() => { onChange(''); setErr(null); }}
+            style={{ ...ui.dangerBtn, padding: '9px 12px', whiteSpace: 'nowrap' }}>{t('sv.imgRemove')}</button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
       </div>
+      {/* Or paste a link — still supported for anyone who hosts images elsewhere. */}
+      <input style={{ ...ui.input, marginTop: 8, width: '100%' }}
+        value={show.startsWith('data:') ? '' : value}
+        placeholder={t('sv.imgOrPaste')}
+        onChange={(e) => onChange(e.target.value)} />
+      {err && <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>{err}</div>}
       <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 5 }}>{t('sv.fImageHelp')}</div>
-    </label>
+    </div>
   );
 }
 

@@ -12,9 +12,15 @@ import { CreateServiceAddonDto } from './dto/create-addon.dto';
  * caller's tenantId from the signed token and filters by it, so a salon can
  * only ever read/modify its own services.
  */
+// A service photo is EITHER a public https URL, OR an inline compressed image the
+// salon uploaded (a small data: URL — the browser resizes it to ~640px first, so it
+// is only tens of KB). Anything else is rejected so we never store a broken value.
+const MAX_IMAGE_LEN = 700_000; // ~700KB — comfortably fits a compressed thumbnail
 function cleanImageUrl(v: string | null | undefined): string | null {
   const s = (v ?? '').trim();
-  return /^https:\/\/\S+$/.test(s) ? s.slice(0, 600) : null;
+  if (/^https:\/\/\S+$/.test(s)) return s.slice(0, 600);
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length <= MAX_IMAGE_LEN) return s;
+  return null;
 }
 
 @Injectable()

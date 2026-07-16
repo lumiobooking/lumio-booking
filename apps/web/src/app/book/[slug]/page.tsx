@@ -1416,8 +1416,8 @@ function Avatar({ name, url, size, accent }: { name: string; url: string | null;
 /** 40px thumbnail for the cart / confirm list. Hidden when there is no photo. */
 function CartThumb({ url }: { url?: string | null }) {
   const clean = (url ?? '').trim();
-  const [ok, setOk] = useState(clean.startsWith('https://'));
-  useEffect(() => { setOk(clean.startsWith('https://')); }, [clean]);
+  const [ok, setOk] = useState(clean.startsWith('https://') || clean.startsWith('data:image/'));
+  useEffect(() => { setOk(clean.startsWith('https://') || clean.startsWith('data:image/')); }, [clean]);
   if (!ok) return null;
   return (
     <span style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9', display: 'block' }}>
@@ -1429,8 +1429,8 @@ function CartThumb({ url }: { url?: string | null }) {
 
 function ServiceThumb({ url }: { url?: string | null }) {
   const clean = (url ?? '').trim();
-  const [ok, setOk] = useState(clean.startsWith('https://'));
-  useEffect(() => { setOk(clean.startsWith('https://')); }, [clean]);
+  const [ok, setOk] = useState(clean.startsWith('https://') || clean.startsWith('data:image/'));
+  useEffect(() => { setOk(clean.startsWith('https://') || clean.startsWith('data:image/')); }, [clean]);
   if (!ok) return null;
   return (
     <span style={{ width: 56, height: 56, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9', display: 'block' }}>

@@ -68,7 +68,7 @@ export class UpdateServiceDto {
   // Optional photo shown on the booking menu. Empty string clears it.
   @IsOptional()
   @IsString()
-  @MaxLength(600)
+  @MaxLength(700000) // allows a small uploaded (compressed) image stored inline
   imageUrl?: string | null;
 
   // Technicians who can perform this service. When provided, replaces the full

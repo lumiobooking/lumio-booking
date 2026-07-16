@@ -1686,7 +1686,7 @@ const FONT = "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto,
 // A characterful display face for headings only — this is the single biggest
 // "this isn't the same template as the salon down the street" signal. Body text
 // stays on Plus Jakarta Sans for legibility on cheap phones.
-const DISPLAY = "'Fraunces', 'Plus Jakarta Sans', Georgia, 'Times New Roman', serif";
+const DISPLAY = "'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 /**
  * The look. Everything here is GPU-cheap on purpose: only `opacity` and
@@ -1712,7 +1712,7 @@ const BOOK_CSS = `
   font-family: ${FONT};
   -webkit-font-smoothing: antialiased;
 }
-.lumio-book h1, .lumio-book h2 { font-family: ${DISPLAY}; font-optical-sizing: auto; letter-spacing: -0.4px; }
+.lumio-book h1, .lumio-book h2 { font-family: ${DISPLAY}; letter-spacing: -0.2px; }
 .lumio-book { animation: lumioIn .45s cubic-bezier(.2,.75,.25,1) both; }
 .lumio-step { animation: lumioPop .32s cubic-bezier(.2,.75,.25,1) both; }
 

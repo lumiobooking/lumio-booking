@@ -973,36 +973,12 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
   }
   return (
     <Card title={t('se.br.title')} desc={t('se.br.desc')}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
         <Field label={t('se.br.accent')}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="color" value={f.accentColor} onChange={(e) => setF({ ...f, accentColor: e.target.value })} style={{ width: 44, height: 38, border: 'none', background: 'transparent', cursor: 'pointer' }} />
             <input style={ui.input} value={f.accentColor} onChange={(e) => setF({ ...f, accentColor: e.target.value })} />
           </div>
-        </Field>
-        <Field label={t('se.br.logo')}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ width: 46, height: 46, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: logoOk ? '#fff' : '#0f172a', border: '1px solid #334155', fontSize: 20 }}>
-              {logoOk
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={logoShow} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                : <span>🏪</span>}
-            </span>
-            <button type="button" onClick={() => logoRef.current?.click()} disabled={logoBusy}
-              style={{ ...ui.primaryBtn, padding: '9px 14px', fontSize: 13, opacity: logoBusy ? 0.6 : 1 }}>
-              {logoBusy ? (lang === 'vi' ? 'Đang tải…' : 'Uploading…') : (lang === 'vi' ? '⬆ Tải logo lên' : '⬆ Upload logo')}
-            </button>
-            <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickLogo} />
-            {logoShow && (
-              <button type="button" onClick={() => setF({ ...f, logoUrl: '' })}
-                style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, cursor: 'pointer' }}>
-                {lang === 'vi' ? 'Xoá' : 'Remove'}
-              </button>
-            )}
-          </div>
-          <input style={{ ...ui.input, marginTop: 8, fontSize: 12.5 }} value={logoShow.startsWith('data:') ? '' : (f.logoUrl || '')}
-            onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/logo.png' : 'or paste https://…/logo.png'} />
-          {logoErr && <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>{logoErr}</div>}
         </Field>
         <Field label={lang === 'vi' ? 'Chủ đề theo mùa (trang khách)' : 'Seasonal theme (customer page)'}>
           <select style={ui.input} value={season} onChange={(e) => setF({ ...f, seasonalTheme: e.target.value })}>
@@ -1014,6 +990,33 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             <option value="fall">{lang === 'vi' ? 'Mùa thu' : 'Fall'}</option>
             <option value="winter">{lang === 'vi' ? 'Mùa đông' : 'Winter'}</option>
           </select>
+        </Field>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <Field label={lang === 'vi' ? 'Logo' : 'Logo'}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ width: 46, height: 46, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: logoOk ? '#fff' : '#0f172a', border: '1px solid #334155', fontSize: 20 }}>
+              {logoOk
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={logoShow} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                : <span>🏪</span>}
+            </span>
+            <button type="button" onClick={() => logoRef.current?.click()} disabled={logoBusy}
+              style={{ ...ui.primaryBtn, padding: '9px 14px', fontSize: 13, whiteSpace: 'nowrap', flexShrink: 0, opacity: logoBusy ? 0.6 : 1 }}>
+              {logoBusy ? (lang === 'vi' ? 'Đang tải…' : 'Uploading…') : (lang === 'vi' ? '⬆ Tải logo lên' : '⬆ Upload logo')}
+            </button>
+            <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickLogo} />
+            {logoShow && (
+              <button type="button" onClick={() => setF({ ...f, logoUrl: '' })}
+                style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
+                {lang === 'vi' ? 'Xoá' : 'Remove'}
+              </button>
+            )}
+            <input style={{ ...ui.input, fontSize: 12.5, flex: '1 1 200px', minWidth: 160 }} value={logoShow.startsWith('data:') ? '' : (f.logoUrl || '')}
+              onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/logo.png' : 'or paste https://…/logo.png'} />
+          </div>
+          {logoErr && <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>{logoErr}</div>}
         </Field>
       </div>
 

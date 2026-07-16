@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -919,12 +919,54 @@ function effectiveAccent(theme: string | undefined, base: string): string {
   if (m >= 9 && m <= 11) return SEASON_HUES.fall;
   return base;
 }
+let _logoStorageReady: Promise<boolean> | null = null;
+function logoStorageConfigured(token: string): Promise<boolean> {
+  if (!_logoStorageReady) {
+    _logoStorageReady = apiFetch<{ configured: boolean }>('/uploads/storage/status', { token }).then((r) => !!r?.configured).catch(() => false);
+  }
+  return _logoStorageReady;
+}
+/** Resize a picked logo to <=240px and keep PNG so transparency survives. */
+async function compressLogo(file: File, maxSide = 240): Promise<string> {
+  const dataUrl: string = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(new Error('read')); fr.readAsDataURL(file); });
+  const img = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('decode')); im.src = dataUrl; });
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale)); const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d'); if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/png');
+}
 function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [f, setF] = useState(data.branding);
   const season = f.seasonalTheme ?? 'off';
   const prevAccent = effectiveAccent(season, f.accentColor);
+  const { token } = useAuth();
+  const logoRef = useRef<HTMLInputElement | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoErr, setLogoErr] = useState<string | null>(null);
+  const logoShow = (f.logoUrl || '').trim();
+  const logoOk = logoShow.startsWith('https://') || logoShow.startsWith('data:image/');
+  async function onPickLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setLogoErr(lang === 'vi' ? 'File không phải hình ảnh.' : 'That file is not an image.'); return; }
+    const tk = token ?? '';
+    setLogoErr(null); setLogoBusy(true);
+    try {
+      const out = await compressLogo(file);
+      // Hostinger/FTP set up? push it there and keep only the URL. Otherwise store the
+      // small PNG inline (works everywhere the logo is shown on the booking page).
+      if (tk && (await logoStorageConfigured(tk))) {
+        try { const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token: tk, body: { dataUrl: out } }); if (r?.url) { setF((prev) => ({ ...prev, logoUrl: r.url as string })); return; } } catch { /* fall through to inline */ }
+      }
+      if (out.length > 800000) { setLogoErr(lang === 'vi' ? 'Ảnh quá lớn — thử ảnh nhỏ hơn.' : 'Image too large — try a smaller one.'); return; }
+      setF((prev) => ({ ...prev, logoUrl: out }));
+    } catch { setLogoErr(lang === 'vi' ? 'Tải ảnh thất bại.' : 'Upload failed.'); }
+    finally { setLogoBusy(false); }
+  }
   return (
     <Card title={t('se.br.title')} desc={t('se.br.desc')}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'end' }}>
@@ -934,7 +976,30 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             <input style={ui.input} value={f.accentColor} onChange={(e) => setF({ ...f, accentColor: e.target.value })} />
           </div>
         </Field>
-        <Field label={t('se.br.logo')}><input style={ui.input} value={f.logoUrl} onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder="https://…/logo.png" /></Field>
+        <Field label={t('se.br.logo')}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ width: 46, height: 46, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: logoOk ? '#fff' : '#0f172a', border: '1px solid #334155', fontSize: 20 }}>
+              {logoOk
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={logoShow} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                : <span>🏪</span>}
+            </span>
+            <button type="button" onClick={() => logoRef.current?.click()} disabled={logoBusy}
+              style={{ ...ui.primaryBtn, padding: '9px 14px', fontSize: 13, opacity: logoBusy ? 0.6 : 1 }}>
+              {logoBusy ? (lang === 'vi' ? 'Đang tải…' : 'Uploading…') : (lang === 'vi' ? '⬆ Tải logo lên' : '⬆ Upload logo')}
+            </button>
+            <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickLogo} />
+            {logoShow && (
+              <button type="button" onClick={() => setF({ ...f, logoUrl: '' })}
+                style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, cursor: 'pointer' }}>
+                {lang === 'vi' ? 'Xoá' : 'Remove'}
+              </button>
+            )}
+          </div>
+          <input style={{ ...ui.input, marginTop: 8, fontSize: 12.5 }} value={logoShow.startsWith('data:') ? '' : (f.logoUrl || '')}
+            onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/logo.png' : 'or paste https://…/logo.png'} />
+          {logoErr && <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>{logoErr}</div>}
+        </Field>
         <Field label={lang === 'vi' ? 'Chủ đề theo mùa (trang khách)' : 'Seasonal theme (customer page)'}>
           <select style={ui.input} value={season} onChange={(e) => setF({ ...f, seasonalTheme: e.target.value })}>
             <option value="off">{lang === 'vi' ? 'Tắt — giữ màu thương hiệu' : 'Off — keep my brand color'}</option>
@@ -980,10 +1045,10 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('se.br.preview')}</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #334155' }}>
           <div style={{ background: `linear-gradient(135deg, ${prevAccent}, ${prevAccent})`, padding: '13px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ width: 38, height: 38, borderRadius: 10, background: f.logoUrl?.trim().startsWith('https://') ? '#fff' : 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
-              {f.logoUrl?.trim().startsWith('https://')
+            <span style={{ width: 38, height: 38, borderRadius: 10, background: logoOk ? '#fff' : 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
+              {logoOk
                 // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={f.logoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
+                ? <img src={logoShow} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
                 : <span style={{ fontSize: 17 }}>🏪</span>}
             </span>
             <span style={{ color: '#fff', fontWeight: 800, fontSize: 16, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{data.company?.name || 'Your salon'}</span>

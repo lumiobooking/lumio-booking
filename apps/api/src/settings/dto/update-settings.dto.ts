@@ -41,7 +41,7 @@ export class UpdateBookingRulesDto {
 
 export class UpdateBrandingDto {
   @IsOptional() @IsHexColor() accentColor?: string;
-  @IsOptional() @IsString() @MaxLength(500) logoUrl?: string;
+  @IsOptional() @IsString() @MaxLength(900000) logoUrl?: string;
   @IsOptional() @IsString() @MaxLength(20) seasonalTheme?: string;
   // Rating badge on the booking page: 'auto' = live from in-app reviews,
   // 'manual' = the salon types in their own (e.g. Google) rating, 'off' = hidden.

@@ -76,7 +76,7 @@ function buildJsonLd(s: Seo): Record<string, unknown> {
     ...(s.contactEmail ? { email: s.contactEmail } : {}),
     ...(s.website ? { sameAs: [s.website] } : {}),
     ...(s.address ? { address: { '@type': 'PostalAddress', streetAddress: s.address } } : {}),
-    ...(s.logoUrl ? { image: s.logoUrl, logo: s.logoUrl } : {}),
+    ...(s.logoUrl && s.logoUrl.startsWith('http') ? { image: s.logoUrl, logo: s.logoUrl } : {}),
     priceRange: s.priceFromCents ? `${money(s.priceFromCents, s.currency)}+` : '$$',
     ...(isRestaurant ? { acceptsReservations: true } : {}),
     ...(openingHoursSpecification.length ? { openingHoursSpecification } : {}),
@@ -97,7 +97,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     title,
     description,
     alternates: { canonical: url },
-    openGraph: { title, description, url, type: 'website', siteName: s.name, ...(s.logoUrl ? { images: [{ url: s.logoUrl }] } : {}) },
+    openGraph: { title, description, url, type: 'website', siteName: s.name, ...(s.logoUrl && s.logoUrl.startsWith('http') ? { images: [{ url: s.logoUrl }] } : {}) },
     twitter: { card: 'summary', title, description },
     robots: { index: true, follow: true },
   };

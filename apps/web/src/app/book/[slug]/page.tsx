@@ -1500,7 +1500,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
  *  uploaded one yet. */
 function Logo({ url, size }: { url?: string | null; size: number }) {
   const clean = (url ?? '').trim();
-  if (clean.startsWith('https://')) {
+  if (clean.startsWith('https://') || clean.startsWith('data:image/')) {
     return (
       <span style={{ width: size, height: size, borderRadius: 10, background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(15,42,82,0.18)' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}

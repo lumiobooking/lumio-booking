@@ -1,13 +1,20 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   // rawBody: true keeps the raw request buffer so Stripe webhook signatures can
   // be verified (req.rawBody). JSON parsing still works for all other routes.
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
+
+  // Allow modest image payloads (uploaded logos / service photos travel as a data
+  // URL when the salon hasn't set up FTP storage). Default Express limit is ~100kb,
+  // which returns 413 "request entity too large" — 6mb is plenty for a small image.
+  app.useBodyParser('json', { limit: '6mb' });
+  app.useBodyParser('urlencoded', { limit: '6mb', extended: true });
 
   // Global API prefix: all routes live under /api
   app.setGlobalPrefix('api');

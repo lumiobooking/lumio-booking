@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { compressImageToFit } from '../../../lib/image';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
@@ -664,30 +665,6 @@ function storageConfigured(token: string): Promise<boolean> {
   return _storageReady;
 }
 
-async function compressImage(file: File, maxSide = 640, quality = 0.82): Promise<string> {
-  const dataUrl: string = await new Promise((res, rej) => {
-    const fr = new FileReader();
-    fr.onload = () => res(String(fr.result));
-    fr.onerror = () => rej(new Error('read failed'));
-    fr.readAsDataURL(file);
-  });
-  const img = await new Promise<HTMLImageElement>((res, rej) => {
-    const im = new Image();
-    im.onload = () => res(im);
-    im.onerror = () => rej(new Error('decode failed'));
-    im.src = dataUrl;
-  });
-  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return dataUrl;
-  ctx.drawImage(img, 0, 0, w, h);
-  return canvas.toDataURL('image/jpeg', quality);
-}
-
 function ImageField({ value, onChange, token }: { value: string; onChange: (v: string) => void; token: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -704,18 +681,15 @@ function ImageField({ value, onChange, token }: { value: string; onChange: (v: s
     if (!file.type.startsWith('image/')) { setErr(t('sv.imgNotImage')); return; }
     setErr(null); setBusy(true);
     try {
-      let out = await compressImage(file);
-      // Hostinger/FTP configured? → push the photo there, store only the URL (the DB
-      // never carries image bytes). Not configured? → keep the small image inline.
+      // Always shrink to a light, capped size first — a heavy original never reaches
+      // the API or the DB, whichever path (FTP or inline) we end up taking.
+      const out = await compressImageToFit(file, { maxSide: 512, maxChars: 130000, quality: 0.8 });
       if (await storageConfigured(token)) {
         try {
           const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: out } });
           if (r?.url) { onChange(r.url); return; }
         } catch { /* storage hiccup — fall through to the inline method below */ }
       }
-      // Inline fallback: shrink harder if the source was huge, then store the data URL.
-      if (out.length > 650_000) out = await compressImage(file, 480, 0.72);
-      if (out.length > 650_000) { setErr(t('sv.imgTooBig')); return; }
       onChange(out);
     } catch { setErr(t('sv.imgFailed')); }
     finally { setBusy(false); }

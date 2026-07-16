@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, FormEvent } from 'react';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
+import { compressImageToFit } from '../../../lib/image';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 
@@ -13,26 +14,7 @@ interface MyProfile {
 
 /** Resize/crop an image file to a compact square JPEG data URL. */
 function fileToAvatarDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Could not read file'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Could not load image'));
-      img.onload = () => {
-        const SIZE = 256;
-        const canvas = document.createElement('canvas');
-        canvas.width = SIZE; canvas.height = SIZE;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas not supported'));
-        const side = Math.min(img.width, img.height);
-        ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, SIZE, SIZE);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
+  return compressImageToFit(file, { maxSide: 256, maxChars: 70000, quality: 0.72, square: true });
 }
 
 export default function StaffProfilePage() {

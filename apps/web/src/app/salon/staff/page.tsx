@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
+import { compressImageToFit } from '../../../lib/image';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
@@ -137,29 +138,8 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
  * directly on the booking page. No external storage needed.
  */
 function fileToAvatarDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Could not read file'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Could not load image'));
-      img.onload = () => {
-        const SIZE = 256;
-        const canvas = document.createElement('canvas');
-        canvas.width = SIZE; canvas.height = SIZE;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas not supported'));
-        // Center-crop to a square, then draw scaled into the canvas.
-        const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
+  // Small square avatar/QR — capped so it stays light in the DB and on the booking page.
+  return compressImageToFit(file, { maxSide: 256, maxChars: 70000, quality: 0.72, square: true });
 }
 
 /** Round avatar preview + "Upload photo" button used in the staff forms. */

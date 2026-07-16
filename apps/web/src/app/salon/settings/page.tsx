@@ -927,7 +927,7 @@ function logoStorageConfigured(token: string): Promise<boolean> {
   return _logoStorageReady;
 }
 /** Resize a picked logo to <=240px and keep PNG so transparency survives. */
-async function compressLogo(file: File, maxSide = 240): Promise<string> {
+async function compressLogo(file: File, maxSide = 128): Promise<string> {
   const dataUrl: string = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(new Error('read')); fr.readAsDataURL(file); });
   const img = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('decode')); im.src = dataUrl; });
   const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
@@ -956,13 +956,17 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
     const tk = token ?? '';
     setLogoErr(null); setLogoBusy(true);
     try {
-      const out = await compressLogo(file);
+      // Shrink to the smallest sensible size — the logo only ever shows at ~46px, so
+      // 128px is already retina-sharp. Keep going smaller if the PNG is still heavy.
+      let out = await compressLogo(file, 128);
+      if (out.length > 90000) out = await compressLogo(file, 96);
+      if (out.length > 90000) out = await compressLogo(file, 72);
       // Hostinger/FTP set up? push it there and keep only the URL. Otherwise store the
       // small PNG inline (works everywhere the logo is shown on the booking page).
       if (tk && (await logoStorageConfigured(tk))) {
         try { const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token: tk, body: { dataUrl: out } }); if (r?.url) { setF((prev) => ({ ...prev, logoUrl: r.url as string })); return; } } catch { /* fall through to inline */ }
       }
-      if (out.length > 800000) { setLogoErr(lang === 'vi' ? 'Ảnh quá lớn — thử ảnh nhỏ hơn.' : 'Image too large — try a smaller one.'); return; }
+      if (out.length > 250000) { setLogoErr(lang === 'vi' ? 'Ảnh quá lớn — thử ảnh nhỏ hơn.' : 'Image too large — try a smaller one.'); return; }
       setF((prev) => ({ ...prev, logoUrl: out }));
     } catch { setLogoErr(lang === 'vi' ? 'Tải ảnh thất bại.' : 'Upload failed.'); }
     finally { setLogoBusy(false); }

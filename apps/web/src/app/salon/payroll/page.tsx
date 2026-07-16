@@ -18,6 +18,7 @@ interface Row {
 }
 interface Report {
   totals: { revenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; payCents: number; orders: number; directTipsCents?: number };
+  byMethod?: { cashCents: number; cardCents: number; otherCents: number; giftCardCents: number };
   staff: Row[];
 }
 
@@ -118,6 +119,15 @@ function Inner() {
             <Kpi label={t('pr.kRevenue')} value={formatPrice(data.totals.revenueCents)} accent="#3b82f6" />
           </div>
 
+          {data.byMethod && (data.byMethod.cashCents + data.byMethod.cardCents + data.byMethod.otherCents + data.byMethod.giftCardCents) > 0 && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+              <MethodChip icon="💵" label={t('pr.mCash')} cents={data.byMethod.cashCents} color="#22c55e" />
+              <MethodChip icon="💳" label={t('pr.mCard')} cents={data.byMethod.cardCents} color="#3b82f6" />
+              <MethodChip icon="🏦" label={t('pr.mOther')} cents={data.byMethod.otherCents} color="#a855f7" />
+              {data.byMethod.giftCardCents > 0 && <MethodChip icon="🎁" label={t('pr.mGift')} cents={data.byMethod.giftCardCents} color="#f59e0b" />}
+            </div>
+          )}
+
           {isMobile ? (
             <MList>
               {techs.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('pr.empty')}</p>}
@@ -170,6 +180,18 @@ function Inner() {
           {(data.totals.directTipsCents ?? 0) > 0 && <p style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>{t('pr.directNote')}</p>}
         </>
       )}
+    </div>
+  );
+}
+
+function MethodChip({ icon, label, cents, color }: { icon: string; label: string; cents: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px' }}>
+      <span style={{ fontSize: 18 }}>{icon}</span>
+      <div>
+        <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color }}>{formatPrice(cents)}</div>
+      </div>
     </div>
   );
 }

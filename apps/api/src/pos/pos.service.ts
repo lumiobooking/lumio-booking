@@ -271,25 +271,37 @@ export class PosService {
           const applied = await this.giftCards.redeemInTx(tx, tenantId, giftCode, giftApplied, created.id, user.userId);
           if (applied !== giftApplied) throw new BadRequestException('Gift card balance changed, please retry');
         }
-        // Mirror NEW cash into the Payment ledger so dashboard revenue includes POS
-        // sales. The gift-card portion is excluded — it was already counted as
-        // revenue when the card was sold, so counting it again would double-count.
+        // Mirror NEW money into the Payment ledger so dashboard revenue includes POS
+        // sales — ONE ledger row PER tender method, so a split bill (part cash, part
+        // card) is reported accurately instead of lumping the whole ticket under the
+        // first method. The gift-card portion is excluded (already counted as revenue
+        // when the card was sold), and cash change is subtracted from the cash line so
+        // the ledger reflects money actually kept, not money handed over.
         if (amountDue > 0) {
-          const m = dto.tenders?.[0]?.method;
-          const provider = m === 'CASH' ? 'pos-cash' : m === 'CARD' ? 'pos-card' : 'pos-transfer';
-          await tx.payment.create({
-            data: {
-              tenantId,
-              appointmentId: dto.appointmentId ?? null,
-              amountCents: amountDue,
-              currency: created.currency,
-              type: PaymentType.PAY_LATER,
-              status: PaymentStatus.PAID,
-              provider,
-              providerReference: `order:${created.id}`,
-              paidAt: new Date(),
-            },
-          });
+          const providerFor = (m: string) => (m === 'CASH' ? 'pos-cash' : m === 'CARD' ? 'pos-card' : 'pos-transfer');
+          // Collapse tenders by method (a cashier might add two cash notes).
+          const byMethod = new Map<string, number>();
+          for (const t of dto.tenders ?? []) byMethod.set(t.method, (byMethod.get(t.method) ?? 0) + t.amountCents);
+          // Cash change reduces the cash kept. If there was no cash tender the change
+          // is 0 anyway (card/transfer are charged exact).
+          if (changeCents > 0 && byMethod.has('CASH')) byMethod.set('CASH', (byMethod.get('CASH') ?? 0) - changeCents);
+          for (const [method, gross] of byMethod) {
+            const kept = Math.max(0, gross);
+            if (kept <= 0) continue;
+            await tx.payment.create({
+              data: {
+                tenantId,
+                appointmentId: dto.appointmentId ?? null,
+                amountCents: kept,
+                currency: created.currency,
+                type: PaymentType.PAY_LATER,
+                status: PaymentStatus.PAID,
+                provider: providerFor(method),
+                providerReference: `order:${created.id}`,
+                paidAt: new Date(),
+              },
+            });
+          }
         }
         // Checking out a booking completes it.
         if (dto.appointmentId) {
@@ -472,7 +484,10 @@ export class PosService {
 
     const orders = await this.prisma.order.findMany({
       where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: from, lte: to } },
-      select: { id: true, items: true, appointmentId: true },
+      select: {
+        id: true, items: true, appointmentId: true, changeCents: true, giftCardAppliedCents: true,
+        tenders: { select: { method: true, amountCents: true } },
+      },
     });
     const staff = await this.prisma.staffMember.findMany({
       where: { tenantId },
@@ -576,8 +591,25 @@ export class PosService {
       totalDirectTips += amt;
     }
 
+    // How the money actually came in, split by tender method — accurate even when a
+    // single bill was paid part cash + part card. Cash change is netted off the cash
+    // line; the gift-card portion is shown on its own (it is not new counter money).
+    const byMethod = { cashCents: 0, cardCents: 0, otherCents: 0, giftCardCents: 0 };
+    for (const o of orders) {
+      byMethod.giftCardCents += o.giftCardAppliedCents ?? 0;
+      let cashInThisOrder = false;
+      for (const tn of o.tenders ?? []) {
+        if (tn.method === 'CASH') { byMethod.cashCents += tn.amountCents; cashInThisOrder = true; }
+        else if (tn.method === 'CARD') byMethod.cardCents += tn.amountCents;
+        else byMethod.otherCents += tn.amountCents;
+      }
+      if (cashInThisOrder) byMethod.cashCents -= o.changeCents ?? 0;
+    }
+    byMethod.cashCents = Math.max(0, byMethod.cashCents);
+
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
+      byMethod,
       totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, baseCents: totalBase, payCents: totalPay, directTipsCents: totalDirectTips, orders: orders.length + extraTxns },
       staff: [...rows.values()].sort(
         (a, b) =>

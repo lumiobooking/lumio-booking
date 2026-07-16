@@ -87,6 +87,10 @@ function Register() {
   const [orderDiscount, setOrderDiscount] = useState('');
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
   const [tendered, setTendered] = useState('');
+  // Split payment: one bill settled with several methods (e.g. part cash, part card).
+  // Off by default — the common one-method flow above stays untouched.
+  const [split, setSplit] = useState(false);
+  const [parts, setParts] = useState<{ method: 'CASH' | 'CARD' | 'TRANSFER'; amount: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -340,7 +344,7 @@ function Register() {
     setCart((c) => c.filter((l) => l.uid !== uid));
   }
   function clearCart() {
-    setCart([]); setOrderDiscount(''); setTendered(''); setRedeemInput(''); setError(null);
+    setCart([]); setOrderDiscount(''); setTendered(''); setRedeemInput(''); setError(null); setSplit(false); setParts([]);
     setGiftCard(null); setGiftInput(''); setScanInput(''); setScanMsg(null);
     setTipLogInput({}); setTipLogged({});
     setMobileView('catalog');
@@ -427,9 +431,12 @@ function Register() {
     const giftApplied = giftCard && online ? Math.min(giftCard.balanceCents, total) : 0;
     const due = Math.max(0, total - giftApplied);
     const tenderedCents = Math.round((parseFloat(tendered) || 0) * 100);
-    const change = payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0;
-    return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts };
-  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput, online, giftCard]);
+    // Split mode: sum the parts; any overpay is cash change (someone rounds a cash part up).
+    const splitCents = parts.reduce((sum, p) => sum + Math.round((parseFloat(p.amount) || 0) * 100), 0);
+    const change = split ? Math.max(0, splitCents - due) : (payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0);
+    const splitRemaining = due - splitCents; // >0 = still owed, <0 = change
+    return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining };
+  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
 
   // ---- Customer-facing display (2nd monitor). Mirrors the live cart to the
   // /pos-display page via BroadcastChannel — same browser, no server, no internet. ----
@@ -630,13 +637,24 @@ function Register() {
     }
     // The gift card (if any) covers part/all of the ticket; tenders cover the rest.
     const dueCents = money.due;
+    const apiOf = (m: 'CASH' | 'CARD' | 'TRANSFER') => (m === 'CASH' ? 'CASH' : m === 'CARD' ? 'CARD' : 'OTHER');
     // Cash needs the amount received; Card & Transfer pay the due in full at the terminal/bank.
     const tenderCents = payMethod === 'CASH' ? money.tenderedCents : dueCents;
-    if (dueCents > 0 && payMethod === 'CASH' && tenderCents < dueCents) {
-      setError(t('po.cashShort'));
-      return;
+    // Build the tender list. Split mode = one tender per part; else a single tender.
+    let tenderList: { method: string; amountCents: number }[] = [];
+    if (dueCents > 0) {
+      if (split) {
+        tenderList = parts
+          .map((p) => ({ method: apiOf(p.method), amountCents: Math.round((parseFloat(p.amount) || 0) * 100) }))
+          .filter((tn) => tn.amountCents > 0);
+        const sum = tenderList.reduce((a, tn) => a + tn.amountCents, 0);
+        if (tenderList.length < 2) { setError(t('po.splitNeedTwo')); return; }
+        if (sum < dueCents) { setError(t('po.splitShort')); return; }
+      } else {
+        if (payMethod === 'CASH' && tenderCents < dueCents) { setError(t('po.cashShort')); return; }
+        tenderList = [{ method: apiOf(payMethod), amountCents: tenderCents }];
+      }
     }
-    const apiMethod = payMethod === 'CASH' ? 'CASH' : payMethod === 'CARD' ? 'CARD' : 'OTHER';
     const clientRef = genClientRef();
     const payload = {
       clientRef,
@@ -656,7 +674,7 @@ function Register() {
         tipCents: l.tipCents,
         staffMemberId: l.staffMemberId || undefined,
       })),
-      tenders: dueCents > 0 ? [{ method: apiMethod, amountCents: tenderCents }] : [],
+      tenders: tenderList,
     };
     setSubmitting(true); setError(null); setOkMsg(null);
 
@@ -1139,12 +1157,63 @@ function Register() {
             </div>
           )}
 
-          {/* Payment method */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>{t('po.cash')}</button>
-            <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>{t('po.card')}</button>
-            <button onClick={() => setPayMethod('TRANSFER')} style={tabBtn(payMethod === 'TRANSFER')}>{t('po.transfer')}</button>
+          {/* Payment method + split toggle */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+            {!split && <>
+              <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>{t('po.cash')}</button>
+              <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>{t('po.card')}</button>
+              <button onClick={() => setPayMethod('TRANSFER')} style={tabBtn(payMethod === 'TRANSFER')}>{t('po.transfer')}</button>
+            </>}
+            {split && <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#c7d2fe' }}>➗ {t('po.splitTitle')}</span>}
+            <button
+              onClick={() => {
+                if (split) { setSplit(false); setParts([]); }
+                else {
+                  setSplit(true);
+                  // Seed two parts: the whole due on cash, 0 on card — the cashier edits.
+                  setParts([{ method: 'CASH', amount: (money.due / 100).toFixed(2) }, { method: 'CARD', amount: '' }]);
+                }
+              }}
+              style={{ ...chip, borderColor: split ? '#6366f1' : '#334155', color: split ? '#c7d2fe' : '#94a3b8', whiteSpace: 'nowrap' }}>
+              {split ? t('po.splitOff') : `➗ ${t('po.splitOn')}`}
+            </button>
           </div>
+
+          {split && (
+            <div style={{ border: '1px solid #334155', borderRadius: 10, padding: 10, marginBottom: 10 }}>
+              {parts.map((p, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                  <select value={p.method} onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, method: e.target.value as 'CASH' | 'CARD' | 'TRANSFER' } : x))}
+                    style={{ ...ui.input, width: 130, padding: '7px 8px' }}>
+                    <option value="CASH">{t('po.cash')}</option>
+                    <option value="CARD">{t('po.card')}</option>
+                    <option value="TRANSFER">{t('po.transfer')}</option>
+                  </select>
+                  <input type="number" min={0} step="0.01" value={p.amount} placeholder="0.00"
+                    onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
+                    style={{ ...ui.input, flex: 1, padding: '7px 8px', textAlign: 'right' }} />
+                  {/* Fill this part with whatever is still owed */}
+                  <button onClick={() => {
+                    const others = parts.reduce((a, x, j) => a + (j === i ? 0 : Math.round((parseFloat(x.amount) || 0) * 100)), 0);
+                    const rest = Math.max(0, money.due - others);
+                    setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: (rest / 100).toFixed(2) } : x));
+                  }} style={{ ...chip, whiteSpace: 'nowrap' }}>{t('po.splitRest')}</button>
+                  {parts.length > 2 && <button onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} style={{ ...chip, color: '#f87171', borderColor: '#7f1d1d' }}>✕</button>}
+                </div>
+              ))}
+              {parts.length < 4 && (
+                <button onClick={() => setParts((ps) => [...ps, { method: 'CARD', amount: '' }])} style={{ ...chip, marginBottom: 8 }}>+ {t('po.splitAdd')}</button>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid #334155', paddingTop: 8 }}>
+                <span style={{ color: '#94a3b8' }}>{money.splitRemaining > 0 ? t('po.splitRemaining') : t('po.change')}</span>
+                <span style={{ color: money.splitRemaining > 0 ? '#f59e0b' : '#22c55e' }}>
+                  {formatPrice(Math.abs(money.splitRemaining), currency)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {!split && (<>
 
           {payMethod === 'CASH' && (
             <>
@@ -1187,6 +1256,8 @@ function Register() {
               )}
             </div>
           )}
+
+          </>)}
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>

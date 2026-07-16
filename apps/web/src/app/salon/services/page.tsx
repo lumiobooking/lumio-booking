@@ -651,6 +651,19 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
  * storage needed) and hand back a data: URL. A menu thumbnail never needs more than
  * ~640px, so this keeps each image to tens of KB — small enough to store inline.
  */
+// Is external image storage (Hostinger/FTP) configured? Checked ONCE per page and
+// cached, so uploads don't waste a round-trip discovering it every time. When it is
+// configured the photo is pushed there; when it isn't, we keep the old inline method.
+let _storageReady: Promise<boolean> | null = null;
+function storageConfigured(token: string): Promise<boolean> {
+  if (!_storageReady) {
+    _storageReady = apiFetch<{ configured: boolean }>('/uploads/storage/status', { token })
+      .then((r) => !!r?.configured)
+      .catch(() => false);
+  }
+  return _storageReady;
+}
+
 async function compressImage(file: File, maxSide = 640, quality = 0.82): Promise<string> {
   const dataUrl: string = await new Promise((res, rej) => {
     const fr = new FileReader();
@@ -692,13 +705,14 @@ function ImageField({ value, onChange, token }: { value: string; onChange: (v: s
     setErr(null); setBusy(true);
     try {
       let out = await compressImage(file);
-      // If the salon has external image storage (Hostinger/S3) set up, push the photo
-      // there and keep only the URL — the database never carries the image bytes.
-      // If storage isn't configured, we keep the small compressed image inline.
-      try {
-        const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: out } });
-        if (r?.url) { onChange(r.url); return; }
-      } catch { /* storage not configured or unreachable — fall back to inline */ }
+      // Hostinger/FTP configured? → push the photo there, store only the URL (the DB
+      // never carries image bytes). Not configured? → keep the small image inline.
+      if (await storageConfigured(token)) {
+        try {
+          const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: out } });
+          if (r?.url) { onChange(r.url); return; }
+        } catch { /* storage hiccup — fall through to the inline method below */ }
+      }
       // Inline fallback: shrink harder if the source was huge, then store the data URL.
       if (out.length > 650_000) out = await compressImage(file, 480, 0.72);
       if (out.length > 650_000) { setErr(t('sv.imgTooBig')); return; }

@@ -244,19 +244,25 @@ export class ServicesService {
    * service "lock" keeps the same photo each load while varying across services.
    * By default only fills services that have NO image; pass overwrite to replace all.
    */
+  /** Build a category-themed gradient tile (self-drawn SVG data URL) — always on-topic,
+   *  attractive, and 100% reliable (no external stock service returning random photos). */
   private sampleImageFor(name: string, category: string): string {
     const t = `${category} ${name}`.toLowerCase();
-    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0x7fffffff;
-    const lock = (h % 80) + 1;
-    const tag =
-      /lash|brow/.test(t) ? 'eyelash'
-      : /facial|face|skin/.test(t) ? 'facial'
-      : /massage|body|stone|reflex/.test(t) ? 'massage'
-      : /wax/.test(t) ? 'spa'
-      : /pedi|toe|foot|feet/.test(t) ? 'pedicure'
-      : /nail|gel|acrylic|mani|polish|colour|color|shellac|ombre|french|design|dip|powder/.test(t) ? 'manicure'
-      : 'spa';
-    return `https://loremflickr.com/480/360/${tag}?lock=${lock}`;
+    const bottle = "<g fill='#fff' opacity='0.92'><rect x='222' y='118' width='36' height='18' rx='4'/><rect x='231' y='136' width='18' height='10'/><rect x='208' y='146' width='64' height='92' rx='16'/></g>";
+    const stones = "<g fill='#fff'><ellipse cx='240' cy='212' rx='62' ry='20' opacity='0.95'/><ellipse cx='240' cy='182' rx='48' ry='16' opacity='0.85'/><ellipse cx='240' cy='157' rx='34' ry='12' opacity='0.78'/></g>";
+    const leaf = "<g><path d='M240 108 C302 150 302 212 240 244 C178 212 178 150 240 108 Z' fill='#fff' opacity='0.92'/><path d='M240 120 L240 238' stroke='#0d9488' stroke-width='6' stroke-linecap='round'/></g>";
+    const eye = "<g fill='none' stroke='#fff' stroke-width='9' stroke-linecap='round' opacity='0.95'><path d='M176 182 Q240 128 304 182 Q240 236 176 182 Z'/><circle cx='240' cy='182' r='16' fill='#fff'/><path d='M240 122 L240 100'/><path d='M206 134 L196 112'/><path d='M274 134 L284 112'/></g>";
+    const flower = "<g fill='#fff' opacity='0.9'><ellipse cx='240' cy='138' rx='16' ry='30'/><ellipse cx='240' cy='222' rx='16' ry='30'/><ellipse cx='198' cy='180' rx='30' ry='16'/><ellipse cx='282' cy='180' rx='30' ry='16'/><ellipse cx='210' cy='150' rx='24' ry='15' transform='rotate(-45 210 150)'/><ellipse cx='270' cy='150' rx='24' ry='15' transform='rotate(45 270 150)'/><circle cx='240' cy='180' r='20'/></g>";
+    const pick =
+      /lash|brow/.test(t) ? { a: '#818cf8', b: '#4338ca', i: eye }
+      : /facial|face|skin/.test(t) ? { a: '#34d399', b: '#047857', i: leaf }
+      : /massage|body|stone|reflex/.test(t) ? { a: '#a78bfa', b: '#6d28d9', i: stones }
+      : /pedi|toe|foot|feet/.test(t) ? { a: '#2dd4bf', b: '#0f766e', i: bottle }
+      : /wax/.test(t) ? { a: '#fb7185', b: '#be123c', i: flower }
+      : /nail|gel|acrylic|mani|polish|colour|color|shellac|ombre|french|design|dip|powder/.test(t) ? { a: '#f472b6', b: '#be185d', i: bottle }
+      : { a: '#c084fc', b: '#7c2d92', i: flower };
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='480' height='360' viewBox='0 0 480 360'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='${pick.a}'/><stop offset='1' stop-color='${pick.b}'/></linearGradient></defs><rect width='480' height='360' fill='url(#g)'/><circle cx='96' cy='72' r='150' fill='#fff' opacity='0.12'/><circle cx='430' cy='340' r='130' fill='#000' opacity='0.06'/>${pick.i}</svg>`;
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
   }
 
   /** Fill sample photos for the current tenant's services (demo convenience). */
@@ -266,9 +272,15 @@ export class ServicesService {
       where: { tenantId },
       select: { id: true, name: true, imageUrl: true, category: { select: { name: true } } },
     });
+    // "Sample" = empty, an old loremflickr placeholder, or one of our own tiles. Those
+    // get (re)filled; a real photo the salon uploaded is kept unless overwrite is set.
+    const isSample = (u?: string | null) => {
+      const v = (u ?? '').trim();
+      return !v || v.includes('loremflickr.com') || v.startsWith('data:image/svg');
+    };
     let updated = 0, skipped = 0;
     for (const svc of services) {
-      if (!overwrite && svc.imageUrl && svc.imageUrl.trim()) { skipped++; continue; }
+      if (!overwrite && !isSample(svc.imageUrl)) { skipped++; continue; }
       const url = this.sampleImageFor(svc.name, svc.category?.name ?? '');
       await this.prisma.service.update({ where: { id: svc.id }, data: { imageUrl: url } });
       updated++;

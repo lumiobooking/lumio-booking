@@ -699,12 +699,12 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
       boxShadow: `0 30px 60px -34px rgba(15,42,82,.45), 0 0 0 1px ${tint(accent, 0.10)}`,
       height: fill ? '100%' : 'auto', maxHeight: fill ? '100%' : '88vh', width: '100%',
       display: 'flex', flexDirection: 'column' }}>
-      <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '15px 16px', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
-        <Logo url={salon?.branding?.logoUrl} size={44} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 15.5 }}>{salon?.name}</div>
-          {salon?.address && <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 3, lineHeight: 1.45 }}>{salon.address}</div>}
-          {salon?.contactPhone && <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 3 }}>📞 {salon.contactPhone}</div>}
+      <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '16px 18px', display: 'flex', gap: 13, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
+        <Logo url={salon?.branding?.logoUrl} size={46} />
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.2, lineHeight: 1.2 }}>{salon?.name}</div>
+          {salon?.address && <div style={{ fontSize: 11.5, opacity: 0.78, lineHeight: 1.45 }}>{salon.address}</div>}
+          {salon?.contactPhone && <div style={{ fontSize: 11.5, opacity: 0.78, letterSpacing: 0.2 }}>{salon.contactPhone}</div>}
         </div>
       </div>
       {/* boarding-pass tear line: this is the "ticket stub" cue that sets the cart apart */}

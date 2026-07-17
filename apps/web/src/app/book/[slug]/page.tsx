@@ -625,8 +625,9 @@ export default function PublicBookingPage() {
           </div>
         )}
 
-        {/* Mobile: the action bar floats above everything and is never hidden. */}
-        {isMobile && step < 5 && (
+        {/* Mobile — and any embed — get the action bar so the Continue button is never
+            hidden below a tall cart / the fold. Hosted desktop keeps its sticky cart. */}
+        {(isMobile || embedded) && step < 5 && (
           <MobileBar
             embedded={!asPage} count={cartLines.length} totalCents={totalCents} fmt={fmt}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
@@ -751,7 +752,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
             <div>🕐 {fmtTime(slot.start)} – {fmtTime(slot.end)} ({fmtDur(totalDuration)})</div>
           </div>
         )}
-        {wide && qrSrc && (
+        {wide && qrSrc && lines.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, background: SOFT, borderRadius: 12, padding: '8px 10px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qrSrc} width={44} height={44} alt="" style={{ borderRadius: 6, flexShrink: 0, background: '#fff' }} />
@@ -1114,8 +1115,13 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
       </div>
 
       {services.length > 8 && (
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a service…"
-          style={{ ...inputStyle, marginBottom: 14 }} />
+        <div style={{ position: 'relative', marginBottom: 16 }}>
+          <span style={{ position: 'absolute', left: 15, top: '50%', transform: 'translateY(-50%)', fontSize: 17, opacity: 0.75, pointerEvents: 'none' }}>🔍</span>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a service…"
+            style={{ ...inputStyle, padding: '14px 14px 14px 44px', fontSize: 15, borderRadius: 12,
+              border: `1.6px solid ${tint(accent, 0.55)}`, background: tint(accent, 0.05),
+              boxShadow: `0 6px 18px -10px ${tint(accent, 0.7)}` }} />
+        </div>
       )}
 
       {shown.map((g) => (

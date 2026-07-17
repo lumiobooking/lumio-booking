@@ -55,6 +55,7 @@ function ServicesInner() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [filling, setFilling] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
   // Currency is a salon-level setting (Settings -> Payments). The whole Services
   // screen formats prices with it, so changing the currency there is reflected here.
@@ -135,11 +136,30 @@ function ServicesInner() {
   );
   const pg = usePaged(visible, 25);
 
+  async function fillImages(overwrite: boolean) {
+    const ask = overwrite
+      ? (lang === 'vi' ? 'Thay TẤT CẢ ảnh dịch vụ bằng ảnh mẫu (kể cả dịch vụ đã có ảnh)?' : 'Replace ALL service photos with fresh sample images?')
+      : (lang === 'vi' ? 'Điền ảnh mẫu cho các dịch vụ CHƯA có ảnh? (dịch vụ đã có ảnh giữ nguyên)' : 'Fill sample photos for services WITHOUT an image? (existing photos are kept)');
+    if (!window.confirm(ask)) return;
+    setFilling(true); setError(null);
+    try {
+      const r = await apiFetch<{ updated: number; skipped: number }>('/services/fill-sample-images', { method: 'POST', token, body: { overwrite } });
+      await load();
+      window.alert(lang === 'vi' ? `✓ Đã thêm ảnh cho ${r.updated} dịch vụ (giữ nguyên ${r.skipped}).` : `✓ Added photos to ${r.updated} services (kept ${r.skipped}).`);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not fill images'); }
+    finally { setFilling(false); }
+  }
+
   return (
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>{t('sv.title')}</h2>
-        <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
+        <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto', flexWrap: 'wrap' }}>
+          <button onClick={() => fillImages(false)} disabled={filling}
+            title={lang === 'vi' ? 'Tự thêm ảnh nail/spa mẫu cho các dịch vụ chưa có ảnh (dùng khi demo)' : 'Auto-add sample nail/spa photos to services without an image (for demos)'}
+            style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #6366f1', color: '#a5b4fc', opacity: filling ? 0.6 : 1 }}>
+            {filling ? (lang === 'vi' ? 'Đang thêm ảnh…' : 'Adding…') : (lang === 'vi' ? '🖼 Ảnh mẫu' : '🖼 Sample images')}
+          </button>
           <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #475569' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
           </button>

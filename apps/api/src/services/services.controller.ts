@@ -70,6 +70,12 @@ export class ServicesController {
     return this.servicesService.create(user, dto);
   }
 
+  /** Demo: auto-fill a relevant stock photo for every service (empty-only by default). */
+  @Post('fill-sample-images')
+  fillSampleImages(@CurrentUser() user: AuthenticatedUser, @Body() dto: { overwrite?: boolean }) {
+    return this.servicesService.fillSampleImages(user, !!dto?.overwrite);
+  }
+
   /** Bulk import a whole menu (categories + services) in one call. */
   @Post('import')
   bulkImport(

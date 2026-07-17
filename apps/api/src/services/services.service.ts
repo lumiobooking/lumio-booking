@@ -237,6 +237,46 @@ export class ServicesService {
    * Categories are created on demand (matched by name), services are deduped by
    * name within the tenant so re-running is safe. Tenant-scoped throughout.
    */
+  /**
+   * Demo helper: give every service a relevant real photo (nail / spa) pulled by
+   * keyword from a free stock service, so a fresh demo shop looks polished without
+   * the owner uploading anything. Category + name decide the subject; a stable per-
+   * service "lock" keeps the same photo each load while varying across services.
+   * By default only fills services that have NO image; pass overwrite to replace all.
+   */
+  private sampleImageFor(name: string, category: string): string {
+    const t = `${category} ${name}`.toLowerCase();
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0x7fffffff;
+    const lock = (h % 80) + 1;
+    const tag =
+      /lash|brow/.test(t) ? 'eyelash'
+      : /facial|face|skin/.test(t) ? 'facial'
+      : /massage|body|stone|reflex/.test(t) ? 'massage'
+      : /wax/.test(t) ? 'spa'
+      : /pedi|toe|foot|feet/.test(t) ? 'pedicure'
+      : /nail|gel|acrylic|mani|polish|colour|color|shellac|ombre|french|design|dip|powder/.test(t) ? 'manicure'
+      : 'spa';
+    return `https://loremflickr.com/480/360/${tag}?lock=${lock}`;
+  }
+
+  /** Fill sample photos for the current tenant's services (demo convenience). */
+  async fillSampleImages(user: AuthenticatedUser, overwrite = false) {
+    const tenantId = this.tenantId(user);
+    const services = await this.prisma.service.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, imageUrl: true, category: { select: { name: true } } },
+    });
+    let updated = 0, skipped = 0;
+    for (const svc of services) {
+      if (!overwrite && svc.imageUrl && svc.imageUrl.trim()) { skipped++; continue; }
+      const url = this.sampleImageFor(svc.name, svc.category?.name ?? '');
+      await this.prisma.service.update({ where: { id: svc.id }, data: { imageUrl: url } });
+      updated++;
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'service.fill_sample_images', resourceType: 'tenant', resourceId: tenantId, metadata: { updated, skipped, overwrite } });
+    return { updated, skipped };
+  }
+
   async bulkImport(
     user: AuthenticatedUser,
     items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }>,

@@ -184,6 +184,10 @@ model Tenant {
   // 'platform' = hidden from the salon UI AND write-blocked at the API (protects
   // Lumio's internal process). Missing key = feature's built-in default (usually salon).
   featurePolicy Json @default("{}")
+  // Per-tenant plan-feature override (Super Admin). Keys mirror the Plan booleans
+  // (posEnabled, onlinePaymentEnabled, multiLocationEnabled, whiteLabelEnabled).
+  // A key set true/false forces that feature on/off; absent = follow the plan.
+  featureOverrides Json @default("{}")
 
   // Current plan (denormalized convenience pointer); source of truth for
   // billing periods is the Subscription rows.

@@ -27,6 +27,8 @@ const TENANT_PUBLIC_SELECT = {
   billingExempt: true,
   accessUntil: true,
   accountGroupId: true,
+  featureOverrides: true,
+  plan: { select: { name: true, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true } },
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.TenantSelect;
@@ -367,6 +369,31 @@ export class TenantsService {
     await this.prisma.tenant.update({ where: { id }, data: { billingExempt, accessUntil, status } });
     await this.audit.log({ tenantId: id, userId: actor.userId, action: 'tenant.access_updated', resourceType: 'tenant', resourceId: id, metadata: { billingExempt, accessUntil: accessUntil?.toISOString() ?? null, status } });
     return { id, billingExempt, accessUntil: accessUntil?.toISOString() ?? null, status };
+  }
+
+  /**
+   * Super Admin overrides plan features for ONE salon, independent of its plan.
+   * Keys mirror the Plan booleans. A value of true/false forces the feature on/off;
+   * null (or omitted) removes the override so the salon follows its plan again.
+   * This is how a Starter salon can be granted, say, POS as a one-off add-on.
+   */
+  async setFeatureOverrides(id: string, overrides: Record<string, boolean | null>, actor: AuthenticatedUser) {
+    const KEYS = ['posEnabled', 'onlinePaymentEnabled', 'multiLocationEnabled', 'whiteLabelEnabled'];
+    const tenant = await this.prisma.tenant.findFirst({ where: { id, deletedAt: null }, select: { id: true, featureOverrides: true } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    const raw = tenant.featureOverrides;
+    const current: Record<string, boolean> =
+      raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...(raw as Record<string, boolean>) } : {};
+    for (const k of KEYS) {
+      if (!overrides || !(k in overrides)) continue;
+      const v = overrides[k];
+      if (v === true || v === false) current[k] = v;
+      else delete current[k]; // null → follow the plan
+    }
+    for (const k of Object.keys(current)) if (!KEYS.includes(k)) delete current[k];
+    await this.prisma.tenant.update({ where: { id }, data: { featureOverrides: current as Prisma.InputJsonValue } });
+    await this.audit.log({ tenantId: id, userId: actor.userId, action: 'tenant.feature_overrides_updated', resourceType: 'tenant', resourceId: id, metadata: current as Prisma.InputJsonValue });
+    return { id, featureOverrides: current };
   }
 
   /** Super Admin changes a salon's admin LOGIN email. */

@@ -45,18 +45,25 @@ export class MeController {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: {
+        featureOverrides: true,
         plan: {
           select: { name: true, posEnabled: true, onlinePaymentEnabled: true, multiLocationEnabled: true, whiteLabelEnabled: true },
         },
       },
     });
     const p = tenant?.plan;
+    // Per-tenant override wins over the plan; absent → follow the plan (or full access
+    // when the salon has no plan). Set by Super Admin, e.g. granting POS to a Starter shop.
+    const raw = tenant?.featureOverrides;
+    const ov: Record<string, unknown> = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    const flag = (key: string, planVal: boolean | undefined): boolean =>
+      typeof ov[key] === 'boolean' ? (ov[key] as boolean) : (p ? !!planVal : true);
     return {
       planName: p?.name ?? null,
-      posEnabled: p ? p.posEnabled : true,
-      onlinePaymentEnabled: p ? p.onlinePaymentEnabled : true,
-      multiLocationEnabled: p ? p.multiLocationEnabled : true,
-      whiteLabelEnabled: p ? p.whiteLabelEnabled : true,
+      posEnabled: flag('posEnabled', p?.posEnabled),
+      onlinePaymentEnabled: flag('onlinePaymentEnabled', p?.onlinePaymentEnabled),
+      multiLocationEnabled: flag('multiLocationEnabled', p?.multiLocationEnabled),
+      whiteLabelEnabled: flag('whiteLabelEnabled', p?.whiteLabelEnabled),
     };
   }
 

@@ -106,6 +106,16 @@ export class TenantsController {
     return this.tenantsService.setAccess(id, dto, user);
   }
 
+  @Post(':id/feature-overrides')
+  @HttpCode(200)
+  setFeatureOverrides(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: { overrides?: Record<string, boolean | null> },
+  ) {
+    return this.tenantsService.setFeatureOverrides(id, dto?.overrides ?? {}, user);
+  }
+
   @Post(':id/admin-email')
   @HttpCode(200)
   updateAdminEmail(

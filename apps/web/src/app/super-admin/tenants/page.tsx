@@ -22,8 +22,17 @@ interface Tenant {
   users?: { email: string }[]; // first SALON_ADMIN — the login email
   billingExempt?: boolean;
   accessUntil?: string | null;
+  featureOverrides?: Record<string, boolean>;
+  plan?: { name: string; posEnabled: boolean; onlinePaymentEnabled: boolean; multiLocationEnabled: boolean; whiteLabelEnabled: boolean } | null;
   voiceLine?: { lumioNumber: string | null; enabled: boolean } | null; // AI hotline number
 }
+
+const OVERRIDE_FEATURES: { key: 'posEnabled' | 'onlinePaymentEnabled' | 'multiLocationEnabled' | 'whiteLabelEnabled'; label: string }[] = [
+  { key: 'posEnabled', label: 'POS · Products · Sales report' },
+  { key: 'onlinePaymentEnabled', label: 'Online payments' },
+  { key: 'multiLocationEnabled', label: 'Multi-location' },
+  { key: 'whiteLabelEnabled', label: 'White-label branding' },
+];
 
 interface Plan {
   id: string;
@@ -343,6 +352,11 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   const [pw, setPw] = useState('');
   const [exempt, setExempt] = useState(tenant.billingExempt ?? false);
   const [accessUntil, setAccessUntil] = useState(tenant.accessUntil ? tenant.accessUntil.slice(0, 10) : '');
+  const [ovr, setOvr] = useState<Record<string, 'default' | 'on' | 'off'>>(() => {
+    const o = (tenant.featureOverrides ?? {}) as Record<string, unknown>;
+    const at = (k: string): 'default' | 'on' | 'off' => (o[k] === true ? 'on' : o[k] === false ? 'off' : 'default');
+    return { posEnabled: at('posEnabled'), onlinePaymentEnabled: at('onlinePaymentEnabled'), multiLocationEnabled: at('multiLocationEnabled'), whiteLabelEnabled: at('whiteLabelEnabled') };
+  });
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -396,6 +410,17 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
       setMsg(`✓ Access updated — salon is now ${r.status}.`);
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not update access'); } finally { setBusy(false); }
+  }
+
+  async function saveOverrides() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const overrides: Record<string, boolean | null> = {};
+      for (const k of Object.keys(ovr)) overrides[k] = ovr[k] === 'default' ? null : ovr[k] === 'on';
+      await apiFetch(`/tenants/${tenant.id}/feature-overrides`, { method: 'POST', token, body: { overrides } });
+      setMsg('✓ Feature overrides saved. The salon sees the change on next load.');
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save overrides'); } finally { setBusy(false); }
   }
 
   async function saveInfo() {
@@ -466,6 +491,33 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>
           Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString('en-US')}` : 'billing-controlled'} · status {tenant.status}
         </p>
+      </div>
+
+      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Plan feature overrides</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 10px' }}>
+          Grant or remove a feature for THIS salon only. “Default” follows the {tenant.plan?.name ?? 'current'} plan; “On/Off” overrides it — e.g. give a Starter salon POS as an add-on.
+        </p>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {OVERRIDE_FEATURES.map((ft) => {
+            const planOn = tenant.plan ? !!tenant.plan[ft.key] : true;
+            const sel = ovr[ft.key] ?? 'default';
+            const effOn = sel === 'on' ? true : sel === 'off' ? false : planOn;
+            return (
+              <div key={ft.key} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ minWidth: 190, fontSize: 13.5, color: '#e2e8f0' }}>{ft.label}</span>
+                <span style={{ fontSize: 11.5, color: '#64748b', minWidth: 66 }}>plan: {planOn ? 'On' : 'Off'}</span>
+                <select value={sel} onChange={(e) => setOvr({ ...ovr, [ft.key]: e.target.value as 'default' | 'on' | 'off' })} style={{ ...inp, width: 'auto' }}>
+                  <option value="default">Default (follow plan)</option>
+                  <option value="on">Force ON</option>
+                  <option value="off">Force OFF</option>
+                </select>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: effOn ? '#4ade80' : '#f87171' }}>{effOn ? 'ENABLED' : 'OFF'}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 10 }}><button onClick={saveOverrides} disabled={busy} style={primaryBtn}>Save feature overrides</button></div>
       </div>
 
       <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>

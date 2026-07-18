@@ -178,6 +178,26 @@ function wallTimeToISO(local: Date, timeZone: string): string {
   return new Date(naiveUTC - offset).toISOString();
 }
 
+/**
+ * Fire the one conversion the salon's ads care about. It lands in three places so any
+ * setup works: GTM (dataLayer 'booking_completed'), GA4 direct ('purchase'), and a
+ * postMessage to the parent site so an embedded form can be measured in the shop's own
+ * domain/session. transaction_id = booking id, so GA4 de-duplicates repeat fires.
+ */
+function fireConversion(data: { id: string; valueCents: number; currency: string; items: { name: string; priceCents: number }[] }) {
+  if (typeof window === 'undefined') return;
+  const value = Math.round(data.valueCents) / 100;
+  const items = data.items.map((it) => ({ item_name: it.name, price: Math.round(it.priceCents) / 100, quantity: 1 }));
+  const payload = { transaction_id: data.id, value, currency: data.currency || 'USD', items };
+  try {
+    const w = window as unknown as { dataLayer?: Record<string, unknown>[]; gtag?: (...a: unknown[]) => void };
+    w.dataLayer = w.dataLayer || [];
+    w.dataLayer.push({ event: 'booking_completed', ...payload });
+    if (typeof w.gtag === 'function') w.gtag('event', 'purchase', payload);
+  } catch { /* ignore */ }
+  try { window.parent.postMessage({ type: 'lumio:booking_completed', ...payload }, '*'); } catch { /* ignore */ }
+}
+
 export default function PublicBookingPage() {
   const params = useParams();
   const slug = String(params?.slug ?? '');
@@ -346,6 +366,14 @@ export default function PublicBookingPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) { setError((body && body.message) || `Booking failed (${res.status})`); return; }
       setResult({ paymentStatus: body?.payment?.status ?? null });
+      if (body?.booking?.id) {
+        fireConversion({
+          id: String(body.booking.id),
+          valueCents: totalCents,
+          currency: rules.currency,
+          items: cartLines.map((l) => ({ name: l.name, priceCents: l.priceCents })),
+        });
+      }
       setStep(5);
     } catch { setError('Network error. Please try again.'); }
     finally { setSubmitting(false); }

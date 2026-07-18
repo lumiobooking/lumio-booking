@@ -96,6 +96,7 @@ export class PublicSalonController {
       weekdayDiscounts,
       dateDiscounts,
       deposit,
+      analytics: await this.settings.getAnalyticsSettings(tenant.id),
       rating,
     };
   }
@@ -134,11 +135,12 @@ export class PublicSalonController {
     });
     if (!tenant || !this.isOpen(tenant)) throw new NotFoundException('Salon not found');
 
-    const [extra, booking, services, agg] = await Promise.all([
+    const [extra, booking, services, agg, analytics] = await Promise.all([
       this.settings.getCompanyExtra(tenant.id),
       this.settings.getBookingRules(tenant.id),
       this.bookings.publicServices(tenant.id).catch(() => [] as Array<{ priceCents?: number }>),
       this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
+      this.settings.getAnalyticsSettings(tenant.id),
     ]);
 
     const prices = (services ?? []).map((s) => s.priceCents ?? 0).filter((n) => n > 0);
@@ -164,6 +166,7 @@ export class PublicSalonController {
       priceFromCents,
       hours,
       rating: ratingCount > 0 ? { value: Math.round(ratingValue * 10) / 10, count: ratingCount } : null,
+      analytics,
     };
   }
 

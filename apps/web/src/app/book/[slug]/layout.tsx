@@ -25,6 +25,7 @@ interface Seo {
   priceFromCents: number | null;
   hours: { day: number; closed: boolean; open: string; close: string }[];
   rating: { value: number; count: number } | null;
+  analytics?: { ga4Id?: string; gtmId?: string } | null;
 }
 
 async function getSeo(slug: string): Promise<Seo | null> {
@@ -106,6 +107,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 export default async function BookSlugLayout({ children, params }: { children: ReactNode; params: { slug: string } }) {
   const s = await getSeo(params.slug);
   const jsonLd = s ? buildJsonLd(s) : null;
+  // Validate the shape before it ever reaches the page — belt & suspenders XSS guard.
+  const ga4Id = /^G-[A-Z0-9]{4,20}$/i.test(s?.analytics?.ga4Id ?? '') ? s!.analytics!.ga4Id! : '';
+  const gtmId = /^GTM-[A-Z0-9]{4,12}$/i.test(s?.analytics?.gtmId ?? '') ? s!.analytics!.gtmId! : '';
   return (
     <>
       {/* The booking page is the only thing a customer ever sees of the salon —
@@ -121,6 +125,21 @@ export default async function BookSlugLayout({ children, params }: { children: R
       {jsonLd && (
         // eslint-disable-next-line react/no-danger
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
+      )}
+      {/* Per-salon web analytics. Only well-formed IDs are injected (validated here and
+          server-side) so a stored value can never smuggle in script. Each salon loads
+          only its OWN GA4 / GTM, so measurement never mixes between shops. */}
+      {ga4Id && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+          <script async src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`} />
+          {/* eslint-disable-next-line react/no-danger */}
+          <script dangerouslySetInnerHTML={{ __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${ga4Id}');` }} />
+        </>
+      )}
+      {gtmId && (
+        // eslint-disable-next-line react/no-danger
+        <script dangerouslySetInnerHTML={{ __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');` }} />
       )}
       {children}
     </>

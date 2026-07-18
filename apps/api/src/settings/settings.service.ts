@@ -34,6 +34,9 @@ import {
   LoyaltySettings,
   DEFAULT_LOYALTY_SETTINGS,
   REVIEW_SETTINGS_KEY,
+  ANALYTICS_SETTINGS_KEY,
+  AnalyticsSettings,
+  DEFAULT_ANALYTICS_SETTINGS,
   ReviewSettings,
   DEFAULT_REVIEW_SETTINGS,
   WEEKDAY_DISCOUNTS_KEY,
@@ -154,6 +157,26 @@ export class SettingsService {
   /** Review-reward program settings, merged over defaults. */
   async getReviewSettings(tenantId: string): Promise<ReviewSettings> {
     return this.readKey<ReviewSettings>(tenantId, REVIEW_SETTINGS_KEY, DEFAULT_REVIEW_SETTINGS);
+  }
+
+  async getAnalyticsSettings(tenantId: string): Promise<AnalyticsSettings> {
+    return this.readKey<AnalyticsSettings>(tenantId, ANALYTICS_SETTINGS_KEY, DEFAULT_ANALYTICS_SETTINGS);
+  }
+
+  /** Save the salon's GA4 / GTM IDs. Both are public front-end IDs (not secrets);
+   *  we still validate the shape so a typo can't inject arbitrary script. */
+  async updateAnalytics(user: AuthenticatedUser, dto: { ga4Id?: string; gtmId?: string }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getAnalyticsSettings(tenantId);
+    const ga = typeof dto.ga4Id === 'string' ? dto.ga4Id.trim().toUpperCase() : cur.ga4Id;
+    const gtm = typeof dto.gtmId === 'string' ? dto.gtmId.trim().toUpperCase() : cur.gtmId;
+    const next: AnalyticsSettings = {
+      ga4Id: ga === '' || /^G-[A-Z0-9]{4,20}$/.test(ga) ? ga : cur.ga4Id,
+      gtmId: gtm === '' || /^GTM-[A-Z0-9]{4,12}$/.test(gtm) ? gtm : cur.gtmId,
+    };
+    await this.writeKey(tenantId, ANALYTICS_SETTINGS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.analytics_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
   }
 
   async updateReview(
@@ -691,6 +714,7 @@ export class SettingsService {
       dateDiscounts: await this.getDateDiscounts(tenantId),
       reminders: await this.getReminderSettings(tenantId),
       deposit: await this.getDepositSettings(tenantId),
+      analytics: await this.getAnalyticsSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
   }

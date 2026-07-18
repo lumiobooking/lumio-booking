@@ -37,18 +37,25 @@ function Inner() {
   const [name, setName] = useState('');
   const [siteUrl, setSiteUrl] = useState('');
   const [creating, setCreating] = useState(false);
+  const [ga4Id, setGa4Id] = useState('');
+  const [gtmId, setGtmId] = useState('');
+  const [savingAn, setSavingAn] = useState(false);
+  const [anMsg, setAnMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const [keyList, tenant] = await Promise.all([
+      const [keyList, tenant, settings] = await Promise.all([
         apiFetch<ApiKey[]>('/api-keys', { token }),
         apiFetch<{ slug: string }>('/me/tenant', { token }),
+        apiFetch<{ analytics?: { ga4Id?: string; gtmId?: string } }>('/settings', { token }).catch(() => null),
       ]);
       setKeys(keyList);
       setSlug(tenant?.slug ?? null);
+      setGa4Id(settings?.analytics?.ga4Id ?? '');
+      setGtmId(settings?.analytics?.gtmId ?? '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load integrations');
     } finally {
@@ -64,6 +71,15 @@ function Inner() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function saveAnalytics() {
+    setSavingAn(true); setAnMsg(null); setError(null);
+    try {
+      await apiFetch('/settings/analytics', { method: 'PATCH', token, body: { ga4Id: ga4Id.trim(), gtmId: gtmId.trim() } });
+      setAnMsg(lang === 'vi' ? '✓ Đã lưu. Trang đặt lịch của tiệm sẽ nạp GA4/GTM này.' : '✓ Saved. Your booking page now loads this GA4/GTM.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not save analytics'); }
+    finally { setSavingAn(false); }
+  }
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -238,6 +254,25 @@ function Inner() {
           </table>
         </div>
       )}
+      <h2 style={{ fontSize: 18, margin: '30px 0 4px' }}>📊 Google Analytics & Tag Manager</h2>
+      <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.6, maxWidth: 680 }}>
+        {lang === 'vi'
+          ? 'Dán ID để đo lường đặt lịch RIÊNG cho tiệm này — trang đặt lịch chỉ nạp GA4/GTM của bạn, không lẫn với tiệm khác. Khi khách đặt xong, hệ thống tự bắn sự kiện “booking_completed” (GA4: purchase) kèm mã đơn, giá trị và tiền tệ để làm chuyển đổi cho quảng cáo.'
+          : 'Paste your IDs to measure bookings for THIS salon only — the booking page loads just your GA4/GTM, never mixed with other salons. On each completed booking we fire “booking_completed” (GA4: purchase) with order id, value and currency for your ad conversions.'}
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: 640 }}>
+        <label style={{ fontSize: 13, color: '#cbd5e1' }}>GA4 Measurement ID
+          <input style={{ ...ui.input, marginTop: 4 }} value={ga4Id} onChange={(e) => setGa4Id(e.target.value)} placeholder="G-XXXXXXXXXX" />
+        </label>
+        <label style={{ fontSize: 13, color: '#cbd5e1' }}>GTM Container ID
+          <input style={{ ...ui.input, marginTop: 4 }} value={gtmId} onChange={(e) => setGtmId(e.target.value)} placeholder="GTM-XXXXXXX" />
+        </label>
+      </div>
+      {anMsg && <div style={{ color: '#34d399', fontSize: 13, marginTop: 8 }}>{anMsg}</div>}
+      <button onClick={saveAnalytics} disabled={savingAn} style={{ ...ui.primaryBtn, marginTop: 12 }}>
+        {savingAn ? '…' : (lang === 'vi' ? 'Lưu Analytics' : 'Save analytics')}
+      </button>
+
     </section>
   );
 }

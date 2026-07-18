@@ -119,6 +119,12 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
 };
 
 export const REVIEW_SETTINGS_KEY = 'review_settings';
+export const ANALYTICS_SETTINGS_KEY = 'analytics_settings';
+
+/** Per-tenant web analytics — a GA4 Measurement ID and/or a GTM container, injected
+ *  ONLY on this salon's booking page so each shop measures in its own property. */
+export interface AnalyticsSettings { ga4Id: string; gtmId: string }
+export const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = { ga4Id: '', gtmId: '' };
 
 // Review-reward program: customer rates on our page, then is invited to Google.
 export interface ReviewSettings {

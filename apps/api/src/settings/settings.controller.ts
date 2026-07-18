@@ -82,6 +82,11 @@ export class SettingsController {
     return this.settings.updateLoyalty(user, dto);
   }
 
+  @Patch('analytics')
+  updateAnalytics(@CurrentUser() user: AuthenticatedUser, @Body() dto: { ga4Id?: string; gtmId?: string }) {
+    return this.settings.updateAnalytics(user, dto);
+  }
+
   @Patch('review')
   updateReview(
     @CurrentUser() user: AuthenticatedUser,

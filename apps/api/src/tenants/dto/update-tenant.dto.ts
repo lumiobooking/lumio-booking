@@ -10,6 +10,11 @@ export class UpdateTenantDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(60)
+  slug?: string;
+
+  @IsOptional()
+  @IsString()
   timezone?: string;
 
   @IsOptional()

@@ -352,6 +352,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   const [pw, setPw] = useState('');
   const [exempt, setExempt] = useState(tenant.billingExempt ?? false);
   const [accessUntil, setAccessUntil] = useState(tenant.accessUntil ? tenant.accessUntil.slice(0, 10) : '');
+  const [slug, setSlug] = useState(tenant.slug);
   const [ovr, setOvr] = useState<Record<string, 'default' | 'on' | 'off'>>(() => {
     const o = (tenant.featureOverrides ?? {}) as Record<string, unknown>;
     const at = (k: string): 'default' | 'on' | 'off' => (o[k] === true ? 'on' : o[k] === false ? 'off' : 'default');
@@ -423,6 +424,15 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save overrides'); } finally { setBusy(false); }
   }
 
+  async function saveSlug() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<{ slug: string }>(`/tenants/${tenant.id}`, { method: 'PATCH', token, body: { slug } });
+      setMsg(`✓ Booking URL is now /book/${r.slug}. Update the WordPress embed and any shared links to match.`);
+      onSaved();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not change the booking URL'); } finally { setBusy(false); }
+  }
+
   async function saveInfo() {
     setBusy(true); setErr(null); setMsg(null);
     try {
@@ -470,6 +480,18 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input style={{ ...inp, maxWidth: 320 }} type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="new-login@email.com" />
           <button onClick={saveLoginEmail} disabled={busy || !loginEmail || loginEmail === currentLoginEmail} style={primaryBtn}>Change login email</button>
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Booking URL (slug)</div>
+        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+          Public booking address: <strong style={{ color: '#cbd5e1' }}>lumiobooking.com/book/{tenant.slug}</strong>. Changing it moves the page — you must also update the WordPress embed and any shared / printed links, or the old ones will 404.
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ color: '#64748b', fontSize: 13 }}>/book/</span>
+          <input style={{ ...inp, maxWidth: 300 }} value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="aura-nail-lab" />
+          <button onClick={saveSlug} disabled={busy || slug.length < 2 || slug === tenant.slug} style={primaryBtn}>Save URL</button>
         </div>
       </div>
 

@@ -237,10 +237,21 @@ export class TenantsService {
       }
     }
 
+    // Slug is the public booking URL (lumiobooking.com/book/<slug>). Normalise to a
+    // URL-safe form and make sure no other salon already owns it.
+    let slug: string | undefined;
+    if (dto.slug !== undefined) {
+      slug = dto.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+      if (slug.length < 2) throw new BadRequestException('Booking URL (slug) must be at least 2 characters — letters, numbers and hyphens only.');
+      const clash = await this.prisma.tenant.findFirst({ where: { slug, id: { not: id }, deletedAt: null }, select: { id: true } });
+      if (clash) throw new ConflictException('That booking URL (slug) is already used by another salon.');
+    }
+
     const updated = await this.prisma.tenant.update({
       where: { id },
       data: {
         name: dto.name,
+        slug,
         timezone: dto.timezone,
         planId: dto.planId,
         contactEmail: dto.contactEmail,

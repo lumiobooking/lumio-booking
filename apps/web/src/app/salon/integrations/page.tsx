@@ -150,6 +150,35 @@ function Inner() {
         )}
       </div>
 
+      {/* Add the Book button to the salon's Google Business Profile */}
+      <div style={{ ...ui.card, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>📍 {lang === 'vi' ? 'Thêm nút “Book online” lên Google' : 'Add a “Book online” button to Google'}</h2>
+        <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14, lineHeight: 1.6 }}>
+          {lang === 'vi'
+            ? 'Dán link đặt lịch bên trên vào Google Business Profile của tiệm để khách đặt ngay từ Google Maps/Search. Google duyệt ~24–48h.'
+            : 'Paste your booking link (above) into the salon\'s Google Business Profile so customers book straight from Google Maps/Search. Google reviews it in ~24–48h.'}
+        </p>
+        <ol style={{ color: '#cbd5e1', fontSize: 13.5, lineHeight: 1.9, margin: '8px 0 12px', paddingLeft: 20 }}>
+          <li>{lang === 'vi' ? 'Mở Google Business Profile của tiệm (nút dưới), đăng nhập tài khoản sở hữu hồ sơ.' : 'Open the salon\'s Google Business Profile (button below); sign in with the owning account.'}</li>
+          <li>{lang === 'vi' ? 'Edit profile → Bookings / Appointment links.' : 'Edit profile → Bookings / Appointment links.'}</li>
+          <li>{lang === 'vi' ? 'Add appointment link → dán link Lumio ở trên → Save.' : 'Add appointment link → paste the Lumio link above → Save.'}</li>
+          <li>{lang === 'vi' ? 'Chờ 24–48h Google duyệt → nút “Book online” hiện ra.' : 'Wait 24–48h for Google to approve → the “Book online” button appears.'}</li>
+        </ol>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => bookingLink && navigator.clipboard?.writeText(bookingLink)} style={ui.primaryBtn} disabled={!bookingLink}>
+            {lang === 'vi' ? 'Copy link đặt lịch' : 'Copy booking link'}
+          </button>
+          <a href="https://business.google.com/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid #475569', color: '#e2e8f0' }}>
+            {lang === 'vi' ? 'Mở Google Business Profile ↗' : 'Open Google Business Profile ↗'}
+          </a>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 11.5, marginTop: 10, lineHeight: 1.5 }}>
+          {lang === 'vi'
+            ? '⚠️ Nếu tiệm đang dùng provider khác (Booksy/Vagaro…), Google có thể ưu tiên cái đó — gỡ liên kết provider cũ để link Lumio hiện. Hồ sơ Google phải đã được xác minh (verified).'
+            : '⚠️ If the salon already uses another provider (Booksy/Vagaro…), Google may prefer it — remove the old provider link so the Lumio link shows. The Google profile must be verified.'}
+        </p>
+      </div>
+
       {/* Option 2: WordPress plugin via API key */}
       <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>{t('in.wpTitle')}</h2>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>

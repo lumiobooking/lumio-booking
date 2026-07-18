@@ -22,6 +22,7 @@ interface SettingsData {
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string };
   booking: Booking;
   branding: { accentColor: string; logoUrl: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
+  rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
   gateways: Record<string, GatewayView>;
   notifications: {
     mailService: 'auto' | 'off' | 'smtp' | 'brevo' | 'gmail'; replyTo: string;
@@ -150,7 +151,7 @@ function Inner() {
           {tab === 'rules' && <RulesSection data={data} onSave={save} />}
           {tab === 'payments' && <PaymentsSection data={data} onSave={save} />}
           {tab === 'notifications' && <NotificationsSection data={data} onSave={save} />}
-          {tab === 'reminders' && <RemindersSection data={data} onSave={save} />}
+          {tab === 'reminders' && <><RemindersSection data={data} onSave={save} /><RebookingCard data={data} onSave={save} /></>}
           {tab === 'deposit' && <DepositSection data={data} onSave={save} />}
           {tab === 'branding' && <BrandingSection data={data} onSave={save} />}
         </div>
@@ -629,6 +630,35 @@ function RemindersSection({ data, onSave }: { data: SettingsData; onSave: SaveFn
         {t('se.rem.tip')}
       </p>
       <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={() => onSave('reminders', f, 'Reminders')}>{t('se.rem.save')}</button>
+    </Card>
+  );
+}
+
+function RebookingCard({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const { lang } = useLang();
+  const rb = data.rebooking ?? { enabled: false, daysAfter: 21, email: true, sms: true };
+  const [f, setF] = useState(rb);
+  return (
+    <Card
+      title={lang === 'vi' ? 'Nhắc quay lại (rebooking)' : 'Rebooking reminder'}
+      desc={lang === 'vi' ? 'Tự nhắn khách quay lại sau vài tuần — automation ra tiền nhiều nhất cho tiệm nail.' : 'Auto-nudge clients to rebook after a few weeks — the highest-ROI automation for a nail salon.'}
+    >
+      <Toggle on={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={lang === 'vi' ? 'Bật nhắc quay lại' : 'Send rebooking reminders'} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
+        <Field label={lang === 'vi' ? 'Gửi sau lần ghé (ngày)' : 'Send after visit (days)'}>
+          <input style={ui.input} type="number" min={1} max={120} value={f.daysAfter} onChange={(e) => setF({ ...f, daysAfter: parseInt(e.target.value, 10) || 0 })} />
+        </Field>
+      </div>
+      <div style={{ display: 'flex', gap: 20, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
+        <Toggle on={f.email} onChange={(v) => setF({ ...f, email: v })} label="Email" />
+        <Toggle on={f.sms} onChange={(v) => setF({ ...f, sms: v })} label="SMS" />
+      </div>
+      <p style={{ color: '#64748b', fontSize: 12, marginTop: 12, lineHeight: 1.55 }}>
+        {lang === 'vi'
+          ? 'Chỉ gửi nếu khách CHƯA đặt lịch mới. Kèm link đặt lịch 1 chạm. Nail thường ~21 ngày. Có trần tần suất chống spam.'
+          : 'Only sent if the client has NOT already rebooked. Includes a one-tap booking link. ~21 days suits nails. Frequency-capped to avoid spam.'}
+      </p>
+      <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={() => onSave('rebooking', f, 'Rebooking')}>{lang === 'vi' ? 'Lưu' : 'Save'}</button>
     </Card>
   );
 }

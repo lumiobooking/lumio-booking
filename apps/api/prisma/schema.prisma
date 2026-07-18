@@ -756,6 +756,7 @@ model WalkIn {
   awaitingPayment Boolean @default(false)
 
   status WalkInStatus @default(WAITING)
+  reviewReqSentAt DateTime? // mid-service Google review nudge sent once
 
   createdAt  DateTime  @default(now())
   assignedAt DateTime?
@@ -922,6 +923,7 @@ model StaffService {
 // ===========================================================================
 
 model Customer {
+  rebookRemindedAt DateTime? // last "time for a refill" reminder sent
   id       String @id @default(uuid())
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1075,6 +1077,7 @@ model Appointment {
   rejectedAt  DateTime?
   confirmedAt DateTime?
   arrivedAt   DateTime? // customer checked in at the salon
+  reviewReqSentAt DateTime? // post-visit review request (thank-you + Google link) sent once, mid-service
   cancelledAt DateTime?
   completedAt DateTime?
 

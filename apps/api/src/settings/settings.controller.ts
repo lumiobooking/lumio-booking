@@ -87,10 +87,15 @@ export class SettingsController {
     return this.settings.updateAnalytics(user, dto);
   }
 
+  @Patch('rebooking')
+  updateRebooking(@CurrentUser() user: AuthenticatedUser, @Body() dto: { enabled?: boolean; daysAfter?: number; email?: boolean; sms?: boolean }) {
+    return this.settings.updateRebooking(user, dto);
+  }
+
   @Patch('review')
   updateReview(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; reviewMode?: string; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number; staffPointsPerSend?: number; sendDailyCap?: number; sendDedupHours?: number; anchorToVisits?: boolean; visitBuffer?: number; onlyBusinessHours?: boolean },
+    @Body() dto: { enabled?: boolean; reviewMode?: string; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number; staffPointsPerSend?: number; sendDailyCap?: number; sendDedupHours?: number; anchorToVisits?: boolean; visitBuffer?: number; onlyBusinessHours?: boolean; postVisitEnabled?: boolean; postVisitDelayMinutes?: number; postVisitEmail?: boolean; postVisitSms?: boolean; postVisitCooldownDays?: number },
   ) {
     return this.settings.updateReview(user, dto);
   }

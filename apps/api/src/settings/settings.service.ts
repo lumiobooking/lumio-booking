@@ -35,6 +35,9 @@ import {
   DEFAULT_LOYALTY_SETTINGS,
   REVIEW_SETTINGS_KEY,
   ANALYTICS_SETTINGS_KEY,
+  REBOOKING_SETTINGS_KEY,
+  RebookingSettings,
+  DEFAULT_REBOOKING_SETTINGS,
   AnalyticsSettings,
   DEFAULT_ANALYTICS_SETTINGS,
   ReviewSettings,
@@ -163,6 +166,24 @@ export class SettingsService {
     return this.readKey<AnalyticsSettings>(tenantId, ANALYTICS_SETTINGS_KEY, DEFAULT_ANALYTICS_SETTINGS);
   }
 
+  async getRebookingSettings(tenantId: string): Promise<RebookingSettings> {
+    return this.readKey<RebookingSettings>(tenantId, REBOOKING_SETTINGS_KEY, DEFAULT_REBOOKING_SETTINGS);
+  }
+
+  async updateRebooking(user: AuthenticatedUser, dto: { enabled?: boolean; daysAfter?: number; email?: boolean; sms?: boolean }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getRebookingSettings(tenantId);
+    const next: RebookingSettings = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      daysAfter: Math.min(120, Math.max(1, typeof dto.daysAfter === 'number' && dto.daysAfter > 0 ? Math.round(dto.daysAfter) : cur.daysAfter)),
+      email: typeof dto.email === 'boolean' ? dto.email : cur.email,
+      sms: typeof dto.sms === 'boolean' ? dto.sms : cur.sms,
+    };
+    await this.writeKey(tenantId, REBOOKING_SETTINGS_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.rebooking_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
+  }
+
   /** Save the salon's GA4 / GTM IDs. Both are public front-end IDs (not secrets);
    *  we still validate the shape so a typo can't inject arbitrary script. */
   async updateAnalytics(user: AuthenticatedUser, dto: { ga4Id?: string; gtmId?: string }) {
@@ -181,7 +202,7 @@ export class SettingsService {
 
   async updateReview(
     user: AuthenticatedUser,
-    dto: { enabled?: boolean; reviewMode?: string; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number; staffPointsPerSend?: number; sendDailyCap?: number; sendDedupHours?: number; anchorToVisits?: boolean; visitBuffer?: number; onlyBusinessHours?: boolean },
+    dto: { enabled?: boolean; reviewMode?: string; googlePlaceId?: string; googleReviewUrl?: string; staffPointsPerFeedback?: number; staffBonusFor5Star?: number; customerPoints?: number; minRatingForGoogle?: number; requireRealVisit?: boolean; visitWindowHours?: number; dailyCapPerStaff?: number; dedupDays?: number; staffPointsPerSend?: number; sendDailyCap?: number; sendDedupHours?: number; anchorToVisits?: boolean; visitBuffer?: number; onlyBusinessHours?: boolean ; postVisitEnabled?: boolean; postVisitDelayMinutes?: number; postVisitEmail?: boolean; postVisitSms?: boolean; postVisitCooldownDays?: number },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getReviewSettings(tenantId);
@@ -205,6 +226,11 @@ export class SettingsService {
       anchorToVisits: typeof dto.anchorToVisits === 'boolean' ? dto.anchorToVisits : (cur.anchorToVisits ?? true),
       visitBuffer: num(dto.visitBuffer, cur.visitBuffer ?? 3),
       onlyBusinessHours: typeof dto.onlyBusinessHours === 'boolean' ? dto.onlyBusinessHours : (cur.onlyBusinessHours ?? true),
+      postVisitEnabled: typeof dto.postVisitEnabled === 'boolean' ? dto.postVisitEnabled : (cur.postVisitEnabled ?? false),
+      postVisitDelayMinutes: Math.min(180, num(dto.postVisitDelayMinutes, cur.postVisitDelayMinutes ?? 25)),
+      postVisitEmail: typeof dto.postVisitEmail === 'boolean' ? dto.postVisitEmail : (cur.postVisitEmail ?? true),
+      postVisitSms: typeof dto.postVisitSms === 'boolean' ? dto.postVisitSms : (cur.postVisitSms ?? true),
+      postVisitCooldownDays: num(dto.postVisitCooldownDays, cur.postVisitCooldownDays ?? 45),
     };
     await this.writeKey(tenantId, REVIEW_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.review_updated', resourceType: 'tenant', resourceId: tenantId });
@@ -715,6 +741,7 @@ export class SettingsService {
       reminders: await this.getReminderSettings(tenantId),
       deposit: await this.getDepositSettings(tenantId),
       analytics: await this.getAnalyticsSettings(tenantId),
+      rebooking: await this.getRebookingSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
   }

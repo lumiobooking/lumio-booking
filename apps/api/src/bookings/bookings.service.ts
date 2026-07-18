@@ -27,7 +27,7 @@ import {
   renderTemplatedEmailHtml,
 } from '../notifications/email-template';
 import { SettingsService } from '../settings/settings.service';
-import { ReminderSettings } from '../settings/settings.constants';
+import { ReminderSettings, ReviewSettings, RebookingSettings } from '../settings/settings.constants';
 import { PaymentsService } from '../payments/payments.service';
 import { ReferralService } from '../referral/referral.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -732,6 +732,245 @@ export class BookingsService {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
     }
     await Promise.allSettled(jobs);
+  }
+
+  /**
+   * Post-visit review nudge (appointments + walk-ins): while the customer is STILL in
+   * the chair, send a warm thank-you + a one-tap Google review link. The link goes
+   * through the salon's review page so the tap is TRACKED and credits the right tech
+   * (reusing the existing anti-fraud send log). Fires once, honours a per-customer
+   * cooldown, and a short message-frequency cap so we never pile onto a reminder.
+   */
+  async processDueReviewRequests(): Promise<{ sent: number }> {
+    const now = new Date();
+    const cache = new Map<string, ReviewSettings>();
+    const getRs = async (t: string) => { let rs = cache.get(t); if (!rs) { rs = await this.settings.getReviewSettings(t); cache.set(t, rs); } return rs; };
+    let sent = 0;
+
+    // 1) Booked customers who checked in.
+    const appts = await this.prisma.appointment.findMany({
+      where: { status: AppointmentStatus.ARRIVED, arrivedAt: { not: null }, reviewReqSentAt: null },
+      include: { customer: { select: { id: true, firstName: true, email: true, phone: true } }, assignedStaff: { select: { firstName: true } } },
+      take: 300,
+    });
+    for (const a of appts) {
+      if (!a.arrivedAt) continue;
+      const rs = await getRs(a.tenantId);
+      if (!rs.postVisitEnabled) continue;
+      if (now.getTime() < a.arrivedAt.getTime() + Math.max(1, rs.postVisitDelayMinutes) * 60_000) continue;
+      if (a.customerId && rs.postVisitCooldownDays > 0 && await this.reviewedRecently(a.tenantId, a.customerId, rs.postVisitCooldownDays, a.id)) {
+        await this.prisma.appointment.updateMany({ where: { id: a.id, tenantId: a.tenantId }, data: { reviewReqSentAt: now } }); continue;
+      }
+      const ok = await this.sendReviewRequestFor(rs, { tenantId: a.tenantId, refId: a.id, firstName: a.customer?.firstName ?? null, email: a.customer?.email ?? null, phone: a.customer?.phone ?? null, staffId: a.assignedStaffId ?? null, staffFirstName: a.assignedStaff?.firstName ?? null }).catch(() => false);
+      await this.prisma.appointment.updateMany({ where: { id: a.id, tenantId: a.tenantId }, data: { reviewReqSentAt: new Date() } });
+      if (ok !== false) sent++;
+    }
+
+    // 2) Walk-ins currently being served (no appointment needed).
+    const walkins = await this.prisma.walkIn.findMany({
+      where: { status: 'SERVING', reviewReqSentAt: null },
+      include: { customer: { select: { id: true, firstName: true, email: true, phone: true } }, assignedStaff: { select: { firstName: true } } },
+      take: 300,
+    });
+    for (const w of walkins) {
+      const rs = await getRs(w.tenantId);
+      if (!rs.postVisitEnabled) continue;
+      if (now.getTime() < w.createdAt.getTime() + Math.max(1, rs.postVisitDelayMinutes) * 60_000) continue;
+      const cid = w.customerId ?? null;
+      if (cid && rs.postVisitCooldownDays > 0 && await this.reviewedRecently(w.tenantId, cid, rs.postVisitCooldownDays, null)) {
+        await this.prisma.walkIn.updateMany({ where: { id: w.id, tenantId: w.tenantId }, data: { reviewReqSentAt: now } }); continue;
+      }
+      const ok = await this.sendReviewRequestFor(rs, { tenantId: w.tenantId, refId: w.id, firstName: w.customer?.firstName ?? w.customerName ?? null, email: w.customer?.email ?? null, phone: w.phone ?? w.customer?.phone ?? null, staffId: w.assignedStaffId ?? null, staffFirstName: w.assignedStaff?.firstName ?? null }).catch(() => false);
+      await this.prisma.walkIn.updateMany({ where: { id: w.id, tenantId: w.tenantId }, data: { reviewReqSentAt: new Date() } });
+      if (ok !== false) sent++;
+    }
+    return { sent };
+  }
+
+  /** Was this customer sent a review request (appt or walk-in) within N days? */
+  private async reviewedRecently(tenantId: string, customerId: string, days: number, excludeApptId: string | null): Promise<boolean> {
+    const since = new Date(Date.now() - days * 86_400_000);
+    const a = await this.prisma.appointment.findFirst({ where: { tenantId, customerId, reviewReqSentAt: { gte: since }, ...(excludeApptId ? { id: { not: excludeApptId } } : {}) }, select: { id: true } });
+    if (a) return true;
+    const w = await this.prisma.walkIn.findFirst({ where: { tenantId, customerId, reviewReqSentAt: { gte: since } }, select: { id: true } });
+    return !!w;
+  }
+
+  /** Message-frequency guard: has ANY of these recipients been messaged in the last N hours? */
+  private async messagedWithin(tenantId: string, recipients: Array<string | null | undefined>, hours: number): Promise<boolean> {
+    const rec = recipients.filter((r): r is string => !!r && !!r.trim());
+    if (rec.length === 0) return false;
+    const since = new Date(Date.now() - hours * 3_600_000);
+    const c = await this.prisma.notification.count({ where: { tenantId, recipient: { in: rec }, createdAt: { gte: since } } });
+    return c > 0;
+  }
+
+  /** Send one review request (SMS + email) to a normalized appt/walk-in target. */
+  private async sendReviewRequestFor(
+    rs: ReviewSettings,
+    tgt: { tenantId: string; refId: string; firstName: string | null; email: string | null; phone: string | null; staffId: string | null; staffFirstName: string | null },
+  ): Promise<boolean> {
+    const tenantId = tgt.tenantId;
+    const custEmail = tgt.email;
+    const custPhone = tgt.phone;
+    if (!custEmail && !custPhone) return false;
+    // Frequency cap: don't stack a review nudge on top of a message sent in the last 6h.
+    if (await this.messagedWithin(tenantId, [custEmail, custPhone], 6)) return false;
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, branding: true } });
+    // Prefer the TRACKED review-page link (credits the tech, iOS-safe deep link); fall
+    // back to the raw Google link only when we have no tech to credit.
+    const placeId = (rs.googlePlaceId ?? '').trim();
+    let rawGoogle: string | null = null;
+    if (placeId) rawGoogle = /^https?:\/\//i.test(placeId) ? placeId : `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
+    else if ((rs.googleReviewUrl ?? '').trim()) rawGoogle = (rs.googleReviewUrl ?? '').trim();
+    const url = (tgt.staffId && tenant?.slug) ? `${publicWebBase()}/review/${tenant.slug}/${tgt.staffId}` : rawGoogle;
+    if (!url) return false; // no Google link configured at all — nothing to send
+
+    const n = await this.settings.getNotificationSettings(tenantId);
+    const salon = tenant?.name ?? 'our salon';
+    const cust = tgt.firstName ?? 'there';
+    const tech = tgt.staffFirstName ?? '';
+    const brand = this.settings.brandingFrom(tenant?.branding);
+    const accent = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(brand.accentColor || '') ? brand.accentColor : '#6d5efc';
+    const sh = (hex: string) => { const h = hex.replace('#', ''); const nn = h.length === 3 ? h.split('').map((c) => c + c).join('') : h; const f = (i: number) => Math.max(0, Math.round((parseInt(nn.slice(i, i + 2), 16) || 0) * 0.72)); return `rgb(${f(0)}, ${f(2)}, ${f(4)})`; };
+    const accentDark = sh(accent);
+    const withTech = tech ? `${tech} and the team` : 'the team';
+
+    const subject = `${cust}, how's your visit going? ⭐`;
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:8px">`
+      + `<div style="background:linear-gradient(120deg,${accent},${accentDark});padding:28px 24px;border-radius:16px 16px 0 0;text-align:center">`
+      + `<div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-0.2px">${salon}</div>`
+      + `<div style="color:rgba(255,255,255,0.88);font-size:14px;margin-top:6px">Thank you for spending time with us today 💕</div></div>`
+      + `<div style="background:#fff;padding:26px 24px;border:1px solid #eef1f6;border-top:none;border-radius:0 0 16px 16px;text-align:center">`
+      + `<div style="font-size:30px;letter-spacing:5px">⭐⭐⭐⭐⭐</div>`
+      + `<p style="font-size:17px;color:#0f2a52;margin:14px 0 6px;font-weight:800">Hi ${cust}, are you loving it so far?</p>`
+      + `<p style="font-size:14px;color:#5b6b85;line-height:1.65;margin:0 0 22px">If ${withTech} made you smile, a quick Google review would mean the world to a small salon like ours — it takes about 30 seconds and helps other clients find us. Thank you! 🙏</p>`
+      + `<a href="${url}" style="display:inline-block;background:${accent};color:#fff;text-decoration:none;padding:15px 30px;border-radius:999px;font-weight:800;font-size:15px">⭐ Leave a Google review</a>`
+      + `<p style="font-size:12px;color:#94a3b8;margin-top:18px">One tap opens Google — you're already signed in.</p></div></div>`;
+    const text = `Hi ${cust}! Thank you for visiting ${salon} today. If ${withTech} made you smile, a quick Google review would mean the world (about 30 seconds): ${url} — thank you! 🙏`;
+    const smsText = `${salon}: Hi ${cust}! Enjoying your visit? 💕 A 30-second Google review would make our day: ${url} Thank you! Reply STOP to opt out.`;
+
+    const senderName = n.senderName || salon;
+    const replyTo = n.replyTo || n.senderEmail || undefined;
+    const smtp = n.smtp.user && n.smtp.pass
+      ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
+      : undefined;
+    const brevo = n.brevo.apiKey && n.senderEmail
+      ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || senderName }
+      : undefined;
+    const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+      ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+      : undefined;
+    const related = { relatedType: 'review_request', relatedId: tgt.refId };
+
+    const jobs: Promise<unknown>[] = [];
+    if (rs.postVisitEmail && custEmail) {
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text, html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
+    }
+    if (rs.postVisitSms && custPhone) {
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
+    }
+    await Promise.allSettled(jobs);
+    return true;
+  }
+
+  /**
+   * Rebooking reminder: N days after a visit (default ~3 weeks for nails), if the
+   * customer has NOT already booked their next visit, send a warm "time for a refill"
+   * nudge with a one-tap booking link. One reminder per visit-cycle; frequency-capped.
+   */
+  async processDueRebookingReminders(): Promise<{ sent: number }> {
+    const now = new Date();
+    const from = new Date(now.getTime() - 95 * 86_400_000);
+    const to = new Date(now.getTime() - 7 * 86_400_000);
+    const appts = await this.prisma.appointment.findMany({
+      where: { status: AppointmentStatus.COMPLETED, endTime: { gte: from, lte: to } },
+      include: { customer: { select: { id: true, firstName: true, email: true, phone: true, rebookRemindedAt: true } }, service: { select: { name: true } } },
+      orderBy: { endTime: 'desc' },
+      take: 500,
+    });
+    const cache = new Map<string, RebookingSettings>();
+    const getRb = async (t: string) => { let rb = cache.get(t); if (!rb) { rb = await this.settings.getRebookingSettings(t); cache.set(t, rb); } return rb; };
+    const seen = new Set<string>(); // only the LATEST completed visit per customer (desc order)
+    let sent = 0;
+    for (const a of appts) {
+      if (!a.customerId) continue;
+      const key = `${a.tenantId}:${a.customerId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const rb = await getRb(a.tenantId);
+      if (!rb.enabled) continue;
+      if (now.getTime() < a.endTime.getTime() + rb.daysAfter * 86_400_000) continue; // not due yet
+      if (a.customer?.rebookRemindedAt && a.customer.rebookRemindedAt.getTime() >= a.endTime.getTime()) continue; // already reminded for this visit
+      const upcoming = await this.prisma.appointment.findFirst({
+        where: { tenantId: a.tenantId, customerId: a.customerId, startTime: { gt: now }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.ARRIVED] } },
+        select: { id: true },
+      });
+      if (upcoming) continue; // already rebooked
+      if (await this.messagedWithin(a.tenantId, [a.customer?.email, a.customer?.phone], 48)) continue;
+      const ok = await this.sendRebookingFor(a.tenantId, rb, { firstName: a.customer?.firstName ?? null, email: a.customer?.email ?? null, phone: a.customer?.phone ?? null, service: a.service?.name ?? null, refId: a.id }).catch(() => false);
+      await this.prisma.customer.updateMany({ where: { id: a.customerId, tenantId: a.tenantId }, data: { rebookRemindedAt: new Date() } });
+      if (ok !== false) sent++;
+    }
+    return { sent };
+  }
+
+  /** Send one rebooking nudge (SMS + email) with a one-tap booking link. */
+  private async sendRebookingFor(
+    tenantId: string,
+    rb: RebookingSettings,
+    tgt: { firstName: string | null; email: string | null; phone: string | null; service: string | null; refId: string },
+  ): Promise<boolean> {
+    const custEmail = tgt.email;
+    const custPhone = tgt.phone;
+    if (!custEmail && !custPhone) return false;
+    const n = await this.settings.getNotificationSettings(tenantId);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, branding: true } });
+    const salon = tenant?.name ?? 'our salon';
+    const cust = tgt.firstName ?? 'there';
+    const bookUrl = tenant?.slug ? `${publicWebBase()}/${tenant.slug}` : publicWebBase();
+    const brand = this.settings.brandingFrom(tenant?.branding);
+    const accent = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(brand.accentColor || '') ? brand.accentColor : '#6d5efc';
+    const sh = (hex: string) => { const h = hex.replace('#', ''); const nn = h.length === 3 ? h.split('').map((c) => c + c).join('') : h; const f = (i: number) => Math.max(0, Math.round((parseInt(nn.slice(i, i + 2), 16) || 0) * 0.72)); return `rgb(${f(0)}, ${f(2)}, ${f(4)})`; };
+    const accentDark = sh(accent);
+    const svcLine = tgt.service ? ` for another ${tgt.service}` : '';
+
+    const subject = `${cust}, time to treat yourself again? 💅`;
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:8px">`
+      + `<div style="background:linear-gradient(120deg,${accent},${accentDark});padding:28px 24px;border-radius:16px 16px 0 0;text-align:center">`
+      + `<div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-0.2px">${salon}</div>`
+      + `<div style="color:rgba(255,255,255,0.9);font-size:14px;margin-top:6px">We miss you already 💕</div></div>`
+      + `<div style="background:#fff;padding:26px 24px;border:1px solid #eef1f6;border-top:none;border-radius:0 0 16px 16px;text-align:center">`
+      + `<p style="font-size:17px;color:#0f2a52;margin:6px 0 6px;font-weight:800">Hi ${cust}, it's been a few weeks!</p>`
+      + `<p style="font-size:14px;color:#5b6b85;line-height:1.65;margin:0 0 22px">Your nails are probably ready for a little refresh${svcLine}. Book your next visit in a few taps — we'd love to pamper you again. 💅</p>`
+      + `<a href="${bookUrl}" style="display:inline-block;background:${accent};color:#fff;text-decoration:none;padding:15px 30px;border-radius:999px;font-weight:800;font-size:15px">Book my next visit</a>`
+      + `<p style="font-size:12px;color:#94a3b8;margin-top:18px">See you soon! ✨</p></div></div>`;
+    const text = `Hi ${cust}! It's been a few weeks — your nails are probably ready for a refresh${svcLine}. Book your next visit at ${salon}: ${bookUrl} — see you soon! 💅`;
+    const smsText = `${salon}: Hi ${cust}! 💅 Ready for a refresh? Book your next visit in a few taps: ${bookUrl} Reply STOP to opt out.`;
+
+    const senderName = n.senderName || salon;
+    const replyTo = n.replyTo || n.senderEmail || undefined;
+    const smtp = n.smtp.user && n.smtp.pass
+      ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
+      : undefined;
+    const brevo = n.brevo.apiKey && n.senderEmail
+      ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || senderName }
+      : undefined;
+    const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+      ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+      : undefined;
+    const related = { relatedType: 'rebooking', relatedId: tgt.refId };
+
+    const jobs: Promise<unknown>[] = [];
+    if (rb.email && custEmail) {
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text, html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
+    }
+    if (rb.sms && custPhone) {
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
+    }
+    await Promise.allSettled(jobs);
+    return true;
   }
 
   private async sendStaffAssignmentEmail(tenantId: string, appointmentId: string) {

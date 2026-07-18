@@ -120,6 +120,11 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
 
 export const REVIEW_SETTINGS_KEY = 'review_settings';
 export const ANALYTICS_SETTINGS_KEY = 'analytics_settings';
+export const REBOOKING_SETTINGS_KEY = 'rebooking_settings';
+
+/** Auto "time for a refill" reminder N days after a visit (retention). */
+export interface RebookingSettings { enabled: boolean; daysAfter: number; email: boolean; sms: boolean }
+export const DEFAULT_REBOOKING_SETTINGS: RebookingSettings = { enabled: false, daysAfter: 21, email: true, sms: true };
 
 /** Per-tenant web analytics — a GA4 Measurement ID and/or a GTM container, injected
  *  ONLY on this salon's booking page so each shop measures in its own property. */
@@ -152,6 +157,14 @@ export interface ReviewSettings {
   anchorToVisits: boolean; // counted sends/day ≤ (completed appts + POS checkouts) + visitBuffer
   visitBuffer: number; // grace allowance over recorded visits for untracked walk-ins
   onlyBusinessHours: boolean; // only count sends during the salon's open hours
+  // Post-visit AUTO review request — the shop no longer asks by hand. A thank-you
+  // SMS + email with a one-tap Google review link is sent once, MID-service (while the
+  // customer is still relaxing in the chair — the moment they're most willing).
+  postVisitEnabled: boolean;
+  postVisitDelayMinutes: number; // minutes after check-in to send (lands mid-service)
+  postVisitEmail: boolean;
+  postVisitSms: boolean;
+  postVisitCooldownDays: number; // never re-ask the same customer within N days
 }
 
 export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
@@ -173,6 +186,11 @@ export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
   anchorToVisits: true,
   visitBuffer: 3,
   onlyBusinessHours: true,
+  postVisitEnabled: false,
+  postVisitDelayMinutes: 25,
+  postVisitEmail: true,
+  postVisitSms: true,
+  postVisitCooldownDays: 45,
 };
 
 // POS (counter checkout) settings. Tax applies to retail products only

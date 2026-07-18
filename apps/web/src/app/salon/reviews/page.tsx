@@ -10,7 +10,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
-interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean }
+interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean; postVisitEnabled: boolean; postVisitDelayMinutes: number; postVisitEmail: boolean; postVisitSms: boolean; postVisitCooldownDays: number }
 interface LeaderRow { id: string; name: string; avatarUrl: string | null; balance: number; earnedMonth: number; sendsMonth: number; blockedMonth: number; feedbackMonth: number; avgMonth: number; flagged: boolean }
 interface SendRow { id: string; createdAt: string; counted: boolean; reason: string | null; staff: string; device: string }
 interface FeedbackRow { id: string; rating: number; comment: string | null; createdAt: string; invitedToGoogle: boolean; verified: boolean; staff: { firstName: string; lastName: string | null } | null; customer: { firstName: string; phone: string | null } | null }
@@ -313,6 +313,11 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
     anchorToVisits: initial.anchorToVisits ?? true,
     visitBuffer: String(initial.visitBuffer ?? 3),
     onlyBusinessHours: initial.onlyBusinessHours ?? true,
+    postVisitEnabled: initial.postVisitEnabled ?? false,
+    postVisitDelayMinutes: String(initial.postVisitDelayMinutes ?? 25),
+    postVisitEmail: initial.postVisitEmail ?? true,
+    postVisitSms: initial.postVisitSms ?? true,
+    postVisitCooldownDays: String(initial.postVisitCooldownDays ?? 45),
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -340,6 +345,11 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         anchorToVisits: f.anchorToVisits,
         visitBuffer: parseInt(f.visitBuffer, 10) || 0,
         onlyBusinessHours: f.onlyBusinessHours,
+        postVisitEnabled: f.postVisitEnabled,
+        postVisitDelayMinutes: parseInt(f.postVisitDelayMinutes, 10) || 25,
+        postVisitEmail: f.postVisitEmail,
+        postVisitSms: f.postVisitSms,
+        postVisitCooldownDays: parseInt(f.postVisitCooldownDays, 10) || 0,
       } });
       setSaved(true); onSaved();
     } catch (e2) { setErr(e2 instanceof Error ? e2.message : 'Save failed'); }
@@ -353,6 +363,31 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         <span style={{ fontWeight: 600 }}>{t('rv.enable')}</span>
       </div>
       {err && <div style={ui.banner}>{err}</div>}
+
+      <div style={{ marginBottom: 14, padding: 14, background: '#0f172a', borderRadius: 12, border: '1px solid #334155' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <Toggle on={f.postVisitEnabled} onChange={(v) => setF({ ...f, postVisitEnabled: v })} />
+          <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{lang === 'vi' ? '🤖 Tự xin review khi khách đang làm' : '🤖 Auto review request (mid-visit)'}</span>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
+          {lang === 'vi'
+            ? 'Sau khi khách check-in một lúc (đang ngồi làm, lúc hong móng) hệ thống tự gửi SMS + email cảm ơn kèm nút đánh giá Google — thợ/chủ không phải đi xin. Gửi 1 lần mỗi lượt. Cần điền Google Place ID ở dưới.'
+            : 'A while after check-in (while the customer is still in the chair) the system auto-sends a thank-you SMS + email with a one-tap Google review button — no staff has to ask. Once per visit. Needs the Google Place ID below.'}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+          <label><span style={ui.label}>{lang === 'vi' ? 'Gửi sau check-in (phút)' : 'Send after check-in (min)'}</span>
+            <input style={ui.input} type="number" min={1} max={180} value={f.postVisitDelayMinutes} onChange={(e) => setF({ ...f, postVisitDelayMinutes: e.target.value })} disabled={!f.postVisitEnabled} /></label>
+          <label><span style={ui.label}>{lang === 'vi' ? 'Không xin lại trong (ngày)' : 'Don’t re-ask within (days)'}</span>
+            <input style={ui.input} type="number" min={0} value={f.postVisitCooldownDays} onChange={(e) => setF({ ...f, postVisitCooldownDays: e.target.value })} disabled={!f.postVisitEnabled} /></label>
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}><input type="checkbox" checked={f.postVisitSms} onChange={(e) => setF({ ...f, postVisitSms: e.target.checked })} disabled={!f.postVisitEnabled} /> SMS</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}><input type="checkbox" checked={f.postVisitEmail} onChange={(e) => setF({ ...f, postVisitEmail: e.target.checked })} disabled={!f.postVisitEnabled} /> Email</label>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.5 }}>
+          {lang === 'vi' ? 'Khuyên: 25 phút (giữa buổi). SMS mở nhanh nhất. Link nhảy thẳng vào app đánh giá Google.' : 'Tip: 25 min (mid-service). SMS opens fastest. The link jumps straight into the Google review app.'}
+        </p>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 12 }}>
         <button type="button" onClick={() => setF({ ...f, reviewMode: 'direct' })}

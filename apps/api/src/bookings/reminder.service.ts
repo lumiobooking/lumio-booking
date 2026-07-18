@@ -43,5 +43,19 @@ export class ReminderService implements OnModuleInit, OnModuleDestroy {
     } catch (e) {
       this.logger.warn(`Reminder tick failed: ${(e as Error).message}`);
     }
+    // Same cadence: nudge mid-service customers for a Google review (opt-in per salon).
+    try {
+      const rv = await this.bookings.processDueReviewRequests();
+      if (rv.sent > 0) this.logger.log(`Sent ${rv.sent} review request(s).`);
+    } catch (e) {
+      this.logger.warn(`Review-request tick failed: ${(e as Error).message}`);
+    }
+    // Retention: "time for a refill" reminders (opt-in per salon).
+    try {
+      const rb = await this.bookings.processDueRebookingReminders();
+      if (rb.sent > 0) this.logger.log(`Sent ${rb.sent} rebooking reminder(s).`);
+    } catch (e) {
+      this.logger.warn(`Rebooking tick failed: ${(e as Error).message}`);
+    }
   }
 }

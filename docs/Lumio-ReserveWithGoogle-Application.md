@@ -1,56 +1,62 @@
-# Reserve with Google — Nội dung nộp đơn (Partner interest form) + Bản tự đánh giá kỹ thuật
+# Reserve with Google — BỘ HỒ SƠ NỘP (sẵn sàng gửi)
 
-> Cách dùng: mở **Partner interest form** của Reserve with Google (Actions Center → Reservations End-to-End), copy nội dung dưới vào từng ô. Chỗ **[trong ngoặc]** anh điền số/tên thật.
+> **Nộp ở đâu:** mở trang **Actions Center → Reservations End-to-End → Overview**
+> (`https://developers.google.com/actions-center/verticals/reservations/e2e/overview`) →
+> bấm **"complete this interest form"** (Partner interest form). Copy nội dung dưới vào form.
+> Chỗ **[trong ngoặc]** = anh điền; phần còn lại đã soạn sẵn.
 
 ---
 
-## A. Thông tin đối tác (Partner / Platform)
-- **Company / platform name:** Lumio Booking (by Lumio Agency)
-- **Legal entity name:** [tên pháp nhân đăng ký]
-- **Website:** https://lumiobooking.com
-- **HQ / country:** [VD: United States] — phục vụ thị trường **US & Canada**
-- **Primary contact:** [tên] — [email] — [điện thoại]
-- **Technical contact:** [tên/email dev]
-- **Vertical / use case:** Reservations **End-to-End** (Health & Beauty — **nail salons / spas**)
-- **Are you a booking software provider with your own merchants?** Yes.
+## PHẦN 1 — Điền vào Partner interest form
 
-## B. Quan hệ với merchant (Google bắt buộc)
-- Chúng tôi có **quan hệ hợp đồng trực tiếp** với từng tiệm: mỗi salon **mua/đăng ký** phần mềm Lumio (multi-tenant SaaS), có tài khoản riêng, tự quản lý dịch vụ/nhân viên/lịch.
-- Danh sách merchant sẽ **khớp địa điểm Google Maps** theo tên + địa chỉ + số điện thoại của từng tiệm (trùng với Google Business Profile họ sở hữu/đã xác minh).
-- Số merchant hiện tại: **[số tiệm đang dùng]**; dự kiến 12 tháng: **[con số]**.
+**Company / platform name:** Lumio Booking (Lumio Agency)
+**Legal entity name:** [tên pháp nhân đã đăng ký — VD LLC/Inc]
+**Website:** https://lumiobooking.com
+**Country / markets:** [VD United States] — phục vụ **US & Canada**
+**Business/BD contact:** [Họ tên] · [email] · [số điện thoại]
+**Technical contact:** [Họ tên dev] · [email]
+**Vertical:** Reservations **End-to-End** — Health & Beauty (**nail salons / spas**)
+**You are:** A booking software provider (multi-tenant SaaS) with our **own merchants**.
+**Number of merchants (live):** [số tiệm đang dùng Lumio]
+**Expected merchants in 12 months:** [ước tính]
+**Do you have a direct contractual relationship with merchants?** **Yes** — each salon subscribes to Lumio and manages its own account.
+**Can your merchants be matched to Google Maps listings?** **Yes** — by name + address + phone (and Place ID where available).
+**Booking volume / month (approx):** [ước tính lượt đặt/tháng]
 
-## C. Năng lực kỹ thuật (đối chiếu yêu cầu Google)
-| Yêu cầu của Google | Lumio đáp ứng |
+**Short description (paste):**
+> Lumio Booking is a multi-tenant online-booking platform for nail salons and spas in the US and Canada. Each salon has its own account, services, staff, real-time availability and a hosted booking page (lumiobooking.com/<salon>). We want to integrate Reservations End-to-End so customers can book these salons directly from Google Search and Maps. We have direct contracts with each merchant and can provide real-time availability, 30+ days of slots, and online cancellation.
+
+---
+
+## PHẦN 2 — Bản tự đánh giá kỹ thuật (đối chiếu yêu cầu Google)
+
+| Yêu cầu Google | Trạng thái Lumio |
 |---|---|
-| Availability **thời gian thực**, trả lời **< 1 giây** | ✅ Có API lịch trống realtime theo từng dịch vụ/thợ; phản hồi nhanh. |
-| **≥ 30 ngày** lịch trống phía trước | ✅ Cấu hình `maxAdvanceDays` mặc định ≥ 30 (điều chỉnh được). |
-| Hỗ trợ **huỷ đặt online** | ✅ Có link tự quản lý (confirm/cancel) không cần đăng nhập. |
-| **Booking server** HTTPS + TLS hợp lệ | ✅ API chạy HTTPS (Render), chứng chỉ hợp lệ. |
-| **HTTP basic auth**, đổi mật khẩu mỗi 6 tháng | ✅ Sẽ cấu hình endpoint riêng cho Google với basic auth + xoay khoá định kỳ. |
-| Feed **merchants / services / availability** | ✅ Dữ liệu multi-tenant sẵn có; sẽ sinh feed đúng schema Actions Center. |
-| Đặt/huỷ/cập nhật booking qua API | ✅ Có luồng tạo booking (PENDING→confirm), auto-assign thợ, huỷ. |
-
-**Booking flow hiện có:** khách chọn dịch vụ (nhiều dịch vụ/lượt) → thợ (hoặc "Any", hệ thống tự phân bổ) → ngày/giờ theo lịch trống thực tế → xác nhận → SMS/email xác nhận. Hỗ trợ đặt cọc, thanh toán online/tại tiệm.
-
-## D. Quy mô & vận hành
-- Nền tảng multi-tenant, **tách biệt dữ liệu từng tiệm** (mỗi tiệm 1 booking URL `lumiobooking.com/<slug>`).
-- Có sẵn: nhắc lịch tự động, chống spam/rate-limit, audit log, đo lường per-tiệm (GA4/GTM).
-- Đội ngũ hỗ trợ: [mô tả ngắn].
+| Availability **thời-gian-thực**, trả < 1 giây | ✅ Có API lịch trống theo dịch vụ/thợ, phản hồi nhanh |
+| **≥ 30 ngày** lịch trống | ✅ Cấu hình `maxAdvanceDays` — sẽ đảm bảo ≥ 30 cho các tiệm bật RwG |
+| **Huỷ đặt online** | ✅ Link tự quản lý (confirm/cancel), không cần đăng nhập |
+| Booking server **HTTPS + TLS** | ✅ API chạy HTTPS, chứng chỉ hợp lệ |
+| **HTTP basic auth**, xoay khoá mỗi 6 tháng | ✅ Sẽ mở endpoint riêng cho Google + basic auth + xoay khoá |
+| Feed **merchants / services / availability** | ✅ Dữ liệu multi-tenant sẵn có; sẽ sinh feed đúng schema |
+| Tạo / cập nhật / huỷ booking qua API | ✅ Có luồng tạo booking + auto-assign thợ + huỷ |
 
 ---
 
-## E. Sau khi Google nhận đơn — việc Lumio (em) sẽ code
-Khi anh được cấp **Actions Center Partner Portal**, em dựng:
-1. **Feeds:** `merchants` (map với Maps), `services`, `availability` (định kỳ + realtime).
-2. **Booking server** đúng chuẩn: `HealthCheck`, `CheckAvailability`, `CreateBooking`, `UpdateBooking`, `GetBookingStatus`, `ListBookings` (huỷ/đổi).
-3. **Auth** basic + endpoint riêng cho Google; logging; đáp ứng < 1s.
-4. **Sandbox test** với Google → sửa theo review → **go live** → nút tự gắn cho các tiệm đã match.
+## PHẦN 3 — Việc CHỈ anh làm được (Google bắt buộc chính chủ)
+1. **Nộp Partner interest form** (nội dung Phần 1).
+2. Khi Google mời → tạo tài khoản **Actions Center**, **ký thoả thuận** đối tác.
+3. Trong **Partner Portal**: khai **brand** + **upload danh sách tiệm** (dùng file `Lumio-RwG-MerchantList-Template.csv`) để Google match với Maps.
+4. Đảm bảo mỗi tiệm đã **verified** Google Business Profile, thông tin **trùng** với feed.
+5. Phối hợp các email review/chứng nhận của Google.
 
-## F. Việc CHỈ anh làm được (Google yêu cầu chính chủ)
-1. **Nộp Partner interest form** (hoặc liên hệ Google contact) bằng nội dung trên.
-2. **Ký các thoả thuận** đối tác với Google.
-3. Trong **Partner Portal**: xác nhận sở hữu/khai brand + upload danh sách merchant.
-4. Đảm bảo mỗi tiệm đã **verified** Google Business Profile và **khớp thông tin** với feed.
-5. Phối hợp email review của Google trong quá trình chứng nhận.
+## PHẦN 4 — Việc em (Lumio) làm sau khi được nhận
+1. Sinh **feeds** (merchants/services/availability) đúng schema Actions Center.
+2. Dựng **booking server**: `HealthCheck`, `CheckAvailability`, `CreateBooking`, `UpdateBooking`, `GetBookingStatus`, huỷ/đổi — basic auth, < 1s.
+3. **Test sandbox** với Google → sửa theo review → **go live**.
+4. Nút xanh "Book online" **tự gắn** cho các tiệm đã match; tiệm mới trong Lumio tự vào feed.
 
-> Em không thể thay anh nộp đơn/ký với Google hay đăng nhập tài khoản Google của tiệm — nhưng toàn bộ phần code + feed + booking server em làm trọn gói khi anh được nhận vào chương trình.
+## Checklist trước khi bấm nộp
+- [ ] Điền hết ô `[trong ngoặc]` ở Phần 1
+- [ ] Chuẩn bị `Lumio-RwG-MerchantList-Template.csv` (ít nhất vài tiệm thật, verified)
+- [ ] Có email liên hệ nhận thư mời từ Google
+- [ ] Xác nhận các tiệm khớp tên/địa chỉ/điện thoại với Google Maps

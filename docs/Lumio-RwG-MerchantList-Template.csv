@@ -1,0 +1,5 @@
+merchant_id,merchant_name,phone,booking_url,street_address,city,state,postal_code,country,google_place_id,category
+nails-for-you,Nails For You,+1 905-454-9288,https://lumiobooking.com/nails-for-you,227 Vodden St E Suite E Unit 13,Brampton,ON,L6V 1N2,CA,,Nail salon
+happy-nails-spa,Happy Nails & Spa,+1 289-553-8686,https://lumiobooking.com/happy-nails-spa,10501 Weston Rd,Vaughan,ON,L4H 4G8,CA,,Nail salon
+vina-nails-spa,Vina Nails & Spa at Tatum Phoenix,+1 602-603-2420,https://lumiobooking.com/vina-nails-spa,4757 E Greenway Rd #107B,Phoenix,AZ,85032,US,,Nail salon
+lux-nail-spa,Lux Nail Spa,+1 830-496-3214,https://lumiobooking.com/lux-nail-spa,516 Junction Hwy,Kerrville,TX,78028,US,,Nail salon

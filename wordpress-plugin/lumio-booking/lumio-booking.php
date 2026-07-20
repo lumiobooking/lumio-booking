@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.4.0
+ * Version:           1.5.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -310,22 +310,28 @@ if (!function_exists('lumio_booking_base')) {
     /** Latest published build info, cached so we never hammer the server. */
     function lumio_booking_remote_manifest()
     {
-        $cached = get_transient('lumio_booking_manifest');
-        if ($cached !== false) {
-            return is_array($cached) ? $cached : array();
+        // "Check again" on Dashboard -> Updates (and WP-CLI) must reach the server
+        // straight away, otherwise a cached answer hides a brand-new build for hours.
+        $force = !empty($_GET['force-check']) || (defined('WP_CLI') && WP_CLI);
+        if (!$force) {
+            $cached = get_transient('lumio_booking_manifest');
+            if ($cached !== false) {
+                return is_array($cached) ? $cached : array();
+            }
         }
         $res = wp_remote_get(LUMIO_BOOKING_UPDATE_URL, array(
             'timeout' => 8,
             'headers' => array('Accept' => 'application/json'),
         ));
         if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) {
-            // Back off for a while so an outage cannot slow down wp-admin.
-            set_transient('lumio_booking_manifest', array(), 3 * HOUR_IN_SECONDS);
+            // Short back-off so an outage cannot slow down wp-admin, but also
+            // cannot delay the next real update for long.
+            set_transient('lumio_booking_manifest', array(), 15 * MINUTE_IN_SECONDS);
             return array();
         }
         $data = json_decode(wp_remote_retrieve_body($res), true);
         $data = is_array($data) ? $data : array();
-        set_transient('lumio_booking_manifest', $data, 6 * HOUR_IN_SECONDS);
+        set_transient('lumio_booking_manifest', $data, HOUR_IN_SECONDS);
         return $data;
     }
 

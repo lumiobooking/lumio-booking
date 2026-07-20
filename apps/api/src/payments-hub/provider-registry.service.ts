@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PaymentConnector } from './connectors/payment-connector.interface';
 import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
+import { SquareTerminalConnector } from './connectors/square-terminal.connector';
+import { SumUpConnector } from './connectors/sumup.connector';
 import { ProviderId } from './connectors/connector.types';
 
 /**
@@ -13,8 +15,13 @@ import { ProviderId } from './connectors/connector.types';
 export class ProviderRegistry {
   private readonly map = new Map<ProviderId, PaymentConnector>();
 
-  constructor(mock: MockConnector, stripe: StripeTerminalConnector) {
-    for (const c of [mock, stripe]) this.map.set(c.id, c);
+  constructor(
+    mock: MockConnector,
+    stripe: StripeTerminalConnector,
+    square: SquareTerminalConnector,
+    sumup: SumUpConnector,
+  ) {
+    for (const c of [mock, stripe, square, sumup]) this.map.set(c.id, c);
   }
 
   get(provider: string): PaymentConnector {

@@ -5,6 +5,8 @@ import { ProviderRegistry } from './provider-registry.service';
 import { CredentialStore } from './credential-store.service';
 import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
+import { SquareTerminalConnector } from './connectors/square-terminal.connector';
+import { SumUpConnector } from './connectors/sumup.connector';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
 const adminA: AuthenticatedUser = { userId: 'ua', email: 'a@a.test', role: UserRole.SALON_ADMIN, tenantId: 'tenant-a' };
@@ -64,7 +66,7 @@ describe('PaymentOrchestrator (Payment Hub)', () => {
   beforeEach(() => {
     prisma = makePrisma();
     mock = new MockConnector();
-    const registry = new ProviderRegistry(mock, new StripeTerminalConnector());
+    const registry = new ProviderRegistry(mock, new StripeTerminalConnector(), new SquareTerminalConnector(), new SumUpConnector());
     hub = new PaymentOrchestrator(prisma, registry, new CredentialStore(prisma));
   });
 

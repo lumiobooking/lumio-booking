@@ -110,7 +110,7 @@ export class PaymentOrchestrator {
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const conn = await this.creds.findConnection(tenantId, provider as ProviderId);
     if (!conn) throw new NotFoundException('No connection');
-    const r = await this.registry.get(provider).registerReader(cred.secret, dto.code, dto.label, dto.locationId);
+    const r = await this.registry.get(provider).registerReader(cred.secret, dto.code, dto.label, dto.locationId ?? cred.locationId);
     return this.prisma.paymentDevice.upsert({
       where: { tenantId_provider_externalReaderId: { tenantId, provider, externalReaderId: r.externalId } },
       create: { tenantId, provider, connectionId: conn.id, externalReaderId: r.externalId, label: r.label ?? null, locationId: r.locationId ?? null, status: r.status, lastSeenAt: new Date() },

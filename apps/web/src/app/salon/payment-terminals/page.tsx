@@ -30,10 +30,24 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
     help: { en: 'For testing only. Use any key that starts with "mock_".', vi: 'Chỉ để test. Dùng key bất kỳ bắt đầu bằng "mock_".' },
     fields: ['secret'],
   },
+  square: {
+    name: 'Square Terminal',
+    help: {
+      en: 'developer.squareup.com (YOUR Square account) → create an application → Production Access Token + Location ID. Paste both. No OAuth — Lumio registers nothing.',
+      vi: 'developer.squareup.com (tài khoản Square của TIỆM) → tạo application → Production Access Token + Location ID. Dán cả hai. Không OAuth — Lumio không đăng ký gì.',
+    },
+    fields: ['secret', 'currency', 'locationId'],
+  },
+  sumup: {
+    name: 'SumUp',
+    help: {
+      en: 'SumUp Dashboard → Developers → create an API key. Paste it, then pair your Solo reader with its pairing code below.',
+      vi: 'SumUp Dashboard → Developers → tạo API key. Dán vào, rồi ghép Solo reader bằng pairing code ở dưới.',
+    },
+    fields: ['secret', 'currency'],
+  },
 };
 const COMING_SOON = [
-  { id: 'sumup', name: 'SumUp', phase: 'Phase 2' },
-  { id: 'square', name: 'Square Terminal', phase: 'Phase 2' },
   { id: 'adyen', name: 'Adyen', phase: 'Phase 3' },
 ];
 

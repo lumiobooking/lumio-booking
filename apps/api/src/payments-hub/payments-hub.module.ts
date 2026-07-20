@@ -6,6 +6,8 @@ import { ProviderRegistry } from './provider-registry.service';
 import { CredentialStore } from './credential-store.service';
 import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
+import { SquareTerminalConnector } from './connectors/square-terminal.connector';
+import { SumUpConnector } from './connectors/sumup.connector';
 
 /**
  * POS Payment Hub (Phase 1). Inert until a salon connects a provider and the
@@ -13,7 +15,7 @@ import { StripeTerminalConnector } from './connectors/stripe-terminal.connector'
  */
 @Module({
   controllers: [PaymentsHubController, PaymentsHubWebhookController],
-  providers: [PaymentOrchestrator, ProviderRegistry, CredentialStore, MockConnector, StripeTerminalConnector],
+  providers: [PaymentOrchestrator, ProviderRegistry, CredentialStore, MockConnector, StripeTerminalConnector, SquareTerminalConnector, SumUpConnector],
   exports: [PaymentOrchestrator],
 })
 export class PaymentsHubModule {}

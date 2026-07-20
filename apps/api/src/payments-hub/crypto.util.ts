@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 
 /**
  * AES-256-GCM encryption for payment provider credentials stored at rest.
@@ -10,14 +10,21 @@ const VERSION = 'v1';
 
 function key(): Buffer {
   const raw = process.env.PAYMENT_ENC_KEY;
-  if (!raw) {
-    throw new Error('PAYMENT_ENC_KEY is not configured (required to store payment credentials)');
+  if (!raw || raw.trim().length < 16) {
+    throw new Error('PAYMENT_ENC_KEY is not configured or too short (use a strong random value)');
   }
-  const buf = /^[0-9a-fA-F]{64}$/.test(raw) ? Buffer.from(raw, 'hex') : Buffer.from(raw, 'base64');
-  if (buf.length !== 32) {
-    throw new Error('PAYMENT_ENC_KEY must decode to exactly 32 bytes (AES-256)');
+  const t = raw.trim();
+  // Accept a 32-byte key given as 64 hex chars or as base64; otherwise derive a
+  // stable 32-byte key from any sufficiently-random value (e.g. Render's
+  // "Generate"). Deterministic, so the same env value always yields the same key.
+  if (/^[0-9a-fA-F]{64}$/.test(t)) return Buffer.from(t, 'hex');
+  try {
+    const b = Buffer.from(t, 'base64');
+    if (b.length === 32) return b;
+  } catch {
+    /* not base64 */
   }
-  return buf;
+  return createHash('sha256').update(t, 'utf8').digest();
 }
 
 export function encryptSecret(plain: string): string {

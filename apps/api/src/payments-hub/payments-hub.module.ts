@@ -6,6 +6,7 @@ import { ProviderRegistry } from './provider-registry.service';
 import { CredentialStore } from './credential-store.service';
 import { AgentService } from './agent.service';
 import { AgentAdminController, AgentRuntimeController } from './agent.controller';
+import { HelcimConnector } from './connectors/helcim.connector';
 import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
 import { SquareTerminalConnector } from './connectors/square-terminal.connector';
@@ -17,7 +18,7 @@ import { SumUpConnector } from './connectors/sumup.connector';
  */
 @Module({
   controllers: [PaymentsHubController, PaymentsHubWebhookController, AgentAdminController, AgentRuntimeController],
-  providers: [PaymentOrchestrator, ProviderRegistry, CredentialStore, AgentService, MockConnector, StripeTerminalConnector, SquareTerminalConnector, SumUpConnector],
+  providers: [PaymentOrchestrator, ProviderRegistry, CredentialStore, AgentService, HelcimConnector, MockConnector, StripeTerminalConnector, SquareTerminalConnector, SumUpConnector],
   exports: [PaymentOrchestrator],
 })
 export class PaymentsHubModule {}

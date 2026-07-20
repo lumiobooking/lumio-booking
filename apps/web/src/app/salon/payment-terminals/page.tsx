@@ -16,9 +16,17 @@ interface Intent { id: string; status: string; amountCents: number; currency: st
 
 // Providers usable in Phase 1. Others are shown as "coming soon".
 const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help: { en: string; vi: string }; fields: string[]; connections?: { cloud?: string; usb?: string; bluetooth?: string }; countries?: string[] }> = {
+  helcim: {
+    name: 'Helcim',
+    recommended: true,
+    help: {
+      en: 'Helcim Dashboard → Settings → Integrations → API Access → create an API token (allow Payments + Payments Hardware). ONE Helcim account covers both the Smart Terminal and online payments. Lumio registers nothing.',
+      vi: 'Helcim Dashboard → Settings → Integrations → API Access → tạo API token (bật quyền Payments + Payments Hardware). MỘT tài khoản Helcim dùng được cho cả máy quẹt Smart Terminal lẫn thanh toán online. Lumio không đăng ký gì.',
+    },
+    fields: ['secret', 'currency'],
+  },
   stripe: {
     name: 'Stripe Terminal',
-    recommended: true,
     help: {
       en: 'Stripe Dashboard → Developers → API keys → Create restricted key (allow Terminal, PaymentIntents, Charges/Refunds). Paste the rk_live_… key. Lumio registers nothing.',
       vi: 'Stripe Dashboard → Developers → API keys → Create restricted key (cấp quyền Terminal, PaymentIntents, Charges/Refunds). Dán key rk_live_…. Lumio không đăng ký gì.',
@@ -78,7 +86,7 @@ function Inner() {
   const [msg, setMsg] = useState<string | null>(null);
 
   // connect form
-  const [provider, setProvider] = useState('stripe');
+  const [provider, setProvider] = useState('helcim');
   const [secret, setSecret] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
   const [currency, setCurrency] = useState('USD');
@@ -199,7 +207,7 @@ function Inner() {
                   <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}
                 </p>
                 <label style={label}>{L.secret}</label>
-                <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : ''} autoComplete="off" />
+                <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : provider === 'helcim' ? 'Helcim API token' : ''} autoComplete="off" />
                 {meta.fields.includes('currency') && (
                   <>
                     <label style={label}>{L.currency}</label>

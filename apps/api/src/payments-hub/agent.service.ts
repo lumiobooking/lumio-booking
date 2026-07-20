@@ -69,7 +69,10 @@ export class AgentService {
 
   async unpair(user: AuthenticatedUser, id: string) {
     const tenantId = this.tid(user);
-    await this.prisma.paymentAgent.updateMany({ where: { id, tenantId }, data: { status: 'UNPAIRED', tokenHash: null, pairingCode: null } });
+    // Detach any readers this agent was driving, then remove the agent entirely
+    // so it disappears from the list (its token stops working immediately).
+    await this.prisma.paymentDevice.updateMany({ where: { tenantId, agentId: id }, data: { agentId: null, status: 'OFFLINE' } });
+    await this.prisma.paymentAgent.deleteMany({ where: { id, tenantId } });
     return { ok: true };
   }
 

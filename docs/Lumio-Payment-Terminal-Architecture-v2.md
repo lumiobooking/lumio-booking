@@ -14,6 +14,7 @@
 - **Settings UI:** mục **"Devices & Agents"** (tạo mã ghép, list, gỡ) + Country + Connection Type + Coming soon.
 - **Companion (mobile):** reframe `mobile/` thành **cầu nối** — Pair (nhập mã) → poll → Stripe Terminal SDK (Bluetooth) collect/confirm → trả result. **Đã bỏ** nhập tiền/POS.
 - **Lumio Payment Bridge (Windows):** `bridge/` — Node **zero-dependency**: pair bằng mã 1 lần, auto-start cùng Windows (Task Scheduler/NSSM), discover + đăng ký terminal, poll lệnh, charge qua **driver**, trả result, báo online/offline, **auto-reconnect** backoff, token lưu quyền `0600`, **không log secret/card**. ✅ **Đã test end-to-end** (pair → nhận lệnh → charge → SUCCEEDED) với driver `simulator`.
+- **Helcim (provider mặc định):** `HelcimConnector` — in-person qua **Payments Hardware API** (device code 4 ký tự, purchase 202 async, poll theo `invoiceNumber`), refund tự fallback **refund → reverse**, và `initializeOnlineCheckout()` cho **HelcimPay.js** (online). Một api-token cho cả hai. Đã đặt **đầu danh sách + khuyên dùng** trong Settings.
 - **Transport agent:** dùng **HTTPS long-poll + agent token** (thay vì WSS) — đơn giản, xuyên firewall tiệm, không cần hạ tầng WebSocket. WSS là tối ưu về sau nếu cần độ trễ thấp hơn.
 
 **Còn lại để chạy thật:**
@@ -180,6 +181,7 @@ Provider → Country → Connection Type (Cloud / USB / Bluetooth)
 
 | Provider | Cloud (WiFi) | USB (Windows) | Bluetooth (mobile) | Ghi chú |
 |---|---|---|---|---|
+| **Helcim** ★ | ✅ **Smart Terminal API** (mặc định) | ❌ | ⚠️ | **1 tài khoản dùng cả terminal + online**; Interac (CA); US+CA; token tự tạo |
 | **Stripe** | ✅ (đã có) | ❌ không có Windows SDK | ✅ qua mobile SDK (Step 3) | Cloud dùng ngay |
 | **SumUp** | ✅ | ❌ | ✅ Solo/mobile SDK | |
 | **Square** | ✅ | ❌ | ⚠️ mobile SDK | |

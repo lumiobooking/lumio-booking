@@ -1,4 +1,4 @@
-export type ProviderId = 'stripe' | 'mock' | 'square' | 'sumup' | 'adyen';
+export type ProviderId = 'helcim' | 'stripe' | 'mock' | 'square' | 'sumup' | 'adyen';
 
 export type IntentStatus = 'REQUIRES_PAYMENT' | 'PROCESSING' | 'SUCCEEDED' | 'CANCELED' | 'FAILED';
 

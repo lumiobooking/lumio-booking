@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.5.0
+ * Version:           1.6.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -198,7 +198,7 @@ if (!function_exists('lumio_booking_base')) {
         echo '<script>(function(){'
             . 'if(window.__lumioLaunch){return;}window.__lumioLaunch=1;'
             . 'var U=' . wp_json_encode($url) . ',M=' . wp_json_encode($match) . ';'
-            . 'var wrap=null,frame=null,isOpen=false,savedY=0,pushed=false,adopted=false,pageTall=false;'
+            . 'var wrap=null,frame=null,isOpen=false,savedY=0,pushed=false,adopted=false;'
             . 'function build(){if(wrap){return;}'
             . 'wrap=document.createElement("div");wrap.setAttribute("aria-hidden","true");'
             . 'wrap.style.cssText="position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483000;background:#fff;display:none;";'
@@ -213,10 +213,6 @@ if (!function_exists('lumio_booking_base')) {
             . 'wrap.appendChild(frame);wrap.appendChild(x);document.body.appendChild(wrap);}'
             . 'function openOverlay(noHist){build();if(isOpen){return;}isOpen=true;'
             . 'savedY=window.pageYOffset||document.documentElement.scrollTop||0;'
-            // Measure the host page NOW: locking the body below collapses
-            // scrollHeight, so checking it at close time would misread every page
-            // as an empty shell.
-            . 'pageTall=document.body.scrollHeight>((window.innerHeight||600)*1.6);'
             . 'wrap.style.display="block";wrap.removeAttribute("aria-hidden");'
             . 'document.body.style.position="fixed";document.body.style.top=(-savedY)+"px";'
             . 'document.body.style.left="0";document.body.style.right="0";'
@@ -231,9 +227,12 @@ if (!function_exists('lumio_booking_base')) {
             // The page we took over existed only to hold the form, so closing means
             // "leave booking" — send the visitor back to the site rather than leaving
             // them staring at an empty shell of a page.
-            // Only walk away when the page really is booking-only. A salon that drops
-            // the form into the middle of a long page keeps a normal close.
-            . 'if(adopted&&!pageTall){'
+            // The form opened by itself, so this page exists to hold it. Closing means
+            // "I am done booking" -> go back to the site the visitor came from, never
+            // strand them on a page that is now just an empty frame and a button.
+            // (A salon embedding the form mid-page uses [lumio_booking autoopen="0"],
+            // which never auto-opens, so this branch cannot fire there.)
+            . 'if(adopted){'
             . 'try{if(history.length>1){history.back();return;}}catch(e){}location.href="/";}}'
             . 'function hit(el){if(!el||!el.getAttribute){return false;}'
             . 'if(el.classList&&el.classList.contains("lumio-book")){return true;}'

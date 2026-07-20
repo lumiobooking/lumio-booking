@@ -27,6 +27,7 @@ import { OverviewModule } from './overview/overview.module';
 import { SettingsModule } from './settings/settings.module';
 import { PosModule } from './pos/pos.module';
 import { BillingModule } from './billing/billing.module';
+import { PaymentsHubModule } from './payments-hub/payments-hub.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { WaitlistModule } from './waitlist/waitlist.module';
@@ -86,6 +87,7 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     GiftCardsModule,
     // Self-serve SaaS billing: public signup, Stripe/PayPal checkout + webhooks.
     BillingModule,
+    PaymentsHubModule,
     UploadsModule,
     // Review-reward program: customer feedback → staff & customer points.
     ReviewsModule,

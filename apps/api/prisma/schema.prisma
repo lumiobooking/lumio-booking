@@ -248,6 +248,10 @@ model Tenant {
   orders            Order[]
   orderItems        OrderItem[]
   orderPayments     OrderPayment[]
+  paymentConnections PaymentConnection[]
+  paymentDevices     PaymentDevice[]
+  paymentIntents     PaymentIntentRecord[]
+  paymentRefunds     PaymentRefund[]
   loyaltyTransactions LoyaltyTransaction[]
   branchMemberships BranchMembership[]
   printJobs         PrintJob[]
@@ -1178,6 +1182,123 @@ model Payment {
   @@index([tenantId])
   @@index([tenantId, status])
   @@map("payments")
+}
+
+// ============================================================================
+// POS Payment Hub (Phase 1) — multi-provider card terminals, BYO API key.
+// All tables tenant-scoped. No card data ever stored. Credentials encrypted.
+// ============================================================================
+
+model PaymentConnection {
+  id                String    @id @default(uuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider          String    // 'stripe' | 'mock' | 'square' | 'sumup' | 'adyen'
+  status            String    @default("PENDING") // PENDING | ACTIVE | REVOKED | ERROR
+  label             String?
+  credentialEnc     String?   // AES-256-GCM blob; never the raw key
+  keyHint           String?   // last 4 chars for display only
+  externalAccountId String?
+  currency          String    @default("USD")
+  capabilities      Json      @default("{}")
+  lastCheckedAt     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  devices           PaymentDevice[]
+  intents           PaymentIntentRecord[]
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+  @@map("payment_connections")
+}
+
+model PaymentDevice {
+  id               String    @id @default(uuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connectionId     String
+  connection       PaymentConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  provider         String
+  externalReaderId String
+  label            String?
+  locationId       String?
+  status           String    @default("UNKNOWN") // ONLINE | OFFLINE | UNKNOWN
+  lastSeenAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([tenantId, provider, externalReaderId])
+  @@index([tenantId])
+  @@index([connectionId])
+  @@map("payment_devices")
+}
+
+model PaymentIntentRecord {
+  id               String    @id @default(uuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connectionId     String?
+  connection       PaymentConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  provider         String
+  externalIntentId String?
+  orderId          String?
+  amountCents      Int
+  currency         String    @default("USD")
+  status           String    @default("REQUIRES_PAYMENT") // REQUIRES_PAYMENT | PROCESSING | SUCCEEDED | CANCELED | FAILED
+  deviceId         String?
+  clientRef        String?   // idempotency key, unique per tenant
+  captureMethod    String    @default("automatic")
+  lastError        String?
+  providerRaw      Json?
+  createdByUserId  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  succeededAt      DateTime?
+
+  refunds          PaymentRefund[]
+
+  @@unique([tenantId, clientRef])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([orderId])
+  @@map("payment_intents")
+}
+
+model PaymentRefund {
+  id               String    @id @default(uuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  intentId         String
+  intent           PaymentIntentRecord @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  provider         String
+  externalRefundId String?
+  amountCents      Int
+  reason           String?
+  status           String    @default("PENDING") // PENDING | SUCCEEDED | FAILED
+  createdByUserId  String?
+  providerRaw      Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([intentId])
+  @@map("payment_refunds")
+}
+
+model PaymentWebhookEvent {
+  id              String    @id @default(uuid())
+  tenantId        String?
+  provider        String
+  externalEventId String
+  type            String?
+  payload         Json?
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@unique([provider, externalEventId])
+  @@index([tenantId])
+  @@map("payment_webhook_events")
 }
 
 // ===========================================================================

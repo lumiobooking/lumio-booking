@@ -18,6 +18,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'wordpress-plugin', 'lumio-booking')
 ZIP = os.path.join(ROOT, 'apps', 'web', 'public', 'downloads', 'lumio-booking.zip')
 MAN = os.path.join(ROOT, 'apps', 'web', 'public', 'wp-update', 'lumio-booking.json')
+# A copy next to the plugin source, named the way the previous releases were, for
+# the one-off manual upload to a site that is still on an old build.
+PLUGIN_DIR = os.path.join(ROOT, 'wordpress-plugin')
 
 head = open(os.path.join(SRC, 'lumio-booking.php'), encoding='utf-8').read()[:4000]
 
@@ -58,6 +61,11 @@ with open(MAN, 'w', encoding='utf-8') as f:
     json.dump(manifest, f, indent=2)
     f.write('\n')
 
+import shutil
+UPLOAD = os.path.join(PLUGIN_DIR, 'lumio-booking-' + version + '.zip')
+shutil.copyfile(ZIP, UPLOAD)
+
 print('packaged lumio-booking', version)
-print(' zip     ', ZIP, str(os.path.getsize(ZIP)) + ' bytes')
+print(' upload  ', UPLOAD, str(os.path.getsize(UPLOAD)) + ' bytes')
+print(' server  ', ZIP)
 print(' manifest', MAN)

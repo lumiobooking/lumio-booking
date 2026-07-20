@@ -8,6 +8,8 @@ export interface Credential {
   secret: string;
   webhookSecret?: string;
   locationId?: string;
+  /** Provider environment/region (e.g. Adyen: test | live-us | live-eu). */
+  region?: string;
 }
 
 /**

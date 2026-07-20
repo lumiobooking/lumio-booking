@@ -157,7 +157,7 @@ export class HelcimConnector implements PaymentConnector {
    * payments — e.g. booking deposits. The frontend renders the returned
    * checkoutToken in the HelcimPay modal; no card data touches Lumio.
    */
-  async initializeOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string) {
+  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string) {
     const r = await httpJson('POST', `${BASE}/helcim-pay/initialize`, this.headers(secret), {
       paymentType: 'purchase',
       amount: this.money(amountCents),
@@ -166,6 +166,21 @@ export class HelcimConnector implements PaymentConnector {
     });
     if (!r.ok) throw new Error(this.err(r));
     return { checkoutToken: r.json?.checkoutToken, secretToken: r.json?.secretToken };
+  }
+
+  /**
+   * Server-side verification: look the transaction up at Helcim by the
+   * invoiceNumber we set when starting the checkout. We never trust the
+   * browser's "payment succeeded" message.
+   */
+  async lookupOnlinePayment(secret: string, reference: string): Promise<{ approved: boolean; amountCents?: number; transactionId?: string }> {
+    const txn = await this.findTransaction(secret, this.invoiceNo(reference));
+    if (!txn) return { approved: false };
+    return {
+      approved: String(txn.status).toUpperCase() === 'APPROVED',
+      amountCents: typeof txn.amount === 'number' ? Math.round(txn.amount * 100) : undefined,
+      transactionId: txn.transactionId ? String(txn.transactionId) : undefined,
+    };
   }
 
   verifyWebhook(): WebhookResult {

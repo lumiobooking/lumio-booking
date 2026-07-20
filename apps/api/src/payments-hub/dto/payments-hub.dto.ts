@@ -8,6 +8,7 @@ export class ConnectDto {
   @IsOptional() @IsString() webhookSecret?: string;
   @IsOptional() @IsString() locationId?: string;
   @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsString() region?: string;
   @IsOptional() @IsString() label?: string;
 }
 

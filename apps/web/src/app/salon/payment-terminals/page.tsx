@@ -46,6 +46,14 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
     },
     fields: ['secret', 'currency', 'locationId'],
   },
+  adyen: {
+    name: 'Adyen',
+    help: {
+      en: 'Adyen Customer Area → Developers → API credentials → generate an API key with the "Cloud Device API" role. Enter it below with your merchant account and pick the environment. Add each terminal by its POI/device id.',
+      vi: 'Adyen Customer Area → Developers → API credentials → tạo API key có quyền "Cloud Device API". Nhập key + merchant account và chọn môi trường. Thêm từng máy bằng POI/device id.',
+    },
+    fields: ['secret', 'currency', 'locationId', 'region'],
+  },
   sumup: {
     name: 'SumUp',
     help: {
@@ -55,9 +63,7 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
     fields: ['secret', 'currency'],
   },
 };
-const COMING_SOON = [
-  { id: 'adyen', name: 'Adyen', phase: 'Phase 3' },
-];
+const COMING_SOON: Array<{ id: string; name: string; phase: string }> = [];
 
 const box: React.CSSProperties = { border: '1px solid #334155', borderRadius: 12, padding: 16, marginTop: 14, background: '#0f172a' };
 const label: React.CSSProperties = { display: 'block', fontSize: 12, color: '#94a3b8', margin: '10px 0 4px' };
@@ -76,8 +82,8 @@ function Inner() {
   const { lang } = useLang();
   const vi = lang === 'vi';
   const L = vi
-    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu', country: 'Quốc gia', connType: 'Kiểu kết nối', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'Kiểu kết nối này sắp có.', needAgent: 'cần ghép thiết bị', needAgentTip: 'Tạo mã ghép ở mục "Thiết bị cầu nối" bên dưới', agentNote: 'Máy quẹt sẽ tự xuất hiện sau khi Bridge/Companion kết nối. Vẫn cần nhập API key nhà cung cấp bên dưới.' }
-    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key', country: 'Country', connType: 'Connection type', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'This connection type is coming soon.', needAgent: 'pair a device', needAgentTip: 'Create a pairing code in "Devices & Agents" below', agentNote: 'Readers appear automatically once the Bridge/Companion connects. You still need the provider API key below.' };
+    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu', country: 'Quốc gia', connType: 'Kiểu kết nối', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'Kiểu kết nối này sắp có.', needAgent: 'cần ghép thiết bị', needAgentTip: 'Tạo mã ghép ở mục "Thiết bị cầu nối" bên dưới', region: 'Môi trường', regionTest: 'Test (sandbox)', regionUs: 'Live — US', regionEu: 'Live — EU/khác', manualNote: 'Tiệm dùng máy quẹt khác? Vẫn bán bình thường — chọn CARD ở POS rồi quẹt trên máy của tiệm; hệ thống vẫn ghi doanh thu, tip và lương thợ.', agentNote: 'Máy quẹt sẽ tự xuất hiện sau khi Bridge/Companion kết nối. Vẫn cần nhập API key nhà cung cấp bên dưới.' }
+    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key', country: 'Country', connType: 'Connection type', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'This connection type is coming soon.', needAgent: 'pair a device', needAgentTip: 'Create a pairing code in "Devices & Agents" below', region: 'Environment', regionTest: 'Test (sandbox)', regionUs: 'Live — US', regionEu: 'Live — EU/other', manualNote: "Using a terminal Lumio can't drive yet? You can still sell — pick CARD at the POS and run it on your own terminal; revenue, tips and payroll are still recorded.", agentNote: 'Readers appear automatically once the Bridge/Companion connects. You still need the provider API key below.' };
 
   const [status, setStatus] = useState<HubStatus | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -92,6 +98,7 @@ function Inner() {
   const [currency, setCurrency] = useState('USD');
   const [locationId, setLocationId] = useState('');
   const [country, setCountry] = useState('US');
+  const [region, setRegion] = useState('test');
   const [connType, setConnType] = useState<'cloud' | 'usb' | 'bluetooth'>('cloud');
   const [agents, setAgents] = useState<Array<{ kind: string; paired: boolean; status: string }>>([]);
   const [busy, setBusy] = useState(false);
@@ -115,7 +122,7 @@ function Inner() {
   async function doConnect() {
     setBusy(true); setError(null); setMsg(null);
     try {
-      await apiFetch('/payments-hub/connect', { method: 'POST', token, body: { provider, secret: secret.trim(), webhookSecret: webhookSecret.trim() || undefined, currency, locationId: locationId.trim() || undefined } });
+      await apiFetch('/payments-hub/connect', { method: 'POST', token, body: { provider, secret: secret.trim(), webhookSecret: webhookSecret.trim() || undefined, currency, locationId: locationId.trim() || undefined, region } });
       setSecret(''); setWebhookSecret('');
       setMsg(vi ? 'Kết nối thành công.' : 'Connected successfully.');
       await load();
@@ -145,6 +152,7 @@ function Inner() {
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{L.title}</h1>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>{L.sub}</p>
+      <p style={{ color: '#64748b', fontSize: 12.5, marginTop: 6, lineHeight: 1.5, maxWidth: 760 }}>{L.manualNote}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ ...ui.banner, borderColor: '#22c55e', color: '#86efac' }}>{msg}</div>}
@@ -226,6 +234,16 @@ function Inner() {
                   </>
                 )}
                 {meta.fields.includes('locationId') && (<><label style={label}>{L.location}</label><input style={input} value={locationId} onChange={(e) => setLocationId(e.target.value)} placeholder="tml_… / loc_…" /></>)}
+                {meta.fields.includes('region') && (
+                  <>
+                    <label style={label}>{L.region}</label>
+                    <select style={input} value={region} onChange={(ev) => setRegion(ev.target.value)}>
+                      <option value="test">{L.regionTest}</option>
+                      <option value="live-us">{L.regionUs}</option>
+                      <option value="live-eu">{L.regionEu}</option>
+                    </select>
+                  </>
+                )}
                 {meta.fields.includes('webhookSecret') && (<><label style={label}>{L.webhook}</label><input style={input} type="password" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="whsec_…" autoComplete="off" /></>)}
                 <div style={{ marginTop: 14 }}>
                   <button onClick={doConnect} disabled={busy || !secret.trim() || !status?.enabled} style={{ ...ui.primaryBtn, opacity: busy || !secret.trim() || !status?.enabled ? 0.6 : 1 }}>

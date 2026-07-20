@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { PaymentsService } from '../payments/payments.service';
 import { SettingsService } from '../settings/settings.service';
+import { PaymentOrchestrator } from '../payments-hub/payment-orchestrator.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { deviceSource } from '../bookings/booking.util';
 import { Public } from '../auth/decorators/public.decorator';
@@ -25,6 +26,7 @@ export class PublicSalonController {
     private readonly bookings: BookingsService,
     private readonly payments: PaymentsService,
     private readonly settings: SettingsService,
+    private readonly hub: PaymentOrchestrator,
   ) {}
 
   /** A salon is reachable only if ACTIVE and not past its access expiry. */
@@ -235,13 +237,78 @@ export class PublicSalonController {
     const deposit = await this.settings.getDepositSettings(tenantId);
     const depositCents = await this.payments.requiredDeposit(tenantId, booking.customerId, booking.priceCents, deposit);
 
+    // If the salon has connected a REAL online provider, don't settle the deposit
+    // here — the customer pays in the provider's hosted modal and we only mark it
+    // paid after verifying server-side. Salons with no provider keep the old flow.
+    const onlineProvider = await this.hub.onlineProviderFor(tenantId).catch(() => null);
+
     let payment = null;
     if (depositCents > 0) {
-      payment = await this.payments.createDepositForBookingTenant(tenantId, booking.id, depositCents, null);
+      if (!onlineProvider) {
+        payment = await this.payments.createDepositForBookingTenant(tenantId, booking.id, depositCents, null);
+      }
     } else if (dto.paymentType) {
       payment = await this.payments.createForBookingTenant(tenantId, booking.id, dto.paymentType, null);
     }
 
-    return { booking, payment, depositCents };
+    return { booking, payment, depositCents, onlineProvider };
+  }
+
+  /**
+   * Start a hosted online checkout for a booking's deposit. The amount is
+   * computed on the SERVER from the salon's deposit policy — never taken from
+   * the client — so the customer cannot choose what to pay.
+   */
+  @RateLimit(12, 60_000)
+  @Post(':slug/bookings/:id/online-checkout')
+  async startOnlineCheckout(@Param('slug') slug: string, @Param('id') id: string) {
+    const tenantId = await this.resolveTenantId(slug);
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id, tenantId },
+      select: { id: true, priceCents: true, currency: true, customerId: true },
+    });
+    if (!appt) throw new NotFoundException('Booking not found');
+
+    const deposit = await this.settings.getDepositSettings(tenantId);
+    const amountCents = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
+    if (amountCents <= 0) throw new BadRequestException('No deposit is required for this booking');
+
+    return this.hub.onlineStart(tenantId, amountCents, appt.currency, appt.id);
+  }
+
+  /**
+   * Confirm the deposit. We verify the payment DIRECTLY with the provider by
+   * our own reference and only then record it — the browser's word is not trusted.
+   */
+  @RateLimit(12, 60_000)
+  @Post(':slug/bookings/:id/online-confirm')
+  async confirmOnlineCheckout(@Param('slug') slug: string, @Param('id') id: string) {
+    const tenantId = await this.resolveTenantId(slug);
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id, tenantId },
+      select: { id: true, priceCents: true, currency: true, customerId: true },
+    });
+    if (!appt) throw new NotFoundException('Booking not found');
+
+    const already = await this.prisma.payment.findFirst({ where: { tenantId, appointmentId: appt.id, status: 'PAID' } });
+    if (already) return { ok: true, alreadyPaid: true };
+
+    const res = await this.hub.onlineLookup(tenantId, appt.id);
+    if (!res.approved) return { ok: false, reason: 'not_approved' };
+
+    const deposit = await this.settings.getDepositSettings(tenantId);
+    const expected = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
+    if (res.amountCents !== undefined && res.amountCents + 1 < expected) {
+      return { ok: false, reason: 'amount_mismatch' };
+    }
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        tenantId, appointmentId: appt.id, amountCents: expected, currency: appt.currency,
+        type: 'PAY_ONLINE', status: 'PAID', provider: res.provider,
+        providerReference: res.transactionId ?? null, paidAt: new Date(),
+      },
+    });
+    return { ok: true, payment };
   }
 }

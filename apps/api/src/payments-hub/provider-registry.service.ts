@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PaymentConnector } from './connectors/payment-connector.interface';
+import { AdyenConnector } from './connectors/adyen.connector';
 import { HelcimConnector } from './connectors/helcim.connector';
 import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
@@ -21,10 +22,11 @@ export class ProviderRegistry {
     stripe: StripeTerminalConnector,
     square: SquareTerminalConnector,
     sumup: SumUpConnector,
+    adyen: AdyenConnector,
     mock: MockConnector,
   ) {
     // Order matters: the first entry is the default shown in Payment settings.
-    for (const c of [helcim, stripe, square, sumup, mock]) this.map.set(c.id, c);
+    for (const c of [helcim, stripe, square, sumup, adyen, mock]) this.map.set(c.id, c);
   }
 
   get(provider: string): PaymentConnector {

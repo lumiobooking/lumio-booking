@@ -59,8 +59,9 @@ export class PaymentOrchestrator {
       secret: dto.secret.trim(),
       webhookSecret: dto.webhookSecret?.trim() || undefined,
       locationId: dto.locationId?.trim() || undefined,
+      region: dto.region?.trim() || undefined,
     };
-    const result = await connector.verifyCredential(cred.secret, { currency: dto.currency, locationId: cred.locationId });
+    const result = await connector.verifyCredential(cred.secret, { currency: dto.currency, locationId: cred.locationId, region: cred.region });
     if (!result.ok) throw new BadRequestException(result.error ?? 'Could not verify the API key with the provider');
     const conn = await this.creds.save(tenantId, dto.provider as ProviderId, cred, result, dto.label);
     await this.audit(tenantId, user.userId, 'payment.connect', { provider: dto.provider });
@@ -71,7 +72,7 @@ export class PaymentOrchestrator {
     this.ensureEnabled();
     const tenantId = this.tid(user);
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
-    const result = await this.registry.get(provider).verifyCredential(cred.secret, { locationId: cred.locationId });
+    const result = await this.registry.get(provider).verifyCredential(cred.secret, { locationId: cred.locationId, region: cred.region });
     await this.prisma.paymentConnection.updateMany({
       where: { tenantId, provider },
       data: { lastCheckedAt: new Date(), status: result.ok ? 'ACTIVE' : 'ERROR' },
@@ -266,6 +267,44 @@ export class PaymentOrchestrator {
     }
     await this.prisma.paymentWebhookEvent.update({ where: key, data: { processedAt: new Date() } });
     return { received: true };
+  }
+
+  // ---- ONLINE (card-not-present) — booking deposits ----
+
+  /** The tenant's active connection whose connector supports online checkout. */
+  async onlineProviderFor(tenantId: string): Promise<string | null> {
+    if (!this.enabled()) return null;
+    const conns = await this.creds.listConnections(tenantId);
+    for (const c of conns as any[]) {
+      if (c.status !== 'ACTIVE') continue;
+      try {
+        const connector: any = this.registry.get(c.provider);
+        if (typeof connector.startOnlineCheckout === 'function') return c.provider;
+      } catch {
+        /* provider not registered */
+      }
+    }
+    return null;
+  }
+
+  /** Start a hosted online checkout for a server-computed amount. */
+  async onlineStart(tenantId: string, amountCents: number, currency: string, reference: string) {
+    const provider = await this.onlineProviderFor(tenantId);
+    if (!provider) throw new BadRequestException('No online payment provider connected');
+    const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
+    const connector: any = this.registry.get(provider);
+    const session = await connector.startOnlineCheckout(cred.secret, amountCents, currency, reference);
+    return { provider, amountCents, currency, ...session };
+  }
+
+  /** Verify an online payment directly with the provider (never trust the client). */
+  async onlineLookup(tenantId: string, reference: string) {
+    const provider = await this.onlineProviderFor(tenantId);
+    if (!provider) throw new BadRequestException('No online payment provider connected');
+    const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
+    const connector: any = this.registry.get(provider);
+    const res = await connector.lookupOnlinePayment(cred.secret, reference);
+    return { provider, ...res };
   }
 
   private intentView(r: any) {

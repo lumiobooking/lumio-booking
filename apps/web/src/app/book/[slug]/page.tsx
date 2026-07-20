@@ -343,6 +343,57 @@ export default function PublicBookingPage() {
     }).catch(() => setAvail(null));
   }, [base, selectedDate, serviceId, extraServiceIds]);
 
+  // ---- Online deposit (hosted provider modal) ----
+  // Only runs when the salon has connected a real online provider AND a deposit
+  // is due. The browser NEVER decides the outcome: after the modal closes we ask
+  // our own server, which verifies the payment directly with the provider.
+  function loadHelcimPay(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (typeof window === 'undefined') return resolve();
+      if ((window as any).appendHelcimPayIframe) return resolve();
+      const el = document.createElement('script');
+      el.src = 'https://secure.helcim.app/helcim-pay/services/start.js';
+      el.onload = () => resolve();
+      el.onerror = () => reject(new Error('helcimpay-load-failed'));
+      document.head.appendChild(el);
+    });
+  }
+
+  async function payDepositOnline(bookingId: string) {
+    try {
+      const r = await fetch(`${base}/bookings/${bookingId}/online-checkout`, { method: 'POST' });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.checkoutToken) return;
+
+      await loadHelcimPay();
+      const w = window as any;
+      if (typeof w.appendHelcimPayIframe !== 'function') return;
+
+      // Wait for the modal to finish (success or cancel), with a safety timeout.
+      await new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; window.removeEventListener('message', onMsg); resolve(); } };
+        const onMsg = (ev: MessageEvent) => {
+          const d: any = ev.data;
+          if (d && typeof d === 'object' && String(d.eventName || '').includes(String(j.checkoutToken))) finish();
+        };
+        window.addEventListener('message', onMsg);
+        w.appendHelcimPayIframe(j.checkoutToken);
+        setTimeout(finish, 5 * 60_000);
+      });
+
+      // Server-side verification (settlement can lag a moment, so retry briefly).
+      for (let i = 0; i < 5; i++) {
+        const c = await fetch(`${base}/bookings/${bookingId}/online-confirm`, { method: 'POST' });
+        const cj = await c.json().catch(() => null);
+        if (cj?.ok) { setResult({ paymentStatus: 'PAID' }); return; }
+        await new Promise((s2) => setTimeout(s2, 2000));
+      }
+    } catch {
+      /* deposit not collected — the booking still stands, payable at the salon */
+    }
+  }
+
   async function submit() {
     if (!slot) return;
     setSubmitting(true); setError(null);
@@ -375,6 +426,10 @@ export default function PublicBookingPage() {
         });
       }
       setStep(5);
+      // Salon has a real online provider + a deposit is due -> collect it now.
+      if (body?.onlineProvider && (body?.depositCents ?? 0) > 0 && body?.booking?.id) {
+        void payDepositOnline(String(body.booking.id));
+      }
     } catch { setError('Network error. Please try again.'); }
     finally { setSubmitting(false); }
   }

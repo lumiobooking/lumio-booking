@@ -3,9 +3,10 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           0.8.0
+ * Version:           1.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
+ * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
  * Author:            Lumio
  * License:           GPL-2.0-or-later
  * Text Domain:       lumio-booking
@@ -108,7 +109,7 @@ if (!function_exists('lumio_booking_base')) {
         echo '<li>Or point any existing button/link on your site to your booking link above — it is detected automatically.</li>';
         echo '<li>Or add the CSS class <code>lumio-book</code> to any button you already have.</li>';
         echo '</ol>';
-        echo '<p>Prefer the form sitting inside the page instead? Use <code>[lumio_booking]</code>.</p>';
+        echo '<p><code>[lumio_booking]</code> also works: the page holding it opens the form full screen automatically, so a menu link to that page is a single tap. Embedding it inside a longer page instead? Use <code>[lumio_booking autoopen="0"]</code> to keep it inline.</p>';
         echo '<p>To manage appointments use <strong>Lumio Booking → Dashboard / Calendar / Bookings</strong> on the left.</p>';
         echo '</div>';
     }
@@ -119,13 +120,23 @@ if (!function_exists('lumio_booking_base')) {
         // 'height' is only the INITIAL height; the iframe auto-resizes to the
         // form's real content height (via a postMessage the hosted form sends),
         // so there is never empty space below it.
-        $atts = shortcode_atts(array('slug' => '', 'url' => '', 'height' => '560'), $atts, 'lumio_booking');
+        $atts = shortcode_atts(array('slug' => '', 'url' => '', 'height' => '560', 'autoopen' => '1'), $atts, 'lumio_booking');
         $site = ($atts['url'] !== '') ? rtrim($atts['url'], '/') : lumio_booking_base();
         $slug = ($atts['slug'] !== '') ? $atts['slug'] : get_option(LUMIO_BOOKING_OPT_SLUG, '');
         $slug = trim((string) $slug);
         if (!$slug) {
             return current_user_can('manage_options') ? '<p><em>Lumio Booking: set your Salon slug under Lumio Booking &rarr; Settings.</em></p>' : '';
         }
+        // The page holding this shortcode IS the booking page, so open the form
+        // FULL SCREEN the moment it loads: the visitor's tap on the salon's
+        // "Booking" menu item is then the ONLY tap needed. A button is left behind
+        // so they can reopen it after closing (and it still works without JS).
+        // Salons embedding the form inside a longer page opt out with autoopen="0".
+        if ($atts['autoopen'] !== '0') {
+            $launch = $site . '/book/' . rawurlencode($slug) . '?full=1';
+            return '<script>window.__lumioAutoOpen=1;</script>' . lumio_booking_button_html($launch, 'Book Now', 'center');
+        }
+
         $src    = esc_url($site . '/book/' . rawurlencode($slug));
         $height = max(320, intval($atts['height']));
 
@@ -200,13 +211,13 @@ if (!function_exists('lumio_booking_base')) {
             . 'font:600 26px/1 system-ui,-apple-system,sans-serif;cursor:pointer;z-index:2;";'
             . 'x.addEventListener("click",function(){closeOverlay();});'
             . 'wrap.appendChild(frame);wrap.appendChild(x);document.body.appendChild(wrap);}'
-            . 'function openOverlay(){build();if(isOpen){return;}isOpen=true;'
+            . 'function openOverlay(noHist){build();if(isOpen){return;}isOpen=true;'
             . 'savedY=window.pageYOffset||document.documentElement.scrollTop||0;'
             . 'wrap.style.display="block";wrap.removeAttribute("aria-hidden");'
             . 'document.body.style.position="fixed";document.body.style.top=(-savedY)+"px";'
             . 'document.body.style.left="0";document.body.style.right="0";'
             . 'document.body.style.width="100%";document.body.style.overflow="hidden";'
-            . 'try{history.pushState({lumioBook:1},"");pushed=true;}catch(e){}}'
+            . 'if(!noHist){try{history.pushState({lumioBook:1},"");pushed=true;}catch(e){}}}'
             . 'function closeOverlay(fromPop){if(!isOpen){return;}isOpen=false;'
             . 'wrap.style.display="none";wrap.setAttribute("aria-hidden","true");'
             . 'document.body.style.position="";document.body.style.top="";document.body.style.left="";'
@@ -226,8 +237,21 @@ if (!function_exists('lumio_booking_base')) {
             . 'if(d&&typeof d==="object"&&(d.type==="lumio-embed-collapse"||d.type==="lumio-booking-close")){closeOverlay();}});'
             . 'function pre(){if(document.querySelector(".lumio-book,[data-lumio-book],a[href*=\'"+M+"\']")){build();}}'
             . 'if(window.requestIdleCallback){requestIdleCallback(pre,{timeout:3000});}else{setTimeout(pre,1500);}'
+            // Booking page: show the form straight away (no history entry, so the
+            // Back button on a phone returns to the previous page as expected.
+            . 'if(window.__lumioAutoOpen){openOverlay(true);}'
             . '})();</script>';
     });
+
+    /** A "Book now" button that opens the full-screen overlay (real link = works without JS). */
+    function lumio_booking_button_html($url, $text = 'Book Now', $align = 'left', $color = '#4f46e5')
+    {
+        $align = in_array($align, array('left', 'center', 'right'), true) ? $align : 'left';
+        $style = 'display:inline-block;padding:14px 28px;border-radius:999px;background:' . esc_attr($color)
+               . ';color:#fff;font-weight:700;font-size:16px;text-decoration:none;line-height:1;';
+        return '<div style="text-align:' . esc_attr($align) . '"><a class="lumio-book" href="' . esc_url($url) . '" style="' . $style . '">'
+             . esc_html($text) . '</a></div>';
+    }
 
     /* ---- Customer shortcode: [lumio_booking_button] ---- */
     function lumio_booking_button_shortcode($atts)
@@ -237,14 +261,70 @@ if (!function_exists('lumio_booking_base')) {
         if (!$url) {
             return current_user_can('manage_options') ? '<p><em>Lumio Booking: set your Salon slug under Lumio Booking &rarr; Settings.</em></p>' : '';
         }
-        $align = in_array($atts['align'], array('left', 'center', 'right'), true) ? $atts['align'] : 'left';
-        $style = 'display:inline-block;padding:14px 28px;border-radius:999px;background:' . esc_attr($atts['color'])
-               . ';color:#fff;font-weight:700;font-size:16px;text-decoration:none;line-height:1;';
-        // The href is a real link, so the button still works if JavaScript is off.
-        return '<div style="text-align:' . esc_attr($align) . '"><a class="lumio-book" href="' . esc_url($url) . '" style="' . $style . '">'
-             . esc_html($atts['text']) . '</a></div>';
+        return lumio_booking_button_html($url, $atts['text'], $atts['align'], $atts['color']);
     }
     add_shortcode('lumio_booking_button', 'lumio_booking_button_shortcode');
+
+    /* ---- Self-update ------------------------------------------------------
+     * Salons never re-upload this plugin again. WordPress asks the manifest on
+     * lumiobooking.com for the latest build, shows it in wp-admin and installs
+     * it automatically. The hook name is derived from the "Update URI" header
+     * above, so it fires ONLY for this plugin and can never disturb the update
+     * checks of any other plugin on the site. */
+    if (!defined('LUMIO_BOOKING_UPDATE_URL')) {
+        define('LUMIO_BOOKING_UPDATE_URL', 'https://lumiobooking.com/wp-update/lumio-booking.json');
+    }
+
+    /** Latest published build info, cached so we never hammer the server. */
+    function lumio_booking_remote_manifest()
+    {
+        $cached = get_transient('lumio_booking_manifest');
+        if ($cached !== false) {
+            return is_array($cached) ? $cached : array();
+        }
+        $res = wp_remote_get(LUMIO_BOOKING_UPDATE_URL, array(
+            'timeout' => 8,
+            'headers' => array('Accept' => 'application/json'),
+        ));
+        if (is_wp_error($res) || (int) wp_remote_retrieve_response_code($res) !== 200) {
+            // Back off for a while so an outage cannot slow down wp-admin.
+            set_transient('lumio_booking_manifest', array(), 3 * HOUR_IN_SECONDS);
+            return array();
+        }
+        $data = json_decode(wp_remote_retrieve_body($res), true);
+        $data = is_array($data) ? $data : array();
+        set_transient('lumio_booking_manifest', $data, 6 * HOUR_IN_SECONDS);
+        return $data;
+    }
+
+    add_filter('update_plugins_lumiobooking.com', function ($update, $plugin_data, $plugin_file) {
+        $m = lumio_booking_remote_manifest();
+        if (empty($m['version']) || empty($m['download_url'])) {
+            return $update;
+        }
+        $current = isset($plugin_data['Version']) ? $plugin_data['Version'] : '0';
+        if (version_compare($m['version'], $current, '<=')) {
+            return $update; // already up to date
+        }
+        return array(
+            'id'           => 'lumiobooking.com/lumio-booking',
+            'slug'         => 'lumio-booking',
+            'plugin'       => $plugin_file,
+            'version'      => $m['version'],
+            'url'          => isset($m['homepage']) ? $m['homepage'] : 'https://lumiobooking.com',
+            'package'      => $m['download_url'],
+            'tested'       => isset($m['tested']) ? $m['tested'] : '',
+            'requires_php' => isset($m['requires_php']) ? $m['requires_php'] : '7.4',
+        );
+    }, 10, 3);
+
+    /* Install those updates without anyone clicking anything. */
+    add_filter('auto_update_plugin', function ($update, $item) {
+        if (isset($item->slug) && $item->slug === 'lumio-booking') {
+            return true;
+        }
+        return $update;
+    }, 10, 2);
 
     add_shortcode('lumio_booking', 'lumio_booking_shortcode');
 }

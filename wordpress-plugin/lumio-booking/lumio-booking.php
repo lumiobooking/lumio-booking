@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -236,6 +236,27 @@ if (!function_exists('lumio_booking_base')) {
             . 'window.addEventListener("message",function(e){var d=e.data;'
             . 'if(d&&typeof d==="object"&&(d.type==="lumio-embed-collapse"||d.type==="lumio-booking-close")){closeOverlay();}});'
             . 'function pre(){if(document.querySelector(".lumio-book,[data-lumio-book],a[href*=\'"+M+"\']")){build();}}'
+            // Some salon themes render the booking iframe themselves instead of using
+            // the shortcode, so the plugin never sees it. Those frames are content-sized,
+            // which is exactly what makes the form fall back to its teaser card and
+            // fake-pinned cart. Take over: hide the frame, drop a Book button in its
+            // place and show the form full screen, which is the one layout that always
+            // has a real viewport no matter how the theme is built.
+            . 'function adopt(){var l=document.querySelectorAll("iframe[src*=\'"+M+"\']");'
+            . 'for(var i=0;i<l.length;i++){var f=l[i];'
+            . 'if(f.__lumioTaken){continue;}'
+            . 'if(wrap&&wrap.contains(f)){continue;}'
+            . 'if(f.closest&&f.closest(".lumio-booking-embed")){continue;}'
+            . 'f.__lumioTaken=1;'
+            . 'var b=document.createElement("a");b.className="lumio-book";b.href=U;b.textContent="Book now";'
+            . 'b.style.cssText="display:inline-block;padding:14px 28px;border-radius:999px;background:#4f46e5;'
+            . 'color:#fff;font-weight:700;font-size:16px;text-decoration:none;line-height:1;";'
+            . 'var box=document.createElement("div");box.style.cssText="text-align:center;padding:28px 0;";'
+            . 'box.appendChild(b);if(f.parentNode){f.parentNode.insertBefore(box,f);}'
+            . 'f.style.setProperty("display","none","important");'
+            . 'try{f.src="about:blank";}catch(e){}'
+            . 'openOverlay(true);}}'
+            . 'adopt();setTimeout(adopt,1200);'
             . 'if(window.requestIdleCallback){requestIdleCallback(pre,{timeout:3000});}else{setTimeout(pre,1500);}'
             // Booking page: show the form straight away (no history entry, so the
             // Back button on a phone returns to the previous page as expected.

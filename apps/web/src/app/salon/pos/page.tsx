@@ -92,6 +92,12 @@ function Register() {
   const [split, setSplit] = useState(false);
   const [parts, setParts] = useState<{ method: 'CASH' | 'CARD' | 'TRANSFER'; amount: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // Card terminal (Payment Hub) — optional. When a reader is connected, paying by
+  // CARD collects on the physical reader before the sale is recorded.
+  const [hubConn, setHubConn] = useState<{ provider: string } | null>(null);
+  const [hubReaders, setHubReaders] = useState<{ id: string; externalReaderId: string; label?: string | null; status: string }[]>([]);
+  const [hubReader, setHubReader] = useState<string>('');
+  const [charging, setCharging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -133,6 +139,24 @@ function Register() {
   // the right person(s). A token ref keeps the async log working from the
   // (mount-time) BroadcastChannel handler.
   const tokenRef = useRef(token); tokenRef.current = token;
+
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const st = await apiFetch<{ enabled: boolean }>('/payments-hub/status', { token });
+        if (!st?.enabled) return;
+        const cons = await apiFetch<{ provider: string; status: string }[]>('/payments-hub/connections', { token });
+        const active = cons.find((c) => c.status === 'ACTIVE');
+        if (!active) return;
+        setHubConn({ provider: active.provider });
+        const rs = await apiFetch<{ id: string; externalReaderId: string; label?: string | null; status: string }[]>(`/payments-hub/readers/${active.provider}`, { token }).catch(() => []);
+        setHubReaders(rs);
+        const online = rs.find((r) => r.status === 'ONLINE') ?? rs[0];
+        if (online) setHubReader(online.externalReaderId);
+      } catch { /* hub off / not connected -> CARD stays manual */ }
+    })();
+  }, [token]);
   const paidTipRef = useRef<{ techs: { id: string; name: string; qr?: string; handle?: string; weightCents: number }[]; baseCents: number }>({ techs: [], baseCents: 0 });
 
   // ---- Wireless iPad customer display (server relay) --------------------------
@@ -734,6 +758,24 @@ function Register() {
         if (giftCard) { setError(t('po.gcOffline')); return; }
         saveOffline(); return;
       }
+      // Card-present: collect on the connected reader BEFORE recording the sale.
+      // Only when the salon has a Payment Hub reader; otherwise CARD stays manual.
+      const cardCents = tenderList.filter((tn) => tn.method === 'CARD').reduce((a, tn) => a + tn.amountCents, 0);
+      if (hubConn && hubReader && cardCents > 0) {
+        setCharging(true);
+        try {
+          let intent = await apiFetch<{ id: string; status: string; error?: string }>('/payments-hub/charge', { method: 'POST', token, body: { provider: hubConn.provider, amountCents: cardCents, clientRef: `${clientRef}-card`, readerExternalId: hubReader, description: 'POS sale' } });
+          for (let i = 0; i < 30 && (intent.status === 'PROCESSING' || intent.status === 'REQUIRES_PAYMENT'); i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            intent = await apiFetch(`/payments-hub/intents/${intent.id}`, { token });
+          }
+          if (intent.status !== 'SUCCEEDED') { setError('Card not completed: ' + (intent.error ?? intent.status)); return; }
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Card terminal error'); return;
+        } finally {
+          setCharging(false);
+        }
+      }
       try {
         const order = await apiFetch<{ orderNumber: number }>('/pos/orders', { method: 'POST', token, body: payload });
         printReceipt(order.orderNumber);
@@ -1289,7 +1331,21 @@ function Register() {
             </>
           )}
           {payMethod === 'CARD' && (
-            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 10 }}>{t('po.cardHint').replace('{x}', formatPrice(money.due, currency))}</p>
+            <div style={{ marginBottom: 10 }}>
+              <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('po.cardHint').replace('{x}', formatPrice(money.due, currency))}</p>
+              {hubConn && (
+                <div style={{ marginTop: 8, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 10, fontSize: 13, color: '#e2e8f0' }}>
+                  {hubReaders.length > 1 ? (
+                    <span>💳 <select value={hubReader} onChange={(e) => setHubReader(e.target.value)} style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '4px 8px' }}>
+                      {hubReaders.map((r) => <option key={r.id} value={r.externalReaderId}>{(r.label || r.externalReaderId) + ' (' + r.status + ')'}</option>)}
+                    </select></span>
+                  ) : (
+                    <span>💳 {hubReaders.find((r) => r.externalReaderId === hubReader)?.label || 'Terminal'} {hubReader ? '● ready' : '— no reader'}</span>
+                  )}
+                  <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>The charge is sent to this reader when you press Pay.</div>
+                </div>
+              )}
+            </div>
           )}
           {payMethod === 'TRANSFER' && (
             <div style={{ marginBottom: 10 }}>
@@ -1313,6 +1369,13 @@ function Register() {
 
           </>)}
 
+          {charging && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+              <div style={{ fontSize: 46 }}>💳</div>
+              <div style={{ color: '#e2e8f0', fontSize: 18, marginTop: 12 }}>Waiting for the customer to tap / insert…</div>
+              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>Follow the prompt on the card reader</div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>
             <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>

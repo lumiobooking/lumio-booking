@@ -1,0 +1,25 @@
+{
+  "name": "lumio-mobile-pos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lumio Mobile POS — Bluetooth card reader + Tap to Pay (Stripe Terminal). FOUNDATION build.",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild"
+  },
+  "dependencies": {
+    "@stripe/stripe-terminal-react-native": "^0.0.1-beta.22",
+    "expo": "~51.0.0",
+    "expo-dev-client": "~4.0.0",
+    "react": "18.2.0",
+    "react-native": "0.74.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@types/react": "~18.2.79",
+    "typescript": "~5.3.3"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Lumio Mobile POS",
+    "slug": "lumio-mobile-pos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "lumiopos",
+    "ios": {
+      "bundleIdentifier": "com.lumiobooking.pos",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Connect to the card reader over Bluetooth to take payments.",
+        "NSLocationWhenInUseUsageDescription": "Stripe Terminal requires your location to accept in-person payments.",
+        "UIBackgroundModes": ["bluetooth-central"]
+      }
+    },
+    "android": {
+      "package": "com.lumiobooking.pos",
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN"
+      ]
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "@stripe/stripe-terminal-react-native",
+        {
+          "bluetoothBackgroundMode": true,
+          "locationWhenInUsePermission": "Stripe Terminal requires your location to accept in-person payments.",
+          "bluetoothPeripheralPermission": "Connect to the card reader over Bluetooth.",
+          "bluetoothAlwaysUsagePermission": "Connect to the card reader over Bluetooth to take payments."
+        }
+      ]
+    ]
+  }
+}

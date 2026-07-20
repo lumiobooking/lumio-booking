@@ -133,19 +133,37 @@ export class PaymentOrchestrator {
     const existing = await this.prisma.paymentIntentRecord.findUnique({ where: { tenantId_clientRef: { tenantId, clientRef: dto.clientRef } } });
     if (existing) return this.intentView(existing);
 
-    const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const conn = await this.creds.findConnection(tenantId, provider as ProviderId);
-    let readerExternalId = dto.readerExternalId;
-    if (!readerExternalId && dto.deviceId) {
-      const dev = await this.prisma.paymentDevice.findFirst({ where: { id: dto.deviceId, tenantId } });
-      readerExternalId = dev?.externalReaderId;
-    }
     const currency = (dto.currency || conn?.currency || 'USD').toUpperCase();
+    const device = dto.deviceId ? await this.prisma.paymentDevice.findFirst({ where: { id: dto.deviceId, tenantId } }) : null;
+    const connectionType = device?.connectionType ?? 'CLOUD';
+
+    // USB / BLUETOOTH: queue the command for the paired Bridge/Companion agent,
+    // which executes it on the terminal via the provider SDK and posts the result.
+    if (connectionType === 'USB' || connectionType === 'BLUETOOTH') {
+      if (!device?.agentId) throw new BadRequestException('This reader is not linked to a Bridge/Companion');
+      const agent = await this.prisma.paymentAgent.findFirst({ where: { id: device.agentId, tenantId } });
+      if (!agent || agent.status !== 'ONLINE') throw new BadRequestException('Device offline — open the Bridge/Companion app');
+      const rec = await this.prisma.paymentIntentRecord.create({
+        data: {
+          tenantId, provider, connectionId: conn?.id ?? null, orderId: dto.orderId ?? null,
+          amountCents: dto.amountCents, currency, status: 'QUEUED', connectionType,
+          agentId: device.agentId, deviceId: device.id, clientRef: dto.clientRef, createdByUserId: user.userId,
+        },
+      });
+      await this.audit(tenantId, user.userId, 'payment.charge.queued', { intentId: rec.id, amountCents: dto.amountCents, via: connectionType });
+      return this.intentView(rec); // status QUEUED; POS polls getIntent until the agent finishes
+    }
+
+    // CLOUD (server-driven): backend calls the provider API directly.
+    const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
+    let readerExternalId = dto.readerExternalId;
+    if (!readerExternalId && device) readerExternalId = device.externalReaderId;
 
     const record = await this.prisma.paymentIntentRecord.create({
       data: {
         tenantId, provider, connectionId: conn?.id ?? null, orderId: dto.orderId ?? null,
-        amountCents: dto.amountCents, currency, status: 'REQUIRES_PAYMENT',
+        amountCents: dto.amountCents, currency, status: 'REQUIRES_PAYMENT', connectionType: 'CLOUD',
         deviceId: dto.deviceId ?? null, clientRef: dto.clientRef, createdByUserId: user.userId,
       },
     });
@@ -163,7 +181,8 @@ export class PaymentOrchestrator {
       },
     });
     await this.audit(tenantId, user.userId, 'payment.charge', { intentId: updated.id, amountCents: dto.amountCents, status: res.status });
-    return this.intentView(updated);
+    // clientSecret returned ONLY here (never persisted) for the mobile SDK path.
+    return { ...this.intentView(updated), clientSecret: res.clientSecret };
   }
 
   async getIntent(user: AuthenticatedUser, id: string) {

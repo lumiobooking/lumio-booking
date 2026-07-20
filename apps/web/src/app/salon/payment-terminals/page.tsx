@@ -15,7 +15,7 @@ interface Device { id: string; externalReaderId: string; label?: string | null; 
 interface Intent { id: string; status: string; amountCents: number; currency: string; error?: string | null; }
 
 // Providers usable in Phase 1. Others are shown as "coming soon".
-const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help: { en: string; vi: string }; fields: string[] }> = {
+const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help: { en: string; vi: string }; fields: string[]; connections?: { cloud?: string; usb?: string; bluetooth?: string }; countries?: string[] }> = {
   stripe: {
     name: 'Stripe Terminal',
     recommended: true,
@@ -68,8 +68,8 @@ function Inner() {
   const { lang } = useLang();
   const vi = lang === 'vi';
   const L = vi
-    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu' }
-    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key' };
+    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu', country: 'Quốc gia', connType: 'Kiểu kết nối', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'Kiểu kết nối này sắp có. Hiện tại dùng Cloud/WiFi.' }
+    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key', country: 'Country', connType: 'Connection type', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'This connection type is coming soon. Use Cloud/WiFi for now.' };
 
   const [status, setStatus] = useState<HubStatus | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -83,6 +83,8 @@ function Inner() {
   const [webhookSecret, setWebhookSecret] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [locationId, setLocationId] = useState('');
+  const [country, setCountry] = useState('US');
+  const [connType, setConnType] = useState<'cloud' | 'usb' | 'bluetooth'>('cloud');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -174,30 +176,54 @@ function Inner() {
 
         {meta && (
           <>
-            <p style={{ fontSize: 12, color: '#a5b4fc', background: '#1e293b', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
-              <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}
-            </p>
-            <label style={label}>{L.secret}</label>
-            <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : ''} autoComplete="off" />
-            {meta.fields.includes('currency') && (
-              <>
-                <label style={label}>{L.currency}</label>
-                <select style={input} value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  <option value="USD">USD</option>
-                  <option value="CAD">CAD (Interac)</option>
-                </select>
-              </>
-            )}
-            {meta.fields.includes('locationId') && (<><label style={label}>{L.location}</label><input style={input} value={locationId} onChange={(e) => setLocationId(e.target.value)} placeholder="tml_… / loc_…" /></>)}
-            {meta.fields.includes('webhookSecret') && (<><label style={label}>{L.webhook}</label><input style={input} type="password" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="whsec_…" autoComplete="off" /></>)}
-            <div style={{ marginTop: 14 }}>
-              <button onClick={doConnect} disabled={busy || !secret.trim() || !status?.enabled} style={{ ...ui.primaryBtn, opacity: busy || !secret.trim() || !status?.enabled ? 0.6 : 1 }}>
-                {busy ? '…' : L.connect}
-              </button>
+            <label style={label}>{L.country}</label>
+            <select style={input} value={country} onChange={(e) => setCountry(e.target.value)}>
+              <option value="US">United States</option>
+              <option value="CA">Canada</option>
+            </select>
+            <label style={label}>{L.connType}</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+              {(['cloud', 'usb', 'bluetooth'] as const).map((ct) => {
+                const st = (meta.connections ?? { cloud: 'active', usb: 'soon', bluetooth: 'soon' })[ct] ?? 'soon';
+                const on = st === 'active';
+                return (
+                  <button key={ct} onClick={() => on && setConnType(ct)} disabled={!on} style={{ ...(connType === ct && on ? ui.primaryBtn : ghost), opacity: on ? 1 : 0.5, fontSize: 13 }}>
+                    {L[ct]}{on ? '' : ' · ' + L.comingSoon}
+                  </button>
+                );
+              })}
             </div>
+            {connType === 'cloud' ? (
+              <>
+                <p style={{ fontSize: 12, color: '#a5b4fc', background: '#1e293b', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
+                  <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}
+                </p>
+                <label style={label}>{L.secret}</label>
+                <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : ''} autoComplete="off" />
+                {meta.fields.includes('currency') && (
+                  <>
+                    <label style={label}>{L.currency}</label>
+                    <select style={input} value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                      <option value="USD">USD</option>
+                      <option value="CAD">CAD (Interac)</option>
+                    </select>
+                  </>
+                )}
+                {meta.fields.includes('locationId') && (<><label style={label}>{L.location}</label><input style={input} value={locationId} onChange={(e) => setLocationId(e.target.value)} placeholder="tml_… / loc_…" /></>)}
+                {meta.fields.includes('webhookSecret') && (<><label style={label}>{L.webhook}</label><input style={input} type="password" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="whsec_…" autoComplete="off" /></>)}
+                <div style={{ marginTop: 14 }}>
+                  <button onClick={doConnect} disabled={busy || !secret.trim() || !status?.enabled} style={{ ...ui.primaryBtn, opacity: busy || !secret.trim() || !status?.enabled ? 0.6 : 1 }}>
+                    {busy ? '…' : L.connect}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 10 }}>{L.comingSoonNote}</p>
+            )}
           </>
         )}
       </div>
+      {status?.enabled && <AgentsSection token={token} vi={vi} />}
     </section>
   );
 }
@@ -269,6 +295,51 @@ function TestCharge({ provider, token, L, vi }: { provider: string; token: strin
         <input style={{ ...input, width: 130 }} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={L.amount} />
         <button onClick={run} disabled={busy} style={{ ...ui.primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? '…' : L.run}</button>
         {result && <span style={{ fontSize: 13, color: result.startsWith('SUCCEEDED') ? '#86efac' : '#fca5a5' }}>{result}</span>}
+      </div>
+    </div>
+  );
+}
+
+function AgentsSection({ token, vi }: { token: string | null; vi: boolean }) {
+  const [agents, setAgents] = useState<Array<{ id: string; kind: string; label?: string | null; status: string }>>([]);
+  const [pairCode, setPairCode] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    if (!token) return;
+    try { setAgents(await apiFetch('/payments-hub/agents', { token })); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+  async function add(kind: string) {
+    setErr(null); setPairCode(null);
+    try { const a = await apiFetch<{ pairingCode: string }>('/payments-hub/agents', { method: 'POST', token, body: { kind } }); setPairCode(a.pairingCode); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+  }
+  async function unpair(id: string) {
+    try { await apiFetch(`/payments-hub/agents/${id}`, { method: 'DELETE', token }); await load(); } catch { /* ignore */ }
+  }
+  return (
+    <div style={box}>
+      <strong style={{ fontSize: 15 }}>{vi ? 'Thiết bị cầu nối (Bridge / Companion)' : 'Devices & Agents (Bridge / Companion)'}</strong>
+      <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{vi ? 'Cho máy quẹt USB (Windows Bridge) hoặc Bluetooth (mobile Companion). Tạo mã ghép rồi nhập vào ứng dụng.' : 'For USB (Windows Bridge) or Bluetooth (mobile Companion) readers. Create a code and enter it in the app.'}</p>
+      {err && <div style={{ color: '#fca5a5', fontSize: 12 }}>{err}</div>}
+      {pairCode && (
+        <div style={{ background: '#052e16', border: '1px solid #22c55e', borderRadius: 8, padding: 12, margin: '8px 0' }}>
+          <div style={{ color: '#86efac', fontSize: 13 }}>{vi ? 'Nhập mã này vào Bridge/Companion (hết hạn 15 phút):' : 'Enter this code in the Bridge/Companion (expires in 15 min):'}</div>
+          <div style={{ color: '#fff', fontSize: 24, letterSpacing: 4, fontWeight: 700, marginTop: 6 }}>{pairCode}</div>
+        </div>
+      )}
+      <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
+        {agents.map((a) => (
+          <li key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#e2e8f0', padding: '6px 0' }}>
+            <span><span style={{ color: a.status === 'ONLINE' ? '#22c55e' : '#94a3b8' }}>●</span> {a.kind}{a.label ? ' · ' + a.label : ''} <span style={{ color: '#64748b' }}>({a.status})</span></span>
+            <button onClick={() => unpair(a.id)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{vi ? 'Gỡ' : 'Unpair'}</button>
+          </li>
+        ))}
+        {agents.length === 0 && <li style={{ color: '#64748b', fontSize: 13 }}>—</li>}
+      </ul>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => add('COMPANION')} style={ghost}>+ Companion (Bluetooth)</button>
+        <button onClick={() => add('BRIDGE')} style={ghost}>+ Bridge (USB)</button>
       </div>
     </div>
   );

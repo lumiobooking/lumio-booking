@@ -76,8 +76,8 @@ function Inner() {
   const { lang } = useLang();
   const vi = lang === 'vi';
   const L = vi
-    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu', country: 'Quốc gia', connType: 'Kiểu kết nối', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'Kiểu kết nối này sắp có. Hiện tại dùng Cloud/WiFi.' }
-    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key', country: 'Country', connType: 'Connection type', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'This connection type is coming soon. Use Cloud/WiFi for now.' };
+    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu', country: 'Quốc gia', connType: 'Kiểu kết nối', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'Kiểu kết nối này sắp có.', needAgent: 'cần ghép thiết bị', needAgentTip: 'Tạo mã ghép ở mục "Thiết bị cầu nối" bên dưới', agentNote: 'Máy quẹt sẽ tự xuất hiện sau khi Bridge/Companion kết nối. Vẫn cần nhập API key nhà cung cấp bên dưới.' }
+    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key', country: 'Country', connType: 'Connection type', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'This connection type is coming soon.', needAgent: 'pair a device', needAgentTip: 'Create a pairing code in "Devices & Agents" below', agentNote: 'Readers appear automatically once the Bridge/Companion connects. You still need the provider API key below.' };
 
   const [status, setStatus] = useState<HubStatus | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -93,17 +93,19 @@ function Inner() {
   const [locationId, setLocationId] = useState('');
   const [country, setCountry] = useState('US');
   const [connType, setConnType] = useState<'cloud' | 'usb' | 'bluetooth'>('cloud');
+  const [agents, setAgents] = useState<Array<{ kind: string; paired: boolean; status: string }>>([]);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const [st, cons] = await Promise.all([
+      const [st, cons, ags] = await Promise.all([
         apiFetch<HubStatus>('/payments-hub/status', { token }),
         apiFetch<Connection[]>('/payments-hub/connections', { token }).catch(() => []),
+        apiFetch<Array<{ kind: string; paired: boolean; status: string }>>('/payments-hub/agents', { token }).catch(() => []),
       ]);
-      setStatus(st); setConnections(cons);
+      setStatus(st); setConnections(cons); setAgents(ags);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally { setLoading(false); }
@@ -133,6 +135,9 @@ function Inner() {
 
   if (loading) return <section><h1 style={{ fontSize: 24 }}>{L.title}</h1><p style={{ color: '#94a3b8' }}>…</p></section>;
 
+  // USB / Bluetooth become selectable once a Bridge / Companion is actually paired.
+  const usbOk = agents.some((a) => a.kind === 'BRIDGE' && a.paired);
+  const btOk = agents.some((a) => a.kind === 'COMPANION' && a.paired);
   const meta = PROVIDER_META[provider];
   const activeProviders = (status?.providers ?? []).filter((p) => PROVIDER_META[p]);
 
@@ -192,16 +197,19 @@ function Inner() {
             <label style={label}>{L.connType}</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
               {(['cloud', 'usb', 'bluetooth'] as const).map((ct) => {
-                const st = (meta.connections ?? { cloud: 'active', usb: 'soon', bluetooth: 'soon' })[ct] ?? 'soon';
-                const on = st === 'active';
+                const on = ct === 'cloud' ? true : ct === 'usb' ? usbOk : btOk;
                 return (
-                  <button key={ct} onClick={() => on && setConnType(ct)} disabled={!on} style={{ ...(connType === ct && on ? ui.primaryBtn : ghost), opacity: on ? 1 : 0.5, fontSize: 13 }}>
-                    {L[ct]}{on ? '' : ' · ' + L.comingSoon}
+                  <button key={ct} onClick={() => on && setConnType(ct)} disabled={!on} title={on ? '' : L.needAgentTip}
+                    style={{ ...(connType === ct && on ? ui.primaryBtn : ghost), opacity: on ? 1 : 0.5, fontSize: 13 }}>
+                    {L[ct]}{on ? '' : ' · ' + L.needAgent}
                   </button>
                 );
               })}
             </div>
-            {connType === 'cloud' ? (
+            {connType !== 'cloud' && (
+              <p style={{ color: '#a5b4fc', fontSize: 12, background: '#1e293b', padding: 10, borderRadius: 8, margin: '8px 0 0' }}>{L.agentNote}</p>
+            )}
+            {(
               <>
                 <p style={{ fontSize: 12, color: '#a5b4fc', background: '#1e293b', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
                   <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}
@@ -225,8 +233,6 @@ function Inner() {
                   </button>
                 </div>
               </>
-            ) : (
-              <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 10 }}>{L.comingSoonNote}</p>
             )}
           </>
         )}

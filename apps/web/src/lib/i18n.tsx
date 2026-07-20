@@ -1396,6 +1396,7 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.gw.stripe': { en: 'Cards, Apple Pay & Google Pay, Tap to Pay — most popular', vi: 'Thẻ, Apple Pay & Google Pay, Tap to Pay — phổ biến nhất' },
   'se.gw.square': { en: 'Cards & in-store POS terminals', vi: 'Thẻ & máy POS tại quầy' },
   'se.gw.clover': { en: 'Popular all-in-one salon terminals', vi: 'Máy POS tất-cả-trong-một phổ biến cho tiệm' },
+  'se.gw.helcim': { en: 'One account for online + Smart Terminal — recommended', vi: 'Một tài khoản cho cả online lẫn máy quẹt — khuyên dùng' },
   'se.gw.authorizenet': { en: 'Widely used US card gateway', vi: 'Cổng thẻ phổ biến tại Mỹ' },
   'se.gw.paypal': { en: 'PayPal balance & cards', vi: 'Số dư PayPal & thẻ' },
   'se.gw.sumup': { en: 'Low-cost card reader for small salons', vi: 'Máy quẹt thẻ giá rẻ cho tiệm nhỏ' },

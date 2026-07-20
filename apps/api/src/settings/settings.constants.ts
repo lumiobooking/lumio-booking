@@ -279,7 +279,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
 };
 
 /** Supported card/online gateways (most popular for US/Canada salons). */
-export const GATEWAY_IDS = ['stripe', 'square', 'clover', 'authorizenet', 'paypal', 'sumup'] as const;
+export const GATEWAY_IDS = ['helcim', 'stripe', 'square', 'clover', 'authorizenet', 'paypal', 'sumup'] as const;
 export type GatewayId = (typeof GATEWAY_IDS)[number];
 
 /** Stored per gateway. apiKey is the public/identifier value; secret is private. */
@@ -292,6 +292,7 @@ export type PaymentGateways = Record<GatewayId, GatewayConfig>;
 
 export const DEFAULT_GATEWAY: GatewayConfig = { enabled: false, apiKey: '', secret: '' };
 export const DEFAULT_PAYMENT_GATEWAYS: PaymentGateways = {
+  helcim: { ...DEFAULT_GATEWAY },
   stripe: { ...DEFAULT_GATEWAY },
   square: { ...DEFAULT_GATEWAY },
   clover: { ...DEFAULT_GATEWAY },

@@ -47,6 +47,7 @@ interface SettingsData {
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'VND', 'JPY', 'SGD'];
 // Most popular US/Canada card gateways. apiKey = public identifier; secret = private key.
 const GATEWAYS = [
+  { id: 'helcim', name: 'Helcim', desc: 'One account for online + Smart Terminal — recommended', apiLabel: 'Account ID (optional)', secretLabel: 'API token' },
   { id: 'stripe', name: 'Stripe', desc: 'Cards, Apple Pay & Google Pay, Tap to Pay — most popular', apiLabel: 'Publishable key', secretLabel: 'Secret key' },
   { id: 'square', name: 'Square', desc: 'Cards & in-store POS terminals', apiLabel: 'Application / Location ID', secretLabel: 'Access token' },
   { id: 'clover', name: 'Clover', desc: 'Popular all-in-one salon terminals', apiLabel: 'Merchant ID', secretLabel: 'API token' },

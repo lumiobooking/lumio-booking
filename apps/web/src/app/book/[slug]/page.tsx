@@ -2090,7 +2090,18 @@ function Shell({ children, accent, fullscreen }: { children: React.ReactNode; ac
 }
 function useEmbedded(): boolean {
   const [emb, setEmb] = useState(false);
-  useEffect(() => { try { setEmb(window.self !== window.top); } catch { setEmb(true); } }, []);
+  useEffect(() => {
+    try {
+      // `?full=1` means the host site opened us inside a FULL-SCREEN overlay, so we
+      // already own a real viewport. Behave exactly like the hosted page: no
+      // launcher card, no faked sticky bars — the customer sees the form on the
+      // very first tap instead of having to tap a teaser card first.
+      const full = new URLSearchParams(window.location.search).get('full') === '1';
+      setEmb(!full && window.self !== window.top);
+    } catch {
+      setEmb(true);
+    }
+  }, []);
   return emb;
 }
 function Center({ children }: { children: React.ReactNode }) {

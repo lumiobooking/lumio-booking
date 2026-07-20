@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
- * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings, then add the [lumio_booking] shortcode to any page.
- * Version:           0.7.0
+ * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
+ * Version:           0.8.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Lumio
@@ -102,7 +102,13 @@ if (!function_exists('lumio_booking_base')) {
         submit_button('Save settings');
         echo '</form>';
         echo '<hr /><h2>Show the booking form to customers</h2>';
-        echo '<p>Add this shortcode to any page: <code>[lumio_booking]</code></p>';
+        echo '<p><strong>Recommended — one tap, full screen.</strong> Any of these opens the booking form full screen instantly, on phones and computers:</p>';
+        echo '<ol>';
+        echo '<li>Add the shortcode <code>[lumio_booking_button]</code> (optional: <code>[lumio_booking_button text="Book Now" align="center"]</code>).</li>';
+        echo '<li>Or point any existing button/link on your site to your booking link above — it is detected automatically.</li>';
+        echo '<li>Or add the CSS class <code>lumio-book</code> to any button you already have.</li>';
+        echo '</ol>';
+        echo '<p>Prefer the form sitting inside the page instead? Use <code>[lumio_booking]</code>.</p>';
         echo '<p>To manage appointments use <strong>Lumio Booking → Dashboard / Calendar / Bookings</strong> on the left.</p>';
         echo '</div>';
     }
@@ -151,5 +157,94 @@ if (!function_exists('lumio_booking_base')) {
             . '})();</script>';
         return $html;
     }
+    /* ---- One-tap FULL-SCREEN booking overlay ------------------------------
+     * Problem this solves: an inline iframe has no viewport of its own, so on a
+     * phone the form used to show a teaser card that the visitor had to tap a
+     * SECOND time before the real form appeared. Now any "Book now" button opens
+     * the form full screen on the first tap, on phone and desktop alike.
+     *
+     * A button counts as a trigger when it has class `lumio-book`, the attribute
+     * `data-lumio-book`, or simply links to the salon's /book/<slug> URL.
+     * The overlay is pre-loaded while the page is idle, so it opens instantly. */
+
+    /** Booking URL that renders full screen (the app skips the teaser card). */
+    function lumio_booking_launch_url()
+    {
+        $slug = trim((string) get_option(LUMIO_BOOKING_OPT_SLUG, ''));
+        if (!$slug) {
+            return '';
+        }
+        return lumio_booking_base() . '/book/' . rawurlencode($slug) . '?full=1';
+    }
+
+    add_action('wp_footer', function () {
+        $url = lumio_booking_launch_url();
+        if (!$url) {
+            return;
+        }
+        $slug  = trim((string) get_option(LUMIO_BOOKING_OPT_SLUG, ''));
+        $match = '/book/' . rawurlencode($slug);
+        echo '<script>(function(){'
+            . 'if(window.__lumioLaunch){return;}window.__lumioLaunch=1;'
+            . 'var U=' . wp_json_encode($url) . ',M=' . wp_json_encode($match) . ';'
+            . 'var wrap=null,frame=null,isOpen=false,savedY=0,pushed=false;'
+            . 'function build(){if(wrap){return;}'
+            . 'wrap=document.createElement("div");wrap.setAttribute("aria-hidden","true");'
+            . 'wrap.style.cssText="position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483000;background:#fff;display:none;";'
+            . 'frame=document.createElement("iframe");frame.title="Book an appointment";'
+            . 'frame.setAttribute("allow","payment");'
+            . 'frame.style.cssText="width:100%;height:100%;border:0;display:block;";frame.src=U;'
+            . 'var x=document.createElement("button");x.type="button";x.setAttribute("aria-label","Close");x.innerHTML="&times;";'
+            . 'x.style.cssText="position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));'
+            . 'width:40px;height:40px;border-radius:20px;border:0;background:rgba(15,23,42,.72);color:#fff;'
+            . 'font:600 26px/1 system-ui,-apple-system,sans-serif;cursor:pointer;z-index:2;";'
+            . 'x.addEventListener("click",function(){closeOverlay();});'
+            . 'wrap.appendChild(frame);wrap.appendChild(x);document.body.appendChild(wrap);}'
+            . 'function openOverlay(){build();if(isOpen){return;}isOpen=true;'
+            . 'savedY=window.pageYOffset||document.documentElement.scrollTop||0;'
+            . 'wrap.style.display="block";wrap.removeAttribute("aria-hidden");'
+            . 'document.body.style.position="fixed";document.body.style.top=(-savedY)+"px";'
+            . 'document.body.style.left="0";document.body.style.right="0";'
+            . 'document.body.style.width="100%";document.body.style.overflow="hidden";'
+            . 'try{history.pushState({lumioBook:1},"");pushed=true;}catch(e){}}'
+            . 'function closeOverlay(fromPop){if(!isOpen){return;}isOpen=false;'
+            . 'wrap.style.display="none";wrap.setAttribute("aria-hidden","true");'
+            . 'document.body.style.position="";document.body.style.top="";document.body.style.left="";'
+            . 'document.body.style.right="";document.body.style.width="";document.body.style.overflow="";'
+            . 'window.scrollTo(0,savedY);'
+            . 'if(!fromPop&&pushed){pushed=false;try{history.back();}catch(e){}}}'
+            . 'function hit(el){if(!el||!el.getAttribute){return false;}'
+            . 'if(el.classList&&el.classList.contains("lumio-book")){return true;}'
+            . 'if(el.hasAttribute("data-lumio-book")){return true;}'
+            . 'var h=el.getAttribute("href");return !!(h&&h.indexOf(M)!==-1);}'
+            . 'document.addEventListener("click",function(ev){var el=ev.target;'
+            . 'while(el&&el!==document.body){if(hit(el)){ev.preventDefault();ev.stopPropagation();openOverlay();return;}'
+            . 'el=el.parentElement;}},true);'
+            . 'document.addEventListener("keydown",function(e){if(e.key==="Escape"){closeOverlay();}});'
+            . 'window.addEventListener("popstate",function(){if(isOpen){closeOverlay(true);}});'
+            . 'window.addEventListener("message",function(e){var d=e.data;'
+            . 'if(d&&typeof d==="object"&&(d.type==="lumio-embed-collapse"||d.type==="lumio-booking-close")){closeOverlay();}});'
+            . 'function pre(){if(document.querySelector(".lumio-book,[data-lumio-book],a[href*=\'"+M+"\']")){build();}}'
+            . 'if(window.requestIdleCallback){requestIdleCallback(pre,{timeout:3000});}else{setTimeout(pre,1500);}'
+            . '})();</script>';
+    });
+
+    /* ---- Customer shortcode: [lumio_booking_button] ---- */
+    function lumio_booking_button_shortcode($atts)
+    {
+        $atts = shortcode_atts(array('text' => 'Book Now', 'align' => 'left', 'color' => '#4f46e5'), $atts, 'lumio_booking_button');
+        $url = lumio_booking_launch_url();
+        if (!$url) {
+            return current_user_can('manage_options') ? '<p><em>Lumio Booking: set your Salon slug under Lumio Booking &rarr; Settings.</em></p>' : '';
+        }
+        $align = in_array($atts['align'], array('left', 'center', 'right'), true) ? $atts['align'] : 'left';
+        $style = 'display:inline-block;padding:14px 28px;border-radius:999px;background:' . esc_attr($atts['color'])
+               . ';color:#fff;font-weight:700;font-size:16px;text-decoration:none;line-height:1;';
+        // The href is a real link, so the button still works if JavaScript is off.
+        return '<div style="text-align:' . esc_attr($align) . '"><a class="lumio-book" href="' . esc_url($url) . '" style="' . $style . '">'
+             . esc_html($atts['text']) . '</a></div>';
+    }
+    add_shortcode('lumio_booking_button', 'lumio_booking_button_shortcode');
+
     add_shortcode('lumio_booking', 'lumio_booking_shortcode');
 }

@@ -764,7 +764,13 @@ function Register() {
       if (hubConn && hubReader && cardCents > 0) {
         setCharging(true);
         try {
-          let intent = await apiFetch<{ id: string; status: string; error?: string }>('/payments-hub/charge', { method: 'POST', token, body: { provider: hubConn.provider, amountCents: cardCents, clientRef: `${clientRef}-card`, readerExternalId: hubReader, description: 'POS sale' } });
+          // Itemise the tip on the terminal only when the card covers the whole
+          // ticket. On a split tender we cannot say how much of the tip belongs
+          // to the card, and guessing would change what the customer is charged,
+          // so the tip just rides inside the total instead.
+          const cardCoversAll = cardCents >= money.total && money.tip > 0 && money.tip < cardCents;
+          const tipForCard = cardCoversAll ? money.tip : 0;
+          let intent = await apiFetch<{ id: string; status: string; error?: string }>('/payments-hub/charge', { method: 'POST', token, body: { provider: hubConn.provider, amountCents: cardCents - tipForCard, tipCents: tipForCard, clientRef: `${clientRef}-card`, readerExternalId: hubReader, description: 'POS sale' } });
           for (let i = 0; i < 30 && (intent.status === 'PROCESSING' || intent.status === 'REQUIRES_PAYMENT'); i++) {
             await new Promise((r) => setTimeout(r, 2000));
             intent = await apiFetch(`/payments-hub/intents/${intent.id}`, { token });

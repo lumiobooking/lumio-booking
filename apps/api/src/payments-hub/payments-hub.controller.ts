@@ -4,7 +4,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { PaymentOrchestrator } from './payment-orchestrator.service';
-import { ChargeDto, ConnectDto, RefundDto, RegisterReaderDto } from './dto/payments-hub.dto';
+import { ChargeDto, ConnectDto, RefundDto, RegisterReaderDto, VoidDto } from './dto/payments-hub.dto';
 
 /**
  * Salon-facing Payment Hub API. Class-level RBAC = SALON_ADMIN + STAFF; the
@@ -55,6 +55,12 @@ export class PaymentsHubController {
     return this.hub.registerReader(user, provider, dto);
   }
 
+  /** Check one specific terminal, not the account as a whole. */
+  @Post('readers/test/:deviceId')
+  testDevice(@CurrentUser() user: AuthenticatedUser, @Param('deviceId') deviceId: string) {
+    return this.hub.testDevice(user, deviceId);
+  }
+
   @Post('connection-token/:provider')
   connectionToken(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: string) {
     return this.hub.connectionToken(user, provider);
@@ -74,5 +80,15 @@ export class PaymentsHubController {
   @Roles(UserRole.SALON_ADMIN)
   refund(@CurrentUser() user: AuthenticatedUser, @Body() dto: RefundDto) {
     return this.hub.refund(user, dto);
+  }
+
+  /**
+   * Void cancels the original transaction before the batch settles. It is the
+   * right tool the same day; after settlement the salon must use Refund.
+   */
+  @Post('void')
+  @Roles(UserRole.SALON_ADMIN)
+  voidPayment(@CurrentUser() user: AuthenticatedUser, @Body() dto: VoidDto) {
+    return this.hub.voidPayment(user, dto);
   }
 }

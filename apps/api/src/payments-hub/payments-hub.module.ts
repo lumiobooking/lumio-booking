@@ -12,6 +12,9 @@ import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
 import { SquareTerminalConnector } from './connectors/square-terminal.connector';
 import { SumUpConnector } from './connectors/sumup.connector';
+import { DejavooSpinCloudAdapter } from './adapters/dejavoo-spin-cloud.adapter';
+import { UsbTerminalAdapter, BluetoothTerminalAdapter } from './adapters/placeholder.adapters';
+import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existing-cloud.adapters';
 
 /**
  * POS Payment Hub (Phase 1). Inert until a salon connects a provider and the
@@ -19,7 +22,25 @@ import { SumUpConnector } from './connectors/sumup.connector';
  */
 @Module({
   controllers: [PaymentsHubController, PaymentsHubWebhookController, AgentAdminController, AgentRuntimeController],
-  providers: [PaymentOrchestrator, ProviderRegistry, CredentialStore, AgentService, HelcimConnector, AdyenConnector, MockConnector, StripeTerminalConnector, SquareTerminalConnector, SumUpConnector],
+  providers: [
+    PaymentOrchestrator,
+    ProviderRegistry,
+    CredentialStore,
+    AgentService,
+    // Cloud connectors
+    HelcimConnector,
+    AdyenConnector,
+    MockConnector,
+    StripeTerminalConnector,
+    SquareTerminalConnector,
+    SumUpConnector,
+    // Terminal adapters — Dejavoo is the only one enabled in phase 1.
+    DejavooSpinCloudAdapter,
+    StripeTerminalAdapter,
+    SquareTerminalAdapter,
+    UsbTerminalAdapter,
+    BluetoothTerminalAdapter,
+  ],
   exports: [PaymentOrchestrator],
 })
 export class PaymentsHubModule {}

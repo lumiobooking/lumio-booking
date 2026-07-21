@@ -1226,6 +1226,11 @@ model PaymentDevice {
   externalReaderId String
   label            String?
   locationId       String?
+  // Per-terminal credential, AES-256-GCM. iPOSpays mints a separate Auth Key
+  // per TPN, so a salon with two locations has two different keys. Null = fall
+  // back to the connection-level credential.
+  credentialEnc    String?
+  keyHint          String?
   status           String    @default("UNKNOWN") // ONLINE | OFFLINE | UNKNOWN
   lastSeenAt       DateTime?
   createdAt        DateTime  @default(now())

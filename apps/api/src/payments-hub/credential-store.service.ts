@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret, encryptSecret, maskHint } from './crypto.util';
 import { ConnectResult, ProviderId } from './connectors/connector.types';
+import { packDejavooSecret } from './adapters/dejavoo-spin-cloud.adapter';
 
 /** Decrypted credential object stored (encrypted) per tenant+provider. */
 export interface Credential {
@@ -10,6 +11,12 @@ export interface Credential {
   locationId?: string;
   /** Provider environment/region (e.g. Adyen: test | live-us | live-eu). */
   region?: string;
+  /** Dejavoo: Terminal Profile Number of the default terminal. */
+  tpn?: string;
+  /** Dejavoo: legacy Register ID, only for older merchant setups. */
+  registerId?: string;
+  /** Dejavoo: which SPIn host to talk to. */
+  environment?: 'sandbox' | 'production';
 }
 
 /**
@@ -44,7 +51,19 @@ export class CredentialStore {
     if (!conn || conn.status !== 'ACTIVE' || !conn.credentialEnc) {
       throw new NotFoundException('No active payment connection for this provider');
     }
-    return JSON.parse(decryptSecret(conn.credentialEnc)) as Credential;
+    const cred = JSON.parse(decryptSecret(conn.credentialEnc)) as Credential;
+    // Dejavoo needs TPN + environment alongside the Authkey on every call, but
+    // PaymentConnector only carries a single `secret` string. Packing them here
+    // keeps that one-string contract intact for all the other providers.
+    if (provider === 'dejavoo') {
+      cred.secret = packDejavooSecret({
+        secret: cred.secret,
+        tpn: cred.tpn,
+        registerId: cred.registerId,
+        environment: cred.environment,
+      });
+    }
+    return cred;
   }
 
   findConnection(tenantId: string, provider: ProviderId) {
@@ -57,6 +76,37 @@ export class CredentialStore {
 
   revoke(tenantId: string, provider: ProviderId) {
     return this.prisma.paymentConnection.updateMany({ where: { tenantId, provider }, data: { status: 'REVOKED', credentialEnc: null } });
+  }
+
+  /**
+   * Per-terminal credential. iPOSpays mints one Auth Key per TPN, so a salon
+   * running two locations legitimately has two different keys under one
+   * connection. Stored encrypted on the device row; null means "use the
+   * connection-level key".
+   */
+  /** The single `secret` string a PaymentConnector expects for this provider. */
+  packForConnector(provider: ProviderId, cred: Credential): string {
+    return provider === 'dejavoo'
+      ? packDejavooSecret({ secret: cred.secret, tpn: cred.tpn, registerId: cred.registerId, environment: cred.environment })
+      : cred.secret;
+  }
+
+  packDeviceCredential(provider: ProviderId, cred: Credential): { credentialEnc: string; keyHint: string } {
+    const secret = provider === 'dejavoo'
+      ? packDejavooSecret({ secret: cred.secret, tpn: cred.tpn, registerId: cred.registerId, environment: cred.environment })
+      : cred.secret;
+    return { credentialEnc: encryptSecret(JSON.stringify({ ...cred, secret })), keyHint: maskHint(cred.secret) };
+  }
+
+  /** Credential to use for one terminal: its own if it has one, else the connection's. */
+  async credentialForDevice(tenantId: string, provider: ProviderId, deviceId?: string | null): Promise<Credential> {
+    if (deviceId) {
+      const device = await this.prisma.paymentDevice.findFirst({ where: { id: deviceId, tenantId } });
+      // Tenant scoping is enforced by the query above: a device belonging to
+      // another salon simply is not found, so its key can never be loaded.
+      if (device?.credentialEnc) return JSON.parse(decryptSecret(device.credentialEnc)) as Credential;
+    }
+    return this.loadCred(tenantId, provider);
   }
 
   /** UI-safe view: never includes the encrypted credential. */

@@ -11,7 +11,7 @@ import { useLang } from '../../../lib/i18n';
 interface HubStatus { enabled: boolean; encryption: boolean; providers: string[]; }
 interface Capabilities { terminal?: boolean; online?: boolean; tapToPay?: boolean; interac?: boolean; partialRefund?: boolean; currencies?: string[]; }
 interface Connection { provider: string; status: string; label?: string | null; keyHint?: string | null; currency?: string; capabilities?: Capabilities; lastCheckedAt?: string | null; }
-interface Device { id: string; externalReaderId: string; label?: string | null; status: string; locationId?: string | null; }
+interface Device { id: string; externalReaderId: string; label?: string | null; status: string; locationId?: string | null; hasOwnKey?: boolean; keyHint?: string | null; }
 interface Intent { id: string; status: string; amountCents: number; currency: string; error?: string | null; }
 
 // Providers usable in Phase 1. Others are shown as "coming soon".
@@ -32,6 +32,14 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
       vi: 'Stripe Dashboard → Developers → API keys → Create restricted key (cấp quyền Terminal, PaymentIntents, Charges/Refunds). Dán key rk_live_…. Lumio không đăng ký gì.',
     },
     fields: ['secret', 'currency', 'locationId', 'webhookSecret'],
+  },
+  dejavoo: {
+    name: 'Dejavoo / iPOSpays (P1, QD series)',
+    help: {
+      en: 'In YOUR iPOSpays merchant portal: Settings → Generate Ecom/TOP Merchant Keys → pick your TPN → Generate Token. Paste the TPN and that token below. Ask your ISO to switch the terminal to SPIn (semi-integrated) mode. Lumio registers nothing and never holds your funds.',
+      vi: 'Trong cổng iPOSpays CỦA TIỆM: Settings → Generate Ecom/TOP Merchant Keys → chọn TPN → Generate Token. Dán TPN và token đó vào đây. Nhờ ISO bật chế độ SPIn (semi-integrated) cho máy. Lumio không đăng ký gì và không giữ tiền của tiệm.',
+    },
+    fields: ['tpn', 'registerId', 'secret', 'currency', 'environment'],
   },
   mock: {
     name: 'Mock (sandbox test)',
@@ -65,6 +73,17 @@ const PROVIDER_META: Record<string, { name: string; recommended?: boolean; help:
 };
 const COMING_SOON: Array<{ id: string; name: string; phase: string }> = [];
 
+/**
+ * Phase 1 ships Cloud only. USB and Bluetooth exist in the codebase but are
+ * deliberately kept out of the salon UI until they pass end-to-end testing —
+ * showing a half-finished payment path to a salon is worse than not showing it.
+ * Flip NEXT_PUBLIC_TERMINAL_USB_ENABLED to 'true' to reveal them for internal QA.
+ */
+const SHOW_USB_BT = process.env.NEXT_PUBLIC_TERMINAL_USB_ENABLED === 'true';
+const CONNECTION_TYPES: Array<'cloud' | 'usb' | 'bluetooth'> = SHOW_USB_BT
+  ? ['cloud', 'usb', 'bluetooth']
+  : ['cloud'];
+
 const box: React.CSSProperties = { border: '1px solid #334155', borderRadius: 12, padding: 16, marginTop: 14, background: '#0f172a' };
 const label: React.CSSProperties = { display: 'block', fontSize: 12, color: '#94a3b8', margin: '10px 0 4px' };
 const input: React.CSSProperties = { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 14, boxSizing: 'border-box' };
@@ -82,8 +101,8 @@ function Inner() {
   const { lang } = useLang();
   const vi = lang === 'vi';
   const L = vi
-    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu', country: 'Quốc gia', connType: 'Kiểu kết nối', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'Kiểu kết nối này sắp có.', needAgent: 'cần ghép thiết bị', needAgentTip: 'Tạo mã ghép ở mục "Thiết bị cầu nối" bên dưới', region: 'Môi trường', regionTest: 'Test (sandbox)', regionUs: 'Live — US', regionEu: 'Live — EU/khác', manualNote: 'Tiệm dùng máy quẹt khác? Vẫn bán bình thường — chọn CARD ở POS rồi quẹt trên máy của tiệm; hệ thống vẫn ghi doanh thu, tip và lương thợ.', agentNote: 'Máy quẹt sẽ tự xuất hiện sau khi Bridge/Companion kết nối. Vẫn cần nhập API key nhà cung cấp bên dưới.' }
-    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key', country: 'Country', connType: 'Connection type', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'This connection type is coming soon.', needAgent: 'pair a device', needAgentTip: 'Create a pairing code in "Devices & Agents" below', region: 'Environment', regionTest: 'Test (sandbox)', regionUs: 'Live — US', regionEu: 'Live — EU/other', manualNote: "Using a terminal Lumio can't drive yet? You can still sell — pick CARD at the POS and run it on your own terminal; revenue, tips and payroll are still recorded.", agentNote: 'Readers appear automatically once the Bridge/Companion connects. You still need the provider API key below.' };
+    ? { title: 'Máy quẹt thẻ (POS)', sub: 'Kết nối tài khoản thanh toán của chính tiệm — Lumio chỉ tích hợp, không giữ tiền.', choose: 'Chọn nhà cung cấp', connect: 'Kết nối', connected: 'Đã kết nối', test: 'Kiểm tra kết nối', disconnect: 'Ngắt kết nối', readers: 'Máy quẹt (reader)', addReader: 'Thêm reader', refresh: 'Làm mới', code: 'Mã ghép (pairing/registration code)', readerLabel: 'Tên gợi nhớ', currency: 'Tiền tệ', secret: 'API key (secret)', webhook: 'Webhook secret (tuỳ chọn)', location: 'Location ID (tuỳ chọn)', disabled: 'Tính năng chưa được bật. Quản trị nền tảng cần đặt PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ Chưa cấu hình PAYMENT_ENC_KEY — không thể lưu key an toàn.', testCharge: 'Thử một giao dịch', amount: 'Số tiền (cents)', run: 'Chạy thử', comingSoon: 'Sắp có', howTo: 'Lấy key ở đâu', country: 'Quốc gia', connType: 'Kiểu kết nối', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'Kiểu kết nối này sắp có.', needAgent: 'cần ghép thiết bị', needAgentTip: 'Tạo mã ghép ở mục "Thiết bị cầu nối" bên dưới', region: 'Môi trường', regionTest: 'Test (sandbox)', regionUs: 'Live — US', regionEu: 'Live — EU/khác', manualNote: 'Tiệm dùng máy quẹt khác? Vẫn bán bình thường — chọn CARD ở POS rồi quẹt trên máy của tiệm; hệ thống vẫn ghi doanh thu, tip và lương thợ.', agentNote: 'Máy quẹt sẽ tự xuất hiện sau khi Bridge/Companion kết nối. Vẫn cần nhập API key nhà cung cấp bên dưới.', tpn: 'TPN (Terminal Profile Number)', registerId: 'Register ID (tuỳ chọn)', authKey: 'Auth Key', environment: 'Môi trường', envProd: 'Production (máy thật)', envSandbox: 'Sandbox (test)', readerLocation: 'Cơ sở (tuỳ chọn)', readerKey: 'Auth Key riêng của máy này', ownKey: 'key riêng', terminalOnline: 'Máy đang online ✓', terminalOffline: 'Máy không phản hồi — kiểm tra dây mạng và biểu tượng mũi tên trên máy' }
+    : { title: 'Card terminals (POS)', sub: "Connect the salon's own payment account — Lumio only integrates, never holds funds.", choose: 'Choose a provider', connect: 'Connect', connected: 'Connected', test: 'Test connection', disconnect: 'Disconnect', readers: 'Card readers', addReader: 'Add reader', refresh: 'Refresh', code: 'Pairing / registration code', readerLabel: 'Friendly label', currency: 'Currency', secret: 'API key (secret)', webhook: 'Webhook secret (optional)', location: 'Location ID (optional)', disabled: 'Feature not enabled yet. A platform admin must set PAYMENTS_HUB_ENABLED=true.', noEnc: '⚠ PAYMENT_ENC_KEY not configured — cannot store keys securely.', testCharge: 'Run a test charge', amount: 'Amount (cents)', run: 'Run test', comingSoon: 'Coming soon', howTo: 'Where to get your key', country: 'Country', connType: 'Connection type', cloud: 'Cloud/WiFi', usb: 'USB', bluetooth: 'Bluetooth', comingSoonNote: 'This connection type is coming soon.', needAgent: 'pair a device', needAgentTip: 'Create a pairing code in "Devices & Agents" below', region: 'Environment', regionTest: 'Test (sandbox)', regionUs: 'Live — US', regionEu: 'Live — EU/other', manualNote: "Using a terminal Lumio can't drive yet? You can still sell — pick CARD at the POS and run it on your own terminal; revenue, tips and payroll are still recorded.", agentNote: 'Readers appear automatically once the Bridge/Companion connects. You still need the provider API key below.', tpn: 'TPN (Terminal Profile Number)', registerId: 'Register ID (optional)', authKey: 'Auth Key', environment: 'Environment', envProd: 'Production (live terminal)', envSandbox: 'Sandbox (test)', readerLocation: 'Location (optional)', readerKey: "This terminal's own Auth Key", ownKey: 'own key', terminalOnline: 'Terminal is online ✓', terminalOffline: 'No response — check the network cable and the arrow icon on the terminal' };
 
   const [status, setStatus] = useState<HubStatus | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -99,6 +118,9 @@ function Inner() {
   const [locationId, setLocationId] = useState('');
   const [country, setCountry] = useState('US');
   const [region, setRegion] = useState('test');
+  const [tpn, setTpn] = useState('');
+  const [registerId, setRegisterId] = useState('');
+  const [environment, setEnvironment] = useState<'sandbox' | 'production'>('production');
   const [connType, setConnType] = useState<'cloud' | 'usb' | 'bluetooth'>('cloud');
   const [agents, setAgents] = useState<Array<{ kind: string; paired: boolean; status: string }>>([]);
   const [busy, setBusy] = useState(false);
@@ -122,7 +144,17 @@ function Inner() {
   async function doConnect() {
     setBusy(true); setError(null); setMsg(null);
     try {
-      await apiFetch('/payments-hub/connect', { method: 'POST', token, body: { provider, secret: secret.trim(), webhookSecret: webhookSecret.trim() || undefined, currency, locationId: locationId.trim() || undefined, region } });
+      await apiFetch('/payments-hub/connect', { method: 'POST', token, body: {
+        provider,
+        secret: secret.trim(),
+        webhookSecret: webhookSecret.trim() || undefined,
+        currency,
+        locationId: locationId.trim() || undefined,
+        region,
+        tpn: tpn.trim() || undefined,
+        registerId: registerId.trim() || undefined,
+        environment: PROVIDER_META[provider]?.fields.includes('environment') ? environment : undefined,
+      } });
       setSecret(''); setWebhookSecret('');
       setMsg(vi ? 'Kết nối thành công.' : 'Connected successfully.');
       await load();
@@ -204,7 +236,7 @@ function Inner() {
             </select>
             <label style={label}>{L.connType}</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-              {(['cloud', 'usb', 'bluetooth'] as const).map((ct) => {
+              {CONNECTION_TYPES.map((ct) => {
                 const on = ct === 'cloud' ? true : ct === 'usb' ? usbOk : btOk;
                 return (
                   <button key={ct} onClick={() => on && setConnType(ct)} disabled={!on} title={on ? '' : L.needAgentTip}
@@ -222,8 +254,20 @@ function Inner() {
                 <p style={{ fontSize: 12, color: '#a5b4fc', background: '#1e293b', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
                   <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}
                 </p>
-                <label style={label}>{L.secret}</label>
-                <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : provider === 'helcim' ? 'Helcim API token' : ''} autoComplete="off" />
+                {meta.fields.includes('tpn') && (
+                  <>
+                    <label style={label}>{L.tpn}</label>
+                    <input style={input} value={tpn} onChange={(e) => setTpn(e.target.value)} placeholder="Z11XXXXXXXXX" autoComplete="off" />
+                  </>
+                )}
+                {meta.fields.includes('registerId') && (
+                  <>
+                    <label style={label}>{L.registerId}</label>
+                    <input style={input} value={registerId} onChange={(e) => setRegisterId(e.target.value)} placeholder={vi ? 'Bỏ trống nếu đã có TPN' : 'Leave blank if you have a TPN'} autoComplete="off" />
+                  </>
+                )}
+                <label style={label}>{provider === 'dejavoo' ? L.authKey : L.secret}</label>
+                <input style={input} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={provider === 'stripe' ? 'rk_live_…' : provider === 'mock' ? 'mock_test' : provider === 'helcim' ? 'Helcim API token' : provider === 'dejavoo' ? (vi ? 'Token 10 ký tự từ iPOSpays' : '10-character token from iPOSpays') : ''} autoComplete="off" />
                 {meta.fields.includes('currency') && (
                   <>
                     <label style={label}>{L.currency}</label>
@@ -241,6 +285,15 @@ function Inner() {
                       <option value="test">{L.regionTest}</option>
                       <option value="live-us">{L.regionUs}</option>
                       <option value="live-eu">{L.regionEu}</option>
+                    </select>
+                  </>
+                )}
+                {meta.fields.includes('environment') && (
+                  <>
+                    <label style={label}>{L.environment}</label>
+                    <select style={input} value={environment} onChange={(e) => setEnvironment(e.target.value as 'sandbox' | 'production')}>
+                      <option value="production">{L.envProd}</option>
+                      <option value="sandbox">{L.envSandbox}</option>
                     </select>
                   </>
                 )}
@@ -266,6 +319,10 @@ function Readers({ provider, token, L }: { provider: string; token: string | nul
   const [readers, setReaders] = useState<Device[]>([]);
   const [code, setCode] = useState('');
   const [rlabel, setRLabel] = useState('');
+  const [rlocation, setRLocation] = useState('');
+  const [rkey, setRKey] = useState('');
+  const [testing, setTesting] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const load = useCallback(async () => {
     if (!token) return;
@@ -274,8 +331,27 @@ function Readers({ provider, token, L }: { provider: string; token: string | nul
   useEffect(() => { load(); }, [load]);
   async function add() {
     setErr(null);
-    try { await apiFetch(`/payments-hub/readers/${provider}`, { method: 'POST', token, body: { code: code.trim(), label: rlabel.trim() || undefined } }); setCode(''); setRLabel(''); await load(); }
+    try {
+      await apiFetch(`/payments-hub/readers/${provider}`, { method: 'POST', token, body: {
+        code: code.trim(),
+        label: rlabel.trim() || undefined,
+        locationId: rlocation.trim() || undefined,
+        // Each iPOSpays TPN has its own Auth Key, so a second location usually
+        // needs its own. Blank = reuse the account-level key.
+        authKey: rkey.trim() || undefined,
+      } });
+      setCode(''); setRLabel(''); setRLocation(''); setRKey(''); await load();
+    }
     catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+  }
+  async function testOne(id: string) {
+    setErr(null); setNote(null); setTesting(id);
+    try {
+      const r = await apiFetch<{ ok: boolean; message?: string }>(`/payments-hub/readers/test/${id}`, { method: 'POST', token });
+      setNote(r.ok ? L.terminalOnline : `${L.terminalOffline}${r.message ? ' — ' + r.message : ''}`);
+      await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+    finally { setTesting(null); }
   }
   return (
     <div style={{ marginTop: 14, borderTop: '1px solid #334155', paddingTop: 12 }}>
@@ -284,18 +360,30 @@ function Readers({ provider, token, L }: { provider: string; token: string | nul
         <button onClick={load} style={{ ...ghost, padding: '5px 10px', fontSize: 12 }}>{L.refresh}</button>
       </div>
       {err && <div style={{ color: '#fca5a5', fontSize: 12, marginTop: 6 }}>{err}</div>}
+      {note && <div style={{ color: '#86efac', fontSize: 12, marginTop: 6 }}>{note}</div>}
       {readers.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>—</p> : (
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
           {readers.map((r) => (
-            <li key={r.id} style={{ fontSize: 13, color: '#e2e8f0', padding: '4px 0' }}>
-              <span style={{ color: r.status === 'ONLINE' ? '#22c55e' : '#94a3b8' }}>●</span> {r.label || r.externalReaderId} <span style={{ color: '#64748b' }}>({r.status})</span>
+            <li key={r.id} style={{ fontSize: 13, color: '#e2e8f0', padding: '5px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ color: r.status === 'ONLINE' ? '#22c55e' : '#94a3b8' }}>●</span>
+              <span>{r.label || r.externalReaderId}</span>
+              <span style={{ color: '#64748b' }}>({r.status})</span>
+              {r.locationId && <span style={{ color: '#a5b4fc', fontSize: 11 }}>· {r.locationId}</span>}
+              {r.hasOwnKey && <span style={{ color: '#64748b', fontSize: 11 }}>· {L.ownKey}{r.keyHint ? ' ' + r.keyHint : ''}</span>}
+              <button onClick={() => testOne(r.id)} disabled={testing === r.id} style={{ ...ghost, padding: '3px 9px', fontSize: 11 }}>
+                {testing === r.id ? '…' : L.test}
+              </button>
             </li>
           ))}
         </ul>
       )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-        <input style={{ ...input, width: 200 }} value={code} onChange={(e) => setCode(e.target.value)} placeholder={L.code} />
-        <input style={{ ...input, width: 160 }} value={rlabel} onChange={(e) => setRLabel(e.target.value)} placeholder={L.readerLabel} />
+        <input style={{ ...input, width: 200 }} value={code} onChange={(e) => setCode(e.target.value)} placeholder={provider === 'dejavoo' ? 'TPN' : L.code} />
+        <input style={{ ...input, width: 150 }} value={rlabel} onChange={(e) => setRLabel(e.target.value)} placeholder={L.readerLabel} />
+        <input style={{ ...input, width: 150 }} value={rlocation} onChange={(e) => setRLocation(e.target.value)} placeholder={L.readerLocation} />
+        {provider === 'dejavoo' && (
+          <input style={{ ...input, width: 190 }} type="password" value={rkey} onChange={(e) => setRKey(e.target.value)} placeholder={L.readerKey} autoComplete="off" />
+        )}
         <button onClick={add} disabled={!code.trim()} style={{ ...ui.primaryBtn, opacity: code.trim() ? 1 : 0.6 }}>{L.addReader}</button>
       </div>
     </div>

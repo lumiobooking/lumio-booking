@@ -1,4 +1,14 @@
-export type ProviderId = 'helcim' | 'stripe' | 'mock' | 'square' | 'sumup' | 'adyen';
+export type ProviderId =
+  | 'helcim'
+  | 'stripe'
+  | 'mock'
+  | 'square'
+  | 'sumup'
+  | 'adyen'
+  | 'dejavoo'
+  // Placeholder ids for the USB / Bluetooth adapters (phases 2 and 3).
+  | 'usb'
+  | 'bluetooth';
 
 export type IntentStatus = 'REQUIRES_PAYMENT' | 'PROCESSING' | 'SUCCEEDED' | 'CANCELED' | 'FAILED';
 
@@ -28,9 +38,14 @@ export interface ReaderInfo {
 
 export interface ChargeInput {
   amountCents: number;
+  /** Tip entered on the POS, charged together with the sale. */
+  tipCents?: number;
   currency: string;
   readerExternalId?: string;
+  /** Idempotency key. Re-sending the same reference must never charge twice. */
   reference: string;
+  /** Salon-facing invoice/ticket number printed on the terminal receipt. */
+  invoiceNumber?: string;
   description?: string;
 }
 

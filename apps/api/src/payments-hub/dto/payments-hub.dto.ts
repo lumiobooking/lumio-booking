@@ -1,6 +1,8 @@
-import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 
-export const PROVIDERS = ['stripe', 'mock', 'square', 'sumup', 'adyen'] as const;
+export const PROVIDERS = ['stripe', 'dejavoo', 'helcim', 'mock', 'square', 'sumup', 'adyen'] as const;
+
+export const SPIN_ENVIRONMENTS = ['sandbox', 'production'] as const;
 
 export class ConnectDto {
   @IsString() @IsIn(PROVIDERS as unknown as string[]) provider!: string;
@@ -10,12 +12,29 @@ export class ConnectDto {
   @IsOptional() @IsString() currency?: string;
   @IsOptional() @IsString() region?: string;
   @IsOptional() @IsString() label?: string;
+
+  // ---- Dejavoo / iPOSpays (SPIn) ----
+  /** Terminal Profile Number of the salon's default terminal. */
+  @IsOptional() @IsString() @Length(8, 20) tpn?: string;
+  /** Legacy Register ID; upstream marks it obsolete, kept for older setups. */
+  @IsOptional() @IsString() @Length(2, 50) registerId?: string;
+  /** Which SPIn host to use. Defaults to production. */
+  @IsOptional() @IsString() @IsIn(SPIN_ENVIRONMENTS as unknown as string[]) environment?: string;
 }
 
 export class RegisterReaderDto {
+  /** Dejavoo: the TPN of the terminal being added. Other providers: pairing code. */
   @IsString() code!: string;
   @IsOptional() @IsString() label?: string;
+  /** Which salon location this terminal sits at. */
   @IsOptional() @IsString() locationId?: string;
+  /**
+   * Auth Key belonging to THIS terminal. iPOSpays issues one per TPN, so a
+   * second location usually needs its own. Leave blank to reuse the
+   * connection-level key.
+   */
+  @IsOptional() @IsString() authKey?: string;
+  @IsOptional() @IsString() registerId?: string;
 }
 
 export class ChargeDto {
@@ -26,7 +45,16 @@ export class ChargeDto {
   @IsOptional() @IsString() deviceId?: string;
   @IsOptional() @IsString() orderId?: string;
   @IsString() clientRef!: string;
+  /** Tip taken at the POS, charged in the same tap. */
+  @IsOptional() @IsInt() @Min(0) tipCents?: number;
+  /** Ticket number printed on the terminal receipt. */
+  @IsOptional() @IsString() invoiceNumber?: string;
   @IsOptional() @IsString() description?: string;
+}
+
+export class VoidDto {
+  @IsString() intentId!: string;
+  @IsOptional() @IsString() reason?: string;
 }
 
 export class RefundDto {

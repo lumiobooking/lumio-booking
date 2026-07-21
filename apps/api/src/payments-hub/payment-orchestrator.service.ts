@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  ConflictException,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
@@ -60,8 +61,18 @@ export class PaymentOrchestrator {
       webhookSecret: dto.webhookSecret?.trim() || undefined,
       locationId: dto.locationId?.trim() || undefined,
       region: dto.region?.trim() || undefined,
+      tpn: (dto as any).tpn?.trim() || undefined,
+      registerId: (dto as any).registerId?.trim() || undefined,
+      environment: ((dto as any).environment?.trim() as 'sandbox' | 'production') || undefined,
     };
-    const result = await connector.verifyCredential(cred.secret, { currency: dto.currency, locationId: cred.locationId, region: cred.region });
+    const result = await connector.verifyCredential(cred.secret, {
+      currency: dto.currency,
+      locationId: cred.locationId,
+      region: cred.region,
+      tpn: cred.tpn,
+      registerId: cred.registerId,
+      environment: cred.environment,
+    });
     if (!result.ok) throw new BadRequestException(result.error ?? 'Could not verify the API key with the provider');
     const conn = await this.creds.save(tenantId, dto.provider as ProviderId, cred, result, dto.label);
     await this.audit(tenantId, user.userId, 'payment.connect', { provider: dto.provider });
@@ -72,7 +83,13 @@ export class PaymentOrchestrator {
     this.ensureEnabled();
     const tenantId = this.tid(user);
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
-    const result = await this.registry.get(provider).verifyCredential(cred.secret, { locationId: cred.locationId, region: cred.region });
+    const result = await this.registry.get(provider).verifyCredential(cred.secret, {
+      locationId: cred.locationId,
+      region: cred.region,
+      tpn: cred.tpn,
+      registerId: cred.registerId,
+      environment: cred.environment,
+    });
     await this.prisma.paymentConnection.updateMany({
       where: { tenantId, provider },
       data: { lastCheckedAt: new Date(), status: result.ok ? 'ACTIVE' : 'ERROR' },
@@ -102,21 +119,88 @@ export class PaymentOrchestrator {
         update: { label: r.label ?? null, locationId: r.locationId ?? null, status: r.status, lastSeenAt: new Date() },
       });
     }
-    return this.prisma.paymentDevice.findMany({ where: { tenantId, provider }, orderBy: { createdAt: 'asc' } });
+    const devices = await this.prisma.paymentDevice.findMany({ where: { tenantId, provider }, orderBy: { createdAt: 'asc' } });
+    return devices.map((d) => this.deviceView(d));
   }
 
   async registerReader(user: AuthenticatedUser, provider: string, dto: RegisterReaderDto) {
     this.ensureEnabled();
     const tenantId = this.tid(user);
-    const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
+    const connCred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const conn = await this.creds.findConnection(tenantId, provider as ProviderId);
     if (!conn) throw new NotFoundException('No connection');
-    const r = await this.registry.get(provider).registerReader(cred.secret, dto.code, dto.label, dto.locationId ?? cred.locationId);
-    return this.prisma.paymentDevice.upsert({
+
+    // A terminal may carry its own Auth Key (iPOSpays issues one per TPN, so a
+    // second location needs a second key). When one is supplied we validate it
+    // against THAT terminal and store it encrypted on the device row.
+    const ownKey = dto.authKey?.trim();
+    const deviceCred: Credential | null = ownKey
+      ? {
+          secret: ownKey,
+          tpn: provider === 'dejavoo' ? dto.code.trim() : undefined,
+          registerId: dto.registerId?.trim() || undefined,
+          environment: connCred.environment,
+          locationId: dto.locationId?.trim() || connCred.locationId,
+        }
+      : null;
+
+    const effectiveSecret = deviceCred
+      ? this.creds.packForConnector(provider as ProviderId, deviceCred)
+      : connCred.secret;
+
+    const r = await this.registry.get(provider).registerReader(effectiveSecret, dto.code, dto.label, dto.locationId ?? connCred.locationId);
+    const enc = deviceCred ? this.creds.packDeviceCredential(provider as ProviderId, deviceCred) : null;
+
+    const device = await this.prisma.paymentDevice.upsert({
       where: { tenantId_provider_externalReaderId: { tenantId, provider, externalReaderId: r.externalId } },
-      create: { tenantId, provider, connectionId: conn.id, externalReaderId: r.externalId, label: r.label ?? null, locationId: r.locationId ?? null, status: r.status, lastSeenAt: new Date() },
-      update: { label: r.label ?? null, status: r.status, lastSeenAt: new Date() },
+      create: {
+        tenantId, provider, connectionId: conn.id, externalReaderId: r.externalId,
+        label: r.label ?? null, locationId: r.locationId ?? null, status: r.status, lastSeenAt: new Date(),
+        credentialEnc: enc?.credentialEnc ?? null, keyHint: enc?.keyHint ?? null,
+      },
+      update: {
+        label: r.label ?? null, status: r.status, lastSeenAt: new Date(),
+        locationId: r.locationId ?? dto.locationId ?? undefined,
+        // Only overwrite the stored key when a new one was actually supplied.
+        ...(enc ? { credentialEnc: enc.credentialEnc, keyHint: enc.keyHint } : {}),
+      },
     });
+    await this.audit(tenantId, user.userId, 'payment.reader.register', { provider, terminal: r.externalId, ownKey: !!enc, locationId: device.locationId });
+    return this.deviceView(device);
+  }
+
+  /**
+   * Health-check one specific terminal. With several terminals across
+   * locations, "is the connection OK?" is not a useful question — the salon
+   * needs to know which machine is down.
+   */
+  async testDevice(user: AuthenticatedUser, deviceId: string) {
+    this.ensureEnabled();
+    const tenantId = this.tid(user);
+    const device = await this.prisma.paymentDevice.findFirst({ where: { id: deviceId, tenantId } });
+    if (!device) throw new NotFoundException('Terminal not found');
+    assertTenantAccess(user, device.tenantId);
+
+    const adapter = this.registry.adapter(device.provider);
+    const cred = await this.creds.credentialForDevice(tenantId, device.provider as ProviderId, device.id);
+    const health = await adapter.testConnection(
+      { secret: cred.secret, tpn: cred.tpn, registerId: cred.registerId, environment: cred.environment, locationId: cred.locationId, region: cred.region },
+      device.externalReaderId,
+    );
+    const updated = await this.prisma.paymentDevice.update({
+      where: { id: device.id },
+      data: { status: health.online ? 'ONLINE' : 'OFFLINE', lastSeenAt: health.online ? new Date() : device.lastSeenAt },
+    });
+    return { ...this.deviceView(updated), ok: health.online, message: health.message };
+  }
+
+  /** Device row without the encrypted credential. */
+  private deviceView(d: any) {
+    return {
+      id: d.id, provider: d.provider, externalReaderId: d.externalReaderId, label: d.label,
+      locationId: d.locationId, status: d.status, connectionType: d.connectionType,
+      lastSeenAt: d.lastSeenAt, hasOwnKey: !!d.credentialEnc, keyHint: d.keyHint ?? null,
+    };
   }
 
   async connectionToken(user: AuthenticatedUser, provider: string) {
@@ -156,8 +240,33 @@ export class PaymentOrchestrator {
       return this.intentView(rec); // status QUEUED; POS polls getIntent until the agent finishes
     }
 
-    // CLOUD (server-driven): backend calls the provider API directly.
-    const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
+    // Double-charge guard. `clientRef` already makes an identical retry a no-op,
+    // but the dangerous case is a POS that times out and retries with a FRESH
+    // clientRef: to the DB that looks like a brand new sale. So before charging,
+    // any unresolved intent on the same order is re-checked against the provider
+    // and, if it is still unresolved, this charge is refused rather than risking
+    // the customer being billed twice.
+    if (dto.orderId) {
+      const openIntent = await this.prisma.paymentIntentRecord.findFirst({
+        where: { tenantId, orderId: dto.orderId, status: { in: ['REQUIRES_PAYMENT', 'PROCESSING', 'QUEUED'] } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (openIntent && openIntent.clientRef !== dto.clientRef) {
+        const settled = await this.reconcileIntent(tenantId, openIntent);
+        if (settled.status === 'SUCCEEDED') {
+          throw new ConflictException('This ticket was already paid on the terminal. Refresh before charging again.');
+        }
+        if (settled.status === 'PROCESSING' || settled.status === 'QUEUED' || settled.status === 'REQUIRES_PAYMENT') {
+          throw new ConflictException(
+            'A previous charge for this ticket has not finished. Check the terminal screen, then retry — charging now could bill the customer twice.',
+          );
+        }
+      }
+    }
+
+    // CLOUD (server-driven): backend calls the provider API directly, using
+    // this terminal's own key when it has one (multi-location salons).
+    const cred = await this.creds.credentialForDevice(tenantId, provider as ProviderId, device?.id);
     let readerExternalId = dto.readerExternalId;
     if (!readerExternalId && device) readerExternalId = device.externalReaderId;
 
@@ -169,12 +278,20 @@ export class PaymentOrchestrator {
       },
     });
     const res = await this.registry.get(provider).charge(cred.secret, {
-      amountCents: dto.amountCents, currency, readerExternalId, reference: dto.clientRef, description: dto.description,
+      amountCents: dto.amountCents,
+      tipCents: (dto as any).tipCents,
+      currency,
+      readerExternalId,
+      reference: dto.clientRef,
+      invoiceNumber: (dto as any).invoiceNumber ?? dto.orderId ?? undefined,
+      description: dto.description,
     });
     const updated = await this.prisma.paymentIntentRecord.update({
       where: { id: record.id },
       data: {
-        externalIntentId: res.externalId ?? null,
+        // Keep a reference even on an aborted call: without it we could never
+        // ask the provider what actually happened to the card.
+        externalIntentId: res.externalId ?? dto.clientRef,
         status: res.status,
         lastError: res.error ?? null,
         providerRaw: (res.raw as any) ?? undefined,
@@ -184,6 +301,32 @@ export class PaymentOrchestrator {
     await this.audit(tenantId, user.userId, 'payment.charge', { intentId: updated.id, amountCents: dto.amountCents, status: res.status });
     // clientSecret returned ONLY here (never persisted) for the mobile SDK path.
     return { ...this.intentView(updated), clientSecret: res.clientSecret };
+  }
+
+  /**
+   * Ask the provider what really happened to an unresolved intent and persist
+   * the answer. This is the single source of truth for "was the card charged?"
+   * and is what makes timeout recovery safe.
+   */
+  private async reconcileIntent(tenantId: string, record: { id: string; provider: string; externalIntentId: string | null; status: string; succeededAt: Date | null }) {
+    if (!record.externalIntentId) return record;
+    try {
+      const cred = await this.creds.loadCred(tenantId, record.provider as ProviderId);
+      const res = await this.registry.get(record.provider).getIntent(cred.secret, record.externalIntentId);
+      if (res.status === record.status) return record;
+      return await this.prisma.paymentIntentRecord.update({
+        where: { id: record.id },
+        data: {
+          status: res.status,
+          lastError: res.error ?? null,
+          providerRaw: (res.raw as any) ?? undefined,
+          succeededAt: res.status === 'SUCCEEDED' ? (record.succeededAt ?? new Date()) : record.succeededAt,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`reconcileIntent failed for ${record.id}: ${String(e)}`);
+      return record; // Stay unresolved rather than guessing.
+    }
   }
 
   async getIntent(user: AuthenticatedUser, id: string) {
@@ -210,6 +353,49 @@ export class PaymentOrchestrator {
     return this.intentView(record);
   }
 
+  /**
+   * Void the original transaction. Unlike a refund this reverses the sale
+   * outright, so nothing ever hits the customer's statement — but it only works
+   * while the batch is still open (same business day, before settlement).
+   */
+  async voidPayment(user: AuthenticatedUser, dto: { intentId: string; reason?: string }) {
+    this.ensureEnabled();
+    if (user.role !== UserRole.SALON_ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only a salon admin can void a payment');
+    }
+    const tenantId = this.tid(user);
+    const intent = await this.prisma.paymentIntentRecord.findFirst({ where: { id: dto.intentId, tenantId } });
+    if (!intent) throw new NotFoundException('Intent not found');
+    assertTenantAccess(user, intent.tenantId);
+    if (intent.status !== 'SUCCEEDED') throw new BadRequestException('Only a succeeded payment can be voided');
+    if (!intent.externalIntentId) throw new BadRequestException('Intent has no provider reference');
+
+    const adapter = this.registry.adapter(intent.provider);
+    const cred = await this.creds.credentialForDevice(tenantId, intent.provider as ProviderId, intent.deviceId);
+    const device = intent.deviceId ? await this.prisma.paymentDevice.findFirst({ where: { id: intent.deviceId, tenantId } }) : null;
+
+    const res = await adapter.voidPayment(
+      { secret: cred.secret, locationId: cred.locationId, region: cred.region },
+      { reference: intent.externalIntentId, amountCents: intent.amountCents, terminalId: device?.externalReaderId },
+    );
+    const ok = res.outcome === 'APPROVED';
+
+    // Recorded as a full-value refund so reporting and payroll see one
+    // consistent shape whether the salon voided or refunded.
+    const record = await this.prisma.paymentRefund.create({
+      data: {
+        tenantId, intentId: intent.id, provider: intent.provider, amountCents: intent.amountCents,
+        reason: dto.reason ?? 'void', status: ok ? 'SUCCEEDED' : 'FAILED',
+        externalRefundId: res.externalId ?? null, providerRaw: (res.raw as any) ?? undefined,
+        createdByUserId: user.userId,
+      },
+    });
+    if (ok) await this.prisma.paymentIntentRecord.update({ where: { id: intent.id }, data: { status: 'CANCELED' } });
+    await this.audit(tenantId, user.userId, 'payment.void', { intentId: intent.id, ok, code: res.code });
+    if (!ok) throw new BadRequestException(res.message || 'Void was declined by the terminal');
+    return { id: record.id, status: record.status, approvalCode: res.approvalCode, code: res.code };
+  }
+
   async refund(user: AuthenticatedUser, dto: RefundDto) {
     this.ensureEnabled();
     if (user.role !== UserRole.SALON_ADMIN && user.role !== UserRole.SUPER_ADMIN) {
@@ -222,7 +408,7 @@ export class PaymentOrchestrator {
     if (intent.status !== 'SUCCEEDED') throw new BadRequestException('Only a succeeded payment can be refunded');
     if (!intent.externalIntentId) throw new BadRequestException('Intent has no provider reference');
 
-    const cred = await this.creds.loadCred(tenantId, intent.provider as ProviderId);
+    const cred = await this.creds.credentialForDevice(tenantId, intent.provider as ProviderId, intent.deviceId);
     const refund = await this.prisma.paymentRefund.create({
       data: { tenantId, intentId: intent.id, provider: intent.provider, amountCents: dto.amountCents ?? intent.amountCents, reason: dto.reason ?? null, status: 'PENDING', createdByUserId: user.userId },
     });

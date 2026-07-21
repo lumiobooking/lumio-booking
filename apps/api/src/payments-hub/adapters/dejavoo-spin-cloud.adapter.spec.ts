@@ -88,6 +88,21 @@ describe('DejavooSpinCloudAdapter', () => {
     expect(r.tipCents).toBe(250);
   });
 
+  it('can be told the terminal adds the tip itself, so we do not double it', async () => {
+    mockFetch(() => ({ body: approvedSale('ORD2') }));
+    await a.createPayment({ ...CRED, amountIncludesTip: false }, { amountCents: 2500, tipCents: 250, currency: 'USD', reference: 'ORD-2' });
+    // Base amount only — the terminal is expected to add the tip on top.
+    expect(body(0).Amount).toBe(25);
+    expect(body(0).TipAmount).toBe(2.5);
+  });
+
+  it('carries the tip setting through the packed credential', () => {
+    const packed = packDejavooSecret({ ...CRED, amountIncludesTip: false });
+    expect(parseDejavooSecret(packed).amountIncludesTip).toBe(false);
+    // Absent means "use the documented default", not "false".
+    expect(parseDejavooSecret(packDejavooSecret(CRED)).amountIncludesTip).toBeUndefined();
+  });
+
   it('reports a decline as DECLINED', async () => {
     mockFetch(() => ({ body: { GeneralResponse: { ResultCode: '1', StatusCode: '1015', Message: 'Declined' } } }));
     expect((await a.createPayment(CRED, { amountCents: 100, currency: 'USD', reference: 'A1' })).outcome).toBe('DECLINED');

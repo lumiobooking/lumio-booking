@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 
 export const PROVIDERS = ['stripe', 'dejavoo', 'helcim', 'mock', 'square', 'sumup', 'adyen'] as const;
 
@@ -20,6 +20,11 @@ export class ConnectDto {
   @IsOptional() @IsString() @Length(2, 50) registerId?: string;
   /** Which SPIn host to use. Defaults to production. */
   @IsOptional() @IsString() @IsIn(SPIN_ENVIRONMENTS as unknown as string[]) environment?: string;
+  /**
+   * Whether the terminal expects the tip to be inside `Amount`. Defaults to
+   * true; flip it if a live test shows tipped sales come out too high.
+   */
+  @IsOptional() @IsBoolean() amountIncludesTip?: boolean;
 }
 
 export class RegisterReaderDto {

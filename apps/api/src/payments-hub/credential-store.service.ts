@@ -17,6 +17,8 @@ export interface Credential {
   registerId?: string;
   /** Dejavoo: which SPIn host to talk to. */
   environment?: 'sandbox' | 'production';
+  /** Dejavoo: does the terminal expect Amount to already include the tip? */
+  amountIncludesTip?: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export class CredentialStore {
         tpn: cred.tpn,
         registerId: cred.registerId,
         environment: cred.environment,
+        amountIncludesTip: cred.amountIncludesTip,
       });
     }
     return cred;
@@ -87,13 +90,13 @@ export class CredentialStore {
   /** The single `secret` string a PaymentConnector expects for this provider. */
   packForConnector(provider: ProviderId, cred: Credential): string {
     return provider === 'dejavoo'
-      ? packDejavooSecret({ secret: cred.secret, tpn: cred.tpn, registerId: cred.registerId, environment: cred.environment })
+      ? packDejavooSecret({ secret: cred.secret, tpn: cred.tpn, registerId: cred.registerId, environment: cred.environment, amountIncludesTip: cred.amountIncludesTip })
       : cred.secret;
   }
 
   packDeviceCredential(provider: ProviderId, cred: Credential): { credentialEnc: string; keyHint: string } {
     const secret = provider === 'dejavoo'
-      ? packDejavooSecret({ secret: cred.secret, tpn: cred.tpn, registerId: cred.registerId, environment: cred.environment })
+      ? packDejavooSecret({ secret: cred.secret, tpn: cred.tpn, registerId: cred.registerId, environment: cred.environment, amountIncludesTip: cred.amountIncludesTip })
       : cred.secret;
     return { credentialEnc: encryptSecret(JSON.stringify({ ...cred, secret })), keyHint: maskHint(cred.secret) };
   }

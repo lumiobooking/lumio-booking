@@ -49,6 +49,16 @@ export interface AdapterCredentials {
   environment?: 'sandbox' | 'production';
   locationId?: string;
   region?: string;
+  /**
+   * Whether the provider expects `Amount` to already include the tip.
+   *
+   * Dejavoo's docs call the field "Total amount of the transaction", which reads
+   * as tip-inclusive, but they never say so outright. Getting it wrong
+   * overcharges every tipped sale by exactly the tip, so this is a setting a
+   * salon can correct in seconds rather than a constant needing a redeploy.
+   * Undefined = use the adapter's documented default.
+   */
+  amountIncludesTip?: boolean;
 }
 
 export interface CreatePaymentInput {

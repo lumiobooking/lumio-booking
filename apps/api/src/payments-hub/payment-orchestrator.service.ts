@@ -64,6 +64,7 @@ export class PaymentOrchestrator {
       tpn: (dto as any).tpn?.trim() || undefined,
       registerId: (dto as any).registerId?.trim() || undefined,
       environment: ((dto as any).environment?.trim() as 'sandbox' | 'production') || undefined,
+      amountIncludesTip: (dto as any).amountIncludesTip,
     };
     const result = await connector.verifyCredential(cred.secret, {
       currency: dto.currency,

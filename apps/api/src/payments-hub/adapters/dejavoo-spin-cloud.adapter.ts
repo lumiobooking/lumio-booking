@@ -51,15 +51,16 @@ const DEFAULT_TIMEOUT_MS = 125_000;
 const HEALTH_TIMEOUT_MS = 15_000;
 
 /**
- * Whether `Amount` on a Sale already includes the tip.
+ * Default for whether `Amount` on a Sale already includes the tip.
  *
  * The docs call the request field "Total amount of the transaction" and the
- * response mirrors that (`Amounts.Amount` = "Amount with tip"), so we send the
- * tip-inclusive total. VERIFY THIS AGAINST A SANDBOX TPN BEFORE GOING LIVE:
- * if it turns out the terminal adds the tip on top, flip this to false or every
- * tipped sale overcharges by the tip.
+ * response mirrors that (`Amounts.Amount` = "Amount with tip"), so we default to
+ * sending the tip-inclusive total. A salon can override this per connection
+ * (`amountIncludesTip`) the moment a real terminal proves otherwise — no code
+ * change, no redeploy, because getting it wrong overcharges every tipped sale
+ * by exactly the tip.
  */
-const AMOUNT_INCLUDES_TIP = true;
+const AMOUNT_INCLUDES_TIP_DEFAULT = true;
 
 type SpinResponse = {
   GeneralResponse?: {
@@ -135,6 +136,7 @@ export function parseDejavooSecret(secret: string): Required<Pick<AdapterCredent
         tpn: o.t ?? o.tpn ?? undefined,
         registerId: o.r ?? o.registerId ?? undefined,
         environment: o.e ?? o.environment ?? 'production',
+        amountIncludesTip: o.i ?? o.amountIncludesTip,
       };
     }
   } catch {
@@ -144,7 +146,7 @@ export function parseDejavooSecret(secret: string): Required<Pick<AdapterCredent
 }
 
 export function packDejavooSecret(c: AdapterCredentials): string {
-  return JSON.stringify({ k: c.secret, t: c.tpn, r: c.registerId, e: c.environment ?? 'production' });
+  return JSON.stringify({ k: c.secret, t: c.tpn, r: c.registerId, e: c.environment ?? 'production', i: c.amountIncludesTip });
 }
 
 @Injectable()
@@ -316,7 +318,8 @@ export class DejavooSpinCloudAdapter implements TerminalAdapter, PaymentConnecto
   async createPayment(cred: AdapterCredentials, input: CreatePaymentInput): Promise<PaymentResult> {
     const referenceId = toReferenceId(input.reference);
     const tip = input.tipCents ?? 0;
-    const chargeCents = AMOUNT_INCLUDES_TIP ? input.amountCents + tip : input.amountCents;
+    const includesTip = cred.amountIncludesTip ?? AMOUNT_INCLUDES_TIP_DEFAULT;
+    const chargeCents = includesTip ? input.amountCents + tip : input.amountCents;
 
     const body: Record<string, unknown> = {
       Amount: dollars(chargeCents),
@@ -435,6 +438,7 @@ export class DejavooSpinCloudAdapter implements TerminalAdapter, PaymentConnecto
     if (opts?.tpn) c.tpn = opts.tpn;
     if (opts?.registerId) c.registerId = opts.registerId;
     if (opts?.environment) c.environment = opts.environment as 'sandbox' | 'production';
+    if (opts?.amountIncludesTip !== undefined) c.amountIncludesTip = opts.amountIncludesTip === 'true';
     return this.connect(c);
   }
 

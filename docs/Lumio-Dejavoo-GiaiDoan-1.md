@@ -133,9 +133,11 @@ Ba điểm dưới đây tài liệu Dejavoo **không nói rõ**. Em code theo c
 nhất và đánh dấu sẵn trong code để dễ sửa:
 
 1. **`Amount` đã gồm tip chưa?** — Doc gọi field này là *"Total amount of the transaction"*
-   và response ghi `Amounts.Amount` = *"Amount with tip"*, nên em gửi **tổng đã gồm tip**.
-   Hằng số `AMOUNT_INCLUDES_TIP` ở đầu file adapter. **Nếu sai, mọi giao dịch có tip sẽ
-   thu thừa đúng bằng tiền tip** — đây là thứ phải test đầu tiên.
+   và response ghi `Amounts.Amount` = *"Amount with tip"*, nên mặc định gửi **tổng đã gồm tip**.
+   **Nếu sai, mọi giao dịch có tip sẽ thu thừa đúng bằng tiền tip.**
+   ➜ Đã làm thành **ô tick trong màn hình kết nối** ("Số tiền gửi sang máy đã bao gồm tip").
+   Bán thử có tip, thấy máy hiện cao hơn đúng bằng tiền tip → bỏ tick, bấm Kết nối lại.
+   Không phải sửa code, không phải deploy lại.
 2. **`Content-Type`** — cURL mẫu của Dejavoo không hiện header nào. Em gửi
    `application/json`. Nếu server từ chối thì đổi sang form-encoded.
 3. **Đơn vị `SPInProxyTimeout`** — doc không ghi (min 1, max 720). Em để `null` dùng
@@ -168,9 +170,9 @@ với TPN test do Dejavoo cấp — hai môi trường dùng hai máy chủ khá
 
 | Bộ test | Kết quả |
 |---|---|
-| Adapter Dejavoo (21 ca) | ✅ 21/21 |
+| Adapter Dejavoo (23 ca) | ✅ 23/23 |
 | Cô lập tenant + credential (7 ca) | ✅ 7/7 |
-| Transpile toàn bộ payments-hub + POS + Settings + trang mới (31 file) | ✅ sạch |
+| Transpile toàn bộ payments-hub + POS + Settings + trang mới (32 file) | ✅ sạch |
 
 File test trong repo: `apps/api/src/payments-hub/adapters/dejavoo-spin-cloud.adapter.spec.ts`
 và `apps/api/src/payments-hub/credential-store.spec.ts`.
@@ -181,6 +183,16 @@ tiệm A hỏi id máy của tiệm B thì **không lấy được key của B**
 
 Chưa chạy được trong sandbox: `prisma generate` và full `tsc` (giới hạn môi trường),
 nên phần typecheck đầy đủ sẽ chạy khi anh `deploy.bat`.
+
+---
+
+## 7b. Sửa sau khi kiểm tra bản deploy thật (21/07)
+
+| Phát hiện | Xử lý |
+|---|---|
+| Tài khoản **SUPER_ADMIN bị chặn** khỏi mọi màn hình thanh toán (`Insufficient role for this action`) — controller chỉ cho SALON_ADMIN + STAFF, trong khi tầng service đã có sẵn kiểm tra SUPER_ADMIN | Thêm `SUPER_ADMIN` vào 7 route + agent controller, theo đúng quy ước `uploads.controller.ts`. Không ảnh hưởng tiệm — SALON_ADMIN chưa bao giờ bị chặn |
+| Trang Card transactions vừa báo lỗi vừa nói "chưa có giao dịch nào" | Có lỗi thì chỉ hiện lỗi |
+| Giả định tip nằm cứng trong code | Thành ô tick trong màn hình kết nối, sửa được tại chỗ |
 
 ---
 

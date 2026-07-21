@@ -11,7 +11,7 @@ import { ChargeDto, ConnectDto, RefundDto, RegisterReaderDto, VoidDto } from './
  * connect/revoke/refund and reader-registration actions are narrowed to
  * SALON_ADMIN. Every method is tenant-scoped inside the orchestrator.
  */
-@Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+@Roles(UserRole.SALON_ADMIN, UserRole.STAFF, UserRole.SUPER_ADMIN)
 @Controller('payments-hub')
 export class PaymentsHubController {
   constructor(private readonly hub: PaymentOrchestrator) {}
@@ -27,19 +27,19 @@ export class PaymentsHubController {
   }
 
   @Post('connect')
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   connect(@CurrentUser() user: AuthenticatedUser, @Body() dto: ConnectDto) {
     return this.hub.connect(user, dto);
   }
 
   @Post('test/:provider')
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   test(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: string) {
     return this.hub.test(user, provider);
   }
 
   @Delete('connection/:provider')
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   revoke(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: string) {
     return this.hub.revoke(user, provider);
   }
@@ -50,7 +50,7 @@ export class PaymentsHubController {
   }
 
   @Post('readers/:provider')
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   registerReader(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: string, @Body() dto: RegisterReaderDto) {
     return this.hub.registerReader(user, provider, dto);
   }
@@ -82,7 +82,7 @@ export class PaymentsHubController {
   }
 
   @Post('refund')
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   refund(@CurrentUser() user: AuthenticatedUser, @Body() dto: RefundDto) {
     return this.hub.refund(user, dto);
   }
@@ -92,7 +92,7 @@ export class PaymentsHubController {
    * right tool the same day; after settlement the salon must use Refund.
    */
   @Post('void')
-  @Roles(UserRole.SALON_ADMIN)
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   voidPayment(@CurrentUser() user: AuthenticatedUser, @Body() dto: VoidDto) {
     return this.hub.voidPayment(user, dto);
   }

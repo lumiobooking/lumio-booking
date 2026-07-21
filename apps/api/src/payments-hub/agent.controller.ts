@@ -9,7 +9,7 @@ import { AgentService } from './agent.service';
 import { AgentPairDto, AgentRegisterReaderDto, AgentResultDto, CreateAgentDto } from './dto/payments-hub.dto';
 
 /** Salon-admin management of Bridge/Companion agents. */
-@Roles(UserRole.SALON_ADMIN)
+@Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
 @Controller('payments-hub/agents')
 export class AgentAdminController {
   constructor(private readonly agents: AgentService) {}

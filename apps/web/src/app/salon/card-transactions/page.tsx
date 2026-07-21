@@ -200,6 +200,7 @@ function Inner() {
       </div>
 
       {loading ? <p style={{ color: '#94a3b8' }}>{L.loading}</p>
+        : error ? null /* the banner already explains it — do not also claim there are none */
         : rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>{L.empty}</p>
         : rows.map((t) => <Row key={t.id} t={t} />)}
     </section>

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -69,6 +69,11 @@ export class PaymentsHubController {
   @Post('charge')
   charge(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChargeDto) {
     return this.hub.charge(user, dto);
+  }
+
+  @Get('intents')
+  listIntents(@CurrentUser() user: AuthenticatedUser, @Query('limit') limit?: string, @Query('status') status?: string) {
+    return this.hub.listIntents(user, { limit: limit ? parseInt(limit, 10) : undefined, status });
   }
 
   @Get('intents/:id')

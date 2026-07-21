@@ -51,6 +51,7 @@ const GROUPS: NavGroup[] = [
   { id: 'finance', label: 'Finance', icon: '＄', items: [
     { href: '/salon/payments', label: 'Payments', icon: '＄' },
     { href: '/salon/payment-terminals', label: 'Card terminals', icon: '💳', feature: 'pos' },
+    { href: '/salon/card-transactions', label: 'Card transactions', icon: '🧾', feature: 'pos' },
     { href: '/salon/reports', label: 'Reports', icon: '📈' },
     { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
     { href: '/salon/payroll', label: 'Staff & pay', icon: '💵', feature: 'pos' },

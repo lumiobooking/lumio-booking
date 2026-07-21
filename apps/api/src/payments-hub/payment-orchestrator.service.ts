@@ -329,6 +329,70 @@ export class PaymentOrchestrator {
     }
   }
 
+  /**
+   * Card-terminal transactions for this salon. Unresolved ones are re-checked
+   * against the provider on the way out, so the list a salon admin looks at is
+   * never stale about whether a customer was actually charged.
+   */
+  async listIntents(user: AuthenticatedUser, opts: { limit?: number; status?: string } = {}) {
+    this.ensureEnabled();
+    const tenantId = this.tid(user);
+    const take = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const where: any = { tenantId };
+    if (opts.status) where.status = opts.status;
+
+    let rows = await this.prisma.paymentIntentRecord.findMany({
+      where, orderBy: { createdAt: 'desc' }, take,
+      include: { refunds: { orderBy: { createdAt: 'desc' } } },
+    });
+
+    // Refresh anything still in flight, oldest first, capped so one slow
+    // provider cannot stall the whole page.
+    const unresolved = rows.filter((r) => r.status === 'PROCESSING' || r.status === 'REQUIRES_PAYMENT').slice(0, 5);
+    for (const r of unresolved) await this.reconcileIntent(tenantId, r);
+    if (unresolved.length) {
+      rows = await this.prisma.paymentIntentRecord.findMany({
+        where, orderBy: { createdAt: 'desc' }, take,
+        include: { refunds: { orderBy: { createdAt: 'desc' } } },
+      });
+    }
+    return rows.map((r) => this.intentRow(r));
+  }
+
+  /** One transaction, shaped for the salon UI. Never exposes credentials. */
+  private intentRow(r: any) {
+    const raw = (r.providerRaw ?? {}) as any;
+    const card = raw.CardData ?? {};
+    const refunded = (r.refunds ?? []).filter((x: any) => x.status === 'SUCCEEDED').reduce((s: number, x: any) => s + x.amountCents, 0);
+    return {
+      id: r.id,
+      provider: r.provider,
+      status: r.status,
+      amountCents: r.amountCents,
+      currency: r.currency,
+      reference: r.externalIntentId,
+      orderId: r.orderId,
+      // Receipt details, straight from the terminal. Card data is brand + last 4
+      // only — a full card number never reaches Lumio.
+      approvalCode: raw.AuthCode ?? null,
+      cardBrand: card.CardBrand ?? card.CardType ?? null,
+      last4: card.Last4 ?? null,
+      entryType: card.EntryType ?? null,
+      tipCents: raw.Amounts?.TipAmount != null ? Math.round(Number(raw.Amounts.TipAmount) * 100) : null,
+      batchNumber: raw.BatchNumber ?? null,
+      rrn: raw.RRN ?? raw.PNReferenceId ?? null,
+      refundedCents: refunded,
+      canVoid: r.status === 'SUCCEEDED' && refunded === 0,
+      canRefund: r.status === 'SUCCEEDED' && refunded < r.amountCents,
+      /** True while we do not know whether the customer was charged. */
+      unresolved: r.status === 'PROCESSING' || r.status === 'REQUIRES_PAYMENT',
+      lastError: r.lastError,
+      createdAt: r.createdAt,
+      succeededAt: r.succeededAt,
+      refunds: (r.refunds ?? []).map((x: any) => ({ id: x.id, amountCents: x.amountCents, status: x.status, reason: x.reason, createdAt: x.createdAt })),
+    };
+  }
+
   async getIntent(user: AuthenticatedUser, id: string) {
     this.ensureEnabled();
     const tenantId = this.tid(user);

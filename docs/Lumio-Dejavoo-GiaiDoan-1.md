@@ -73,6 +73,21 @@ không có nó thì vĩnh viễn không tra được thẻ đã bị trừ hay c
 
 ---
 
+## 3b. Thu ngân thấy gì khi máy không trả lời
+
+Đây là chỗ dễ mất tiền nhất, nên xử lý riêng:
+
+- POS chờ tới **150 giây** (máy Dejavoo mặc định chờ thẻ 120 giây). Trước đây POS
+  chỉ chờ 60 giây rồi báo "Card not completed" **trong khi khách vẫn đang quẹt** —
+  thu ngân thấy vậy sẽ bấm lại. Đã sửa.
+- Hết thời gian mà máy vẫn im: POS **không ghi đơn**, không cho bấm lại, mà bật một
+  bảng chặn màn hình: *"Khoan bấm thanh toán lại — hãy nhìn màn hình máy trước"*,
+  kèm nút **Kiểm tra lại** (hỏi lại Dejavoo bằng ReferenceId cũ).
+- Giao dịch chưa ngã ngũ được đẩy lên đầu trang **Card transactions** để chủ tiệm
+  xử lý nốt, không bị trôi mất.
+
+---
+
 ## 4. Dữ liệu lưu lại
 
 `PaymentIntentRecord` + `providerRaw`: `AuthCode` (approval code), `ReferenceId`,
@@ -100,6 +115,13 @@ mỗi dòng có `tenantId`, `userId`, `action`, thời điểm.
 | Khách | Không cần có mặt | **Phải quẹt lại thẻ trên máy** |
 | API Lumio | `POST /payments-hub/void` | `POST /payments-hub/refund` |
 
+Chủ tiệm thao tác ở trang **Card transactions** (menu 🧾). Mỗi giao dịch hiện đủ
+số tiền, tip, mã duyệt, hãng thẻ + 4 số cuối, batch — và chỉ hiện nút Huỷ hoặc
+Hoàn tiền khi thao tác đó thật sự hợp lệ. Nút Huỷ biến mất sau khi đã hoàn một
+phần, để không tạo ra hai đường sửa chồng nhau.
+
+Quyền: chỉ **Salon Admin** hoặc **Super Admin** mới huỷ/hoàn được. Thợ không thấy.
+
 Đây là ràng buộc của Dejavoo, không phải lựa chọn thiết kế: doc ghi rõ
 *"Return is an independent operation and it does not relate to any Sale transaction."*
 
@@ -125,13 +147,33 @@ Refund một phần → 2 máy TPN khác nhau cùng một tiệm.
 
 ---
 
+## 6b. Cấu hình khi lên production
+
+| Biến môi trường | Đặt gì | Nếu thiếu |
+|---|---|---|
+| `PAYMENTS_HUB_ENABLED` | `true` | Toàn bộ tính năng tắt, hệ thống chạy y như trước |
+| `PAYMENT_ENC_KEY` | Chuỗi hex 64 ký tự (32 byte) | Không lưu được credential — API trả 503, **không** lưu key dạng thô |
+| `NEXT_PUBLIC_TERMINAL_USB_ENABLED` | **Không đặt** (hoặc `false`) | USB/Bluetooth hiện ra cho tiệm — chưa xong, đừng bật |
+
+Đổi `PAYMENT_ENC_KEY` sau khi đã có tiệm kết nối sẽ làm **hỏng toàn bộ credential
+đã lưu** — các tiệm phải nhập lại Auth Key. Đặt một lần rồi giữ nguyên.
+
+Trong tiệm, mỗi máy nên chọn **Environment = Production**. Chỉ dùng **Sandbox**
+với TPN test do Dejavoo cấp — hai môi trường dùng hai máy chủ khác nhau
+(`spinpos.net` và `test.spinpos.net`), nhầm là ra lỗi `2003 Register not found`.
+
+---
+
 ## 7. Kiểm thử đã chạy
 
 | Bộ test | Kết quả |
 |---|---|
 | Adapter Dejavoo (21 ca) | ✅ 21/21 |
 | Cô lập tenant + credential (7 ca) | ✅ 7/7 |
-| Transpile toàn bộ payments-hub + POS + Settings (28 file) | ✅ sạch |
+| Transpile toàn bộ payments-hub + POS + Settings + trang mới (31 file) | ✅ sạch |
+
+File test trong repo: `apps/api/src/payments-hub/adapters/dejavoo-spin-cloud.adapter.spec.ts`
+và `apps/api/src/payments-hub/credential-store.spec.ts`.
 
 Các ca đáng chú ý: timeout `2007` phải ra `UNKNOWN` **chứ không phải** `DECLINED`;
 trùng `ReferenceId` phải giải quyết bằng **một** lệnh Sale duy nhất rồi đọc `Status`;

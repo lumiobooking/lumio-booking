@@ -98,6 +98,11 @@ function Register() {
   const [hubReaders, setHubReaders] = useState<{ id: string; externalReaderId: string; label?: string | null; status: string }[]>([]);
   const [hubReader, setHubReader] = useState<string>('');
   const [charging, setCharging] = useState(false);
+  // Set when the terminal neither approved nor declined in time. The sale is
+  // blocked in this state on purpose: the card may already have been charged,
+  // so the cashier must resolve it instead of retrying.
+  const [cardStuck, setCardStuck] = useState<{ intentId: string; note: string } | null>(null);
+  const [cardWait, setCardWait] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -770,16 +775,27 @@ function Register() {
           // so the tip just rides inside the total instead.
           const cardCoversAll = cardCents >= money.total && money.tip > 0 && money.tip < cardCents;
           const tipForCard = cardCoversAll ? money.tip : 0;
+          setCardStuck(null); setCardWait(0);
           let intent = await apiFetch<{ id: string; status: string; error?: string }>('/payments-hub/charge', { method: 'POST', token, body: { provider: hubConn.provider, amountCents: cardCents - tipForCard, tipCents: tipForCard, clientRef: `${clientRef}-card`, readerExternalId: hubReader, description: 'POS sale' } });
-          for (let i = 0; i < 30 && (intent.status === 'PROCESSING' || intent.status === 'REQUIRES_PAYMENT'); i++) {
+          // Dejavoo terminals wait up to 120s for the card, so poll past that
+          // before giving up — cutting it short made the POS say "not completed"
+          // while the customer was still tapping.
+          for (let i = 0; i < 75 && (intent.status === 'PROCESSING' || intent.status === 'REQUIRES_PAYMENT'); i++) {
             await new Promise((r) => setTimeout(r, 2000));
+            setCardWait((i + 1) * 2);
             intent = await apiFetch(`/payments-hub/intents/${intent.id}`, { token });
+          }
+          if (intent.status === 'PROCESSING' || intent.status === 'REQUIRES_PAYMENT') {
+            // We genuinely do not know whether the card was charged. Do NOT
+            // record the sale and do NOT let the cashier simply try again.
+            setCardStuck({ intentId: intent.id, note: intent.error ?? '' });
+            return;
           }
           if (intent.status !== 'SUCCEEDED') { setError('Card not completed: ' + (intent.error ?? intent.status)); return; }
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Card terminal error'); return;
         } finally {
-          setCharging(false);
+          setCharging(false); setCardWait(0);
         }
       }
       try {
@@ -1376,10 +1392,37 @@ function Register() {
           </>)}
 
           {charging && (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, textAlign: 'center' }}>
               <div style={{ fontSize: 46 }}>💳</div>
-              <div style={{ color: '#e2e8f0', fontSize: 18, marginTop: 12 }}>Waiting for the customer to tap / insert…</div>
-              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>Follow the prompt on the card reader</div>
+              <div style={{ color: '#e2e8f0', fontSize: 18, marginTop: 12 }}>{t('po.cardWaiting')}</div>
+              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>{t('po.cardFollow')}</div>
+              {cardWait > 0 && <div style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{cardWait}s</div>}
+            </div>
+          )}
+
+          {/* Unresolved card payment. Blocking by design: the safest thing a
+              cashier can do here is look at the terminal, not press pay again. */}
+          {cardStuck && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.94)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 24 }}>
+              <div style={{ maxWidth: 460, background: '#0f172a', border: '1px solid #f59e0b', borderRadius: 14, padding: 22 }}>
+                <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
+                <p style={{ color: '#e2e8f0', fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{t('po.cardUnknownBody')}</p>
+                {cardStuck.note && <p style={{ color: '#94a3b8', fontSize: 12 }}>{cardStuck.note}</p>}
+                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await apiFetch<{ status: string }>(`/payments-hub/intents/${cardStuck.intentId}`, { token });
+                        if (r.status === 'SUCCEEDED') { setCardStuck(null); setOkMsg(t('po.cardNowPaid')); }
+                        else if (r.status === 'PROCESSING' || r.status === 'REQUIRES_PAYMENT') setCardStuck({ ...cardStuck, note: t('po.cardStillWaiting') });
+                        else { setCardStuck(null); setError(t('po.cardNotCharged').replace('{s}', r.status)); }
+                      } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+                    }}
+                    style={ui.primaryBtn}
+                  >{t('po.cardRecheck')}</button>
+                  <button onClick={() => setCardStuck(null)} style={ghost}>{t('po.close')}</button>
+                </div>
+              </div>
             </div>
           )}
           <div style={{ display: 'flex', gap: 8 }}>

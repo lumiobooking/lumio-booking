@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { AppointmentStatus, PaymentStatus } from '@prisma/client';
+import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CANONICAL_SOURCES, CanonicalSource, normalizeSource } from '../common/source.util';
@@ -305,5 +305,53 @@ export class MarketingService {
     const existing = await this.prisma.marketingReport.findUnique({ where: { tenantId_periodMonth: { tenantId, periodMonth: month } } });
     if (!existing) throw new NotFoundException('Report not generated yet');
     return this.prisma.marketingReport.update({ where: { id: existing.id }, data: { status: 'approved', approvedByUserId: user.userId, approvedAt: new Date() } });
+  }
+
+  // ---- Month-end automation ----------------------------------------------
+
+  /** 'YYYY-MM' for the month before the given date (default: now). */
+  private previousMonth(ref = new Date()): string {
+    const d = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  /**
+   * Auto-draft last month's report for every active salon that has something to
+   * report. Idempotent — a salon whose report already exists is skipped, so
+   * running this many times is safe. Reports are left in 'review' so a human
+   * always approves before anything reaches a client. A system run acts as a
+   * super admin scoped to one explicit tenant, so tenant isolation still holds.
+   */
+  async runMonthlyAutoGenerate(targetMonth?: string) {
+    const month = targetMonth ?? this.previousMonth();
+    const { from, to } = this.monthRange(month);
+    const tenants = await this.prisma.tenant.findMany({
+      where: { status: TenantStatus.ACTIVE, deletedAt: null },
+      select: { id: true },
+    });
+    const sys: AuthenticatedUser = { userId: 'system', role: UserRole.SUPER_ADMIN, tenantId: null };
+    let generated = 0, skipped = 0, failed = 0;
+
+    for (const t of tenants) {
+      const existing = await this.prisma.marketingReport.findUnique({
+        where: { tenantId_periodMonth: { tenantId: t.id, periodMonth: month } },
+      });
+      if (existing) { skipped++; continue; }
+      // Only draft where there is real activity — never an empty report.
+      const [spendCount, apptCount] = await Promise.all([
+        this.prisma.marketingSpend.count({ where: { tenantId: t.id, periodMonth: month } }),
+        this.prisma.appointment.count({ where: { tenantId: t.id, startTime: { gte: from, lte: to } } }),
+      ]);
+      if (spendCount === 0 && apptCount === 0) { skipped++; continue; }
+      try {
+        await this.generateReport(sys, month, t.id);
+        generated++;
+      } catch (e) {
+        failed++;
+        this.logger.warn(`Auto-report failed for tenant ${t.id} ${month}: ${String(e)}`);
+      }
+    }
+    this.logger.log(`Auto-report ${month}: generated ${generated}, skipped ${skipped}, failed ${failed}.`);
+    return { month, generated, skipped, failed };
   }
 }

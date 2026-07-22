@@ -72,4 +72,12 @@ export class MarketingController {
   approveReport(@CurrentUser() user: AuthenticatedUser, @Body() dto: { month: string; tenantId?: string }) {
     return this.marketing.approveReport(user, dto.month, dto.tenantId);
   }
+
+  /** Manually trigger the month-end auto-draft (super admin only). For testing
+   * and for re-running after a month closes. Idempotent. */
+  @Post('auto-generate')
+  @Roles(UserRole.SUPER_ADMIN)
+  autoGenerate(@Body() dto: { month?: string }) {
+    return this.marketing.runMonthlyAutoGenerate(dto?.month);
+  }
 }

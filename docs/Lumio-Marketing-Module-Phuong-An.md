@@ -234,7 +234,11 @@ Anh đã chốt: **GĐ0 + 1**, báo cáo khách **song ngữ Việt–Anh**, GĐ
 
 **Kiểm thử:** 12/12 method backend scope tenant; blended null khi thiếu chi phí; prompt AI có 3 lớp chống bịa; toàn bộ file transpile + type-check frontend sạch.
 
-**Chưa làm (chờ anh sau khi xem GĐ0+1 thật):** GĐ2 (UTM attribution theo chiến dịch), GĐ3 (API tự động Google/Meta/TikTok), GĐ4 (AI tối ưu chủ động), và cron tự sinh báo cáo cuối tháng.
+**✅ Tự động sinh báo cáo cuối tháng (xong)**
+- `MarketingScheduler` (khuôn campaigns.scheduler): đầu tháng tự tạo **nháp** báo cáo tháng trước cho mọi tiệm **có hoạt động thật**, để trạng thái `review` — người luôn duyệt trước khi tới khách.
+- **Idempotent** (bỏ qua tiệm đã có báo cáo), tenant-safe (system chạy như super admin gắn đúng 1 tiệm), feature-flag `MARKETING_AUTOREPORT_ENABLED`. Endpoint `POST /marketing/auto-generate` chạy tay để test.
+
+**Chưa làm (chờ anh):** GĐ2 (UTM attribution theo chiến dịch/nội dung), GĐ3 (API tự động Google/Meta/TikTok + nền khác), GĐ4 (AI tối ưu chủ động — đề xuất chuyển ngân sách).
 
 ---
 

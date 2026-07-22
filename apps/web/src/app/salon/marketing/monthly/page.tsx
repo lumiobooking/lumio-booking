@@ -20,7 +20,8 @@ interface Monthly {
   effectiveness?: 'good' | 'ok' | 'low' | 'organic';
 }
 interface Item { vi: string; en: string }
-interface Content { headline?: Item; summary?: Item; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
+interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi: string; en: string }
+interface Content { headline?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 
 const CHANNELS = ['facebook', 'instagram', 'tiktok', 'google_ads', 'gbp', 'seo', 'email', 'sms', 'website', 'other'];
@@ -38,6 +39,7 @@ function Inner() {
   const T = (v: string, e: string) => (vi ? v : e);
 
   const [month, setMonth] = useState(thisMonth());
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [data, setData] = useState<Monthly | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [currency, setCurrency] = useState('USD');
@@ -127,6 +129,15 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ ...ui.banner, background: '#064e3b', borderColor: '#059669', color: '#d1fae5' }}>{msg}</div>}
 
+      <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3, marginBottom: 16 }}>
+        <button onClick={() => setMode('view')} style={segBtn(mode === 'view')}>{T('Xem báo cáo', 'View report')}</button>
+        <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chỉnh sửa', 'Edit')}</button>
+      </div>
+
+      {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money)} T={T} />}
+
+      {mode === 'edit' && (<>
+
       {/* Blended KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
         <Kpi label={T('Tổng chi marketing', 'Total spend')} value={money(b?.totalSpendCents ?? 0)} />
@@ -208,6 +219,7 @@ function Inner() {
         onGenerate={generate} onSave={saveReport} onApprove={approve}
         printData={data} money={money}
       />
+      </>)}
     </section>
   );
 }
@@ -458,6 +470,103 @@ function MktTabs({ vi, active }: { vi: boolean; active: 'monthly' | 'live' }) {
     </div>
   );
 }
+const VERDICT: Record<string, [string, string, string]> = {
+  good: ['#22c55e', '#052e16', 'Tốt'],
+  ok: ['#3b82f6', '#0b1e3a', 'Ổn'],
+  weak: ['#f59e0b', '#3a2606', 'Yếu'],
+  nodata: ['#64748b', '#1e293b', 'Chưa đủ dữ liệu'],
+};
+const CH_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác' };
+
+function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Monthly | null; content: Content | null; vi: boolean; money: (n: number) => string; onEdit: () => void; onPrint: () => void; T: (v: string, e: string) => string }) {
+  if (!data) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  const L = (it?: Item) => (vi ? (it?.vi || it?.en) : (it?.en || it?.vi)) || '';
+  const o = data.outcome; const b = data.blended; const d = data.deltas;
+  const eff = data.effectiveness || 'organic';
+  const effMap: Record<string, [string, string]> = { good: ['#059669', T('Hiệu quả tốt', 'Performing well')], ok: ['#2563eb', T('Đang có hiệu quả', 'On track')], weak: ['#d97706', T('Cần cải thiện', 'Needs work')], low: ['#d97706', T('Cần cải thiện', 'Needs work')], organic: ['#64748b', T('Tăng trưởng tự nhiên', 'Organic growth')] };
+  const [effColor, effLabel] = effMap[eff] ?? effMap.organic;
+  const hasReport = !!content && !content._aiUnavailable && (!!L(content.headline) || (content.plan ?? []).length > 0 || (content.channels ?? []).length > 0);
+
+  const arrow = (dl?: Delta) => dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 11, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'} {Math.abs(dl.pct)}%</span> : null;
+  const spendRows = (data.spend ?? []).filter((x) => x.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ background: effColor, color: '#fff', borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>{effLabel}</span>
+        <button onClick={onPrint} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>{T('Xuất PDF / In', 'Export PDF / Print')}</button>
+      </div>
+
+      {L(content?.headline) && <div style={{ fontSize: 20, fontWeight: 800, color: '#f8fafc', lineHeight: 1.35 }}>{L(content?.headline)}</div>}
+
+      {/* Pillar 1 + 2 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+        <div style={pv}><div style={pvL}>① {T('ĐÃ CHI', 'SPENT')}</div><div style={pvBig}>{money(b?.totalSpendCents ?? 0)}</div>{spendRows.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{spendRows.map((x) => `${CH_NAME[x.channel] || x.channel} ${money(x.amountCents)}`).join(' · ')}</div>}</div>
+        <div style={pv}><div style={pvL}>② {T('MANG VỀ', 'RESULTS')}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            {[[String(o.totals.bookings), T('lượt đặt', 'bookings'), d?.bookings, false], [String(o.totals.showed), T('đã đến', 'showed'), d?.showed, false], [String(o.newCustomers), T('khách mới', 'new'), d?.newCustomers, false], [money(o.totals.revenueCents), T('doanh thu', 'revenue'), d?.revenueCents, true]].map((x, i) => (
+              <div key={i} style={{ flex: 1, minWidth: 70, textAlign: 'center' }}>
+                <div style={{ fontSize: 21, fontWeight: 800, color: x[3] ? '#22c55e' : '#f8fafc' }}>{x[0] as string}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>{x[1] as string}</div>
+                <div>{arrow(x[2] as Delta)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Pillar 3 */}
+      {b && b.revenuePerSpend != null && (
+        <div style={{ background: '#052e16', border: '1px solid #059669', borderRadius: 12, padding: '12px 16px' }}>
+          <div style={{ fontSize: 12, color: '#6ee7b7', fontWeight: 600, marginBottom: 3 }}>③ {T('HIỆU QUẢ', 'EFFECTIVENESS')}</div>
+          <div style={{ fontSize: 15, color: '#d1fae5' }}>{T('Mỗi', 'Every')} <b>$1</b> {T('chi ra', 'spent')} → <b>${b.revenuePerSpend}</b> {T('doanh thu', 'revenue')}{b.costPerNewCustomerCents != null && <> · {T('chi phí mỗi khách mới', 'cost / new customer')}: <b>{money(b.costPerNewCustomerCents)}</b></>}</div>
+        </div>
+      )}
+
+      {/* Per-channel evaluation */}
+      {hasReport && (content?.channels ?? []).length > 0 && (
+        <div style={pv}>
+          <div style={pvL}>{T('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION')}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            {content!.channels!.map((c, i) => {
+              const [col, bg, defLabel] = VERDICT[c.verdict] ?? VERDICT.nodata;
+              return (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: bg, borderRadius: 8, padding: '8px 11px' }}>
+                  <span style={{ background: col, color: '#04121f', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{CH_NAME[c.name] || c.name}</span>
+                  <span style={{ fontSize: 13, color: '#e2e8f0' }}>{vi ? c.vi : (c.en || c.vi)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pillar 4: work done + roadmap */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+        <div style={pv}><div style={pvL}>④ {T('ĐÃ LÀM GÌ', 'WHAT WE DID')}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0' }}>{(data.workLog ?? []).length === 0 ? <span style={{ color: '#64748b' }}>{T('Chưa ghi', 'None logged')}</span> : data.workLog.map((w) => <div key={w.id} style={{ margin: '4px 0' }}>✓ {w.title}</div>)}</div>
+        </div>
+        <div style={{ ...pv, border: '1px solid #6366f1' }}><div style={{ ...pvL, color: '#a5b4fc' }}>{T('LỘ TRÌNH THÁNG SAU', 'NEXT-MONTH ROADMAP')}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0' }}>{(content?.plan ?? []).length === 0 ? <span style={{ color: '#64748b' }}>—</span> : content!.plan!.map((x, i) => <div key={i} style={{ margin: '5px 0', display: 'flex', gap: 8 }}><span style={{ color: '#818cf8', fontWeight: 700 }}>{i + 1}</span><span>{L(x)}</span></div>)}</div>
+        </div>
+      </div>
+
+      {L(content?.summary) && <div style={{ fontSize: 13, color: '#cbd5e1', background: '#0f172a', borderRadius: 10, padding: '11px 13px', lineHeight: 1.6 }}>{L(content?.summary)}</div>}
+
+      {!hasReport && (
+        <div style={{ ...pv, textAlign: 'center', padding: 20 }}>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{T('Chưa có báo cáo phân tích cho tháng này. Sang "Chỉnh sửa" để nhập chi phí/công việc rồi bấm Tạo báo cáo (AI phân tích từng kênh + lộ trình).', 'No analysis report for this month yet. Go to "Edit" to enter spend/work, then Generate (AI evaluates each channel + roadmap).')}</p>
+          <button onClick={onEdit} style={ui.primaryBtn}>{T('Sang Chỉnh sửa', 'Go to Edit')}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const pv: CSSProperties = { background: '#111a2c', border: '1px solid #1e293b', borderRadius: 12, padding: '13px 16px' };
+const pvL: CSSProperties = { fontSize: 12, color: '#94a3b8', fontWeight: 600 };
+const pvBig: CSSProperties = { fontSize: 28, fontWeight: 800, color: '#f8fafc', marginTop: 2 };
+const segBtn = (on: boolean): CSSProperties => ({ padding: '7px 18px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#94a3b8', fontSize: 13, fontWeight: on ? 700 : 500, cursor: 'pointer' });
 const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: '#cbd5e1' };
 const dateInput: CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 13 };
 const numInput: CSSProperties = { width: 90, background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 13 };

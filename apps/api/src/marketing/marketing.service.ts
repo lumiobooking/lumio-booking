@@ -249,7 +249,7 @@ export class MarketingService {
       this.overview(user, pr.from.toISOString().slice(0, 10), pr.to.toISOString().slice(0, 10), tenantParam),
       this.prisma.marketingSpend.findMany({ where: { tenantId, periodMonth: prev }, select: { amountCents: true } }),
     ]);
-    const prevSpendCents = prevSpend.reduce((a, r) => a + r.amountCents, 0);
+    const prevSpendCents = prevSpend.reduce((a: number, r: { amountCents: number }) => a + r.amountCents, 0);
     const delta = (cur: number, prv: number) => ({ value: cur, prev: prv, pct: prv > 0 ? Math.round(((cur - prv) / prv) * 100) : (cur > 0 ? null : 0) });
     const deltas = {
       bookings: delta(bookings, prevOv.totals.bookings),
@@ -271,7 +271,7 @@ export class MarketingService {
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
-  private async draftWithAI(data: Awaited<ReturnType<MarketingService['monthlyData']>>): Promise<{ content: any; model: string } | null> {
+  private async draftWithAI(data: Awaited<ReturnType<MarketingService['monthlyData']>>, history: any[] = []): Promise<{ content: any; model: string } | null> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return null;
     const model = process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001';
@@ -285,7 +285,7 @@ export class MarketingService {
       '(4) Output MUST be valid JSON only, matching this exact shape, every string in BOTH Vietnamese (vi) and English (en): ' +
       '{"headline":{"vi":"","en":""},"summary":{"vi":"","en":""},"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}]}. ' +
       'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% nhờ Google Maps"). ' +
-      'The summary MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' + 'highlights = what went well (2-4). issues = problems or gaps, including missing data (1-3). plan = concrete, specific actions for next month (2-4). Keep each item to one plain sentence a non-marketer understands.';
+      'The summary MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' + 'highlights = what went well (2-4). issues = problems or gaps, including missing data (1-3). plan = concrete, specific actions for next month (2-4). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly (e.g. move budget from a weak channel to a cheaper-customer one). Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
 
     const userText = 'DATA (JSON):\n' + JSON.stringify({
       month: data.month,
@@ -300,6 +300,7 @@ export class MarketingService {
       blended: data.blended,
       vsLastMonth: (data as any).deltas,
       effectiveness: (data as any).effectiveness,
+      last4Months: history,
       workDone: data.workLog.map((w: any) => ({ category: w.category, title: w.title })),
     });
 
@@ -323,10 +324,28 @@ export class MarketingService {
   }
 
   // ---- Report lifecycle ---------------------------------------------------
+  /** Last N months of headline figures, oldest -> newest, for trend analysis. */
+  async monthlyHistory(user: AuthenticatedUser, month: string, tenantParam?: string, count = 4) {
+    const [y, m] = month.split('-').map(Number);
+    const out: Array<{ month: string; spendCents: number; revenueCents: number; bookings: number; newCustomers: number }> = [];
+    for (let i = count - 1; i >= 0; i--) {
+      const d = new Date(y, m - 1 - i, 1);
+      const mm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const { from, to } = this.monthRange(mm);
+      const [ov, spend] = await Promise.all([
+        this.overview(user, from.toISOString().slice(0, 10), to.toISOString().slice(0, 10), tenantParam),
+        this.prisma.marketingSpend.findMany({ where: { tenantId: this.tenantId(user, tenantParam), periodMonth: mm }, select: { amountCents: true } }),
+      ]);
+      out.push({ month: mm, spendCents: spend.reduce((a: number, r: { amountCents: number }) => a + r.amountCents, 0), revenueCents: ov.totals.revenueCents, bookings: ov.totals.bookings, newCustomers: ov.newCustomers });
+    }
+    return out;
+  }
+
   async generateReport(user: AuthenticatedUser, month: string, tenantParam?: string) {
     const tenantId = this.tenantId(user, tenantParam);
     const data = await this.monthlyData(user, month, tenantParam);
-    const ai = await this.draftWithAI(data);
+    const history = await this.monthlyHistory(user, month, tenantParam, 4).catch(() => [] as any[]);
+    const ai = await this.draftWithAI(data, history);
     const content = ai?.content ?? { summary: { vi: '', en: '' }, highlights: [], issues: [], plan: [], _aiUnavailable: true };
     const saved = await this.prisma.marketingReport.upsert({
       where: { tenantId_periodMonth: { tenantId, periodMonth: month } },

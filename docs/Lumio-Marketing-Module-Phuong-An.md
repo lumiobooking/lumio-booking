@@ -257,7 +257,13 @@ Anh đã chốt: **GĐ0 + 1**, báo cáo khách **song ngữ Việt–Anh**, GĐ
 
 **Cần anh:** tạo app developer + lấy token/ID theo hướng dẫn GĐ3 (Meta nhanh nhất). Khi có token TikTok/Google Ads, gửi em finalize 2 connector còn lại.
 
-**Chưa làm:** GĐ4 (AI tối ưu chủ động — đề xuất chuyển ngân sách từ xu hướng nhiều tháng).
+**✅ GĐ4 — AI tối ưu chủ động (xong)**
+- AI nhận **4 tháng gần nhất** (chi phí/doanh thu/booking/khách mới) + chi phí từng kênh → nhìn xu hướng, **đề xuất chuyển ngân sách cụ thể** (kênh nào rẻ khách/hiệu quả → tăng, kênh yếu → giảm), chỉ dựa số thật.
+- Báo cáo khách thêm **"★ Điều quan trọng nhất tháng này"** (một câu chốt khách liếc là hiểu) + mũi tên ▲▼ so tháng trước + badge mức hiệu quả.
+
+**✅ Tối ưu giao diện**: gộp 2 mục marketing report → 1 "Marketing report" (có tab Báo cáo tháng ↔ Tổng quan trực tiếp); đổi tên "Reports"→"Business report" cho phân biệt rõ.
+
+*Module marketing đã hoàn thiện trọn vẹn GĐ0→GĐ4. Còn lại chỉ là finalize connector TikTok/Google Ads khi anh có token thật, và tinh chỉnh theo phản hồi thực tế.*
 
 ---
 

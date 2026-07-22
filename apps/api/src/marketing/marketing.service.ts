@@ -329,7 +329,7 @@ export class MarketingService {
       where: { status: TenantStatus.ACTIVE, deletedAt: null },
       select: { id: true },
     });
-    const sys: AuthenticatedUser = { userId: 'system', role: UserRole.SUPER_ADMIN, tenantId: null };
+    const sys: AuthenticatedUser = { userId: 'system', email: 'system@lumio.local', role: UserRole.SUPER_ADMIN, tenantId: null };
     let generated = 0, skipped = 0, failed = 0;
 
     for (const t of tenants) {

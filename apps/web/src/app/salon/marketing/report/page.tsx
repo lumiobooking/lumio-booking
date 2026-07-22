@@ -14,6 +14,7 @@ interface Overview {
   channels: Channel[];
   totals: { bookings: number; showed: number; revenueCents: number };
   owned: { googleReviews: number; reviewClicks: number; messengerThreads: number; voiceCalls: number; voiceBooked: number; emailsSent: number; referredNewCustomers: number };
+  byCampaign?: { key: string; source: string | null; bookings: number; showed: number; revenueCents: number }[];
   hasCostData: boolean;
 }
 
@@ -142,6 +143,30 @@ function Inner() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Per-campaign attribution (UTM) */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={cardTitle}>{T('Theo chiến dịch / nội dung (UTM)', 'By campaign / content (UTM)')}</div>
+        {(data?.byCampaign ?? []).length === 0 ? (
+          <p style={{ color: '#64748b', fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+            {vi ? 'Chưa có booking nào gắn UTM trong kỳ này. Gắn utm_campaign vào link đặt lịch trên từng bài/quảng cáo để đo bài nào ra khách.'
+                : 'No UTM-tagged bookings in this period. Add utm_campaign to the booking link on each post/ad to see which one converts.'}
+          </p>
+        ) : (() => {
+          const maxRev = Math.max(1, ...(data!.byCampaign!).map((c) => c.revenueCents));
+          return data!.byCampaign!.map((c) => (
+            <div key={c.key} style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, fontSize: 13 }}>
+                <span style={{ color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>
+                  {c.key}{c.source ? <span style={{ color: '#64748b' }}> · {c.source}</span> : null}
+                </span>
+                <span style={{ color: '#94a3b8', flexShrink: 0 }}>{c.bookings} {T('đặt', 'booked')} → <span style={{ color: '#22c55e' }}>{c.showed} {T('đến', 'showed')}</span> → <span style={{ color: '#22c55e', fontWeight: 700 }}>{money(c.revenueCents)}</span></span>
+              </div>
+              <div style={{ height: 6, background: '#0f172a', borderRadius: 999 }}><div style={{ height: '100%', width: `${Math.max(3, (c.revenueCents / maxRev) * 100)}%`, background: '#0ea5e9', borderRadius: 999 }} /></div>
+            </div>
+          ));
+        })()}
       </div>
 
       {/* Owned-channel activity */}

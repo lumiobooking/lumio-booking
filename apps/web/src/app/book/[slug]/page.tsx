@@ -411,6 +411,15 @@ export default function PublicBookingPage() {
           partySize: parseInt(form.partySize, 10) || 1,
           smsConsent,
           referralCode: (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') : null) || undefined,
+          // Campaign attribution: capture UTM from THIS page's URL. For plugin
+          // embeds the plugin forwards the parent page's UTM into the iframe src,
+          // so window.location.search has them in both flows.
+          ...(() => {
+            if (typeof window === 'undefined') return {};
+            const q = new URLSearchParams(window.location.search);
+            const g = (k: string) => q.get(k) || undefined;
+            return { utmSource: g('utm_source'), utmMedium: g('utm_medium'), utmCampaign: g('utm_campaign'), utmContent: g('utm_content') };
+          })(),
           paymentType,
         }),
       });

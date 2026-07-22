@@ -109,6 +109,12 @@ export class CreateBookingDto {
   @MaxLength(40)
   referralCode?: string;
 
+  // --- Campaign attribution (UTM), forwarded from the landing/booking link ---
+  @IsOptional() @IsString() @MaxLength(120) utmSource?: string;
+  @IsOptional() @IsString() @MaxLength(120) utmMedium?: string;
+  @IsOptional() @IsString() @MaxLength(120) utmCampaign?: string;
+  @IsOptional() @IsString() @MaxLength(120) utmContent?: string;
+
   // Optional: when set on the public booking flow, a payment is created right
   // after the booking (PAY_ONLINE charges via the mock provider; PAY_LATER is
   // recorded PENDING). Ignored by the admin create flow.

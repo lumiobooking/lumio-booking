@@ -1074,6 +1074,12 @@ model Appointment {
   // Which kind of device the customer booked on: 'mobile' | 'web' | null.
   // Kept separate from source so we never lose the channel when we know the device.
   device     String?
+  // Campaign attribution (UTM), captured from the booking link when present.
+  // Lets a booking be traced to a specific ad / post / campaign, not just a channel.
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
   // Number of people in this booking (group bookings); 1 = solo.
   partySize  Int     @default(1)
 

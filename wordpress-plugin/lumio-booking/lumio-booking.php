@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.6.0
+ * Version:           1.7.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -198,13 +198,14 @@ if (!function_exists('lumio_booking_base')) {
         echo '<script>(function(){'
             . 'if(window.__lumioLaunch){return;}window.__lumioLaunch=1;'
             . 'var U=' . wp_json_encode($url) . ',M=' . wp_json_encode($match) . ';'
+            . 'function lumioUtm(u){try{var p=new URLSearchParams(location.search),k=["utm_source","utm_medium","utm_campaign","utm_content"],a="";for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v){a+="&"+k[i]+"="+encodeURIComponent(v);}}return u+a;}catch(e){return u;}}'
             . 'var wrap=null,frame=null,isOpen=false,savedY=0,pushed=false,adopted=false;'
             . 'function build(){if(wrap){return;}'
             . 'wrap=document.createElement("div");wrap.setAttribute("aria-hidden","true");'
             . 'wrap.style.cssText="position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483000;background:#fff;display:none;";'
             . 'frame=document.createElement("iframe");frame.title="Book an appointment";'
             . 'frame.setAttribute("allow","payment");'
-            . 'frame.style.cssText="width:100%;height:100%;border:0;display:block;";frame.src=U;'
+            . 'frame.style.cssText="width:100%;height:100%;border:0;display:block;";frame.src=lumioUtm(U);'
             . 'var x=document.createElement("button");x.type="button";x.setAttribute("aria-label","Close");x.innerHTML="&times;";'
             . 'x.style.cssText="position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));'
             . 'width:40px;height:40px;border-radius:20px;border:0;background:rgba(15,23,42,.72);color:#fff;'

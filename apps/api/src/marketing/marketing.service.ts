@@ -52,7 +52,7 @@ export class MarketingService {
     const [appts, payments, reviews, reviewClicks, messengerThreads, voiceCalls, emailCampaigns, referredNew, newCustomers] = await Promise.all([
       this.prisma.appointment.findMany({
         where: { tenantId, startTime: { gte: from, lte: to } },
-        select: { id: true, source: true, status: true },
+        select: { id: true, source: true, status: true, utmCampaign: true, utmSource: true },
       }),
       // Revenue attributed to a booking's channel: PAID payments tied to an
       // appointment, in the period, excluding cancelled/rejected bookings.
@@ -75,6 +75,12 @@ export class MarketingService {
     );
     const sourceByAppt = new Map<string, CanonicalSource>();
     const excludedAppt = new Set<string>();
+    // Campaign-level attribution (UTM). Keyed by campaign, falling back to the
+    // utm_source when no campaign name is present. Only bookings that actually
+    // carry a UTM are counted here — everything else stays channel-level.
+    type CampRow = { key: string; source: string | null; bookings: number; showed: number; revenueCents: number };
+    const camps = new Map<string, CampRow>();
+    const campByAppt = new Map<string, string>();
     for (const a of appts) {
       const ch = normalizeSource(a.source);
       sourceByAppt.set(a.id, ch);
@@ -82,6 +88,14 @@ export class MarketingService {
       const row = rows.get(ch)!;
       row.bookings += 1;
       if (SHOWED_STATUSES.includes(a.status)) row.showed += 1;
+      const campKey = (a.utmCampaign || a.utmSource || '').trim();
+      if (campKey) {
+        campByAppt.set(a.id, campKey);
+        const cr = camps.get(campKey) ?? { key: campKey, source: a.utmSource ?? null, bookings: 0, showed: 0, revenueCents: 0 };
+        cr.bookings += 1;
+        if (SHOWED_STATUSES.includes(a.status)) cr.showed += 1;
+        camps.set(campKey, cr);
+      }
     }
     // --- Revenue per channel (via appointment → source) --------------------
     for (const p of payments) {
@@ -89,6 +103,8 @@ export class MarketingService {
       const ch = sourceByAppt.get(p.appointmentId);
       if (!ch) continue; // payment for an appointment outside the window
       rows.get(ch)!.revenueCents += p.amountCents;
+      const campKey = campByAppt.get(p.appointmentId);
+      if (campKey) { const cr = camps.get(campKey); if (cr) cr.revenueCents += p.amountCents; }
     }
 
     const channels = CANONICAL_SOURCES.map((k) => rows.get(k)!);
@@ -115,6 +131,8 @@ export class MarketingService {
         referredNewCustomers: referredNew,
       },
       newCustomers,
+      // Campaign-level attribution (only bookings that carried a UTM).
+      byCampaign: Array.from(camps.values()).sort((x, y) => y.revenueCents - x.revenueCents || y.bookings - x.bookings).slice(0, 20),
       // Explicit: paid-channel cost/reach come in Phase 1 (manual) / Phase 3 (API).
       hasCostData: false,
     };

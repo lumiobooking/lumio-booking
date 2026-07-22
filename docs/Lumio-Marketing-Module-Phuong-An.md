@@ -238,7 +238,13 @@ Anh đã chốt: **GĐ0 + 1**, báo cáo khách **song ngữ Việt–Anh**, GĐ
 - `MarketingScheduler` (khuôn campaigns.scheduler): đầu tháng tự tạo **nháp** báo cáo tháng trước cho mọi tiệm **có hoạt động thật**, để trạng thái `review` — người luôn duyệt trước khi tới khách.
 - **Idempotent** (bỏ qua tiệm đã có báo cáo), tenant-safe (system chạy như super admin gắn đúng 1 tiệm), feature-flag `MARKETING_AUTOREPORT_ENABLED`. Endpoint `POST /marketing/auto-generate` chạy tay để test.
 
-**Chưa làm (chờ anh):** GĐ2 (UTM attribution theo chiến dịch/nội dung), GĐ3 (API tự động Google/Meta/TikTok + nền khác), GĐ4 (AI tối ưu chủ động — đề xuất chuyển ngân sách).
+**✅ GĐ2 — UTM attribution (xong)**
+- 4 cột UTM (`utmSource/Medium/Campaign/Content`) trên `Appointment` (additive migration); `CreateBookingDto` nhận UTM; `createForTenant` lưu.
+- Trang đặt lịch `/book/[slug]` đọc UTM từ URL và gửi kèm. Plugin **v1.7.0** forward UTM của trang cha vào iframe (đóng gói + manifest auto-update xong).
+- `marketing.overview` gộp **theo chiến dịch** (chỉ booking có UTM): campaign → đặt → đến → doanh thu. Trang **Marketing report** có mục "Theo chiến dịch / nội dung (UTM)".
+- Kiểm: frontend type-check sạch; JS plugin hợp lệ; backend chỉ còn false-positive Prisma client sandbox cũ (Render tự generate).
+
+**Chưa làm (chờ anh):** GĐ3 (API tự động Google/Meta/TikTok — mỗi nền cần OAuth + duyệt app, không dựng thật được trong sandbox), GĐ4 (AI tối ưu chủ động — đề xuất chuyển ngân sách).
 
 ---
 

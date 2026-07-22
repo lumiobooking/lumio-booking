@@ -99,6 +99,18 @@ function Inner() {
 
   const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
   const money = (c: number) => formatPrice(c, currency);
+  const [metric, setMetric] = useState<'revenue' | 'bookings'>('revenue');
+
+  // Which preset (if any) the current range matches, so the button can light up.
+  const activePreset = (() => {
+    const n = new Date(); const y = n.getFullYear(); const m = n.getMonth();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    if (from === iso(new Date(Date.now() - 6 * 86400000)) && to === isoToday()) return 'last7';
+    if (from === iso(new Date(y, m, 1)) && to === isoToday()) return 'thisMonth';
+    if (from === iso(new Date(y, m - 1, 1)) && to === iso(new Date(y, m, 0))) return 'lastMonth';
+    if (from === iso(new Date(y, 0, 1)) && to === isoToday()) return 'thisYear';
+    return 'custom';
+  })();
 
   if (loading && !dash) return <section><h2 style={{ fontSize: 18 }}>{T('Báo cáo', 'Reports')}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
 
@@ -158,10 +170,11 @@ function Inner() {
         <span style={{ fontSize: 12, color: '#94a3b8' }}>{T('đến', 'to')}</span>
         <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} style={dateInput} />
         <span style={{ width: 1, height: 20, background: '#334155', margin: '0 2px' }} />
-        <button onClick={() => preset('last7')} style={chip}>{T('7 ngày', 'Last 7d')}</button>
-        <button onClick={() => preset('thisMonth')} style={chip}>{T('Tháng này', 'This month')}</button>
-        <button onClick={() => preset('lastMonth')} style={chip}>{T('Tháng trước', 'Last month')}</button>
-        <button onClick={() => preset('thisYear')} style={chip}>{T('Năm nay', 'This year')}</button>
+        <button onClick={() => preset('last7')} style={chip(activePreset === 'last7')}>{T('7 ngày', 'Last 7d')}</button>
+        <button onClick={() => preset('thisMonth')} style={chip(activePreset === 'thisMonth')}>{T('Tháng này', 'This month')}</button>
+        <button onClick={() => preset('lastMonth')} style={chip(activePreset === 'lastMonth')}>{T('Tháng trước', 'Last month')}</button>
+        <button onClick={() => preset('thisYear')} style={chip(activePreset === 'thisYear')}>{T('Năm nay', 'This year')}</button>
+        {activePreset === 'custom' && <span style={{ fontSize: 12, color: '#818cf8', fontWeight: 600 }}>{T('Khoảng tự chọn', 'Custom range')}</span>}
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -177,8 +190,14 @@ function Inner() {
 
       {/* Trend + Outcomes */}
       <div className="rp-2col" style={grid2}>
-        <Card title={T('Doanh thu & lượt đặt theo ngày', 'Revenue & bookings by day')}>
-          <TrendChart series={dash?.series ?? []} money={money} />
+        <Card title={metric === 'revenue' ? T('Doanh thu theo ngày', 'Revenue by day') : T('Lượt đặt theo ngày', 'Bookings by day')}
+          right={(
+            <div style={{ display: 'inline-flex', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 2 }}>
+              <button onClick={() => setMetric('revenue')} style={miniSeg(metric === 'revenue')}>{T('Doanh thu', 'Revenue')}</button>
+              <button onClick={() => setMetric('bookings')} style={miniSeg(metric === 'bookings')}>{T('Lượt đặt', 'Bookings')}</button>
+            </div>
+          )}>
+          <TrendChart series={dash?.series ?? []} money={money} metric={metric} vi={vi} />
         </Card>
         <Card title={T('Kết quả lịch hẹn', 'Booking outcomes')}>
           <Outcomes k={k} vi={vi} />
@@ -266,10 +285,13 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
   );
 }
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
+function Card({ title, children, right }: { title: string; children: ReactNode; right?: ReactNode }) {
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 12 }}>{title}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>{title}</div>
+        {right}
+      </div>
       {children}
     </div>
   );
@@ -317,24 +339,30 @@ function RankedList({ rows, money, vi }: { rows: Ranked[]; money: (c: number) =>
   );
 }
 
-function TrendChart({ series, money }: { series: Dash['series']; money: (c: number) => string }) {
+function TrendChart({ series, money, metric, vi }: { series: Dash['series']; money: (c: number) => string; metric: 'revenue' | 'bookings'; vi: boolean }) {
   if (!series.length) return <p style={hint}>—</p>;
-  const maxRev = Math.max(1, ...series.map((s) => s.revenueCents));
-  const maxBk = Math.max(1, ...series.map((s) => s.bookings));
-  const total = series.reduce((a, s) => a + s.revenueCents, 0);
+  const val = (s: Dash['series'][number]) => (metric === 'revenue' ? s.revenueCents : s.bookings);
+  const max = Math.max(1, ...series.map(val));
+  const totalRev = series.reduce((a, s) => a + s.revenueCents, 0);
+  const totalBk = series.reduce((a, s) => a + s.bookings, 0);
+  const peakIdx = series.reduce((best, s, i) => (val(s) > val(series[best]) ? i : best), 0);
+  const color = metric === 'revenue' ? '#6366f1' : '#22c55e';
+  const fmt = (s: Dash['series'][number]) => (metric === 'revenue' ? money(s.revenueCents) : `${s.bookings} ${vi ? 'lượt' : 'bkgs'}`);
+  const gap = series.length > 40 ? 1 : series.length > 20 ? 2 : 4;
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: series.length > 40 ? 1 : 3, height: 130 }}>
-        {series.map((s) => (
-          <div key={s.date} title={`${s.date}\n${money(s.revenueCents)} · ${s.bookings}`} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', position: 'relative' }}>
-            <div style={{ height: `${(s.revenueCents / maxRev) * 100}%`, background: '#6366f1', borderRadius: 3, minHeight: s.revenueCents ? 2 : 0 }} />
-            <div style={{ position: 'absolute', bottom: `${(s.bookings / maxBk) * 100}%`, left: 0, right: 0, borderTop: '2px solid #22c55e', opacity: s.bookings ? 0.9 : 0 }} />
+      {/* max-value guide so bar heights have a clear meaning */}
+      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{vi ? 'Cao nhất' : 'Peak'}: {metric === 'revenue' ? money(max) : `${max} ${vi ? 'lượt' : 'bookings'}`} · {series[peakIdx]?.date.slice(5)}</div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 140 }}>
+        {series.map((s, i) => (
+          <div key={s.date} title={`${s.date}\n${fmt(s)}`} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
+            <div style={{ width: '100%', height: `${(val(s) / max) * 100}%`, minHeight: val(s) ? 3 : 0, background: i === peakIdx ? '#f59e0b' : color, borderRadius: 3 }} />
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: '#64748b' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: '#64748b' }}>
         <span>{series[0]?.date.slice(5)}</span>
-        <span><span style={{ color: '#6366f1' }}>▮</span> {money(total)} · <span style={{ color: '#22c55e' }}>▬</span> {series.reduce((a, s) => a + s.bookings, 0)}</span>
+        <span>{vi ? 'Tổng kỳ' : 'Period total'}: {metric === 'revenue' ? money(totalRev) : `${totalBk} ${vi ? 'lượt' : 'bookings'}`}</span>
         <span>{series[series.length - 1]?.date.slice(5)}</span>
       </div>
     </div>
@@ -388,5 +416,6 @@ const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', 
 const track: CSSProperties = { flex: 1, height: 18, background: '#0f172a', borderRadius: 6, overflow: 'hidden' };
 const hint: CSSProperties = { color: '#64748b', fontSize: 13, lineHeight: 1.6, margin: 0 };
 const btn: CSSProperties = { padding: '7px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' };
-const chip: CSSProperties = { padding: '6px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };
+const chip = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
+const miniSeg = (on: boolean): CSSProperties => ({ padding: '4px 10px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#94a3b8', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
 const dateInput: CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13 };

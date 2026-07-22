@@ -42,6 +42,7 @@ function Inner() {
   const [report, setReport] = useState<Report | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [spendDraft, setSpendDraft] = useState<Record<string, SpendRow>>({});
+  const [showMetrics, setShowMetrics] = useState(false);
   const [wTitle, setWTitle] = useState(''); const [wCat, setWCat] = useState('post');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -143,11 +144,19 @@ function Inner() {
 
       {/* Spend entry */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={cardTitle}>{T('Chi phí từng kênh', 'Spend per channel')}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={cardTitle}>{T('Chi phí từng kênh', 'Spend per channel')}</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showMetrics} onChange={(e) => setShowMetrics(e.target.checked)} />
+            {T('Thêm reach / click / lead', 'Add reach / clicks / leads')}
+          </label>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px' }}>{T('Chỉ cần nhập chi phí. Kênh nào không chạy thì để trống.', 'Just enter spend. Leave channels you did not run blank.')}</p>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: showMetrics ? 520 : 260 }}>
             <thead><tr style={{ color: '#94a3b8', textAlign: 'left' }}>
-              <th style={th}>{T('Kênh', 'Channel')}</th><th style={th}>{T('Chi phí', 'Spend')}</th><th style={th}>Reach</th><th style={th}>Clicks</th><th style={th}>Leads</th>
+              <th style={th}>{T('Kênh', 'Channel')}</th><th style={th}>{T('Chi phí', 'Spend')}</th>
+              {showMetrics && <><th style={th}>Reach</th><th style={th}>Clicks</th><th style={th}>Leads</th></>}
             </tr></thead>
             <tbody>
               {CHANNELS.map((ch) => {
@@ -157,9 +166,11 @@ function Inner() {
                   <tr key={ch} style={{ borderTop: '1px solid #1e293b' }}>
                     <td style={td}>{CH_LABEL[ch]}</td>
                     <td style={td}><input type="number" min={0} step="0.01" value={r.amountCents ? r.amountCents / 100 : ''} placeholder="0" onChange={(e) => set({ amountCents: Math.round(parseFloat(e.target.value || '0') * 100) })} style={numInput} /></td>
+                    {showMetrics && <>
                     <td style={td}><input type="number" min={0} value={r.reach ?? ''} placeholder="—" onChange={(e) => set({ reach: e.target.value ? parseInt(e.target.value, 10) : null })} style={numInput} /></td>
                     <td style={td}><input type="number" min={0} value={r.clicks ?? ''} placeholder="—" onChange={(e) => set({ clicks: e.target.value ? parseInt(e.target.value, 10) : null })} style={numInput} /></td>
                     <td style={td}><input type="number" min={0} value={r.leads ?? ''} placeholder="—" onChange={(e) => set({ leads: e.target.value ? parseInt(e.target.value, 10) : null })} style={numInput} /></td>
+                    </>}
                   </tr>
                 );
               })}
@@ -255,16 +266,20 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
 
       {report.content._aiUnavailable && <div style={{ ...ui.banner, background: '#422006', borderColor: '#b45309', color: '#fde68a', marginBottom: 12 }}>{T('AI không viết được nháp: ', 'AI could not draft: ')}<b>{report.content._aiError || 'unknown'}</b>{T(' — nhập nhận xét tay bên dưới.', ' — write the notes manually below.')}</div>}
 
+      <p style={{ fontSize: 11.5, color: '#64748b', margin: '0 0 10px' }}>{T('AI đã điền sẵn — chỉ sửa nếu cần rồi bấm Duyệt. Đang sửa bản ', 'AI filled this in — edit only if needed, then Approve. Editing the ')}<b style={{ color: '#a5b4fc' }}>{vi ? 'Tiếng Việt' : 'English'}</b>{T('; bấm VI/EN ở góc trên để sửa bản kia.', ' version; use VI/EN at the top to edit the other.')}</p>
+
       <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 8, padding: 10, marginBottom: 12 }}>
         <label style={{ ...lbl, color: '#a5b4fc', fontWeight: 700 }}>{T('★ Điều quan trọng nhất tháng này (khách đọc đầu tiên)', '★ The one most important message (client reads first)')}</label>
-        <input style={{ ...ta, marginBottom: 6 }} value={c.headline?.vi ?? ''} onChange={(e) => setC({ ...c, headline: { vi: e.target.value, en: c.headline?.en ?? '' } })} placeholder={T('Ví dụ: Doanh thu tăng 31% nhờ Google Maps', 'e.g. Revenue up 31%, driven by Google Maps')} />
-        <input style={ta} value={c.headline?.en ?? ''} onChange={(e) => setC({ ...c, headline: { vi: c.headline?.vi ?? '', en: e.target.value } })} placeholder="English headline" />
+        {vi
+          ? <input style={ta} value={c.headline?.vi ?? ''} onChange={(e) => setC({ ...c, headline: { vi: e.target.value, en: c.headline?.en ?? '' } })} placeholder="Ví dụ: Doanh thu tăng 31% nhờ Google Maps" />
+          : <input style={ta} value={c.headline?.en ?? ''} onChange={(e) => setC({ ...c, headline: { vi: c.headline?.vi ?? '', en: e.target.value } })} placeholder="e.g. Revenue up 31%, driven by Google Maps" />}
       </div>
-      <Field label={T('Tóm tắt (Việt)', 'Summary (VI)')} value={c.summary?.vi ?? ''} onChange={(v) => setC({ ...c, summary: { vi: v, en: c.summary?.en ?? '' } })} />
-      <Field label={T('Tóm tắt (Anh)', 'Summary (EN)')} value={c.summary?.en ?? ''} onChange={(v) => setC({ ...c, summary: { vi: c.summary?.vi ?? '', en: v } })} />
-      <TwoCol label={T('Điểm tốt (mỗi dòng 1 ý)', 'Highlights (one per line)')} vi={hVi} en={hEn} setVi={setHVi} setEn={setHEn} />
-      <TwoCol label={T('Vấn đề còn tồn tại', 'Issues')} vi={iVi} en={iEn} setVi={setIVi} setEn={setIEn} />
-      <TwoCol label={T('Kế hoạch tháng sau', 'Next-month plan')} vi={pVi} en={pEn} setVi={setPVi} setEn={setPEn} />
+      {vi
+        ? <Field label={T('Tóm tắt', 'Summary')} value={c.summary?.vi ?? ''} onChange={(v) => setC({ ...c, summary: { vi: v, en: c.summary?.en ?? '' } })} />
+        : <Field label={T('Tóm tắt', 'Summary')} value={c.summary?.en ?? ''} onChange={(v) => setC({ ...c, summary: { vi: c.summary?.vi ?? '', en: v } })} />}
+      <OneCol label={T('Điểm tốt (mỗi dòng 1 ý)', 'Highlights (one per line)')} value={vi ? hVi : hEn} onChange={vi ? setHVi : setHEn} />
+      <OneCol label={T('Vấn đề còn tồn tại', 'Issues')} value={vi ? iVi : iEn} onChange={vi ? setIVi : setIEn} />
+      <OneCol label={T('Kế hoạch tháng sau', 'Next-month plan')} value={vi ? pVi : pEn} onChange={vi ? setPVi : setPEn} />
     </div>
   );
 }
@@ -277,14 +292,11 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
     </div>
   );
 }
-function TwoCol({ label, vi, en, setVi, setEn }: { label: string; vi: string; en: string; setVi: (v: string) => void; setEn: (v: string) => void }) {
+function OneCol({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <label style={lbl}>{label}</label>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <textarea value={vi} onChange={(e) => setVi(e.target.value)} rows={3} placeholder="Tiếng Việt" style={ta} />
-        <textarea value={en} onChange={(e) => setEn(e.target.value)} rows={3} placeholder="English" style={ta} />
-      </div>
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} style={ta} />
     </div>
   );
 }
@@ -293,84 +305,64 @@ function esc(s: string) { return (s || '').replace(/&/g, '&amp;').replace(/</g, 
 function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: number) => string) {
   if (!data) return;
   const o = data.outcome; const b = data.blended; const d = data.deltas;
+  const t = (v: string, e: string) => (vi ? v : e);
+  const L = (it?: Item) => (vi ? (it?.vi || it?.en) : (it?.en || it?.vi)) || '';
   const eff = data.effectiveness || 'organic';
-  const effMap: Record<string, [string, string, string]> = {
-    good: ['#059669', vi ? 'Hiệu quả tốt' : 'Performing well', vi ? 'Mỗi $1 quảng cáo mang lại nhiều hơn $3 doanh thu.' : 'Every $1 of ad spend returns more than $3.'],
-    ok:   ['#2563eb', vi ? 'Đang có hiệu quả' : 'On track', vi ? 'Quảng cáo đang có lãi, còn dư địa tối ưu.' : 'Ads are profitable with room to optimize.'],
-    low:  ['#d97706', vi ? 'Cần cải thiện' : 'Needs work', vi ? 'Chi phí đang cao hơn doanh thu thu về — sẽ điều chỉnh tháng sau.' : 'Spend is outrunning returns — adjusting next month.'],
-    organic: ['#6b7280', vi ? 'Tăng trưởng tự nhiên' : 'Organic growth', vi ? 'Tháng này chưa chạy quảng cáo trả tiền.' : 'No paid ads ran this month.'],
+  const effMap: Record<string, [string, string]> = {
+    good: ['#059669', t('Hiệu quả tốt', 'Performing well')],
+    ok: ['#2563eb', t('Đang có hiệu quả', 'On track')],
+    low: ['#d97706', t('Cần cải thiện', 'Needs work')],
+    organic: ['#6b7280', t('Tăng trưởng tự nhiên', 'Organic growth')],
   };
-  const [effColor, effTitle, effDesc] = effMap[eff];
+  const [effColor, effLabel] = effMap[eff];
 
   const arrow = (dl?: Delta) => {
     if (!dl || dl.pct == null) return '';
-    const up = dl.pct >= 0; const col = up ? '#059669' : '#dc2626';
-    return `<span style="color:${col};font-size:12px;font-weight:600">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
+    const up = dl.pct >= 0;
+    return `<span style="color:${up ? '#059669' : '#dc2626'};font-size:12px;font-weight:700">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
   };
-  const kpi = (label: string, value: string, dl?: Delta, sub?: string) => `
-    <div class="kpi"><div class="l">${label}</div><div class="v">${value}</div>
-    <div class="s">${arrow(dl)}${sub ? ' ' + sub : (dl && dl.pct != null ? (vi ? ' so tháng trước' : ' vs last month') : '')}</div></div>`;
+  const bignum = (val: string, label: string, dl?: Delta, green?: boolean) =>
+    `<div style="flex:1;min-width:78px;text-align:center"><div style="font-size:24px;font-weight:800;color:${green ? '#059669' : '#111827'}">${val}</div><div style="font-size:11px;color:#6b7280">${label}</div><div style="font-size:11px">${arrow(dl)}</div></div>`;
 
-  const li = (arr?: Item[]) => (arr ?? []).map((x) => `<li><b>${esc(x.vi)}</b>${x.en ? `<br><span class="en">${esc(x.en)}</span>` : ''}</li>`).join('');
-  const CH: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: vi ? 'Khác' : 'Other' };
-  const spendRows = (data.spend ?? []).filter((s2) => s2.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
-  const maxSpend = Math.max(1, ...spendRows.map((s2) => s2.amountCents));
-  const spendHtml = spendRows.map((s2) => `<div class="bar"><span class="bl">${esc(CH[s2.channel] || s2.channel)}</span><span class="bt"><span class="bf" style="width:${Math.round((s2.amountCents / maxSpend) * 100)}%"></span></span><span class="bv">${money(s2.amountCents)}</span></div>`).join('');
-  const work = (data.workLog ?? []).map((w) => `<li>${esc(w.title)}</li>`).join('');
-  const own = o.owned || ({} as Record<string, number>);
+  const CH: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: t('Khác', 'Other') };
+  const spendRows = (data.spend ?? []).filter((x) => x.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
+  const spendLine = spendRows.map((x) => `${esc(CH[x.channel] || x.channel)} ${money(x.amountCents)}`).join(' · ');
+  const work = (data.workLog ?? []).map((w) => `<div style="margin:4px 0">✓ ${esc(w.title)}</div>`).join('') || `<div style="color:#9ca3af">${t('Chưa ghi', 'None logged')}</div>`;
+  const plan = (c.plan ?? []).map((x) => `<div style="margin:4px 0">→ ${esc(L(x))}</div>`).join('') || `<div style="color:#9ca3af">—</div>`;
+  const total = b?.totalSpendCents ?? 0;
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Marketing report ${data.month}</title><style>
-  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:760px;margin:0 auto;padding:28px 26px;line-height:1.55}
-  .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:3px solid #4f46e5;padding-bottom:12px}
-  h1{font-size:22px;margin:0} .by{color:#6b7280;font-size:12px;margin-top:2px}
-  .eff{border-radius:12px;padding:8px 14px;color:#fff;text-align:right;min-width:150px}
-  .eff .t{font-weight:700;font-size:15px} .eff .d{font-size:11px;opacity:.92}
-  h2{font-size:14px;color:#4f46e5;margin:22px 0 10px;text-transform:uppercase;letter-spacing:.4px}
-  .hl{margin-top:16px;font-size:19px;font-weight:800;line-height:1.35;color:#111827} .hlen{font-size:13px;font-weight:400;color:#6b7280;margin-top:3px}
-  .sum{background:#f5f5fb;border-left:4px solid #4f46e5;border-radius:0 8px 8px 0;padding:12px 14px;margin-top:12px}
-  .sum p{margin:0} .sum .en{color:#555;font-size:13px;margin-top:4px}
-  .kpis{display:flex;flex-wrap:wrap;gap:10px} .kpi{flex:1;min-width:110px;background:#fff;border:1px solid #eef;border-radius:10px;padding:11px 12px}
-  .kpi .l{font-size:11px;color:#6b7280} .kpi .v{font-size:21px;font-weight:800;color:#111827} .kpi .s{font-size:11px;color:#6b7280;margin-top:2px}
-  .money{background:#ecfdf5;border-radius:10px;padding:12px 14px;margin-top:12px;font-size:15px}
-  .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px} .bl{width:90px;flex-shrink:0;color:#374151} .bt{flex:1;height:14px;background:#f0f0f5;border-radius:5px;overflow:hidden} .bf{display:block;height:100%;background:#6366f1} .bv{width:80px;text-align:right;flex-shrink:0}
-  ul{padding-left:18px;margin:6px 0} li{margin:5px 0} .en{color:#6b7280;font-size:12.5px}
-  .foot{color:#9ca3af;font-size:11px;margin-top:26px;border-top:1px solid #eee;padding-top:10px}
-  @media print{body{padding:0}}
+  const card = (inner: string, bg = '#f7f7fb') => `<div style="background:${bg};border-radius:12px;padding:14px 16px;margin-top:10px">${inner}</div>`;
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} ${data.month}</title><style>
+  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;padding:26px 22px;line-height:1.5}
+  .lbl{font-size:12px;color:#6b7280;font-weight:600}
+  @media print{body{padding:6px}}
   </style></head><body>
-  <div class="head">
-    <div><h1>${vi ? 'Báo cáo Marketing' : 'Marketing Report'}</h1><div class="by">${data.month} · ${vi ? 'thực hiện bởi Lumio Agency' : 'by Lumio Agency'}</div></div>
-    <div class="eff" style="background:${effColor}"><div class="t">${effTitle}</div><div class="d">${effDesc}</div></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:3px solid #4f46e5;padding-bottom:10px">
+    <div><div style="font-size:19px;font-weight:800">${t('Báo cáo Marketing', 'Marketing report')} · ${data.month}</div><div style="font-size:11px;color:#6b7280">${t('bởi Lumio Agency', 'by Lumio Agency')}</div></div>
+    <div style="background:${effColor};color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;white-space:nowrap">${effLabel}</div>
+  </div>
+  ${c.headline && L(c.headline) ? `<div style="font-size:18px;font-weight:800;margin:14px 0 2px">${esc(L(c.headline))}</div>` : ''}
+
+  ${card(`<div class="lbl">① ${t('ĐÃ CHI', 'SPENT')}</div><div style="font-size:30px;font-weight:800;margin:2px 0 ${spendLine ? '8px' : '0'}">${money(total)}</div>${spendLine ? `<div style="font-size:12px;color:#6b7280">${spendLine}</div>` : ''}`)}
+
+  ${card(`<div class="lbl" style="margin-bottom:10px">② ${t('MANG VỀ', 'RESULTS')}</div><div style="display:flex;gap:8px;flex-wrap:wrap">
+    ${bignum(String(o.totals.bookings), t('lượt đặt', 'bookings'), d?.bookings)}
+    ${bignum(String(o.totals.showed), t('đã đến', 'showed up'), d?.showed)}
+    ${bignum(String(o.newCustomers), t('khách mới', 'new customers'), d?.newCustomers)}
+    ${bignum(money(o.totals.revenueCents), t('doanh thu', 'revenue'), d?.revenueCents, true)}
+  </div>`)}
+
+  ${b && b.revenuePerSpend != null ? card(`<div class="lbl" style="color:#065f46;margin-bottom:4px">③ ${t('HIỆU QUẢ', 'EFFECTIVENESS')}</div><div style="font-size:16px;color:#065f46">${t('Mỗi', 'Every')} <b>$1</b> ${t('chi ra', 'spent')} → <b>$${b.revenuePerSpend}</b> ${t('doanh thu', 'revenue')}${b.costPerNewCustomerCents != null ? ` &nbsp;·&nbsp; ${t('chi phí mỗi khách mới', 'cost per new customer')}: <b>${money(b.costPerNewCustomerCents)}</b>` : ''}</div>`, '#ecfdf5') : ''}
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+    <div style="background:#f7f7fb;border-radius:12px;padding:14px 16px"><div class="lbl" style="margin-bottom:6px">④ ${t('ĐÃ LÀM GÌ', 'WHAT WE DID')}</div><div style="font-size:12.5px">${work}</div></div>
+    <div style="background:#eef2ff;border:2px solid #c7d2fe;border-radius:12px;padding:14px 16px"><div class="lbl" style="color:#4f46e5;margin-bottom:6px">${t('SẮP LÀM GÌ', 'WHAT\'S NEXT')}</div><div style="font-size:12.5px">${plan}</div></div>
   </div>
 
-  ${c.headline && (c.headline.vi || c.headline.en) ? `<div class="hl">${esc(c.headline.vi || c.headline.en)}${c.headline.en && c.headline.vi ? `<div class="hlen">${esc(c.headline.en)}</div>` : ''}</div>` : ''}
+  ${c.summary && L(c.summary) ? `<div style="font-size:12.5px;color:#4b5563;margin-top:12px;background:#f7f7fb;border-radius:10px;padding:11px 13px">${esc(L(c.summary))}</div>` : ''}
 
-  ${c.summary && (c.summary.vi || c.summary.en) ? `<div class="sum"><p><b>${esc(c.summary.vi)}</b></p>${c.summary.en ? `<p class="en">${esc(c.summary.en)}</p>` : ''}</div>` : ''}
-
-  <h2>${vi ? 'Kết quả tháng này' : 'This month at a glance'}</h2>
-  <div class="kpis">
-    ${kpi(vi ? 'Đã chi' : 'Spent', money(b?.totalSpendCents ?? 0), d?.spendCents)}
-    ${kpi(vi ? 'Lượt đặt' : 'Bookings', String(o.totals.bookings), d?.bookings)}
-    ${kpi(vi ? 'Đã đến' : 'Showed up', String(o.totals.showed), d?.showed)}
-    ${kpi(vi ? 'Khách mới' : 'New customers', String(o.newCustomers), d?.newCustomers)}
-    ${kpi(vi ? 'Doanh thu' : 'Revenue', money(o.totals.revenueCents), d?.revenueCents)}
-  </div>
-
-  ${b && b.revenuePerSpend != null ? `<div class="money"><b>${vi ? 'Hiệu quả chi tiêu' : 'Return on spend'}:</b> ${vi ? 'mỗi' : 'every'} $1 → <b>$${b.revenuePerSpend}</b> ${vi ? 'doanh thu' : 'revenue'}${b.costPerNewCustomerCents != null ? ` &nbsp;·&nbsp; <b>${vi ? 'Chi phí mỗi khách mới' : 'Cost per new customer'}:</b> ${money(b.costPerNewCustomerCents)}` : ''}</div>` : ''}
-
-  ${(Number(own.googleReviews) || Number(own.messengerThreads) || Number(own.voiceCalls)) ? `<h2>${vi ? 'Tương tác khách' : 'Customer engagement'}</h2><div class="kpis">
-    ${own.googleReviews ? kpi(vi ? 'Đánh giá Google mới' : 'New Google reviews', String(own.googleReviews)) : ''}
-    ${own.messengerThreads ? kpi(vi ? 'Tin nhắn' : 'Messages', String(own.messengerThreads)) : ''}
-    ${own.voiceCalls ? kpi(vi ? 'Cuộc gọi' : 'Calls', String(own.voiceCalls)) : ''}
-    ${own.referredNewCustomers ? kpi(vi ? 'Khách giới thiệu' : 'Referrals', String(own.referredNewCustomers)) : ''}
-  </div>` : ''}
-
-  ${spendHtml ? `<h2>${vi ? 'Chi phí theo kênh' : 'Spend by channel'}</h2>${spendHtml}` : ''}
-  ${work ? `<h2>${vi ? 'Lumio đã làm gì tháng này' : 'What Lumio did this month'}</h2><ul>${work}</ul>` : ''}
-  ${(c.highlights ?? []).length ? `<h2>${vi ? 'Điểm nổi bật' : 'Highlights'}</h2><ul>${li(c.highlights)}</ul>` : ''}
-  ${(c.issues ?? []).length ? `<h2>${vi ? 'Cần lưu ý' : 'What to watch'}</h2><ul>${li(c.issues)}</ul>` : ''}
-  ${(c.plan ?? []).length ? `<h2>${vi ? 'Kế hoạch tháng sau' : 'Plan for next month'}</h2><ul>${li(c.plan)}</ul>` : ''}
-
-  <div class="foot">${vi ? 'Số booking · khách đến · doanh thu lấy tự động từ hệ thống Lumio. Chi phí & công việc do Lumio Agency ghi nhận. Nội dung nháp bằng AI, nhân viên Lumio kiểm tra & duyệt trước khi gửi.' : 'Bookings, showed-up and revenue are pulled automatically from Lumio. Spend & work logged by Lumio Agency. Draft written by AI, reviewed and approved by Lumio staff before sending.'}</div>
+  <div style="font-size:10.5px;color:#9ca3af;margin-top:16px;text-align:center;border-top:1px solid #eee;padding-top:10px">${t('Số liệu lấy tự động từ Lumio · AI tổng hợp, nhân viên Lumio duyệt trước khi gửi.', 'Data pulled automatically from Lumio · summarised by AI, reviewed by Lumio staff.')}</div>
   <script>window.onload=function(){window.print()}</script></body></html>`;
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
 }

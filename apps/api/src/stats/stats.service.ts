@@ -2,11 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, OrderStatus, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { CANONICAL_SOURCES, CanonicalSource, normalizeSource } from '../common/source.util';
+import { CANONICAL_SOURCES, CanonicalSource, normalizeSource, CANONICAL_DEVICES, CanonicalDevice, normalizeDevice } from '../common/source.util';
 
 type Bucket = 'day' | 'month' | 'year';
 type SourceCounts = Record<CanonicalSource, number>;
-const zero = (): SourceCounts => ({ online: 0, hotline: 0, messenger: 0, walkin: 0, staff: 0 });
+const zero = (): SourceCounts => ({ website: 0, lumiolink: 0, online: 0, hotline: 0, messenger: 0, walkin: 0, staff: 0 });
+type DeviceCounts = Record<CanonicalDevice, number>;
+const zeroDev = (): DeviceCounts => ({ mobile: 0, web: 0, unknown: 0 });
 
 @Injectable()
 export class StatsService {
@@ -70,7 +72,7 @@ export class StatsService {
     const [appts, walkins, orders] = await Promise.all([
       this.prisma.appointment.findMany({
         where: { tenantId, startTime: { gte: from, lte: to }, status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] } },
-        select: { startTime: true, source: true },
+        select: { startTime: true, source: true, device: true },
       }),
       this.prisma.walkIn.findMany({
         where: { tenantId, createdAt: { gte: from, lte: to }, status: { not: WalkInStatus.CANCELLED }, appointmentId: null },
@@ -84,9 +86,21 @@ export class StatsService {
 
     const visits = new Map<string, SourceCounts>(keys.map((k) => [k, zero()]));
     const revenue = new Map<string, SourceCounts>(keys.map((k) => [k, zero()]));
+    // Device split, per bucket + grand total. Walk-ins have no device (they are
+    // booked at the counter), so they are not counted here.
+    const devByBucket = new Map<string, DeviceCounts>(keys.map((k) => [k, zeroDev()]));
+    const devTotals = zeroDev();
     for (const a of appts) {
       const k = this.keyFor(a.startTime, bucket, tz);
       const b = visits.get(k); if (b) b[normalizeSource(a.source)]++;
+      // Only online-type bookings carry a device; recover it from the legacy
+      // source value ('web'/'mobile') when the dedicated column is empty.
+      const src = normalizeSource(a.source);
+      if (src === 'website' || src === 'lumiolink' || src === 'online') {
+        const dev = normalizeDevice(a.device ?? a.source);
+        const db = devByBucket.get(k); if (db) db[dev]++;
+        devTotals[dev]++;
+      }
     }
     for (const w of walkins) {
       const k = this.keyFor(w.createdAt, bucket, tz);
@@ -104,7 +118,7 @@ export class StatsService {
       const r = revenue.get(k) ?? zero();
       let vt = 0; let rt = 0;
       for (const s of CANONICAL_SOURCES) { vt += v[s]; rt += r[s]; totalsVisits[s] += v[s]; totalsRevenue[s] += r[s]; }
-      return { key: k, visits: v, visitsTotal: vt, revenueCents: r, revenueTotalCents: rt };
+      return { key: k, visits: v, visitsTotal: vt, revenueCents: r, revenueTotalCents: rt, devices: devByBucket.get(k) ?? zeroDev() };
     });
     let visitsGrand = 0; let revenueGrand = 0;
     for (const s of CANONICAL_SOURCES) { visitsGrand += totalsVisits[s]; revenueGrand += totalsRevenue[s]; }
@@ -114,8 +128,10 @@ export class StatsService {
       from: from.toISOString().slice(0, 10),
       to: to.toISOString().slice(0, 10),
       sources: CANONICAL_SOURCES,
+      devicesList: CANONICAL_DEVICES,
       buckets,
       totals: { visits: totalsVisits, visitsTotal: visitsGrand, revenueCents: totalsRevenue, revenueTotalCents: revenueGrand },
+      deviceTotals: devTotals,
     };
   }
 }

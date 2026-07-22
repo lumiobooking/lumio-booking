@@ -7,20 +7,31 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 
-type Src = 'online' | 'hotline' | 'messenger' | 'walkin' | 'staff';
+type Src = 'website' | 'lumiolink' | 'online' | 'hotline' | 'messenger' | 'walkin' | 'staff';
 type Counts = Record<Src, number>;
-interface Bkt { key: string; visits: Counts; visitsTotal: number; revenueCents: Counts; revenueTotalCents: number }
-interface Report { bucket: 'day' | 'month' | 'year'; from: string; to: string; sources: Src[]; buckets: Bkt[]; totals: { visits: Counts; visitsTotal: number; revenueCents: Counts; revenueTotalCents: number } }
+type Dev = 'mobile' | 'web' | 'unknown';
+type DevCounts = Record<Dev, number>;
+interface Bkt { key: string; visits: Counts; visitsTotal: number; revenueCents: Counts; revenueTotalCents: number; devices?: DevCounts }
+interface Report { bucket: 'day' | 'month' | 'year'; from: string; to: string; sources: Src[]; buckets: Bkt[]; totals: { visits: Counts; visitsTotal: number; revenueCents: Counts; revenueTotalCents: number }; deviceTotals?: DevCounts }
 
-const ORDER: Src[] = ['online', 'hotline', 'messenger', 'walkin', 'staff'];
-const COLOR: Record<Src, string> = { online: '#6366f1', hotline: '#22c55e', messenger: '#3b82f6', walkin: '#f59e0b', staff: '#a78bfa' };
+const ORDER: Src[] = ['website', 'lumiolink', 'online', 'hotline', 'messenger', 'walkin', 'staff'];
+const COLOR: Record<Src, string> = { website: '#6366f1', lumiolink: '#0ea5e9', online: '#64748b', hotline: '#22c55e', messenger: '#3b82f6', walkin: '#f59e0b', staff: '#a78bfa' };
+const DEV_ORDER: Dev[] = ['mobile', 'web', 'unknown'];
+const DEV_COLOR: Record<Dev, string> = { mobile: '#8b5cf6', web: '#0ea5e9', unknown: '#475569' };
 const LABEL = (s: Src, vi: boolean): string => ({
-  online: vi ? 'Online (web)' : 'Online',
+  website: vi ? 'Website tiệm' : 'Website',
+  lumiolink: vi ? 'Link Lumio' : 'Lumio link',
+  online: vi ? 'Online (cũ)' : 'Online (legacy)',
   hotline: vi ? 'Hotline (gọi)' : 'Hotline',
   messenger: 'Messenger',
   walkin: vi ? 'Khách vãng lai' : 'Walk-in',
   staff: vi ? 'Nhân viên nhập' : 'Staff',
 }[s]);
+const DEV_LABEL = (d: Dev, vi: boolean): string => ({
+  mobile: vi ? 'Điện thoại' : 'Phone',
+  web: vi ? 'Máy tính' : 'Computer',
+  unknown: vi ? 'Không rõ' : 'Unknown',
+}[d]);
 
 function fmtKey(key: string, bucket: string): string {
   const p = key.split('-');
@@ -113,6 +124,35 @@ function Inner() {
             );
           })}
       </div>
+
+      {/* Devices (phone vs computer) — only online-type bookings carry a device */}
+      {(() => {
+        const dt = t?.deviceTotals; const devTotal = dt ? dt.mobile + dt.web + dt.unknown : 0;
+        return (
+          <div style={{ ...ui.card, marginBottom: 16 }}>
+            <div style={cardTitle}>{vi ? 'Khách đặt bằng thiết bị gì' : 'Bookings by device'}</div>
+            {devTotal === 0 ? (
+              <div style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6 }}>
+                {vi ? 'Chưa có dữ liệu thiết bị trong kỳ này. Thiết bị chỉ ghi cho lịch đặt qua website hoặc link Lumio, và chỉ từ sau bản cập nhật mới nhất.'
+                    : 'No device data in this period. Device is recorded only for website / Lumio-link bookings, and only from the latest update onward.'}
+              </div>
+            ) : DEV_ORDER.map((d) => {
+              const n = dt ? dt[d] : 0;
+              return (
+                <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <div style={{ width: 130, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5e1' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: DEV_COLOR[d], flexShrink: 0 }} />{DEV_LABEL(d, vi)}
+                  </div>
+                  <div style={{ flex: 1, height: 18, background: '#0f172a', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct(n, devTotal)}%`, height: '100%', background: DEV_COLOR[d], borderRadius: 6 }} />
+                  </div>
+                  <div style={{ width: 90, textAlign: 'right', fontSize: 13, color: '#e2e8f0', flexShrink: 0 }}><strong>{n}</strong> <span style={{ color: '#64748b' }}>· {pct(n, devTotal)}%</span></div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Trend over time (stacked bars) */}
       <div style={{ ...ui.card, marginBottom: 16 }}>

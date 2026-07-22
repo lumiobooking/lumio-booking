@@ -21,7 +21,7 @@ interface Monthly {
 }
 interface Item { vi: string; en: string }
 interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi: string; en: string }
-interface Content { headline?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
+interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 
 const CHANNELS = ['facebook', 'instagram', 'tiktok', 'google_ads', 'gbp', 'seo', 'email', 'sms', 'website', 'other'];
@@ -248,7 +248,7 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
   }, [report]);
 
   function collect(): Content {
-    return { headline: c.headline ?? { vi: '', en: '' }, summary: c.summary ?? { vi: '', en: '' }, highlights: zip(hVi, hEn), issues: zip(iVi, iEn), plan: zip(pVi, pEn) };
+    return { headline: c.headline ?? { vi: '', en: '' }, tldr: c.tldr ?? { vi: '', en: '' }, summary: c.summary ?? { vi: '', en: '' }, highlights: zip(hVi, hEn), issues: zip(iVi, iEn), plan: zip(pVi, pEn) };
   }
 
   if (!report) {
@@ -287,8 +287,11 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
           : <input style={ta} value={c.headline?.en ?? ''} onChange={(e) => setC({ ...c, headline: { vi: c.headline?.vi ?? '', en: e.target.value } })} placeholder="e.g. Revenue up 31%, driven by Google Maps" />}
       </div>
       {vi
-        ? <Field label={T('Tóm tắt', 'Summary')} value={c.summary?.vi ?? ''} onChange={(v) => setC({ ...c, summary: { vi: v, en: c.summary?.en ?? '' } })} />
-        : <Field label={T('Tóm tắt', 'Summary')} value={c.summary?.en ?? ''} onChange={(v) => setC({ ...c, summary: { vi: c.summary?.vi ?? '', en: v } })} />}
+        ? <Field label={T('Tóm tắt cho chủ tiệm (đọc đầu tiên)', 'Executive summary (read first)')} value={c.tldr?.vi ?? ''} onChange={(v) => setC({ ...c, tldr: { vi: v, en: c.tldr?.en ?? '' } })} />
+        : <Field label={T('Tóm tắt cho chủ tiệm (đọc đầu tiên)', 'Executive summary (read first)')} value={c.tldr?.en ?? ''} onChange={(v) => setC({ ...c, tldr: { vi: c.tldr?.vi ?? '', en: v } })} />}
+      {vi
+        ? <Field label={T('Bối cảnh / số liệu', 'Context / detail')} value={c.summary?.vi ?? ''} onChange={(v) => setC({ ...c, summary: { vi: v, en: c.summary?.en ?? '' } })} />
+        : <Field label={T('Bối cảnh / số liệu', 'Context / detail')} value={c.summary?.en ?? ''} onChange={(v) => setC({ ...c, summary: { vi: c.summary?.vi ?? '', en: v } })} />}
       <OneCol label={T('Điểm tốt (mỗi dòng 1 ý)', 'Highlights (one per line)')} value={vi ? hVi : hEn} onChange={vi ? setHVi : setHEn} />
       <OneCol label={T('Vấn đề còn tồn tại', 'Issues')} value={vi ? iVi : iEn} onChange={vi ? setIVi : setIEn} />
       <OneCol label={T('Kế hoạch tháng sau', 'Next-month plan')} value={vi ? pVi : pEn} onChange={vi ? setPVi : setPEn} />
@@ -344,6 +347,23 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const total = b?.totalSpendCents ?? 0;
 
   const card = (inner: string, bg = '#f7f7fb') => `<div style="background:${bg};border-radius:12px;padding:14px 16px;margin-top:10px">${inner}</div>`;
+  const vColor: Record<string, string> = { good: '#059669', ok: '#2563eb', weak: '#d97706', nodata: '#6b7280' };
+  const vTxt = (v: string) => (({ good: t('Tốt', 'Good'), ok: t('Ổn', 'OK'), weak: t('Yếu', 'Weak'), nodata: t('Chưa đủ dữ liệu', 'No data') } as Record<string, string>)[v] || v);
+  const spendMap: Record<string, SpendRow> = {}; (data.spend ?? []).forEach((x) => { spendMap[x.channel] = x; });
+  const chMet = (name: string) => {
+    const sp = spendMap[name]; if (!sp) return '';
+    const parts = [money(sp.amountCents)];
+    if (sp.leads) { parts.push(`${sp.leads} ${t('liên hệ', 'leads')}`); parts.push(`${money(Math.round(sp.amountCents / sp.leads))}/${t('liên hệ', 'lead')}`); }
+    else if (sp.clicks) { parts.push(`${sp.clicks} clicks`); parts.push(`${money(Math.round(sp.amountCents / sp.clicks))}/click`); }
+    else if (sp.reach) { parts.push(`${t('tiếp cận', 'reach')} ${sp.reach}`); }
+    return parts.join(' · ');
+  };
+  const channelsHtml = (c.channels ?? []).map((ch) => {
+    const col = vColor[ch.verdict] || '#6b7280'; const met = chMet(ch.name);
+    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:8px 12px;margin:6px 0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span style="font-size:11px;color:#6b7280">${esc(met)}</span>` : ''}</div><div style="font-size:12.5px;color:#374151;margin-top:3px">${esc(L(ch))}</div></div>`;
+  }).join('');
+  const hiHtml = (c.highlights ?? []).map((x) => `<div style="margin:3px 0">✓ ${esc(L(x))}</div>`).join('');
+  const issHtml = (c.issues ?? []).map((x) => `<div style="margin:3px 0">▲ ${esc(L(x))}</div>`).join('');
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} ${data.month}</title><style>
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;padding:26px 22px;line-height:1.5}
@@ -355,6 +375,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     <div style="background:${effColor};color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;white-space:nowrap">${effLabel}</div>
   </div>
   ${c.headline && L(c.headline) ? `<div style="font-size:18px;font-weight:800;margin:14px 0 2px">${esc(L(c.headline))}</div>` : ''}
+  ${c.tldr && L(c.tldr) ? `<div style="background:#f5f3ff;border-left:4px solid #6366f1;border-radius:8px;padding:11px 14px;margin:10px 0 2px"><div class="lbl" style="color:#4f46e5;margin-bottom:3px">${t('TÓM TẮT CHO CHỦ TIỆM', 'EXECUTIVE SUMMARY')}</div><div style="font-size:13.5px;color:#1f2937">${esc(L(c.tldr))}</div></div>` : ''}
 
   ${card(`<div class="lbl">① ${t('ĐÃ CHI', 'SPENT')}</div><div style="font-size:30px;font-weight:800;margin:2px 0 ${spendLine ? '8px' : '0'}">${money(total)}</div>${spendLine ? `<div style="font-size:12px;color:#6b7280">${spendLine}</div>` : ''}`)}
 
@@ -366,6 +387,10 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   </div>`)}
 
   ${b && b.revenuePerSpend != null ? card(`<div class="lbl" style="color:#065f46;margin-bottom:4px">③ ${t('HIỆU QUẢ', 'EFFECTIVENESS')}</div><div style="font-size:16px;color:#065f46">${t('Mỗi', 'Every')} <b>$1</b> ${t('chi ra', 'spent')} → <b>$${b.revenuePerSpend}</b> ${t('doanh thu', 'revenue')}${b.costPerNewCustomerCents != null ? ` &nbsp;·&nbsp; ${t('chi phí mỗi khách mới', 'cost per new customer')}: <b>${money(b.costPerNewCustomerCents)}</b>` : ''}</div>`, '#ecfdf5') : ''}
+
+  ${channelsHtml ? `<div style="margin-top:12px"><div class="lbl" style="margin-bottom:2px">${t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION')}</div>${channelsHtml}</div>` : ''}
+  ${hiHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div><div style="font-size:12.5px">${hiHtml}</div>`) : ''}
+  ${issHtml ? card(`<div class="lbl" style="margin-bottom:4px;color:#b45309">${t('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div><div style="font-size:12.5px">${issHtml}</div>`) : ''}
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
     <div style="background:#f7f7fb;border-radius:12px;padding:14px 16px"><div class="lbl" style="margin-bottom:6px">④ ${t('ĐÃ LÀM GÌ', 'WHAT WE DID')}</div><div style="font-size:12.5px">${work}</div></div>
@@ -485,10 +510,20 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
   const eff = data.effectiveness || 'organic';
   const effMap: Record<string, [string, string]> = { good: ['#059669', T('Hiệu quả tốt', 'Performing well')], ok: ['#2563eb', T('Đang có hiệu quả', 'On track')], weak: ['#d97706', T('Cần cải thiện', 'Needs work')], low: ['#d97706', T('Cần cải thiện', 'Needs work')], organic: ['#64748b', T('Tăng trưởng tự nhiên', 'Organic growth')] };
   const [effColor, effLabel] = effMap[eff] ?? effMap.organic;
-  const hasReport = !!content && !content._aiUnavailable && (!!L(content.headline) || (content.plan ?? []).length > 0 || (content.channels ?? []).length > 0);
+  const hasReport = !!content && !content._aiUnavailable && (!!L(content.headline) || !!L(content.tldr) || (content.plan ?? []).length > 0 || (content.channels ?? []).length > 0);
 
   const arrow = (dl?: Delta) => dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 11, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'} {Math.abs(dl.pct)}%</span> : null;
   const spendRows = (data.spend ?? []).filter((x) => x.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
+  const spendByCh: Record<string, SpendRow> = {}; (data.spend ?? []).forEach((x) => { spendByCh[x.channel] = x; });
+  const vLabel = (v: string) => T(({ good: 'Tốt', ok: 'Ổn', weak: 'Yếu', nodata: 'Chưa đủ dữ liệu' } as Record<string, string>)[v] || v, ({ good: 'Good', ok: 'OK', weak: 'Weak', nodata: 'No data' } as Record<string, string>)[v] || v);
+  const chMetrics = (name: string) => {
+    const sp = spendByCh[name]; if (!sp) return '';
+    const parts = [money(sp.amountCents)];
+    if (sp.leads) { parts.push(`${sp.leads} ${T('liên hệ', 'leads')}`); parts.push(`${money(Math.round(sp.amountCents / sp.leads))}/${T('liên hệ', 'lead')}`); }
+    else if (sp.clicks) { parts.push(`${sp.clicks} clicks`); parts.push(`${money(Math.round(sp.amountCents / sp.clicks))}/click`); }
+    else if (sp.reach) { parts.push(`${T('tiếp cận', 'reach')} ${sp.reach}`); }
+    return parts.join(' · ');
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -498,6 +533,13 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
       </div>
 
       {L(content?.headline) && <div style={{ fontSize: 20, fontWeight: 800, color: '#f8fafc', lineHeight: 1.35 }}>{L(content?.headline)}</div>}
+
+      {L(content?.tldr) && (
+        <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderLeft: '4px solid #6366f1', borderRadius: 10, padding: '12px 15px' }}>
+          <div style={{ fontSize: 11, color: '#a5b4fc', fontWeight: 700, letterSpacing: 0.3, marginBottom: 4 }}>{T('TÓM TẮT CHO CHỦ TIỆM', 'EXECUTIVE SUMMARY')}</div>
+          <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.6 }}>{L(content?.tldr)}</div>
+        </div>
+      )}
 
       {/* Pillar 1 + 2 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
@@ -529,14 +571,39 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
           <div style={pvL}>{T('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
             {content!.channels!.map((c, i) => {
-              const [col, bg, defLabel] = VERDICT[c.verdict] ?? VERDICT.nodata;
+              const [col, bg] = VERDICT[c.verdict] ?? VERDICT.nodata;
+              const metrics = chMetrics(c.name);
               return (
-                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: bg, borderRadius: 8, padding: '8px 11px' }}>
-                  <span style={{ background: col, color: '#04121f', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>{CH_NAME[c.name] || c.name}</span>
-                  <span style={{ fontSize: 13, color: '#e2e8f0' }}>{vi ? c.vi : (c.en || c.vi)}</span>
+                <div key={i} style={{ background: bg, borderRadius: 8, padding: '9px 12px' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ background: col, color: '#04121f', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{CH_NAME[c.name] || c.name}</span>
+                    <span style={{ fontSize: 11, color: col, fontWeight: 700 }}>{vLabel(c.verdict)}</span>
+                    {metrics && <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 'auto' }}>{metrics}</span>}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', marginTop: 5 }}>{vi ? c.vi : (c.en || c.vi)}</div>
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Highlights (wins) */}
+      {hasReport && (content?.highlights ?? []).length > 0 && (
+        <div style={pv}>
+          <div style={pvL}>{T('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {content!.highlights!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#22c55e', fontWeight: 700 }}>✓</span><span>{L(x)}</span></div>)}
+          </div>
+        </div>
+      )}
+
+      {/* Challenges & solutions */}
+      {hasReport && (content?.issues ?? []).length > 0 && (
+        <div style={{ ...pv, border: '1px solid #b45309' }}>
+          <div style={{ ...pvL, color: '#fbbf24' }}>{T('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {content!.issues!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#f59e0b', fontWeight: 700 }}>▲</span><span>{L(x)}</span></div>)}
           </div>
         </div>
       )}

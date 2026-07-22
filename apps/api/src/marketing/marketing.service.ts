@@ -277,16 +277,19 @@ export class MarketingService {
     const model = process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001';
 
     const system =
-      'You are a marketing analyst writing a SHORT monthly report for a nail-salon owner who is NOT technical. ' +
-      'Write in plain language, no marketing jargon. Be honest and specific with the numbers given. ' +
+      'You are a senior marketing analyst at an agency, writing the MONTHLY client report for a nail-salon owner who is NOT technical. ' +
+      'The report must read as detailed, clear, specific and PROFESSIONAL, yet in plain language with no marketing jargon. ' +
       'STRICT RULES: (1) Use ONLY the numbers in the data. NEVER invent or estimate any figure. ' +
       '(2) Attribution is BLENDED — the data does NOT tell you which ad or channel caused which booking, so do NOT claim a specific channel "generated" specific bookings or revenue. Talk about totals and spend allocation instead. ' +
       '(3) If a needed number is missing or zero, say so plainly (e.g. "chưa nhập chi phí" / "no spend entered") rather than guessing. ' +
-      '(4) Output MUST be valid JSON only, matching this exact shape, every string in BOTH Vietnamese (vi) and English (en): ' +
-      '{"headline":{"vi":"","en":""},"summary":{"vi":"","en":""},"channels":[{"name":"","verdict":"good","vi":"","en":""}],"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}]}. ' +
-      'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% nhờ Google Maps"). ' +
-      'channels = evaluate EACH channel that has spend in spendByChannel. verdict = "good" (cheap results / clearly working), "ok" (working, room to improve), "weak" (expensive / little to show), or "nodata" (only spend entered, no reach/clicks/leads to judge). Judge by cost-per-lead or cost-per-click when those numbers exist; if not, verdict MUST be "nodata". In vi/en give ONE short line: the verdict reason + what to do (keep / tăng / giảm / thử lại). Never invent a number. ' +
-      'The summary MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' + 'highlights = what went well (2-4). issues = problems or gaps, including missing data (1-3). plan = a next-month ROADMAP: 3-5 ordered, concrete actions (most important first). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly (e.g. move budget from a weak channel to a cheaper-customer one). Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
+      '(4) Output MUST be valid JSON only, matching this EXACT shape, every string in BOTH Vietnamese (vi) and English (en): ' +
+      '{"headline":{"vi":"","en":""},"tldr":{"vi":"","en":""},"summary":{"vi":"","en":""},"channels":[{"name":"","verdict":"good","vi":"","en":""}],"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}]}. ' +
+      'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% so với tháng trước"). ' +
+      'tldr = the EXECUTIVE SUMMARY an owner reads if they read nothing else: 2-3 sentences covering how the month went overall, the single biggest win, the main risk or gap, and the recommended next move. ' +
+      'summary = supporting detail: MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' +
+      'channels = evaluate EACH channel that has spend in spendByChannel. verdict = "good" (cheap results / clearly working), "ok" (working, room to improve), "weak" (expensive / little to show), or "nodata" (only spend entered, no reach/clicks/leads to judge). Judge by cost-per-lead or cost-per-click when those numbers exist and CITE that number in the sentence; if they do not exist, verdict MUST be "nodata". Give ONE short line: the verdict reason + what to do (keep / tăng / giảm / thử lại). Never invent a number. ' +
+      'highlights = concrete wins this month (2-3). issues = CHALLENGES: for each, name the problem AND the solution or recommendation together (1-2) — naming a problem and your response builds trust. ' +
+      'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
 
     const userText = 'DATA (JSON):\n' + JSON.stringify({
       month: data.month,
@@ -309,14 +312,23 @@ export class MarketingService {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 1500, system, messages: [{ role: 'user', content: userText }] }),
+        body: JSON.stringify({ model, max_tokens: 4000, system, messages: [{ role: 'user', content: userText }] }),
       });
       if (!res.ok) { const body = (await res.text().catch(() => '')).slice(0, 200); this.logger.warn(`Anthropic ${res.status}: ${body}`); return { error: `Anthropic API ${res.status}: ${body}` }; }
-      const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-      const text = (json.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('').trim();
+      const json = (await res.json()) as { content?: Array<{ type: string; text?: string }>; stop_reason?: string };
+      let text = (json.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('').trim();
+      // Strip ```json fences the model sometimes adds.
+      text = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
       const start = text.indexOf('{'); const end = text.lastIndexOf('}');
       if (start < 0 || end < 0) return { error: 'AI trả về nội dung không đọc được' };
-      const content = JSON.parse(text.slice(start, end + 1));
+      let content: any;
+      try {
+        content = JSON.parse(text.slice(start, end + 1));
+      } catch {
+        // Model output was likely truncated. Report clearly rather than a raw JSON error.
+        const cut = json.stop_reason === 'max_tokens' ? ' (bị cắt vì quá dài)' : '';
+        return { error: `AI trả về JSON chưa hoàn chỉnh${cut} — bấm Tạo lại` };
+      }
       return { content, model };
     } catch (e) {
       this.logger.warn(`AI draft failed: ${String(e)}`);

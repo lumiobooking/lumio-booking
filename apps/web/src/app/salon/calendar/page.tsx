@@ -819,7 +819,7 @@ function deviceMeta(dev?: string | null) {
 }
 
 // Compact origin chip for calendar cards: channel icon (+ device icon) + short label.
-function OriginChip({ b, t }: { b: Appt; t: (k: string) => string }) {
+function OriginChip({ b, t }: { b: Booking; t: (k: string) => string }) {
   const sm = sourceMeta(b.source);
   const dm = deviceMeta(b.device);
   if (!sm && !dm) return null;

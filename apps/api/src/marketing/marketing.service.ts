@@ -3,6 +3,9 @@ import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus } from '@prism
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CANONICAL_SOURCES, CanonicalSource, normalizeSource } from '../common/source.util';
+import { SocialRegistry } from './connectors/social-registry';
+import { ChannelCreds } from './connectors/social-connector.interface';
+import { encryptSecret, decryptSecret, maskHint, encConfigured } from '../payments-hub/crypto.util';
 
 /**
  * Marketing module — Phase 0 (read-only).
@@ -25,7 +28,7 @@ type ChannelRow = { key: CanonicalSource; bookings: number; showed: number; reve
 
 @Injectable()
 export class MarketingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly social: SocialRegistry) {}
 
   private tenantId(user: AuthenticatedUser, requested?: string): string {
     const id = resolveTenantScope(user, requested);
@@ -239,7 +242,32 @@ export class MarketingService {
       revenuePerSpend: totalSpendCents > 0 ? Math.round((revenueCents / totalSpendCents) * 100) / 100 : null,
     };
 
-    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended };
+    // --- Month-over-month comparison (clients love "up X% vs last month") ---
+    const prev = this.previousMonth(new Date(from.getFullYear(), from.getMonth(), 15));
+    const pr = this.monthRange(prev);
+    const [prevOv, prevSpend] = await Promise.all([
+      this.overview(user, pr.from.toISOString().slice(0, 10), pr.to.toISOString().slice(0, 10), tenantParam),
+      this.prisma.marketingSpend.findMany({ where: { tenantId, periodMonth: prev }, select: { amountCents: true } }),
+    ]);
+    const prevSpendCents = prevSpend.reduce((a, r) => a + r.amountCents, 0);
+    const delta = (cur: number, prv: number) => ({ value: cur, prev: prv, pct: prv > 0 ? Math.round(((cur - prv) / prv) * 100) : (cur > 0 ? null : 0) });
+    const deltas = {
+      bookings: delta(bookings, prevOv.totals.bookings),
+      showed: delta(showed, prevOv.totals.showed),
+      revenueCents: delta(revenueCents, prevOv.totals.revenueCents),
+      newCustomers: delta(newCustomers, prevOv.newCustomers),
+      spendCents: delta(totalSpendCents, prevSpendCents),
+    };
+
+    // --- Simple effectiveness verdict (only when there is spend to judge) ---
+    // good: >=3x return; ok: >=1x; low: <1x. No spend => "organic" (can't rate ROI).
+    let effectiveness: 'good' | 'ok' | 'low' | 'organic' = 'organic';
+    if (totalSpendCents > 0) {
+      const r = revenueCents / totalSpendCents;
+      effectiveness = r >= 3 ? 'good' : r >= 1 ? 'ok' : 'low';
+    }
+
+    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, effectiveness };
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
@@ -255,8 +283,9 @@ export class MarketingService {
       '(2) Attribution is BLENDED — the data does NOT tell you which ad or channel caused which booking, so do NOT claim a specific channel "generated" specific bookings or revenue. Talk about totals and spend allocation instead. ' +
       '(3) If a needed number is missing or zero, say so plainly (e.g. "chưa nhập chi phí" / "no spend entered") rather than guessing. ' +
       '(4) Output MUST be valid JSON only, matching this exact shape, every string in BOTH Vietnamese (vi) and English (en): ' +
-      '{"summary":{"vi":"","en":""},"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}]}. ' +
-      'highlights = what went well (2-4). issues = problems or gaps, including missing data (1-3). plan = concrete suggestions for next month (2-4). Keep each item one sentence.';
+      '{"headline":{"vi":"","en":""},"summary":{"vi":"","en":""},"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}]}. ' +
+      'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% nhờ Google Maps"). ' +
+      'The summary MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' + 'highlights = what went well (2-4). issues = problems or gaps, including missing data (1-3). plan = concrete, specific actions for next month (2-4). Keep each item to one plain sentence a non-marketer understands.';
 
     const userText = 'DATA (JSON):\n' + JSON.stringify({
       month: data.month,
@@ -269,6 +298,8 @@ export class MarketingService {
       totalSpendCents: data.blended.totalSpendCents,
       spendByChannel: data.spend.map((r: any) => ({ channel: r.channel, amountCents: r.amountCents, reach: r.reach, clicks: r.clicks, leads: r.leads })),
       blended: data.blended,
+      vsLastMonth: (data as any).deltas,
+      effectiveness: (data as any).effectiveness,
       workDone: data.workLog.map((w: any) => ({ category: w.category, title: w.title })),
     });
 
@@ -362,6 +393,10 @@ export class MarketingService {
       ]);
       if (spendCount === 0 && apptCount === 0) { skipped++; continue; }
       try {
+        // Pull spend/metrics from any connected API channels first, so the
+        // auto-drafted report reflects real platform numbers. A failing channel
+        // never blocks the report — its error is recorded on the connection.
+        await this.syncAllChannels(sys, t.id, month).catch(() => undefined);
         await this.generateReport(sys, month, t.id);
         generated++;
       } catch (e) {
@@ -371,5 +406,126 @@ export class MarketingService {
     }
     this.logger.log(`Auto-report ${month}: generated ${generated}, skipped ${skipped}, failed ${failed}.`);
     return { month, generated, skipped, failed };
+  }
+
+  // ======================= PHASE 3: social/ads API channels =================
+
+  /** List every platform (incl. scaffolds) with this tenant's connection status. */
+  async listChannels(user: AuthenticatedUser, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    const conns = (await this.prisma.marketingChannelConnection.findMany({ where: { tenantId } })) as any[];
+    const byPlatform = new Map<string, any>(conns.map((c: any) => [c.platform, c]));
+    return this.social.list().map((p) => {
+      const c = byPlatform.get(p.platform);
+      return {
+        ...p,
+        connected: !!c && c.status === 'ACTIVE',
+        status: c?.status ?? null,
+        accountName: c?.accountName ?? null,
+        externalAccountId: c?.externalAccountId ?? null,
+        keyHint: c?.keyHint ?? null,
+        lastSyncedAt: c?.lastSyncedAt ?? null,
+        lastError: c?.lastError ?? null,
+      };
+    });
+  }
+
+  async connectChannel(user: AuthenticatedUser, dto: { platform: string; externalAccountId?: string; token?: string; refreshToken?: string; clientId?: string; clientSecret?: string; developerToken?: string; tenantId?: string }) {
+    const tenantId = this.tenantId(user, dto.tenantId);
+    if (!encConfigured()) throw new BadRequestException('PAYMENT_ENC_KEY not configured on the server');
+    const connector = this.social.get(dto.platform); // throws if unknown/disabled
+    const creds: ChannelCreds = {
+      token: dto.token?.trim() || undefined,
+      refreshToken: dto.refreshToken?.trim() || undefined,
+      clientId: dto.clientId?.trim() || undefined,
+      clientSecret: dto.clientSecret?.trim() || undefined,
+      developerToken: dto.developerToken?.trim() || undefined,
+      externalAccountId: dto.externalAccountId?.trim() || undefined,
+    };
+    const verify = await connector.verify(creds);
+    if (!verify.ok) throw new BadRequestException(verify.error || 'Could not verify the credentials with the platform');
+    const hint = maskHint(creds.token || creds.refreshToken || '');
+    const data = {
+      externalAccountId: creds.externalAccountId ?? null,
+      accountName: verify.accountName ?? null,
+      credentialEnc: encryptSecret(JSON.stringify(creds)),
+      keyHint: hint,
+      status: 'ACTIVE',
+      lastError: null,
+    };
+    const saved = await this.prisma.marketingChannelConnection.upsert({
+      where: { tenantId_platform: { tenantId, platform: dto.platform } },
+      create: { tenantId, platform: dto.platform, ...data },
+      update: data,
+    });
+    await this.audit(tenantId, user.userId, 'marketing.channel.connect', { platform: dto.platform });
+    return this.channelView(saved);
+  }
+
+  async testChannel(user: AuthenticatedUser, platform: string, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    const creds = await this.loadChannelCreds(tenantId, platform);
+    const r = await this.social.get(platform).verify(creds);
+    await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: r.ok ? 'ACTIVE' : 'ERROR', lastError: r.ok ? null : (r.error ?? 'error') } });
+    return r;
+  }
+
+  async disconnectChannel(user: AuthenticatedUser, platform: string) {
+    const tenantId = this.tenantId(user);
+    await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: 'REVOKED', credentialEnc: null } });
+    await this.audit(tenantId, user.userId, 'marketing.channel.disconnect', { platform });
+    return { ok: true };
+  }
+
+  /** Pull last-month figures from the platform API into the spend table. */
+  async syncChannel(user: AuthenticatedUser, platform: string, month: string, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
+    const connector = this.social.get(platform);
+    const creds = await this.loadChannelCreds(tenantId, platform);
+    try {
+      const m = await connector.fetchMonthly(creds, month);
+      // Map platform metrics onto the manual spend row (source='api'), so a synced
+      // number simply replaces what a human would have typed. Nothing invented.
+      const reach = m.reach ?? m.impressions ?? null;
+      const leads = m.leads ?? m.calls ?? null;
+      await this.prisma.marketingSpend.upsert({
+        where: { tenantId_channel_periodMonth: { tenantId, channel: platform, periodMonth: month } },
+        create: { tenantId, channel: platform, periodMonth: month, amountCents: m.spendCents ?? 0, reach, clicks: m.clicks ?? null, leads, source: 'api', createdByUserId: user.userId, note: 'Auto-synced' },
+        update: { amountCents: m.spendCents ?? 0, reach, clicks: m.clicks ?? null, leads, source: 'api', note: 'Auto-synced' },
+      });
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
+      await this.audit(tenantId, user.userId, 'marketing.channel.sync', { platform, month });
+      return { ok: true, platform, month, metrics: m };
+    } catch (e) {
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: 'ERROR', lastError: String((e as Error).message).slice(0, 300) } });
+      throw new BadRequestException(String((e as Error).message));
+    }
+  }
+
+  /** Sync every ACTIVE, enabled channel for a tenant/month. Best-effort. */
+  async syncAllChannels(user: AuthenticatedUser, tenantId: string, month: string) {
+    const conns = (await this.prisma.marketingChannelConnection.findMany({ where: { tenantId, status: 'ACTIVE' } })) as any[];
+    let synced = 0;
+    for (const c of conns) {
+      const meta = this.social.list().find((x) => x.platform === c.platform);
+      if (!meta || !meta.enabled) continue;
+      try { await this.syncChannel(user, c.platform, month, tenantId); synced++; } catch { /* recorded on the connection */ }
+    }
+    return { synced };
+  }
+
+  private async loadChannelCreds(tenantId: string, platform: string): Promise<ChannelCreds> {
+    const conn = await this.prisma.marketingChannelConnection.findUnique({ where: { tenantId_platform: { tenantId, platform } } });
+    if (!conn || conn.status === 'REVOKED' || !conn.credentialEnc) throw new NotFoundException('Channel not connected');
+    return JSON.parse(decryptSecret(conn.credentialEnc)) as ChannelCreds;
+  }
+
+  private channelView(c: any) {
+    return { platform: c.platform, status: c.status, accountName: c.accountName, externalAccountId: c.externalAccountId, keyHint: c.keyHint, lastSyncedAt: c.lastSyncedAt, lastError: c.lastError };
+  }
+
+  private async audit(tenantId: string, userId: string | null, action: string, meta: any) {
+    try { await this.prisma.auditLog.create({ data: { tenantId, userId: userId ?? undefined, action, resourceType: 'marketing', metadata: meta as any } }); } catch { /* never break */ }
   }
 }

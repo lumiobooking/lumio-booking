@@ -90,9 +90,10 @@ function Inner() {
 
   return (
     <section>
+      <MktTabs vi={vi} active="live" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
         <div>
-          <h2 style={{ fontSize: 18, margin: 0 }}>{T('Báo cáo marketing', 'Marketing report')}</h2>
+          <h2 style={{ fontSize: 18, margin: 0 }}>{T('Tổng quan trực tiếp', 'Live overview')}</h2>
           <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 13 }}>{T('Marketing mang lại bao nhiêu booking, bao nhiêu khách đến, doanh thu bao nhiêu — từ dữ liệu thật của tiệm.', 'How many bookings, showed-up customers and revenue marketing brought — from the salon’s real data.')}</p>
         </div>
       </div>
@@ -210,6 +211,15 @@ function Empty({ vi }: { vi: boolean }) {
   return <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>{vi ? 'Chưa có dữ liệu trong kỳ này.' : 'No data in this period.'}</p>;
 }
 
+function MktTabs({ vi, active }: { vi: boolean; active: 'monthly' | 'live' }) {
+  const tab = (on: boolean): CSSProperties => ({ padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: on ? 700 : 500, textDecoration: 'none', color: on ? '#fff' : '#94a3b8', background: on ? '#6366f1' : 'transparent', border: on ? 'none' : '1px solid #334155' });
+  return (
+    <div style={{ display: 'inline-flex', gap: 6, marginBottom: 14 }}>
+      <a href="/salon/marketing/monthly" style={tab(active === 'monthly')}>{vi ? 'Báo cáo tháng' : 'Monthly report'}</a>
+      <a href="/salon/marketing/report" style={tab(active === 'live')}>{vi ? 'Tổng quan trực tiếp' : 'Live overview'}</a>
+    </div>
+  );
+}
 const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 12 };
 const dateInput: CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13 };
 const chip = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });

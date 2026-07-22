@@ -244,7 +244,20 @@ Anh đã chốt: **GĐ0 + 1**, báo cáo khách **song ngữ Việt–Anh**, GĐ
 - `marketing.overview` gộp **theo chiến dịch** (chỉ booking có UTM): campaign → đặt → đến → doanh thu. Trang **Marketing report** có mục "Theo chiến dịch / nội dung (UTM)".
 - Kiểm: frontend type-check sạch; JS plugin hợp lệ; backend chỉ còn false-positive Prisma client sandbox cũ (Render tự generate).
 
-**Chưa làm (chờ anh):** GĐ3 (API tự động Google/Meta/TikTok — mỗi nền cần OAuth + duyệt app, không dựng thật được trong sandbox), GĐ4 (AI tối ưu chủ động — đề xuất chuyển ngân sách).
+**✅ GĐ3 — Khung kết nối API social (xong phần dựng được)**
+- Bảng `MarketingChannelConnection` (BYO credential mã hoá AES-256-GCM, reuse crypto payments-hub) + migration.
+- Khung connector `SocialConnector` + registry (từ chối connector chưa bật).
+- **Meta (FB/IG)** connector THẬT — Insights: spend/impressions/reach/clicks.
+- **Google Maps (GBP)** connector THẬT — Performance: impressions/calls/directions/website clicks (có hỗ trợ refresh token Google).
+- **TikTok + Google Ads**: scaffold enabled=false (cần duyệt app + token thật, hoàn thiện khi anh có).
+- Endpoints connect/test/sync/disconnect; **cron cuối tháng tự đồng bộ chi phí từ API** rồi mới AI viết nháp → tự động hoá trọn vẹn.
+- UI **"Kênh kết nối"** trên trang Monthly report: dán token + ID → Test → Đồng bộ; chi phí tự đổ về bảng (đánh dấu 'api').
+- Hướng dẫn **chuẩn bị tài khoản** từng nền: `Lumio-Marketing-GD3-ChuanBi-TaiKhoan.md`.
+- Trung thực: lỗi token/quyền hiện rõ trên kết nối, không bịa số.
+
+**Cần anh:** tạo app developer + lấy token/ID theo hướng dẫn GĐ3 (Meta nhanh nhất). Khi có token TikTok/Google Ads, gửi em finalize 2 connector còn lại.
+
+**Chưa làm:** GĐ4 (AI tối ưu chủ động — đề xuất chuyển ngân sách từ xu hướng nhiều tháng).
 
 ---
 

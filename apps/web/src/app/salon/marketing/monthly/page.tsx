@@ -10,13 +10,17 @@ import { useLang } from '../../../../lib/i18n';
 interface SpendRow { id?: string; channel: string; amountCents: number; reach?: number | null; clicks?: number | null; leads?: number | null; }
 interface WorkRow { id: string; category: string; title: string; createdAt: string; }
 interface Blended { totalSpendCents: number; costPerBookingCents: number | null; costPerShowedCents: number | null; costPerNewCustomerCents: number | null; revenuePerSpend: number | null; }
+interface Delta { value: number; prev: number; pct: number | null }
 interface Monthly {
   month: string;
   outcome: { totals: { bookings: number; showed: number; revenueCents: number }; newCustomers: number; owned: Record<string, number>; channels: { key: string; bookings: number; showed: number; revenueCents: number }[] };
   spend: SpendRow[]; workLog: WorkRow[]; blended: Blended;
+  prevMonth?: string;
+  deltas?: { bookings: Delta; showed: Delta; revenueCents: Delta; newCustomers: Delta; spendCents: Delta };
+  effectiveness?: 'good' | 'ok' | 'low' | 'organic';
 }
 interface Item { vi: string; en: string }
-interface Content { summary?: Item; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean }
+interface Content { headline?: Item; summary?: Item; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 
 const CHANNELS = ['facebook', 'instagram', 'tiktok', 'google_ads', 'gbp', 'seo', 'email', 'sms', 'website', 'other'];
@@ -110,6 +114,7 @@ function Inner() {
 
   return (
     <section>
+      <MktTabs vi={vi} active="monthly" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
           <h2 style={{ fontSize: 18, margin: 0 }}>{T('Báo cáo marketing tháng', 'Monthly marketing report')}</h2>
@@ -132,6 +137,9 @@ function Inner() {
         {T('Chỉ số tổng hợp (blended): tổng chi ÷ kết quả thật. Chưa tách được "quảng cáo nào ra booking nào" — phần đó cần gắn UTM (Giai đoạn 2).',
            'Blended metrics: total spend ÷ real outcome. We cannot yet attribute a specific ad to a specific booking — that needs UTM (Phase 2).')}
       </p>
+
+      {/* Connected channels (Phase 3) */}
+      <ChannelsSection token={token} vi={vi} month={month} onSynced={load} />
 
       {/* Spend entry */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
@@ -217,7 +225,7 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
   }, [report]);
 
   function collect(): Content {
-    return { summary: c.summary ?? { vi: '', en: '' }, highlights: zip(hVi, hEn), issues: zip(iVi, iEn), plan: zip(pVi, pEn) };
+    return { headline: c.headline ?? { vi: '', en: '' }, summary: c.summary ?? { vi: '', en: '' }, highlights: zip(hVi, hEn), issues: zip(iVi, iEn), plan: zip(pVi, pEn) };
   }
 
   if (!report) {
@@ -247,6 +255,11 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
 
       {report.content._aiUnavailable && <div style={{ ...ui.banner, background: '#422006', borderColor: '#b45309', color: '#fde68a', marginBottom: 12 }}>{T('AI chưa bật (thiếu ANTHROPIC_API_KEY) — nhập nhận xét tay bên dưới.', 'AI is off (no ANTHROPIC_API_KEY) — write the notes manually below.')}</div>}
 
+      <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+        <label style={{ ...lbl, color: '#a5b4fc', fontWeight: 700 }}>{T('★ Điều quan trọng nhất tháng này (khách đọc đầu tiên)', '★ The one most important message (client reads first)')}</label>
+        <input style={{ ...ta, marginBottom: 6 }} value={c.headline?.vi ?? ''} onChange={(e) => setC({ ...c, headline: { vi: e.target.value, en: c.headline?.en ?? '' } })} placeholder={T('Ví dụ: Doanh thu tăng 31% nhờ Google Maps', 'e.g. Revenue up 31%, driven by Google Maps')} />
+        <input style={ta} value={c.headline?.en ?? ''} onChange={(e) => setC({ ...c, headline: { vi: c.headline?.vi ?? '', en: e.target.value } })} placeholder="English headline" />
+      </div>
       <Field label={T('Tóm tắt (Việt)', 'Summary (VI)')} value={c.summary?.vi ?? ''} onChange={(v) => setC({ ...c, summary: { vi: v, en: c.summary?.en ?? '' } })} />
       <Field label={T('Tóm tắt (Anh)', 'Summary (EN)')} value={c.summary?.en ?? ''} onChange={(v) => setC({ ...c, summary: { vi: c.summary?.vi ?? '', en: v } })} />
       <TwoCol label={T('Điểm tốt (mỗi dòng 1 ý)', 'Highlights (one per line)')} vi={hVi} en={hEn} setVi={setHVi} setEn={setHEn} />
@@ -278,31 +291,86 @@ function TwoCol({ label, vi, en, setVi, setEn }: { label: string; vi: string; en
 
 function esc(s: string) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: number) => string) {
-  const o = data?.outcome; const b = data?.blended;
-  const li = (arr?: Item[]) => (arr ?? []).map((x) => `<li><b>${esc(x.vi)}</b><br><span style="color:#555">${esc(x.en)}</span></li>`).join('');
-  const spendRows = (data?.spend ?? []).filter((s) => s.amountCents > 0).map((s) => `<tr><td>${esc(CH_LABEL[s.channel] || s.channel)}</td><td style="text-align:right">${money(s.amountCents)}</td></tr>`).join('');
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Marketing report ${data?.month ?? ''}</title>
-  <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:720px;margin:24px auto;padding:0 20px;line-height:1.6}
-  h1{font-size:22px;margin:0 0 2px} h2{font-size:15px;color:#4f46e5;margin:22px 0 8px;border-bottom:1px solid #eee;padding-bottom:4px}
-  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0} .kpi{flex:1;min-width:120px;background:#f5f5fb;border-radius:10px;padding:10px 12px}
-  .kpi .l{font-size:12px;color:#666} .kpi .v{font-size:20px;font-weight:700}
-  table{width:100%;border-collapse:collapse;font-size:14px} td{padding:5px 0;border-bottom:1px solid #f0f0f0}
-  ul{padding-left:18px} li{margin:6px 0} .muted{color:#888;font-size:12px}</style></head><body>
-  <h1>${vi ? 'Báo cáo marketing' : 'Marketing report'} · ${data?.month ?? ''}</h1>
-  <div class="muted">${vi ? 'Thực hiện bởi Lumio Agency' : 'By Lumio Agency'}</div>
-  <div class="kpis">
-    <div class="kpi"><div class="l">${vi ? 'Đã chi' : 'Spent'}</div><div class="v">${money(b?.totalSpendCents ?? 0)}</div></div>
-    <div class="kpi"><div class="l">${vi ? 'Đặt lịch' : 'Bookings'}</div><div class="v">${o?.totals.bookings ?? 0}</div></div>
-    <div class="kpi"><div class="l">${vi ? 'Đã đến' : 'Showed up'}</div><div class="v">${o?.totals.showed ?? 0}</div></div>
-    <div class="kpi"><div class="l">${vi ? 'Doanh thu' : 'Revenue'}</div><div class="v">${money(o?.totals.revenueCents ?? 0)}</div></div>
+  if (!data) return;
+  const o = data.outcome; const b = data.blended; const d = data.deltas;
+  const eff = data.effectiveness || 'organic';
+  const effMap: Record<string, [string, string, string]> = {
+    good: ['#059669', vi ? 'Hiệu quả tốt' : 'Performing well', vi ? 'Mỗi $1 quảng cáo mang lại nhiều hơn $3 doanh thu.' : 'Every $1 of ad spend returns more than $3.'],
+    ok:   ['#2563eb', vi ? 'Đang có hiệu quả' : 'On track', vi ? 'Quảng cáo đang có lãi, còn dư địa tối ưu.' : 'Ads are profitable with room to optimize.'],
+    low:  ['#d97706', vi ? 'Cần cải thiện' : 'Needs work', vi ? 'Chi phí đang cao hơn doanh thu thu về — sẽ điều chỉnh tháng sau.' : 'Spend is outrunning returns — adjusting next month.'],
+    organic: ['#6b7280', vi ? 'Tăng trưởng tự nhiên' : 'Organic growth', vi ? 'Tháng này chưa chạy quảng cáo trả tiền.' : 'No paid ads ran this month.'],
+  };
+  const [effColor, effTitle, effDesc] = effMap[eff];
+
+  const arrow = (dl?: Delta) => {
+    if (!dl || dl.pct == null) return '';
+    const up = dl.pct >= 0; const col = up ? '#059669' : '#dc2626';
+    return `<span style="color:${col};font-size:12px;font-weight:600">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
+  };
+  const kpi = (label: string, value: string, dl?: Delta, sub?: string) => `
+    <div class="kpi"><div class="l">${label}</div><div class="v">${value}</div>
+    <div class="s">${arrow(dl)}${sub ? ' ' + sub : (dl && dl.pct != null ? (vi ? ' so tháng trước' : ' vs last month') : '')}</div></div>`;
+
+  const li = (arr?: Item[]) => (arr ?? []).map((x) => `<li><b>${esc(x.vi)}</b>${x.en ? `<br><span class="en">${esc(x.en)}</span>` : ''}</li>`).join('');
+  const CH: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: vi ? 'Khác' : 'Other' };
+  const spendRows = (data.spend ?? []).filter((s2) => s2.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
+  const maxSpend = Math.max(1, ...spendRows.map((s2) => s2.amountCents));
+  const spendHtml = spendRows.map((s2) => `<div class="bar"><span class="bl">${esc(CH[s2.channel] || s2.channel)}</span><span class="bt"><span class="bf" style="width:${Math.round((s2.amountCents / maxSpend) * 100)}%"></span></span><span class="bv">${money(s2.amountCents)}</span></div>`).join('');
+  const work = (data.workLog ?? []).map((w) => `<li>${esc(w.title)}</li>`).join('');
+  const own = o.owned || ({} as Record<string, number>);
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Marketing report ${data.month}</title><style>
+  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:760px;margin:0 auto;padding:28px 26px;line-height:1.55}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:3px solid #4f46e5;padding-bottom:12px}
+  h1{font-size:22px;margin:0} .by{color:#6b7280;font-size:12px;margin-top:2px}
+  .eff{border-radius:12px;padding:8px 14px;color:#fff;text-align:right;min-width:150px}
+  .eff .t{font-weight:700;font-size:15px} .eff .d{font-size:11px;opacity:.92}
+  h2{font-size:14px;color:#4f46e5;margin:22px 0 10px;text-transform:uppercase;letter-spacing:.4px}
+  .hl{margin-top:16px;font-size:19px;font-weight:800;line-height:1.35;color:#111827} .hlen{font-size:13px;font-weight:400;color:#6b7280;margin-top:3px}
+  .sum{background:#f5f5fb;border-left:4px solid #4f46e5;border-radius:0 8px 8px 0;padding:12px 14px;margin-top:12px}
+  .sum p{margin:0} .sum .en{color:#555;font-size:13px;margin-top:4px}
+  .kpis{display:flex;flex-wrap:wrap;gap:10px} .kpi{flex:1;min-width:110px;background:#fff;border:1px solid #eef;border-radius:10px;padding:11px 12px}
+  .kpi .l{font-size:11px;color:#6b7280} .kpi .v{font-size:21px;font-weight:800;color:#111827} .kpi .s{font-size:11px;color:#6b7280;margin-top:2px}
+  .money{background:#ecfdf5;border-radius:10px;padding:12px 14px;margin-top:12px;font-size:15px}
+  .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px} .bl{width:90px;flex-shrink:0;color:#374151} .bt{flex:1;height:14px;background:#f0f0f5;border-radius:5px;overflow:hidden} .bf{display:block;height:100%;background:#6366f1} .bv{width:80px;text-align:right;flex-shrink:0}
+  ul{padding-left:18px;margin:6px 0} li{margin:5px 0} .en{color:#6b7280;font-size:12.5px}
+  .foot{color:#9ca3af;font-size:11px;margin-top:26px;border-top:1px solid #eee;padding-top:10px}
+  @media print{body{padding:0}}
+  </style></head><body>
+  <div class="head">
+    <div><h1>${vi ? 'Báo cáo Marketing' : 'Marketing Report'}</h1><div class="by">${data.month} · ${vi ? 'thực hiện bởi Lumio Agency' : 'by Lumio Agency'}</div></div>
+    <div class="eff" style="background:${effColor}"><div class="t">${effTitle}</div><div class="d">${effDesc}</div></div>
   </div>
-  ${b && b.revenuePerSpend != null ? `<p><b>${vi ? 'Mỗi $1 chi ra' : 'Per $1 spent'}:</b> $${b.revenuePerSpend} ${vi ? 'doanh thu' : 'revenue'}${b.costPerNewCustomerCents != null ? ` · <b>${vi ? 'Chi phí mỗi khách mới' : 'Cost per new customer'}:</b> ${money(b.costPerNewCustomerCents)}` : ''}</p>` : ''}
-  ${c.summary && (c.summary.vi || c.summary.en) ? `<h2>${vi ? 'Tổng quan' : 'Overview'}</h2><p><b>${esc(c.summary.vi)}</b></p><p style="color:#555">${esc(c.summary.en)}</p>` : ''}
-  ${spendRows ? `<h2>${vi ? 'Chi phí theo kênh' : 'Spend by channel'}</h2><table>${spendRows}</table>` : ''}
+
+  ${c.headline && (c.headline.vi || c.headline.en) ? `<div class="hl">${esc(c.headline.vi || c.headline.en)}${c.headline.en && c.headline.vi ? `<div class="hlen">${esc(c.headline.en)}</div>` : ''}</div>` : ''}
+
+  ${c.summary && (c.summary.vi || c.summary.en) ? `<div class="sum"><p><b>${esc(c.summary.vi)}</b></p>${c.summary.en ? `<p class="en">${esc(c.summary.en)}</p>` : ''}</div>` : ''}
+
+  <h2>${vi ? 'Kết quả tháng này' : 'This month at a glance'}</h2>
+  <div class="kpis">
+    ${kpi(vi ? 'Đã chi' : 'Spent', money(b?.totalSpendCents ?? 0), d?.spendCents)}
+    ${kpi(vi ? 'Lượt đặt' : 'Bookings', String(o.totals.bookings), d?.bookings)}
+    ${kpi(vi ? 'Đã đến' : 'Showed up', String(o.totals.showed), d?.showed)}
+    ${kpi(vi ? 'Khách mới' : 'New customers', String(o.newCustomers), d?.newCustomers)}
+    ${kpi(vi ? 'Doanh thu' : 'Revenue', money(o.totals.revenueCents), d?.revenueCents)}
+  </div>
+
+  ${b && b.revenuePerSpend != null ? `<div class="money"><b>${vi ? 'Hiệu quả chi tiêu' : 'Return on spend'}:</b> ${vi ? 'mỗi' : 'every'} $1 → <b>$${b.revenuePerSpend}</b> ${vi ? 'doanh thu' : 'revenue'}${b.costPerNewCustomerCents != null ? ` &nbsp;·&nbsp; <b>${vi ? 'Chi phí mỗi khách mới' : 'Cost per new customer'}:</b> ${money(b.costPerNewCustomerCents)}` : ''}</div>` : ''}
+
+  ${(Number(own.googleReviews) || Number(own.messengerThreads) || Number(own.voiceCalls)) ? `<h2>${vi ? 'Tương tác khách' : 'Customer engagement'}</h2><div class="kpis">
+    ${own.googleReviews ? kpi(vi ? 'Đánh giá Google mới' : 'New Google reviews', String(own.googleReviews)) : ''}
+    ${own.messengerThreads ? kpi(vi ? 'Tin nhắn' : 'Messages', String(own.messengerThreads)) : ''}
+    ${own.voiceCalls ? kpi(vi ? 'Cuộc gọi' : 'Calls', String(own.voiceCalls)) : ''}
+    ${own.referredNewCustomers ? kpi(vi ? 'Khách giới thiệu' : 'Referrals', String(own.referredNewCustomers)) : ''}
+  </div>` : ''}
+
+  ${spendHtml ? `<h2>${vi ? 'Chi phí theo kênh' : 'Spend by channel'}</h2>${spendHtml}` : ''}
+  ${work ? `<h2>${vi ? 'Lumio đã làm gì tháng này' : 'What Lumio did this month'}</h2><ul>${work}</ul>` : ''}
   ${(c.highlights ?? []).length ? `<h2>${vi ? 'Điểm nổi bật' : 'Highlights'}</h2><ul>${li(c.highlights)}</ul>` : ''}
-  ${(c.issues ?? []).length ? `<h2>${vi ? 'Vấn đề' : 'Issues'}</h2><ul>${li(c.issues)}</ul>` : ''}
-  ${(c.plan ?? []).length ? `<h2>${vi ? 'Kế hoạch tháng sau' : 'Next month'}</h2><ul>${li(c.plan)}</ul>` : ''}
-  <p class="muted" style="margin-top:24px">${vi ? 'Số booking, khách đến, doanh thu lấy tự động từ hệ thống Lumio. Nháp do AI tổng hợp, nhân viên Lumio duyệt.' : 'Bookings, showed-up and revenue are pulled automatically from Lumio. Draft summarised by AI, reviewed by Lumio staff.'}</p>
+  ${(c.issues ?? []).length ? `<h2>${vi ? 'Cần lưu ý' : 'What to watch'}</h2><ul>${li(c.issues)}</ul>` : ''}
+  ${(c.plan ?? []).length ? `<h2>${vi ? 'Kế hoạch tháng sau' : 'Plan for next month'}</h2><ul>${li(c.plan)}</ul>` : ''}
+
+  <div class="foot">${vi ? 'Số booking · khách đến · doanh thu lấy tự động từ hệ thống Lumio. Chi phí & công việc do Lumio Agency ghi nhận. Nội dung nháp bằng AI, nhân viên Lumio kiểm tra & duyệt trước khi gửi.' : 'Bookings, showed-up and revenue are pulled automatically from Lumio. Spend & work logged by Lumio Agency. Draft written by AI, reviewed and approved by Lumio staff before sending.'}</div>
   <script>window.onload=function(){window.print()}</script></body></html>`;
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
 }
@@ -317,6 +385,87 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
   );
 }
 
+function ChannelsSection({ token, vi, month, onSynced }: { token: string | null; vi: boolean; month: string; onSynced: () => void }) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  interface Ch { platform: string; label: string; enabled: boolean; hasSpend: boolean; connected: boolean; status: string | null; accountName: string | null; externalAccountId: string | null; keyHint: string | null; lastSyncedAt: string | null; lastError: string | null; }
+  const [chs, setChs] = useState<Ch[]>([]);
+  const [openP, setOpenP] = useState<string | null>(null);
+  const [f, setF] = useState<{ externalAccountId: string; token: string; refreshToken: string; clientId: string; clientSecret: string }>({ externalAccountId: '', token: '', refreshToken: '', clientId: '', clientSecret: '' });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null); const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    try { setChs(await apiFetch<Ch[]>('/marketing/channels', { token })); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  async function connect(platform: string) {
+    setBusy(platform); setErr(null); setNote(null);
+    try {
+      await apiFetch('/marketing/channels/connect', { method: 'POST', token, body: { platform, externalAccountId: f.externalAccountId || undefined, token: f.token || undefined, refreshToken: f.refreshToken || undefined, clientId: f.clientId || undefined, clientSecret: f.clientSecret || undefined } });
+      setNote(T('Đã kết nối.', 'Connected.')); setOpenP(null); setF({ externalAccountId: '', token: '', refreshToken: '', clientId: '', clientSecret: '' }); await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
+  }
+  async function test(platform: string) { setBusy(platform); setErr(null); setNote(null); try { const r = await apiFetch<{ ok: boolean; error?: string }>(`/marketing/channels/test/${platform}`, { method: 'POST', token }); setNote(r.ok ? T('Kết nối OK ✓', 'Connection OK ✓') : `✗ ${r.error ?? ''}`); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); } }
+  async function sync(platform: string) { setBusy(platform); setErr(null); setNote(null); try { await apiFetch('/marketing/channels/sync', { method: 'POST', token, body: { platform, month } }); setNote(T('Đã đồng bộ chi phí về tháng ' + month, 'Synced spend for ' + month)); await load(); onSynced(); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); } }
+  async function disconnect(platform: string) { if (!confirm(T('Ngắt kết nối kênh này?', 'Disconnect this channel?'))) return; setBusy(platform); try { await apiFetch(`/marketing/channels/${platform}`, { method: 'DELETE', token }); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); } }
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <div style={cardTitle}>{T('Kênh kết nối (tự đồng bộ chi phí)', 'Connected channels (auto-sync spend)')}</div>
+      <p style={{ color: '#64748b', fontSize: 11.5, margin: '4px 0 12px', lineHeight: 1.5 }}>
+        {T('Dán token + ID tài khoản để tự kéo chi phí/số liệu mỗi tháng, thay nhập tay. Xem hướng dẫn lấy tài khoản trong tài liệu GĐ3.', 'Paste a token + account ID to auto-pull monthly spend/metrics instead of typing. See the Phase-3 prep guide for how to obtain them.')}
+      </p>
+      {err && <div style={{ ...ui.banner, marginBottom: 10 }}>{err}</div>}
+      {note && <div style={{ ...ui.banner, background: '#064e3b', borderColor: '#059669', color: '#d1fae5', marginBottom: 10 }}>{note}</div>}
+      {chs.map((c) => (
+        <div key={c.platform} style={{ borderTop: '1px solid #1e293b', padding: '10px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {c.label}
+              {!c.enabled && <span style={{ fontSize: 10.5, color: '#94a3b8', border: '1px solid #334155', borderRadius: 999, padding: '1px 8px' }}>{T('sắp có', 'coming soon')}</span>}
+              {c.connected && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '1px 8px' }}>{T('đã kết nối', 'connected')}</span>}
+              {c.status === 'ERROR' && <span style={{ fontSize: 10.5, color: '#f87171', border: '1px solid #f87171', borderRadius: 999, padding: '1px 8px' }}>{T('lỗi', 'error')}</span>}
+            </span>
+            <span style={{ display: 'flex', gap: 6 }}>
+              {c.enabled && !c.connected && <button onClick={() => { setOpenP(openP === c.platform ? null : c.platform); setErr(null); setNote(null); }} style={miniBtn}>{openP === c.platform ? T('Đóng', 'Close') : T('Kết nối', 'Connect')}</button>}
+              {c.connected && <>
+                <button onClick={() => test(c.platform)} disabled={busy === c.platform} style={miniBtn}>{T('Kiểm tra', 'Test')}</button>
+                <button onClick={() => sync(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#6366f1', color: '#c7d2fe' }}>{busy === c.platform ? '…' : T('Đồng bộ', 'Sync')}</button>
+                <button onClick={() => disconnect(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#7f1d1d', color: '#fca5a5' }}>{T('Ngắt', 'Remove')}</button>
+              </>}
+            </span>
+          </div>
+          {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString('en-US') : ''}{c.lastError ? ' · ' + c.lastError : ''}</div>}
+          {openP === c.platform && (
+            <div style={{ marginTop: 8, background: '#0f172a', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
+              <input style={inp} placeholder={c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID (locations/...)' : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
+              <input style={inp} type="password" placeholder={T('Access token', 'Access token')} value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} autoComplete="off" />
+              {c.platform === 'gbp' && <>
+                <div style={{ fontSize: 10.5, color: '#64748b' }}>{T('Hoặc refresh token (Google) nếu không dùng access token:', 'Or a Google refresh token if not using an access token:')}</div>
+                <input style={inp} type="password" placeholder="Refresh token" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} autoComplete="off" />
+                <input style={inp} placeholder="OAuth Client ID" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} />
+                <input style={inp} type="password" placeholder="OAuth Client Secret" value={f.clientSecret} onChange={(e) => setF({ ...f, clientSecret: e.target.value })} autoComplete="off" />
+              </>}
+              <button onClick={() => connect(c.platform)} disabled={busy === c.platform || (!f.token && !f.refreshToken) || !f.externalAccountId} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MktTabs({ vi, active }: { vi: boolean; active: 'monthly' | 'live' }) {
+  const tab = (on: boolean): CSSProperties => ({ padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: on ? 700 : 500, textDecoration: 'none', color: on ? '#fff' : '#94a3b8', background: on ? '#6366f1' : 'transparent', border: on ? 'none' : '1px solid #334155' });
+  return (
+    <div style={{ display: 'inline-flex', gap: 6, marginBottom: 14 }}>
+      <a href="/salon/marketing/monthly" style={tab(active === 'monthly')}>{vi ? 'Báo cáo tháng' : 'Monthly report'}</a>
+      <a href="/salon/marketing/report" style={tab(active === 'live')}>{vi ? 'Tổng quan trực tiếp' : 'Live overview'}</a>
+    </div>
+  );
+}
 const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: '#cbd5e1' };
 const dateInput: CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 13 };
 const numInput: CSSProperties = { width: 90, background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 13 };
@@ -325,3 +474,5 @@ const td: CSSProperties = { padding: '5px 8px' };
 const lbl: CSSProperties = { display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 };
 const ta: CSSProperties = { width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '8px 10px', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' };
 const ghost: CSSProperties = { padding: '8px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' };
+const miniBtn: CSSProperties = { padding: '5px 11px', borderRadius: 7, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 12, cursor: 'pointer' };
+const inp: CSSProperties = { background: '#111827', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 7, padding: '7px 10px', fontSize: 13 };

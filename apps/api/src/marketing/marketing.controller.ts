@@ -80,4 +80,26 @@ export class MarketingController {
   autoGenerate(@Body() dto: { month?: string }) {
     return this.marketing.runMonthlyAutoGenerate(dto?.month);
   }
+
+  // ---- Social / ads channel connections (Phase 3) ----
+  @Get('channels')
+  listChannels(@CurrentUser() user: AuthenticatedUser, @Query('tenantId') tenantId?: string) {
+    return this.marketing.listChannels(user, tenantId);
+  }
+  @Post('channels/connect')
+  connectChannel(@CurrentUser() user: AuthenticatedUser, @Body() dto: { platform: string; externalAccountId?: string; token?: string; refreshToken?: string; clientId?: string; clientSecret?: string; developerToken?: string; tenantId?: string }) {
+    return this.marketing.connectChannel(user, dto);
+  }
+  @Post('channels/test/:platform')
+  testChannel(@CurrentUser() user: AuthenticatedUser, @Param('platform') platform: string, @Query('tenantId') tenantId?: string) {
+    return this.marketing.testChannel(user, platform, tenantId);
+  }
+  @Post('channels/sync')
+  syncChannel(@CurrentUser() user: AuthenticatedUser, @Body() dto: { platform: string; month: string; tenantId?: string }) {
+    return this.marketing.syncChannel(user, dto.platform, dto.month, dto.tenantId);
+  }
+  @Delete('channels/:platform')
+  disconnectChannel(@CurrentUser() user: AuthenticatedUser, @Param('platform') platform: string) {
+    return this.marketing.disconnectChannel(user, platform);
+  }
 }

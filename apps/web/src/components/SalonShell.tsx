@@ -42,8 +42,7 @@ const GROUPS: NavGroup[] = [
   ] },
   { id: 'growth', label: 'Marketing & AI', icon: '📣', items: [
     { href: '/salon/marketing', label: 'Marketing', icon: '📣' },
-    { href: '/salon/marketing/report', label: 'Marketing report', icon: '📊' },
-    { href: '/salon/marketing/monthly', label: 'Monthly report', icon: '🗓' },
+    { href: '/salon/marketing/monthly', label: 'Marketing report', icon: '📊' },
     { href: '/salon/email', label: 'Email marketing', icon: '✉️' },
     { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
     { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
@@ -54,7 +53,7 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/payments', label: 'Payments', icon: '＄' },
     { href: '/salon/payment-terminals', label: 'Card terminals', icon: '💳', feature: 'pos' },
     { href: '/salon/card-transactions', label: 'Card transactions', icon: '🧾', feature: 'pos' },
-    { href: '/salon/reports', label: 'Reports', icon: '📈' },
+    { href: '/salon/reports', label: 'Business report', icon: '📈' },
     { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
     { href: '/salon/payroll', label: 'Staff & pay', icon: '💵', feature: 'pos' },
     { href: '/salon/inventory', label: 'Inventory', icon: '📦', feature: 'pos' },

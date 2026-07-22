@@ -268,6 +268,7 @@ model Tenant {
   marketingSpends      MarketingSpend[]
   marketingWorkLogs    MarketingWorkLog[]
   marketingReports     MarketingReport[]
+  marketingChannels    MarketingChannelConnection[]
   invoices             Invoice[]
 
   tables             RestaurantTable[]
@@ -2229,4 +2230,30 @@ model MarketingReport {
   @@unique([tenantId, periodMonth])
   @@index([tenantId, periodMonth])
   @@map("marketing_reports")
+}
+
+
+model MarketingChannelConnection {
+  id          String @id @default(uuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // meta | gbp | tiktok | google_ads
+  platform    String
+  // Ad account / location / advertiser / customer id used by the platform API.
+  externalAccountId String?
+  accountName String?
+  // Encrypted credential bundle (token / refresh token / dev token) — AES-256-GCM,
+  // same key + helpers as the payments hub. Raw values never leave this layer.
+  credentialEnc String?
+  keyHint     String?
+  // ACTIVE | ERROR | REVOKED
+  status      String  @default("ACTIVE")
+  lastSyncedAt DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, platform])
+  @@index([tenantId])
+  @@map("marketing_channel_connections")
 }

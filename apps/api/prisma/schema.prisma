@@ -265,6 +265,9 @@ model Tenant {
   emailContacts        EmailContact[]
   emailTemplates       EmailTemplate[]
   emailAutomations     EmailAutomation[]
+  marketingSpends      MarketingSpend[]
+  marketingWorkLogs    MarketingWorkLog[]
+  marketingReports     MarketingReport[]
   invoices             Invoice[]
 
   tables             RestaurantTable[]
@@ -2146,4 +2149,78 @@ model EmailTemplate {
 
   @@index([scope, updatedAt])
   @@map("email_templates")
+}
+
+
+// ---------------------------------------------------------------------------
+// Marketing module (Phase 1). Additive, tenant-scoped, feature-flagged in code.
+// Manual spend + work log + an AI-drafted monthly report the staff review/approve.
+// ---------------------------------------------------------------------------
+
+model MarketingSpend {
+  id         String @id @default(uuid())
+  tenantId   String
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Canonical channel key: facebook | instagram | tiktok | google_ads | gbp |
+  // seo | email | sms | website | other. Free-form so new channels need no migration.
+  channel    String
+  // Reporting month, 'YYYY-MM'. One spend row per (tenant, channel, month).
+  periodMonth String
+  amountCents Int    @default(0)
+  currency    String @default("USD")
+  // Optional real figures the agency enters from each platform (no estimates).
+  reach       Int?
+  clicks      Int?
+  leads       Int?
+  // Where the number came from: 'manual' now, 'api' once a platform is connected.
+  source      String  @default("manual")
+  note        String?
+  createdByUserId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, channel, periodMonth])
+  @@index([tenantId, periodMonth])
+  @@map("marketing_spends")
+}
+
+model MarketingWorkLog {
+  id          String @id @default(uuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  periodMonth String
+  // Category: post | ads | seo | review | content | email | sms | other.
+  category    String  @default("other")
+  title       String
+  note        String?
+  createdByUserId String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, periodMonth])
+  @@map("marketing_work_logs")
+}
+
+model MarketingReport {
+  id          String @id @default(uuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  periodMonth String
+  // draft | review | approved | sent
+  status      String  @default("review")
+  // Bilingual, structured draft (summary/highlights/issues/plan, vi+en) as JSON,
+  // editable by staff before approval.
+  content     Json    @default("{}")
+  // Frozen snapshot of the numbers the draft was written from — so an approved
+  // report never changes even if later data shifts.
+  dataSnapshot Json   @default("{}")
+  aiModel     String?
+  approvedByUserId String?
+  approvedAt  DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, periodMonth])
+  @@index([tenantId, periodMonth])
+  @@map("marketing_reports")
 }

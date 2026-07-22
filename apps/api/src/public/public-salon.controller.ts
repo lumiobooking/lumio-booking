@@ -221,7 +221,7 @@ export class PublicSalonController {
     }
     const tenantId = await this.resolveTenantId(slug);
     const safeDto: CreateBookingDto = { ...dto, staffId: undefined };
-    let booking = await this.bookings.createForTenant(tenantId, safeDto, null, deviceSource(ua));
+    let booking = await this.bookings.createForTenant(tenantId, safeDto, null, 'hosted', deviceSource(ua));
 
     // Auto-assign (fair rotation) if the salon's assignment mode is 'auto'.
     const rules = await this.settings.getBookingRules(tenantId);

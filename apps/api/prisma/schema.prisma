@@ -1064,8 +1064,13 @@ model Appointment {
   currency   String @default("USD")
   notes      String?
 
-  // Booking channel: online | hotline | messenger | admin | walkin
+  // Where the booking came from (the CHANNEL), one of:
+  //   plugin (WordPress site) | hosted (Lumio link) | hotline | messenger | admin | walkin
+  // Legacy rows may still hold 'online' / 'web' / 'mobile'.
   source     String?
+  // Which kind of device the customer booked on: 'mobile' | 'web' | null.
+  // Kept separate from source so we never lose the channel when we know the device.
+  device     String?
   // Number of people in this booking (group bookings); 1 = solo.
   partySize  Int     @default(1)
 

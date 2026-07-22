@@ -22,6 +22,7 @@ interface Booking {
   currency: string;
   notes: string | null;
   source?: string | null;
+  device?: string | null;
   partySize?: number;
   addons?: Addon[];
   payments?: { status: string; amountCents: number }[];
@@ -668,7 +669,10 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today }: {
                         <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
                       </div>
                       <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                      <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? '—'}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{b.service?.name ?? '—'}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
+                        <OriginChip b={b} t={t} />
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                           <span style={{ width: 22, height: 22, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
@@ -731,7 +735,8 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         <DetailRow label={t('cal.dTechnician')} value={tech} />
-        {b.source && <DetailRow label={t('cal.dSource')} value={t(({ web: 'cal.srcWeb', mobile: 'cal.srcMobile', online: 'cal.srcOnline', hotline: 'cal.srcHotline', messenger: 'cal.srcMessenger', admin: 'cal.srcAdmin', walkin: 'cal.srcWalkin' } as Record<string, string>)[b.source] ?? 'cal.srcOnline')} />}
+        {(() => { const sm = sourceMeta(b.source); return sm ? <DetailRow label={t('cal.dSource')} value={`${sm.icon} ${t(sm.key)}`} /> : null; })()}
+        {(() => { const dm = deviceMeta(b.device); return dm ? <DetailRow label={t('cal.dDevice')} value={`${dm.icon} ${t(dm.key)}`} /> : null; })()}
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
         {b.partySize != null && b.partySize > 1 && <DetailRow label={t('cal.dParty')} value={String(b.partySize)} />}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
@@ -791,6 +796,43 @@ function fmtTime(d: Date, tz?: string) {
 }
 
 // Salon-timezone-aware day key (YYYY-MM-DD): a booking lands on the salon's
+// Booking channel -> {icon, i18n key}. Legacy values (online/web/mobile) still map
+// so old rows render sensibly. 'web'/'mobile' were once written into source by a
+// bug that has since been fixed to store them in `device` instead.
+const SOURCE_META: Record<string, { icon: string; key: string }> = {
+  plugin:    { icon: '🌐', key: 'cal.srcPlugin' },
+  hosted:    { icon: '🔗', key: 'cal.srcHosted' },
+  hotline:   { icon: '📞', key: 'cal.srcHotline' },
+  messenger: { icon: '💬', key: 'cal.srcMessenger' },
+  admin:     { icon: '🏪', key: 'cal.srcAdmin' },
+  walkin:    { icon: '🚶', key: 'cal.srcWalkin' },
+  online:    { icon: '🌐', key: 'cal.srcOnline' },
+  web:       { icon: '🌐', key: 'cal.srcOnline' },
+  mobile:    { icon: '🌐', key: 'cal.srcOnline' },
+};
+function sourceMeta(src?: string | null) { return src ? (SOURCE_META[src] ?? { icon: '🌐', key: 'cal.srcOnline' }) : null; }
+function deviceMeta(dev?: string | null) {
+  if (dev === 'mobile') return { icon: '📱', key: 'cal.devMobile' };
+  if (dev === 'web') return { icon: '💻', key: 'cal.devWeb' };
+  return null;
+}
+
+// Compact origin chip for calendar cards: channel icon (+ device icon) + short label.
+function OriginChip({ b, t }: { b: Appt; t: (k: string) => string }) {
+  const sm = sourceMeta(b.source);
+  const dm = deviceMeta(b.device);
+  if (!sm && !dm) return null;
+  return (
+    <span title={[sm ? t(sm.key) : '', dm ? t(dm.key) : ''].filter(Boolean).join(' · ')}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 10, fontWeight: 700,
+        color: '#93a4bd', background: '#1e293b', border: '1px solid #334155', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+      {sm && <span>{sm.icon}</span>}
+      {sm && <span>{t(sm.key)}</span>}
+      {dm && <span style={{ opacity: 0.85 }}>{dm.icon}</span>}
+    </span>
+  );
+}
+
 // calendar day regardless of the admin device timezone. Grid cells are built at
 // local midnight, so cellKey keys them by their plain calendar Y-M-D to match.
 function dayKeyTz(d: Date, tz?: string): string {

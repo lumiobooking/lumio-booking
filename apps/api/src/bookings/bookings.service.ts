@@ -274,7 +274,7 @@ export class BookingsService {
     return free ? free.id : null;
   }
 
-  async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null, source?: string) {
+  async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null, source?: string, device?: string | null) {
     // Contact rules. Online (public) customer bookings MUST include a phone number
     // — it is the salon's primary way to reach the client and it cuts down on spam
     // bookings. Admin-created bookings only need at least one contact (email OR
@@ -400,6 +400,7 @@ export class BookingsService {
           addons: lineItems as unknown as Prisma.InputJsonValue,
           notes: dto.notes ?? null,
           source: source ?? (actorUserId ? 'admin' : 'online'),
+          device: device ?? null,
           partySize: dto.partySize ?? 1,
           assignedAt: dto.staffId ? new Date() : null,
           responseDeadline: dto.staffId ? addMinutes(new Date(), 30) : null,
@@ -418,7 +419,8 @@ export class BookingsService {
         serviceId: service.id,
         startTime: start.toISOString(),
         staffId: dto.staffId,
-        source: actorUserId ? 'admin' : 'public',
+        source: source ?? (actorUserId ? 'admin' : 'public'),
+        device: device ?? null,
       },
     });
 

@@ -37,6 +37,6 @@ export class PublicController {
   @Post('bookings')
   createBooking(@ApiTenantId() tenantId: string, @Body() dto: CreateBookingDto, @Headers('user-agent') ua?: string) {
     const safeDto: CreateBookingDto = { ...dto, staffId: undefined };
-    return this.bookings.createForTenant(tenantId, safeDto, null, deviceSource(ua));
+    return this.bookings.createForTenant(tenantId, safeDto, null, 'plugin', deviceSource(ua));
   }
 }

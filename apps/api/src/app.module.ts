@@ -15,6 +15,7 @@ import { StaffModule } from './staff/staff.module';
 import { TablesModule } from './tables/tables.module';
 import { StationsModule } from './stations/stations.module';
 import { StatsModule } from './stats/stats.module';
+import { MarketingModule } from './marketing/marketing.module';
 import { EmailCampaignsModule } from './email-campaigns/email-campaigns.module';
 import { MenuModule } from './menu/menu.module';
 import { BookingsModule } from './bookings/bookings.module';
@@ -66,6 +67,7 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     TablesModule,
     StationsModule,
     StatsModule,
+    MarketingModule,
     EmailCampaignsModule,
     MenuModule,
     // Booking foundation (anti double-booking, race-condition safe).

@@ -271,9 +271,9 @@ export class MarketingService {
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
-  private async draftWithAI(data: Awaited<ReturnType<MarketingService['monthlyData']>>, history: any[] = []): Promise<{ content: any; model: string } | null> {
+  private async draftWithAI(data: Awaited<ReturnType<MarketingService['monthlyData']>>, history: any[] = []): Promise<{ content?: any; model?: string; error?: string }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    if (!key) return null;
+    if (!key) return { error: 'ANTHROPIC_API_KEY chưa được đặt trên server' };
     const model = process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001';
 
     const system =
@@ -310,16 +310,16 @@ export class MarketingService {
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model, max_tokens: 1500, system, messages: [{ role: 'user', content: userText }] }),
       });
-      if (!res.ok) { this.logger.warn(`Anthropic ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`); return null; }
+      if (!res.ok) { const body = (await res.text().catch(() => '')).slice(0, 200); this.logger.warn(`Anthropic ${res.status}: ${body}`); return { error: `Anthropic API ${res.status}: ${body}` }; }
       const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
       const text = (json.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join('').trim();
       const start = text.indexOf('{'); const end = text.lastIndexOf('}');
-      if (start < 0 || end < 0) return null;
+      if (start < 0 || end < 0) return { error: 'AI trả về nội dung không đọc được' };
       const content = JSON.parse(text.slice(start, end + 1));
       return { content, model };
     } catch (e) {
       this.logger.warn(`AI draft failed: ${String(e)}`);
-      return null;
+      return { error: String((e as Error).message).slice(0, 200) };
     }
   }
 
@@ -346,13 +346,14 @@ export class MarketingService {
     const data = await this.monthlyData(user, month, tenantParam);
     const history = await this.monthlyHistory(user, month, tenantParam, 4).catch(() => [] as any[]);
     const ai = await this.draftWithAI(data, history);
-    const content = ai?.content ?? { summary: { vi: '', en: '' }, highlights: [], issues: [], plan: [], _aiUnavailable: true };
+    const ok = !!ai.content;
+    const content = ok ? ai.content : { summary: { vi: '', en: '' }, highlights: [], issues: [], plan: [], _aiUnavailable: true, _aiError: ai.error ?? 'unknown' };
     const saved = await this.prisma.marketingReport.upsert({
       where: { tenantId_periodMonth: { tenantId, periodMonth: month } },
-      create: { tenantId, periodMonth: month, status: 'review', content, dataSnapshot: data as any, aiModel: ai?.model ?? null },
-      update: { content, dataSnapshot: data as any, aiModel: ai?.model ?? null, status: 'review' },
+      create: { tenantId, periodMonth: month, status: 'review', content, dataSnapshot: data as any, aiModel: ok ? (ai.model ?? null) : null },
+      update: { content, dataSnapshot: data as any, aiModel: ok ? (ai.model ?? null) : null, status: 'review' },
     });
-    return { ...saved, aiUsed: !!ai };
+    return { ...saved, aiUsed: ok, aiError: ok ? null : ai.error };
   }
 
   async getReport(user: AuthenticatedUser, month: string, tenantParam?: string) {

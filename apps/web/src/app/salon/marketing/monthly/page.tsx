@@ -20,7 +20,7 @@ interface Monthly {
   effectiveness?: 'good' | 'ok' | 'low' | 'organic';
 }
 interface Item { vi: string; en: string }
-interface Content { headline?: Item; summary?: Item; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean }
+interface Content { headline?: Item; summary?: Item; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 
 const CHANNELS = ['facebook', 'instagram', 'tiktok', 'google_ads', 'gbp', 'seo', 'email', 'sms', 'website', 'other'];
@@ -91,9 +91,9 @@ function Inner() {
   async function generate() {
     setBusy('gen'); setMsg(null); setError(null);
     try {
-      const r = await apiFetch<Report & { aiUsed?: boolean }>('/marketing/report/generate', { method: 'POST', token, body: { month } });
+      const r = await apiFetch<Report & { aiUsed?: boolean; aiError?: string | null }>('/marketing/report/generate', { method: 'POST', token, body: { month } });
       setReport(r);
-      setMsg(r.aiUsed ? T('AI đã viết nháp — kiểm tra & duyệt.', 'AI drafted it — review & approve.') : T('Đã tạo khung báo cáo (AI chưa bật) — nhập nhận xét tay.', 'Report shell created (AI off) — fill notes manually.'));
+      setMsg(r.aiUsed ? T('AI đã viết nháp — kiểm tra & duyệt.', 'AI drafted it — review & approve.') : (T('AI không chạy được: ', 'AI could not run: ') + (r.aiError || 'unknown')));
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
   }
   async function saveReport(content: Content) {
@@ -253,7 +253,7 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
         </div>
       </div>
 
-      {report.content._aiUnavailable && <div style={{ ...ui.banner, background: '#422006', borderColor: '#b45309', color: '#fde68a', marginBottom: 12 }}>{T('AI chưa bật (thiếu ANTHROPIC_API_KEY) — nhập nhận xét tay bên dưới.', 'AI is off (no ANTHROPIC_API_KEY) — write the notes manually below.')}</div>}
+      {report.content._aiUnavailable && <div style={{ ...ui.banner, background: '#422006', borderColor: '#b45309', color: '#fde68a', marginBottom: 12 }}>{T('AI không viết được nháp: ', 'AI could not draft: ')}<b>{report.content._aiError || 'unknown'}</b>{T(' — nhập nhận xét tay bên dưới.', ' — write the notes manually below.')}</div>}
 
       <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 8, padding: 10, marginBottom: 12 }}>
         <label style={{ ...lbl, color: '#a5b4fc', fontWeight: 700 }}>{T('★ Điều quan trọng nhất tháng này (khách đọc đầu tiên)', '★ The one most important message (client reads first)')}</label>

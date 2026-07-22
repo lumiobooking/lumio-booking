@@ -76,13 +76,21 @@ export class ServicesController {
     return this.servicesService.fillSampleImages(user, !!dto?.overwrite);
   }
 
-  /** Bulk import a whole menu (categories + services) in one call. */
+  /**
+   * Bulk import a whole menu (categories + services) in one call.
+   *
+   * A SALON_ADMIN imports into their own salon. A SUPER_ADMIN (platform support)
+   * may target any salon by passing `tenantId` in the body — the service layer
+   * validates it via resolveTenantScope, so a salon admin still cannot reach
+   * another tenant even if they send one.
+   */
   @Post('import')
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   bulkImport(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }> },
+    @Body() dto: { tenantId?: string; items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }> },
   ) {
-    return this.servicesService.bulkImport(user, dto?.items ?? []);
+    return this.servicesService.bulkImport(user, dto?.items ?? [], dto?.tenantId);
   }
 
   @Patch(':id')

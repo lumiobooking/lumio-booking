@@ -292,8 +292,12 @@ export class ServicesService {
   async bulkImport(
     user: AuthenticatedUser,
     items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }>,
+    targetTenantId?: string,
   ) {
-    const tenantId = this.tenantId(user);
+    // Super admin may aim at any salon; a salon admin is pinned to their own by
+    // resolveTenantScope (a mismatched tenantId throws rather than leaking).
+    const tenantId = resolveTenantScope(user, targetTenantId);
+    if (!tenantId) throw new BadRequestException('A target salon is required');
     if (!Array.isArray(items) || items.length === 0) throw new BadRequestException('Nothing to import');
     if (items.length > 500) throw new BadRequestException('Too many rows (max 500)');
 

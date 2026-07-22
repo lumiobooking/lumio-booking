@@ -209,6 +209,18 @@ export class OverviewService {
       guard += 1;
     }
 
+    // --- Demand shape: bookings by hour-of-day (0-23) and by weekday (0=Sun).
+    // Uses the same clock as the series above; lets a salon see peak hours for
+    // staffing and quiet slots worth a promotion. Only real demand counts, so
+    // cancelled/no-show still count (the customer DID want that slot). ---
+    const byHour = Array.from({ length: 24 }, () => 0);
+    const byWeekday = Array.from({ length: 7 }, () => 0);
+    for (const a of appts) {
+      const d = new Date(a.startTime);
+      byHour[d.getHours()] += 1;
+      byWeekday[d.getDay()] += 1;
+    }
+
     // --- Staff revenue: bookings handled + revenue earned, for EVERY active
     // technician (seeded at zero so no one is hidden — full, fair transparency). ---
     const staffName = (s: { firstName: string; lastName: string | null } | null) =>
@@ -281,6 +293,8 @@ export class OverviewService {
       },
       statusBreakdown,
       paymentMethods,
+      byHour,
+      byWeekday,
       series,
       topStaff,
       topServices,

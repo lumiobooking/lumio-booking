@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -76,6 +77,12 @@ function Inner() {
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('pm.title')}</h1>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
         {visible.length} {t('pm.paymentsWord')} · {formatPrice(totalPaid)} {t('pm.collected')}
+      </p>
+      {/* This page is HISTORY only — connecting card readers lives elsewhere and
+          salon owners kept looking for it here, so point the way explicitly. */}
+      <p style={{ color: '#64748b', fontSize: 12.5, marginTop: 4 }}>
+        {lang === 'vi' ? 'Trang này chỉ là lịch sử thanh toán. Kết nối máy cà thẻ (Square, Dejavoo…) ở mục ' : 'This page is payment history only. Connect card readers (Square, Dejavoo…) under '}
+        <Link href="/salon/payment-terminals" style={{ color: '#a5b4fc' }}>Card terminals →</Link>
       </p>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>

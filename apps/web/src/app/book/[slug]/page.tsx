@@ -1629,7 +1629,7 @@ function Logo({ url, size, scale }: { url?: string | null; size: number; scale?:
     return (
       <span style={{ width: size, height: size, borderRadius: 10, background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(15,42,82,0.18)' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={clean} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: zoom > 1 ? 0 : 3, transform: `scale(${zoom})`, transformOrigin: 'center' }} />
+        <img src={clean} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom})`, transformOrigin: 'center' }} />
       </span>
     );
   }

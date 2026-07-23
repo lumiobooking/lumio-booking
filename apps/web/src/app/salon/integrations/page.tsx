@@ -321,6 +321,17 @@ function Inner() {
           ? 'Vì sao chỉ một? GTM thường đã chứa Google Tag (GA4) bên trong — nếu nạp thêm GA4 trực tiếp, mỗi lượt xem và mỗi đặt lịch sẽ bị đếm 2 lần. Hệ thống chỉ nạp đúng một phương thức và bắn đúng một sự kiện booking_completed cho mỗi đơn.'
           : 'Why only one? A GTM container usually already includes the Google Tag (GA4) — loading GA4 directly as well would double-count every pageview and booking. The system loads exactly one method and fires exactly one booking_completed per order.'}
       </p>
+      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', marginTop: 12, maxWidth: 640 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>{lang === 'vi' ? '⚡ Tiệm mới? Import mẫu GTM dựng sẵn (2 phút)' : '⚡ New salon? Import the ready-made GTM template (2 min)'}</div>
+        <div style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>
+          {lang === 'vi'
+            ? 'Tải file mẫu → GTM Admin → Import Container → chọn file → Merge → sửa MỘT biến "CONST - GA4 Measurement ID" thành G-ID của tiệm → Publish. Có sẵn: Google Tag nền, purchase (booking) và click_call — khỏi tạo tay từng biến/trigger/tag.'
+            : 'Download → GTM Admin → Import Container → choose file → Merge → edit ONE variable "CONST - GA4 Measurement ID" to the salon\'s G-ID → Publish. Includes the base Google Tag, purchase (booking) and click_call — no manual variables/triggers/tags.'}
+        </div>
+        <a href={`${WEB_BASE}/downloads/lumio-gtm-container.json`} download style={{ ...ui.primaryBtn, display: 'inline-block', textDecoration: 'none', marginTop: 8, fontSize: 13 }}>
+          {lang === 'vi' ? '⬇ Tải mẫu GTM container' : '⬇ Download GTM container template'}
+        </a>
+      </div>
       {anMsg && <div style={{ color: '#34d399', fontSize: 13, marginTop: 8 }}>{anMsg}</div>}
       <button onClick={saveAnalytics} disabled={savingAn} style={{ ...ui.primaryBtn, marginTop: 12 }}>
         {savingAn ? '…' : (lang === 'vi' ? 'Lưu Analytics' : 'Save analytics')}

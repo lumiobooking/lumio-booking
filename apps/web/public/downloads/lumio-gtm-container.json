@@ -1,0 +1,158 @@
+{
+  "exportFormatVersion": 2,
+  "exportTime": "2026-07-23 12:00:00",
+  "containerVersion": {
+    "path": "accounts/0/containers/0/versions/0",
+    "container": {
+      "path": "accounts/0/containers/0",
+      "publicId": "GTM-LUMIO",
+      "name": "Lumio Booking - conversion template",
+      "usageContext": ["WEB"]
+    },
+    "builtInVariable": [
+      { "type": "CLICK_URL", "name": "Click URL" },
+      { "type": "CLICK_TEXT", "name": "Click Text" },
+      { "type": "PAGE_URL", "name": "Page URL" }
+    ],
+    "variable": [
+      {
+        "variableId": "1",
+        "name": "CONST - GA4 Measurement ID",
+        "type": "c",
+        "parameter": [ { "type": "TEMPLATE", "key": "value", "value": "G-XXXXXXXXXX" } ]
+      },
+      {
+        "variableId": "2",
+        "name": "DLV - transaction_id",
+        "type": "v",
+        "parameter": [
+          { "type": "INTEGER", "key": "dataLayerVersion", "value": "2" },
+          { "type": "TEMPLATE", "key": "name", "value": "transaction_id" }
+        ]
+      },
+      {
+        "variableId": "3",
+        "name": "DLV - value",
+        "type": "v",
+        "parameter": [
+          { "type": "INTEGER", "key": "dataLayerVersion", "value": "2" },
+          { "type": "TEMPLATE", "key": "name", "value": "value" }
+        ]
+      },
+      {
+        "variableId": "4",
+        "name": "DLV - currency",
+        "type": "v",
+        "parameter": [
+          { "type": "INTEGER", "key": "dataLayerVersion", "value": "2" },
+          { "type": "TEMPLATE", "key": "name", "value": "currency" }
+        ]
+      },
+      {
+        "variableId": "5",
+        "name": "DLV - items",
+        "type": "v",
+        "parameter": [
+          { "type": "INTEGER", "key": "dataLayerVersion", "value": "2" },
+          { "type": "TEMPLATE", "key": "name", "value": "items" }
+        ]
+      }
+    ],
+    "trigger": [
+      {
+        "triggerId": "10",
+        "name": "CE - booking_completed",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              { "type": "TEMPLATE", "key": "arg0", "value": "{{_event}}" },
+              { "type": "TEMPLATE", "key": "arg1", "value": "booking_completed" }
+            ]
+          }
+        ]
+      },
+      {
+        "triggerId": "11",
+        "name": "Click - Phone Link",
+        "type": "LINK_CLICK",
+        "filter": [
+          {
+            "type": "STARTS_WITH",
+            "parameter": [
+              { "type": "TEMPLATE", "key": "arg0", "value": "{{Click URL}}" },
+              { "type": "TEMPLATE", "key": "arg1", "value": "tel:" }
+            ]
+          }
+        ],
+        "waitForTags": { "type": "BOOLEAN", "value": "false" },
+        "checkValidation": { "type": "BOOLEAN", "value": "false" }
+      }
+    ],
+    "tag": [
+      {
+        "tagId": "20",
+        "name": "Google Tag - GA4",
+        "type": "googtag",
+        "parameter": [
+          { "type": "TEMPLATE", "key": "tagId", "value": "{{CONST - GA4 Measurement ID}}" }
+        ],
+        "firingTriggerId": ["2147479553"]
+      },
+      {
+        "tagId": "21",
+        "name": "GA4 Event - purchase - Lumio Booking",
+        "type": "gaawe",
+        "parameter": [
+          { "type": "TEMPLATE", "key": "eventName", "value": "purchase" },
+          { "type": "TEMPLATE", "key": "measurementIdOverride", "value": "{{CONST - GA4 Measurement ID}}" },
+          {
+            "type": "LIST",
+            "key": "eventParameters",
+            "list": [
+              { "type": "MAP", "map": [
+                { "type": "TEMPLATE", "key": "name", "value": "transaction_id" },
+                { "type": "TEMPLATE", "key": "value", "value": "{{DLV - transaction_id}}" } ] },
+              { "type": "MAP", "map": [
+                { "type": "TEMPLATE", "key": "name", "value": "value" },
+                { "type": "TEMPLATE", "key": "value", "value": "{{DLV - value}}" } ] },
+              { "type": "MAP", "map": [
+                { "type": "TEMPLATE", "key": "name", "value": "currency" },
+                { "type": "TEMPLATE", "key": "value", "value": "{{DLV - currency}}" } ] },
+              { "type": "MAP", "map": [
+                { "type": "TEMPLATE", "key": "name", "value": "items" },
+                { "type": "TEMPLATE", "key": "value", "value": "{{DLV - items}}" } ] }
+            ]
+          }
+        ],
+        "firingTriggerId": ["10"]
+      },
+      {
+        "tagId": "22",
+        "name": "GA4 Event - click_call",
+        "type": "gaawe",
+        "parameter": [
+          { "type": "TEMPLATE", "key": "eventName", "value": "click_call" },
+          { "type": "TEMPLATE", "key": "measurementIdOverride", "value": "{{CONST - GA4 Measurement ID}}" },
+          {
+            "type": "LIST",
+            "key": "eventParameters",
+            "list": [
+              { "type": "MAP", "map": [
+                { "type": "TEMPLATE", "key": "name", "value": "link_url" },
+                { "type": "TEMPLATE", "key": "value", "value": "{{Click URL}}" } ] },
+              { "type": "MAP", "map": [
+                { "type": "TEMPLATE", "key": "name", "value": "link_text" },
+                { "type": "TEMPLATE", "key": "value", "value": "{{Click Text}}" } ] },
+              { "type": "MAP", "map": [
+                { "type": "TEMPLATE", "key": "name", "value": "contact_method" },
+                { "type": "TEMPLATE", "key": "value", "value": "phone" } ] }
+            ]
+          }
+        ],
+        "firingTriggerId": ["11"]
+      }
+    ]
+  }
+}

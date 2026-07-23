@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.7.1
+ * Version:           1.7.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -381,6 +381,52 @@ if (!function_exists('lumio_booking_base')) {
         }
         return $update;
     }, 10, 2);
+
+    /* ---- Instant updates ---------------------------------------------------
+     * WordPress only polls for plugin updates twice a day, so a fresh Lumio
+     * build could sit unseen for hours. Two accelerators fix that:
+     *   1. Opening Plugins (or Dashboard->Updates) re-reads the manifest; when
+     *      a newer build exists the cached update list is rebuilt on the spot,
+     *      so the "update now" row shows immediately.
+     *   2. An hourly cron runs the same check and then kicks the automatic
+     *      updater, so every site self-installs within the hour, zero clicks.
+     * The heavy path (rebuilding the update list) only runs when a newer build
+     * actually exists — normal visits cost one 8s-timeout GET to a static JSON.
+     */
+    function lumio_booking_refresh_updates($install_now)
+    {
+        delete_transient('lumio_booking_manifest');
+        $m = lumio_booking_remote_manifest();
+        if (empty($m['version'])) {
+            return;
+        }
+        if (!function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $data = get_plugin_data(__FILE__, false, false);
+        $cur = isset($data['Version']) ? $data['Version'] : '0';
+        if (version_compare($m['version'], $cur, '<=')) {
+            return; // already newest — nothing to rebuild
+        }
+        delete_site_transient('update_plugins');
+        wp_update_plugins();
+        if ($install_now && function_exists('wp_maybe_auto_update')) {
+            wp_maybe_auto_update();
+        }
+    }
+
+    add_action('load-plugins.php', function () { lumio_booking_refresh_updates(false); });
+    add_action('load-update-core.php', function () { lumio_booking_refresh_updates(false); });
+
+    add_action('lumio_booking_hourly_update', function () { lumio_booking_refresh_updates(true); });
+    add_action('init', function () {
+        if (!wp_next_scheduled('lumio_booking_hourly_update')) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', 'lumio_booking_hourly_update');
+        }
+    });
+    register_deactivation_hook(__FILE__, function () {
+        wp_clear_scheduled_hook('lumio_booking_hourly_update');
+    });
 
     add_shortcode('lumio_booking', 'lumio_booking_shortcode');
 }

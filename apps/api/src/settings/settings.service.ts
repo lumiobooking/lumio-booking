@@ -186,14 +186,16 @@ export class SettingsService {
 
   /** Save the salon's GA4 / GTM IDs. Both are public front-end IDs (not secrets);
    *  we still validate the shape so a typo can't inject arbitrary script. */
-  async updateAnalytics(user: AuthenticatedUser, dto: { ga4Id?: string; gtmId?: string }) {
+  async updateAnalytics(user: AuthenticatedUser, dto: { ga4Id?: string; gtmId?: string; mode?: string }) {
     const tenantId = this.tenantId(user);
     const cur = await this.getAnalyticsSettings(tenantId);
     const ga = typeof dto.ga4Id === 'string' ? dto.ga4Id.trim().toUpperCase() : cur.ga4Id;
     const gtm = typeof dto.gtmId === 'string' ? dto.gtmId.trim().toUpperCase() : cur.gtmId;
+    const mode = typeof dto.mode === 'string' && ['', 'none', 'ga4', 'gtm'].includes(dto.mode) ? (dto.mode as AnalyticsSettings['mode']) : (cur.mode ?? '');
     const next: AnalyticsSettings = {
       ga4Id: ga === '' || /^G-[A-Z0-9]{4,20}$/.test(ga) ? ga : cur.ga4Id,
       gtmId: gtm === '' || /^GTM-[A-Z0-9]{4,12}$/.test(gtm) ? gtm : cur.gtmId,
+      mode,
     };
     await this.writeKey(tenantId, ANALYTICS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.analytics_updated', resourceType: 'tenant', resourceId: tenantId });

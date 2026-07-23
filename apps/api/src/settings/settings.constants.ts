@@ -128,8 +128,11 @@ export const DEFAULT_REBOOKING_SETTINGS: RebookingSettings = { enabled: false, d
 
 /** Per-tenant web analytics — a GA4 Measurement ID and/or a GTM container, injected
  *  ONLY on this salon's booking page so each shop measures in its own property. */
-export interface AnalyticsSettings { ga4Id: string; gtmId: string }
-export const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = { ga4Id: '', gtmId: '' };
+/** mode: which ONE tracking method runs on the booking page.
+ *  '' (legacy/auto) = prefer GTM when set, else GA4 — never both, so a GTM
+ *  container that already includes the Google Tag can never double-count. */
+export interface AnalyticsSettings { ga4Id: string; gtmId: string; mode: '' | 'none' | 'ga4' | 'gtm' }
+export const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = { ga4Id: '', gtmId: '', mode: '' };
 
 // Review-reward program: customer rates on our page, then is invited to Google.
 export interface ReviewSettings {

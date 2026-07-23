@@ -25,7 +25,7 @@ interface Seo {
   priceFromCents: number | null;
   hours: { day: number; closed: boolean; open: string; close: string }[];
   rating: { value: number; count: number } | null;
-  analytics?: { ga4Id?: string; gtmId?: string } | null;
+  analytics?: { ga4Id?: string; gtmId?: string; mode?: string } | null;
 }
 
 async function getSeo(slug: string): Promise<Seo | null> {
@@ -108,8 +108,18 @@ export default async function BookSlugLayout({ children, params }: { children: R
   const s = await getSeo(params.slug);
   const jsonLd = s ? buildJsonLd(s) : null;
   // Validate the shape before it ever reaches the page — belt & suspenders XSS guard.
-  const ga4Id = /^G-[A-Z0-9]{4,20}$/i.test(s?.analytics?.ga4Id ?? '') ? s!.analytics!.ga4Id! : '';
-  const gtmId = /^GTM-[A-Z0-9]{4,12}$/i.test(s?.analytics?.gtmId ?? '') ? s!.analytics!.gtmId! : '';
+  const ga4IdRaw = /^G-[A-Z0-9]{4,20}$/i.test(s?.analytics?.ga4Id ?? '') ? s!.analytics!.ga4Id! : '';
+  const gtmIdRaw = /^GTM-[A-Z0-9]{4,12}$/i.test(s?.analytics?.gtmId ?? '') ? s!.analytics!.gtmId! : '';
+  // Exactly ONE tracking method per salon. Explicit mode wins; the legacy
+  // '' (auto) prefers GTM when present — a GTM container usually already
+  // includes the Google Tag, so loading GA4 alongside would double-count.
+  const mode = s?.analytics?.mode ?? '';
+  const effective = mode === 'none' ? 'none'
+    : mode === 'ga4' ? (ga4IdRaw ? 'ga4' : 'none')
+    : mode === 'gtm' ? (gtmIdRaw ? 'gtm' : 'none')
+    : gtmIdRaw ? 'gtm' : ga4IdRaw ? 'ga4' : 'none';
+  const ga4Id = effective === 'ga4' ? ga4IdRaw : '';
+  const gtmId = effective === 'gtm' ? gtmIdRaw : '';
   return (
     <>
       {/* The booking page is the only thing a customer ever sees of the salon —

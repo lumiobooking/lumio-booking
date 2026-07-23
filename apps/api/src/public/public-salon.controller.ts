@@ -98,7 +98,7 @@ export class PublicSalonController {
       weekdayDiscounts,
       dateDiscounts,
       deposit,
-      analytics: await this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '' })),
+      analytics: await this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '', mode: '' as const })),
       rating,
     };
   }

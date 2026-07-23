@@ -39,6 +39,7 @@ function Inner() {
   const [creating, setCreating] = useState(false);
   const [ga4Id, setGa4Id] = useState('');
   const [gtmId, setGtmId] = useState('');
+  const [anMode, setAnMode] = useState('');
   const [savingAn, setSavingAn] = useState(false);
   const [anMsg, setAnMsg] = useState<string | null>(null);
 
@@ -50,12 +51,13 @@ function Inner() {
       const [keyList, tenant, settings] = await Promise.all([
         apiFetch<ApiKey[]>('/api-keys', { token }),
         apiFetch<{ slug: string }>('/me/tenant', { token }),
-        apiFetch<{ analytics?: { ga4Id?: string; gtmId?: string } }>('/settings', { token }).catch(() => null),
+        apiFetch<{ analytics?: { ga4Id?: string; gtmId?: string; mode?: string } }>('/settings', { token }).catch(() => null),
       ]);
       setKeys(keyList);
       setSlug(tenant?.slug ?? null);
       setGa4Id(settings?.analytics?.ga4Id ?? '');
       setGtmId(settings?.analytics?.gtmId ?? '');
+      setAnMode(settings?.analytics?.mode ?? '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load integrations');
     } finally {
@@ -75,7 +77,7 @@ function Inner() {
   async function saveAnalytics() {
     setSavingAn(true); setAnMsg(null); setError(null);
     try {
-      await apiFetch('/settings/analytics', { method: 'PATCH', token, body: { ga4Id: ga4Id.trim(), gtmId: gtmId.trim() } });
+      await apiFetch('/settings/analytics', { method: 'PATCH', token, body: { ga4Id: ga4Id.trim(), gtmId: gtmId.trim(), mode: anMode } });
       setAnMsg(lang === 'vi' ? '✓ Đã lưu. Trang đặt lịch của tiệm sẽ nạp GA4/GTM này.' : '✓ Saved. Your booking page now loads this GA4/GTM.');
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save analytics'); }
     finally { setSavingAn(false); }
@@ -296,7 +298,20 @@ function Inner() {
         <label style={{ fontSize: 13, color: '#cbd5e1' }}>GTM Container ID
           <input style={{ ...ui.input, marginTop: 4 }} value={gtmId} onChange={(e) => setGtmId(e.target.value)} placeholder="GTM-XXXXXXX" />
         </label>
+        <label style={{ fontSize: 13, color: '#cbd5e1' }}>{lang === 'vi' ? 'Phương thức đo (chỉ MỘT chạy)' : 'Tracking method (only ONE runs)'}
+          <select style={{ ...ui.input, marginTop: 4 }} value={anMode} onChange={(e) => setAnMode(e.target.value)}>
+            <option value="">{lang === 'vi' ? 'Tự động — ưu tiên GTM, không có thì GA4' : 'Auto — GTM if set, else GA4'}</option>
+            <option value="gtm">{lang === 'vi' ? 'Chỉ GTM (container tự chứa Google Tag)' : 'GTM only (container holds the Google Tag)'}</option>
+            <option value="ga4">{lang === 'vi' ? 'Chỉ GA4 trực tiếp' : 'GA4 direct only'}</option>
+            <option value="none">{lang === 'vi' ? 'Tắt đo lường' : 'Tracking off'}</option>
+          </select>
+        </label>
       </div>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0', maxWidth: 640, lineHeight: 1.5 }}>
+        {lang === 'vi'
+          ? 'Vì sao chỉ một? GTM thường đã chứa Google Tag (GA4) bên trong — nếu nạp thêm GA4 trực tiếp, mỗi lượt xem và mỗi đặt lịch sẽ bị đếm 2 lần. Hệ thống chỉ nạp đúng một phương thức và bắn đúng một sự kiện booking_completed cho mỗi đơn.'
+          : 'Why only one? A GTM container usually already includes the Google Tag (GA4) — loading GA4 directly as well would double-count every pageview and booking. The system loads exactly one method and fires exactly one booking_completed per order.'}
+      </p>
       {anMsg && <div style={{ color: '#34d399', fontSize: 13, marginTop: 8 }}>{anMsg}</div>}
       <button onClick={saveAnalytics} disabled={savingAn} style={{ ...ui.primaryBtn, marginTop: 12 }}>
         {savingAn ? '…' : (lang === 'vi' ? 'Lưu Analytics' : 'Save analytics')}

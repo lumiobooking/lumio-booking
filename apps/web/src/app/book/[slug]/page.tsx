@@ -179,21 +179,32 @@ function wallTimeToISO(local: Date, timeZone: string): string {
 }
 
 /**
- * Fire the one conversion the salon's ads care about. It lands in three places so any
- * setup works: GTM (dataLayer 'booking_completed'), GA4 direct ('purchase'), and a
- * postMessage to the parent site so an embedded form can be measured in the shop's own
- * domain/session. transaction_id = booking id, so GA4 de-duplicates repeat fires.
+ * Fire the ONE conversion the salon's ads care about — exactly once per booking,
+ * through exactly one pipe. The layout loads a single tracking method per salon
+ * (GTM or GA4, never both), and this mirrors that at event level:
+ *   GTM present  -> dataLayer 'booking_completed' only (the container maps it);
+ *   GA4 present  -> gtag 'purchase' only;
+ *   neither      -> nothing locally.
+ * A postMessage always goes to the parent page so an EMBEDDED form can be
+ * measured in the salon website's own tag setup/session. No customer PII is
+ * ever included — only booking id, value, currency and service names.
  */
+const firedBookings = new Set<string>();
 function fireConversion(data: { id: string; valueCents: number; currency: string; items: { name: string; priceCents: number }[] }) {
   if (typeof window === 'undefined') return;
+  if (firedBookings.has(data.id)) return; // idempotent: never double-fire one booking
+  firedBookings.add(data.id);
   const value = Math.round(data.valueCents) / 100;
   const items = data.items.map((it) => ({ item_name: it.name, price: Math.round(it.priceCents) / 100, quantity: 1 }));
   const payload = { transaction_id: data.id, value, currency: data.currency || 'USD', items };
   try {
-    const w = window as unknown as { dataLayer?: Record<string, unknown>[]; gtag?: (...a: unknown[]) => void };
-    w.dataLayer = w.dataLayer || [];
-    w.dataLayer.push({ event: 'booking_completed', ...payload });
-    if (typeof w.gtag === 'function') w.gtag('event', 'purchase', payload);
+    const w = window as unknown as { dataLayer?: Record<string, unknown>[]; gtag?: (...a: unknown[]) => void; google_tag_manager?: unknown };
+    if (w.google_tag_manager) {
+      w.dataLayer = w.dataLayer || [];
+      w.dataLayer.push({ event: 'booking_completed', ...payload });
+    } else if (typeof w.gtag === 'function') {
+      w.gtag('event', 'purchase', payload);
+    }
   } catch { /* ignore */ }
   try { window.parent.postMessage({ type: 'lumio:booking_completed', ...payload }, '*'); } catch { /* ignore */ }
 }

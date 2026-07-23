@@ -458,8 +458,17 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             {t('se.pay.primaryCardDesc')}
           </p>
           <PrimaryCardChannel data={data} onSave={onSave} />
-          <CardSurcharge data={data} onSave={onSave} />
         </div>
+      </Panel>
+
+      <Panel
+        title={lang === 'vi' ? 'Phụ phí thẻ (giá Cash / Card)' : 'Card surcharge (Cash / Card)'}
+        badge={data.pos?.cardSurchargeEnabled && (data.pos?.cardSurchargePercent ?? 0) > 0
+          ? { text: (lang === 'vi' ? 'Bật ' : 'On ') + (data.pos?.cardSurchargePercent ?? 0) + '%', color: '#22c55e' }
+          : { text: lang === 'vi' ? 'Tắt' : 'Off', color: '#64748b' }}
+        hint={lang === 'vi' ? 'Tự cộng % khi khách trả bằng thẻ' : 'Auto-adds % when the customer pays by card'}
+      >
+        <CardSurcharge data={data} onSave={onSave} />
       </Panel>
 
       <Panel
@@ -494,7 +503,7 @@ function CardSurcharge({ data, onSave }: { data: SettingsData; onSave: SaveFn })
   const [on, setOn] = useState(!!data.pos?.cardSurchargeEnabled);
   const [pct, setPct] = useState(String(data.pos?.cardSurchargePercent ?? 3));
   return (
-    <div style={{ marginTop: 18, borderTop: '1px solid #1e293b', paddingTop: 16 }}>
+    <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <label style={{ position: 'relative', display: 'inline-block', width: 42, height: 24, flexShrink: 0 }}>
           <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />

@@ -1,105 +1,149 @@
-# LUMIO BOOKING — ĐO LƯỜNG CHUYỂN ĐỔI GA4 / GTM / GOOGLE ADS (v2 — 07/2026)
+# LUMIO BOOKING — QUY TRÌNH LƯU CHUYỂN ĐỔI & LỆNH TRIỂN KHAI GA4 CHI TIẾT TỪNG HÀNH ĐỘNG
+(Bản v3 — 07/2026. Dán NGUYÊN file này cho ChatGPT. Một file duy nhất, đọc từ trên xuống.)
 
-> Tài liệu bàn giao duy nhất. Áp dụng cho plugin ≥ 1.7.3. Multi-tenant: mỗi salon
-> một GA4/GTM/Ads riêng, không dùng chung, không hard-code salon nào.
+---
 
-## 1. KIẾN TRÚC & CƠ CHẾ (đã triển khai trong code)
+## PHẦN 0 — LỆNH CHO CHATGPT
 
-- Cài đặt per-salon (Integrations): `GA4 Measurement ID`, `GTM Container ID`,
-  `analytics_mode` = auto | gtm | ga4 | none (auto ưu tiên GTM). **Chỉ một
-  phương thức được nạp** trong một document; đổi salon trong SPA → hard reload.
-- **Consent Mode v2**: default (analytics_storage, ad_storage, ad_user_data,
-  ad_personalization = granted — thị trường US/CA) chạy TRƯỚC mọi tag; cập nhật
-  qua `window.lumioConsentUpdate({...})`. Salon EU cần CMP gọi hàm này.
-- **Sự kiện duy nhất / booking**: chỉ phát SAU khi backend xác nhận tạo booking.
-  `transaction_id` = booking id backend (không rỗng); `value` = số backend trả
-  (fallback client); `currency` ISO hoa; `items[]` = {item_id?, item_name,
-  price, quantity}. Không PII. Idempotent trong app theo booking id (double
-  click / retry / StrictMode / reload / Back-Forward đều không bắn lần 2 — event
-  gắn vào response API, không gắn vào màn hình "Booking received").
-- **Hosted (top window)**: mode gtm → `dataLayer.push({event:"booking_completed",...})`;
-  mode ga4 → `gtag("event","purchase",{...})`; none → im lặng.
-- **Iframe (nhúng website)**: im lặng tuyệt đối (không tag, không event). Chỉ
-  `postMessage` lên ĐÚNG origin website cha (từ tham số `po` plugin gắn; không
-  bao giờ dùng "*") với `{type:"lumio:booking_completed", schema_version:1,
-  salon_slug, transaction_id, value, currency, items}`.
-- **Plugin (≥1.7.3) xác thực message**: đúng origin Lumio, schema_version=1,
-  salon_slug khớp cấu hình site, transaction_id không rỗng, sender phải là
-  iframe do chính trang đó sở hữu trỏ về origin Lumio; chặn trùng theo
-  transaction_id. Sau đó gửi theo **Conversion delivery** (Settings plugin):
-  `gtm` (khuyên dùng — push dataLayer, GTM chưa tải vẫn xếp hàng) | `ga4` |
-  `none` | `auto` (site cũ).
-- **Attribution 30 ngày**: plugin lưu first-touch + last-touch (utm_source/
-  medium/campaign/content/term, gclid, gbraid, wbraid, landing_url, referrer,
-  captured_at) trong localStorage, tự gắn vào iframe → lưu snapshot vào booking
-  (DB). Khách đi nhiều trang rồi mới đặt vẫn giữ nguồn.
-- **Phân loại nguồn (server, first-party)**: `booking_surface` = hosted |
-  website_embed; `acquisition_source` = google_ads (có click id) →
-  google_maps_organic (utm_campaign=gbp_booking; 2 format link cũ vẫn nhận) →
-  website (form nhúng) → referral → direct → unknown.
+Bạn là kỹ thuật viên GA4/GTM/Google Ads. Hệ thống Lumio Booking ĐÃ TỰ PHÁT đầy đủ
+sự kiện như mô tả ở Phần 1-2 — TUYỆT ĐỐI không bảo tôi thêm code, thêm script,
+sửa event, hay gắn tag vào trang đặt lịch. Việc của bạn CHỈ là hướng dẫn tôi
+CẤU HÌNH trên giao diện GA4 / GTM / Google Ads / Google Business Profile theo
+Phần 3, đúng thứ tự, từng bước bấm ở đâu. Trước khi bắt đầu, hỏi tôi 5 giá trị:
+(1) tên salon + slug, (2) domain website salon, (3) GA4 Measurement ID (nếu có),
+(4) GTM Container ID (nếu có), (5) salon có chạy Google Ads không. Sau đó dẫn tôi
+đi từng bước, mỗi bước chờ tôi xác nhận xong mới sang bước kế. Kết thúc bằng
+phần kiểm thử ở Phần 4.
 
-## 2. LINK CHUẨN
+---
 
-- **Google Business Profile — LINK NGẮN** (Integrations có nút Copy):
-  `https://lumiobooking.com/{slug}/gbp`
-  Route /gbp render đúng form đặt lịch thường; trước khi GA4/GTM gửi page_view,
+## PHẦN 1 — HỆ THỐNG (những gì ĐÃ chạy sẵn, không cần làm lại)
+
+Multi-tenant: mỗi salon có trang đặt lịch `https://lumiobooking.com/{slug}`,
+website WordPress riêng (form nhúng iframe qua plugin Lumio ≥1.7.3), GA4/GTM/Ads
+riêng. Trong Lumio → Integrations, salon dán GA4 ID + GTM ID + chọn
+`analytics_mode` (auto | gtm | ga4 | none) — trang đặt lịch CHỈ nạp MỘT phương
+thức, không bao giờ nạp cả hai. Consent Mode v2 default chạy trước tag.
+
+Ba đường vào form:
+- **A. Hosted trực tiếp**: `lumiobooking.com/{slug}` (ads trỏ thẳng, bio link).
+- **B. Link Google Maps NGẮN**: `lumiobooking.com/{slug}/gbp` — cùng form,
   hệ thống tự gắn campaign google/organic/gbp_booking/booking_button vào URL
-  (history.replaceState chạy trước mọi tag) → session + booking đều mang nguồn
-  Google Maps, purchase phát đúng 1 lần. Link thường /{slug} KHÔNG bị gắn nguồn.
-  KHÔNG dán link trần. **KHÔNG dùng link /gbp làm Google Ads Final URL.**
-- **Google Ads**: Final URL riêng (website salon hoặc link đặt lịch KHÔNG kèm
-  utm GBP), bật auto-tagging — hệ thống giữ nguyên gclid/gbraid/wbraid.
+  TRƯỚC khi page_view được gửi.
+- **C. Nhúng iframe trên website salon**: iframe IM LẶNG (không tag, không
+  event); khi đặt xong chỉ postMessage (đã xác thực origin + slug +
+  schema_version) lên website; plugin đẩy vào GTM/GA4 CỦA WEBSITE theo cài đặt
+  "Conversion delivery" (gtm | ga4 | none | auto).
 
-## 3. SETUP PHÍA GOOGLE (làm tay, mỗi salon một lần)
+Chống trùng: mỗi booking chỉ phát 1 event (idempotent theo booking id ở cả form
+lẫn plugin; double click / retry / reload / Back-Forward không phát lại). Không
+PII. Attribution 30 ngày (utm×5 + gclid/gbraid/wbraid + landing + referrer) được
+plugin lưu và gắn vào booking trong database — độc lập với GA4.
 
-GA4: property CỦA SALON (chung với website) → Data stream → Configure your
-domains: thêm domain salon + lumiobooking.com → List unwanted referrals: thêm
-lumiobooking.com → Events: đánh dấu `purchase` là Key event. Trong dashboard gọi
-`value` là **"Booked Value / Giá trị lịch đã đặt"** (chưa chắc đã thu tiền —
-khách có thể trả tại tiệm). Không tạo thêm conversion Primary khác cho cùng booking.
+---
 
-GTM (khi salon dùng GTM): 4 Data Layer Variables (Version 2): `transaction_id`,
-`value`, `currency`, `items` → Trigger Custom Event `booking_completed` → Tag
-GA4 Event tên `purchase`, map 4 tham số. Payload là KEY PHẲNG — **không bật
-"Send Ecommerce Data"**, không tự chuyển sang cấu trúc `ecommerce`.
+## PHẦN 2 — TỪNG HÀNH ĐỘNG HỆ THỐNG PHÁT RA (đặc tả để đối chiếu, không phải việc cần làm)
 
-Google Ads: link GA4 ↔ đúng account Ads của salon → Import GA4 `purchase` →
-**Primary, Count = Every**. Website call conversion: dùng Google forwarding
-number + minimum call duration (GA4 `click_call` chỉ là CLICK — để Secondary).
-Maps Directions / Maps Calls: đọc từ GBP Performance + Ads Local Actions — 
-KHÔNG tạo event `click_directions` trên website. Kết nối GBP ↔ Ads bằng
-Location Assets. Không import 2 Primary từ cùng một booking.
-
-## 4. NĂM MỤC TIÊU ĐO — NGUỒN SỐ
-
-| Mục tiêu | Đo bằng |
+### Hành động 1: Khách mở trang đặt lịch
+| Ngữ cảnh | Điều gì xảy ra |
 |---|---|
-| Booking trên website | iframe → postMessage (xác thực) → GTM/GA4 site → `purchase` |
-| Booking từ Google Maps | link GBP `gbp_booking` → hosted đo trực tiếp + DB đích danh |
-| Call trên website | GA4 `click_call` (click `tel:`) = Secondary; cuộc gọi thật = Ads forwarding number |
-| Chỉ đường Google Maps | GBP Performance / Ads Local Actions (không event trên web) |
-| Call trên Google Maps | GBP Performance / Ads Local Actions (không event trên web) |
+| A. `/{slug}` | Tag của salon nạp → GA4 nhận `page_view`, nguồn = UTM/referrer thực tế |
+| B. `/{slug}/gbp` | URL tự thành `...?utm_source=google&utm_medium=organic&utm_campaign=gbp_booking&utm_content=booking_button` TRƯỚC tag → `page_view` mang nguồn Google Maps |
+| C. iframe trên web salon | KHÔNG có page_view từ iframe (thiết kế). Website tự đo page_view của nó |
 
-## 5. BẢO MẬT & KHUYẾN NGHỊ HOSTED GTM
+### Hành động 2: Khách đặt lịch THÀNH CÔNG (chuyển đổi chính — duy nhất)
+Chỉ phát sau khi backend tạo booking. Payload chuẩn mọi ngữ cảnh:
+```json
+{ "transaction_id": "<booking id>", "value": 45.00, "currency": "USD",
+  "items": [{ "item_id": "svc_x", "item_name": "Gel Manicure", "price": 45.00, "quantity": 1 }] }
+```
+| Ngữ cảnh | Cách phát |
+|---|---|
+| A/B hosted, mode GA4 | `gtag('event','purchase', payload)` |
+| A/B hosted, mode GTM | `dataLayer.push({event:'booking_completed', ...payload})` → GTM đổi thành GA4 `purchase` |
+| C iframe | postMessage → plugin → theo Conversion delivery của site (gtm: push dataLayer; ga4: gtag purchase) |
 
-GTM do khách quản trị có thể chứa Custom HTML → chạy trên origin chung
-`lumiobooking.com` là rủi ro cross-tenant (script tenant này chạy nơi tenant
-khác nếu bị lợi dụng). Khuyến nghị đã ghi trong code: (1) hosted page ƯU TIÊN
-mode `ga4` (an toàn, đủ đo purchase); (2) chỉ bật `gtm` cho tenant tin cậy;
-(3) lộ trình cách ly: mỗi salon một hostname `{slug}.book.lumiobooking.com`
-(wildcard DNS + cert, cookie/tag tách theo host — chưa đổi production, chỉ là
-migration plan).
+`value` = **Giá trị lịch đã đặt (Booked Value)** — KHÔNG phải doanh thu đã thu
+(khách có thể trả tại tiệm).
 
-## 6. CHECKLIST
+### Hành động 3: Khách bấm GỌI trên website
+GA4 `click_call` (tự bắt qua GTM trigger Click URL bắt đầu `tel:` — cấu hình ở
+Phần 3.4). Đây chỉ là CLICK. Cuộc gọi THẬT đo bằng Google Ads forwarding number.
 
-Salon MỚI: (1) tạo GA4 property + stream; (2) dán GA4/GTM ID + chọn mode trong
-Integrations; (3) cross-domain + unwanted referrals; (4) key event purchase;
-(5) nếu GTM: 4 DLV + trigger + tag; (6) cài plugin ≥1.7.3, điền slug, chọn
-Conversion delivery = gtm; (7) dán link GBP có mã đo; (8) Ads: link GA4, import
-purchase Primary/Every, auto-tagging; (9) test DebugView cả 3 luồng (trực tiếp,
-nhúng, Maps) — mỗi booking đúng 1 event.
+### Hành động 4-5: Chỉ đường / Gọi trên Google Maps
+KHÔNG có event nào trên web (đúng thiết kế). Đọc số từ Google Business Profile
+→ Performance, và Google Ads → Local Actions (Directions / Clicks to call).
+KHÔNG tạo `click_directions` trên website.
 
-Salon CŨ nâng cấp: (1) deploy hệ thống + chờ plugin tự lên 1.7.3 (≤1h);
-(2) vào plugin Settings chọn Conversion delivery (khuyên gtm); (3) thay link GBP
-bằng bản `gbp_booking` mới; (4) kiểm tra mode trong Integrations (auto nếu
-không chắc); (5) chạy lại 3 test DebugView.
+---
+
+## PHẦN 3 — VIỆC CẤU HÌNH (ChatGPT dẫn tôi làm theo đúng thứ tự này)
+
+### 3.1 GA4 nền tảng (mọi salon)
+1. Dùng/tạo GA4 property CỦA salon (chung với website). Web stream = domain website salon.
+2. Admin → Data streams → chọn stream → Configure tag settings:
+   - Configure your domains: thêm `domain-salon.com` VÀ `lumiobooking.com`.
+   - List unwanted referrals: thêm `lumiobooking.com`.
+3. Dán Measurement ID vào: website (GTM hoặc gtag) VÀ Lumio → Integrations.
+4. Chọn `analytics_mode` trong Lumio: salon có GTM → `gtm`; không → `ga4`.
+
+### 3.2 Chuyển đổi booking (Hành động 2)
+1. Đặt thử 1 booking test (Phần 4) để event về property.
+2. GA4 → Admin → Events → tìm `purchase` → gạt **Mark as key event**.
+3. Salon dùng GTM (mode gtm hoặc form nhúng + delivery gtm) thì trong GTM tạo:
+   - 4 biến Data Layer Variable (Version 2): `transaction_id`, `value`, `currency`, `items`.
+   - Trigger: Custom Event, tên sự kiện `booking_completed`.
+   - Tag: GA4 Event, Event name `purchase`, tham số map 4 biến trên.
+   - LƯU Ý: payload là KEY PHẲNG — KHÔNG bật "Send Ecommerce data", không tự
+     chế cấu trúc `ecommerce`.
+   - Publish.
+4. Plugin WordPress → Lumio Booking → Settings → Conversion delivery = `gtm`
+   (site không có GTM thì `ga4`).
+
+### 3.3 Google Business Profile (Hành động 1B + 4-5)
+1. Lumio → Integrations → copy link ngắn `https://lumiobooking.com/{slug}/gbp`.
+2. GBP → Edit profile → Bookings / Appointment links → dán link /gbp → Save
+   (duyệt 24-48h). KHÔNG dán link thường (mất định danh nguồn).
+3. Đọc chỉ đường/gọi Maps tại GBP → Performance (không cấu hình gì thêm).
+
+### 3.4 Đo click gọi trên website (Hành động 3)
+Trong GTM của website: Trigger "Just Links", điều kiện Click URL starts with
+`tel:` → Tag GA4 Event tên `click_call` (tham số `link_url` = {{Click URL}}).
+Không đánh dấu key event vội — để Secondary.
+
+### 3.5 Google Ads (salon có chạy Ads)
+1. Ads ↔ GA4: GA4 Admin → Product links → Google Ads → link đúng account salon.
+2. Ads → Goals/Conversions → Import → GA4 key event `purchase` →
+   **Primary, Count = Every**.
+3. Bật auto-tagging (gclid) — hệ thống giữ gclid/gbraid/wbraid và lưu vào booking.
+4. Final URL của Ads = website salon hoặc `lumiobooking.com/{slug}` —
+   **TUYỆT ĐỐI KHÔNG dùng link /gbp làm Final URL**.
+5. Đo cuộc gọi thật: Ads → Conversions → Phone calls → website call conversion
+   (Google forwarding number) + đặt minimum call duration (vd 30s) → có thể để
+   Primary. `click_call`, Maps Directions, Maps Calls → Secondary.
+6. Ads → Assets → Location: kết nối Google Business Profile (Location Assets).
+7. KHÔNG import thêm conversion Primary nào khác từ cùng booking.
+
+---
+
+## PHẦN 4 — KIỂM THỬ TỪNG HÀNH ĐỘNG (bắt buộc, dùng GA4 DebugView + Realtime)
+
+| # | Làm gì | Phải thấy |
+|---|---|---|
+| T1 | Mở `lumiobooking.com/{slug}?utm_source=test` → đặt 1 lịch | đúng 1 `purchase`, source `test` |
+| T2 | Mở website salon → mở form nhúng → đặt 1 lịch | đúng 1 event qua GTM site, session vẫn của website (không phải referral lumiobooking.com) |
+| T3 | Mở `lumiobooking.com/{slug}/gbp` → đặt 1 lịch | page_view + purchase mang google / organic / gbp_booking |
+| T4 | Đặt xong bấm Back rồi Forward, F5 trang thành công | KHÔNG có purchase thứ 2 |
+| T5 | Bấm nút gọi trên website | 1 `click_call` |
+| T6 | Xem GA4 Engagement → Events → purchase + dimension "Session source / medium" | phân biệt rõ google/organic (Maps) vs google/cpc (Ads) vs facebook... |
+
+Thấy 2 event cho 1 booking ⇒ website đang nạp trùng GA4 direct + GA4 trong GTM
+(lỗi duy nhất có thể gây trùng, nằm ở phía website — tắt một trong hai).
+
+## PHẦN 5 — NHỮNG ĐIỀU CẤM
+- Không thêm bất kỳ script đo lường nào vào trang đặt lịch (hệ thống tự lo).
+- Không dùng ID của salon này cho salon khác.
+- Không bật Send Ecommerce data trong tag GTM.
+- Không dùng link /gbp làm Google Ads Final URL.
+- Không tạo event chỉ đường trên website.
+- Không gọi `value` là "doanh thu đã thu" trong báo cáo — gọi là "Giá trị lịch đã đặt".

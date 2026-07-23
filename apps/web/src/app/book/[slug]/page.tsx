@@ -100,7 +100,7 @@ interface DateDiscounts { enabled: boolean; rules: DateRule[] }
 interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
-  branding?: { accentColor: string; logoUrl: string; seasonalTheme?: string }; booking?: BookingRules;
+  branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string }; booking?: BookingRules;
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy;
   rating?: { value: number; count: number } | null;
 }
@@ -597,7 +597,7 @@ export default function PublicBookingPage() {
           {step > 1 && step < 5 && (
             <button onClick={goBack} aria-label="Back" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>←</button>
           )}
-          {step === 1 && <Logo url={salon?.branding?.logoUrl} size={38} />}
+          {step === 1 && <Logo url={salon?.branding?.logoUrl} scale={salon?.branding?.logoScale} size={38} />}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: isMobile ? 16 : 19, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {step === 1 ? (salon?.name ?? barTitle) : barTitle}
@@ -809,7 +809,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
       height: fill ? '100%' : 'auto', maxHeight: fill ? '100%' : '88vh', width: '100%',
       display: 'flex', flexDirection: 'column' }}>
       <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '16px 18px', display: 'flex', gap: 13, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
-        <Logo url={salon?.branding?.logoUrl} size={46} />
+        <Logo url={salon?.branding?.logoUrl} scale={salon?.branding?.logoScale} size={46} />
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.2, lineHeight: 1.2 }}>{salon?.name}</div>
           {salon?.address && <div style={{ fontSize: 11.5, opacity: 0.78, lineHeight: 1.45 }}>{salon.address}</div>}
@@ -902,7 +902,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
     <div className="lumio-book" style={{ ['--accent' as string]: accent } as React.CSSProperties}>
       <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: `0 26px 60px -34px rgba(15,42,82,.5), 0 0 0 1px ${tint(accent, 0.10)}` }}>
         <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '16px 16px 18px', display: 'flex', gap: 12, alignItems: 'center' }}>
-          <Logo url={salon?.branding?.logoUrl} size={44} />
+          <Logo url={salon?.branding?.logoUrl} scale={salon?.branding?.logoScale} size={44} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salon?.name}</div>
             <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1620,13 +1620,16 @@ function Field({ label, required, children }: { label: string; required?: boolea
 /** The salon's own logo (Settings -> Branding -> Logo URL). Falls back to a
  *  neutral shop mark so the header never looks broken while a salon has not
  *  uploaded one yet. */
-function Logo({ url, size }: { url?: string | null; size: number }) {
+function Logo({ url, size, scale }: { url?: string | null; size: number; scale?: number }) {
   const clean = (url ?? '').trim();
+  const zoom = Math.min(200, Math.max(50, scale ?? 100)) / 100;
   if (clean.startsWith('https://') || clean.startsWith('data:image/')) {
+    // White frame by default (so transparent logos always show); the salon's
+    // zoom setting lets a logo with its own background bleed edge-to-edge.
     return (
       <span style={{ width: size, height: size, borderRadius: 10, background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(15,42,82,0.18)' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={clean} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
+        <img src={clean} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: zoom > 1 ? 0 : 3, transform: `scale(${zoom})`, transformOrigin: 'center' }} />
       </span>
     );
   }

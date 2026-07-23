@@ -371,6 +371,9 @@ export interface Branding {
   ratingMode: string;
   ratingValue: number;
   ratingCount: number;
+  /** Logo zoom inside its display frame, percent (100 = fit). Lets a logo with
+   *  its own background bleed to the frame edges instead of showing a border. */
+  logoScale: number;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -380,6 +383,7 @@ export const DEFAULT_BRANDING: Branding = {
   ratingMode: 'auto',
   ratingValue: 0,
   ratingCount: 0,
+  logoScale: 100,
 };
 
 // ===========================================================================

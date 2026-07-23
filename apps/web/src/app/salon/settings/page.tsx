@@ -957,7 +957,52 @@ function logoStorageConfigured(token: string): Promise<boolean> {
   }
   return _logoStorageReady;
 }
-/** Resize a picked logo to <=240px and keep PNG so transparency survives. */
+/**
+ * Remove a UNIFORM background (white, black, any solid color) from a logo by
+ * flood-filling from the image edges. Only pixels CONNECTED to the border are
+ * cleared, so white/color inside the logo mark itself is preserved. If the
+ * border is not uniform (photo-style logos) this is a no-op.
+ */
+function removeUniformBackground(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const im = ctx.getImageData(0, 0, w, h); const d = im.data;
+  const idx = (x: number, y: number) => (y * w + x) * 4;
+  // 1) Sample the border. If it is already transparent, nothing to do.
+  const border: number[] = [];
+  for (let x = 0; x < w; x++) { border.push(idx(x, 0), idx(x, h - 1)); }
+  for (let y = 0; y < h; y++) { border.push(idx(0, y), idx(w - 1, y)); }
+  let tr = 0, tg = 0, tb = 0, opaque = 0;
+  for (const i of border) { if (d[i + 3] > 200) { opaque++; tr += d[i]; tg += d[i + 1]; tb += d[i + 2]; } }
+  if (opaque < border.length * 0.9) return; // already transparent-ish -> keep as is
+  const br = tr / opaque, bg = tg / opaque, bb = tb / opaque;
+  const dist = (i: number) => Math.abs(d[i] - br) + Math.abs(d[i + 1] - bg) + Math.abs(d[i + 2] - bb);
+  const TOL = 90; // sum over 3 channels (~30/channel)
+  let uniform = 0;
+  for (const i of border) { if (dist(i) < TOL) uniform++; }
+  if (uniform < border.length * 0.85) return; // busy border -> not a flat background
+  // 2) Flood fill from every border pixel that matches the background color.
+  const seen = new Uint8Array(w * h); const stack: number[] = [];
+  const push = (x: number, y: number) => { const pIdx = y * w + x; if (!seen[pIdx] && dist(pIdx * 4) < TOL) { seen[pIdx] = 1; stack.push(pIdx); } };
+  for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+  for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+  while (stack.length) {
+    const pIdx = stack.pop()!; const x = pIdx % w; const y = (pIdx / w) | 0;
+    d[pIdx * 4 + 3] = 0;
+    if (x > 0) push(x - 1, y); if (x < w - 1) push(x + 1, y);
+    if (y > 0) push(x, y - 1); if (y < h - 1) push(x, y + 1);
+  }
+  // 3) Soften the cut edge: half-matching pixels touching a removed one fade out,
+  // which kills the light halo that anti-aliased edges would otherwise leave.
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const pIdx = y * w + x; if (seen[pIdx]) continue;
+    const near = (x > 0 && seen[pIdx - 1]) || (x < w - 1 && seen[pIdx + 1]) || (y > 0 && seen[pIdx - w]) || (y < h - 1 && seen[pIdx + w]);
+    if (!near) continue;
+    const dd = dist(pIdx * 4);
+    if (dd < TOL * 2) d[pIdx * 4 + 3] = Math.min(d[pIdx * 4 + 3], Math.round(255 * (dd - TOL / 2) / (TOL * 1.5)));
+  }
+  ctx.putImageData(im, 0, 0);
+}
+
+/** Resize a picked logo to <=240px, auto-remove a flat background, keep PNG. */
 async function compressLogo(file: File, maxSide = 128): Promise<string> {
   const dataUrl: string = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(new Error('read')); fr.readAsDataURL(file); });
   const img = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('decode')); im.src = dataUrl; });
@@ -966,6 +1011,7 @@ async function compressLogo(file: File, maxSide = 128): Promise<string> {
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d'); if (!ctx) return dataUrl;
   ctx.drawImage(img, 0, 0, w, h);
+  try { removeUniformBackground(ctx, w, h); } catch { /* never block the upload on this */ }
   return canvas.toDataURL('image/png');
 }
 function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
@@ -1048,6 +1094,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
               onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/logo.png' : 'or paste https://…/logo.png'} />
           </div>
           {logoErr && <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>{logoErr}</div>}
+          <div style={{ color: '#64748b', fontSize: 11.5, marginTop: 4 }}>{lang === 'vi' ? 'Logo có nền trắng/đồng màu? Hệ thống tự xoá nền khi tải lên — không cần chỉnh trước.' : 'Logo on a white/solid background? The background is removed automatically on upload.'}</div>
         </Field>
       </div>
 

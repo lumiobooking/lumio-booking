@@ -17,6 +17,7 @@ interface Monthly {
   spend: SpendRow[]; workLog: WorkRow[]; blended: Blended;
   prevMonth?: string;
   deltas?: { bookings: Delta; showed: Delta; revenueCents: Delta; newCustomers: Delta; spendCents: Delta };
+  channelTrends?: { channel: string; spend: Delta | null; reach: Delta | null; clicks: Delta | null; leads: Delta | null }[];
   effectiveness?: 'good' | 'ok' | 'low' | 'organic';
 }
 interface Item { vi: string; en: string }
@@ -358,9 +359,21 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     else if (sp.reach) { parts.push(`${t('tiếp cận', 'reach')} ${sp.reach}`); }
     return parts.join(' · ');
   };
+  const chTrendTxt = (name: string) => {
+    const tr = (data.channelTrends ?? []).find((x) => x.channel === name);
+    if (!tr) return '';
+    const one = (label: string, dl: Delta | null, perf: boolean) => {
+      if (!dl || dl.pct == null || dl.value === dl.prev) return '';
+      const up = dl.pct >= 0;
+      const col = !perf ? '#6b7280' : up ? '#059669' : '#dc2626';
+      return `<span style="color:${col};font-weight:700;margin-right:8px">${esc(label)} ${up ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>`;
+    };
+    const parts = [one(t('Chi', 'Spend'), tr.spend, false), one('Reach', tr.reach, true), one('Click', tr.clicks, true), one(t('Liên hệ', 'Leads'), tr.leads, true)].filter(Boolean).join('');
+    return parts ? `<div style="font-size:11px;margin-top:3px">${parts}<span style="color:#9ca3af">${t('so tháng trước', 'vs last month')}</span></div>` : '';
+  };
   const channelsHtml = (c.channels ?? []).map((ch) => {
     const col = vColor[ch.verdict] || '#6b7280'; const met = chMet(ch.name);
-    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:8px 12px;margin:6px 0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span style="font-size:11px;color:#6b7280">${esc(met)}</span>` : ''}</div><div style="font-size:12.5px;color:#374151;margin-top:3px">${esc(L(ch))}</div></div>`;
+    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:8px 12px;margin:6px 0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span style="font-size:11px;color:#6b7280">${esc(met)}</span>` : ''}</div><div style="font-size:12.5px;color:#374151;margin-top:3px">${esc(L(ch))}</div>${chTrendTxt(ch.name)}</div>`;
   }).join('');
   const hiHtml = (c.highlights ?? []).map((x) => `<div style="margin:3px 0">✓ ${esc(L(x))}</div>`).join('');
   const issHtml = (c.issues ?? []).map((x) => `<div style="margin:3px 0">▲ ${esc(L(x))}</div>`).join('');
@@ -444,7 +457,7 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={cardTitle}>{T('Kênh kết nối (tự đồng bộ chi phí)', 'Connected channels (auto-sync spend)')}</div>
       <p style={{ color: '#64748b', fontSize: 11.5, margin: '4px 0 12px', lineHeight: 1.5 }}>
-        {T('Dán token + ID tài khoản để tự kéo chi phí/số liệu mỗi tháng, thay nhập tay. Xem hướng dẫn lấy tài khoản trong tài liệu GĐ3.', 'Paste a token + account ID to auto-pull monthly spend/metrics instead of typing. See the Phase-3 prep guide for how to obtain them.')}
+        {T('Chỉ cần ID tài khoản (act_… / locations/…) — token để trống nếu Lumio đã cấu hình token chung của agency trên server. Dán token riêng chỉ khi tiệm tự quản lý quảng cáo.', 'Just the account ID (act_… / locations/…) — leave the token blank if the agency-wide token is configured on the server. Paste a token only when the salon runs its own ads.')}
       </p>
       {err && <div style={{ ...ui.banner, marginBottom: 10 }}>{err}</div>}
       {note && <div style={{ ...ui.banner, background: '#064e3b', borderColor: '#059669', color: '#d1fae5', marginBottom: 10 }}>{note}</div>}
@@ -524,6 +537,20 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
     else if (sp.reach) { parts.push(`${T('tiếp cận', 'reach')} ${sp.reach}`); }
     return parts.join(' · ');
   };
+  // Month-over-month chips per channel: spend neutral, performance green/red.
+  const chTrendChips = (name: string) => {
+    const tr = (data.channelTrends ?? []).find((x) => x.channel === name);
+    if (!tr) return null;
+    const chip = (label: string, dl: Delta | null, perf: boolean) => {
+      if (!dl || dl.pct == null || (dl.value === dl.prev)) return null;
+      const up = dl.pct >= 0;
+      const col = !perf ? '#94a3b8' : up ? '#22c55e' : '#f87171';
+      return <span key={label} style={{ color: col, fontSize: 11, fontWeight: 700, marginRight: 8 }}>{label} {up ? '▲' : '▼'}{Math.abs(dl.pct)}%</span>;
+    };
+    const chips = [chip(T('Chi', 'Spend'), tr.spend, false), chip('Reach', tr.reach, true), chip('Click', tr.clicks, true), chip(T('Liên hệ', 'Leads'), tr.leads, true)].filter(Boolean);
+    if (chips.length === 0) return null;
+    return <div style={{ marginTop: 4 }}>{chips}<span style={{ color: '#475569', fontSize: 10.5 }}>{T('so tháng trước', 'vs last month')}</span></div>;
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -543,7 +570,16 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
 
       {/* Pillar 1 + 2 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-        <div style={pv}><div style={pvL}>① {T('ĐÃ CHI', 'SPENT')}</div><div style={pvBig}>{money(b?.totalSpendCents ?? 0)}</div>{spendRows.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{spendRows.map((x) => `${CH_NAME[x.channel] || x.channel} ${money(x.amountCents)}`).join(' · ')}</div>}</div>
+        <div style={pv}><div style={pvL}>① {T('ĐÃ CHI', 'SPENT')}</div><div style={pvBig}>{money(b?.totalSpendCents ?? 0)} <span style={{ fontSize: 12, verticalAlign: 'middle' }}>{arrow(d?.spendCents)}</span></div>{spendRows.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{spendRows.map((x) => `${CH_NAME[x.channel] || x.channel} ${money(x.amountCents)}`).join(' · ')}</div>}{(() => {
+          const tot = (k: 'reach' | 'clicks') => (data.channelTrends ?? []).reduce((a, t) => { const dl = t[k]; return { v: a.v + (dl?.value ?? 0), p: a.p + (dl?.prev ?? 0) }; }, { v: 0, p: 0 });
+          const mk = (label: string, o: { v: number; p: number }) => {
+            if (o.v === 0 && o.p === 0) return null;
+            const pct = o.p > 0 ? Math.round(((o.v - o.p) / o.p) * 100) : null;
+            return <span key={label} style={{ marginRight: 10 }}>{label} <b style={{ color: '#e2e8f0' }}>{o.v.toLocaleString()}</b>{pct != null && <span style={{ color: pct >= 0 ? '#22c55e' : '#f87171', fontSize: 11, fontWeight: 700 }}> {pct >= 0 ? '▲' : '▼'}{Math.abs(pct)}%</span>}</span>;
+          };
+          const r2 = mk(T('Hiển thị', 'Reach'), tot('reach')); const c2 = mk('Click', tot('clicks'));
+          return (r2 || c2) ? <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{r2}{c2}</div> : null;
+        })()}</div>
         <div style={pv}><div style={pvL}>② {T('MANG VỀ', 'RESULTS')}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             {[[String(o.totals.bookings), T('lượt đặt', 'bookings'), d?.bookings, false], [String(o.totals.showed), T('đã đến', 'showed'), d?.showed, false], [String(o.newCustomers), T('khách mới', 'new'), d?.newCustomers, false], [money(o.totals.revenueCents), T('doanh thu', 'revenue'), d?.revenueCents, true]].map((x, i) => (
@@ -581,6 +617,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
                     {metrics && <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 'auto' }}>{metrics}</span>}
                   </div>
                   <div style={{ fontSize: 13, color: '#e2e8f0', marginTop: 5 }}>{vi ? c.vi : (c.en || c.vi)}</div>
+                  {chTrendChips(c.name)}
                 </div>
               );
             })}

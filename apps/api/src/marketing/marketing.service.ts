@@ -247,7 +247,7 @@ export class MarketingService {
     const pr = this.monthRange(prev);
     const [prevOv, prevSpend] = await Promise.all([
       this.overview(user, pr.from.toISOString().slice(0, 10), pr.to.toISOString().slice(0, 10), tenantParam),
-      this.prisma.marketingSpend.findMany({ where: { tenantId, periodMonth: prev }, select: { amountCents: true } }),
+      this.prisma.marketingSpend.findMany({ where: { tenantId, periodMonth: prev }, select: { channel: true, amountCents: true, reach: true, clicks: true, leads: true } }),
     ]);
     const prevSpendCents = prevSpend.reduce((a: number, r: { amountCents: number }) => a + r.amountCents, 0);
     const delta = (cur: number, prv: number) => ({ value: cur, prev: prv, pct: prv > 0 ? Math.round(((cur - prv) / prv) * 100) : (cur > 0 ? null : 0) });
@@ -259,6 +259,28 @@ export class MarketingService {
       spendCents: delta(totalSpendCents, prevSpendCents),
     };
 
+    // --- Per-channel month-over-month movement (spend / reach / clicks / leads).
+    // This is what lets the report say "Facebook: reach up 24%, clicks down 8%"
+    // instead of only judging totals. null = metric absent in both months.
+    const prevByCh = new Map<string, any>((prevSpend as any[]).map((r: any) => [r.channel, r]));
+    const chDelta = (cur?: number | null, prv?: number | null) => {
+      const c = cur ?? 0; const pv = prv ?? 0;
+      if (c === 0 && pv === 0) return null;
+      return { value: c, prev: pv, pct: pv > 0 ? Math.round(((c - pv) / pv) * 100) : (c > 0 ? null : -100) };
+    };
+    const chNames = Array.from(new Set([...(spend as any[]).map((r: any) => r.channel), ...(prevSpend as any[]).map((r: any) => r.channel)]));
+    const channelTrends = chNames.map((ch: string) => {
+      const cur = (spend as any[]).find((r: any) => r.channel === ch);
+      const prv = prevByCh.get(ch);
+      return {
+        channel: ch,
+        spend: chDelta(cur?.amountCents, prv?.amountCents),
+        reach: chDelta(cur?.reach, prv?.reach),
+        clicks: chDelta(cur?.clicks, prv?.clicks),
+        leads: chDelta(cur?.leads, prv?.leads),
+      };
+    }).filter((t) => t.spend || t.reach || t.clicks || t.leads);
+
     // --- Simple effectiveness verdict (only when there is spend to judge) ---
     // good: >=3x return; ok: >=1x; low: <1x. No spend => "organic" (can't rate ROI).
     let effectiveness: 'good' | 'ok' | 'low' | 'organic' = 'organic';
@@ -267,7 +289,7 @@ export class MarketingService {
       effectiveness = r >= 3 ? 'good' : r >= 1 ? 'ok' : 'low';
     }
 
-    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, effectiveness };
+    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, effectiveness };
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
@@ -287,9 +309,9 @@ export class MarketingService {
       'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% so với tháng trước"). ' +
       'tldr = the EXECUTIVE SUMMARY an owner reads if they read nothing else: 2-3 sentences covering how the month went overall, the single biggest win, the main risk or gap, and the recommended next move. ' +
       'summary = supporting detail: MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' +
-      'channels = evaluate EACH channel that has spend in spendByChannel. verdict = "good" (cheap results / clearly working), "ok" (working, room to improve), "weak" (expensive / little to show), or "nodata" (only spend entered, no reach/clicks/leads to judge). Judge by cost-per-lead or cost-per-click when those numbers exist and CITE that number in the sentence; if they do not exist, verdict MUST be "nodata". Give ONE short line: the verdict reason + what to do (keep / tăng / giảm / thử lại). Never invent a number. ' +
+      'channels = evaluate EACH channel that has spend in spendByChannel. verdict = "good" (cheap results / clearly working), "ok" (working, room to improve), "weak" (expensive / little to show), or "nodata" (only spend entered, no reach/clicks/leads to judge). Judge by cost-per-lead or cost-per-click when those numbers exist and CITE that number in the sentence; if they do not exist, verdict MUST be "nodata". ALSO use channelTrends (month-over-month movement per channel): cite the most significant change with its % (e.g. "reach tăng 24%, click giảm 8%"). If a channel FELL while its spend stayed or rose, say so plainly and reflect it in the verdict. Give ONE short line per channel: numbers + trend + action (keep / tăng / giảm / thử lại / tạm dừng). Never invent a number. ' +
       'highlights = concrete wins this month (2-3). issues = CHALLENGES: for each, name the problem AND the solution or recommendation together (1-2) — naming a problem and your response builds trust. ' +
-      'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
+      'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). When an action moves budget, state DOLLAR amounts explicitly from the real spend numbers (e.g. "giữ $100 Facebook, chuyển $50 từ TikTok sang Google Maps"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
 
     const userText = 'DATA (JSON):\n' + JSON.stringify({
       month: data.month,
@@ -303,6 +325,7 @@ export class MarketingService {
       spendByChannel: data.spend.map((r: any) => ({ channel: r.channel, amountCents: r.amountCents, reach: r.reach, clicks: r.clicks, leads: r.leads })),
       blended: data.blended,
       vsLastMonth: (data as any).deltas,
+      channelTrends: (data as any).channelTrends,
       effectiveness: (data as any).effectiveness,
       last4Months: history,
       workDone: data.workLog.map((w: any) => ({ category: w.category, title: w.title })),
@@ -465,9 +488,8 @@ export class MarketingService {
 
   async connectChannel(user: AuthenticatedUser, dto: { platform: string; externalAccountId?: string; token?: string; refreshToken?: string; clientId?: string; clientSecret?: string; developerToken?: string; tenantId?: string }) {
     const tenantId = this.tenantId(user, dto.tenantId);
-    if (!encConfigured()) throw new BadRequestException('PAYMENT_ENC_KEY not configured on the server');
     const connector = this.social.get(dto.platform); // throws if unknown/disabled
-    const creds: ChannelCreds = {
+    const own: ChannelCreds = {
       token: dto.token?.trim() || undefined,
       refreshToken: dto.refreshToken?.trim() || undefined,
       clientId: dto.clientId?.trim() || undefined,
@@ -475,13 +497,19 @@ export class MarketingService {
       developerToken: dto.developerToken?.trim() || undefined,
       externalAccountId: dto.externalAccountId?.trim() || undefined,
     };
+    // No secret pasted? Fall back to the shared agency token — the salon only
+    // supplies its account id. We then store NO per-tenant secret at all.
+    const shared = !own.token && !own.refreshToken ? this.agencyCreds(dto.platform) : null;
+    // Encryption key is only needed when we must STORE a per-tenant secret.
+    if (!shared && !encConfigured()) throw new BadRequestException('PAYMENT_ENC_KEY not configured on the server');
+    const creds: ChannelCreds = shared ? ({ ...shared, externalAccountId: own.externalAccountId } as ChannelCreds) : own;
     const verify = await connector.verify(creds);
     if (!verify.ok) throw new BadRequestException(verify.error || 'Could not verify the credentials with the platform');
-    const hint = maskHint(creds.token || creds.refreshToken || '');
+    const hint = shared ? 'AGENCY' : maskHint(creds.token || creds.refreshToken || '');
     const data = {
       externalAccountId: creds.externalAccountId ?? null,
       accountName: verify.accountName ?? null,
-      credentialEnc: encryptSecret(JSON.stringify(creds)),
+      credentialEnc: shared ? null : encryptSecret(JSON.stringify(creds)),
       keyHint: hint,
       status: 'ACTIVE',
       lastError: null,
@@ -548,9 +576,31 @@ export class MarketingService {
     return { synced };
   }
 
+  /**
+   * Shared AGENCY credentials from env. Lumio Agency runs the ads for every
+   * salon from its own Business Manager, so ONE token can read all managed ad
+   * accounts. A salon connection then only needs the account id — no token
+   * pasted per tenant, and rotating the env token updates everyone at once.
+   *   META_AGENCY_TOKEN                      (system-user token, ads_read)
+   *   GBP_AGENCY_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN
+   */
+  private agencyCreds(platform: string): Partial<ChannelCreds> | null {
+    if (platform === 'meta' && process.env.META_AGENCY_TOKEN) return { token: process.env.META_AGENCY_TOKEN };
+    if (platform === 'gbp' && process.env.GBP_AGENCY_REFRESH_TOKEN && process.env.GBP_AGENCY_CLIENT_ID && process.env.GBP_AGENCY_CLIENT_SECRET) {
+      return { refreshToken: process.env.GBP_AGENCY_REFRESH_TOKEN, clientId: process.env.GBP_AGENCY_CLIENT_ID, clientSecret: process.env.GBP_AGENCY_CLIENT_SECRET };
+    }
+    return null;
+  }
+
   private async loadChannelCreds(tenantId: string, platform: string): Promise<ChannelCreds> {
     const conn = await this.prisma.marketingChannelConnection.findUnique({ where: { tenantId_platform: { tenantId, platform } } });
-    if (!conn || conn.status === 'REVOKED' || !conn.credentialEnc) throw new NotFoundException('Channel not connected');
+    if (!conn || conn.status === 'REVOKED') throw new NotFoundException('Channel not connected');
+    // No per-tenant secret stored -> the connection rides on the agency token.
+    if (!conn.credentialEnc) {
+      const shared = this.agencyCreds(platform);
+      if (!shared) throw new NotFoundException('Channel not connected (agency token missing on server)');
+      return { ...shared, externalAccountId: conn.externalAccountId ?? undefined } as ChannelCreds;
+    }
     return JSON.parse(decryptSecret(conn.credentialEnc)) as ChannelCreds;
   }
 

@@ -197,15 +197,23 @@ function fireConversion(data: { id: string; valueCents: number; currency: string
   const value = Math.round(data.valueCents) / 100;
   const items = data.items.map((it) => ({ item_name: it.name, price: Math.round(it.priceCents) / 100, quantity: 1 }));
   const payload = { transaction_id: data.id, value, currency: data.currency || 'USD', items };
-  try {
-    const w = window as unknown as { dataLayer?: Record<string, unknown>[]; gtag?: (...a: unknown[]) => void; google_tag_manager?: unknown };
-    if (w.google_tag_manager) {
-      w.dataLayer = w.dataLayer || [];
-      w.dataLayer.push({ event: 'booking_completed', ...payload });
-    } else if (typeof w.gtag === 'function') {
-      w.gtag('event', 'purchase', payload);
-    }
-  } catch { /* ignore */ }
+  // EMBEDDED (iframe on the salon's website): the parent page owns measurement —
+  // hand the conversion up and fire nothing locally, so it lands exactly once,
+  // inside the website's own ad session. TOP WINDOW (direct / Google Maps / ads
+  // to the booking link): measure right here through the one loaded method.
+  let inFrame = false;
+  try { inFrame = window.self !== window.top; } catch { inFrame = true; }
+  if (!inFrame) {
+    try {
+      const w = window as unknown as { dataLayer?: Record<string, unknown>[]; gtag?: (...a: unknown[]) => void; google_tag_manager?: unknown };
+      if (w.google_tag_manager) {
+        w.dataLayer = w.dataLayer || [];
+        w.dataLayer.push({ event: 'booking_completed', ...payload });
+      } else if (typeof w.gtag === 'function') {
+        w.gtag('event', 'purchase', payload);
+      }
+    } catch { /* ignore */ }
+  }
   try { window.parent.postMessage({ type: 'lumio:booking_completed', ...payload }, '*'); } catch { /* ignore */ }
 }
 

@@ -69,6 +69,10 @@ function Inner() {
   // whatever host the admin happens to be on. The web app rewrites /<slug> → /book/<slug>.
   const WEB_BASE = (process.env.NEXT_PUBLIC_WEB_URL ?? 'https://lumiobooking.com').replace(/\/+$/, '');
   const bookingLink = slug ? `${WEB_BASE}/${slug}` : null;
+  // First-party attribution link for Google Business Profile: the UTM is what
+  // lets the system prove a SPECIFIC booking came from Google Maps (the booking
+  // page stores utm_* on every appointment). Same page, just stamped.
+  const gbpLink = bookingLink ? `${bookingLink}?utm_source=google&utm_medium=gbp&utm_campaign=business_profile` : null;
 
   useEffect(() => {
     load();
@@ -157,18 +161,21 @@ function Inner() {
         <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>📍 {lang === 'vi' ? 'Thêm nút “Book online” lên Google' : 'Add a “Book online” button to Google'}</h2>
         <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14, lineHeight: 1.6 }}>
           {lang === 'vi'
-            ? 'Dán link đặt lịch bên trên vào Google Business Profile của tiệm để khách đặt ngay từ Google Maps/Search. Google duyệt ~24–48h.'
-            : 'Paste your booking link (above) into the salon\'s Google Business Profile so customers book straight from Google Maps/Search. Google reviews it in ~24–48h.'}
+            ? 'Dán link DƯỚI ĐÂY (có gắn mã đo) vào Google Business Profile của tiệm — khách đặt ngay từ Google Maps/Search, và MỖI booking từ Google sẽ được ghi nhận đích danh trong báo cáo marketing. Google duyệt ~24–48h.'
+            : 'Paste the link BELOW (measurement-stamped) into the salon\'s Google Business Profile — customers book straight from Google Maps/Search, and EVERY booking from Google is attributed by name in the marketing report. Google reviews it in ~24–48h.'}
         </p>
+        {gbpLink && (
+          <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '9px 12px', fontFamily: 'monospace', fontSize: 12, color: '#a5b4fc', wordBreak: 'break-all', marginBottom: 10 }}>{gbpLink}</div>
+        )}
         <ol style={{ color: '#cbd5e1', fontSize: 13.5, lineHeight: 1.9, margin: '8px 0 12px', paddingLeft: 20 }}>
           <li>{lang === 'vi' ? 'Mở Google Business Profile của tiệm (nút dưới), đăng nhập tài khoản sở hữu hồ sơ.' : 'Open the salon\'s Google Business Profile (button below); sign in with the owning account.'}</li>
           <li>{lang === 'vi' ? 'Edit profile → Bookings / Appointment links.' : 'Edit profile → Bookings / Appointment links.'}</li>
-          <li>{lang === 'vi' ? 'Add appointment link → dán link Lumio ở trên → Save.' : 'Add appointment link → paste the Lumio link above → Save.'}</li>
+          <li>{lang === 'vi' ? 'Add appointment link → dán ĐÚNG link có mã đo ở trên (không dán link trần) → Save.' : 'Add appointment link → paste the STAMPED link above (not the plain one) → Save.'}</li>
           <li>{lang === 'vi' ? 'Chờ 24–48h Google duyệt → nút “Book online” hiện ra.' : 'Wait 24–48h for Google to approve → the “Book online” button appears.'}</li>
         </ol>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => bookingLink && navigator.clipboard?.writeText(bookingLink)} style={ui.primaryBtn} disabled={!bookingLink}>
-            {lang === 'vi' ? 'Copy link đặt lịch' : 'Copy booking link'}
+          <button onClick={() => gbpLink && navigator.clipboard?.writeText(gbpLink)} style={ui.primaryBtn} disabled={!gbpLink}>
+            {lang === 'vi' ? 'Copy link cho Google (có mã đo)' : 'Copy Google link (stamped)'}
           </button>
           <a href="https://business.google.com/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid #475569', color: '#e2e8f0' }}>
             {lang === 'vi' ? 'Mở Google Business Profile ↗' : 'Open Google Business Profile ↗'}
@@ -288,8 +295,8 @@ function Inner() {
       <h2 style={{ fontSize: 18, margin: '30px 0 4px' }}>📊 Google Analytics & Tag Manager</h2>
       <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.6, maxWidth: 680 }}>
         {lang === 'vi'
-          ? 'Dán ID để đo lường đặt lịch RIÊNG cho tiệm này — trang đặt lịch chỉ nạp GA4/GTM của bạn, không lẫn với tiệm khác. Khi khách đặt xong, hệ thống tự bắn sự kiện “booking_completed” (GA4: purchase) kèm mã đơn, giá trị và tiền tệ để làm chuyển đổi cho quảng cáo.'
-          : 'Paste your IDs to measure bookings for THIS salon only — the booking page loads just your GA4/GTM, never mixed with other salons. On each completed booking we fire “booking_completed” (GA4: purchase) with order id, value and currency for your ad conversions.'}
+          ? 'Dùng CÙNG một GA4/GTM với website của tiệm — mọi nguồn sẽ gom về một báo cáo. Cách hệ thống liên kết, không bao giờ đếm trùng: (1) Form NHÚNG trên website → sự kiện đặt lịch được đẩy lên GTM/GA4 CỦA WEBSITE, tính đúng phiên quảng cáo; (2) Khách mở TRỰC TIẾP trang đặt lịch (Google Maps, link bio, ads trỏ thẳng) → trang tự đo bằng ID dán ở đây, kèm nguồn (google/gbp, facebook/cpc…). Trong GA4 xem: Engagement → Events → booking_completed, thêm chiều “Session source/medium” là biết khách đặt từ đâu nhiều nhất.'
+          : 'Use the SAME GA4/GTM as the salon website — every source lands in one report. How it links without double-counting: (1) the EMBEDDED form forwards booking events to the WEBSITE’s own GTM/GA4, credited to the ad session; (2) customers opening the booking page DIRECTLY (Google Maps, bio links, ads to the link) are measured here with their source (google/gbp, facebook/cpc…). In GA4: Engagement → Events → booking_completed, add “Session source/medium” to see where bookings come from.'}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: 640 }}>
         <label style={{ fontSize: 13, color: '#cbd5e1' }}>GA4 Measurement ID

@@ -1,11 +1,11 @@
 {
   "name": "Lumio Booking",
   "slug": "lumio-booking",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "requires": "6.0",
   "requires_php": "7.4",
   "tested": "6.8",
   "homepage": "https://lumiobooking.com",
-  "download_url": "https://lumiobooking.com/downloads/lumio-booking.zip?v=1.7.0",
-  "last_updated": "2026-07-22"
+  "download_url": "https://lumiobooking.com/downloads/lumio-booking.zip?v=1.7.1",
+  "last_updated": "2026-07-23"
 }

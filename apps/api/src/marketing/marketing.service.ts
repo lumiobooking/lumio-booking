@@ -55,7 +55,7 @@ export class MarketingService {
     const [appts, payments, reviews, reviewClicks, messengerThreads, voiceCalls, emailCampaigns, referredNew, newCustomers] = await Promise.all([
       this.prisma.appointment.findMany({
         where: { tenantId, startTime: { gte: from, lte: to } },
-        select: { id: true, source: true, status: true, utmCampaign: true, utmSource: true },
+        select: { id: true, source: true, status: true, utmCampaign: true, utmSource: true, utmMedium: true },
       }),
       // Revenue attributed to a booking's channel: PAID payments tied to an
       // appointment, in the period, excluding cancelled/rejected bookings.
@@ -84,7 +84,17 @@ export class MarketingService {
     type CampRow = { key: string; source: string | null; bookings: number; showed: number; revenueCents: number };
     const camps = new Map<string, CampRow>();
     const campByAppt = new Map<string, string>();
+    // First-party Google Business Profile attribution: bookings whose UTM was
+    // stamped by the salon's own GBP link (utm_source=google&utm_medium=gbp).
+    // This PROVES a specific booking came from Google Maps — not just a click.
+    const gbp = { bookings: 0, showed: 0, revenueCents: 0 };
+    const gbpAppt = new Set<string>();
     for (const a of appts) {
+      if ((a.utmSource || '').toLowerCase() === 'google' && (a.utmMedium || '').toLowerCase() === 'gbp') {
+        gbpAppt.add(a.id);
+        gbp.bookings += 1;
+        if (SHOWED_STATUSES.includes(a.status)) gbp.showed += 1;
+      }
       const ch = normalizeSource(a.source);
       sourceByAppt.set(a.id, ch);
       if (REVENUE_EXCLUDED.has(a.status)) excludedAppt.add(a.id);
@@ -106,6 +116,7 @@ export class MarketingService {
       const ch = sourceByAppt.get(p.appointmentId);
       if (!ch) continue; // payment for an appointment outside the window
       rows.get(ch)!.revenueCents += p.amountCents;
+      if (gbpAppt.has(p.appointmentId)) gbp.revenueCents += p.amountCents;
       const campKey = campByAppt.get(p.appointmentId);
       if (campKey) { const cr = camps.get(campKey); if (cr) cr.revenueCents += p.amountCents; }
     }
@@ -134,6 +145,8 @@ export class MarketingService {
         referredNewCustomers: referredNew,
       },
       newCustomers,
+      // Bookings PROVEN to come from Google Maps via the salon's GBP link.
+      gbp,
       // Campaign-level attribution (only bookings that carried a UTM).
       byCampaign: Array.from(camps.values()).sort((x, y) => y.revenueCents - x.revenueCents || y.bookings - x.bookings).slice(0, 20),
       // Explicit: paid-channel cost/reach come in Phase 1 (manual) / Phase 3 (API).
@@ -310,6 +323,7 @@ export class MarketingService {
       'tldr = the EXECUTIVE SUMMARY an owner reads if they read nothing else: 2-3 sentences covering how the month went overall, the single biggest win, the main risk or gap, and the recommended next move. ' +
       'summary = supporting detail: MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' +
       'channels = evaluate EACH channel that has spend in spendByChannel. verdict = "good" (cheap results / clearly working), "ok" (working, room to improve), "weak" (expensive / little to show), or "nodata" (only spend entered, no reach/clicks/leads to judge). Judge by cost-per-lead or cost-per-click when those numbers exist and CITE that number in the sentence; if they do not exist, verdict MUST be "nodata". ALSO use channelTrends (month-over-month movement per channel): cite the most significant change with its % (e.g. "reach tăng 24%, click giảm 8%"). If a channel FELL while its spend stayed or rose, say so plainly and reflect it in the verdict. Give ONE short line per channel: numbers + trend + action (keep / tăng / giảm / thử lại / tạm dừng). Never invent a number. ' +
+      'bookingsFromGoogleMaps = bookings PROVEN to come from Google Maps via the salon\'s Business Profile link (first-party UTM) — when > 0, mention it in summary or highlights as a verified Google Maps result. ' +
       'highlights = concrete wins this month (2-3). issues = CHALLENGES: for each, name the problem AND the solution or recommendation together (1-2) — naming a problem and your response builds trust. ' +
       'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). When an action moves budget, state DOLLAR amounts explicitly from the real spend numbers (e.g. "giữ $100 Facebook, chuyển $50 từ TikTok sang Google Maps"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
 
@@ -321,6 +335,7 @@ export class MarketingService {
       newCustomers: data.outcome.newCustomers,
       bookingsByChannel: data.outcome.channels.filter((c: any) => c.bookings > 0),
       ownedChannels: data.outcome.owned,
+      bookingsFromGoogleMaps: (data.outcome as any).gbp,
       totalSpendCents: data.blended.totalSpendCents,
       spendByChannel: data.spend.map((r: any) => ({ channel: r.channel, amountCents: r.amountCents, reach: r.reach, clicks: r.clicks, leads: r.leads })),
       blended: data.blended,

@@ -139,17 +139,18 @@ export default async function BookSlugLayout({ children, params }: { children: R
       {/* Per-salon web analytics. Only well-formed IDs are injected (validated here and
           server-side) so a stored value can never smuggle in script. Each salon loads
           only its OWN GA4 / GTM, so measurement never mixes between shops. */}
+      {/* Analytics run ONLY when this page is the top window (direct/GBP/ads
+          traffic). Inside an IFRAME (form embedded on the salon's website) we
+          stay silent: the parent site's own GTM/GA4 measures the session, and
+          the booking conversion reaches it via postMessage — one session, one
+          source, zero double-counting. */}
       {ga4Id && (
-        <>
-          {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-          <script async src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`} />
-          {/* eslint-disable-next-line react/no-danger */}
-          <script dangerouslySetInnerHTML={{ __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${ga4Id}');` }} />
-        </>
+        // eslint-disable-next-line react/no-danger
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return}catch(e){return}var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=${ga4Id}';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};window.gtag('js',new Date());window.gtag('config','${ga4Id}');})();` }} />
       )}
       {gtmId && (
         // eslint-disable-next-line react/no-danger
-        <script dangerouslySetInnerHTML={{ __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return}catch(e){return}(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');})();` }} />
       )}
       {children}
     </>

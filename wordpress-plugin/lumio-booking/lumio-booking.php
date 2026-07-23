@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.7.0
+ * Version:           1.7.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -160,6 +160,15 @@ if (!function_exists('lumio_booking_base')) {
             . 'L.frames.push({id:' . wp_json_encode($fid) . ',origin:' . wp_json_encode($origin) . '});'
             . 'if(L.boot){return;}L.boot=1;'
             . 'var s=document.createElement("script");s.src=' . wp_json_encode($site . '/embed.js?v=4') . ';s.async=true;document.head.appendChild(s);'
+            . '(function(){if(window.__lumioConvHook){return;}window.__lumioConvHook=1;'
+            . 'window.addEventListener("message",function(e){var d=e.data;'
+            . 'if(!d||typeof d!=="object"||d.type!=="lumio:booking_completed"){return;}'
+            . 'var p={event:"booking_completed",transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items};'
+            . 'try{if(window.google_tag_manager){window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}'
+            . 'else if(typeof window.gtag==="function"){window.gtag("event","purchase",{transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items});}'
+            . 'else{window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}}catch(err){}});'
+            . '})();'
+
             . 'setTimeout(function(){if(L.ready){return;}'
             . 'window.addEventListener("message",function(e){var d=e.data;if(!d||d.type!=="lumio-embed-height"){return;}'
             . 'for(var i=0;i<L.frames.length;i++){var fr=L.frames[i];if(fr.origin&&e.origin!==fr.origin){continue;}'
@@ -246,6 +255,15 @@ if (!function_exists('lumio_booking_base')) {
             . 'window.addEventListener("popstate",function(){if(isOpen){closeOverlay(true);}});'
             . 'window.addEventListener("message",function(e){var d=e.data;'
             . 'if(d&&typeof d==="object"&&(d.type==="lumio-embed-collapse"||d.type==="lumio-booking-close")){closeOverlay();}});'
+            . '(function(){if(window.__lumioConvHook){return;}window.__lumioConvHook=1;'
+            . 'window.addEventListener("message",function(e){var d=e.data;'
+            . 'if(!d||typeof d!=="object"||d.type!=="lumio:booking_completed"){return;}'
+            . 'var p={event:"booking_completed",transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items};'
+            . 'try{if(window.google_tag_manager){window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}'
+            . 'else if(typeof window.gtag==="function"){window.gtag("event","purchase",{transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items});}'
+            . 'else{window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}}catch(err){}});'
+            . '})();'
+
             . 'function pre(){if(document.querySelector(".lumio-book,[data-lumio-book],a[href*=\'"+M+"\']")){build();}}'
             // Some salon themes render the booking iframe themselves instead of using
             // the shortcode, so the plugin never sees it. Those frames are content-sized,

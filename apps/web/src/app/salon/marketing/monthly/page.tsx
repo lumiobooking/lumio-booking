@@ -13,7 +13,7 @@ interface Blended { totalSpendCents: number; costPerBookingCents: number | null;
 interface Delta { value: number; prev: number; pct: number | null }
 interface Monthly {
   month: string;
-  outcome: { totals: { bookings: number; showed: number; revenueCents: number }; newCustomers: number; owned: Record<string, number>; channels: { key: string; bookings: number; showed: number; revenueCents: number }[] };
+  outcome: { totals: { bookings: number; showed: number; revenueCents: number }; newCustomers: number; owned: Record<string, number>; gbp?: { bookings: number; showed: number; revenueCents: number }; channels: { key: string; bookings: number; showed: number; revenueCents: number }[] };
   spend: SpendRow[]; workLog: WorkRow[]; blended: Blended;
   prevMonth?: string;
   deltas?: { bookings: Delta; showed: Delta; revenueCents: Delta; newCustomers: Delta; spendCents: Delta };
@@ -590,6 +590,11 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
               </div>
             ))}
           </div>
+          {(o.gbp?.bookings ?? 0) > 0 && (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, borderTop: '1px solid #1e293b', paddingTop: 6 }}>
+              📍 {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: '#e2e8f0' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: '#22c55e' }}>{money(o.gbp!.revenueCents)}</b>
+            </div>
+          )}
         </div>
       </div>
 

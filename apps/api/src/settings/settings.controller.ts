@@ -141,6 +141,8 @@ export class SettingsController {
       taxRatePercent?: number;
       receiptFooter?: string;
       primaryCardGateway?: string;
+      cardSurchargePercent?: number;
+      cardSurchargeEnabled?: boolean;
       transferInstructions?: string;
       transferQrUrl?: string;
     },

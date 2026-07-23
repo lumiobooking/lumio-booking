@@ -26,6 +26,8 @@ type DisplayState = {
   tipCents: number;
   taxCents: number;
   giftCents: number;
+  cardFeeCents?: number;
+  cardFeePct?: number;
   dueCents: number;
   paidCents?: number;
   changeCents?: number;
@@ -39,7 +41,7 @@ const TIP_PERCENTS = [15, 18, 20];
 const GOLD = '#f59e0b';
 const EMPTY: DisplayState = {
   status: 'idle', currency: 'USD', lines: [],
-  subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
+  subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, cardFeeCents: 0, dueCents: 0,
 };
 
 function money(cents: number, currency: string) {
@@ -129,6 +131,7 @@ export default function PosDisplayPage() {
         {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="#bbf7d0" />}
         {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
         {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
+        {(s.cardFeeCents ?? 0) > 0 && <Row k={`Card fee${s.cardFeePct ? ` (${s.cardFeePct}%)` : ''}`} v={money(s.cardFeeCents!, cur)} color="#fbbf24" />}
         {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '16px 0' }} />
         <div style={{ fontSize: 'clamp(14px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>

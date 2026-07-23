@@ -101,7 +101,7 @@ interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: 
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string }; booking?: BookingRules;
-  weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy;
+  weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
   rating?: { value: number; count: number } | null;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
@@ -759,7 +759,7 @@ export default function PublicBookingPage() {
               {step === 4 && slot && (
                 <ConfirmStep
                   salon={salon} slot={slot} employee={employee} lines={allLines} fmt={fmt} totalCents={totalCents}
-                  depositCents={depositCents} rules={rules} paymentType={paymentType} setPaymentType={setPaymentType}
+                  depositCents={depositCents} cardFee={salon?.cardFee} rules={rules} paymentType={paymentType} setPaymentType={setPaymentType}
                   form={form} setForm={setForm} smsConsent={smsConsent} setSmsConsent={setSmsConsent}
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
                 />
@@ -1519,9 +1519,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
 // ---------------------------------------------------------------------------
 // Step 4 · Confirm — appointment card, services, your details, payment.
 // ---------------------------------------------------------------------------
-function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile }: {
+function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile }: {
   salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number;
-  depositCents: number; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
+  depositCents: number; cardFee?: { enabled: boolean; percent: number }; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
   form: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string };
   setForm: (f: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string }) => void;
   smsConsent: boolean; setSmsConsent: (v: boolean) => void; accent: string; error: string | null; infoOk: boolean; isMobile: boolean;
@@ -1555,9 +1555,16 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 800, color: INK, fontSize: 15 }}>
           <span>Total</span><span>{fmt(totalCents)}</span>
         </div>
-        {depositCents > 0 && (
-          <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 700 }}>Deposit due today: {fmt(depositCents)}</div>
-        )}
+        {depositCents > 0 && (() => {
+          const feePct = cardFee?.enabled ? cardFee.percent : 0;
+          const fee = feePct > 0 ? Math.round((depositCents * feePct) / 100) : 0;
+          return (
+            <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 700 }}>
+              Deposit due today: {fmt(depositCents + fee)}
+              {fee > 0 && <span style={{ display: 'block', fontWeight: 500, color: '#64748b', fontSize: 12, marginTop: 2 }}>Paid online by card — includes {feePct}% card fee ({fmt(fee)}). Pay at the salon in cash to avoid it.</span>}
+            </div>
+          );
+        })()}
       </Card>
 
       <Card title="YOUR DETAILS">

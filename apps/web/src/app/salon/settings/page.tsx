@@ -37,7 +37,7 @@ interface SettingsData {
     gmail: { clientId: string; senderEmail: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
-  pos?: { taxRatePercent: number; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
+  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number };
@@ -458,6 +458,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             {t('se.pay.primaryCardDesc')}
           </p>
           <PrimaryCardChannel data={data} onSave={onSave} />
+          <CardSurcharge data={data} onSave={onSave} />
         </div>
       </Panel>
 
@@ -485,6 +486,37 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </button>
       <span style={{ color: '#64748b', fontSize: 12, marginLeft: 12 }}>{t('se.pay.saveHint')}{enabledGw.length ? ` (${enabledGw.length} ${t('se.pay.onWord')})` : ''}.</span>
     </Card>
+  );
+}
+
+function CardSurcharge({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const { lang } = useLang();
+  const [on, setOn] = useState(!!data.pos?.cardSurchargeEnabled);
+  const [pct, setPct] = useState(String(data.pos?.cardSurchargePercent ?? 3));
+  return (
+    <div style={{ marginTop: 18, borderTop: '1px solid #1e293b', paddingTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <label style={{ position: 'relative', display: 'inline-block', width: 42, height: 24, flexShrink: 0 }}>
+          <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : '#334155', borderRadius: 24, transition: '.2s' }} />
+          <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
+        </label>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{lang === 'vi' ? 'Phụ phí khi khách trả bằng thẻ (giá Cash/Card)' : 'Card surcharge (Cash/Card pricing)'}</div>
+      </div>
+      <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
+        {lang === 'vi'
+          ? 'Mặc định TẮT. Bật thì menu chỉ nhập MỘT giá (giá tiền mặt); khi khách chọn trả thẻ (tại quầy hoặc đặt cọc online) hệ thống tự cộng % này và HIỆN RÕ cho khách trên hoá đơn + màn hình khách. Không cộng vào tiền tip. Ví dụ 3% → dịch vụ $55 → $56.65 khi trả thẻ.'
+          : 'OFF by default. When on, enter ONE menu price (the cash price); if the customer pays by card (at the counter or an online deposit) the system adds this % and SHOWS it clearly on the bill + customer screen. Never added to the tip. E.g. 3% → a $55 service → $56.65 on card.'}
+      </p>
+      {on && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+          <span style={{ color: '#94a3b8', fontSize: 13 }}>{lang === 'vi' ? 'Mức phí' : 'Fee'}</span>
+          <input type="number" min={0} max={20} step="0.1" value={pct} onChange={(e) => setPct(e.target.value)} style={{ ...ui.input, width: 110 }} />
+          <span style={{ color: '#94a3b8' }}>%</span>
+        </div>
+      )}
+      <button style={ui.primaryBtn} onClick={() => onSave('pos', { cardSurchargeEnabled: on, cardSurchargePercent: Math.min(20, Math.max(0, parseFloat(pct) || 0)) }, 'Card surcharge')}>{lang === 'vi' ? 'Lưu' : 'Save'}</button>
+    </div>
   );
 }
 

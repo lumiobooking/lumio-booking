@@ -736,6 +736,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.discountD': { en: 'Discount $', vi: 'Giảm giá $' },
   'po.tax': { en: 'Tax ({r}% retail)', vi: 'Thuế ({r}% hàng bán)' },
   'po.tips': { en: 'Tips', vi: 'Tip' },
+  'po.cardFee': { en: 'Card fee ({r}%)', vi: 'Phí thẻ ({r}%)' },
   'po.redeemPoints': { en: 'Redeem points ({n} avail)', vi: 'Đổi điểm ({n} điểm có sẵn)' },
   'po.minPts': { en: 'min {n}', vi: 'tối thiểu {n}' },
   'po.pointsDiscount': { en: 'Points discount ({n} pts)', vi: 'Giảm bằng điểm ({n} điểm)' },

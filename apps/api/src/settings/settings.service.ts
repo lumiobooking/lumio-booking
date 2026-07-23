@@ -245,6 +245,8 @@ export class SettingsService {
       taxRatePercent?: number;
       receiptFooter?: string;
       primaryCardGateway?: string;
+      cardSurchargePercent?: number;
+      cardSurchargeEnabled?: boolean;
       transferInstructions?: string;
       transferQrUrl?: string;
     },
@@ -257,6 +259,11 @@ export class SettingsService {
       receiptFooter: typeof dto.receiptFooter === 'string' ? dto.receiptFooter : cur.receiptFooter,
       primaryCardGateway:
         typeof dto.primaryCardGateway === 'string' ? dto.primaryCardGateway : cur.primaryCardGateway,
+      cardSurchargePercent:
+        typeof dto.cardSurchargePercent === 'number' && dto.cardSurchargePercent >= 0 && dto.cardSurchargePercent <= 20
+          ? dto.cardSurchargePercent : cur.cardSurchargePercent,
+      cardSurchargeEnabled:
+        typeof dto.cardSurchargeEnabled === 'boolean' ? dto.cardSurchargeEnabled : (cur.cardSurchargeEnabled ?? false),
       transferInstructions:
         typeof dto.transferInstructions === 'string' ? dto.transferInstructions : cur.transferInstructions,
       transferQrUrl: typeof dto.transferQrUrl === 'string' ? dto.transferQrUrl : cur.transferQrUrl,

@@ -59,11 +59,12 @@ export class PublicSalonController {
       throw new NotFoundException('Salon not found');
     }
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit, areaRows, extra, ratingAgg] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, pos, areaRows, extra, ratingAgg] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
       this.settings.getDepositSettings(tenant.id),
+      this.settings.getPosSettings(tenant.id).catch(() => null),
       this.prisma.restaurantTable.findMany({ where: { tenantId: tenant.id, isActive: true, area: { not: null } }, select: { area: true }, distinct: ['area'] }),
       // The booking widget shows the shop card (name · address · phone) next to the
       // cart, the way every modern booking site does — so the visitor always knows
@@ -98,6 +99,8 @@ export class PublicSalonController {
       weekdayDiscounts,
       dateDiscounts,
       deposit,
+      // Card surcharge (dual pricing) — only the two public-safe fields, no secrets.
+      cardFee: { enabled: !!pos?.cardSurchargeEnabled && (pos?.cardSurchargePercent ?? 0) > 0, percent: pos?.cardSurchargePercent ?? 0 },
       analytics: await this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '', mode: '' as const })),
       rating,
     };
@@ -270,8 +273,11 @@ export class PublicSalonController {
     if (!appt) throw new NotFoundException('Booking not found');
 
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const amountCents = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
-    if (amountCents <= 0) throw new BadRequestException('No deposit is required for this booking');
+    const baseDeposit = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
+    if (baseDeposit <= 0) throw new BadRequestException('No deposit is required for this booking');
+    // Online payment is card-not-present, so the salon's card surcharge (dual
+    // pricing) applies to it exactly like an in-salon card charge.
+    const amountCents = await this.withCardSurcharge(tenantId, baseDeposit);
 
     return this.hub.onlineStart(tenantId, amountCents, appt.currency, appt.id);
   }
@@ -297,7 +303,8 @@ export class PublicSalonController {
     if (!res.approved) return { ok: false, reason: 'not_approved' };
 
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const expected = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
+    const baseDeposit = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
+    const expected = await this.withCardSurcharge(tenantId, baseDeposit);
     if (res.amountCents !== undefined && res.amountCents + 1 < expected) {
       return { ok: false, reason: 'amount_mismatch' };
     }
@@ -310,5 +317,18 @@ export class PublicSalonController {
       },
     });
     return { ok: true, payment };
+  }
+
+  /**
+   * Adds the salon's card surcharge to a card-not-present amount. Online
+   * checkout is always a card payment, so dual-pricing salons charge the same
+   * +% they would on the terminal. 0% (or unset) leaves the amount unchanged.
+   */
+  private async withCardSurcharge(tenantId: string, baseCents: number): Promise<number> {
+    if (baseCents <= 0) return baseCents;
+    const pos = await this.settings.getPosSettings(tenantId).catch(() => null);
+    const pct = pos?.cardSurchargePercent ?? 0;
+    if (!pos?.cardSurchargeEnabled || !pct || pct <= 0) return baseCents;
+    return baseCents + Math.round((baseCents * pct) / 100);
   }
 }

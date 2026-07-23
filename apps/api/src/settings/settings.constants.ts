@@ -203,6 +203,12 @@ export interface PosSettings {
   taxRatePercent: number; // e.g. 8.25 for 8.25% sales tax on retail
   receiptFooter: string;
   primaryCardGateway: string; // which enabled gateway the POS "Card" button uses ('' = none)
+  // Dual pricing: menu prices are the CASH price; when the customer pays by
+  // CARD the POS adds this surcharge % (US nail-salon "cash discount" model).
+  // 0 = single price for both. Applies to services+tax, never to the tip.
+  cardSurchargePercent: number;
+  // Master switch — default OFF (not every salon passes card fees to customers).
+  cardSurchargeEnabled: boolean;
   // Bank-transfer details shown to the customer when paying by Transfer
   // (cashier confirms receipt — no auto-confirmation).
   transferInstructions: string; // bank name / account / Zelle / Interac email, etc.
@@ -213,6 +219,8 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   taxRatePercent: 0,
   receiptFooter: '',
   primaryCardGateway: '',
+  cardSurchargePercent: 0,
+  cardSurchargeEnabled: false,
   transferInstructions: '',
   transferQrUrl: '',
 };

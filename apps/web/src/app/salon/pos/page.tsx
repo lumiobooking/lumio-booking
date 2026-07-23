@@ -19,7 +19,7 @@ interface Staff { id: string; firstName: string; lastName: string | null; isActi
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; loyaltyPoints?: number }
 interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
-  taxRate: number; transferInfo: string; transferQr: string; currency: string;
+  taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
   salonName?: string; salonLogo?: string; salonAccent?: string;
 }
@@ -71,6 +71,8 @@ function Register() {
   const [addons, setAddons] = useState<Addon[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [taxRate, setTaxRate] = useState(0);
+  const [cardSurchargePct, setCardSurchargePct] = useState(0);
+  const [cardSurchargeOn, setCardSurchargeOn] = useState(false);
   const [currency, setCurrency] = useState('USD');
   const [salonName, setSalonName] = useState('');
   const [salonLogo, setSalonLogo] = useState('');
@@ -192,7 +194,7 @@ function Register() {
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
-    setTaxRate(c.taxRate); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
+    setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
     setLoyalty(c.loyalty);
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1');
   };
@@ -206,7 +208,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string } }>('/settings', { token }),
       ]);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
@@ -214,6 +216,8 @@ function Register() {
         addons: a,
         staff: st.filter((x) => x.isActive),
         taxRate: settings.pos?.taxRatePercent ?? 0,
+        cardSurchargePct: settings.pos?.cardSurchargePercent ?? 0,
+        cardSurchargeOn: settings.pos?.cardSurchargeEnabled ?? false,
         transferInfo: settings.pos?.transferInstructions ?? '',
         transferQr: settings.pos?.transferQrUrl ?? '',
         currency: settings.booking?.currency ?? 'USD',
@@ -492,14 +496,22 @@ function Register() {
     // Gift card applied toward the ticket (online-only). Reduces the amount due,
     // never below 0; the order total still reflects full value.
     const giftApplied = giftCard && online ? Math.min(giftCard.balanceCents, total) : 0;
-    const due = Math.max(0, total - giftApplied);
+    const dueBase = Math.max(0, total - giftApplied);
+    // Dual pricing: paying by CARD adds a surcharge on the ticket EXCLUDING the
+    // tip (the tip is pass-through to staff) and excluding any gift-covered part.
+    // Single-method only — split payments keep the plain cash price to avoid
+    // ambiguous per-part math.
+    const cardBase = Math.max(0, dueBase - tip);
+    const cardSurcharge = (cardSurchargeOn && !split && payMethod === 'CARD' && cardSurchargePct > 0)
+      ? Math.round((cardBase * cardSurchargePct) / 100) : 0;
+    const due = dueBase + cardSurcharge;
     const tenderedCents = Math.round((parseFloat(tendered) || 0) * 100);
     // Split mode: sum the parts; any overpay is cash change (someone rounds a cash part up).
     const splitCents = parts.reduce((sum, p) => sum + Math.round((parseFloat(p.amount) || 0) * 100), 0);
     const change = split ? Math.max(0, splitCents - due) : (payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0);
     const splitRemaining = due - splitCents; // >0 = still owed, <0 = change
-    return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining };
-  }, [cart, orderDiscount, taxRate, tendered, payMethod, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
+    return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
+  }, [cart, orderDiscount, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
 
   // ---- Customer-facing display (2nd monitor). Mirrors the live cart to the
   // /pos-display page via BroadcastChannel — same browser, no server, no internet. ----
@@ -518,6 +530,8 @@ function Register() {
       tipCents: money.tip,
       taxCents: money.tax,
       giftCents: money.giftApplied,
+      cardFeeCents: money.cardSurcharge,
+      cardFeePct: cardSurchargePct,
       dueCents: money.due,
       // Tip prompt for the customer screen: tippable only when there's a service
       // line, and the % is computed off the service subtotal.
@@ -525,7 +539,7 @@ function Register() {
       tipBaseCents: cart.filter((l) => l.kind === 'SERVICE').reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
       reviewUrl: reviewUrl ?? undefined,
     },
-  }), [cart, currency, money, staff, salonName, salonLogo, salonAccent, reviewUrl]);
+  }), [cart, currency, money, cardSurchargePct, staff, salonName, salonLogo, salonAccent, reviewUrl]);
   const displayChRef = useRef<BroadcastChannel | null>(null);
   const displayPayloadRef = useRef(displayPayload);
   displayPayloadRef.current = displayPayload;
@@ -877,7 +891,8 @@ function Register() {
     if (money.discount) o += row('Discount', '-' + formatPrice(money.discount, currency)) + '\n';
     if (money.tax) o += row('Tax', formatPrice(money.tax, currency)) + '\n';
     if (money.tip) o += row('Tip', formatPrice(money.tip, currency)) + '\n';
-    o += row('TOTAL', formatPrice(money.total, currency)) + '\n';
+    if (money.cardSurcharge) o += row(`Card fee (${cardSurchargePct}%)`, formatPrice(money.cardSurcharge, currency)) + '\n';
+    o += row('TOTAL', formatPrice(money.total + money.cardSurcharge, currency)) + '\n';
     for (const pl of paidLines()) o += row(`Paid · ${pl.label}`, formatPrice(pl.cents, currency)) + '\n';
     if (money.change) o += row('Change', formatPrice(money.change, currency)) + '\n';
     o += sep + '\n' + center('Thank you!') + '\n';
@@ -912,8 +927,9 @@ function Register() {
         ${money.discount ? line('Order discount', '-' + formatPrice(money.discount, currency)) : ''}
         ${money.tax ? line('Tax', formatPrice(money.tax, currency)) : ''}
         ${money.tip ? line('Tip', formatPrice(money.tip, currency)) : ''}
+        ${money.cardSurcharge ? line(`Card fee (${cardSurchargePct}%)`, formatPrice(money.cardSurcharge, currency)) : ''}
         ${money.savings ? line('You saved', '-' + formatPrice(money.savings, currency)) : ''}
-        ${line('TOTAL', formatPrice(money.total, currency), true)}
+        ${line('TOTAL', formatPrice(money.total + money.cardSurcharge, currency), true)}
         ${paidLines().map((pl) => line('Paid · ' + pl.label, formatPrice(pl.cents, currency))).join('')}
         ${money.change ? line('Change', formatPrice(money.change, currency)) : ''}
       </table><hr>
@@ -1188,6 +1204,7 @@ function Register() {
             </div>
             {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
             {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
+            {money.cardSurcharge > 0 && <Row label={t('po.cardFee').replace('{r}', String(cardSurchargePct))} value={formatPrice(money.cardSurcharge, currency)} />}
             {loyalty.enabled && customerId && online && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: '#eab308' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
@@ -1279,10 +1296,13 @@ function Register() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
             {!split && <>
               <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>{t('po.cash')}</button>
-              <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>{t('po.card')}</button>
+              <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>{t('po.card')}{cardSurchargeOn && cardSurchargePct > 0 ? ` +${cardSurchargePct}%` : ''}</button>
               <button onClick={() => setPayMethod('TRANSFER')} style={tabBtn(payMethod === 'TRANSFER')}>{t('po.transfer')}</button>
             </>}
             {split && <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#c7d2fe' }}>➗ {t('po.splitTitle')}</span>}
+            {!split && cardSurchargeOn && cardSurchargePct > 0 && payMethod === 'CARD' && money.cardSurcharge > 0 && (
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#fbbf24', whiteSpace: 'nowrap' }}>{t('po.cardFee').replace('{r}', String(cardSurchargePct))}: +{formatPrice(money.cardSurcharge, currency)}</span>
+            )}
             <button
               onClick={() => {
                 if (split) { setSplit(false); setParts([]); }

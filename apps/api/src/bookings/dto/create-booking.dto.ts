@@ -114,6 +114,14 @@ export class CreateBookingDto {
   @IsOptional() @IsString() @MaxLength(120) utmMedium?: string;
   @IsOptional() @IsString() @MaxLength(120) utmCampaign?: string;
   @IsOptional() @IsString() @MaxLength(120) utmContent?: string;
+  @IsOptional() @IsString() @MaxLength(120) utmTerm?: string;
+  // Google click ids can be long opaque tokens.
+  @IsOptional() @IsString() @MaxLength(300) gclid?: string;
+  @IsOptional() @IsString() @MaxLength(300) gbraid?: string;
+  @IsOptional() @IsString() @MaxLength(300) wbraid?: string;
+  @IsOptional() @IsString() @MaxLength(900) attrLandingUrl?: string;
+  @IsOptional() @IsString() @MaxLength(900) attrReferrer?: string;
+  @IsOptional() @IsString() @MaxLength(40) attrCapturedAt?: string; // ISO timestamp
 
   // Optional: when set on the public booking flow, a payment is created right
   // after the booking (PAY_ONLINE charges via the mock provider; PAY_LATER is

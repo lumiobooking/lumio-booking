@@ -144,13 +144,25 @@ export default async function BookSlugLayout({ children, params }: { children: R
           stay silent: the parent site's own GTM/GA4 measures the session, and
           the booking conversion reaches it via postMessage — one session, one
           source, zero double-counting. */}
+      {/* /gbp short-link stamp: MUST be the first script — it canonicalises the
+          URL with the GBP campaign params synchronously, so the page_view that
+          GA4/GTM send right after already carries source=google/organic/
+          gbp_booking, and the booking flow stores the same attribution. Only
+          the /gbp path is stamped; the plain /{slug} link never is. */}
+      {/* eslint-disable-next-line react/no-danger */}
+      <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return;if(/\/gbp\/?$/.test(location.pathname)&&location.search.indexOf('utm_campaign=')<0){var q=(location.search?location.search+'&':'?')+'utm_source=google&utm_medium=organic&utm_campaign=gbp_booking&utm_content=booking_button';history.replaceState(null,'',location.pathname+q+location.hash);}}catch(e){}})();` }} />
+      {/* Consent Mode v2 defaults are pushed BEFORE any Google tag loads (US/CA
+          market default = granted; an EU salon needs a CMP that calls
+          window.lumioConsentUpdate). The __lumioTag guard hard-reloads if a
+          client-side navigation ever lands on a DIFFERENT salon's tag id, so
+          one document can never mix two tenants' containers. */}
       {ga4Id && (
         // eslint-disable-next-line react/no-danger
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return}catch(e){return}var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=${ga4Id}';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};window.gtag('js',new Date());window.gtag('config','${ga4Id}');})();` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return}catch(e){return}if(window.__lumioTag&&window.__lumioTag!=='${ga4Id}'){location.reload();return}window.__lumioTag='${ga4Id}';window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){dataLayer.push(arguments)};window.gtag('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted',wait_for_update:500});window.lumioConsentUpdate=function(c){window.gtag('consent','update',c)};var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=${ga4Id}';document.head.appendChild(s);window.gtag('js',new Date());window.gtag('config','${ga4Id}');})();` }} />
       )}
       {gtmId && (
         // eslint-disable-next-line react/no-danger
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return}catch(e){return}(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');})();` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return}catch(e){return}if(window.__lumioTag&&window.__lumioTag!=='${gtmId}'){location.reload();return}window.__lumioTag='${gtmId}';window.dataLayer=window.dataLayer||[];function g(){dataLayer.push(arguments)}g('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted',wait_for_update:500});window.lumioConsentUpdate=function(c){g('consent','update',c)};(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');})();` }} />
       )}
       {children}
     </>

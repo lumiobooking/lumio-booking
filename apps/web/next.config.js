@@ -18,7 +18,12 @@ const nextConfig = {
   // segment (the salon slug) is rewritten to the booking page.
   async rewrites() {
     return {
-      afterFiles: [{ source: '/:slug', destination: '/book/:slug' }],
+      afterFiles: [
+        // Short Google Business Profile link — same booking page, source stamped
+        // client-side before any tag runs (see book/[slug]/layout.tsx).
+        { source: '/:slug/gbp', destination: '/book/:slug/gbp' },
+        { source: '/:slug', destination: '/book/:slug' },
+      ],
     };
   },
 };

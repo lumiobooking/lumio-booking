@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { deriveAcquisition, AcquisitionSource } from './acquisition.util';
 import { CANONICAL_SOURCES, CanonicalSource, normalizeSource } from '../common/source.util';
 import { SocialRegistry } from './connectors/social-registry';
 import { ChannelCreds } from './connectors/social-connector.interface';
@@ -55,7 +56,7 @@ export class MarketingService {
     const [appts, payments, reviews, reviewClicks, messengerThreads, voiceCalls, emailCampaigns, referredNew, newCustomers] = await Promise.all([
       this.prisma.appointment.findMany({
         where: { tenantId, startTime: { gte: from, lte: to } },
-        select: { id: true, source: true, status: true, utmCampaign: true, utmSource: true, utmMedium: true },
+        select: { id: true, source: true, status: true, utmCampaign: true, utmSource: true, utmMedium: true, gclid: true, gbraid: true, wbraid: true, attrReferrer: true },
       }),
       // Revenue attributed to a booking's channel: PAID payments tied to an
       // appointment, in the period, excluding cancelled/rejected bookings.
@@ -84,17 +85,21 @@ export class MarketingService {
     type CampRow = { key: string; source: string | null; bookings: number; showed: number; revenueCents: number };
     const camps = new Map<string, CampRow>();
     const campByAppt = new Map<string, string>();
-    // First-party Google Business Profile attribution: bookings whose UTM was
-    // stamped by the salon's own GBP link (utm_source=google&utm_medium=gbp).
-    // This PROVES a specific booking came from Google Maps — not just a click.
-    const gbp = { bookings: 0, showed: 0, revenueCents: 0 };
+    // First-party ACQUISITION classification (separate from booking surface):
+    // google_ads (click id) > google_maps_organic (GBP link) > website (embed)
+    // > referral > direct. `gbp` stays as the google_maps_organic alias so
+    // existing consumers keep working.
+    const ACQ_KEYS: AcquisitionSource[] = ['google_ads', 'google_maps_organic', 'website', 'referral', 'direct', 'unknown'];
+    const acquisition = Object.fromEntries(ACQ_KEYS.map((k) => [k, { bookings: 0, showed: 0, revenueCents: 0 }])) as Record<AcquisitionSource, { bookings: number; showed: number; revenueCents: number }>;
+    const acqByAppt = new Map<string, AcquisitionSource>();
+    const gbp = acquisition.google_maps_organic;
     const gbpAppt = new Set<string>();
     for (const a of appts) {
-      if ((a.utmSource || '').toLowerCase() === 'google' && (a.utmMedium || '').toLowerCase() === 'gbp') {
-        gbpAppt.add(a.id);
-        gbp.bookings += 1;
-        if (SHOWED_STATUSES.includes(a.status)) gbp.showed += 1;
-      }
+      const acq = deriveAcquisition(a as any);
+      acqByAppt.set(a.id, acq);
+      acquisition[acq].bookings += 1;
+      if (SHOWED_STATUSES.includes(a.status)) acquisition[acq].showed += 1;
+      if (acq === 'google_maps_organic') gbpAppt.add(a.id);
       const ch = normalizeSource(a.source);
       sourceByAppt.set(a.id, ch);
       if (REVENUE_EXCLUDED.has(a.status)) excludedAppt.add(a.id);
@@ -116,7 +121,8 @@ export class MarketingService {
       const ch = sourceByAppt.get(p.appointmentId);
       if (!ch) continue; // payment for an appointment outside the window
       rows.get(ch)!.revenueCents += p.amountCents;
-      if (gbpAppt.has(p.appointmentId)) gbp.revenueCents += p.amountCents;
+      const acq = acqByAppt.get(p.appointmentId);
+      if (acq) acquisition[acq].revenueCents += p.amountCents;
       const campKey = campByAppt.get(p.appointmentId);
       if (campKey) { const cr = camps.get(campKey); if (cr) cr.revenueCents += p.amountCents; }
     }
@@ -147,6 +153,8 @@ export class MarketingService {
       newCustomers,
       // Bookings PROVEN to come from Google Maps via the salon's GBP link.
       gbp,
+      // Full first-party acquisition breakdown (surface-independent).
+      acquisition,
       // Campaign-level attribution (only bookings that carried a UTM).
       byCampaign: Array.from(camps.values()).sort((x, y) => y.revenueCents - x.revenueCents || y.bookings - x.bookings).slice(0, 20),
       // Explicit: paid-channel cost/reach come in Phase 1 (manual) / Phase 3 (API).

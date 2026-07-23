@@ -190,13 +190,14 @@ function wallTimeToISO(local: Date, timeZone: string): string {
  * ever included — only booking id, value, currency and service names.
  */
 const firedBookings = new Set<string>();
-function fireConversion(data: { id: string; valueCents: number; currency: string; items: { name: string; priceCents: number }[] }) {
+function fireConversion(data: { id: string; valueCents: number; currency: string; slug: string; items: { id?: string; name: string; priceCents: number }[] }) {
   if (typeof window === 'undefined') return;
+  if (!data.id) return; // transaction_id must be the backend booking id — never empty
   if (firedBookings.has(data.id)) return; // idempotent: never double-fire one booking
   firedBookings.add(data.id);
   const value = Math.round(data.valueCents) / 100;
-  const items = data.items.map((it) => ({ item_name: it.name, price: Math.round(it.priceCents) / 100, quantity: 1 }));
-  const payload = { transaction_id: data.id, value, currency: data.currency || 'USD', items };
+  const items = data.items.map((it) => ({ ...(it.id ? { item_id: it.id } : {}), item_name: it.name, price: Math.round(it.priceCents) / 100, quantity: 1 }));
+  const payload = { transaction_id: data.id, value, currency: (data.currency || 'USD').toUpperCase(), items };
   // EMBEDDED (iframe on the salon's website): the parent page owns measurement —
   // hand the conversion up and fire nothing locally, so it lands exactly once,
   // inside the website's own ad session. TOP WINDOW (direct / Google Maps / ads
@@ -214,7 +215,22 @@ function fireConversion(data: { id: string; valueCents: number; currency: string
       }
     } catch { /* ignore */ }
   }
-  try { window.parent.postMessage({ type: 'lumio:booking_completed', ...payload }, '*'); } catch { /* ignore */ }
+  // Embedded only: hand the conversion to the PARENT site — to a verified
+  // origin, never '*'. The plugin passes its own origin in ?po=; if absent we
+  // fall back to the referrer's origin (the page that framed us). No valid
+  // target -> nothing is sent.
+  if (inFrame) {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const po = q.get('po') || '';
+      let target = '';
+      if (/^https?:\/\/[^/]+$/i.test(po)) target = po;
+      else if (document.referrer) { try { target = new URL(document.referrer).origin; } catch { /* ignore */ } }
+      if (target) {
+        window.parent.postMessage({ type: 'lumio:booking_completed', schema_version: 1, salon_slug: data.slug, ...payload }, target);
+      }
+    } catch { /* ignore */ }
+  }
 }
 
 export default function PublicBookingPage() {
@@ -454,7 +470,16 @@ export default function PublicBookingPage() {
             if (typeof window === 'undefined') return {};
             const q = new URLSearchParams(window.location.search);
             const g = (k: string) => q.get(k) || undefined;
-            return { utmSource: g('utm_source'), utmMedium: g('utm_medium'), utmCampaign: g('utm_campaign'), utmContent: g('utm_content') };
+            // Landing snapshot: the plugin forwards the WEBSITE's stored
+            // first-party attribution as lumio_lu / lumio_rf / lumio_at; on the
+            // hosted page this window IS the landing context.
+            return {
+              utmSource: g('utm_source'), utmMedium: g('utm_medium'), utmCampaign: g('utm_campaign'), utmContent: g('utm_content'),
+              utmTerm: g('utm_term'), gclid: g('gclid'), gbraid: g('gbraid'), wbraid: g('wbraid'),
+              attrLandingUrl: (g('lumio_lu') || window.location.href).slice(0, 900),
+              attrReferrer: (g('lumio_rf') || document.referrer || '').slice(0, 900) || undefined,
+              attrCapturedAt: g('lumio_at') || new Date().toISOString(),
+            };
           })(),
           paymentType,
         }),
@@ -465,9 +490,12 @@ export default function PublicBookingPage() {
       if (body?.booking?.id) {
         fireConversion({
           id: String(body.booking.id),
-          valueCents: totalCents,
+          // Trust the server's figure for the booked value; the client total is
+          // only a fallback for older API responses.
+          valueCents: typeof body?.booking?.priceCents === 'number' ? body.booking.priceCents : totalCents,
           currency: rules.currency,
-          items: cartLines.map((l) => ({ name: l.name, priceCents: l.priceCents })),
+          slug,
+          items: allLines.map((l) => ({ id: l.id, name: l.name, priceCents: l.priceCents })),
         });
       }
       setStep(5);

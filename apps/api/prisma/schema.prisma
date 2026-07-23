@@ -1081,6 +1081,16 @@ model Appointment {
   utmMedium   String?
   utmCampaign String?
   utmContent  String?
+  utmTerm     String?
+  // Google ad click ids — first-party proof the booking came from a paid click.
+  gclid       String?
+  gbraid      String?
+  wbraid      String?
+  // Attribution snapshot captured on the LANDING page (may be several pages
+  // before the form was opened) and carried into the booking.
+  attrLandingUrl String?
+  attrReferrer   String?
+  attrCapturedAt DateTime?
   // Number of people in this booking (group bookings); 1 = solo.
   partySize  Int     @default(1)
 

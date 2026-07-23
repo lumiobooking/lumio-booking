@@ -72,7 +72,8 @@ function Inner() {
   // First-party attribution link for Google Business Profile: the UTM is what
   // lets the system prove a SPECIFIC booking came from Google Maps (the booking
   // page stores utm_* on every appointment). Same page, just stamped.
-  const gbpLink = bookingLink ? `${bookingLink}?utm_source=google&utm_medium=gbp&utm_campaign=business_profile` : null;
+  // Short GBP link — the /gbp route stamps the full campaign itself.
+  const gbpLink = bookingLink ? `${bookingLink}/gbp` : null;
 
   useEffect(() => {
     load();
@@ -161,8 +162,8 @@ function Inner() {
         <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>📍 {lang === 'vi' ? 'Thêm nút “Book online” lên Google' : 'Add a “Book online” button to Google'}</h2>
         <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14, lineHeight: 1.6 }}>
           {lang === 'vi'
-            ? 'Dán link DƯỚI ĐÂY (có gắn mã đo) vào Google Business Profile của tiệm — khách đặt ngay từ Google Maps/Search, và MỖI booking từ Google sẽ được ghi nhận đích danh trong báo cáo marketing. Google duyệt ~24–48h.'
-            : 'Paste the link BELOW (measurement-stamped) into the salon\'s Google Business Profile — customers book straight from Google Maps/Search, and EVERY booking from Google is attributed by name in the marketing report. Google reviews it in ~24–48h.'}
+            ? 'Dán link NGẮN dưới đây vào Google Business Profile của tiệm. Route /gbp mở đúng form đặt lịch bình thường và tự gắn nguồn Google Maps — mỗi booking từ Google được ghi nhận đích danh, không cần link dài lằng nhằng UTM. Google duyệt ~24–48h.'
+            : 'Paste the SHORT link below into the salon\'s Google Business Profile. The /gbp route opens the normal booking form and stamps the Google Maps source itself — every Google booking is attributed by name, no long UTM link needed. Google reviews it in ~24–48h.'}
         </p>
         {gbpLink && (
           <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '9px 12px', fontFamily: 'monospace', fontSize: 12, color: '#a5b4fc', wordBreak: 'break-all', marginBottom: 10 }}>{gbpLink}</div>
@@ -170,12 +171,13 @@ function Inner() {
         <ol style={{ color: '#cbd5e1', fontSize: 13.5, lineHeight: 1.9, margin: '8px 0 12px', paddingLeft: 20 }}>
           <li>{lang === 'vi' ? 'Mở Google Business Profile của tiệm (nút dưới), đăng nhập tài khoản sở hữu hồ sơ.' : 'Open the salon\'s Google Business Profile (button below); sign in with the owning account.'}</li>
           <li>{lang === 'vi' ? 'Edit profile → Bookings / Appointment links.' : 'Edit profile → Bookings / Appointment links.'}</li>
-          <li>{lang === 'vi' ? 'Add appointment link → dán ĐÚNG link có mã đo ở trên (không dán link trần) → Save.' : 'Add appointment link → paste the STAMPED link above (not the plain one) → Save.'}</li>
+          <li>{lang === 'vi' ? 'Add appointment link → dán ĐÚNG link /gbp ở trên (đừng dán link thường — sẽ mất định danh nguồn Google) → Save.' : 'Add appointment link → paste the /gbp link above (not the plain link — you would lose Google attribution) → Save.'}</li>
           <li>{lang === 'vi' ? 'Chờ 24–48h Google duyệt → nút “Book online” hiện ra.' : 'Wait 24–48h for Google to approve → the “Book online” button appears.'}</li>
+          <li style={{ color: '#f59e0b' }}>{lang === 'vi' ? 'KHÔNG dùng link này làm Final URL trong Google Ads — Ads dùng URL riêng + auto-tagging (gclid) để hệ thống phân biệt đơn từ quảng cáo và đơn từ Maps.' : 'Do NOT use this link as a Google Ads Final URL — Ads needs its own URL with auto-tagging (gclid) so paid and Maps bookings stay separate.'}</li>
         </ol>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => gbpLink && navigator.clipboard?.writeText(gbpLink)} style={ui.primaryBtn} disabled={!gbpLink}>
-            {lang === 'vi' ? 'Copy link cho Google (có mã đo)' : 'Copy Google link (stamped)'}
+            {lang === 'vi' ? 'Copy link /gbp cho Google' : 'Copy /gbp Google link'}
           </button>
           <a href="https://business.google.com/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid #475569', color: '#e2e8f0' }}>
             {lang === 'vi' ? 'Mở Google Business Profile ↗' : 'Open Google Business Profile ↗'}

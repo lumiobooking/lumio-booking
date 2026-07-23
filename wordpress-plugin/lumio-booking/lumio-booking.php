@@ -3,7 +3,7 @@
  * Plugin Name:       Lumio Booking
  * Plugin URI:        https://lumiobooking.com
  * Description:        Embed your salon's Lumio booking form on WordPress AND manage everything (dashboard, calendar, bookings) right inside wp-admin. Configure the booking URL + salon slug under Lumio Booking → Settings. Any "Book now" button then opens the form FULL SCREEN in one tap (phone + desktop); [lumio_booking] still embeds it inline.
- * Version:           1.7.2
+ * Version:           1.7.3
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Update URI:        https://lumiobooking.com/wp-update/lumio-booking
@@ -26,6 +26,7 @@ if (!function_exists('lumio_booking_base')) {
     }
     if (!defined('LUMIO_BOOKING_OPT_SLUG')) {
         define('LUMIO_BOOKING_OPT_SLUG', 'lumio_booking_slug');         // salon slug
+        define('LUMIO_BOOKING_OPT_DELIVERY', 'lumio_booking_delivery');  // gtm | ga4 | none | auto
     }
 
     /** Base URL of the hosted Lumio app (defaults to the public domain). */
@@ -71,6 +72,11 @@ if (!function_exists('lumio_booking_base')) {
         register_setting('lumio_booking_settings', LUMIO_BOOKING_OPT_SLUG, array(
             'type' => 'string', 'sanitize_callback' => 'sanitize_title', 'default' => '',
         ));
+        register_setting('lumio_booking_settings', LUMIO_BOOKING_OPT_DELIVERY, array(
+            'type' => 'string',
+            'sanitize_callback' => function ($v) { return in_array($v, array('gtm', 'ga4', 'none', 'auto'), true) ? $v : 'auto'; },
+            'default' => 'auto',
+        ));
     });
 
     function lumio_booking_render_settings_page()
@@ -96,6 +102,15 @@ if (!function_exists('lumio_booking_base')) {
         echo '<tr><th scope="row"><label for="lumio_slug">Salon slug</label></th><td>';
         echo '<input name="' . $opt_slug . '" id="lumio_slug" type="text" class="regular-text" value="' . esc_attr($slug) . '" placeholder="lux-nail-spa" />';
         echo '<p class="description">The part after <code>/book/</code> in your booking link.</p></td></tr>';
+        $delivery = get_option(LUMIO_BOOKING_OPT_DELIVERY, 'auto');
+        $opt_del  = esc_attr(LUMIO_BOOKING_OPT_DELIVERY);
+        echo '<tr><th scope="row"><label for="lumio_delivery">Conversion delivery</label></th><td>';
+        echo '<select name="' . $opt_del . '" id="lumio_delivery">';
+        foreach (array('gtm' => 'GTM — push booking_completed to dataLayer (recommended)', 'ga4' => 'GA4 direct — call gtag purchase', 'none' => 'Off — send nothing', 'auto' => 'Auto — legacy detection (old sites)') as $k => $label) {
+            echo '<option value="' . esc_attr($k) . '"' . selected($delivery, $k, false) . '>' . esc_html($label) . '</option>';
+        }
+        echo '</select>';
+        echo '<p class="description">How completed bookings from the embedded form reach THIS site\'s analytics. New sites should use GTM: the event is queued on the dataLayer even if GTM has not finished loading.</p></td></tr>';
         if ($preview) {
             echo '<tr><th scope="row">Your booking link</th><td><a href="' . esc_url($preview) . '" target="_blank" rel="noopener">' . esc_html($preview) . '</a></td></tr>';
         }
@@ -160,14 +175,6 @@ if (!function_exists('lumio_booking_base')) {
             . 'L.frames.push({id:' . wp_json_encode($fid) . ',origin:' . wp_json_encode($origin) . '});'
             . 'if(L.boot){return;}L.boot=1;'
             . 'var s=document.createElement("script");s.src=' . wp_json_encode($site . '/embed.js?v=4') . ';s.async=true;document.head.appendChild(s);'
-            . '(function(){if(window.__lumioConvHook){return;}window.__lumioConvHook=1;'
-            . 'window.addEventListener("message",function(e){var d=e.data;'
-            . 'if(!d||typeof d!=="object"||d.type!=="lumio:booking_completed"){return;}'
-            . 'var p={event:"booking_completed",transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items};'
-            . 'try{if(window.google_tag_manager){window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}'
-            . 'else if(typeof window.gtag==="function"){window.gtag("event","purchase",{transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items});}'
-            . 'else{window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}}catch(err){}});'
-            . '})();'
 
             . 'setTimeout(function(){if(L.ready){return;}'
             . 'window.addEventListener("message",function(e){var d=e.data;if(!d||d.type!=="lumio-embed-height"){return;}'
@@ -207,7 +214,50 @@ if (!function_exists('lumio_booking_base')) {
         echo '<script>(function(){'
             . 'if(window.__lumioLaunch){return;}window.__lumioLaunch=1;'
             . 'var U=' . wp_json_encode($url) . ',M=' . wp_json_encode($match) . ';'
-            . 'function lumioUtm(u){try{var p=new URLSearchParams(location.search),k=["utm_source","utm_medium","utm_campaign","utm_content"],a="";for(var i=0;i<k.length;i++){var v=p.get(k[i]);if(v){a+="&"+k[i]+"="+encodeURIComponent(v);}}return u+a;}catch(e){return u;}}'
+            . 'var LB_ORIGIN=' . wp_json_encode(preg_replace('#^(https?://[^/]+).*$#', '$1', lumio_booking_base())) . ';'
+            . 'var LB_SLUG=' . wp_json_encode($slug) . ';'
+            . 'var LB_MODE=' . wp_json_encode((string) get_option(LUMIO_BOOKING_OPT_DELIVERY, 'auto')) . ';'
+            /* First-party attribution store: first-touch + last-touch for 30 days
+               (utm_*, gclid/gbraid/wbraid + landing url + referrer + captured_at).
+               Runs on EVERY page, so the source survives multi-page journeys. */
+            . 'function lbAttr(){try{var K="lumio_attr_v1",now=Date.now(),st={};try{st=JSON.parse(localStorage.getItem(K)||"{}")||{}}catch(e){}'
+            . 'var p=new URLSearchParams(location.search),ks=["utm_source","utm_medium","utm_campaign","utm_content","utm_term","gclid","gbraid","wbraid"],cur={},has=0;'
+            . 'for(var i=0;i<ks.length;i++){var v=p.get(ks[i]);if(v){cur[ks[i]]=v;has=1;}}'
+            . 'if(has){var en={p:cur,lu:location.href.slice(0,500),rf:(document.referrer||"").slice(0,500),at:new Date().toISOString(),ts:now};'
+            . 'if(!st.ft||now-(st.ft.ts||0)>2592e6){st.ft=en;}st.lt=en;try{localStorage.setItem(K,JSON.stringify(st));}catch(e2){}}'
+            . 'var u=(st.lt&&now-(st.lt.ts||0)<2592e6)?st.lt:((st.ft&&now-(st.ft.ts||0)<2592e6)?st.ft:null);return u;}catch(e){return null;}}'
+            . 'function lbAttrQ(){var q="po="+encodeURIComponent(location.origin),u=lbAttr();'
+            . 'if(u){for(var k in u.p){q+="&"+k+"="+encodeURIComponent(u.p[k]);}q+="&lumio_lu="+encodeURIComponent(u.lu)+"&lumio_rf="+encodeURIComponent(u.rf)+"&lumio_at="+encodeURIComponent(u.at);}'
+            . 'else{q+="&lumio_lu="+encodeURIComponent(location.href.slice(0,500))+"&lumio_rf="+encodeURIComponent((document.referrer||"").slice(0,500))+"&lumio_at="+encodeURIComponent(new Date().toISOString());}return q;}'
+            . 'function lumioUtm(u){try{return u+(u.indexOf("?")>=0?"&":"?")+lbAttrQ();}catch(e){return u;}}'
+            /* Decorate every Lumio iframe (shortcode or theme-made) with the
+               stored attribution + our origin (po) so the form can post the
+               conversion back to a VERIFIED target, never "*". */
+            . 'function lbDecorate(){try{var fs=document.querySelectorAll("iframe");for(var i=0;i<fs.length;i++){var f=fs[i];'
+            . 'if(f.src&&f.src.indexOf(LB_ORIGIN)===0&&f.src.indexOf("po=")<0){f.src+=(f.src.indexOf("?")>=0?"&":"?")+lbAttrQ();}}}catch(e){}}'
+            . 'lbAttr();lbDecorate();document.addEventListener("DOMContentLoaded",lbDecorate);setTimeout(lbDecorate,1500);'
+            /* Validated conversion bridge — the ONLY path a booking event may
+               take into this site's analytics. Rejects: wrong origin, wrong
+               schema, wrong salon, empty transaction id, or a sender that is
+               not one of OUR iframes. Idempotent per transaction id. */
+            . '(function(){if(window.__lumioBridge){return;}window.__lumioBridge=1;window.__lumioSent={};'
+            . 'window.addEventListener("message",function(e){var d=e.data;'
+            . 'if(!d||typeof d!=="object"||d.type!=="lumio:booking_completed"){return;}'
+            . 'if(e.origin!==LB_ORIGIN){return;}'
+            . 'if(d.schema_version!==1){return;}'
+            . 'if(!d.transaction_id||typeof d.transaction_id!=="string"){return;}'
+            . 'if(LB_SLUG&&d.salon_slug&&d.salon_slug!==LB_SLUG){return;}'
+            . 'var ok=false;try{var fs=document.querySelectorAll("iframe");for(var i=0;i<fs.length;i++){if(fs[i].contentWindow===e.source&&fs[i].src.indexOf(LB_ORIGIN)===0){ok=true;break;}}}catch(er){}'
+            . 'if(!ok){return;}'
+            . 'if(window.__lumioSent[d.transaction_id]){return;}window.__lumioSent[d.transaction_id]=1;'
+            . 'var p={event:"booking_completed",transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items};'
+            . 'var g={transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items};'
+            . 'try{if(LB_MODE==="none"){return;}'
+            . 'else if(LB_MODE==="gtm"){window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}'
+            . 'else if(LB_MODE==="ga4"){window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){window.dataLayer.push(arguments);};window.gtag("event","purchase",g);}'
+            . 'else{if(window.google_tag_manager){window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}'
+            . 'else if(typeof window.gtag==="function"){window.gtag("event","purchase",g);}'
+            . 'else{window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}}}catch(err){}});})();'
             . 'var wrap=null,frame=null,isOpen=false,savedY=0,pushed=false,adopted=false;'
             . 'function build(){if(wrap){return;}'
             . 'wrap=document.createElement("div");wrap.setAttribute("aria-hidden","true");'
@@ -255,14 +305,6 @@ if (!function_exists('lumio_booking_base')) {
             . 'window.addEventListener("popstate",function(){if(isOpen){closeOverlay(true);}});'
             . 'window.addEventListener("message",function(e){var d=e.data;'
             . 'if(d&&typeof d==="object"&&(d.type==="lumio-embed-collapse"||d.type==="lumio-booking-close")){closeOverlay();}});'
-            . '(function(){if(window.__lumioConvHook){return;}window.__lumioConvHook=1;'
-            . 'window.addEventListener("message",function(e){var d=e.data;'
-            . 'if(!d||typeof d!=="object"||d.type!=="lumio:booking_completed"){return;}'
-            . 'var p={event:"booking_completed",transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items};'
-            . 'try{if(window.google_tag_manager){window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}'
-            . 'else if(typeof window.gtag==="function"){window.gtag("event","purchase",{transaction_id:d.transaction_id,value:d.value,currency:d.currency,items:d.items});}'
-            . 'else{window.dataLayer=window.dataLayer||[];window.dataLayer.push(p);}}catch(err){}});'
-            . '})();'
 
             . 'function pre(){if(document.querySelector(".lumio-book,[data-lumio-book],a[href*=\'"+M+"\']")){build();}}'
             // Some salon themes render the booking iframe themselves instead of using

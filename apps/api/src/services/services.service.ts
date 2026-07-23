@@ -133,7 +133,9 @@ export class ServicesService {
           tenantId,
           name: dto.name,
           description: dto.description ?? null,
-          durationMinutes: dto.durationMinutes,
+          // Blank in the form = "use the standard slot" — 30 min keeps the
+          // booking calendar computable without forcing data entry up front.
+          durationMinutes: dto.durationMinutes ?? 30,
           priceCents: dto.priceCents,
           discountPercent: dto.discountPercent ?? 0,
           currency: dto.currency ?? 'USD',

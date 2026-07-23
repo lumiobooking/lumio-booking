@@ -21,9 +21,13 @@ export class CreateServiceDto {
   @MaxLength(500)
   description?: string;
 
+  // Optional on purpose: salons often don't know exact timings when first
+  // entering a menu. Blank -> the service default (30 min) so the booking
+  // calendar always has a real duration to compute slots with.
+  @IsOptional()
   @IsInt()
   @Min(1)
-  durationMinutes!: number;
+  durationMinutes?: number;
 
   // Price stored in cents to avoid floating-point money bugs.
   @IsInt()

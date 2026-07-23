@@ -386,7 +386,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         body: {
           name: form.name,
           description: form.description || undefined,
-          durationMinutes: parseInt(form.duration, 10),
+          durationMinutes: parseInt(form.duration, 10) || 30,
           priceCents: Math.round(parseFloat(form.price) * 100),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,
@@ -424,7 +424,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
       {error && <div style={ui.banner}>{error}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         <label><span style={ui.label}>{t('sv.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
-        <label><span style={ui.label}>{t('sv.fDuration')}</span><input style={ui.input} type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} required /></label>
+        <label><span style={ui.label}>{t('sv.fDuration')}</span><input style={ui.input} type="number" min={0} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="30" /></label>
         <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fDiscount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
       </div>
@@ -485,7 +485,7 @@ function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: stri
     try {
       await apiFetch(`/services/${serviceId}/addons`, {
         method: 'POST', token,
-        body: { name: form.name, durationMinutes: parseInt(form.duration, 10), priceCents: Math.round(parseFloat(form.price) * 100) },
+        body: { name: form.name, durationMinutes: parseInt(form.duration, 10) || 0, priceCents: Math.round(parseFloat(form.price) * 100) },
       });
       setForm({ name: '', duration: '15', price: '15' });
       await load();
@@ -559,7 +559,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         body: {
           name: form.name,
           description: form.description || undefined,
-          durationMinutes: parseInt(form.durationMinutes, 10),
+          durationMinutes: parseInt(form.durationMinutes, 10) || 30,
           priceCents: Math.round(parseFloat(form.price) * 100),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,
@@ -594,10 +594,10 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           <input
             style={ui.input}
             type="number"
-            min={1}
+            min={0}
             value={form.durationMinutes}
             onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
-            required
+            placeholder="30"
           />
         </label>
         <label>

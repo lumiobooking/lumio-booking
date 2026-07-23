@@ -57,6 +57,13 @@ export abstract class LegacyConnectorAdapter implements TerminalAdapter {
   }
 
   async testConnection(cred: AdapterCredentials, terminalId?: string): Promise<TerminalHealth> {
+    // When the caller asks about a SPECIFIC terminal and the connector can
+    // check pairing (Square device codes), report the device's real state —
+    // a valid account token alone does not mean the terminal can take cards.
+    if (terminalId && typeof (this.connector as any).checkReader === 'function') {
+      const h = await (this.connector as any).checkReader(cred.secret, terminalId);
+      return { online: !!h.online, terminalId, message: h.message };
+    }
     const res = await this.connector.verifyCredential(cred.secret, { locationId: cred.locationId, region: cred.region });
     return { online: res.ok, terminalId, message: res.error };
   }

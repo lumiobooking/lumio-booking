@@ -359,11 +359,28 @@ export default function PublicBookingPage() {
     });
   }
 
+  // Providers that return a HOSTED PAGE URL (Square Payment Links): open it in
+  // a new tab, then poll our server which verifies the payment with the
+  // provider. Poll every 6s (public confirm endpoint is rate-limited 12/min).
+  async function payDepositViaUrl(bookingId: string, url: string) {
+    window.open(url, '_blank', 'noopener');
+    for (let i = 0; i < 100; i++) {
+      await new Promise((s2) => setTimeout(s2, 6000));
+      try {
+        const c = await fetch(`${base}/bookings/${bookingId}/online-confirm`, { method: 'POST' });
+        const cj = await c.json().catch(() => null);
+        if (cj?.ok) { setResult({ paymentStatus: 'PAID' }); return; }
+      } catch { /* transient network error — keep polling */ }
+    }
+  }
+
   async function payDepositOnline(bookingId: string) {
     try {
       const r = await fetch(`${base}/bookings/${bookingId}/online-checkout`, { method: 'POST' });
       const j = await r.json().catch(() => null);
-      if (!r.ok || !j?.checkoutToken) return;
+      if (!r.ok) return;
+      if (j?.url && !j?.checkoutToken) { await payDepositViaUrl(bookingId, String(j.url)); return; }
+      if (!j?.checkoutToken) return;
 
       await loadHelcimPay();
       const w = window as any;

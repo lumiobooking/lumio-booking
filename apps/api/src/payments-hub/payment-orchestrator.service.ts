@@ -114,6 +114,22 @@ export class PaymentOrchestrator {
     if (!conn) throw new NotFoundException('No connection');
     const readers = await this.registry.get(provider).listReaders(cred.secret);
     for (const r of readers) {
+      // Square-style pairing: the row was first saved under the device-CODE id;
+      // once paired the provider reports the real device_id. Migrate the old
+      // row in place (keeps its id, so existing intents/links stay valid)
+      // instead of leaving a phantom "Pair code" device behind.
+      if (r.replacesExternalId && r.replacesExternalId !== r.externalId) {
+        const stale = await this.prisma.paymentDevice.findUnique({
+          where: { tenantId_provider_externalReaderId: { tenantId, provider, externalReaderId: r.replacesExternalId } },
+        }).catch(() => null);
+        if (stale) {
+          const already = await this.prisma.paymentDevice.findUnique({
+            where: { tenantId_provider_externalReaderId: { tenantId, provider, externalReaderId: r.externalId } },
+          }).catch(() => null);
+          if (already) await this.prisma.paymentDevice.delete({ where: { id: stale.id } });
+          else await this.prisma.paymentDevice.update({ where: { id: stale.id }, data: { externalReaderId: r.externalId } });
+        }
+      }
       await this.prisma.paymentDevice.upsert({
         where: { tenantId_provider_externalReaderId: { tenantId, provider, externalReaderId: r.externalId } },
         create: { tenantId, provider, connectionId: conn.id, externalReaderId: r.externalId, label: r.label ?? null, locationId: r.locationId ?? null, status: r.status, lastSeenAt: new Date() },
@@ -544,8 +560,22 @@ export class PaymentOrchestrator {
     if (!provider) throw new BadRequestException('No online payment provider connected');
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const connector: any = this.registry.get(provider);
-    const session = await connector.startOnlineCheckout(cred.secret, amountCents, currency, reference);
-    return { provider, amountCents, currency, ...session };
+    const session = await connector.startOnlineCheckout(cred.secret, amountCents, currency, reference, { locationId: (cred as any).locationId });
+    // Providers that cannot search by our reference (Square) hand back their
+    // own id (order_id). Persist the mapping so onlineLookup can verify later.
+    if (session?.externalRef) {
+      const conn = await this.creds.findConnection(tenantId, provider as ProviderId).catch(() => null);
+      await this.prisma.paymentIntentRecord.create({
+        data: {
+          tenantId, provider, connectionId: conn?.id ?? null,
+          externalIntentId: String(session.externalRef), clientRef: `online:${reference}`,
+          amountCents, currency, status: 'REQUIRES_PAYMENT', connectionType: 'CLOUD',
+        },
+      }).catch(() => undefined);
+    }
+    const pub = { ...(session ?? {}) } as Record<string, unknown>;
+    delete pub.externalRef; // internal mapping only — the browser never needs it
+    return { provider, amountCents, currency, ...pub };
   }
 
   /** Verify an online payment directly with the provider (never trust the client). */
@@ -554,7 +584,23 @@ export class PaymentOrchestrator {
     if (!provider) throw new BadRequestException('No online payment provider connected');
     const cred = await this.creds.loadCred(tenantId, provider as ProviderId);
     const connector: any = this.registry.get(provider);
-    const res = await connector.lookupOnlinePayment(cred.secret, reference);
+    let res: { approved: boolean; amountCents?: number; transactionId?: string };
+    if (typeof connector.lookupOnlinePaymentByOrder === 'function') {
+      const row = await this.prisma.paymentIntentRecord.findFirst({
+        where: { tenantId, provider, clientRef: `online:${reference}` },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!row?.externalIntentId) return { provider, approved: false };
+      res = await connector.lookupOnlinePaymentByOrder(cred.secret, row.externalIntentId);
+      if (res.approved && row.status !== 'SUCCEEDED') {
+        await this.prisma.paymentIntentRecord.update({
+          where: { id: row.id },
+          data: { status: 'SUCCEEDED', succeededAt: new Date() },
+        }).catch(() => undefined);
+      }
+    } else {
+      res = await connector.lookupOnlinePayment(cred.secret, reference);
+    }
     return { provider, ...res };
   }
 

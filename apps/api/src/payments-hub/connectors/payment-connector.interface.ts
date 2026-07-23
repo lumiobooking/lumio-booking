@@ -30,7 +30,15 @@ export interface PaymentConnector {
 
   // ---- Optional ONLINE (card-not-present) support, e.g. booking deposits ----
   /** Start a hosted checkout session; returns a token the customer-facing page renders. */
-  startOnlineCheckout?(secret: string, amountCents: number, currency: string, reference: string): Promise<{ checkoutToken?: string; [k: string]: unknown }>;
+  startOnlineCheckout?(secret: string, amountCents: number, currency: string, reference: string, opts?: { locationId?: string }): Promise<{ checkoutToken?: string; url?: string; externalRef?: string; [k: string]: unknown }>;
   /** Server-side verification of an online payment (never trust the client). */
   lookupOnlinePayment?(secret: string, reference: string): Promise<{ approved: boolean; amountCents?: number; transactionId?: string }>;
+  /**
+   * Verification by the provider-side id we stored when the checkout started
+   * (e.g. Square order_id). Used when the provider cannot search by our own
+   * reference string.
+   */
+  lookupOnlinePaymentByOrder?(secret: string, orderId: string): Promise<{ approved: boolean; amountCents?: number; transactionId?: string }>;
+  /** Health-check ONE terminal (pairing status), not just the account token. */
+  checkReader?(secret: string, externalId: string): Promise<{ online: boolean; message?: string }>;
 }

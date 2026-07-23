@@ -62,6 +62,7 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/billing', label: 'Billing & plan', icon: '💳' },
     { href: '/salon/notifications', label: 'Notifications', icon: '✉' },
     { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },
+    { href: '/salon/connections', label: 'Connections', icon: '🔌' },
     { href: '/salon/settings', label: 'Settings', icon: '⚙' },
   ] },
 ];

@@ -36,7 +36,7 @@ export class SquareTerminalConnector implements PaymentConnector {
   }
 
   capabilities(): ConnectorCapabilities {
-    return { terminal: true, online: false, tapToPay: false, interac: true, partialRefund: true, currencies: ['USD', 'CAD'] };
+    return { terminal: true, online: true, tapToPay: false, interac: true, partialRefund: true, currencies: ['USD', 'CAD'] };
   }
 
   async verifyCredential(secret: string, opts?: Record<string, string | undefined>): Promise<ConnectResult> {
@@ -62,25 +62,90 @@ export class SquareTerminalConnector implements PaymentConnector {
     });
     if (!r.ok) throw new Error(this.err(r));
     const dc = r.json?.device_code ?? {};
-    return { externalId: dc.device_id || dc.id, label: `Pair code: ${dc.code}`, status: dc.device_id ? 'ONLINE' : 'UNKNOWN', locationId };
+    // The device_id does NOT exist yet — it appears only after the salon signs
+    // in on the Terminal with this code (within 5 minutes / pair_by). We save
+    // the row under the code id; listReaders() migrates it to the real
+    // device_id via replacesExternalId once PAIRED.
+    return { externalId: dc.device_id || dc.id, label: `Pair code: ${dc.code} (nhập trên máy trong 5 phút)`, status: dc.device_id ? 'ONLINE' : 'UNKNOWN', locationId };
   }
 
   async listReaders(secret: string): Promise<ReaderInfo[]> {
-    const r = await httpJson('GET', `${BASE}/v2/devices/codes`, this.headers(secret));
+    const r = await httpJson('GET', `${BASE}/v2/devices/codes?product_type=TERMINAL_API`, this.headers(secret));
     if (!r.ok) return [];
     const codes = r.json?.device_codes ?? [];
     return codes
-      .filter((dc: any) => dc.device_id || dc.status === 'PAIRED' || dc.status === 'UNPAIRED')
+      .filter((dc: any) => dc.status !== 'EXPIRED')
       .map((dc: any) => ({
+        // Once paired, expose the REAL device_id and tell the orchestrator to
+        // migrate the row that was saved under the code id at register time.
         externalId: dc.device_id || dc.id,
-        label: dc.name || (dc.device_id ? 'Square Terminal' : `Pair code: ${dc.code}`),
-        status: dc.device_id ? 'ONLINE' : 'UNKNOWN',
+        replacesExternalId: dc.device_id ? dc.id : undefined,
+        label: dc.device_id ? (dc.name || 'Square Terminal') : `Pair code: ${dc.code} (chưa ghép)` ,
+        status: dc.status === 'PAIRED' ? 'ONLINE' : 'UNKNOWN',
         locationId: dc.location_id,
       }));
   }
 
+  /** Health of ONE terminal = its device code is PAIRED (not just a valid token). */
+  async checkReader(secret: string, externalId: string): Promise<{ online: boolean; message?: string }> {
+    const r = await httpJson('GET', `${BASE}/v2/devices/codes?product_type=TERMINAL_API`, this.headers(secret));
+    if (!r.ok) return { online: false, message: this.err(r) };
+    const codes = r.json?.device_codes ?? [];
+    const hit = codes.find((dc: any) => dc.device_id === externalId || dc.id === externalId);
+    if (!hit) return { online: false, message: 'Terminal not found in this Square account' };
+    if (hit.status === 'PAIRED' && hit.device_id) return { online: true };
+    return { online: false, message: hit.status === 'EXPIRED' ? 'Pair code expired — create a new reader' : 'Terminal not paired yet — sign in on the device with the pair code' };
+  }
+
   async createConnectionToken(): Promise<string | null> {
     return null; // Not used for the server-driven Terminal Checkout flow.
+  }
+
+  /**
+   * ONLINE (card-not-present) — Square-hosted Payment Link. Returns a URL the
+   * customer opens to pay; card data never touches Lumio. We keep the created
+   * order_id (externalRef) so the server can verify the payment later.
+   */
+  async startOnlineCheckout(secret: string, amountCents: number, currency: string, reference: string, opts?: { locationId?: string }) {
+    let locationId = opts?.locationId;
+    if (!locationId) {
+      const lr = await httpJson('GET', `${BASE}/v2/locations`, this.headers(secret));
+      locationId = lr.json?.locations?.[0]?.id;
+    }
+    if (!locationId) throw new Error('Square: no location available for online checkout');
+    const r = await httpJson('POST', `${BASE}/v2/online-checkout/payment-links`, this.headers(secret), {
+      idempotency_key: randomUUID(),
+      description: `Lumio booking ${reference}`,
+      payment_note: `Booking ${reference}`,
+      quick_pay: {
+        name: 'Booking deposit',
+        price_money: { amount: amountCents, currency: currency.toUpperCase() },
+        location_id: locationId,
+      },
+    });
+    if (!r.ok) throw new Error(this.err(r));
+    const pl = r.json?.payment_link ?? {};
+    return { url: pl.url || pl.long_url, externalRef: pl.order_id as string };
+  }
+
+  /**
+   * Server-side verification by the order we created for the payment link:
+   * order -> tender -> payment must be COMPLETED. The browser is never trusted.
+   */
+  async lookupOnlinePaymentByOrder(secret: string, orderId: string): Promise<{ approved: boolean; amountCents?: number; transactionId?: string }> {
+    const or = await httpJson('GET', `${BASE}/v2/orders/${orderId}`, this.headers(secret));
+    if (!or.ok) return { approved: false };
+    const tender = (or.json?.order?.tenders ?? [])[0];
+    const paymentId = tender?.payment_id || tender?.id;
+    if (!paymentId) return { approved: false };
+    const pr = await httpJson('GET', `${BASE}/v2/payments/${paymentId}`, this.headers(secret));
+    if (!pr.ok) return { approved: false };
+    const p = pr.json?.payment ?? {};
+    return {
+      approved: p.status === 'COMPLETED' || p.status === 'APPROVED',
+      amountCents: p.amount_money?.amount,
+      transactionId: p.id,
+    };
   }
 
   async charge(secret: string, input: ChargeInput): Promise<IntentResult> {

@@ -34,6 +34,13 @@ export interface ReaderInfo {
   label?: string;
   status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
   locationId?: string;
+  /**
+   * Square-style pairing: the reader was first saved under a device-code id and,
+   * once the salon signs in on the terminal, the provider assigns the REAL
+   * device_id. When set, the orchestrator migrates the old row to this
+   * externalId instead of creating a duplicate "phantom" device.
+   */
+  replacesExternalId?: string;
 }
 
 export interface ChargeInput {

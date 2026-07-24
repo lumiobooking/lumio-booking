@@ -132,6 +132,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   // 'tall' = clearly portrait (height > 1.1× width). Square/landscape → false, so
   // the review card splits 50/50; portrait → stacks (QR on top, text below).
   const [tall, setTall] = useState(false);
+  const lastSigRef = useRef('');
   const prevSaleRef = useRef<string>('__init__');
   const tipPanelRef = useRef<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState(false);
@@ -154,7 +155,11 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
           prevSaleRef.current = saleKey;
           setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false);
         }
-        setS(st);
+        // Only re-render when the state actually changed. Polling every second and
+        // calling setS unconditionally re-rendered the whole screen each tick,
+        // which made the Tip button intermittently swallow a tap.
+        const sig = JSON.stringify(st);
+        if (sig !== lastSigRef.current) { lastSigRef.current = sig; setS(st); }
       } catch (e) {
         if (!alive) return;
         if (e instanceof ApiError && e.status === 404) setNotLinked(true);
@@ -280,7 +285,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
 
           ) : s.status === 'paid' ? (
             // ---------------- PAID · THANK YOU (review = hero) ----------------
-            <div style={centerBox}>
+            <div style={{ ...centerBox, maxWidth: 1040 }}>
               {s.reviewUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 2, animation: 'lumioFade .5s ease both' }}>
                   <div style={checkCircle(true)}>✓</div>
@@ -468,7 +473,7 @@ function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: st
       display: 'flex', flexDirection: col ? 'column' : 'row', alignItems: 'center', justifyContent: 'center',
       gap: col ? 'clamp(8px, 1.8vh, 20px)' : 'clamp(18px, 3vw, 48px)',
       width: full ? '100%' : (stack ? 'min(94vw, 520px)' : 'min(96vw, 940px)'),
-      maxWidth: full ? 460 : undefined, margin: full ? '0 auto' : '18px auto 0',
+      maxWidth: full ? 460 : '100%', margin: full ? '0 auto' : '18px auto 0',
       background: 'linear-gradient(160deg, #ffffff, #fffdf5)', border: `1px solid ${GOLD}33`,
       borderRadius: 26, padding: 'clamp(14px, 2.2vh, 30px)',
       boxShadow: big ? `0 22px 60px rgba(15,23,42,0.14), 0 0 0 6px ${accent}0d` : '0 14px 44px rgba(15,23,42,0.10)',
@@ -476,7 +481,7 @@ function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: st
     }}>
       <div style={{ flex: col ? 'none' : '1 1 0%', display: 'flex', justifyContent: col ? 'center' : 'flex-end' }}>
         <div style={{ position: 'relative' }}>
-          {big && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite' }} />}
+          {big && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite', pointerEvents: 'none' }} />}
           <div style={{ position: 'relative', background: '#fff', borderRadius: 20, padding: 14, boxShadow: '0 12px 34px rgba(15,23,42,0.13)', border: '1px solid #eef2f7' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qr(big ? 460 : 360)} alt="Google review QR" style={{ width: qrW, height: 'auto', display: 'block' }} />

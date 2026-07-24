@@ -81,9 +81,16 @@ export default function PosDisplayPage() {
     const ch = new BroadcastChannel('lumio-pos-display');
     chRef.current = ch;
     let mode: 'mirror' | 'paid' = 'mirror';
+    let lastSig = '';
     ch.onmessage = (e) => {
       const d = e.data;
       if (!d || d.type !== 'state' || !d.state) return;
+      // Ignore identical re-pushes (the register heartbeats the same paid state).
+      // Re-rendering on every heartbeat is what made the Tip button occasionally
+      // miss a tap — so skip when nothing actually changed.
+      const sig = JSON.stringify(d.state);
+      if (sig === lastSig) return;
+      lastSig = sig;
       const stt = d.state.status;
       if (stt === 'active' && (d.state.lines?.length ?? 0) > 0) {
         mode = 'mirror'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false);
@@ -186,7 +193,7 @@ export default function PosDisplayPage() {
             )
 
           ) : s.status === 'paid' ? (
-            <div style={centerBox}>
+            <div style={{ ...centerBox, maxWidth: 1040 }}>
               {s.reviewUrl ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 2, animation: 'lumioFade .5s ease both' }}>
                   <div style={checkCircle(true)}>✓</div>
@@ -371,7 +378,7 @@ function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: st
       display: 'flex', flexDirection: col ? 'column' : 'row', alignItems: 'center', justifyContent: 'center',
       gap: col ? 'clamp(8px, 1.8vh, 20px)' : 'clamp(18px, 3vw, 48px)',
       width: full ? '100%' : (stack ? 'min(94vw, 520px)' : 'min(96vw, 940px)'),
-      maxWidth: full ? 460 : undefined, margin: full ? '0 auto' : '18px auto 0',
+      maxWidth: full ? 460 : '100%', margin: full ? '0 auto' : '18px auto 0',
       background: 'linear-gradient(160deg, #ffffff, #fffdf5)', border: `1px solid ${GOLD}33`,
       borderRadius: 26, padding: 'clamp(14px, 2.2vh, 30px)',
       boxShadow: big ? `0 22px 60px rgba(15,23,42,0.14), 0 0 0 6px ${accent}0d` : '0 14px 44px rgba(15,23,42,0.10)',
@@ -379,7 +386,7 @@ function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: st
     }}>
       <div style={{ flex: col ? 'none' : '1 1 0%', display: 'flex', justifyContent: col ? 'center' : 'flex-end' }}>
         <div style={{ position: 'relative' }}>
-          {big && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite' }} />}
+          {big && <div style={{ position: 'absolute', inset: -9, borderRadius: 26, border: `3px solid ${accent}`, animation: 'lumioPulse 2s ease-in-out infinite', pointerEvents: 'none' }} />}
           <div style={{ position: 'relative', background: '#fff', borderRadius: 20, padding: 14, boxShadow: '0 12px 34px rgba(15,23,42,0.13)', border: '1px solid #eef2f7' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qr(big ? 460 : 360)} alt="Google review QR" style={{ width: qrW, height: 'auto', display: 'block' }} />

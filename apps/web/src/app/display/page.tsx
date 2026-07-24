@@ -252,7 +252,7 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
       `}</style>
       {brand}
       <div style={contentArea}>
-        <div style={{ ...scrollInner, justifyContent: isActive ? 'flex-start' : 'center' }}>
+        <div style={{ ...scrollInner, justifyContent: isActive ? 'flex-start' : 'safe center' }}>
 
           {s.status === 'idle' || (s.status === 'active' && s.lines.length === 0) ? (
             // ---------------- WELCOME ----------------
@@ -300,18 +300,19 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
                 </>
               )}
 
-              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} big />}
+              {s.reviewUrl && !(hasTip && revealTip && !tipped) && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} big />}
 
               {/* Optional tip — secondary to the review */}
               {tipped ? (
                 <div style={{ marginTop: 18, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
               ) : hasTip && revealTip ? (
-                <div ref={tipPanelRef} style={{ marginTop: 10 }}>
+                <div ref={tipPanelRef} style={{ marginTop: 6 }}>
                   <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
                     onChoose={setChosenTip}
                     onCustom={() => { setPad(''); setKeypad(true); }}
                     onConfirm={() => { if (chosenTip != null) sendTip(chosenTip); }}
                     onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
+                  {s.reviewUrl && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 12 }}>The Google review QR comes back after 💛</div>}
                 </div>
               ) : hasTip ? (
                 <button type="button" onPointerDown={() => setRevealTip(true)} onClick={() => setRevealTip(true)} style={{ ...softTipLink(accent), marginTop: 20 }}>

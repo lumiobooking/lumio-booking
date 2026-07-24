@@ -206,17 +206,18 @@ export default function PosDisplayPage() {
                 </>
               )}
 
-              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} big />}
+              {s.reviewUrl && !(hasTip && revealTip && !tipped) && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} big />}
 
               {tipped ? (
                 <div style={{ marginTop: 18, fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#16a34a', fontWeight: 700 }}>You&rsquo;re so kind — thank you! 💛</div>
               ) : hasTip && revealTip ? (
-                <div ref={tipPanelRef} style={{ marginTop: 10 }}>
+                <div ref={tipPanelRef} style={{ marginTop: 6 }}>
                   <AfterTip s={s} cur={cur} accent={accent} chosen={chosenTip}
                     onChoose={setChosenTip}
                     onCustom={() => { setPad(''); setKeypad(true); }}
                     onConfirm={() => { if (chosenTip != null) sendTipDirect(chosenTip); }}
                     onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
+                  {s.reviewUrl && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 12 }}>The Google review QR comes back after 💛</div>}
                 </div>
               ) : hasTip ? (
                 <button type="button" onPointerDown={() => setRevealTip(true)} onClick={() => setRevealTip(true)} style={{ ...softTipLink(accent), marginTop: 20 }}>
@@ -437,7 +438,7 @@ const page: CSSProperties = {
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', overflow: 'hidden',
 };
 const contentArea: CSSProperties = { flex: 1, minHeight: 0, width: '100%', overflowY: 'auto' };
-const scrollInner: CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0', boxSizing: 'border-box' };
+const scrollInner: CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'safe center', padding: '0.5rem 0', boxSizing: 'border-box' };
 const brandBar: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 12px', flexShrink: 0 };
 const centerBox: CSSProperties = { textAlign: 'center', maxWidth: 760, margin: '0 auto', animation: 'lumioFade .5s ease both' };
 const itemsPanel: CSSProperties = {

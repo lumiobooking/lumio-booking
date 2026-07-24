@@ -385,6 +385,8 @@ export interface Branding {
   /** Logo zoom inside its display frame, percent (100 = fit). Lets a logo with
    *  its own background bleed to the frame edges instead of showing a border. */
   logoScale: number;
+  /** Custom hero image for the customer-facing display's Welcome screen. */
+  welcomeImageUrl: string;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -395,6 +397,7 @@ export const DEFAULT_BRANDING: Branding = {
   ratingValue: 0,
   ratingCount: 0,
   logoScale: 100,
+  welcomeImageUrl: '',
 };
 
 // ===========================================================================

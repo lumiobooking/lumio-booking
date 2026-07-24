@@ -21,7 +21,7 @@ interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
   taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
-  salonName?: string; salonLogo?: string; salonAccent?: string;
+  salonName?: string; salonLogo?: string; salonAccent?: string; salonWelcome?: string;
 }
 
 interface Line {
@@ -77,6 +77,7 @@ function Register() {
   const [salonName, setSalonName] = useState('');
   const [salonLogo, setSalonLogo] = useState('');
   const [salonAccent, setSalonAccent] = useState('#6366f1');
+  const [salonWelcome, setSalonWelcome] = useState('');
   const [reviewUrl, setReviewUrl] = useState<string | null>(null); // salon Google-review link for the customer display
   const [transferInfo, setTransferInfo] = useState('');
   const [transferQr, setTransferQr] = useState('');
@@ -196,7 +197,7 @@ function Register() {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
     setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
     setLoyalty(c.loyalty);
-    setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1');
+    setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
   };
 
   const load = useCallback(async () => {
@@ -208,7 +209,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
       ]);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
@@ -227,6 +228,7 @@ function Register() {
         salonName: settings.company?.name ?? '',
         salonLogo: settings.branding?.logoUrl ?? '',
         salonAccent: settings.branding?.accentColor ?? '#6366f1',
+        salonWelcome: settings.branding?.welcomeImageUrl ?? '',
       };
       applyCatalog(cat);
       cacheCatalog(cat);
@@ -520,7 +522,7 @@ function Register() {
     state: {
       status: (cart.length ? 'active' : 'idle') as 'active' | 'idle',
       currency,
-      salonName, salonLogo, salonAccent,
+      salonName, salonLogo, salonAccent, salonWelcome,
       lines: cart.map((l) => {
         const st = l.staffMemberId ? staff.find((x) => x.id === l.staffMemberId) : null;
         return { name: l.name, qty: l.quantity, lineCents: l.unitPriceCents * l.quantity, staff: st ? `${st.firstName} ${st.lastName ?? ''}`.trim() : undefined };
@@ -539,7 +541,7 @@ function Register() {
       tipBaseCents: cart.filter((l) => l.kind === 'SERVICE').reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
       reviewUrl: reviewUrl ?? undefined,
     },
-  }), [cart, currency, money, cardSurchargePct, staff, salonName, salonLogo, salonAccent, reviewUrl]);
+  }), [cart, currency, money, cardSurchargePct, staff, salonName, salonLogo, salonAccent, salonWelcome, reviewUrl]);
   const displayChRef = useRef<BroadcastChannel | null>(null);
   const displayPayloadRef = useRef(displayPayload);
   displayPayloadRef.current = displayPayload;

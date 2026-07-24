@@ -21,7 +21,7 @@ interface GatewayView { enabled: boolean; connected: boolean; apiKey: string }
 interface SettingsData {
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string };
   booking: Booking;
-  branding: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
+  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
   rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
   gateways: Record<string, GatewayView>;
   notifications: {
@@ -1010,6 +1010,18 @@ async function compressLogo(file: File, maxSide = 128): Promise<string> {
   ctx.drawImage(img, 0, 0, w, h);
   return canvas.toDataURL('image/png');
 }
+/** Compress a large photo (welcome hero) to <=maxSide px JPEG for the display. */
+async function compressPhoto(file: File, maxSide = 1400, quality = 0.82): Promise<string> {
+  const dataUrl: string = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(new Error('read')); fr.readAsDataURL(file); });
+  const img = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('decode')); im.src = dataUrl; });
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale)); const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d'); if (!ctx) return dataUrl;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', quality);
+}
 function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -1043,6 +1055,29 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       setF((prev) => ({ ...prev, logoUrl: out }));
     } catch { setLogoErr(lang === 'vi' ? 'Tải ảnh thất bại.' : 'Upload failed.'); }
     finally { setLogoBusy(false); }
+  }
+  const welcomeRef = useRef<HTMLInputElement | null>(null);
+  const [wBusy, setWBusy] = useState(false);
+  const [wErr, setWErr] = useState<string | null>(null);
+  const welcomeShow = (f.welcomeImageUrl || '').trim();
+  const welcomeOk = welcomeShow.startsWith('https://') || welcomeShow.startsWith('data:image/');
+  async function onPickWelcome(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setWErr(lang === 'vi' ? 'File không phải hình ảnh.' : 'That file is not an image.'); return; }
+    const tk = token ?? '';
+    setWErr(null); setWBusy(true);
+    try {
+      let out = await compressPhoto(file, 1400, 0.82);
+      if (out.length > 1_600_000) out = await compressPhoto(file, 1100, 0.78);
+      // Photos are big — store on the salon's FTP/storage when configured.
+      if (tk && (await logoStorageConfigured(tk))) {
+        try { const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token: tk, body: { dataUrl: out } }); if (r?.url) { setF((prev) => ({ ...prev, welcomeImageUrl: r.url as string })); return; } } catch { /* fall through to inline */ }
+      }
+      if (out.length > 1_900_000) { setWErr(lang === 'vi' ? 'Ảnh quá lớn — bật lưu trữ (Storage) hoặc dùng ảnh nhỏ hơn.' : 'Too large — enable storage or use a smaller image.'); return; }
+      setF((prev) => ({ ...prev, welcomeImageUrl: out }));
+    } catch { setWErr(lang === 'vi' ? 'Tải ảnh thất bại.' : 'Upload failed.'); }
+    finally { setWBusy(false); }
   }
   return (
     <Card title={t('se.br.title')} desc={t('se.br.desc')}>
@@ -1099,6 +1134,34 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             </div>
           )}
           <div style={{ color: '#64748b', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Logo giữ nguyên như file tải lên. Khung nền trắng; kéo thanh trên để logo tràn kín khung (che viền).' : 'The logo is kept exactly as uploaded. White frame; drag the slider to make it fill the frame edge-to-edge.'}</div>
+        </Field>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <Field label={lang === 'vi' ? 'Ảnh màn hình chào khách (Customer display)' : 'Welcome screen image (customer display)'}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ width: 96, height: 54, borderRadius: 8, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: '#0f172a', border: '1px solid #334155', fontSize: 18 }}>
+              {welcomeOk
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={welcomeShow} alt="welcome" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                : <span>🖼</span>}
+            </span>
+            <button type="button" onClick={() => welcomeRef.current?.click()} disabled={wBusy}
+              style={{ ...ui.primaryBtn, padding: '9px 14px', fontSize: 13, whiteSpace: 'nowrap', flexShrink: 0, opacity: wBusy ? 0.6 : 1 }}>
+              {wBusy ? (lang === 'vi' ? 'Đang tải…' : 'Uploading…') : (lang === 'vi' ? '⬆ Tải ảnh lên' : '⬆ Upload image')}
+            </button>
+            <input ref={welcomeRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickWelcome} />
+            {welcomeShow && (
+              <button type="button" onClick={() => setF({ ...f, welcomeImageUrl: '' })}
+                style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
+                {lang === 'vi' ? 'Xoá' : 'Remove'}
+              </button>
+            )}
+            <input style={{ ...ui.input, fontSize: 12.5, flex: '1 1 200px', minWidth: 160 }} value={welcomeShow.startsWith('data:') ? '' : (f.welcomeImageUrl || '')}
+              onChange={(e) => setF({ ...f, welcomeImageUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/anh.jpg' : 'or paste https://…/photo.jpg'} />
+          </div>
+          {wErr && <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>{wErr}</div>}
+          <div style={{ color: '#64748b', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Ảnh ngang, đẹp nhất ~16:9 (vd bàn tay/nail sang trọng). Hiện làm nền màn chào khách kèm logo + chữ "Welcome". Để trống thì dùng màn chào mặc định.' : 'Landscape image, best ~16:9 (e.g. an elegant nail/hand shot). Becomes the welcome-screen background with your logo + a "Welcome" title. Leave blank for the default welcome screen.'}</div>
         </Field>
       </div>
 

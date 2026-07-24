@@ -23,6 +23,7 @@ type DisplayState = {
   salonName?: string;
   salonLogo?: string;
   salonAccent?: string;
+  salonWelcome?: string;
   saleRef?: string;
   lines: Line[];
   subtotalCents: number;
@@ -250,10 +251,13 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
   return (
     <div style={page}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&display=swap');
         @keyframes lumioFade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
         @keyframes lumioPop{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.08)}100%{transform:scale(1)}}
         @keyframes lumioStar{0%{opacity:0;transform:scale(.2) rotate(-25deg)}70%{opacity:1;transform:scale(1.25)}100%{transform:scale(1) rotate(0)}}
         @keyframes lumioPulse{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.05);opacity:.12}}
+        @keyframes lumioFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+        @keyframes lumioGlow{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:.82;transform:scale(1.06)}}
       `}</style>
       {brand}
       <div style={contentArea}>
@@ -264,10 +268,8 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
             (!tall && s.reviewUrl) ? (
               // WELCOME · landscape → split: message (left) | review QR (right)
               <div style={{ width: '100%', maxWidth: 1300, margin: '0 auto', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '3vw', animation: 'lumioFade .4s ease both' }}>
-                <div style={{ flex: '1 1 0%', textAlign: 'center' }}>
-                  <div style={{ fontSize: 'clamp(48px, 13vh, 104px)', marginBottom: 4 }}>💅</div>
-                  <div style={{ fontSize: 'clamp(32px, 7vh, 72px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>Welcome</div>
-                  <div style={{ fontSize: 'clamp(15px, 2.7vh, 26px)', color: '#64748b', marginTop: 10 }}>Sit back and relax — we&rsquo;ll take care of you.</div>
+                <div style={{ flex: '1 1 0%' }}>
+                  <WelcomeHero accent={accent} salonName={s.salonName} image={s.salonWelcome} logo={s.salonLogo} />
                 </div>
                 <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center' }}>
                   <ReviewCard url={s.reviewUrl} accent={accent} full />
@@ -276,10 +278,8 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
             ) : (
               // WELCOME · portrait (or no review) → stacked
               <div style={centerBox}>
-                <div style={{ fontSize: 'clamp(54px, 9vh, 82px)', marginBottom: 4 }}>💅</div>
-                <div style={{ fontSize: 'clamp(34px, 6vw, 60px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>Welcome</div>
-                <div style={{ fontSize: 'clamp(16px, 2.4vw, 24px)', color: '#64748b', marginTop: 10 }}>Sit back and relax — we&rsquo;ll take care of you.</div>
-                {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} />}
+                <WelcomeHero accent={accent} salonName={s.salonName} image={s.salonWelcome} logo={s.salonLogo} />
+                {s.reviewUrl && <div style={{ marginTop: 'clamp(18px, 3vh, 30px)' }}><ReviewCard url={s.reviewUrl} accent={accent} stack={tall} /></div>}
               </div>
             )
 
@@ -459,6 +459,59 @@ function Stars({ size, align = 'center' }: { size: number | string; align?: stri
 }
 // Google review invite. Portrait (stack) → QR on top, text below, centered.
 // Landscape / square → a 50/50 split: QR fills one half, invitation the other.
+const LUMIO_SERIF = "'Playfair Display', 'Georgia', 'Times New Roman', serif";
+function WelcomeHero({ accent, salonName, image, logo }: { accent: string; salonName?: string; image?: string; logo?: string }) {
+  // Custom hero image (salon-supplied) → an editorial full-bleed panel with the
+  // logo/name top-left and a serif "Welcome" over a soft scrim bottom-left.
+  if (image) {
+    return (
+      <div style={{ position: 'relative', width: '100%', height: 'clamp(300px, 74vh, 780px)', borderRadius: 30, overflow: 'hidden', boxShadow: '0 26px 74px rgba(15,23,42,0.20)', animation: 'lumioFade .55s ease both' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '30%', background: 'linear-gradient(to bottom, rgba(0,0,0,0.42), rgba(0,0,0,0))' }} />
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '58%', background: 'linear-gradient(to top, rgba(0,0,0,0.62), rgba(0,0,0,0))' }} />
+        <div style={{ position: 'absolute', top: 'clamp(16px, 3vh, 32px)', left: 'clamp(18px, 3vw, 40px)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {logo && /* eslint-disable-next-line @next/next/no-img-element */ <img src={logo} alt="" style={{ height: 'clamp(30px, 5vh, 52px)', width: 'auto', objectFit: 'contain', borderRadius: 8, background: 'rgba(255,255,255,0.9)', padding: 4 }} />}
+          {salonName && <span style={{ color: '#fff', fontWeight: 800, fontSize: 'clamp(16px, 2.6vh, 30px)', textShadow: '0 2px 10px rgba(0,0,0,0.45)' }}>{salonName}</span>}
+        </div>
+        <div style={{ position: 'absolute', bottom: 'clamp(22px, 5vh, 52px)', left: 'clamp(20px, 4vw, 56px)', right: 'clamp(20px, 4vw, 56px)', textAlign: 'left' }}>
+          <div style={{ fontFamily: LUMIO_SERIF, fontSize: 'clamp(46px, 12vh, 130px)', fontWeight: 500, color: '#fff', lineHeight: 0.98, textShadow: '0 6px 26px rgba(0,0,0,0.4)' }}>Welcome</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 'clamp(10px, 2vh, 20px) 0' }}>
+            <div style={{ width: 'clamp(44px, 6vw, 80px)', height: 2, background: GOLD }} />
+            <span style={{ color: GOLD, fontSize: 'clamp(12px, 1.6vh, 18px)' }}>✦</span>
+          </div>
+          <div style={{ fontSize: 'clamp(14px, 2.2vh, 24px)', color: 'rgba(255,255,255,0.94)', textShadow: '0 2px 10px rgba(0,0,0,0.45)' }}>Sit back and relax — we&rsquo;ll take care of you.</div>
+        </div>
+      </div>
+    );
+  }
+  const chips: [string, string][] = [['✨', 'Relax & unwind'], ['💅', 'Expert care'], ['🌸', 'Pamper time']];
+  return (
+    <div style={{ textAlign: 'center', animation: 'lumioFade .5s ease both' }}>
+      <div style={{ position: 'relative', display: 'inline-grid', placeItems: 'center', marginBottom: 'clamp(8px, 1.6vh, 18px)' }}>
+        <div style={{ position: 'absolute', width: 'clamp(130px, 22vh, 210px)', height: 'clamp(130px, 22vh, 210px)', borderRadius: '50%', background: `radial-gradient(circle, ${accent}26, ${accent}00 70%)`, animation: 'lumioGlow 3.5s ease-in-out infinite', pointerEvents: 'none' }} />
+        <div style={{ position: 'relative', fontSize: 'clamp(56px, 13vh, 108px)', animation: 'lumioFloat 4s ease-in-out infinite', filter: 'drop-shadow(0 10px 22px rgba(15,23,42,0.18))' }}>💅</div>
+      </div>
+      {salonName ? (
+        <>
+          <div style={{ fontSize: 'clamp(13px, 1.7vh, 20px)', fontWeight: 800, color: accent, letterSpacing: '0.18em', textTransform: 'uppercase', marginBottom: 'clamp(4px, 0.8vh, 8px)' }}>Welcome to</div>
+          <div style={{ fontSize: 'clamp(30px, 6.4vh, 68px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.03 }}>{salonName}</div>
+        </>
+      ) : (
+        <div style={{ fontSize: 'clamp(34px, 7vh, 76px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.02 }}>Welcome</div>
+      )}
+      <div style={{ fontSize: 'clamp(14px, 2.3vh, 24px)', color: '#64748b', marginTop: 'clamp(8px, 1.6vh, 16px)' }}>Sit back and relax — we&rsquo;ll take care of you 💛</div>
+      <div style={{ display: 'flex', gap: 'clamp(7px, 1.2vw, 13px)', justifyContent: 'center', flexWrap: 'wrap', marginTop: 'clamp(16px, 2.8vh, 28px)' }}>
+        {chips.map(([e, t]) => (
+          <div key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.78)', border: '1px solid #eef2f7', borderRadius: 999, padding: 'clamp(7px,1.2vh,11px) clamp(13px,1.7vw,19px)', boxShadow: '0 4px 16px rgba(15,23,42,0.05)', fontSize: 'clamp(12px, 1.55vh, 16px)', fontWeight: 600, color: '#334155' }}>
+            <span style={{ fontSize: '1.2em' }}>{e}</span>{t}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: string; stack?: boolean; big?: boolean; full?: boolean }) {
   const qr = (px: number) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=1&data=${encodeURIComponent(url)}`;
   const col = stack || full; // column layout (QR on top, text below)
@@ -476,7 +529,7 @@ function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: st
       maxWidth: full ? 460 : '100%', margin: full ? '0 auto' : '18px auto 0',
       background: 'linear-gradient(160deg, #ffffff, #fffdf5)', border: `1px solid ${GOLD}33`,
       borderRadius: 26, padding: 'clamp(14px, 2.2vh, 30px)',
-      boxShadow: big ? `0 22px 60px rgba(15,23,42,0.14), 0 0 0 6px ${accent}0d` : '0 14px 44px rgba(15,23,42,0.10)',
+      boxShadow: big ? `0 22px 60px rgba(15,23,42,0.14), inset 0 0 0 2px ${GOLD}44` : `0 14px 44px rgba(15,23,42,0.10), inset 0 0 0 1.5px ${GOLD}33`,
       animation: 'lumioFade .55s ease both', boxSizing: 'border-box',
     }}>
       <div style={{ flex: col ? 'none' : '1 1 0%', display: 'flex', justifyContent: col ? 'center' : 'flex-end' }}>
@@ -490,8 +543,11 @@ function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: st
       </div>
       <div style={{ flex: col ? 'none' : '1 1 0%', textAlign: col ? 'center' : 'left', maxWidth: col ? 480 : 440 }}>
         <div style={{ marginBottom: 10 }}><Stars size={big ? 'clamp(28px, 4.5vw, 46px)' : 'clamp(22px, 3vw, 34px)'} align={col ? 'center' : 'flex-start'} /></div>
-        <div style={{ fontSize: big ? 'clamp(26px, 3.6vw, 44px)' : 'clamp(20px, 2.6vw, 30px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.015em' }}>
+        <div style={{ fontFamily: LUMIO_SERIF, fontSize: big ? 'clamp(30px, 4vw, 50px)' : 'clamp(24px, 3vw, 34px)', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.005em' }}>
           {big ? 'Loved your visit?' : 'Enjoying your visit?'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: col ? 'center' : 'flex-start', gap: 8, margin: '8px 0 4px' }}>
+          <div style={{ width: 34, height: 1.5, background: `${GOLD}88` }} /><span style={{ color: GOLD, fontSize: 12 }}>✦</span><div style={{ width: 34, height: 1.5, background: `${GOLD}88` }} />
         </div>
         <div style={{ fontSize: big ? 'clamp(15px, 1.9vw, 21px)' : 'clamp(14px, 1.7vw, 18px)', color: '#475569', margin: '8px 0 16px', lineHeight: 1.5 }}>
           Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛

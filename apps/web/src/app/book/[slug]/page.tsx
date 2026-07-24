@@ -330,15 +330,25 @@ export default function PublicBookingPage() {
   const load = useCallback(async () => {
     setLoading(true); setLoadError(null);
     try {
-      const [sRes, servicesData, staffData, catData] = await Promise.all([
-        fetch(base),
-        fetch(`${base}/services`).then((r) => r.json()).catch(() => []),
-        fetch(`${base}/staff`).then((r) => r.json()).catch(() => []),
-        fetch(`${base}/categories`).then((r) => r.json()).catch(() => []),
-      ]);
-      if (!sRes.ok) { setLoadError(sRes.status === 404 ? 'This booking page was not found.' : 'Could not load the salon.'); return; }
-      const salonData = await sRes.json();
-      setSalon(salonData); setServices(servicesData ?? []); setStaff(staffData ?? []); setCategories(catData ?? []);
+      // ONE round-trip for everything the page needs (was 4 parallel requests,
+      // each re-resolving the slug + its own DB hit). Falls back to the 4-call
+      // path only if an older backend has no /bootstrap yet.
+      const bRes = await fetch(`${base}/bootstrap`);
+      if (bRes.ok) {
+        const boot = await bRes.json();
+        setSalon(boot.salon); setServices(boot.services ?? []); setStaff(boot.staff ?? []); setCategories(boot.categories ?? []);
+      } else if (bRes.status === 404) {
+        // Distinguish "no salon" from "old backend without /bootstrap".
+        const sRes = await fetch(base);
+        if (!sRes.ok) { setLoadError(sRes.status === 404 ? 'This booking page was not found.' : 'Could not load the salon.'); return; }
+        const [salonData, servicesData, staffData, catData] = await Promise.all([
+          sRes.json(),
+          fetch(`${base}/services`).then((r) => r.json()).catch(() => []),
+          fetch(`${base}/staff`).then((r) => r.json()).catch(() => []),
+          fetch(`${base}/categories`).then((r) => r.json()).catch(() => []),
+        ]);
+        setSalon(salonData); setServices(servicesData ?? []); setStaff(staffData ?? []); setCategories(catData ?? []);
+      } else { setLoadError('Could not load the salon.'); return; }
     } catch { setLoadError('Could not reach the booking service. Please try again later.'); }
     finally { setLoading(false); }
   }, [base]);

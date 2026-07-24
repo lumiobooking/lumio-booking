@@ -25,8 +25,11 @@ export class KeepaliveService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('Keepalive');
   private timer: NodeJS.Timeout | null = null;
 
-  // Ping every 12 minutes — comfortably under Render's ~15 min idle window.
-  private readonly intervalMs = 12 * 60 * 1000;
+  // Ping every 4 minutes. This warms /api/health (which runs SELECT 1), keeping
+  // the Postgres (Neon) compute AWAKE — Neon auto-suspends after ~5 min idle, so
+  // a 12-min ping let the DB sleep between pings and the next visitor hit a cold
+  // 1–3s wake. 4 min stays safely under the 5-min suspend.
+  private readonly intervalMs = 4 * 60 * 1000;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -79,11 +82,11 @@ export class KeepaliveService implements OnModuleInit, OnModuleDestroy {
   }
 
   private window(): { start: number; end: number; tz: string } {
-    // Defaults tuned for US/Canada: 10:00–21:00 US Eastern covers core salon
-    // hours on both coasts (= 7:00–18:00 Pacific) while staying under Render's
-    // 750 free instance-hours/month (≈11h × 2 services × 31 days ≈ 682h).
-    const start = Number(this.config.get<string>('KEEPALIVE_START_HOUR') ?? 10);
-    const end = Number(this.config.get<string>('KEEPALIVE_END_HOUR') ?? 21);
+    // Default 24/7 (start=0,end=24) so the DB never suspends — correct on a paid
+    // instance with no free-hour budget. If a deployment is back on Render's free
+    // tier, set KEEPALIVE_START_HOUR / KEEPALIVE_END_HOUR to a narrower window.
+    const start = Number(this.config.get<string>('KEEPALIVE_START_HOUR') ?? 0);
+    const end = Number(this.config.get<string>('KEEPALIVE_END_HOUR') ?? 24);
     const tz = this.config.get<string>('KEEPALIVE_TZ') ?? 'America/New_York';
     return { start, end, tz };
   }

@@ -158,8 +158,9 @@ export default function PosDisplayPage() {
     </div>
   ) : null;
 
+  const imgWelcome = (s.status === 'idle' || (s.status === 'active' && s.lines.length === 0)) && !!s.salonWelcome;
   return (
-    <div style={page}>
+    <div style={{ ...page, ...(imgWelcome ? { padding: 0 } : null) }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&display=swap');
         @keyframes lumioFade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
@@ -169,6 +170,9 @@ export default function PosDisplayPage() {
         @keyframes lumioFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
         @keyframes lumioGlow{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:.82;transform:scale(1.06)}}
       `}</style>
+      {imgWelcome ? (
+        <WelcomeImageScreen image={s.salonWelcome!} logo={s.salonLogo} salonName={s.salonName} reviewUrl={s.reviewUrl} />
+      ) : (<>
       {brand}
       <div style={contentArea}>
         <div style={{ ...scrollInner, justifyContent: (s.status === 'active' && s.lines.length > 0) ? 'flex-start' : 'center' }}>
@@ -253,6 +257,7 @@ export default function PosDisplayPage() {
 
         </div>
       </div>
+      </>)}
 
       {keypad && (
         <div style={keypadOverlay} onClick={() => { setKeypad(false); setPad(''); }}>
@@ -365,6 +370,52 @@ function Stars({ size, align = 'center' }: { size: number | string; align?: stri
 // Google review invite. Portrait (stack) → QR on top, text below, centered.
 // Landscape / square → a 50/50 split: QR fills one half, invitation the other.
 const LUMIO_SERIF = "'Playfair Display', 'Georgia', 'Times New Roman', serif";
+/** Full-bleed elegant welcome using a salon-supplied hero image (matches the
+ *  reference: gradient panel · logo top-left · arced photo · serif "Welcome"
+ *  bottom-left · gold-framed review card on a cream panel). */
+function WelcomeImageScreen({ image, logo, salonName, reviewUrl }: { image: string; logo?: string; salonName?: string; reviewUrl?: string }) {
+  const qr = (px: number, url: string) => `https://api.qrserver.com/v1/create-qr-code/?size=${px}x${px}&margin=1&data=${encodeURIComponent(url)}`;
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', background: '#faf6ee', animation: 'lumioFade .5s ease both' }}>
+      <div style={{ flex: reviewUrl ? '1.62 1 0%' : '1 1 0%', position: 'relative', overflow: 'hidden', background: 'linear-gradient(158deg, #eef1fb 0%, #e1e7f4 46%, #3a4a6e 82%, #29385a 100%)' }}>
+        <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '66%', borderRadius: '46% 0 0 46% / 100% 0 0 100%', overflow: 'hidden', boxShadow: '-22px 0 54px rgba(15,23,42,0.14)' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+        <div style={{ position: 'absolute', top: 'clamp(22px, 4vh, 46px)', left: 'clamp(26px, 3vw, 50px)', display: 'flex', alignItems: 'center', gap: 12, zIndex: 2 }}>
+          {logo && /* eslint-disable-next-line @next/next/no-img-element */ <img src={logo} alt="" style={{ height: 'clamp(30px, 5vh, 54px)', width: 'auto', objectFit: 'contain', borderRadius: 8 }} />}
+          {salonName && <span style={{ fontWeight: 800, fontSize: 'clamp(17px, 2.6vh, 30px)', color: '#1e293b' }}>{salonName}</span>}
+        </div>
+        <div style={{ position: 'absolute', bottom: 'clamp(34px, 7vh, 78px)', left: 'clamp(26px, 3vw, 52px)', maxWidth: '64%', zIndex: 2 }}>
+          <div style={{ fontFamily: LUMIO_SERIF, fontSize: 'clamp(52px, 13vh, 150px)', fontWeight: 500, color: '#fff', lineHeight: 0.95, textShadow: '0 6px 26px rgba(0,0,0,0.26)' }}>Welcome</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 'clamp(12px, 2.2vh, 22px) 0' }}>
+            <div style={{ width: 'clamp(52px, 7vw, 96px)', height: 2, background: GOLD }} /><span style={{ color: GOLD, fontSize: 'clamp(12px, 1.6vh, 18px)' }}>✦</span>
+          </div>
+          <div style={{ fontSize: 'clamp(14px, 2.2vh, 25px)', color: 'rgba(255,255,255,0.9)' }}>Sit back and relax — we&rsquo;ll take care of you.</div>
+        </div>
+      </div>
+      {reviewUrl && (
+        <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(14px, 2.6vw, 46px)' }}>
+          <div style={{ width: '100%', maxWidth: 430, background: 'linear-gradient(160deg, #ffffff, #fffdf7)', borderRadius: 26, padding: 'clamp(20px, 3vh, 40px) clamp(18px, 2.2vw, 34px)', textAlign: 'center', boxShadow: `0 22px 60px rgba(15,23,42,0.12), inset 0 0 0 2px ${GOLD}66, inset 0 0 0 7px #ffffff, inset 0 0 0 8px ${GOLD}2e` }}>
+            <div style={{ marginBottom: 8 }}><Stars size="clamp(24px, 3.2vw, 40px)" /></div>
+            <div style={{ fontFamily: LUMIO_SERIF, fontWeight: 600, fontSize: 'clamp(28px, 3.6vw, 50px)', color: '#0f172a' }}>Enjoying your visit?</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, margin: '9px 0 14px' }}>
+              <div style={{ width: 40, height: 1.5, background: `${GOLD}88` }} /><span style={{ color: GOLD, fontSize: 12 }}>✦</span><div style={{ width: 40, height: 1.5, background: `${GOLD}88` }} />
+            </div>
+            <div style={{ fontSize: 'clamp(13px, 1.55vw, 19px)', color: '#475569', margin: '0 0 clamp(14px, 2vh, 22px)', lineHeight: 1.5 }}>Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛</div>
+            <div style={{ display: 'inline-block', background: '#fff', borderRadius: 18, padding: 'clamp(10px, 1.6vh, 16px)', boxShadow: '0 12px 34px rgba(15,23,42,0.13)' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr(460, reviewUrl)} alt="Google review QR" style={{ width: 'clamp(150px, 22vh, 280px)', height: 'auto', display: 'block' }} />
+            </div>
+            <div style={{ marginTop: 'clamp(12px, 2vh, 20px)', display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '9px 16px', border: '1px solid #eef2f7', boxShadow: '0 4px 14px rgba(15,23,42,0.06)' }}>
+              <span style={{ fontSize: 15 }}>📱</span><span style={{ fontSize: 'clamp(12px, 1.4vw, 15px)', color: '#334155', fontWeight: 600 }}>Point your camera to review on</span><GoogleWord size={16} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function WelcomeHero({ accent, salonName, image, logo }: { accent: string; salonName?: string; image?: string; logo?: string }) {
   // Custom hero image (salon-supplied) → an editorial full-bleed panel with the
   // logo/name top-left and a serif "Welcome" over a soft scrim bottom-left.

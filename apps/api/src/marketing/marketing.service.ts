@@ -310,7 +310,35 @@ export class MarketingService {
       effectiveness = r >= 3 ? 'good' : r >= 1 ? 'ok' : 'low';
     }
 
-    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, effectiveness };
+    // --- Organic social (Facebook/Instagram) with month-over-month movement ---
+    // Concrete owned-channel numbers for the report: total + new followers,
+    // reach, views, engagement. null = Meta no longer exposes that metric.
+    const [socRows, prevSocRows] = await Promise.all([
+      this.prisma.socialInsight.findMany({ where: { tenantId, periodMonth: month } }),
+      this.prisma.socialInsight.findMany({ where: { tenantId, periodMonth: prev } }),
+    ]);
+    const prevSoc = new Map<string, any>((prevSocRows as any[]).map((r: any) => [r.platform, r]));
+    const socDelta = (cur?: number | null, prv?: number | null) => {
+      if (cur == null && prv == null) return null;
+      const c = cur ?? 0; const pv = prv ?? 0;
+      return { value: cur ?? null, prev: prv ?? null, pct: pv > 0 && cur != null ? Math.round(((c - pv) / pv) * 100) : null };
+    };
+    const socialInsights = (socRows as any[]).map((r: any) => ({
+      platform: r.platform,
+      followers: r.followers, newFollowers: r.newFollowers,
+      reach: r.reach, views: r.views, engagement: r.engagement,
+      profileViews: r.profileViews, postsCount: r.postsCount,
+      syncedAt: r.syncedAt,
+      vsPrev: {
+        followers: socDelta(r.followers, prevSoc.get(r.platform)?.followers),
+        reach: socDelta(r.reach, prevSoc.get(r.platform)?.reach),
+        views: socDelta(r.views, prevSoc.get(r.platform)?.views),
+        engagement: socDelta(r.engagement, prevSoc.get(r.platform)?.engagement),
+        newFollowers: socDelta(r.newFollowers, prevSoc.get(r.platform)?.newFollowers),
+      },
+    }));
+
+    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, effectiveness };
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
@@ -331,6 +359,7 @@ export class MarketingService {
       'tldr = the EXECUTIVE SUMMARY an owner reads if they read nothing else: 2-3 sentences covering how the month went overall, the single biggest win, the main risk or gap, and the recommended next move. ' +
       'summary = supporting detail: MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' +
       'channels = evaluate EACH channel that has spend in spendByChannel. verdict = "good" (cheap results / clearly working), "ok" (working, room to improve), "weak" (expensive / little to show), or "nodata" (only spend entered, no reach/clicks/leads to judge). Judge by cost-per-lead or cost-per-click when those numbers exist and CITE that number in the sentence; if they do not exist, verdict MUST be "nodata". ALSO use channelTrends (month-over-month movement per channel): cite the most significant change with its % (e.g. "reach tăng 24%, click giảm 8%"). If a channel FELL while its spend stayed or rose, say so plainly and reflect it in the verdict. Give ONE short line per channel: numbers + trend + action (keep / tăng / giảm / thử lại / tạm dừng). Never invent a number. ' +
+      'socialOrganic = per-network ORGANIC (non-paid) results: platform (facebook|instagram), followers (total), newFollowers, reach, views, engagement, and vsPrev month-over-month % for each. For EACH network present, ADD one entry to "channels" named "Facebook (organic)" or "Instagram (organic)" judging MOMENTUM (not ROI, since organic has no spend): verdict "good" if reach/engagement/followers grew, "ok" if roughly flat, "weak" if they fell, "nodata" if all numbers are null. CITE the concrete number and its vsPrev % (e.g. "IG reach 12,400, tăng 18% vs tháng trước; +240 follower mới"). Some Facebook metrics are null because Meta deprecated them in 2025-2026 — NEVER invent them; report only the numbers present (for a nail salon, Instagram is usually the richer channel). Surface the single best organic win in highlights. ' +
       'bookingsFromGoogleMaps = bookings PROVEN to come from Google Maps via the salon\'s Business Profile link (first-party UTM) — when > 0, mention it in summary or highlights as a verified Google Maps result. ' +
       'highlights = concrete wins this month (2-3). issues = CHALLENGES: for each, name the problem AND the solution or recommendation together (1-2) — naming a problem and your response builds trust. ' +
       'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). When an action moves budget, state DOLLAR amounts explicitly from the real spend numbers (e.g. "giữ $100 Facebook, chuyển $50 từ TikTok sang Google Maps"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
@@ -349,6 +378,7 @@ export class MarketingService {
       blended: data.blended,
       vsLastMonth: (data as any).deltas,
       channelTrends: (data as any).channelTrends,
+      socialOrganic: (data as any).socialInsights,
       effectiveness: (data as any).effectiveness,
       last4Months: history,
       workDone: data.workLog.map((w: any) => ({ category: w.category, title: w.title })),
@@ -563,6 +593,8 @@ export class MarketingService {
 
   /** Pull last-month figures from the platform API into the spend table. */
   async syncChannel(user: AuthenticatedUser, platform: string, month: string, tenantParam?: string) {
+    // Organic owned-channel (Facebook Page + IG) uses a different pull + store.
+    if (platform === 'meta_social') return this.syncOrganic(user, platform, month, tenantParam);
     const tenantId = this.tenantId(user, tenantParam);
     if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
     const connector = this.social.get(platform);
@@ -587,6 +619,51 @@ export class MarketingService {
     }
   }
 
+  /**
+   * Pull last-month ORGANIC Facebook Page + linked Instagram numbers
+   * (platform 'meta_social') into the social_insights table — one row per
+   * network. Zero fabrication: whatever the API omits stays null. A failing
+   * pull is recorded on the connection and never blocks the report.
+   */
+  async syncOrganic(user: AuthenticatedUser, platform: string, month: string, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
+    const connector = this.social.get(platform);
+    if (!connector.fetchOrganic) throw new BadRequestException(`${platform} does not support organic insights`);
+    const creds = await this.loadChannelCreds(tenantId, platform);
+    try {
+      const res = await connector.fetchOrganic(creds, month);
+      const rows: Array<{ ch: string; m: any }> = [];
+      if (res.facebook) rows.push({ ch: 'facebook', m: res.facebook });
+      if (res.instagram) rows.push({ ch: 'instagram', m: res.instagram });
+      for (const { ch, m } of rows) {
+        const data = {
+          followers: m.followers ?? null,
+          newFollowers: m.newFollowers ?? null,
+          reach: m.reach ?? null,
+          views: m.views ?? null,
+          engagement: m.engagement ?? null,
+          profileViews: m.profileViews ?? null,
+          postsCount: m.postsCount ?? null,
+          raw: (m.raw ?? {}) as any,
+          source: 'api',
+          syncedAt: new Date(),
+        };
+        await this.prisma.socialInsight.upsert({
+          where: { tenantId_platform_periodMonth: { tenantId, platform: ch, periodMonth: month } },
+          create: { tenantId, platform: ch, periodMonth: month, ...data },
+          update: data,
+        });
+      }
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
+      await this.audit(tenantId, user.userId, 'marketing.channel.syncOrganic', { platform, month, channels: rows.map((r) => r.ch) });
+      return { ok: true, platform, month, channels: rows.map((r) => ({ platform: r.ch, ...r.m })) };
+    } catch (e) {
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: 'ERROR', lastError: String((e as Error).message).slice(0, 300) } });
+      throw new BadRequestException(String((e as Error).message));
+    }
+  }
+
   /** Sync every ACTIVE, enabled channel for a tenant/month. Best-effort. */
   async syncAllChannels(user: AuthenticatedUser, tenantId: string, month: string) {
     const conns = (await this.prisma.marketingChannelConnection.findMany({ where: { tenantId, status: 'ACTIVE' } })) as any[];
@@ -594,7 +671,11 @@ export class MarketingService {
     for (const c of conns) {
       const meta = this.social.list().find((x) => x.platform === c.platform);
       if (!meta || !meta.enabled) continue;
-      try { await this.syncChannel(user, c.platform, month, tenantId); synced++; } catch { /* recorded on the connection */ }
+      try {
+        if (c.platform === 'meta_social') await this.syncOrganic(user, c.platform, month, tenantId);
+        else await this.syncChannel(user, c.platform, month, tenantId);
+        synced++;
+      } catch { /* recorded on the connection */ }
     }
     return { synced };
   }
@@ -608,7 +689,7 @@ export class MarketingService {
    *   GBP_AGENCY_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN
    */
   private agencyCreds(platform: string): Partial<ChannelCreds> | null {
-    if (platform === 'meta' && process.env.META_AGENCY_TOKEN) return { token: process.env.META_AGENCY_TOKEN };
+    if ((platform === 'meta' || platform === 'meta_social') && process.env.META_AGENCY_TOKEN) return { token: process.env.META_AGENCY_TOKEN };
     if (platform === 'gbp' && process.env.GBP_AGENCY_REFRESH_TOKEN && process.env.GBP_AGENCY_CLIENT_ID && process.env.GBP_AGENCY_CLIENT_SECRET) {
       return { refreshToken: process.env.GBP_AGENCY_REFRESH_TOKEN, clientId: process.env.GBP_AGENCY_CLIENT_ID, clientSecret: process.env.GBP_AGENCY_CLIENT_SECRET };
     }

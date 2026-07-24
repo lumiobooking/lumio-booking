@@ -269,6 +269,7 @@ model Tenant {
   marketingWorkLogs    MarketingWorkLog[]
   marketingReports     MarketingReport[]
   marketingChannels    MarketingChannelConnection[]
+  socialInsights       SocialInsight[]
   invoices             Invoice[]
 
   tables             RestaurantTable[]
@@ -2266,4 +2267,38 @@ model MarketingChannelConnection {
   @@unique([tenantId, platform])
   @@index([tenantId])
   @@map("marketing_channel_connections")
+}
+
+model SocialInsight {
+  id          String @id @default(uuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Organic social channel: facebook | instagram
+  platform    String
+  // Reporting month, 'YYYY-MM'. One row per (tenant, platform, month).
+  periodMonth String
+  // Total followers at sync time (stable node field, not a deprecated insight).
+  followers     Int?
+  // Net new followers gained during the month (insight; null if Meta deprecated it).
+  newFollowers  Int?
+  // Unique reach over the month.
+  reach         Int?
+  // Views — Meta's replacement metric for impressions.
+  views         Int?
+  // Total interactions / post engagements over the month.
+  engagement    Int?
+  // Profile / page views over the month.
+  profileViews  Int?
+  // Posts published in the month (best-effort).
+  postsCount    Int?
+  // Raw API payload for audit / future fields. Never shown to clients directly.
+  raw           Json     @default("{}")
+  source        String   @default("api")
+  syncedAt      DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, platform, periodMonth])
+  @@index([tenantId, periodMonth])
+  @@map("social_insights")
 }

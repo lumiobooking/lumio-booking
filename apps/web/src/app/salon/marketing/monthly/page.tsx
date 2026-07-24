@@ -18,12 +18,21 @@ interface Monthly {
   prevMonth?: string;
   deltas?: { bookings: Delta; showed: Delta; revenueCents: Delta; newCustomers: Delta; spendCents: Delta };
   channelTrends?: { channel: string; spend: Delta | null; reach: Delta | null; clicks: Delta | null; leads: Delta | null }[];
+  socialInsights?: SocialInsight[];
   effectiveness?: 'good' | 'ok' | 'low' | 'organic';
 }
 interface Item { vi: string; en: string }
 interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi: string; en: string }
 interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
+interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
+interface SocialInsight {
+  platform: string;
+  followers: number | null; newFollowers: number | null;
+  reach: number | null; views: number | null; engagement: number | null;
+  profileViews: number | null; postsCount: number | null;
+  vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
+}
 
 const CHANNELS = ['facebook', 'instagram', 'tiktok', 'google_ads', 'gbp', 'seo', 'email', 'sms', 'website', 'other'];
 const CH_LABEL: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác / Other' };
@@ -377,6 +386,16 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   }).join('');
   const hiHtml = (c.highlights ?? []).map((x) => `<div style="margin:3px 0">✓ ${esc(L(x))}</div>`).join('');
   const issHtml = (c.issues ?? []).map((x) => `<div style="margin:3px 0">▲ ${esc(L(x))}</div>`).join('');
+  const socHtml = (data.socialInsights ?? []).map((si) => {
+    const isIg = si.platform === 'instagram';
+    const nm = isIg ? 'Instagram' : 'Facebook'; const col = isIg ? '#e1306c' : '#1877f2';
+    const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+    const ar = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span style="color:${dl.pct >= 0 ? '#059669' : '#dc2626'};font-size:10px;font-weight:700"> ${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
+    const st = (label: string, val: number | null, dl?: SocialDelta | null) => (val == null ? '' : `<div style="text-align:center;flex:1;min-width:58px"><div style="font-size:16px;font-weight:800">${f(val)}${ar(dl)}</div><div style="font-size:10px;color:#6b7280">${label}</div></div>`);
+    const cells = [st(t('Follower', 'Followers'), si.followers, si.vsPrev?.followers), st(t('Follower mới', 'New'), si.newFollowers, si.vsPrev?.newFollowers), st('Reach', si.reach, si.vsPrev?.reach), st(t('Xem', 'Views'), si.views, si.vsPrev?.views), st(t('Tương tác', 'Engagement'), si.engagement, si.vsPrev?.engagement)].filter(Boolean).join('');
+    if (!cells) return '';
+    return `<div style="border:1px solid #eee;border-radius:10px;padding:9px 12px;margin:6px 0"><div style="font-weight:700;color:${col};margin-bottom:4px">${nm}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${cells}</div></div>`;
+  }).join('');
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} ${data.month}</title><style>
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;padding:26px 22px;line-height:1.5}
@@ -401,6 +420,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
 
   ${b && b.revenuePerSpend != null ? card(`<div class="lbl" style="color:#065f46;margin-bottom:4px">③ ${t('HIỆU QUẢ', 'EFFECTIVENESS')}</div><div style="font-size:16px;color:#065f46">${t('Mỗi', 'Every')} <b>$1</b> ${t('chi ra', 'spent')} → <b>$${b.revenuePerSpend}</b> ${t('doanh thu', 'revenue')}${b.costPerNewCustomerCents != null ? ` &nbsp;·&nbsp; ${t('chi phí mỗi khách mới', 'cost per new customer')}: <b>${money(b.costPerNewCustomerCents)}</b>` : ''}</div>`, '#ecfdf5') : ''}
 
+  ${socHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('KÊNH TỰ NHIÊN — FACEBOOK / INSTAGRAM', 'ORGANIC — FACEBOOK / INSTAGRAM')}</div>${socHtml}`) : ''}
   ${channelsHtml ? `<div style="margin-top:12px"><div class="lbl" style="margin-bottom:2px">${t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION')}</div>${channelsHtml}</div>` : ''}
   ${hiHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div><div style="font-size:12.5px">${hiHtml}</div>`) : ''}
   ${issHtml ? card(`<div class="lbl" style="margin-bottom:4px;color:#b45309">${t('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div><div style="font-size:12.5px">${issHtml}</div>`) : ''}
@@ -482,19 +502,57 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
           {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString('en-US') : ''}{c.lastError ? ' · ' + c.lastError : ''}</div>}
           {openP === c.platform && (
             <div style={{ marginTop: 8, background: '#0f172a', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
-              <input style={inp} placeholder={c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID (locations/...)' : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
-              <input style={inp} type="password" placeholder={T('Access token', 'Access token')} value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} autoComplete="off" />
+              <input style={inp} placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID (locations/...)' : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
+              {c.platform === 'meta_social'
+                ? <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('Token do Lumio cấu hình sẵn trên server — chỉ cần Page ID/username. Instagram tự nhận từ Trang đã liên kết.', 'The token is pre-configured on the Lumio server — just the Page ID/username. Instagram is auto-detected from the linked Page.')}</div>
+                : <input style={inp} type="password" placeholder={T('Access token', 'Access token')} value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} autoComplete="off" />}
               {c.platform === 'gbp' && <>
                 <div style={{ fontSize: 10.5, color: '#64748b' }}>{T('Hoặc refresh token (Google) nếu không dùng access token:', 'Or a Google refresh token if not using an access token:')}</div>
                 <input style={inp} type="password" placeholder="Refresh token" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} autoComplete="off" />
                 <input style={inp} placeholder="OAuth Client ID" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} />
                 <input style={inp} type="password" placeholder="OAuth Client Secret" value={f.clientSecret} onChange={(e) => setF({ ...f, clientSecret: e.target.value })} autoComplete="off" />
               </>}
-              <button onClick={() => connect(c.platform)} disabled={busy === c.platform || (!f.token && !f.refreshToken) || !f.externalAccountId} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
+              <button onClick={() => connect(c.platform)} disabled={busy === c.platform || !f.externalAccountId || (c.platform !== 'meta_social' && !f.token && !f.refreshToken)} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
             </div>
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string, e: string) => string }) {
+  const isIg = s.platform === 'instagram';
+  const name = isIg ? 'Instagram' : 'Facebook';
+  const color = isIg ? '#e1306c' : '#1877f2';
+  const fmt = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+  const arrow = (dl?: SocialDelta | null) =>
+    dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 10.5, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'}{Math.abs(dl.pct)}%</span> : null;
+  const Stat = (label: string, val: number | null, dl?: SocialDelta | null) => (
+    <div key={label} style={{ textAlign: 'center', flex: 1, minWidth: 62 }}>
+      <div style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>{fmt(val)}</div>
+      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{label}</div>
+      <div style={{ minHeight: 14 }}>{arrow(dl)}</div>
+    </div>
+  );
+  const stats = [
+    Stat(T('Follower', 'Followers'), s.followers, s.vsPrev?.followers),
+    s.newFollowers != null ? Stat(T('Follower mới', 'New follows'), s.newFollowers, s.vsPrev?.newFollowers) : null,
+    s.reach != null ? Stat('Reach', s.reach, s.vsPrev?.reach) : null,
+    s.views != null ? Stat(T('Lượt xem', 'Views'), s.views, s.vsPrev?.views) : null,
+    s.engagement != null ? Stat(T('Tương tác', 'Engagement'), s.engagement, s.vsPrev?.engagement) : null,
+  ].filter(Boolean);
+  const empty = s.followers == null && s.reach == null && s.views == null && s.engagement == null && s.newFollowers == null;
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        <span style={{ width: 9, height: 9, borderRadius: 3, background: color, display: 'inline-block' }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{name}</span>
+        {s.postsCount != null && <span style={{ fontSize: 10.5, color: '#64748b', marginLeft: 'auto' }}>{s.postsCount} {T('bài', 'posts')}</span>}
+      </div>
+      {empty
+        ? <div style={{ fontSize: 11.5, color: '#64748b' }}>{T('Chưa có số liệu tháng này.', 'No data for this month yet.')}</div>
+        : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{stats}</div>}
     </div>
   );
 }
@@ -603,6 +661,20 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
         <div style={{ background: '#052e16', border: '1px solid #059669', borderRadius: 12, padding: '12px 16px' }}>
           <div style={{ fontSize: 12, color: '#6ee7b7', fontWeight: 600, marginBottom: 3 }}>③ {T('HIỆU QUẢ', 'EFFECTIVENESS')}</div>
           <div style={{ fontSize: 15, color: '#d1fae5' }}>{T('Mỗi', 'Every')} <b>$1</b> {T('chi ra', 'spent')} → <b>${b.revenuePerSpend}</b> {T('doanh thu', 'revenue')}{b.costPerNewCustomerCents != null && <> · {T('chi phí mỗi khách mới', 'cost / new customer')}: <b>{money(b.costPerNewCustomerCents)}</b></>}</div>
+        </div>
+      )}
+
+      {/* Organic Facebook / Instagram (owned channels) */}
+      {(data.socialInsights ?? []).length > 0 && (
+        <div style={pv}>
+          <div style={pvL}>{T('KÊNH TỰ NHIÊN — FACEBOOK / INSTAGRAM', 'ORGANIC — FACEBOOK / INSTAGRAM')}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginTop: 8 }}>
+            {data.socialInsights!.map((sIns) => <SocialCard key={sIns.platform} s={sIns} vi={vi} T={T} />)}
+          </div>
+          <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
+            {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',
+               'Organic (non-paid) numbers pulled directly from Facebook/Instagram. A blank means Meta no longer provides that metric.')}
+          </div>
         </div>
       )}
 

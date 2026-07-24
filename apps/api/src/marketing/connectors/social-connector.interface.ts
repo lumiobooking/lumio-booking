@@ -6,7 +6,7 @@
  * Zero fabrication: a connector only ever returns what the API returns. On any
  * auth/permission error it throws — the UI shows the error, never a fake number.
  */
-export type SocialPlatform = 'meta' | 'gbp' | 'tiktok' | 'google_ads';
+export type SocialPlatform = 'meta' | 'meta_social' | 'gbp' | 'tiktok' | 'google_ads';
 
 /** Decrypted credential bundle. Fields used depend on the platform. */
 export interface ChannelCreds {
@@ -32,6 +32,27 @@ export interface MonthlyMetrics {
   raw?: unknown;
 }
 
+/**
+ * Organic (non-paid) social numbers for ONE channel in a month. Every field is
+ * optional/null because Meta keeps deprecating Page/IG insight metrics — a
+ * connector returns whatever the API still gives and null for the rest, so a
+ * retired metric quietly drops out of the report instead of breaking it.
+ */
+export interface OrganicMetrics {
+  followers?: number | null;      // total followers at sync time (stable node field)
+  newFollowers?: number | null;   // net follows gained in the month
+  reach?: number | null;          // unique accounts reached
+  views?: number | null;          // views (Meta's replacement for impressions)
+  engagement?: number | null;     // total interactions / post engagements
+  profileViews?: number | null;   // profile / page views
+  postsCount?: number | null;     // posts published in the month
+  accountName?: string | null;
+  raw?: unknown;
+}
+
+/** A meta_social sync returns both channels resolved from one Facebook Page. */
+export interface OrganicResult { facebook?: OrganicMetrics; instagram?: OrganicMetrics }
+
 export interface VerifyResult { ok: boolean; accountName?: string; error?: string }
 
 export interface SocialConnector {
@@ -44,6 +65,8 @@ export interface SocialConnector {
   verify(creds: ChannelCreds): Promise<VerifyResult>;
   /** month = 'YYYY-MM'. */
   fetchMonthly(creds: ChannelCreds, month: string): Promise<MonthlyMetrics>;
+  /** Organic (non-paid) numbers. Only implemented by owned-channel connectors. */
+  fetchOrganic?(creds: ChannelCreds, month: string): Promise<OrganicResult>;
 }
 
 /** 'YYYY-MM' -> ISO first/last day. */

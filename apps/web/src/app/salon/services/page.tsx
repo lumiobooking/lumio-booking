@@ -386,7 +386,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         body: {
           name: form.name,
           description: form.description || undefined,
-          durationMinutes: parseInt(form.duration, 10) || 30,
+          durationMinutes: form.duration.trim() === '' ? 30 : Math.max(0, parseInt(form.duration, 10) || 0),
           priceCents: Math.round(parseFloat(form.price) * 100),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,
@@ -559,7 +559,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         body: {
           name: form.name,
           description: form.description || undefined,
-          durationMinutes: parseInt(form.durationMinutes, 10) || 30,
+          durationMinutes: form.durationMinutes.trim() === '' ? 30 : Math.max(0, parseInt(form.durationMinutes, 10) || 0),
           priceCents: Math.round(parseFloat(form.price) * 100),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,

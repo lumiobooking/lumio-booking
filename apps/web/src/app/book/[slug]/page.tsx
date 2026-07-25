@@ -737,7 +737,7 @@ export default function PublicBookingPage() {
                               style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
                               <span style={{ flex: 1, textAlign: 'left' }}>
                                 <span style={rowTitle}>{a.name}</span>
-                                <span style={rowMeta}>⏳ {a.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span> <b style={{ color: accent }}>+{fmt(a.priceCents)}</b></span>
+                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span> </>}<b style={{ color: accent }}>+{fmt(a.priceCents)}</b></span>
                               </span>
                               <PlusCheck on={on} accent={accent} />
                             </button>
@@ -887,7 +887,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: INK, lineHeight: 1.35 }}>{l.name}</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
-                {l.durationMinutes} min{employee && step >= 3 ? <> · <b style={{ color: accent }}>{employee.firstName}</b></> : null}
+                {l.durationMinutes > 0 ? `${l.durationMinutes} min` : ''}{employee && step >= 3 ? <>{l.durationMinutes > 0 ? ' · ' : ''}<b style={{ color: accent }}>{employee.firstName}</b></> : null}
               </div>
             </div>
             <div style={{ fontSize: 13.5, fontWeight: 800, color: accent, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
@@ -904,9 +904,11 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
             <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 800, color: INK, fontSize: 17 }} />
           </span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: '#94a3b8' }}>
-          <span>🕐 Duration</span><span>{fmtDur(totalDuration)}</span>
-        </div>
+        {totalDuration > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: '#94a3b8' }}>
+            <span>🕐 Duration</span><span>{fmtDur(totalDuration)}</span>
+          </div>
+        )}
         {anyDiscount && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, padding: '7px 10px', borderRadius: 10, background: '#ecfdf5', color: '#065f46', fontSize: 12.5, fontWeight: 800 }}>
             <span>🎉 You save</span><span>{fmt(fullCents - totalCents)}</span>
@@ -915,7 +917,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         {slot && selectedDate && (
           <div style={{ marginTop: 12, background: tint(accent, 0.08), borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
             <div>📅 <b>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
-            <div>🕐 {fmtTime(slot.start)} – {fmtTime(slot.end)} ({fmtDur(totalDuration)})</div>
+            <div>🕐 {fmtTime(slot.start)}{totalDuration > 0 ? ` – ${fmtTime(slot.end)} (${fmtDur(totalDuration)})` : ''}</div>
           </div>
         )}
         {wide && qrSrc && lines.length > 0 && (
@@ -1309,7 +1311,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                       {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800 }}>-{disc}%</span>}
                     </span>
                     <span style={rowMeta}>
-                      ⏳ {s.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span>{' '}
+                      {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span>{' '}</>}
                       {disc > 0 && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
                       <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
                     </span>
@@ -1545,7 +1547,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
       <Card title="APPOINTMENT">
         <InfoRow icon="🏪" label="Location" value={salon?.name ?? ''} sub={salon?.address ?? undefined} />
         <InfoRow icon="📅" label="Date" value={slot.start.toLocaleDateString('en-US')} />
-        <InfoRow icon="🕐" label="Time" value={`${fmtTime(slot.start)} – ${fmtTime(slot.end)}`} />
+        <InfoRow icon="🕐" label="Time" value={slot.end.getTime() > slot.start.getTime() ? `${fmtTime(slot.start)} – ${fmtTime(slot.end)}` : fmtTime(slot.start)} />
         <InfoRow icon="👤" label="Technician" value={employee ? `${employee.firstName} ${employee.lastName ?? ''}`.trim() : 'Any available'} last />
       </Card>
 
@@ -1556,7 +1558,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
               <CartThumb url={l.imageUrl} />
               <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: INK }}>{l.name}</div>
-              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{l.durationMinutes} min{employee && <> · 👤 <b style={{ color: accent }}>{employee.firstName}</b></>}</div>
+              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{l.durationMinutes > 0 ? `${l.durationMinutes} min` : ''}{employee && <>{l.durationMinutes > 0 ? ' · ' : ''}👤 <b style={{ color: accent }}>{employee.firstName}</b></>}</div>
               </div>
             </div>
             <div style={{ fontSize: 14, fontWeight: 800, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>

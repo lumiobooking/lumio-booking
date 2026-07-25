@@ -26,7 +26,7 @@ export class CreateServiceDto {
   // calendar always has a real duration to compute slots with.
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(0)
   durationMinutes?: number;
 
   // Price stored in cents to avoid floating-point money bugs.

@@ -35,6 +35,7 @@ interface SocialInsight {
   posts?: PostRow[];
   series?: { date: string; value: number }[];
   audience?: { gender?: Record<string, number>; age?: Record<string, number> } | null;
+  fbDebug?: { count: number; status: number; error: string | null } | null;
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
 }
 
@@ -853,6 +854,12 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
             const a = ig?.audience;
             if (!a || (!a.gender && !a.age)) return null;
             return <AudienceSection a={a} T={T} />;
+          })()}
+          {(() => {
+            const fbI = (data.socialInsights ?? []).find((x) => x.platform === 'facebook');
+            const dbg = fbI?.fbDebug;
+            if (!dbg) return null;
+            return <div style={{ fontSize: 10.5, color: dbg.error ? '#f59e0b' : '#64748b', marginTop: 6 }}>{T('Facebook: đọc được', 'Facebook: read')} <b>{dbg.count}</b> {T('bài', 'posts')}{dbg.error ? ` · ${dbg.error}` : (dbg.count === 0 ? T(' (Page chưa có bài trong tháng)', ' (no page posts this month)') : '')}</div>;
           })()}
           <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',

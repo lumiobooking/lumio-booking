@@ -331,6 +331,7 @@ export class MarketingService {
       posts: (r.raw && (r.raw as any).posts) ? (r.raw as any).posts : [],
       series: (r.raw && (r.raw as any).series) ? (r.raw as any).series : [],
       audience: (r.raw && (r.raw as any).audience) ? (r.raw as any).audience : null,
+      fbDebug: (r.raw && (r.raw as any).fbDebug) ? (r.raw as any).fbDebug : null,
       syncedAt: r.syncedAt,
       vsPrev: {
         followers: socDelta(r.followers, prevSoc.get(r.platform)?.followers),

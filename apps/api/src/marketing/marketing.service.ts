@@ -318,6 +318,18 @@ export class MarketingService {
       this.prisma.socialInsight.findMany({ where: { tenantId, periodMonth: prev } }),
     ]);
     const prevSoc = new Map<string, any>((prevSocRows as any[]).map((r: any) => [r.platform, r]));
+
+    // Monthly follower snapshots for a growth chart (esp. Facebook, which has no
+    // live daily-follower metric) — built from our own stored months, not Meta.
+    const seriesMonths: string[] = [];
+    {
+      const [yy, mm] = month.split('-').map(Number);
+      for (let i = 5; i >= 0; i--) { const d = new Date(yy, mm - 1 - i, 1); seriesMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }
+    }
+    const seriesRows = await this.prisma.socialInsight.findMany({ where: { tenantId, periodMonth: { in: seriesMonths } }, select: { platform: true, periodMonth: true, followers: true } });
+    const monthlySeriesFor = (platform: string) => seriesMonths
+      .map((mm) => { const row = (seriesRows as any[]).find((x: any) => x.platform === platform && x.periodMonth === mm); return row && row.followers != null ? { month: mm, followers: row.followers as number } : null; })
+      .filter(Boolean) as Array<{ month: string; followers: number }>;
     const socDelta = (cur?: number | null, prv?: number | null) => {
       if (cur == null && prv == null) return null;
       const c = cur ?? 0; const pv = prv ?? 0;
@@ -325,7 +337,10 @@ export class MarketingService {
     };
     const socialInsights = (socRows as any[]).map((r: any) => ({
       platform: r.platform,
-      followers: r.followers, newFollowers: r.newFollowers,
+      followers: r.followers,
+      // Fall back to month-over-month net new followers when Meta's direct metric is null (esp. Facebook).
+      newFollowers: r.newFollowers ?? ((): number | null => { const pf = prevSoc.get(r.platform)?.followers; return (pf != null && r.followers != null) ? r.followers - pf : null; })(),
+      monthlySeries: monthlySeriesFor(r.platform),
       reach: r.reach, views: r.views, engagement: r.engagement,
       profileViews: r.profileViews, postsCount: r.postsCount,
       posts: (r.raw && (r.raw as any).posts) ? (r.raw as any).posts : [],
@@ -507,20 +522,20 @@ export class MarketingService {
       '(4) Output MUST be valid JSON only, matching this EXACT shape, every string in BOTH Vietnamese (vi) and English (en): ' +
       '{"headline":{"vi":"","en":""},"tldr":{"vi":"","en":""},"summary":{"vi":"","en":""},"channels":[{"name":"","verdict":"good","vi":"","en":""}],"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}],"insights":[{"vi":"","en":""}],"nextMonth":{"content":[{"vi":"","en":""}],"ads":[{"vi":"","en":""}],"growth":[{"vi":"","en":""}],"kpi":[{"vi":"","en":""}]}}. ' +
       'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% so với tháng trước"). ' +
-      'tldr = the EXECUTIVE SUMMARY an owner reads if they read nothing else: 2-3 sentences covering how the month went overall, the single biggest win, the main risk or gap, and the recommended next move. ' +
+      'tldr = the EXECUTIVE SUMMARY: EXACTLY 2 short sentences — how the month went + the single biggest win + the main gap. ' +
       'summary = supporting detail: MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' +
       'channels = evaluate EACH channel that has spend in spendByChannel. verdict = "good" (cheap results / clearly working), "ok" (working, room to improve), "weak" (expensive / little to show), or "nodata" (only spend entered, no reach/clicks/leads to judge). Judge by cost-per-lead or cost-per-click when those numbers exist and CITE that number in the sentence; if they do not exist, verdict MUST be "nodata". ALSO use channelTrends (month-over-month movement per channel): cite the most significant change with its % (e.g. "reach tăng 24%, click giảm 8%"). If a channel FELL while its spend stayed or rose, say so plainly and reflect it in the verdict. Give ONE short line per channel: numbers + trend + action (keep / tăng / giảm / thử lại / tạm dừng). Never invent a number. ' +
       'socialOrganic = per-network ORGANIC (non-paid) results: platform (facebook|instagram), followers (total), newFollowers, reach, views, engagement, and vsPrev month-over-month % for each. For EACH network present, ADD one entry to "channels" named "Facebook (organic)" or "Instagram (organic)" judging MOMENTUM (not ROI, since organic has no spend): verdict "good" if reach/engagement/followers grew, "ok" if roughly flat, "weak" if they fell, "nodata" if all numbers are null. CITE the concrete number and its vsPrev % (e.g. "IG reach 12,400, tăng 18% vs tháng trước; +240 follower mới"). Some Facebook metrics are null because Meta deprecated them in 2025-2026 — NEVER invent them; report only the numbers present (for a nail salon, Instagram is usually the richer channel). Surface the single best organic win in highlights. ' +
       'bookingsFromGoogleMaps = bookings PROVEN to come from Google Maps via the salon\'s Business Profile link (first-party UTM) — when > 0, mention it in summary or highlights as a verified Google Maps result. ' +
       'highlights = concrete wins this month (2-3). issues = CHALLENGES: for each, name the problem AND the solution or recommendation together (1-2) — naming a problem and your response builds trust. ' +
-      'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). When an action moves budget, state DOLLAR amounts explicitly from the real spend numbers (e.g. "giữ $100 Facebook, chuyển $50 từ TikTok sang Google Maps"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands. ' +
-      'insights = INSIGHT NỔI BẬT: 2-4 sharp OBSERVATIONS the data reveals (patterns, NOT actions) — which content format performs best (Reels vs photos, from topPosts), which audience segment dominates (age/gender from socialOrganic.audience), what drove follower growth, engagement-rate read. Base ONLY on socialOrganic (audience, topPosts, engagementRatePct, reach, vsPrev). ' +
-      'nextMonth = the plan split into FOUR buckets, each 2-3 short concrete bullets grounded in THIS month\'s real numbers: ' +
+      'plan = set to an EMPTY array []. We derive next-month actions from nextMonth below — do not fill plan. ' +
+      'insights = INSIGHT NỔI BẬT: 2-3 sharp OBSERVATIONS (patterns, NOT actions) — best content format (Reels vs photos from topPosts), dominant audience segment (age/gender from socialOrganic.audience), engagement-rate read. Base ONLY on socialOrganic. ' +
+      'nextMonth = FOUR buckets, each 1-2 SHORT bullets grounded in THIS month\'s real numbers: ' +
       'nextMonth.content = content plan (cadence, formats to push — e.g. more Reels if Reels won, UGC/review topics). ' +
       'nextMonth.ads = paid plan; if there is NO spend data, put ONE bullet like "Chưa chạy quảng cáo — cân nhắc thử ngân sách nhỏ để tăng reach". ' +
       'nextMonth.growth = growth/community plan (collab/KOC, mini-game, reply faster; if Facebook numbers are thin, recommend bật chia sẻ Reels IG sang Facebook Page). ' +
-      'nextMonth.kpi = 3-4 MEASURABLE targets for next month computed from current numbers, each citing the current value, e.g. "Reach IG ≥ X (hiện Y)", "Engagement rate ≥ Z%", "Follower +N". Round sensibly. ' +
-      'Every insights/nextMonth bullet = ONE short plain sentence, based ONLY on the real numbers; never invent.';
+      'nextMonth.kpi = 2-3 MEASURABLE targets computed from current numbers, each citing the current value, e.g. "Reach IG ≥ X (hiện Y)", "Follower +N". Round sensibly. ' +
+      'BREVITY IS REQUIRED — the owner wants short, complete notes, NOT an essay. HARD CAPS: headline ≤ 12 words; every other bullet = ONE plain sentence ≤ 18 words in EACH language; keep vi and en equally short. Output ONLY compact minified JSON (no markdown, no comments), based ONLY on the real numbers; never invent.';
 
     const userText = 'DATA (JSON):\n' + JSON.stringify({
       month: data.month,
@@ -552,7 +567,7 @@ export class MarketingService {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 4000, system, messages: [{ role: 'user', content: userText }] }),
+        body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: 'user', content: userText }] }),
       });
       if (!res.ok) { const body = (await res.text().catch(() => '')).slice(0, 200); this.logger.warn(`Anthropic ${res.status}: ${body}`); return { error: `Anthropic API ${res.status}: ${body}` }; }
       const json = (await res.json()) as { content?: Array<{ type: string; text?: string }>; stop_reason?: string };

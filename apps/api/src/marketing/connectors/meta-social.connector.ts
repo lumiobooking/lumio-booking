@@ -325,11 +325,19 @@ export class MetaSocialConnector implements SocialConnector {
     const out: OrganicResult = {};
 
     // --- Facebook Page (organic). Most of these are deprecated in 2026 → null. ---
+    // Page-level insights REQUIRE a Page access token (a system-user token alone
+    // returns nothing), so mint one up front and use it for the reach/engagement/
+    // new-follower reads. If it still comes back null, Meta genuinely dropped it.
+    let fbPageToken = token;
+    try {
+      const tk = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}?fields=access_token&access_token=${encodeURIComponent(token)}`);
+      if (tk.ok && tk.json?.access_token) fbPageToken = String(tk.json.access_token);
+    } catch { /* fall back to the system-user token */ }
     const [fbReach, fbViews, fbEngRaw, fbNewFollowers, fbRes] = await Promise.all([
-      this.fb(pageId, ['page_impressions_unique'], since, until, token),
-      this.fb(pageId, ['page_impressions', 'page_views_total'], since, until, token),
-      this.fb(pageId, ['page_post_engagements'], since, until, token),
-      this.fb(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, token),
+      this.fb(pageId, ['page_impressions_unique', 'page_impressions_organic_unique'], since, until, fbPageToken),
+      this.fb(pageId, ['page_impressions', 'page_views_total'], since, until, fbPageToken),
+      this.fb(pageId, ['page_post_engagements'], since, until, fbPageToken),
+      this.fb(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, fbPageToken),
       this.fbPostBreakdown(pageId, since, until, token),
     ]);
     const fbPostList = fbRes.posts;

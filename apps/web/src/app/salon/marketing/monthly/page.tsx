@@ -34,6 +34,7 @@ interface SocialInsight {
   profileViews: number | null; postsCount: number | null;
   posts?: PostRow[];
   series?: { date: string; value: number }[];
+  monthlySeries?: { month: string; followers: number }[];
   audience?: { gender?: Record<string, number>; age?: Record<string, number> } | null;
   fbDebug?: { count: number; status: number; error: string | null } | null;
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
@@ -461,9 +462,14 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const igSeries = ig?.series ?? [];
   const cumA: number[] = [];
   if (igSeries.length > 1) { const vals = igSeries.map((x) => x.value || 0); let base = (ig?.followers ?? 0) - vals.reduce((a, b2) => a + b2, 0); for (const v of vals) { base += v; cumA.push(base); } }
+  // Facebook has no live daily-follower metric — chart month-by-month snapshots instead.
+  const fbMs = fb?.monthlySeries ?? [];
+  const cumF: number[] = fbMs.length > 1 ? fbMs.map((m) => m.followers) : [];
+  const igMs = ig?.monthlySeries ?? [];
+  if (cumA.length < 2 && igMs.length > 1) { for (const m of igMs) cumA.push(m.followers); }
   const sparkD = (arr: number[], color: string) => { if (arr.length < 2) return ''; const w = 260, h = 54, pd = 4; const mn = Math.min(...arr), mx = Math.max(...arr), sp = mx - mn || 1; const pts = arr.map((v, i) => `${(pd + (i / (arr.length - 1)) * (w - 2 * pd)).toFixed(1)},${(h - pd - ((v - mn) / sp) * (h - 2 * pd)).toFixed(1)}`).join(' '); return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:50px;margin-top:6px"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`; };
   const growth = `<div style="display:flex;gap:16px">
-    <div style="flex:1"><div style="color:#1877f2;font-weight:800;font-size:12px">Facebook</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div></div>
+    <div style="flex:1"><div style="color:#1877f2;font-weight:800;font-size:12px">Facebook</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${sparkD(cumF, '#1877f2')}</div>
     <div style="flex:1"><div style="color:#e1306c;font-weight:800;font-size:12px">Instagram</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${sparkD(cumA, '#e1306c')}</div>
   </div>`;
   const igP = ig?.posts ?? [];
@@ -477,7 +483,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     <tr><td style="padding:3px 0;color:#475569">Reels/Video</td><td style="text-align:right;font-weight:700">${fbP.length ? fbReels : '—'}</td><td style="text-align:right;font-weight:700">${reels}</td></tr>
     <tr><td style="padding:3px 0;color:#475569">${t('Bài ảnh', 'Photos')}</td><td style="text-align:right;font-weight:700">${fbP.length ? (fbP.length - fbReels) : '—'}</td><td style="text-align:right;font-weight:700">${igP.length - reels}</td></tr>
   </table>`;
-  const top3 = igP.slice(0, 3).map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div style="width:34px;height:34px;border-radius:6px;background:#eef1f6;flex-shrink:0"></div>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div style="font-size:10.5px;color:#0f2a52"><b>${fnum(p.reach)}</b> reach · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div style="color:#94a3b8;font-size:11px">—</div>`;
+  const top3 = igP.slice(0, 3).map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div style="width:34px;height:34px;border-radius:6px;background:#eef1f6;flex-shrink:0"></div>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div style="font-size:10.5px;color:#0f2a52"><b>${fnum(p.reach)}</b> reach${p.views != null ? ` · <b>${fnum(p.views)}</b> ${t('xem', 'views')}` : ''} · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div style="color:#94a3b8;font-size:11px">—</div>`;
   const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;border-left:1px solid #eef1f6;padding-left:12px"><div style="font-size:10.5px;color:#94a3b8;margin-bottom:2px">${t('TOP 3 BÀI IG', 'TOP 3 IG POSTS')}</div>${top3}</div></div>`;
   const adsPanel = spendLine
     ? `<div style="font-size:12px;color:#0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div style="font-size:11px;color:#6b7280;margin-top:4px">${spendLine}</div></div>`
@@ -724,11 +730,16 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
   const empty = s.followers == null && s.reach == null && s.views == null && s.engagement == null && s.newFollowers == null;
   const engRate = (s.engagement != null && s.reach && s.reach > 0) ? Math.round((s.engagement / s.reach) * 1000) / 10 : null;
   const series = s.series ?? [];
+  const ms = s.monthlySeries ?? [];
   const cum: number[] = [];
   if (isIg && series.length > 1) {
+    // Instagram: smooth daily follower line within the month.
     const vals = series.map((x) => x.value || 0);
     let base = (s.followers ?? 0) - vals.reduce((a, b) => a + b, 0);
     for (const v of vals) { base += v; cum.push(base); }
+  } else if (ms.length > 1) {
+    // Facebook (no live daily metric): month-by-month follower snapshots.
+    for (const m of ms) cum.push(m.followers);
   }
   return (
     <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>

@@ -421,45 +421,87 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const ageRows = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pct = Math.round((age[k] / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:44px;font-size:11px;color:#6b7280">${k}</span><span style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:#6366f1"></span></span><span style="width:38px;font-size:11px;text-align:right">${pct}%</span></div>`; }).join('');
     audienceHtml = `${gRows ? `<div style="font-size:12px;color:#374151;margin-bottom:6px"><b>${t('Giới tính', 'Gender')}</b> — ${gRows}</div>` : ''}${ageRows ? `<div class="lbl" style="margin-bottom:2px">${t('Độ tuổi', 'Age')}</div>${ageRows}` : ''}`;
   }
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} ${data.month}</title><style>
-  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;padding:26px 22px;line-height:1.5}
-  .lbl{font-size:12px;color:#6b7280;font-weight:600}
-  @media print{body{padding:6px}}
+  // ---- Client deck (landscape, matches the agency template) ----
+  const S = data.socialInsights ?? [];
+  const fb = S.find((x) => x.platform === 'facebook');
+  const ig = S.find((x) => x.platform === 'instagram');
+  const fnum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+  const arS = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span style="color:${dl.pct >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;font-size:10.5px">${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
+  const engR = (x?: SocialInsight) => (x && x.engagement != null && x.reach ? `${Math.round((x.engagement / x.reach) * 1000) / 10}%` : '—');
+  const panel = (title: string, inner: string) => `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:12px;padding:12px 14px"><div style="font-weight:800;font-size:12px;color:#0f2a52;margin-bottom:8px;letter-spacing:.2px">${title}</div>${inner}</div>`;
+  const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined) =>
+    `<tr><td style="padding:5px 2px;color:#475569;font-size:11.5px">${label}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${fv} ${arS(fd)}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${iv} ${arS(idv)}</td></tr>`;
+  const perfTable = `<table style="width:100%;border-collapse:collapse">
+    <tr style="font-size:11px"><td></td><td style="text-align:right;padding-bottom:4px"><span style="color:#1877f2;font-weight:800">Facebook</span></td><td style="text-align:right;padding-bottom:4px"><span style="color:#e1306c;font-weight:800">Instagram</span></td></tr>
+    ${prow(t('Người tiếp cận (Reach)', 'Reach'), fnum(fb?.reach), fb?.vsPrev?.reach, fnum(ig?.reach), ig?.vsPrev?.reach)}
+    ${prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views)}
+    ${prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement)}
+    ${prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null)}
+    ${prow(t('Số follow mới', 'Net followers'), fnum(fb?.newFollowers), fb?.vsPrev?.newFollowers, fnum(ig?.newFollowers), ig?.vsPrev?.newFollowers)}
+  </table>`;
+  const igSeries = ig?.series ?? [];
+  const cumA: number[] = [];
+  if (igSeries.length > 1) { const vals = igSeries.map((x) => x.value || 0); let base = (ig?.followers ?? 0) - vals.reduce((a, b2) => a + b2, 0); for (const v of vals) { base += v; cumA.push(base); } }
+  const sparkD = (arr: number[], color: string) => { if (arr.length < 2) return ''; const w = 260, h = 54, pd = 4; const mn = Math.min(...arr), mx = Math.max(...arr), sp = mx - mn || 1; const pts = arr.map((v, i) => `${(pd + (i / (arr.length - 1)) * (w - 2 * pd)).toFixed(1)},${(h - pd - ((v - mn) / sp) * (h - 2 * pd)).toFixed(1)}`).join(' '); return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:50px;margin-top:6px"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`; };
+  const growth = `<div style="display:flex;gap:16px">
+    <div style="flex:1"><div style="color:#1877f2;font-weight:800;font-size:12px">Facebook</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div></div>
+    <div style="flex:1"><div style="color:#e1306c;font-weight:800;font-size:12px">Instagram</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${sparkD(cumA, '#e1306c')}</div>
+  </div>`;
+  const igP = ig?.posts ?? [];
+  const reels = igP.filter((x) => x.type === 'reel' || x.type === 'video').length;
+  const contentTable = `<table style="width:100%;border-collapse:collapse;font-size:11.5px">
+    <tr style="font-size:10.5px;color:#94a3b8"><td></td><td style="text-align:right"><b style="color:#1877f2">FB</b></td><td style="text-align:right"><b style="color:#e1306c">IG</b></td></tr>
+    <tr><td style="padding:3px 0;color:#475569">${t('Tổng bài', 'Total posts')}</td><td style="text-align:right;font-weight:700">${fb?.postsCount ?? '—'}</td><td style="text-align:right;font-weight:700">${ig?.postsCount ?? igP.length}</td></tr>
+    <tr><td style="padding:3px 0;color:#475569">Reels/Video</td><td style="text-align:right;font-weight:700">—</td><td style="text-align:right;font-weight:700">${reels}</td></tr>
+    <tr><td style="padding:3px 0;color:#475569">${t('Bài ảnh', 'Photos')}</td><td style="text-align:right;font-weight:700">—</td><td style="text-align:right;font-weight:700">${igP.length - reels}</td></tr>
+  </table>`;
+  const top3 = igP.slice(0, 3).map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div style="width:34px;height:34px;border-radius:6px;background:#eef1f6;flex-shrink:0"></div>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div style="font-size:10.5px;color:#0f2a52"><b>${fnum(p.reach)}</b> reach · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div style="color:#94a3b8;font-size:11px">—</div>`;
+  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;border-left:1px solid #eef1f6;padding-left:12px"><div style="font-size:10.5px;color:#94a3b8;margin-bottom:2px">${t('TOP 3 BÀI IG', 'TOP 3 IG POSTS')}</div>${top3}</div></div>`;
+  const adsPanel = spendLine
+    ? `<div style="font-size:12px;color:#0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div style="font-size:11px;color:#6b7280;margin-top:4px">${spendLine}</div></div>`
+    : `<div style="font-size:11.5px;color:#94a3b8;line-height:1.6">${t('Chưa chạy quảng cáo tháng này. Khi bật quảng cáo, mục này hiển thị Chi phí · Reach · Click · CPC · CTR · ROAS.', 'No paid ads this month. Once ads run, this shows Spend · Reach · Clicks · CPC · CTR · ROAS.')}</div>`;
+  let donutHtml = '';
+  if (igAud?.gender) { const g = igAud.gender; const gt = Object.values(g).reduce((a, b2) => a + b2, 0) || 1; let acc = 0; const seg = ([['F', '#e1306c'], ['M', '#3b82f6'], ['U', '#cbd5e1']] as [string, string][]).map(([k, cc]) => { const pctv = Math.round(((g[k] || 0) / gt) * 1000) / 10; const from = acc; acc += pctv; return `${cc} ${from}% ${acc}%`; }).join(','); const leg = ([['F', t('Nữ', 'Female'), '#e1306c'], ['M', t('Nam', 'Male'), '#3b82f6'], ['U', t('Khác', 'Other'), '#cbd5e1']] as [string, string, string][]).filter(([k]) => g[k] != null).map(([k, lb, cc]) => `<div style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0"><span style="width:9px;height:9px;border-radius:2px;background:${cc}"></span><span style="color:#475569">${esc(lb)}</span><b style="margin-left:auto;color:#0f2a52">${Math.round(((g[k] || 0) / gt) * 1000) / 10}%</b></div>`).join(''); donutHtml = `<div style="display:flex;gap:12px;align-items:center"><div style="width:76px;height:76px;border-radius:50%;flex-shrink:0;background:conic-gradient(${seg});-webkit-mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%);mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%)"></div><div style="flex:1">${leg}</div></div>`; }
+  const audiencePanel = (donutHtml || audienceHtml)
+    ? `${donutHtml}${igAud?.age ? `<div style="margin-top:8px">${(() => { const age = igAud.age || {}; const at = Object.values(age).reduce((a, b2) => a + b2, 0) || 1; return ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pv = Math.round(((age[k] || 0) / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:2px 0"><span style="width:42px;font-size:10.5px;color:#94a3b8">${k}</span><span style="flex:1;height:7px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pv}%;background:#6366f1"></span></span><span style="width:36px;font-size:10.5px;text-align:right;color:#0f2a52">${pv}%</span></div>`; }).join(''); })()}</div>` : ''}`
+    : `<div style="font-size:11px;color:#94a3b8">${t('Meta không cung cấp nhân khẩu cho Facebook. Instagram cần ≥100 follower.', 'Meta does not provide Facebook demographics. Instagram needs ≥100 followers.')}</div>`;
+  const posBox = hiHtml ? `<div style="font-size:11.5px;line-height:1.55;color:#166534">${hiHtml}</div>` : `<div style="font-size:11px;color:#94a3b8">—</div>`;
+  const negBox = issHtml ? `<div style="font-size:11.5px;line-height:1.55;color:#b45309">${issHtml}</div>` : `<div style="font-size:11px;color:#94a3b8">—</div>`;
+  const insightBox = (c.tldr && L(c.tldr)) || (c.summary && L(c.summary)) ? `<div style="font-size:11.5px;color:#334155;line-height:1.6">${esc(L(c.tldr) || L(c.summary))}</div>` : `<div style="font-size:11px;color:#94a3b8">—</div>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
+  @page{size:A4 landscape;margin:7mm}
+  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0;padding:14px;background:#eef2f8}
+  .grid{display:grid;gap:10px}
   </style></head><body>
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:3px solid #4f46e5;padding-bottom:10px">
-    <div><div style="font-size:19px;font-weight:800">${t('Báo cáo Marketing', 'Marketing report')} · ${data.month}</div><div style="font-size:11px;color:#6b7280">${t('bởi Lumio Agency', 'by Lumio Agency')}</div></div>
-    <div style="background:${effColor};color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;white-space:nowrap">${effLabel}</div>
-  </div>
-  ${c.headline && L(c.headline) ? `<div style="font-size:18px;font-weight:800;margin:14px 0 2px">${esc(L(c.headline))}</div>` : ''}
-  ${c.tldr && L(c.tldr) ? `<div style="background:#f5f3ff;border-left:4px solid #6366f1;border-radius:8px;padding:11px 14px;margin:10px 0 2px"><div class="lbl" style="color:#4f46e5;margin-bottom:3px">${t('TÓM TẮT CHO CHỦ TIỆM', 'EXECUTIVE SUMMARY')}</div><div style="font-size:13.5px;color:#1f2937">${esc(L(c.tldr))}</div></div>` : ''}
-
-  ${card(`<div class="lbl">① ${t('ĐÃ CHI', 'SPENT')}</div><div style="font-size:30px;font-weight:800;margin:2px 0 ${spendLine ? '8px' : '0'}">${money(total)}</div>${spendLine ? `<div style="font-size:12px;color:#6b7280">${spendLine}</div>` : ''}`)}
-
-  ${card(`<div class="lbl" style="margin-bottom:10px">② ${t('MANG VỀ', 'RESULTS')}</div><div style="display:flex;gap:8px;flex-wrap:wrap">
-    ${bignum(String(o.totals.bookings), t('lượt đặt', 'bookings'), d?.bookings)}
-    ${bignum(String(o.totals.showed), t('đã đến', 'showed up'), d?.showed)}
-    ${bignum(String(o.newCustomers), t('khách mới', 'new customers'), d?.newCustomers)}
-    ${bignum(money(o.totals.revenueCents), t('doanh thu', 'revenue'), d?.revenueCents, true)}
-  </div>`)}
-
-  ${b && b.revenuePerSpend != null ? card(`<div class="lbl" style="color:#065f46;margin-bottom:4px">③ ${t('HIỆU QUẢ', 'EFFECTIVENESS')}</div><div style="font-size:16px;color:#065f46">${t('Mỗi', 'Every')} <b>$1</b> ${t('chi ra', 'spent')} → <b>$${b.revenuePerSpend}</b> ${t('doanh thu', 'revenue')}${b.costPerNewCustomerCents != null ? ` &nbsp;·&nbsp; ${t('chi phí mỗi khách mới', 'cost per new customer')}: <b>${money(b.costPerNewCustomerCents)}</b>` : ''}</div>`, '#ecfdf5') : ''}
-
-  ${socHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('KÊNH TỰ NHIÊN — FACEBOOK / INSTAGRAM', 'ORGANIC — FACEBOOK / INSTAGRAM')}</div>${socHtml}`) : ''}
-  ${postsHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS')}</div>${postsHtml}`) : ''}
-  ${audienceHtml ? card(`<div class="lbl" style="margin-bottom:6px">${t('ĐỐI TƯỢNG INSTAGRAM', 'INSTAGRAM AUDIENCE')}</div>${audienceHtml}`) : ''}
-  ${channelsHtml ? `<div style="margin-top:12px"><div class="lbl" style="margin-bottom:2px">${t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION')}</div>${channelsHtml}</div>` : ''}
-  ${hiHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div><div style="font-size:12.5px">${hiHtml}</div>`) : ''}
-  ${issHtml ? card(`<div class="lbl" style="margin-bottom:4px;color:#b45309">${t('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div><div style="font-size:12.5px">${issHtml}</div>`) : ''}
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-    <div style="background:#f7f7fb;border-radius:12px;padding:14px 16px"><div class="lbl" style="margin-bottom:6px">④ ${t('ĐÃ LÀM GÌ', 'WHAT WE DID')}</div><div style="font-size:12.5px">${work}</div></div>
-    <div style="background:#eef2ff;border:2px solid #c7d2fe;border-radius:12px;padding:14px 16px"><div class="lbl" style="color:#4f46e5;margin-bottom:6px">${t('SẮP LÀM GÌ', 'WHAT\'S NEXT')}</div><div style="font-size:12.5px">${plan}</div></div>
+  <div style="background:linear-gradient(120deg,#0f2a52,#1e3a8a);color:#fff;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px">
+    <div>
+      <div style="display:inline-block;background:rgba(255,255,255,.16);border-radius:6px;padding:3px 10px;font-size:10.5px;font-weight:700;letter-spacing:1px">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div>
+      <div style="font-size:26px;font-weight:800;letter-spacing:.5px;margin-top:6px">FACEBOOK &amp; INSTAGRAM</div>
+      <div style="font-size:12px;opacity:.85;margin-top:2px">${t('Tháng', 'Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div>
+    </div>
+    <div style="display:flex;gap:8px"><span style="width:44px;height:44px;border-radius:12px;background:#1877f2;display:grid;place-items:center;font-weight:800;font-size:20px">f</span><span style="width:44px;height:44px;border-radius:12px;background:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7);display:grid;place-items:center;font-weight:800">◎</span></div>
   </div>
 
-  ${c.summary && L(c.summary) ? `<div style="font-size:12.5px;color:#4b5563;margin-top:12px;background:#f7f7fb;border-radius:10px;padding:11px 13px">${esc(L(c.summary))}</div>` : ''}
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
+    ${panel('① ' + t('TỔNG QUAN HIỆU QUẢ', 'PERFORMANCE OVERVIEW'), perfTable)}
+    ${panel('② ' + t('TĂNG TRƯỞNG NGƯỜI THEO DÕI', 'FOLLOWER GROWTH'), growth)}
+  </div>
 
-  <div style="font-size:10.5px;color:#9ca3af;margin-top:16px;text-align:center;border-top:1px solid #eee;padding-top:10px">${t('Số liệu lấy tự động từ Lumio · AI tổng hợp, nhân viên Lumio duyệt trước khi gửi.', 'Data pulled automatically from Lumio · summarised by AI, reviewed by Lumio staff.')}</div>
+  <div class="grid" style="grid-template-columns:1.3fr 1fr 1fr;margin-top:10px">
+    ${panel('③ ' + t('NỘI DUNG', 'CONTENT'), contentPanel)}
+    ${panel('④ ' + t('HIỆU QUẢ QUẢNG CÁO', 'ADS'), adsPanel)}
+    ${panel('⑤ ' + t('ĐỐI TƯỢNG (IG)', 'AUDIENCE (IG)'), audiencePanel)}
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 1fr 1.2fr;margin-top:10px">
+    ${panel('✓ ' + t('ĐIỂM TÍCH CỰC', 'WINS'), posBox)}
+    ${panel('▲ ' + t('CẦN CẢI THIỆN', 'TO IMPROVE'), negBox)}
+    ${panel('◎ ' + t('INSIGHT & KẾ HOẠCH THÁNG SAU', 'INSIGHT & NEXT MONTH'), `${insightBox}<div style="margin-top:8px;font-size:11.5px;color:#4338ca;line-height:1.55">${plan}</div>`)}
+  </div>
+
+  <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.')}</div>
   <script>window.onload=function(){window.print()}</script></body></html>`;
+
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
 }
 

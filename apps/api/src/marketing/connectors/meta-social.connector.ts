@@ -273,7 +273,7 @@ export class MetaSocialConnector implements SocialConnector {
         }
       } catch (e) { if (!error) error = String((e as Error).message).slice(0, 120); }
     }
-    const list = collected;
+    let list = collected;
     list = list.filter((m) => { const t = Date.parse(String((m as { created_time?: string }).created_time || '')); return !Number.isFinite(t) || (t >= from && t <= to); }).slice(0, 40);
     const posts: PostInsight[] = list.map((m: any) => {
       const likes = numOrNull(m?.likes?.summary?.total_count);

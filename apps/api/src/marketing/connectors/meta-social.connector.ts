@@ -239,7 +239,7 @@ export class MetaSocialConnector implements SocialConnector {
     const from = new Date(`${since}T00:00:00Z`).getTime();
     const to = new Date(`${until}T23:59:59Z`).getTime();
     const s = Math.floor(from / 1000), u = Math.floor(to / 1000);
-    const fields = 'id,message,story,created_time,permalink_url,full_picture,attachments{media_type},likes.summary(true),comments.summary(true),shares';
+    const fields = 'id,message,story,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)';
     let list: Record<string, unknown>[] = [];
     for (const edge of ['published_posts', 'feed']) {
       try {
@@ -252,11 +252,11 @@ export class MetaSocialConnector implements SocialConnector {
       const likes = numOrNull(m?.likes?.summary?.total_count);
       const comments = numOrNull(m?.comments?.summary?.total_count);
       const shares = numOrNull(m?.shares?.count);
-      const mt = String(m?.attachments?.data?.[0]?.media_type || '').toLowerCase();
       const cap = m?.message || m?.story || '';
+      const isVid = /\/(videos|reel)/i.test(String(m?.permalink_url || ''));
       return {
         id: String(m.id),
-        type: mt === 'video' ? 'video' : 'post',
+        type: isVid ? 'video' : 'post',
         timestamp: m.created_time ?? null,
         permalink: m.permalink_url ?? null,
         thumbnail: m.full_picture ?? null,

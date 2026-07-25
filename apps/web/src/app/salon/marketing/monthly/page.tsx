@@ -427,12 +427,13 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const ig = S.find((x) => x.platform === 'instagram');
   const fnum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   const arS = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span style="color:${dl.pct >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;font-size:10.5px">${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
-  const engR = (x?: SocialInsight) => (x && x.engagement != null && x.reach ? `${Math.round((x.engagement / x.reach) * 1000) / 10}%` : '—');
+  const engR = (x?: SocialInsight) => { if (!x || x.engagement == null) return '—'; const denom = x.reach || x.followers; return denom ? `${Math.round((x.engagement / denom) * 1000) / 10}%` : '—'; };
   const panel = (title: string, inner: string) => `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:12px;padding:12px 14px"><div style="font-weight:800;font-size:12px;color:#0f2a52;margin-bottom:8px;letter-spacing:.2px">${title}</div>${inner}</div>`;
   const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined) =>
     `<tr><td style="padding:5px 2px;color:#475569;font-size:11.5px">${label}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${fv} ${arS(fd)}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${iv} ${arS(idv)}</td></tr>`;
   const perfTable = `<table style="width:100%;border-collapse:collapse">
     <tr style="font-size:11px"><td></td><td style="text-align:right;padding-bottom:4px"><span style="color:#1877f2;font-weight:800">Facebook</span></td><td style="text-align:right;padding-bottom:4px"><span style="color:#e1306c;font-weight:800">Instagram</span></td></tr>
+    ${prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers)}
     ${prow(t('Người tiếp cận (Reach)', 'Reach'), fnum(fb?.reach), fb?.vsPrev?.reach, fnum(ig?.reach), ig?.vsPrev?.reach)}
     ${prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views)}
     ${prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement)}
@@ -834,20 +835,19 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginTop: 8 }}>
             {data.socialInsights!.map((sIns) => <SocialCard key={sIns.platform} s={sIns} vi={vi} T={T} />)}
           </div>
-          {(() => {
-            const ig = (data.socialInsights ?? []).find((x) => x.platform === 'instagram');
-            const posts = ig?.posts ?? [];
-            if (!posts.length) return null;
+          {(data.socialInsights ?? []).filter((x) => (x.posts ?? []).length > 0).map((x) => {
+            const posts = x.posts ?? [];
+            const label = x.platform === 'facebook' ? T('CHI TIẾT BÀI FACEBOOK', 'FACEBOOK POSTS') : T('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS');
             return (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700, marginBottom: 6 }}>{T('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS')} <span style={{ color: '#475569' }}>· {posts.length}</span></div>
+              <div key={x.platform} style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700, marginBottom: 6 }}>{label} <span style={{ color: '#475569' }}>· {posts.length}</span></div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {posts.slice(0, 12).map((p, i) => <PostRowView key={p.id || i} p={p} T={T} />)}
                 </div>
                 {posts.length > 12 && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{T(`+ ${posts.length - 12} bài khác`, `+ ${posts.length - 12} more posts`)}</div>}
               </div>
             );
-          })()}
+          })}
           {(() => {
             const ig = (data.socialInsights ?? []).find((x) => x.platform === 'instagram');
             const a = ig?.audience;

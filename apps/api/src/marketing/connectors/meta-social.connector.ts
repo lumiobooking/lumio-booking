@@ -232,6 +232,48 @@ export class MetaSocialConnector implements SocialConnector {
     return { gender: gender ?? undefined, age: age ?? undefined };
   }
 
+  /** Facebook post breakdown for the month. Page-level Insights are deprecated,
+   *  but per-post like/comment/share COUNTS still come from node-edge summaries
+   *  (published_posts, falling back to /feed) — so FB engagement is still real. */
+  private async fbPostBreakdown(pageId: string, since: string, until: string, token: string): Promise<PostInsight[]> {
+    const from = new Date(`${since}T00:00:00Z`).getTime();
+    const to = new Date(`${until}T23:59:59Z`).getTime();
+    const s = Math.floor(from / 1000), u = Math.floor(to / 1000);
+    const fields = 'id,message,story,created_time,permalink_url,full_picture,attachments{media_type},likes.summary(true),comments.summary(true),shares';
+    let list: Record<string, unknown>[] = [];
+    for (const edge of ['published_posts', 'feed']) {
+      try {
+        const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${fields}&since=${s}&until=${u}&limit=50&access_token=${encodeURIComponent(token)}`);
+        if (r.ok && Array.isArray(r.json?.data)) { list = r.json.data; break; }
+      } catch { /* try next edge */ }
+    }
+    list = list.filter((m) => { const t = Date.parse(String((m as { created_time?: string }).created_time || '')); return !Number.isFinite(t) || (t >= from && t <= to); }).slice(0, 40);
+    const posts: PostInsight[] = list.map((m: any) => {
+      const likes = numOrNull(m?.likes?.summary?.total_count);
+      const comments = numOrNull(m?.comments?.summary?.total_count);
+      const shares = numOrNull(m?.shares?.count);
+      const mt = String(m?.attachments?.data?.[0]?.media_type || '').toLowerCase();
+      const cap = m?.message || m?.story || '';
+      return {
+        id: String(m.id),
+        type: mt === 'video' ? 'video' : 'post',
+        timestamp: m.created_time ?? null,
+        permalink: m.permalink_url ?? null,
+        thumbnail: m.full_picture ?? null,
+        caption: cap ? String(cap).replace(/\s+/g, ' ').slice(0, 120) : null,
+        likes,
+        comments,
+        reach: null,
+        views: null,
+        saved: null,
+        shares,
+        interactions: (likes ?? 0) + (comments ?? 0) + (shares ?? 0),
+      };
+    });
+    posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
+    return posts;
+  }
+
   // ---- Organic pull --------------------------------------------------------
 
   async fetchOrganic(creds: ChannelCreds, month: string): Promise<OrganicResult> {
@@ -249,22 +291,25 @@ export class MetaSocialConnector implements SocialConnector {
     const out: OrganicResult = {};
 
     // --- Facebook Page (organic). Most of these are deprecated in 2026 → null. ---
-    const [fbReach, fbViews, fbEngagement, fbNewFollowers, fbPosts] = await Promise.all([
+    const [fbReach, fbViews, fbEngRaw, fbNewFollowers, fbPostList] = await Promise.all([
       this.fb(pageId, ['page_impressions_unique'], since, until, token),
       this.fb(pageId, ['page_impressions', 'page_views_total'], since, until, token),
       this.fb(pageId, ['page_post_engagements'], since, until, token),
       this.fb(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, token),
-      this.countEdge(pageId, 'published_posts', since, until, token),
+      this.fbPostBreakdown(pageId, since, until, token),
     ]);
+    // Page-level engagement insight is dead; sum per-post like+comment+share (still live) instead.
+    const fbEngSum = fbPostList.length ? fbPostList.reduce((acc, p) => acc + (p.interactions ?? 0), 0) : null;
     const fb: OrganicMetrics = {
       accountName: page.name ?? null,
       followers: numOrNull(page.followers_count ?? page.fan_count),
       newFollowers: fbNewFollowers,
       reach: fbReach,
       views: fbViews,
-      engagement: fbEngagement,
+      engagement: fbEngSum ?? fbEngRaw,
       profileViews: null,
-      postsCount: fbPosts,
+      postsCount: fbPostList.length || null,
+      posts: fbPostList,
       raw: { pageId, name: page.name ?? null },
     };
     out.facebook = fb;

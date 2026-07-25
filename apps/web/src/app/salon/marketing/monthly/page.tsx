@@ -33,6 +33,8 @@ interface SocialInsight {
   reach: number | null; views: number | null; engagement: number | null;
   profileViews: number | null; postsCount: number | null;
   posts?: PostRow[];
+  series?: { date: string; value: number }[];
+  audience?: { gender?: Record<string, number>; age?: Record<string, number> } | null;
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
 }
 
@@ -409,6 +411,16 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     return `<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid #f0ece7">${thumb}<div style="flex:1;min-width:0"><div style="font-size:11px;color:#6b7280">${esc(tl)} · ${dt}${p.caption ? ' · ' + esc(p.caption) : ''}</div><div style="font-size:12px;margin-top:2px">${stats}</div></div></div>`;
   }).join('');
 
+  const igAud = (data.socialInsights ?? []).find((x) => x.platform === 'instagram')?.audience;
+  let audienceHtml = '';
+  if (igAud && (igAud.gender || igAud.age)) {
+    const g = igAud.gender || {}; const gt = Object.values(g).reduce((a, b) => a + b, 0) || 1;
+    const gl: Record<string, string> = { F: t('Nữ', 'Female'), M: t('Nam', 'Male'), U: t('Khác', 'Other') };
+    const gRows = ['F', 'M', 'U'].filter((k) => g[k] != null).map((k) => `<span style="margin-right:14px">${esc(gl[k] || k)}: <b>${Math.round((g[k] / gt) * 1000) / 10}%</b></span>`).join('');
+    const age = igAud.age || {}; const at = Object.values(age).reduce((a, b) => a + b, 0) || 1;
+    const ageRows = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pct = Math.round((age[k] / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:44px;font-size:11px;color:#6b7280">${k}</span><span style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:#6366f1"></span></span><span style="width:38px;font-size:11px;text-align:right">${pct}%</span></div>`; }).join('');
+    audienceHtml = `${gRows ? `<div style="font-size:12px;color:#374151;margin-bottom:6px"><b>${t('Giới tính', 'Gender')}</b> — ${gRows}</div>` : ''}${ageRows ? `<div class="lbl" style="margin-bottom:2px">${t('Độ tuổi', 'Age')}</div>${ageRows}` : ''}`;
+  }
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} ${data.month}</title><style>
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;padding:26px 22px;line-height:1.5}
   .lbl{font-size:12px;color:#6b7280;font-weight:600}
@@ -434,6 +446,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
 
   ${socHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('KÊNH TỰ NHIÊN — FACEBOOK / INSTAGRAM', 'ORGANIC — FACEBOOK / INSTAGRAM')}</div>${socHtml}`) : ''}
   ${postsHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS')}</div>${postsHtml}`) : ''}
+  ${audienceHtml ? card(`<div class="lbl" style="margin-bottom:6px">${t('ĐỐI TƯỢNG INSTAGRAM', 'INSTAGRAM AUDIENCE')}</div>${audienceHtml}`) : ''}
   ${channelsHtml ? `<div style="margin-top:12px"><div class="lbl" style="margin-bottom:2px">${t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION')}</div>${channelsHtml}</div>` : ''}
   ${hiHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div><div style="font-size:12.5px">${hiHtml}</div>`) : ''}
   ${issHtml ? card(`<div class="lbl" style="margin-bottom:4px;color:#b45309">${t('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div><div style="font-size:12.5px">${issHtml}</div>`) : ''}
@@ -559,6 +572,64 @@ function PostRowView({ p, T }: { p: PostRow; T: (v: string, e: string) => string
   );
 }
 
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (data.length < 2) return null;
+  const w = 240, h = 38, pad = 3;
+  const min = Math.min(...data), max = Math.max(...data);
+  const span = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - 2 * pad);
+    const y = h - pad - ((v - min) / span) * (h - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: 36, marginTop: 8, display: 'block' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function AudienceSection({ a, T }: { a: { gender?: Record<string, number>; age?: Record<string, number> }; T: (v: string, e: string) => string }) {
+  const order: [string, string, string][] = [['F', T('Nữ', 'Female'), '#e1306c'], ['M', T('Nam', 'Male'), '#3b82f6'], ['U', T('Khác', 'Other'), '#94a3b8']];
+  const g = a.gender || {};
+  const gTotal = Object.values(g).reduce((x, y) => x + y, 0) || 1;
+  const gPct = order.map(([k, label, col]) => ({ label, col, pct: Math.round(((g[k] || 0) / gTotal) * 1000) / 10 })).filter((x) => x.pct > 0);
+  let acc = 0;
+  const stops = gPct.map((x) => { const from = acc; acc += x.pct; return `${x.col} ${from}% ${acc}%`; }).join(', ');
+  const ageMap = a.age || {};
+  const ageKeys = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => ageMap[k] != null);
+  const ageTotal = Object.values(ageMap).reduce((x, y) => x + y, 0) || 1;
+  if (!gPct.length && !ageKeys.length) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={pvL}>{T('ĐỐI TƯỢNG INSTAGRAM', 'INSTAGRAM AUDIENCE')}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
+        {gPct.length > 0 && (
+          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: 12, display: 'flex', gap: 14, alignItems: 'center' }}>
+            <div style={{ width: 74, height: 74, borderRadius: '50%', flexShrink: 0, background: `conic-gradient(${stops})`, WebkitMask: 'radial-gradient(circle 22px at center, transparent 98%, #000 100%)', mask: 'radial-gradient(circle 22px at center, transparent 98%, #000 100%)' }} />
+            <div style={{ fontSize: 12, flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 4 }}>{T('Giới tính', 'Gender')}</div>
+              {gPct.map((x) => <div key={x.label} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '3px 0' }}><span style={{ width: 9, height: 9, borderRadius: 2, background: x.col }} /><span style={{ color: '#cbd5e1' }}>{x.label}</span><b style={{ color: '#f8fafc', marginLeft: 'auto' }}>{x.pct}%</b></div>)}
+            </div>
+          </div>
+        )}
+        {ageKeys.length > 0 && (
+          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>{T('Độ tuổi', 'Age')}</div>
+            {ageKeys.map((k) => { const pct = Math.round(((ageMap[k] || 0) / ageTotal) * 1000) / 10; return (
+              <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '3px 0' }}>
+                <span style={{ width: 42, fontSize: 11, color: '#94a3b8' }}>{k}</span>
+                <span style={{ flex: 1, height: 8, background: '#1e293b', borderRadius: 4, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${pct}%`, background: '#818cf8' }} /></span>
+                <span style={{ width: 38, fontSize: 11, color: '#e2e8f0', textAlign: 'right' }}>{pct}%</span>
+              </div>
+            ); })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string, e: string) => string }) {
   const isIg = s.platform === 'instagram';
   const name = isIg ? 'Instagram' : 'Facebook';
@@ -581,6 +652,14 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
     s.engagement != null ? Stat(T('Tương tác', 'Engagement'), s.engagement, s.vsPrev?.engagement) : null,
   ].filter(Boolean);
   const empty = s.followers == null && s.reach == null && s.views == null && s.engagement == null && s.newFollowers == null;
+  const engRate = (s.engagement != null && s.reach && s.reach > 0) ? Math.round((s.engagement / s.reach) * 1000) / 10 : null;
+  const series = s.series ?? [];
+  const cum: number[] = [];
+  if (isIg && series.length > 1) {
+    const vals = series.map((x) => x.value || 0);
+    let base = (s.followers ?? 0) - vals.reduce((a, b) => a + b, 0);
+    for (const v of vals) { base += v; cum.push(base); }
+  }
   return (
     <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -590,7 +669,11 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
       </div>
       {empty
         ? <div style={{ fontSize: 11.5, color: '#64748b' }}>{T('Chưa có số liệu tháng này.', 'No data for this month yet.')}</div>
-        : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{stats}</div>}
+        : <>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{stats}</div>
+            {engRate != null && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>{T('Tỉ lệ tương tác', 'Engagement rate')}: <b style={{ color: '#e2e8f0' }}>{engRate}%</b></div>}
+            {cum.length > 1 && <Sparkline data={cum} color={color} />}
+          </>}
     </div>
   );
 }
@@ -722,6 +805,12 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
                 {posts.length > 12 && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{T(`+ ${posts.length - 12} bài khác`, `+ ${posts.length - 12} more posts`)}</div>}
               </div>
             );
+          })()}
+          {(() => {
+            const ig = (data.socialInsights ?? []).find((x) => x.platform === 'instagram');
+            const a = ig?.audience;
+            if (!a || (!a.gender && !a.age)) return null;
+            return <AudienceSection a={a} T={T} />;
           })()}
           <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',

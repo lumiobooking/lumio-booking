@@ -201,6 +201,37 @@ export class MetaSocialConnector implements SocialConnector {
     return posts;
   }
 
+  /** Daily new-follows over the month (IG). Frontend turns it into a growth line. */
+  private async igFollowerSeries(igId: string, since: string, until: string, token: string): Promise<{ date: string; value: number }[]> {
+    try {
+      const r = await getJson(`${GRAPH}/${encodeURIComponent(igId)}/insights?metric=follower_count&period=day&since=${since}&until=${until}&access_token=${encodeURIComponent(token)}`);
+      const vals = r.json?.data?.[0]?.values;
+      if (!r.ok || !Array.isArray(vals)) return [];
+      return vals.map((v: { end_time?: string; value?: unknown }) => ({ date: String(v?.end_time || '').slice(0, 10), value: numOrNull(v?.value) ?? 0 })).filter((x) => x.date);
+    } catch {
+      return [];
+    }
+  }
+
+  /** IG follower demographics: gender + age breakdown (needs >= 100 followers). */
+  private async igAudience(igId: string, token: string): Promise<{ gender?: Record<string, number>; age?: Record<string, number> } | null> {
+    const one = async (breakdown: string): Promise<Record<string, number> | null> => {
+      try {
+        const r = await getJson(`${GRAPH}/${encodeURIComponent(igId)}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=${breakdown}&access_token=${encodeURIComponent(token)}`);
+        const results = r.json?.data?.[0]?.total_value?.breakdowns?.[0]?.results;
+        if (!r.ok || !Array.isArray(results)) return null;
+        const map: Record<string, number> = {};
+        for (const it of results) { const k = String(it?.dimension_values?.[0] ?? ''); const v = numOrNull(it?.value); if (k && v != null) map[k] = v; }
+        return Object.keys(map).length ? map : null;
+      } catch {
+        return null;
+      }
+    };
+    const [gender, age] = await Promise.all([one('gender'), one('age')]);
+    if (!gender && !age) return null;
+    return { gender: gender ?? undefined, age: age ?? undefined };
+  }
+
   // ---- Organic pull --------------------------------------------------------
 
   async fetchOrganic(creds: ChannelCreds, month: string): Promise<OrganicResult> {
@@ -242,13 +273,15 @@ export class MetaSocialConnector implements SocialConnector {
     const igId: string | undefined = page.instagram_business_account?.id;
     if (igId) {
       const igNode = await this.node(igId, 'followers_count,media_count,username', token);
-      const [igReach, igViews, igEngagement, igNewFollowers, igProfileViews, igPostList] = await Promise.all([
+      const [igReach, igViews, igEngagement, igNewFollowers, igProfileViews, igPostList, igSeries, igAud] = await Promise.all([
         this.ig(igId, ['reach'], since, until, token),
         this.ig(igId, ['views', 'impressions'], since, until, token),
         this.ig(igId, ['total_interactions', 'accounts_engaged'], since, until, token),
         this.ig(igId, ['follower_count'], since, until, token),
         this.ig(igId, ['profile_views'], since, until, token),
         this.igMediaBreakdown(igId, since, until, token),
+        this.igFollowerSeries(igId, since, until, token),
+        this.igAudience(igId, token),
       ]);
       out.instagram = {
         accountName: igNode?.username ? `@${igNode.username}` : null,
@@ -260,6 +293,8 @@ export class MetaSocialConnector implements SocialConnector {
         profileViews: igProfileViews,
         postsCount: igPostList.length || numOrNull(igNode?.media_count),
         posts: igPostList,
+        series: igSeries,
+        audience: igAud,
         raw: { igId, username: igNode?.username ?? null },
       };
     }

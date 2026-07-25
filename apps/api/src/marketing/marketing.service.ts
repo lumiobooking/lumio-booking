@@ -329,6 +329,8 @@ export class MarketingService {
       reach: r.reach, views: r.views, engagement: r.engagement,
       profileViews: r.profileViews, postsCount: r.postsCount,
       posts: (r.raw && (r.raw as any).posts) ? (r.raw as any).posts : [],
+      series: (r.raw && (r.raw as any).series) ? (r.raw as any).series : [],
+      audience: (r.raw && (r.raw as any).audience) ? (r.raw as any).audience : null,
       syncedAt: r.syncedAt,
       vsPrev: {
         followers: socDelta(r.followers, prevSoc.get(r.platform)?.followers),
@@ -646,7 +648,7 @@ export class MarketingService {
           engagement: m.engagement ?? null,
           profileViews: m.profileViews ?? null,
           postsCount: m.postsCount ?? null,
-          raw: { ...((m.raw as Record<string, unknown>) ?? {}), posts: m.posts ?? [] } as any,
+          raw: { ...((m.raw as Record<string, unknown>) ?? {}), posts: m.posts ?? [], series: m.series ?? [], audience: m.audience ?? null } as any,
           source: 'api',
           syncedAt: new Date(),
         };

@@ -65,6 +65,8 @@ export interface OrganicMetrics {
   profileViews?: number | null;   // profile / page views
   postsCount?: number | null;     // posts published in the month
   posts?: PostInsight[];          // per-post breakdown (Instagram)
+  series?: { date: string; value: number }[]; // daily new follows over the month (IG)
+  audience?: { gender?: Record<string, number>; age?: Record<string, number> } | null; // IG follower demographics
   accountName?: string | null;
   raw?: unknown;
 }

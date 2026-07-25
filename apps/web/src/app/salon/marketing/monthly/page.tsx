@@ -609,12 +609,12 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
                 ? <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('Token do Lumio cấu hình sẵn trên server — chỉ cần Page ID/username. Instagram tự nhận từ Trang đã liên kết.', 'The token is pre-configured on the Lumio server — just the Page ID/username. Instagram is auto-detected from the linked Page.')}</div>
                 : <input style={inp} type="password" placeholder={T('Access token', 'Access token')} value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} autoComplete="off" />}
               {c.platform === 'gbp' && <>
-                <div style={{ fontSize: 10.5, color: '#64748b' }}>{T('Hoặc refresh token (Google) nếu không dùng access token:', 'Or a Google refresh token if not using an access token:')}</div>
+                <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('CHỈ cần Location ID — token Google đã cấu hình sẵn trên server (dùng chung cho mọi salon). Để trống 3 ô dưới. Chỉ điền nếu salon tự dùng tài khoản Google riêng.', 'Just the Location ID — the Google token is pre-configured on the server (shared for all salons). Leave the 3 fields below blank. Only fill them if the salon uses its own Google account.')}</div>
                 <input style={inp} type="password" placeholder="Refresh token" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} autoComplete="off" />
                 <input style={inp} placeholder="OAuth Client ID" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} />
                 <input style={inp} type="password" placeholder="OAuth Client Secret" value={f.clientSecret} onChange={(e) => setF({ ...f, clientSecret: e.target.value })} autoComplete="off" />
               </>}
-              <button onClick={() => connect(c.platform)} disabled={busy === c.platform || !f.externalAccountId || (c.platform !== 'meta_social' && !f.token && !f.refreshToken)} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
+              <button onClick={() => connect(c.platform)} disabled={busy === c.platform || !f.externalAccountId} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
             </div>
           )}
         </div>

@@ -358,7 +358,7 @@ export class MarketingService {
       '(2) Attribution is BLENDED — the data does NOT tell you which ad or channel caused which booking, so do NOT claim a specific channel "generated" specific bookings or revenue. Talk about totals and spend allocation instead. ' +
       '(3) If a needed number is missing or zero, say so plainly (e.g. "chưa nhập chi phí" / "no spend entered") rather than guessing. ' +
       '(4) Output MUST be valid JSON only, matching this EXACT shape, every string in BOTH Vietnamese (vi) and English (en): ' +
-      '{"headline":{"vi":"","en":""},"tldr":{"vi":"","en":""},"summary":{"vi":"","en":""},"channels":[{"name":"","verdict":"good","vi":"","en":""}],"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}]}. ' +
+      '{"headline":{"vi":"","en":""},"tldr":{"vi":"","en":""},"summary":{"vi":"","en":""},"channels":[{"name":"","verdict":"good","vi":"","en":""}],"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}],"insights":[{"vi":"","en":""}],"nextMonth":{"content":[{"vi":"","en":""}],"ads":[{"vi":"","en":""}],"growth":[{"vi":"","en":""}],"kpi":[{"vi":"","en":""}]}}. ' +
       'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% so với tháng trước"). ' +
       'tldr = the EXECUTIVE SUMMARY an owner reads if they read nothing else: 2-3 sentences covering how the month went overall, the single biggest win, the main risk or gap, and the recommended next move. ' +
       'summary = supporting detail: MUST mention the month-over-month trend from vsLastMonth (e.g. "up 20% vs last month") and state the effectiveness in plain words. ' +
@@ -366,7 +366,14 @@ export class MarketingService {
       'socialOrganic = per-network ORGANIC (non-paid) results: platform (facebook|instagram), followers (total), newFollowers, reach, views, engagement, and vsPrev month-over-month % for each. For EACH network present, ADD one entry to "channels" named "Facebook (organic)" or "Instagram (organic)" judging MOMENTUM (not ROI, since organic has no spend): verdict "good" if reach/engagement/followers grew, "ok" if roughly flat, "weak" if they fell, "nodata" if all numbers are null. CITE the concrete number and its vsPrev % (e.g. "IG reach 12,400, tăng 18% vs tháng trước; +240 follower mới"). Some Facebook metrics are null because Meta deprecated them in 2025-2026 — NEVER invent them; report only the numbers present (for a nail salon, Instagram is usually the richer channel). Surface the single best organic win in highlights. ' +
       'bookingsFromGoogleMaps = bookings PROVEN to come from Google Maps via the salon\'s Business Profile link (first-party UTM) — when > 0, mention it in summary or highlights as a verified Google Maps result. ' +
       'highlights = concrete wins this month (2-3). issues = CHALLENGES: for each, name the problem AND the solution or recommendation together (1-2) — naming a problem and your response builds trust. ' +
-      'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). When an action moves budget, state DOLLAR amounts explicitly from the real spend numbers (e.g. "giữ $100 Facebook, chuyển $50 từ TikTok sang Google Maps"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands.';
+      'plan = next-month ROADMAP: 3-5 ordered concrete actions, most important first; for EACH action add its expected outcome in the same sentence (e.g. "... để hạ chi phí mỗi khách mới"). When an action moves budget, state DOLLAR amounts explicitly from the real spend numbers (e.g. "giữ $100 Facebook, chuyển $50 từ TikTok sang Google Maps"). Use last4Months + spendByChannel to spot trends: name the best-value channel per dollar and the weakest, and recommend SHIFTING budget accordingly. Base every recommendation ONLY on the real numbers; if a channel lacks enough spend data to judge, say so. Keep each item to one plain sentence a non-marketer understands. ' +
+      'insights = INSIGHT NỔI BẬT: 2-4 sharp OBSERVATIONS the data reveals (patterns, NOT actions) — which content format performs best (Reels vs photos, from topPosts), which audience segment dominates (age/gender from socialOrganic.audience), what drove follower growth, engagement-rate read. Base ONLY on socialOrganic (audience, topPosts, engagementRatePct, reach, vsPrev). ' +
+      'nextMonth = the plan split into FOUR buckets, each 2-3 short concrete bullets grounded in THIS month\'s real numbers: ' +
+      'nextMonth.content = content plan (cadence, formats to push — e.g. more Reels if Reels won, UGC/review topics). ' +
+      'nextMonth.ads = paid plan; if there is NO spend data, put ONE bullet like "Chưa chạy quảng cáo — cân nhắc thử ngân sách nhỏ để tăng reach". ' +
+      'nextMonth.growth = growth/community plan (collab/KOC, mini-game, reply faster; if Facebook numbers are thin, recommend bật chia sẻ Reels IG sang Facebook Page). ' +
+      'nextMonth.kpi = 3-4 MEASURABLE targets for next month computed from current numbers, each citing the current value, e.g. "Reach IG ≥ X (hiện Y)", "Engagement rate ≥ Z%", "Follower +N". Round sensibly. ' +
+      'Every insights/nextMonth bullet = ONE short plain sentence, based ONLY on the real numbers; never invent.';
 
     const userText = 'DATA (JSON):\n' + JSON.stringify({
       month: data.month,
@@ -382,7 +389,13 @@ export class MarketingService {
       blended: data.blended,
       vsLastMonth: (data as any).deltas,
       channelTrends: (data as any).channelTrends,
-      socialOrganic: (data as any).socialInsights,
+      socialOrganic: ((data as any).socialInsights ?? []).map((si: any) => ({
+        platform: si.platform,
+        followers: si.followers, newFollowers: si.newFollowers, reach: si.reach, views: si.views, engagement: si.engagement,
+        engagementRatePct: (si.engagement != null && si.reach) ? Math.round((si.engagement / si.reach) * 1000) / 10 : null,
+        postsCount: si.postsCount, vsPrev: si.vsPrev, audience: si.audience,
+        topPosts: (si.posts ?? []).slice(0, 5).map((pp: any) => ({ type: pp.type, likes: pp.likes, comments: pp.comments, reach: pp.reach, views: pp.views, caption: pp.caption })),
+      })),
       effectiveness: (data as any).effectiveness,
       last4Months: history,
       workDone: data.workLog.map((w: any) => ({ category: w.category, title: w.title })),

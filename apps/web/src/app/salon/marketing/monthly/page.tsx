@@ -23,7 +23,7 @@ interface Monthly {
 }
 interface Item { vi: string; en: string }
 interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi: string; en: string }
-interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
+interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; insights?: Item[]; nextMonth?: { content?: Item[]; ads?: Item[]; growth?: Item[]; kpi?: Item[] }; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
 interface PostRow { id: string; type: string; timestamp: string | null; permalink: string | null; thumbnail: string | null; caption: string | null; likes: number | null; comments: number | null; reach: number | null; views: number | null; saved: number | null; shares: number | null; interactions: number | null }
@@ -473,6 +473,12 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const posBox = hiHtml ? `<div style="font-size:11.5px;line-height:1.55;color:#166534">${hiHtml}</div>` : `<div style="font-size:11px;color:#94a3b8">—</div>`;
   const negBox = issHtml ? `<div style="font-size:11.5px;line-height:1.55;color:#b45309">${issHtml}</div>` : `<div style="font-size:11px;color:#94a3b8">—</div>`;
   const insightBox = (c.tldr && L(c.tldr)) || (c.summary && L(c.summary)) ? `<div style="font-size:11.5px;color:#334155;line-height:1.6">${esc(L(c.tldr) || L(c.summary))}</div>` : `<div style="font-size:11px;color:#94a3b8">—</div>`;
+  const insightsBox = (c.insights ?? []).length ? (c.insights ?? []).map((x) => `<div style="font-size:11.5px;margin:3px 0;color:#334155">• ${esc(L(x))}</div>`).join('') : insightBox;
+  const planGroup = (label: string, items?: Item[]) => `<div style="flex:1;min-width:130px"><div style="font-size:11px;font-weight:800;color:#4338ca;margin-bottom:3px">${esc(label)}</div>${(items ?? []).length ? (items ?? []).map((x) => `<div style="font-size:11px;margin:2px 0;color:#334155">• ${esc(L(x))}</div>`).join('') : '<div style="font-size:11px;color:#94a3b8">—</div>'}</div>`;
+  const nm = c.nextMonth;
+  const kehoachHtml = nm && (nm.content || nm.ads || nm.growth || nm.kpi)
+    ? `<div style="display:flex;gap:14px;flex-wrap:wrap">${planGroup(t('NỘI DUNG', 'CONTENT'), nm.content)}${planGroup(t('QUẢNG CÁO', 'ADS'), nm.ads)}${planGroup(t('TĂNG TRƯỞNG', 'GROWTH'), nm.growth)}${planGroup(t('KPI THÁNG SAU', 'NEXT-MONTH KPIs'), nm.kpi)}</div>`
+    : `<div style="font-size:11.5px;color:#4338ca;line-height:1.55">${plan}</div>`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
   @page{size:A4 landscape;margin:7mm}
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0;padding:14px;background:#eef2f8}
@@ -498,11 +504,11 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     ${panel('⑤ ' + t('ĐỐI TƯỢNG (IG)', 'AUDIENCE (IG)'), audiencePanel)}
   </div>
 
-  <div class="grid" style="grid-template-columns:1fr 1fr 1.2fr;margin-top:10px">
-    ${panel('✓ ' + t('ĐIỂM TÍCH CỰC', 'WINS'), posBox)}
-    ${panel('▲ ' + t('CẦN CẢI THIỆN', 'TO IMPROVE'), negBox)}
-    ${panel('◎ ' + t('INSIGHT & KẾ HOẠCH THÁNG SAU', 'INSIGHT & NEXT MONTH'), `${insightBox}<div style="margin-top:8px;font-size:11.5px;color:#4338ca;line-height:1.55">${plan}</div>`)}
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
+    ${panel('① ' + t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div style="font-size:11px;font-weight:700;color:#b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}
+    ${panel('◎ ' + t('INSIGHT NỔI BẬT', 'KEY INSIGHTS'), insightsBox)}
   </div>
+  <div style="margin-top:10px">${panel('◎ ' + t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN & DIRECTION'), kehoachHtml)}</div>
 
   <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.')}</div>
   <script>window.onload=function(){window.print()}</script></body></html>`;

@@ -246,29 +246,45 @@ export class MetaSocialConnector implements SocialConnector {
       const tk = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}?fields=access_token&access_token=${encodeURIComponent(token)}`);
       if (tk.ok && tk.json?.access_token) pageToken = String(tk.json.access_token);
     } catch { /* keep agency token */ }
-    const fields = 'id,message,story,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)';
-    let list: Record<string, unknown>[] = [];
+    // Try every place FB content can live: normal posts (published_posts/feed/posts)
+    // AND Reels (video_reels — a separate edge). Reels are what most salons post,
+    // and crossposted IG Reels land here. Client-side filter by date afterwards.
+    const postFields = 'id,message,story,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)';
+    const reelFields = 'id,description,updated_time,permalink_url,likes.summary(true),comments.summary(true)';
+    const edges: Array<[string, string]> = [
+      ['published_posts', postFields],
+      ['feed', postFields],
+      ['posts', postFields],
+      ['video_reels', reelFields],
+    ];
+    const collected: Record<string, unknown>[] = [];
+    const seenIds = new Set<string>();
     let status = 0;
     let error: string | null = null;
-    for (const edge of ['published_posts', 'feed']) {
+    for (const [edge, flds] of edges) {
       try {
-        const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${fields}&since=${s}&until=${u}&limit=50&access_token=${encodeURIComponent(pageToken)}`);
+        const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=60&access_token=${encodeURIComponent(pageToken)}`);
         status = r.status;
-        if (r.ok && Array.isArray(r.json?.data)) { list = r.json.data; error = null; break; }
-        error = r.json?.error?.message ? String(r.json.error.message) : `HTTP ${r.status}`;
-      } catch (e) { error = String((e as Error).message).slice(0, 120); }
+        if (r.ok && Array.isArray(r.json?.data)) {
+          error = null;
+          for (const it of r.json.data as Record<string, unknown>[]) { const id = String(it?.id ?? ''); if (id && !seenIds.has(id)) { seenIds.add(id); collected.push(it); } }
+        } else if (!error) {
+          error = r.json?.error?.message ? String(r.json.error.message) : `HTTP ${r.status}`;
+        }
+      } catch (e) { if (!error) error = String((e as Error).message).slice(0, 120); }
     }
+    const list = collected;
     list = list.filter((m) => { const t = Date.parse(String((m as { created_time?: string }).created_time || '')); return !Number.isFinite(t) || (t >= from && t <= to); }).slice(0, 40);
     const posts: PostInsight[] = list.map((m: any) => {
       const likes = numOrNull(m?.likes?.summary?.total_count);
       const comments = numOrNull(m?.comments?.summary?.total_count);
       const shares = numOrNull(m?.shares?.count);
-      const cap = m?.message || m?.story || '';
-      const isVid = /\/(videos|reel)/i.test(String(m?.permalink_url || ''));
+      const cap = m?.message || m?.story || m?.description || '';
+      const isVid = /\/(videos|reel)/i.test(String(m?.permalink_url || '')) || m?.description != null;
       return {
         id: String(m.id),
-        type: isVid ? 'video' : 'post',
-        timestamp: m.created_time ?? null,
+        type: isVid ? 'reel' : 'post',
+        timestamp: m.created_time ?? m.updated_time ?? null,
         permalink: m.permalink_url ?? null,
         thumbnail: m.full_picture ?? null,
         caption: cap ? String(cap).replace(/\s+/g, ' ').slice(0, 120) : null,

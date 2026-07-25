@@ -500,34 +500,81 @@ function dishPrice(cents: number): string {
   const v = (cents / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
   return `$${v}`;
 }
+function menuTags(d: Dish): string[] {
+  const hay = `${d.name} ${d.description || ''}`.toLowerCase();
+  const out: string[] = [];
+  if (/\bvegan\b|\(v\)|\(vegan\)/.test(hay)) out.push('Vegan');
+  else if (/vegetarian|veggie/.test(hay)) out.push('Veg');
+  if (/\bgf\b|gluten.?free|\(gf\)/.test(hay)) out.push('GF');
+  if (/spicy|chilli|chili|\bhot\b/.test(hay)) out.push('Spicy');
+  return out.slice(0, 3);
+}
+const TAG_COLORS: Record<string, [string, string]> = {
+  Vegan: ['#065f46', '#d1fae5'], Veg: ['#065f46', '#d1fae5'], GF: ['#1e3a8a', '#dbeafe'], Spicy: ['#9a1c1c', '#fee2e2'],
+};
+
+function DishRow({ d, accent }: { d: Dish; accent: string }) {
+  const img = !!d.imageUrl && (d.imageUrl.startsWith('http') || d.imageUrl.startsWith('data:') || d.imageUrl.startsWith('/'));
+  const tags = menuTags(d);
+  return (
+    <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start', padding: '12px 0', borderBottom: '1px solid #f1f4f9' }}>
+      {img
+        ? <span style={{ width: 66, height: 66, borderRadius: 13, flexShrink: 0, boxShadow: '0 2px 10px rgba(15,42,82,0.14)', background: `#f4f6fb center/cover no-repeat url(${d.imageUrl})` }} />
+        : <span style={{ width: 66, height: 66, borderRadius: 13, flexShrink: 0, background: tint(accent, 0.09), display: 'grid', placeItems: 'center', fontSize: 26 }}>🍽️</span>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 14.5, fontWeight: 700, color: INK, lineHeight: 1.3 }}>{d.name}</span>
+          <span style={{ fontSize: 14.5, fontWeight: 800, color: accent, whiteSpace: 'nowrap' }}>{dishPrice(d.priceCents)}</span>
+        </div>
+        {tags.length > 0 && (
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 5 }}>
+            {tags.map((t) => { const [fg, bg] = TAG_COLORS[t]; return <span key={t} style={{ fontSize: 10, fontWeight: 800, color: fg, background: bg, borderRadius: 5, padding: '1px 6px', letterSpacing: 0.3 }}>{t.toUpperCase()}</span>; })}
+          </div>
+        )}
+        {d.description && <div style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 12.5, color: '#7d8ba4', marginTop: 5, lineHeight: 1.45 }}>{d.description}</div>}
+      </div>
+    </div>
+  );
+}
+
 function MenuSheet({ base, accent, menu, onClose }: { base: string; accent: string; menu: Dish[] | null; onClose: () => void }) {
   const grouped = useMemo(() => menu ? Object.entries(menu.reduce((acc: Record<string, Dish[]>, d) => { const k = d.category || 'Other'; (acc[k] ||= []).push(d); return acc; }, {})) : [], [menu]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [active, setActive] = useState(0);
+  const jump = (i: number) => {
+    setActive(i);
+    const el = scrollRef.current?.querySelector(`[data-idx="${i}"]`) as HTMLElement | null;
+    if (el && scrollRef.current) scrollRef.current.scrollTo({ top: el.offsetTop - 6, behavior: 'smooth' });
+  };
+  const chip = (on: boolean): React.CSSProperties => ({ flexShrink: 0, padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', border: `1px solid ${on ? accent : '#e6eaf2'}`, background: on ? accent : '#fff', color: on ? '#fff' : '#44506a' });
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,42,82,0.5)', zIndex: 2147483600, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: '18px 18px 0 0', maxWidth: 520, width: '100%', maxHeight: '82vh', overflowY: 'auto', padding: 20 }} className="lumio-scroll">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontFamily: DISPLAY, fontSize: 22, color: INK }}>Menu</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, color: '#64748b', cursor: 'pointer' }}>×</button>
-        </div>
-        {!menu ? <p style={{ color: '#94a3b8' }}>Loading…</p> : menu.length === 0 ? <p style={{ color: '#94a3b8' }}>Menu coming soon.</p> :
-          grouped.map(([cat, dishes]) => (
-            <div key={cat} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: accent, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{cat}</div>
-              {dishes.map((d) => {
-                const img = !!d.imageUrl && (d.imageUrl.startsWith('http') || d.imageUrl.startsWith('data:') || d.imageUrl.startsWith('/'));
-                return (
-                  <div key={d.name} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f1f4f9' }}>
-                    {img && <span style={{ width: 62, height: 62, borderRadius: 12, flexShrink: 0, boxShadow: '0 2px 8px rgba(15,42,82,0.12)', background: `#f4f6fb center/cover no-repeat url(${d.imageUrl})` }} />}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{d.name}</div>
-                      {d.description && <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2, lineHeight: 1.4 }}>{d.description}</div>}
-                    </div>
-                    <div style={{ fontSize: 14.5, fontWeight: 800, color: accent, whiteSpace: 'nowrap' }}>{dishPrice(d.priceCents)}</div>
-                  </div>
-                );
-              })}
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,42,82,0.55)', zIndex: 2147483600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, maxWidth: 620, width: '100%', height: '90vh', maxHeight: 880, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 30px 80px -28px rgba(15,42,82,0.6)' }}>
+        <div style={{ padding: '15px 18px 10px', borderBottom: '1px solid #eef1f6', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontFamily: DISPLAY, fontSize: 23, fontWeight: 800, color: INK }}>Menu{menu && menu.length ? <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginLeft: 8 }}>{menu.length} dishes</span> : null}</div>
+            <button onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: '#64748b', fontSize: 19, cursor: 'pointer', lineHeight: 1 }}>×</button>
+          </div>
+          {grouped.length > 1 && (
+            <div className="lumio-tabs" style={{ display: 'flex', gap: 7, overflowX: 'auto', marginTop: 11, paddingBottom: 2 }}>
+              {grouped.map(([cat, list], i) => <button key={cat} onClick={() => jump(i)} style={chip(active === i)}>{cat} <span style={{ opacity: 0.6 }}>{list.length}</span></button>)}
             </div>
-          ))}
+          )}
+        </div>
+        <div ref={scrollRef} className="lumio-scroll" style={{ flex: 1, overflowY: 'auto', padding: '4px 18px 22px' }}>
+          {!menu ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>Loading…</p>
+            : menu.length === 0 ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>Menu coming soon.</p>
+            : grouped.map(([cat, dishes], i) => (
+              <div key={cat} data-idx={i} style={{ marginTop: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 6px' }}>
+                  <span style={{ width: 4, height: 16, borderRadius: 2, background: accent, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: INK, textTransform: 'uppercase', letterSpacing: 0.5 }}>{cat}</span>
+                  <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{dishes.length}</span>
+                </div>
+                {dishes.map((d) => <DishRow key={d.name} d={d} accent={accent} />)}
+              </div>
+            ))}
+        </div>
       </div>
     </div>
   );

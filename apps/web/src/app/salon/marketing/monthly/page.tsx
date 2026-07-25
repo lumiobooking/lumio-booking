@@ -478,8 +478,8 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   if (cumA.length < 2 && igMs.length > 1) { for (const m of igMs) cumA.push(m.followers); }
   const sparkD = (arr: number[], color: string) => { if (arr.length < 2) return ''; const w = 260, h = 54, pd = 4; const mn = Math.min(...arr), mx = Math.max(...arr), sp = mx - mn || 1; const pts = arr.map((v, i) => `${(pd + (i / (arr.length - 1)) * (w - 2 * pd)).toFixed(1)},${(h - pd - ((v - mn) / sp) * (h - 2 * pd)).toFixed(1)}`).join(' '); return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:50px;margin-top:6px"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`; };
   const growth = `<div style="display:flex;gap:16px">
-    <div style="flex:1"><div style="color:#1877f2;font-weight:800;font-size:12px">Facebook</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${sparkD(cumF, '#1877f2')}</div>
-    <div style="flex:1"><div style="color:#e1306c;font-weight:800;font-size:12px">Instagram</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${sparkD(cumA, '#e1306c')}</div>
+    <div style="flex:1"><div style="color:#1877f2;font-weight:800;font-size:12px">Facebook</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumF.length > 1 ? sparkD(cumF, '#1877f2') : `<div style="font-size:10px;color:#94a3b8;margin-top:10px;padding:12px;background:#f6f8fc;border:1px dashed #d8e0ee;border-radius:8px;text-align:center">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
+    <div style="flex:1"><div style="color:#e1306c;font-weight:800;font-size:12px">Instagram</div><div style="font-size:22px;font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div style="font-size:10.5px;color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumA.length > 1 ? sparkD(cumA, '#e1306c') : `<div style="font-size:10px;color:#94a3b8;margin-top:10px;padding:12px;background:#f6f8fc;border:1px dashed #d8e0ee;border-radius:8px;text-align:center">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
   </div>`;
   const igP = ig?.posts ?? [];
   const reels = igP.filter((x) => x.type === 'reel' || x.type === 'video').length;
@@ -847,6 +847,54 @@ const VERDICT: Record<string, [string, string, string]> = {
 };
 const CH_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác' };
 
+function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) {
+  const fmt = (n: number | null | undefined) => (n == null ? '\u2014' : Number(n).toLocaleString('en-US'));
+  const arrow = (d?: SocialDelta | null) => (d && d.pct != null ? <span style={{ color: d.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 10.5, fontWeight: 700 }}>{d.pct >= 0 ? '\u25B2' : '\u25BC'}{Math.abs(d.pct)}%</span> : null);
+  const Stat = (label: string, val: number | null | undefined, d?: SocialDelta | null) => (
+    <div key={label} style={{ textAlign: 'center', flex: 1, minWidth: 80 }}>
+      <div style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>{fmt(val)}</div>
+      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{label}</div>
+      <div style={{ minHeight: 14 }}>{arrow(d)}</div>
+    </div>
+  );
+  const v = g.vsPrev || ({} as NonNullable<GbpData['vsPrev']>);
+  const totImp = g.impressions || 0;
+  const bar = (label: string, val: number | null | undefined, color: string) => {
+    const pct = totImp > 0 ? Math.round(((val || 0) / totImp) * 100) : 0;
+    return (
+      <div style={{ margin: '4px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8' }}><span>{label}</span><b style={{ color: '#e2e8f0' }}>{fmt(val)} · {pct}%</b></div>
+        <div style={{ height: 7, background: '#1e293b', borderRadius: 4, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${pct}%`, background: color }} /></div>
+      </div>
+    );
+  };
+  const kw = (g.keywords || []).slice(0, 6);
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: '#1a73e8' }} /><span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>Google Business Profile (Maps)</span></div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {Stat(T('L\u01b0\u1ee3t xem', 'Views'), g.impressions, v.impressions)}
+        {Stat(T('G\u1ecdi', 'Calls'), g.calls, v.calls)}
+        {Stat(T('Ch\u1ec9 \u0111\u01b0\u1eddng', 'Directions'), g.directions, v.directions)}
+        {Stat(T('Web', 'Website'), g.websiteClicks, v.websiteClicks)}
+        {Stat(T('\u0110\u1eb7t l\u1ecbch', 'Bookings'), g.bookings, v.bookings)}
+        {Stat(T('Nh\u1eafn tin', 'Messages'), g.conversations, v.conversations)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 10 }}>
+        <div>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{T('Ngu\u1ed3n hi\u1ec3n th\u1ecb', 'Where seen')}</div>
+          {bar(T('T\u00ecm ki\u1ebfm', 'Search'), g.searchImpr, '#4285F4')}
+          {bar('Maps', g.mapsImpr, '#34A853')}
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{T('T\u1eeb kho\u00e1 kh\u00e1ch t\u00ecm', 'Top searches')}</div>
+          {kw.length ? kw.map((k, i) => (<div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#cbd5e1', margin: '2px 0' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.keyword}</span><b style={{ color: '#e2e8f0', marginLeft: 8 }}>{fmt(k.count)}</b></div>)) : <div style={{ fontSize: 11, color: '#64748b' }}>{T('Ch\u01b0a c\u00f3', 'None')}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Monthly | null; content: Content | null; vi: boolean; money: (n: number) => string; onEdit: () => void; onPrint: () => void; T: (v: string, e: string) => string }) {
   if (!data) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
   const L = (it?: Item) => (vi ? (it?.vi || it?.en) : (it?.en || it?.vi)) || '';
@@ -884,7 +932,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1120, width: '100%', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ background: effColor, color: '#fff', borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>{effLabel}</span>
         <button onClick={onPrint} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>{T('Xuất PDF / In', 'Export PDF / Print')}</button>
@@ -923,7 +971,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
           </div>
           {(o.gbp?.bookings ?? 0) > 0 && (
             <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, borderTop: '1px solid #1e293b', paddingTop: 6 }}>
-              📍 {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: '#e2e8f0' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: '#22c55e' }}>{money(o.gbp!.revenueCents)}</b>
+              {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: '#e2e8f0' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: '#22c55e' }}>{money(o.gbp!.revenueCents)}</b>
             </div>
           )}
         </div>
@@ -972,6 +1020,18 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
           <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',
                'Organic (non-paid) numbers pulled directly from Facebook/Instagram. A blank means Meta no longer provides that metric.')}
+          </div>
+        </div>
+      )}
+
+      {/* Google Business Profile (Maps) */}
+      {data.gbp && (data.gbp.impressions != null || data.gbp.calls != null || data.gbp.directions != null || data.gbp.websiteClicks != null || data.gbp.bookings != null) && (
+        <div style={pv}>
+          <div style={pvL}>{T('K\u00caNH GOOGLE MAPS (BUSINESS PROFILE)', 'GOOGLE MAPS (BUSINESS PROFILE)')}</div>
+          <div style={{ marginTop: 8 }}><GbpCard g={data.gbp} T={T} /></div>
+          <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
+            {T('S\u1ed1 li\u1ec7u l\u1ea5y tr\u1ef1c ti\u1ebfp t\u1eeb Google Business Profile. Xu\u1ea5t PDF \u0111\u1ec3 xem deck GBP \u0111\u1ea7y \u0111\u1ee7 (xu h\u01b0\u1edbng, t\u1ef7 l\u1ec7 h\u00e0nh \u0111\u1ed9ng, \u0111\u1ec1 xu\u1ea5t, m\u1ee5c ti\u00eau).',
+               'Pulled directly from Google Business Profile. Export PDF for the full GBP deck (trend, action rate, recommendations, goals).')}
           </div>
         </div>
       )}
@@ -1042,9 +1102,9 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
   );
 }
 
-const pv: CSSProperties = { background: '#111a2c', border: '1px solid #1e293b', borderRadius: 12, padding: '13px 16px' };
-const pvL: CSSProperties = { fontSize: 12, color: '#94a3b8', fontWeight: 600 };
-const pvBig: CSSProperties = { fontSize: 28, fontWeight: 800, color: '#f8fafc', marginTop: 2 };
+const pv: CSSProperties = { background: '#111a2c', border: '1px solid #22304d', borderRadius: 14, padding: '15px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.22)' };
+const pvL: CSSProperties = { fontSize: 11, color: '#93a4c4', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', borderLeft: '3px solid #6366f1', paddingLeft: 9, lineHeight: 1.2 };
+const pvBig: CSSProperties = { fontSize: 28, fontWeight: 800, color: '#f8fafc', marginTop: 6, letterSpacing: -0.5 };
 const segBtn = (on: boolean): CSSProperties => ({ padding: '7px 18px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#94a3b8', fontSize: 13, fontWeight: on ? 700 : 500, cursor: 'pointer' });
 const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: '#cbd5e1' };
 const dateInput: CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 13 };

@@ -451,11 +451,14 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   </div>`;
   const igP = ig?.posts ?? [];
   const reels = igP.filter((x) => x.type === 'reel' || x.type === 'video').length;
+  const fbP = fb?.posts ?? [];
+  const fbReels = fbP.filter((x) => x.type === 'reel' || x.type === 'video').length;
+  const fbTot = fb?.postsCount ?? (fbP.length || null);
   const contentTable = `<table style="width:100%;border-collapse:collapse;font-size:11.5px">
     <tr style="font-size:10.5px;color:#94a3b8"><td></td><td style="text-align:right"><b style="color:#1877f2">FB</b></td><td style="text-align:right"><b style="color:#e1306c">IG</b></td></tr>
-    <tr><td style="padding:3px 0;color:#475569">${t('Tổng bài', 'Total posts')}</td><td style="text-align:right;font-weight:700">${fb?.postsCount ?? '—'}</td><td style="text-align:right;font-weight:700">${ig?.postsCount ?? igP.length}</td></tr>
-    <tr><td style="padding:3px 0;color:#475569">Reels/Video</td><td style="text-align:right;font-weight:700">—</td><td style="text-align:right;font-weight:700">${reels}</td></tr>
-    <tr><td style="padding:3px 0;color:#475569">${t('Bài ảnh', 'Photos')}</td><td style="text-align:right;font-weight:700">—</td><td style="text-align:right;font-weight:700">${igP.length - reels}</td></tr>
+    <tr><td style="padding:3px 0;color:#475569">${t('Tổng bài', 'Total posts')}</td><td style="text-align:right;font-weight:700">${fbTot ?? '—'}</td><td style="text-align:right;font-weight:700">${ig?.postsCount ?? igP.length}</td></tr>
+    <tr><td style="padding:3px 0;color:#475569">Reels/Video</td><td style="text-align:right;font-weight:700">${fbP.length ? fbReels : '—'}</td><td style="text-align:right;font-weight:700">${reels}</td></tr>
+    <tr><td style="padding:3px 0;color:#475569">${t('Bài ảnh', 'Photos')}</td><td style="text-align:right;font-weight:700">${fbP.length ? (fbP.length - fbReels) : '—'}</td><td style="text-align:right;font-weight:700">${igP.length - reels}</td></tr>
   </table>`;
   const top3 = igP.slice(0, 3).map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div style="width:34px;height:34px;border-radius:6px;background:#eef1f6;flex-shrink:0"></div>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div style="font-size:10.5px;color:#0f2a52"><b>${fnum(p.reach)}</b> reach · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div style="color:#94a3b8;font-size:11px">—</div>`;
   const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;border-left:1px solid #eef1f6;padding-left:12px"><div style="font-size:10.5px;color:#94a3b8;margin-bottom:2px">${t('TOP 3 BÀI IG', 'TOP 3 IG POSTS')}</div>${top3}</div></div>`;

@@ -1027,6 +1027,9 @@ model MenuItem {
   priceCents  Int     @default(0)
   currency    String  @default("USD")
   description String?
+  // Dish photo — a hosted URL (/menu/<slug>/x.jpg) or an inline data URL from the
+  // admin uploader. Shown on the customer-facing menu gallery.
+  imageUrl    String?
   isActive    Boolean @default(true)
   sortOrder   Int     @default(0)
 

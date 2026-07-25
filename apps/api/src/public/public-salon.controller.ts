@@ -152,7 +152,7 @@ export class PublicSalonController {
     return this.prisma.menuItem.findMany({
       where: { tenantId, isActive: true },
       orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-      select: { name: true, category: true, priceCents: true, description: true },
+      select: { name: true, category: true, priceCents: true, description: true, imageUrl: true },
     });
   }
 

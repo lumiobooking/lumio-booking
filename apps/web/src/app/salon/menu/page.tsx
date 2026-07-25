@@ -1,16 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { ImportCsv } from '../../../components/ImportCsv';
+import { compressImageToFit } from '../../../lib/image';
 
-interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; isActive: boolean; sortOrder: number }
+interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; imageUrl: string | null; isActive: boolean; sortOrder: number }
 
-const SAMPLE_MENU = `name,category,price,description
+const SAMPLE_MENU = `name,category,price,description,image,sort
 Crispy Egg Rolls,Appetizers,8,
 Fresh Spring Rolls,Appetizers,7,
 Green Papaya Salad,Appetizers,11,
@@ -44,6 +45,29 @@ Iced Tea,Drinks,2,
 Sugarcane Juice,Drinks,5,
 Avocado Smoothie,Drinks,6,
 Saigon Beer,Drinks,6,`;
+
+function MenuThumb({ url, onSet, onClear }: { url: string | null; onSet: (dataUrl: string) => void; onClear: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const has = !!url && (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/'));
+  async function pick(f?: File | null) {
+    if (!f) return;
+    setBusy(true);
+    try { const d = await compressImageToFit(f, { maxSide: 800, square: true, quality: 0.82, maxChars: 130_000 }); onSet(d); }
+    catch { /* ignore */ } finally { setBusy(false); }
+  }
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button type="button" onClick={() => inputRef.current?.click()} title="Upload dish photo"
+        style={{ width: 48, height: 48, borderRadius: 10, border: '1px solid #334155', color: '#64748b', cursor: 'pointer', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 0, fontSize: 18,
+          background: has ? `#0f172a center/cover no-repeat url(${url})` : '#0f172a' }}>
+        {!has && (busy ? '…' : '📷')}
+      </button>
+      {has && <button type="button" onClick={onClear} title="Remove photo" style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: 1 }}>×</button>}
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => pick(e.target.files?.[0])} />
+    </div>
+  );
+}
 
 export default function MenuPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -93,6 +117,17 @@ function Inner() {
     try { await apiFetch(`/menu-items/${id}`, { method: 'DELETE', token }); await load(); }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
   }
+  async function clearAll() {
+    const n = items.length;
+    const ok = window.confirm(lang === 'vi'
+      ? `Xoá TẤT CẢ ${n} món trong menu của tiệm này? Không thể hoàn tác — dùng để dọn menu bị import nhầm rồi import lại file đúng.`
+      : `Delete ALL ${n} menu items for this restaurant? This cannot be undone — use it to clear a wrong import, then import the correct file.`);
+    if (!ok) return;
+    setBusy(true); setErr(null);
+    try { await apiFetch('/menu-items', { method: 'DELETE', token }); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    finally { setBusy(false); }
+  }
 
   const grouped = useMemo(() => {
     const m = new Map<string, Item[]>();
@@ -110,7 +145,16 @@ function Inner() {
       <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{t('mn.subtitle')}</p>
       {err && <div style={ui.banner}>{err}</div>}
 
-      <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description" sample={SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], category: c[1] || undefined, priceCents: Math.round((parseFloat(c[2]) || 0) * 100), description: c[3] || undefined })} onDone={load} />
+      <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description,image,sort" sample={SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => { const price = parseFloat(c[2]); if (!c[0] || !c[0].trim() || !Number.isFinite(price)) return null; return { name: c[0].trim(), category: c[1] || undefined, priceCents: Math.round(price * 100), description: c[3] || undefined, imageUrl: c[4] || undefined, sortOrder: c[5] ? parseInt(c[5], 10) : undefined }; }} onDone={load} />
+
+      {items.length > 0 && (
+        <div style={{ marginTop: -6, marginBottom: 12 }}>
+          <button onClick={clearAll} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #ef4444', background: 'transparent', color: '#f87171', fontSize: 13, cursor: 'pointer' }}>
+            {lang === 'vi' ? `Xoá tất cả ${items.length} món` : `Delete all ${items.length} items`}
+          </button>
+          <span style={{ fontSize: 11.5, color: '#64748b', marginLeft: 10 }}>{lang === 'vi' ? 'dùng khi import nhầm file' : 'use if you imported the wrong file'}</span>
+        </div>
+      )}
 
       <form onSubmit={add} style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ flex: '2 1 160px' }}><span style={ui.label}>{t('mn.name')}</span>
@@ -142,6 +186,7 @@ function Inner() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {list.map((it) => (
               <div key={it.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 10, opacity: it.isActive ? 1 : 0.5 }}>
+                <MenuThumb url={it.imageUrl} onSet={(d) => patch(it.id, { imageUrl: d })} onClear={() => patch(it.id, { imageUrl: '' })} />
                 <input style={{ ...ui.input, flex: '2 1 150px', minWidth: 120 }} value={it.name}
                   onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, name: e.target.value } : x)))}
                   onBlur={(e) => patch(it.id, { name: e.target.value })} />

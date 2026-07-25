@@ -39,6 +39,7 @@ export class MenuService {
         category: dto.category ?? null,
         priceCents: dto.priceCents,
         description: dto.description ?? null,
+        imageUrl: dto.imageUrl ?? null,
         sortOrder: dto.sortOrder ?? 0,
       },
     });
@@ -57,12 +58,23 @@ export class MenuService {
         category: dto.category ?? undefined,
         priceCents: dto.priceCents ?? undefined,
         description: dto.description ?? undefined,
+        imageUrl: dto.imageUrl ?? undefined,
         isActive: dto.isActive ?? undefined,
         sortOrder: dto.sortOrder ?? undefined,
       },
     });
     await this.audit.log({ tenantId, userId: user.userId, action: 'menu.updated', resourceType: 'menu_item', resourceId: id });
     return item;
+  }
+
+  /** Delete every menu item for the caller's tenant. Used to recover from a bad
+   *  bulk import (e.g. the wrong CSV). Tenant-scoped, so it can never touch
+   *  another restaurant's menu. */
+  async removeAll(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const res = await this.prisma.menuItem.deleteMany({ where: { tenantId } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'menu.clearedAll', resourceType: 'menu_item', metadata: { deleted: res.count } });
+    return { ok: true, deleted: res.count };
   }
 
   async remove(user: AuthenticatedUser, id: string) {

@@ -23,6 +23,11 @@ export class UpdateMenuItemDto {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(2_000_000)
+  imageUrl?: string;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 

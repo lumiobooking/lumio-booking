@@ -28,6 +28,13 @@ export class MenuController {
     return this.menu.update(user, id, dto);
   }
 
+  // DELETE /menu-items (no id) clears the whole menu for this tenant — recovery
+  // from a wrong bulk import. Kept above :id is unnecessary (distinct patterns).
+  @Delete()
+  removeAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.menu.removeAll(user);
+  }
+
   @Delete(':id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.menu.remove(user, id);

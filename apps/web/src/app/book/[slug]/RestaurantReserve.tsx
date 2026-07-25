@@ -51,7 +51,7 @@ interface Salon {
 }
 interface Svc { id: string; durationMinutes: number }
 interface Avail { tableCount: number; durationMinutes: number; busy: { start: string; end: string }[] }
-interface Dish { name: string; category: string | null; priceCents: number; description: string | null }
+interface Dish { name: string; category: string | null; priceCents: number; description: string | null; imageUrl?: string | null }
 
 function wallTimeToISO(local: Date, timeZone: string): string {
   const y = local.getFullYear(), mo = local.getMonth(), d = local.getDate(), h = local.getHours(), mi = local.getMinutes();
@@ -495,6 +495,11 @@ function MobileBar({ accent, party, timeLine, canContinue, label, onContinue, em
   return createPortal(bar, document.body);
 }
 
+/** Menu price: keep the salon's .5/.9 endings, drop trailing zeros ($21.5, $6.9, $13). */
+function dishPrice(cents: number): string {
+  const v = (cents / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  return `$${v}`;
+}
 function MenuSheet({ base, accent, menu, onClose }: { base: string; accent: string; menu: Dish[] | null; onClose: () => void }) {
   const grouped = useMemo(() => menu ? Object.entries(menu.reduce((acc: Record<string, Dish[]>, d) => { const k = d.category || 'Other'; (acc[k] ||= []).push(d); return acc; }, {})) : [], [menu]);
   return (
@@ -508,12 +513,19 @@ function MenuSheet({ base, accent, menu, onClose }: { base: string; accent: stri
           grouped.map(([cat, dishes]) => (
             <div key={cat} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: accent, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{cat}</div>
-              {dishes.map((d) => (
-                <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid #f1f4f9' }}>
-                  <div><div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{d.name}</div>{d.description && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>{d.description}</div>}</div>
-                  <div style={{ fontSize: 14.5, fontWeight: 800, color: accent, whiteSpace: 'nowrap' }}>${(d.priceCents / 100).toFixed(0)}</div>
-                </div>
-              ))}
+              {dishes.map((d) => {
+                const img = !!d.imageUrl && (d.imageUrl.startsWith('http') || d.imageUrl.startsWith('data:') || d.imageUrl.startsWith('/'));
+                return (
+                  <div key={d.name} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f1f4f9' }}>
+                    {img && <span style={{ width: 62, height: 62, borderRadius: 12, flexShrink: 0, boxShadow: '0 2px 8px rgba(15,42,82,0.12)', background: `#f4f6fb center/cover no-repeat url(${d.imageUrl})` }} />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{d.name}</div>
+                      {d.description && <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2, lineHeight: 1.4 }}>{d.description}</div>}
+                    </div>
+                    <div style={{ fontSize: 14.5, fontWeight: 800, color: accent, whiteSpace: 'nowrap' }}>{dishPrice(d.priceCents)}</div>
+                  </div>
+                );
+              })}
             </div>
           ))}
       </div>

@@ -20,6 +20,13 @@ export class CreateMenuItemDto {
   @MaxLength(500)
   description?: string;
 
+  // Data URL from the uploader, or a hosted /menu/... path. Capped generously
+  // so an inline photo fits but a runaway payload is still rejected.
+  @IsOptional()
+  @IsString()
+  @MaxLength(2_000_000)
+  imageUrl?: string;
+
   @IsOptional()
   @IsInt()
   sortOrder?: number;

@@ -163,7 +163,7 @@ function Inner() {
           <input style={ui.input} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Phở" list="mn-cats" />
           <datalist id="mn-cats">{Array.from(new Set(items.map((i) => i.category).filter(Boolean))).map((c) => <option key={c} value={c as string} />)}</datalist></label>
         <label style={{ flex: '0 1 90px' }}><span style={ui.label}>{t('mn.price')} ($)</span>
-          <input style={ui.input} type="number" min={0} step="0.5" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="14" /></label>
+          <input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="14" /></label>
         <label style={{ flex: '3 1 200px' }}><span style={ui.label}>{t('mn.desc')}</span>
           <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Rare beef pho" /></label>
         <button type="submit" disabled={busy} style={ui.primaryBtn}>{t('mn.add')}</button>
@@ -195,7 +195,7 @@ function Inner() {
                   onBlur={(e) => patch(it.id, { category: e.target.value })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                   <span style={{ color: '#94a3b8' }}>$</span>
-                  <input style={{ ...ui.input, width: 78 }} type="number" min={0} step="0.5" value={(it.priceCents / 100).toString()}
+                  <input style={{ ...ui.input, width: 78 }} type="number" min={0} step="0.01" value={(it.priceCents / 100).toString()}
                     onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, priceCents: Math.round((parseFloat(e.target.value) || 0) * 100) } : x)))}
                     onBlur={(e) => patch(it.id, { priceCents: Math.round((parseFloat(e.target.value) || 0) * 100) })} />
                 </div>

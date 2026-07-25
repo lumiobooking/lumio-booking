@@ -70,7 +70,7 @@ function seasonalAccent(theme: string | undefined | null, base: string): string 
   return base;
 }
 
-interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number }
+interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface BookingRules {
   slotStepMinutes: number; minLeadHours: number; maxAdvanceDays: number;
   allowCustomerChooseStaff: boolean; currency: string; currencySymbol: string;
@@ -2231,12 +2231,16 @@ function generateSlots(date: Date, durationMin: number, rules: BookingRules): Sl
   const out: Slot[] = [];
   if (isClosedDay(date, rules)) return out;
   const h = rules.businessHours[date.getDay()];
+  // Split shifts: iterate each open window (falls back to a single open/close).
+  const windows = h.intervals && h.intervals.length ? h.intervals : [{ open: h.openMinutes, close: h.closeMinutes }];
   const earliest = Date.now() + rules.minLeadHours * 3_600_000;
   const step = Math.max(5, rules.slotStepMinutes);
-  for (let mins = h.openMinutes; mins + durationMin <= h.closeMinutes; mins += step) {
-    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(mins / 60), mins % 60);
-    if (start.getTime() < earliest) continue;
-    out.push({ start, end: new Date(start.getTime() + durationMin * 60_000) });
+  for (const w of windows) {
+    for (let mins = w.open; mins + durationMin <= w.close; mins += step) {
+      const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(mins / 60), mins % 60);
+      if (start.getTime() < earliest) continue;
+      out.push({ start, end: new Date(start.getTime() + durationMin * 60_000) });
+    }
   }
   return out;
 }

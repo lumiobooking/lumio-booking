@@ -9,7 +9,7 @@ import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { TimezonePicker } from '../../../components/TimezonePicker';
 
-interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number }
+interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
   slotStepMinutes: number; minLeadHours: number; maxAdvanceDays: number;
   allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; currency: string;
@@ -235,29 +235,57 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
 function HoursSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [hours, setHours] = useState<DayHours[]>(data.booking.businessHours);
-  function upd(day: number, patch: Partial<DayHours>) { setHours((p) => p.map((h, i) => (i === day ? { ...h, ...patch } : h))); }
+  // Normalize each day to an editable intervals list (derive from open/close when absent).
+  const [hours, setHours] = useState<DayHours[]>(() =>
+    data.booking.businessHours.map((h) => ({ ...h, intervals: h.intervals && h.intervals.length ? h.intervals : [{ open: h.openMinutes, close: h.closeMinutes }] })),
+  );
+  const setDay = (day: number, fn: (h: DayHours) => DayHours) => setHours((p) => p.map((h, i) => (i === day ? fn(h) : h)));
+  const setIv = (day: number, idx: number, patch: Partial<{ open: number; close: number }>) =>
+    setDay(day, (h) => ({ ...h, intervals: (h.intervals ?? []).map((iv, j) => (j === idx ? { ...iv, ...patch } : iv)) }));
+  const addIv = (day: number) => setDay(day, (h) => {
+    const list = h.intervals ?? [];
+    const last = list[list.length - 1];
+    const base = last ? { open: Math.min(1380, last.close + 60), close: Math.min(1440, last.close + 240) } : { open: 540, close: 1080 };
+    return { ...h, intervals: [...list, base] };
+  });
+  const delIv = (day: number, idx: number) => setDay(day, (h) => ({ ...h, intervals: (h.intervals ?? []).filter((_, j) => j !== idx) }));
+  const save = () => {
+    const payload = hours.map((h) => {
+      const ivs = (h.intervals ?? []).filter((iv) => iv.close > iv.open).sort((a, b) => a.open - b.open);
+      if (!ivs.length) return { closed: h.closed, openMinutes: h.openMinutes, closeMinutes: h.closeMinutes };
+      return { closed: h.closed, openMinutes: Math.min(...ivs.map((x) => x.open)), closeMinutes: Math.max(...ivs.map((x) => x.close)), intervals: ivs };
+    });
+    onSave('booking', { businessHours: payload }, 'Business hours');
+  };
   return (
     <Card title={t('se.hr.title')} desc={t('se.hr.desc')}>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>{lang === 'vi' ? 'Nhà hàng tách ca? Bấm “+ Thêm ca” để mở nhiều khung giờ trong ngày (vd: trưa 10:30–14:30 và tối 16:30–20:30).' : 'Split shifts? Use “+ Add hours” to open more than one window a day (e.g. lunch 10:30–14:30 and dinner 16:30–20:30).'}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {DAY_ORDER.map((day) => {
           const h = hours[day];
+          const ivs = h.intervals ?? [];
           return (
-            <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ width: 42, fontSize: 13, color: '#cbd5e1' }}>{DAY_LABEL[lang][day]}</span>
-              <Toggle on={!h.closed} onChange={(open) => upd(day, { closed: !open })} label="" />
-              {h.closed ? <span style={{ color: '#64748b', fontSize: 13 }}>{t('se.hr.closed')}</span> : (
-                <>
-                  <input style={{ ...ui.input, width: 120 }} type="time" value={minToHm(h.openMinutes)} onChange={(e) => upd(day, { openMinutes: hmToMin(e.target.value) })} />
-                  <span style={{ color: '#64748b' }}>–</span>
-                  <input style={{ ...ui.input, width: 120 }} type="time" value={minToHm(h.closeMinutes)} onChange={(e) => upd(day, { closeMinutes: hmToMin(e.target.value) })} />
-                </>
+            <div key={day} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderTop: '1px solid #1e293b', paddingTop: 10 }}>
+              <span style={{ width: 42, fontSize: 13, color: '#cbd5e1', paddingTop: 8 }}>{DAY_LABEL[lang][day]}</span>
+              <div style={{ paddingTop: 6 }}><Toggle on={!h.closed} onChange={(open) => setDay(day, (x) => ({ ...x, closed: !open }))} label="" /></div>
+              {h.closed ? <span style={{ color: '#64748b', fontSize: 13, paddingTop: 8 }}>{t('se.hr.closed')}</span> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+                  {ivs.map((iv, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <input style={{ ...ui.input, width: 116 }} type="time" value={minToHm(iv.open)} onChange={(e) => setIv(day, idx, { open: hmToMin(e.target.value) })} />
+                      <span style={{ color: '#64748b' }}>–</span>
+                      <input style={{ ...ui.input, width: 116 }} type="time" value={minToHm(iv.close)} onChange={(e) => setIv(day, idx, { close: hmToMin(e.target.value) })} />
+                      {ivs.length > 1 && <button onClick={() => delIv(day, idx)} title={lang === 'vi' ? 'Xoá ca' : 'Remove'} style={{ background: 'none', border: '1px solid #475569', color: '#94a3b8', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', lineHeight: 1 }}>×</button>}
+                    </div>
+                  ))}
+                  <button onClick={() => addIv(day)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #475569', color: '#818cf8', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>+ {lang === 'vi' ? 'Thêm ca' : 'Add hours'}</button>
+                </div>
               )}
             </div>
           );
         })}
       </div>
-      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('booking', { businessHours: hours }, 'Business hours')}>{t('se.hr.save')}</button>
+      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={save}>{t('se.hr.save')}</button>
     </Card>
   );
 }

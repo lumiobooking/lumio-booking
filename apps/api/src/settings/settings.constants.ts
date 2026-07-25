@@ -315,8 +315,13 @@ export const DEFAULT_PAYMENT_GATEWAYS: PaymentGateways = {
 /** Open/close for one weekday (index 0 = Sunday … 6 = Saturday). */
 export interface DayHours {
   closed: boolean;
+  // Overall span (min of opens .. max of closes) — kept for single-window
+  // consumers and JSON-LD. When `intervals` is set it mirrors that span.
   openMinutes: number;
   closeMinutes: number;
+  // Optional split shifts, e.g. a restaurant open 10:30-14:30 AND 16:30-20:30.
+  // When present and non-empty it is the source of truth for open windows.
+  intervals?: { open: number; close: number }[];
 }
 
 export interface BookingRules {

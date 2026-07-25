@@ -44,10 +44,12 @@ function shade(hex: string, amount = 0.28): string {
 }
 
 interface Deposit { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number }
+interface DayHoursPublic { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Salon {
   name: string; slug: string; timezone: string; address?: string | null; contactPhone?: string | null;
   areas?: string[]; branding?: { accentColor?: string; logoUrl?: string; logoScale?: number };
   deposit?: Deposit; rating?: { value: number; count: number } | null;
+  booking?: { businessHours?: DayHoursPublic[] };
 }
 interface Svc { id: string; durationMinutes: number }
 interface Avail { tableCount: number; durationMinutes: number; busy: { start: string; end: string }[] }
@@ -108,20 +110,38 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   }, [base, date, party]);
   useEffect(() => { loadAvail(); }, [loadAvail]);
 
+  // Open windows for the selected day, from the salon's business hours (supports
+  // split shifts). Empty = that weekday is closed. Falls back to 11:00-21:30 only
+  // when the salon has not configured hours yet.
+  const windows = useMemo(() => {
+    const bh = salon.booking?.businessHours;
+    if (!bh || !bh.length) return [{ open: 11 * 60, close: 21 * 60 + 30 }];
+    const h = bh[dateObj.getDay()];
+    if (!h || h.closed) return [] as { open: number; close: number }[];
+    if (h.intervals && h.intervals.length) return h.intervals;
+    return [{ open: h.openMinutes, close: h.closeMinutes }];
+  }, [salon, dateObj]);
+  const dayClosed = windows.length === 0;
   const slots = useMemo(() => {
     if (!avail) return [] as { hm: string; hour: number; open: boolean; free: number }[];
     const dur = avail.durationMinutes || 90;
     const [Y, M, D] = date.split('-').map(Number);
     const out: { hm: string; hour: number; open: boolean; free: number }[] = [];
-    for (let mins = 11 * 60; mins <= 21 * 60 + 30; mins += 30) {
-      const hh = Math.floor(mins / 60), mm = mins % 60;
-      const sUtc = new Date(wallTimeToISO(new Date(Y, M - 1, D, hh, mm), tz)).getTime();
-      const eUtc = sUtc + dur * 60000;
-      const overlaps = avail.busy.filter((b) => new Date(b.start).getTime() < eUtc && new Date(b.end).getTime() > sUtc).length;
-      out.push({ hm: `${pad(hh)}:${pad(mm)}`, hour: hh, open: overlaps < avail.tableCount, free: avail.tableCount - overlaps });
+    const seen = new Set<string>();
+    for (const w of windows) {
+      for (let mins = w.open; mins <= w.close; mins += 30) {
+        const hh = Math.floor(mins / 60), mm = mins % 60;
+        const hm = `${pad(hh)}:${pad(mm)}`;
+        if (seen.has(hm)) continue;
+        seen.add(hm);
+        const sUtc = new Date(wallTimeToISO(new Date(Y, M - 1, D, hh, mm), tz)).getTime();
+        const eUtc = sUtc + dur * 60000;
+        const overlaps = avail.busy.filter((b) => new Date(b.start).getTime() < eUtc && new Date(b.end).getTime() > sUtc).length;
+        out.push({ hm, hour: hh, open: overlaps < avail.tableCount, free: avail.tableCount - overlaps });
+      }
     }
     return out;
-  }, [avail, date, tz]);
+  }, [avail, date, tz, windows]);
   const groups = useMemo(() => {
     const lunch = slots.filter((s) => s.hour < 15), dinner = slots.filter((s) => s.hour >= 15);
     return ([['Lunch', lunch], ['Dinner', dinner]] as [string, typeof slots][]).filter(([, a]) => a.length > 0);
@@ -292,7 +312,8 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                 </div>
 
                 <SectionLabel accent={accent}>Select time</SectionLabel>
-                {loadingAvail && !avail ? <p style={{ color: '#94a3b8', fontSize: 14 }}>Finding available times…</p>
+                {dayClosed ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>Closed on {dateObj.toLocaleDateString('en-US', { weekday: 'long' })}. Please pick another date.</div>
+                  : loadingAvail && !avail ? <p style={{ color: '#94a3b8', fontSize: 14 }}>Finding available times…</p>
                   : !anyOpen ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>No tables for {party} guests on this date. Try another time or date.</div>
                   : groups.map(([label, arr]) => (
                     <div key={label} style={{ marginBottom: 10 }}>

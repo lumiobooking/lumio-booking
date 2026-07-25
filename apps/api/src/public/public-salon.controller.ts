@@ -178,7 +178,7 @@ export class PublicSalonController {
     const priceFromCents = prices.length ? Math.min(...prices) : null;
     const branding = this.settings.brandingFrom(tenant.branding);
     const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-    const hours = (booking.businessHours ?? []).map((h, i) => ({ day: i, closed: h.closed, open: hm(h.openMinutes), close: hm(h.closeMinutes) }));
+    const hours = (booking.businessHours ?? []).map((h: any, i: number) => ({ day: i, closed: h.closed, open: hm(h.openMinutes), close: hm(h.closeMinutes), intervals: Array.isArray(h.intervals) ? h.intervals.map((iv: { open: number; close: number }) => ({ open: hm(iv.open), close: hm(iv.close) })) : [] }));
     const ratingCount = agg?._count?._all ?? 0;
     const ratingValue = agg?._avg?.rating ?? 0;
 

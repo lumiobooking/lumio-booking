@@ -23,7 +23,7 @@ interface Seo {
   logoUrl: string | null;
   currency: string;
   priceFromCents: number | null;
-  hours: { day: number; closed: boolean; open: string; close: string }[];
+  hours: { day: number; closed: boolean; open: string; close: string; intervals?: { open: string; close: string }[] }[];
   rating: { value: number; count: number } | null;
   analytics?: { ga4Id?: string; gtmId?: string; mode?: string } | null;
 }
@@ -67,7 +67,10 @@ function buildJsonLd(s: Seo): Record<string, unknown> {
   const isRestaurant = s.businessType === 'RESTAURANT';
   const openingHoursSpecification = (s.hours ?? [])
     .filter((h) => !h.closed)
-    .map((h) => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: DAY_NAMES[h.day], opens: h.open, closes: h.close }));
+    .flatMap((h) => {
+      const ivs = h.intervals && h.intervals.length ? h.intervals : [{ open: h.open, close: h.close }];
+      return ivs.map((iv) => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: DAY_NAMES[h.day], opens: iv.open, closes: iv.close }));
+    });
   return {
     '@context': 'https://schema.org',
     '@type': isRestaurant ? 'Restaurant' : 'NailSalon',

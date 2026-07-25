@@ -946,14 +946,28 @@ export class SettingsService {
 /** Ensures a valid 7-entry business-hours array. */
 function normalizeHours(input: unknown): DayHours[] {
   const arr = Array.isArray(input) ? input : [];
+  // Parse a minute-of-day; -1 signals invalid/missing.
+  const pm = (v: unknown): number => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(0, Math.min(1440, n)) : -1; };
   const out: DayHours[] = [];
   for (let i = 0; i < 7; i++) {
     const d = (arr[i] ?? {}) as Partial<DayHours>;
-    out.push({
-      closed: Boolean(d.closed),
-      openMinutes: typeof d.openMinutes === 'number' ? d.openMinutes : 540,
-      closeMinutes: typeof d.closeMinutes === 'number' ? d.closeMinutes : 1080,
-    });
+    const closed = Boolean(d.closed);
+    let intervals: { open: number; close: number }[] | undefined;
+    if (Array.isArray(d.intervals)) {
+      intervals = (d.intervals as unknown[])
+        .map((iv) => ({ open: pm((iv as { open?: unknown })?.open), close: pm((iv as { close?: unknown })?.close) }))
+        .filter((iv) => iv.open >= 0 && iv.close > iv.open)
+        .sort((a, b) => a.open - b.open)
+        .slice(0, 6);
+      if (!intervals.length) intervals = undefined;
+    }
+    if (intervals && intervals.length) {
+      // Keep the span in openMinutes/closeMinutes so any single-window reader still works.
+      out.push({ closed, openMinutes: Math.min(...intervals.map((x) => x.open)), closeMinutes: Math.max(...intervals.map((x) => x.close)), intervals });
+    } else {
+      const om = pm(d.openMinutes), cm = pm(d.closeMinutes);
+      out.push({ closed, openMinutes: om >= 0 ? om : 540, closeMinutes: cm >= 0 ? cm : 1080 });
+    }
   }
   return out;
 }

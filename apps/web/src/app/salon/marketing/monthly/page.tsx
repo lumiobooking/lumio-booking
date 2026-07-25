@@ -19,6 +19,7 @@ interface Monthly {
   deltas?: { bookings: Delta; showed: Delta; revenueCents: Delta; newCustomers: Delta; spendCents: Delta };
   channelTrends?: { channel: string; spend: Delta | null; reach: Delta | null; clicks: Delta | null; leads: Delta | null }[];
   socialInsights?: SocialInsight[];
+  gbp?: GbpData;
   effectiveness?: 'good' | 'ok' | 'low' | 'organic';
 }
 interface Item { vi: string; en: string }
@@ -26,6 +27,14 @@ interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi:
 interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; insights?: Item[]; nextMonth?: { content?: Item[]; ads?: Item[]; growth?: Item[]; kpi?: Item[] }; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
+interface GbpData {
+  impressions?: number | null; mapsImpr?: number | null; searchImpr?: number | null; desktopImpr?: number | null; mobileImpr?: number | null;
+  calls?: number | null; directions?: number | null; websiteClicks?: number | null; bookings?: number | null; conversations?: number | null;
+  keywords?: { keyword: string; count: number | null }[];
+  vsPrev?: { impressions: SocialDelta | null; calls: SocialDelta | null; directions: SocialDelta | null; websiteClicks: SocialDelta | null; bookings: SocialDelta | null; conversations: SocialDelta | null };
+  series?: { month: string; impressions: number | null; calls: number | null; directions: number | null; websiteClicks: number | null; bookings: number | null }[];
+  reviews?: { rating: number | null; count: number | null; recent?: { author: string; rating: number; comment: string; time?: string }[] } | null;
+}
 interface PostRow { id: string; type: string; timestamp: string | null; permalink: string | null; thumbnail: string | null; caption: string | null; likes: number | null; comments: number | null; reach: number | null; views: number | null; saved: number | null; shares: number | null; interactions: number | null }
 interface SocialInsight {
   platform: string;
@@ -502,6 +511,67 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const kehoachHtml = nm && (nm.content || nm.ads || nm.growth || nm.kpi)
     ? `<div style="display:flex;gap:14px;flex-wrap:wrap">${planGroup(t('NỘI DUNG', 'CONTENT'), nm.content)}${planGroup(t('QUẢNG CÁO', 'ADS'), nm.ads)}${planGroup(t('TĂNG TRƯỞNG', 'GROWTH'), nm.growth)}${planGroup(t('KPI THÁNG SAU', 'NEXT-MONTH KPIs'), nm.kpi)}</div>`
     : `<div style="font-size:11.5px;color:#4338ca;line-height:1.55">${plan}</div>`;
+  // ---- Google Business Profile deck page (real GBP metrics only) ----
+  const g = data.gbp;
+  let gbpHtml = '';
+  if (g && (g.impressions != null || g.calls != null || g.directions != null || g.websiteClicks != null || g.bookings != null)) {
+    const gv = g.vsPrev || ({} as NonNullable<GbpData['vsPrev']>);
+    const card = (label: string, sub: string, val: number | null | undefined, d: SocialDelta | null | undefined, color: string) =>
+      `<div style="flex:1;min-width:150px;background:#fff;border:1px solid #e6ebf3;border-radius:12px;padding:11px 13px"><div style="font-size:11px;color:#475569;font-weight:600">${esc(label)}</div><div style="font-size:9.5px;color:#94a3b8">${esc(sub)}</div><div style="display:flex;align-items:baseline;gap:8px;margin-top:5px"><div style="font-size:21px;font-weight:800;color:${color}">${fnum(val)}</div>${arS(d)}</div></div>`;
+    const overview = `<div style="display:flex;gap:9px;flex-wrap:wrap">
+      ${card(t('Lượt xem hồ sơ', 'Profile views'), 'Impressions', g.impressions, gv.impressions, '#1a73e8')}
+      ${card(t('Lượt gọi điện', 'Calls'), 'Call clicks', g.calls, gv.calls, '#0f2a52')}
+      ${card(t('Lượt chỉ đường', 'Directions'), 'Direction requests', g.directions, gv.directions, '#0f2a52')}
+      ${card(t('Lượt truy cập web', 'Website'), 'Website clicks', g.websiteClicks, gv.websiteClicks, '#0f2a52')}
+      ${card(t('Lượt đặt lịch', 'Bookings'), 'Reserve with Google', g.bookings, gv.bookings, '#0f2a52')}
+      ${card(t('Lượt nhắn tin', 'Messages'), 'Conversations', g.conversations, gv.conversations, '#0f2a52')}
+    </div>`;
+    const totImp = g.impressions || 0;
+    const bar = (label: string, val: number, color: string) => { const pct = totImp > 0 ? Math.round((val / totImp) * 100) : 0; return `<div style="margin:4px 0"><div style="display:flex;justify-content:space-between;font-size:11px;color:#475569"><span>${esc(label)}</span><b style="color:#0f2a52">${fnum(val)} · ${pct}%</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${color}"></span></div></div>`; };
+    const sourcePanel = `${bar(t('Trên Tìm kiếm', 'On Search'), g.searchImpr || 0, '#4285F4')}${bar(t('Trên Maps', 'On Maps'), g.mapsImpr || 0, '#34A853')}<div style="height:6px"></div>${bar('Mobile', g.mobileImpr || 0, '#5b8def')}${bar('Desktop', g.desktopImpr || 0, '#9bb8f0')}`;
+    const kw = (g.keywords || []).slice(0, 8);
+    const kwPanel = kw.length ? `<div style="font-size:11px">${kw.map((k) => `<div style="display:flex;justify-content:space-between;margin:2px 0;color:#475569"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.keyword)}</span><b style="color:#0f2a52;flex-shrink:0;margin-left:8px">${fnum(k.count)}</b></div>`).join('')}</div>` : `<div style="font-size:11px;color:#94a3b8">${t('Chưa có dữ liệu từ khoá tháng này.', 'No keyword data this month.')}</div>`;
+    const impSeries = (g.series || []).map((x) => x.impressions || 0);
+    const trendPanel = impSeries.length > 1 ? sparkD(impSeries, '#1a73e8') : `<div style="font-size:11px;color:#94a3b8">${t('Cần ≥2 tháng đồng bộ để vẽ xu hướng.', 'Need ≥2 synced months for a trend.')}</div>`;
+    const actRate = (val: number | null | undefined) => (totImp > 0 && val != null ? Math.round((val / totImp) * 1000) / 10 : null);
+    const actBar = (label: string, val: number | null | undefined, color: string) => { const r = actRate(val); return `<div style="margin:4px 0"><div style="display:flex;justify-content:space-between;font-size:11px;color:#475569"><span>${esc(label)}</span><b style="color:#0f2a52">${r != null ? r + '%' : '—'}</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${r || 0}%;background:${color}"></span></div></div>`; };
+    const actionPanel = `${actBar(t('Gọi điện', 'Calls'), g.calls, '#4285F4')}${actBar(t('Chỉ đường', 'Directions'), g.directions, '#34A853')}${actBar(t('Truy cập web', 'Website'), g.websiteClicks, '#FBBC05')}${actBar(t('Đặt lịch', 'Bookings'), g.bookings, '#EA4335')}`;
+    const up = (x: number | null | undefined) => (x == null ? null : Math.ceil((x * 1.1) / 50) * 50);
+    const kpiRow = (label: string, cur: number | null | undefined) => (cur != null ? `<div style="display:flex;justify-content:space-between;font-size:11.5px;margin:3px 0"><span style="color:#475569">${esc(label)}</span><b style="color:#0f2a52">≥ ${fnum(up(cur))}</b></div>` : '');
+    const kpiPanel = `${kpiRow(t('Lượt xem hồ sơ', 'Profile views'), g.impressions)}${kpiRow(t('Lượt gọi', 'Calls'), g.calls)}${kpiRow(t('Lượt chỉ đường', 'Directions'), g.directions)}${kpiRow(t('Lượt truy cập web', 'Website'), g.websiteClicks)}${kpiRow(t('Lượt đặt lịch', 'Bookings'), g.bookings)}` || '<div style="font-size:11px;color:#94a3b8">—</div>';
+    const rv = g.reviews;
+    const reviewPanel = rv && rv.rating != null
+      ? `<div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:28px;font-weight:800;color:#0f2a52">${rv.rating}</div><div style="color:#f59e0b;font-size:15px">★★★★★</div><div style="font-size:11px;color:#64748b">(${fnum(rv.count)} ${t('đánh giá', 'reviews')})</div></div>${(rv.recent || []).slice(0, 3).map((r) => `<div style="border-top:1px solid #eef1f6;padding:5px 0;font-size:10.5px"><b>${esc(r.author || '')}</b> · <span style="color:#f59e0b">${'★'.repeat(r.rating || 0)}</span><div style="color:#475569">${esc((r.comment || '').slice(0, 90))}</div></div>`).join('')}`
+      : `<div style="font-size:11px;color:#94a3b8;line-height:1.6">${t('Đang thiết lập API đánh giá Google để tự kéo số sao + review mới nhất.', 'Setting up the Google reviews API to auto-pull rating + latest reviews.')}</div>`;
+    const recs: string[] = [];
+    if ((g.bookings || 0) === 0) recs.push(t('Bật Đặt lịch qua Google (Reserve with Google) để khách đặt ngay trên Maps.', 'Turn on Reserve with Google so customers book from Maps.'));
+    recs.push(t('Đăng 2–3 bài/tuần (ưu đãi, ảnh trước/sau) để giữ hồ sơ hoạt động.', 'Post 2–3/week (offers, before/after) to keep the profile active.'));
+    recs.push(t('Trả lời mọi đánh giá trong 24h để tăng độ tin cậy.', 'Reply to every review within 24h to build trust.'));
+    recs.push((g.searchImpr || 0) > (g.mapsImpr || 0)
+      ? t('Khách tìm chủ yếu qua Tìm kiếm — tối ưu từ khoá dịch vụ trong mô tả hồ sơ.', 'Most discovery is via Search — optimise service keywords in the profile description.')
+      : t('Khách chủ yếu thấy trên Maps — thêm ảnh mới & cập nhật giờ mở cửa để nổi bật.', 'Most views are on Maps — add fresh photos & keep hours updated to stand out.'));
+    const recPanel = `<div style="font-size:11px;line-height:1.5">${recs.map((r) => `<div style="margin:3px 0;color:#334155">• ${esc(r)}</div>`).join('')}</div>`;
+    gbpHtml = `<div style="page-break-before:always"></div>
+    <div style="background:linear-gradient(120deg,#1a73e8,#174ea6);color:#fff;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
+      <div><div style="display:inline-block;background:rgba(255,255,255,.16);border-radius:6px;padding:3px 10px;font-size:10.5px;font-weight:700;letter-spacing:1px">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div>
+      <div style="font-size:24px;font-weight:800;margin-top:6px">GOOGLE BUSINESS PROFILE</div>
+      <div style="font-size:12px;opacity:.85;margin-top:2px">${t('Tháng', 'Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div></div>
+      <span style="width:46px;height:46px;border-radius:12px;background:#fff;display:grid;place-items:center;font-weight:800;font-size:22px;color:#1a73e8">G</span>
+    </div>
+    <div style="margin-top:10px">${panel('① ' + t('TỔNG QUAN HIỆU QUẢ GBP', 'GBP PERFORMANCE'), overview)}</div>
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
+      ${panel('② ' + t('NGUỒN HIỂN THỊ', 'WHERE SEEN'), sourcePanel)}
+      ${panel('◎ ' + t('TỪ KHOÁ KHÁCH TÌM', 'TOP SEARCHES'), kwPanel)}
+      ${panel('③ ' + t('XU HƯỚNG LƯỢT XEM', 'VIEWS TREND'), trendPanel)}
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
+      ${panel('④ ' + t('TỶ LỆ HÀNH ĐỘNG', 'ACTION RATE'), actionPanel)}
+      ${panel('⑤ ' + t('ĐÁNH GIÁ & XẾP HẠNG', 'REVIEWS'), reviewPanel)}
+      ${panel('⑧ ' + t('MỤC TIÊU THÁNG SAU', 'NEXT-MONTH GOALS'), kpiPanel)}
+    </div>
+    <div style="margin-top:10px">${panel('◎ ' + t('ĐỀ XUẤT THÁNG TIẾP THEO', 'NEXT-MONTH RECOMMENDATIONS'), recPanel)}</div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu Google Business Profile lấy trực tiếp từ Google · Một số chỉ số (Profile Strength, tách nguồn tìm kiếm) Google không mở qua API · Lumio duyệt trước khi gửi.', 'Google Business Profile data pulled directly from Google · Some metrics (Profile Strength, search-source split) are not exposed via the API · Reviewed by Lumio.')}</div>`;
+  }
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
   @page{size:A4 landscape;margin:7mm}
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0;padding:14px;background:#eef2f8}
@@ -534,6 +604,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   <div style="margin-top:10px">${panel('◎ ' + t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN & DIRECTION'), kehoachHtml)}</div>
 
   <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.')}</div>
+  ${gbpHtml}
   <script>window.onload=function(){window.print()}</script></body></html>`;
 
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
@@ -604,7 +675,7 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
           {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString('en-US') : ''}{c.lastError ? ' · ' + c.lastError : ''}</div>}
           {openP === c.platform && (
             <div style={{ marginTop: 8, background: '#0f172a', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
-              <input style={inp} placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID (locations/...)' : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
+              <input style={inp} name="lumio-account-id" autoComplete="off" placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID — vd: 17202153832315858041' : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
               {c.platform === 'meta_social'
                 ? <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('Token do Lumio cấu hình sẵn trên server — chỉ cần Page ID/username. Instagram tự nhận từ Trang đã liên kết.', 'The token is pre-configured on the Lumio server — just the Page ID/username. Instagram is auto-detected from the linked Page.')}</div>
                 : <input style={inp} type="password" placeholder={T('Access token', 'Access token')} value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} autoComplete="off" />}

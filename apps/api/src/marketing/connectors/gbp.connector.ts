@@ -52,20 +52,62 @@ export class GbpConnector implements SocialConnector {
     } catch (e) { return { ok: false, error: String((e as Error).message) }; }
   }
 
+  /** Top search terms customers used to find the business this month. */
+  private async searchKeywords(loc: string, month: string, token: string): Promise<Array<{ keyword: string; count: number | null }>> {
+    const [y, m] = month.split('-').map(Number);
+    const q = `monthlyRange.start_month.year=${y}&monthlyRange.start_month.month=${m}` +
+      `&monthlyRange.end_month.year=${y}&monthlyRange.end_month.month=${m}`;
+    const r = await getJson(`${PERF}/${loc}/searchkeywords/impressions/monthly?${q}`, { Authorization: `Bearer ${token}` });
+    if (!r.ok) return [];
+    const rows = (r.json?.searchKeywordsCounts as any[]) || [];
+    return rows
+      .map((x: any) => ({
+        keyword: String(x?.searchKeyword ?? ''),
+        count: x?.insightsValue?.value != null ? Number(x.insightsValue.value)
+             : x?.insightsValue?.threshold != null ? Number(x.insightsValue.threshold) : null,
+      }))
+      .filter((x) => x.keyword)
+      .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+      .slice(0, 15);
+  }
+
   async fetchMonthly(creds: ChannelCreds, month: string): Promise<MonthlyMetrics> {
     const token = await this.accessToken(creds);
     const loc = this.loc(creds);
-    const IMPRESSION_METRICS = ['BUSINESS_IMPRESSIONS_DESKTOP_MAPS', 'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH', 'BUSINESS_IMPRESSIONS_MOBILE_MAPS', 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH'];
-    let impressions: number | null = null;
-    for (const m of IMPRESSION_METRICS) {
-      const v = await this.metricSum(loc, m, month, token);
-      if (v != null) impressions = (impressions ?? 0) + v;
-    }
-    const [calls, directions, clicks] = await Promise.all([
-      this.metricSum(loc, 'CALL_CLICKS', month, token),
-      this.metricSum(loc, 'BUSINESS_DIRECTION_REQUESTS', month, token),
-      this.metricSum(loc, 'WEBSITE_CLICKS', month, token),
+    // Per-metric, resilient: a metric this business does not use (e.g. bookings)
+    // returns null instead of failing the whole sync.
+    const get = (metric: string) => this.metricSum(loc, metric, month, token).catch(() => null);
+    const [dMaps, dSearch, mMaps, mSearch, calls, directions, website, bookings, conversations] = await Promise.all([
+      get('BUSINESS_IMPRESSIONS_DESKTOP_MAPS'),
+      get('BUSINESS_IMPRESSIONS_DESKTOP_SEARCH'),
+      get('BUSINESS_IMPRESSIONS_MOBILE_MAPS'),
+      get('BUSINESS_IMPRESSIONS_MOBILE_SEARCH'),
+      get('CALL_CLICKS'),
+      get('BUSINESS_DIRECTION_REQUESTS'),
+      get('WEBSITE_CLICKS'),
+      get('BUSINESS_BOOKINGS'),
+      get('BUSINESS_CONVERSATIONS'),
     ]);
-    return { spendCents: null, impressions, calls, directions, clicks, reach: null };
+    const sum = (...xs: Array<number | null>) => {
+      const v = xs.filter((x): x is number => x != null);
+      return v.length ? v.reduce((a, b) => a + b, 0) : null;
+    };
+    const mapsImpr = sum(dMaps, mMaps);
+    const searchImpr = sum(dSearch, mSearch);
+    const desktopImpr = sum(dMaps, dSearch);
+    const mobileImpr = sum(mMaps, mSearch);
+    const impressions = sum(dMaps, dSearch, mMaps, mSearch);
+    const keywords = await this.searchKeywords(loc, month, token).catch(() => []);
+    return {
+      spendCents: null,
+      impressions,
+      calls,
+      directions,
+      clicks: website,
+      bookings,
+      conversations,
+      reach: impressions,
+      raw: { gbp: { impressions, mapsImpr, searchImpr, desktopImpr, mobileImpr, calls, directions, websiteClicks: website, bookings, conversations, keywords } },
+    };
   }
 }

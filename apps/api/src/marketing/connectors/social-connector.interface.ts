@@ -28,6 +28,8 @@ export interface MonthlyMetrics {
   clicks?: number | null;
   calls?: number | null;
   directions?: number | null;
+  bookings?: number | null;
+  conversations?: number | null;
   leads?: number | null;
   raw?: unknown;
 }

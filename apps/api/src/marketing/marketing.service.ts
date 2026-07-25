@@ -335,7 +335,7 @@ export class MarketingService {
       const c = cur ?? 0; const pv = prv ?? 0;
       return { value: cur ?? null, prev: prv ?? null, pct: pv > 0 && cur != null ? Math.round(((c - pv) / pv) * 100) : null };
     };
-    const socialInsights = (socRows as any[]).map((r: any) => ({
+    const socialInsights = (socRows as any[]).filter((r: any) => r.platform !== 'gbp').map((r: any) => ({
       platform: r.platform,
       followers: r.followers,
       // Fall back to month-over-month net new followers when Meta's direct metric is null (esp. Facebook).
@@ -357,7 +357,34 @@ export class MarketingService {
       },
     }));
 
-    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, effectiveness };
+    // --- Google Business Profile (Maps) monthly performance — its own deck ---
+    const gbpRow = (socRows as any[]).find((r: any) => r.platform === 'gbp');
+    let gbp: any = null;
+    if (gbpRow) {
+      const cur = ((gbpRow.raw as any)?.gbp) || {};
+      const prv = ((prevSoc.get('gbp')?.raw as any)?.gbp) || {};
+      const gbpSeriesRows = await this.prisma.socialInsight.findMany({ where: { tenantId, platform: 'gbp', periodMonth: { in: seriesMonths } }, select: { periodMonth: true, raw: true } });
+      const gbpSeries = seriesMonths.map((mm) => {
+        const row = (gbpSeriesRows as any[]).find((x: any) => x.periodMonth === mm);
+        const g = (row?.raw as any)?.gbp;
+        return g ? { month: mm, impressions: g.impressions ?? null, calls: g.calls ?? null, directions: g.directions ?? null, websiteClicks: g.websiteClicks ?? null, bookings: g.bookings ?? null } : null;
+      }).filter(Boolean);
+      gbp = {
+        ...cur,
+        vsPrev: {
+          impressions: socDelta(cur.impressions, prv.impressions),
+          calls: socDelta(cur.calls, prv.calls),
+          directions: socDelta(cur.directions, prv.directions),
+          websiteClicks: socDelta(cur.websiteClicks, prv.websiteClicks),
+          bookings: socDelta(cur.bookings, prv.bookings),
+          conversations: socDelta(cur.conversations, prv.conversations),
+        },
+        series: gbpSeries,
+        syncedAt: gbpRow.syncedAt,
+      };
+    }
+
+    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, gbp, effectiveness };
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
@@ -805,6 +832,21 @@ export class MarketingService {
         create: { tenantId, channel: platform, periodMonth: month, amountCents: m.spendCents ?? 0, reach, clicks: m.clicks ?? null, leads, source: 'api', createdByUserId: user.userId, note: 'Auto-synced' },
         update: { amountCents: m.spendCents ?? 0, reach, clicks: m.clicks ?? null, leads, source: 'api', note: 'Auto-synced' },
       });
+      // Google Business Profile: also store a rich monthly snapshot (for the GBP deck).
+      if (platform === 'gbp' && m.raw && (m.raw as any).gbp) {
+        const g = (m.raw as any).gbp;
+        const actions = (g.calls ?? 0) + (g.directions ?? 0) + (g.websiteClicks ?? 0) + (g.bookings ?? 0) + (g.conversations ?? 0);
+        const gdata = {
+          followers: g.impressions ?? null,   // repurposed so the monthly-series machinery charts impressions
+          reach: g.impressions ?? null, views: g.websiteClicks ?? null, engagement: actions,
+          raw: { gbp: g } as any, syncedAt: new Date(),
+        };
+        await this.prisma.socialInsight.upsert({
+          where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: month } },
+          create: { tenantId, platform: 'gbp', periodMonth: month, ...gdata },
+          update: gdata,
+        });
+      }
       await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
       await this.audit(tenantId, user.userId, 'marketing.channel.sync', { platform, month });
       return { ok: true, platform, month, metrics: m };

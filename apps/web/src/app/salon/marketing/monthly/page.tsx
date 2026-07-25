@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, CSSProperties } from 'react';
 import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
@@ -86,6 +86,23 @@ function Inner() {
     finally { setLoading(false); }
   }, [token, month]);
   useEffect(() => { load(); }, [load]);
+
+  // Auto-generate the AI analysis the first time a month is opened with no report yet.
+  const autoTried = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!token || loading || busy) return;
+    if (report) return;                 // a report row already exists (even if AI failed) — don't loop
+    if (!data) return;
+    const hasData =
+      (data.socialInsights?.length ?? 0) > 0 ||
+      (data.spend?.length ?? 0) > 0 ||
+      (data.outcome?.totals?.bookings ?? 0) > 0;
+    if (!hasData) return;               // nothing to analyse yet
+    if (autoTried.current.has(month)) return;
+    autoTried.current.add(month);
+    generate();                         // fills OVERALL ASSESSMENT / KEY INSIGHTS / NEXT-MONTH PLAN
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, loading, busy, report, data, month]);
 
   async function saveSpend() {
     setBusy('spend'); setMsg(null); setError(null);

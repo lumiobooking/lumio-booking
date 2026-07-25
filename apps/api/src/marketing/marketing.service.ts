@@ -346,6 +346,153 @@ export class MarketingService {
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
+
+  /**
+   * Deterministic report writer — builds the SAME content shape as the AI purely
+   * from the real numbers. Used to backfill sections the AI leaves empty, and as a
+   * full fallback when ANTHROPIC_API_KEY is missing / the AI call fails, so the
+   * monthly report is NEVER blank (true "100% automated" behaviour).
+   */
+  private ruleBasedDraft(data: any): any {
+    const S: any[] = (data.socialInsights ?? []);
+    const ig = S.find((x) => x.platform === 'instagram');
+    const fb = S.find((x) => x.platform === 'facebook');
+    const n = (x: any) => (x == null ? null : String(Math.round(Number(x))).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+    const pctTxt = (d: any) => (d && d.pct != null ? (d.pct >= 0 ? `+${d.pct}%` : `${d.pct}%`) : null);
+    const bi = (vi: string, en: string) => ({ vi, en });
+    const platLabel = (pf: string) => (pf === 'facebook' ? 'Facebook' : 'Instagram');
+
+    const totalReach = S.reduce((a, x) => a + (x.reach ?? 0), 0);
+    const totalViews = S.reduce((a, x) => a + (x.views ?? 0), 0);
+    const totalEng = S.reduce((a, x) => a + (x.engagement ?? 0), 0);
+    const newFol = S.reduce((a, x) => a + (x.newFollowers ?? 0), 0);
+    const postsAll = S.reduce((a, x) => a + (x.postsCount ?? (x.posts?.length ?? 0)), 0);
+    const igER = (ig && ig.engagement != null && ig.reach) ? Math.round((ig.engagement / ig.reach) * 1000) / 10 : null;
+
+    // ---- channels: one line per organic network, judged on momentum ----
+    const channels: any[] = [];
+    for (const sIns of S) {
+      const rp = sIns.vsPrev?.reach, ep = sIns.vsPrev?.engagement, fp = sIns.vsPrev?.followers;
+      const anyNum = sIns.reach != null || sIns.engagement != null || sIns.followers != null;
+      const grew = [rp, ep, fp].some((d) => d && d.pct != null && d.pct > 0);
+      const fell = [rp, ep, fp].some((d) => d && d.pct != null && d.pct < 0);
+      let verdict: string = 'nodata';
+      if (anyNum) verdict = grew && !fell ? 'good' : fell && !grew ? 'weak' : 'ok';
+      const vp: string[] = [], ep2: string[] = [];
+      if (sIns.reach != null) { vp.push(`reach ${n(sIns.reach)}${pctTxt(rp) ? ` (${pctTxt(rp)})` : ''}`); ep2.push(`reach ${n(sIns.reach)}${pctTxt(rp) ? ` (${pctTxt(rp)})` : ''}`); }
+      if (sIns.engagement != null) { vp.push(`tương tác ${n(sIns.engagement)}${pctTxt(ep) ? ` (${pctTxt(ep)})` : ''}`); ep2.push(`${n(sIns.engagement)} engagements${pctTxt(ep) ? ` (${pctTxt(ep)})` : ''}`); }
+      if (sIns.views != null) { vp.push(`${n(sIns.views)} lượt xem`); ep2.push(`${n(sIns.views)} views`); }
+      if (sIns.followers != null) { vp.push(`${n(sIns.followers)} follower${sIns.newFollowers ? ` (+${sIns.newFollowers})` : ''}`); ep2.push(`${n(sIns.followers)} followers${sIns.newFollowers ? ` (+${sIns.newFollowers})` : ''}`); }
+      const viStr = vp.length ? vp.join(', ') : 'Meta đã ngừng cung cấp phần lớn chỉ số của trang — chỉ còn follower & bài đăng.';
+      const enStr = ep2.length ? ep2.join(', ') : 'Meta discontinued most Page metrics — only followers & posts remain.';
+      channels.push({ name: `${platLabel(sIns.platform)} (organic)`, verdict, vi: viStr, en: enStr });
+    }
+
+    // ---- top post across all networks ----
+    let top: any = null;
+    for (const sIns of S) for (const pp of (sIns.posts ?? [])) {
+      const score = pp.interactions ?? ((pp.likes ?? 0) + (pp.comments ?? 0));
+      if (!top || score > top._score) top = { ...pp, _score: score, _pf: sIns.platform };
+    }
+
+    // ---- highlights (wins) ----
+    const highlights: any[] = [];
+    if (ig && ig.reach != null) highlights.push(bi(
+      `Instagram tiếp cận ${n(ig.reach)} người${pctTxt(ig.vsPrev?.reach) ? ` (${pctTxt(ig.vsPrev?.reach)} so với tháng trước)` : ''}.`,
+      `Instagram reached ${n(ig.reach)} people${pctTxt(ig.vsPrev?.reach) ? ` (${pctTxt(ig.vsPrev?.reach)} vs last month)` : ''}.`));
+    if (newFol > 0) highlights.push(bi(`Có thêm ${newFol} người theo dõi mới trong tháng.`, `Gained ${newFol} new followers this month.`));
+    if (totalViews > 0) highlights.push(bi(`Nội dung đạt tổng ${n(totalViews)} lượt xem.`, `Content reached ${n(totalViews)} total views.`));
+    if (top && top._score > 0) highlights.push(bi(
+      `Bài nổi bật (${top.type || 'post'}): ${n(top.likes ?? 0)} thích, ${n(top.comments ?? 0)} bình luận${top.views ? `, ${n(top.views)} lượt xem` : ''}.`,
+      `Top post (${top.type || 'post'}): ${n(top.likes ?? 0)} likes, ${n(top.comments ?? 0)} comments${top.views ? `, ${n(top.views)} views` : ''}.`));
+    if (!highlights.length) highlights.push(bi('Đã đăng bài đều đặn và duy trì hiện diện kênh trong tháng.', 'Posted consistently and maintained channel presence this month.'));
+
+    // ---- issues (challenges + the fix) ----
+    const issues: any[] = [];
+    if (fb && fb.reach == null && fb.engagement == null) issues.push(bi(
+      'Facebook: Meta đã ngừng cung cấp reach & tương tác của trang (2025-2026). Khắc phục: bật chia sẻ Reels từ Instagram sang Facebook Page để vẫn có số liệu và mở rộng phủ sóng.',
+      'Facebook: Meta discontinued Page reach & engagement (2025-2026). Fix: enable sharing Instagram Reels to the Facebook Page to keep data flowing and widen reach.'));
+    for (const sIns of S) {
+      const rp = sIns.vsPrev?.reach;
+      if (rp && rp.pct != null && rp.pct < -5) issues.push(bi(
+        `${platLabel(sIns.platform)} reach giảm ${rp.pct}% — tăng tần suất đăng và thử thêm Reels để phục hồi hiển thị.`,
+        `${platLabel(sIns.platform)} reach fell ${rp.pct}% — increase posting cadence and add more Reels to recover visibility.`));
+    }
+    if (postsAll > 0 && postsAll < 10) issues.push(bi(
+      `Tần suất đăng còn thấp (${postsAll} bài) — nên tăng lên 12-16 bài/tháng để giữ nhịp hiển thị.`,
+      `Posting cadence is low (${postsAll} posts) — raise to 12-16/month to sustain reach.`));
+    if (!issues.length) issues.push(bi('Chưa có vấn đề nổi cộm; tiếp tục theo dõi nhịp tăng trưởng.', 'No major issues; keep monitoring the growth trend.'));
+
+    // ---- insights (observations) ----
+    const insights: any[] = [];
+    const age = ig?.audience?.age;
+    if (age) {
+      const keys = Object.keys(age); const tot = keys.reduce((a, k) => a + (age[k] || 0), 0) || 1;
+      const bestK = keys.sort((a, b) => (age[b] || 0) - (age[a] || 0))[0];
+      if (bestK) insights.push(bi(
+        `Nhóm tuổi ${bestK} chiếm ${Math.round((age[bestK] / tot) * 1000) / 10}% người theo dõi Instagram — nội dung nên nhắm vào nhóm này.`,
+        `The ${bestK} age group is ${Math.round((age[bestK] / tot) * 1000) / 10}% of Instagram followers — aim content at this group.`));
+    }
+    const gd = ig?.audience?.gender;
+    if (gd) {
+      const tot = (gd.F || 0) + (gd.M || 0) + (gd.U || 0) || 1;
+      if ((gd.F || 0) >= (gd.M || 0)) insights.push(bi(
+        `Khách nữ chiếm ${Math.round((gd.F / tot) * 1000) / 10}% — ưu tiên mẫu nail nữ và xu hướng theo mùa.`,
+        `Female audience is ${Math.round((gd.F / tot) * 1000) / 10}% — prioritise female nail designs and seasonal trends.`));
+    }
+    const posts = ig?.posts ?? [];
+    const avgOf = (pred: (p: any) => boolean) => { const g = posts.filter(pred); if (!g.length) return null; return Math.round(g.reduce((a: number, p: any) => a + (p.interactions ?? ((p.likes ?? 0) + (p.comments ?? 0))), 0) / g.length); };
+    const reelAvg = avgOf((p) => /reel|video/i.test(p.type || ''));
+    const imgAvg = avgOf((p) => /image|photo|carousel/i.test(p.type || ''));
+    if (reelAvg != null && imgAvg != null) insights.push(reelAvg >= imgAvg
+      ? bi(`Reels tạo tương tác cao hơn ảnh tĩnh (${reelAvg} vs ${imgAvg} trung bình/bài) — nên tăng tỷ trọng Reels.`, `Reels drive higher engagement than static photos (${reelAvg} vs ${imgAvg} avg/post) — shift toward Reels.`)
+      : bi(`Ảnh tĩnh đang tương tác tốt hơn Reels (${imgAvg} vs ${reelAvg} trung bình/bài) — giữ tỷ trọng ảnh chất lượng cao.`, `Static photos currently out-engage Reels (${imgAvg} vs ${reelAvg} avg/post) — keep high-quality photos.`));
+    if (igER != null) insights.push(bi(
+      `Tỷ lệ tương tác Instagram ${igER}% trên lượng reach — ${igER >= 2 ? 'ở mức tốt' : 'còn dư địa cải thiện bằng CTA & câu hỏi'}.`,
+      `Instagram engagement rate ${igER}% of reach — ${igER >= 2 ? 'a healthy level' : 'room to improve with CTAs & questions'}.`));
+    if (!insights.length) insights.push(bi('Chưa đủ dữ liệu nhân khẩu/nội dung để rút ra insight — kết nối Instagram đầy đủ để có thêm phân tích.', 'Not enough audience/content data for insights yet — connect Instagram fully for deeper analysis.'));
+
+    // ---- nextMonth (4 buckets) ----
+    const ceil50 = (x: any, f = 1.12) => (x == null ? null : Math.ceil((Number(x) * f) / 50) * 50);
+    const nextMonth = {
+      content: [
+        bi(`Đăng 12-16 bài/tháng, ${reelAvg != null && imgAvg != null && reelAvg >= imgAvg ? 'ưu tiên Reels (định dạng đang thắng)' : 'cân bằng Reels và ảnh chất lượng cao'}.`,
+           `Post 12-16/month, ${reelAvg != null && imgAvg != null && reelAvg >= imgAvg ? 'favouring Reels (the winning format)' : 'balancing Reels and high-quality photos'}.`),
+        bi('Xoay vòng chủ đề: mẫu nail mới, review khách, ảnh trước/sau, ưu đãi trong tuần.', 'Rotate themes: new nail designs, client reviews, before/after, weekly offers.'),
+      ],
+      ads: [ (data.blended?.totalSpendCents ?? 0) > 0
+        ? bi('Tối ưu ngân sách quảng cáo hiện có về kênh cho chi phí/khách thấp nhất.', 'Optimise the current ad budget toward the lowest cost-per-customer channel.')
+        : bi('Chưa chạy quảng cáo — cân nhắc thử $50-100 boost cho Reels tốt nhất để mở rộng reach.', 'No ads yet — consider a $50-100 boost on the best Reel to expand reach.') ],
+      growth: [
+        bi('Bật chia sẻ Reels Instagram sang Facebook Page để lấp số liệu Facebook và tăng phủ sóng.', 'Enable sharing Instagram Reels to the Facebook Page to fill Facebook data and widen reach.'),
+        bi('Trả lời bình luận & tin nhắn trong 1 giờ; chạy 1 mini-game tặng buổi làm nail để tăng tương tác.', 'Reply to comments & DMs within 1 hour; run one giveaway (a free nail session) to lift engagement.'),
+      ],
+      kpi: [
+        ig?.reach != null ? bi(`Reach Instagram ≥ ${n(ceil50(ig.reach))} (hiện ${n(ig.reach)}).`, `Instagram reach ≥ ${n(ceil50(ig.reach))} (now ${n(ig.reach)}).`) : null,
+        bi(`Follower mới +${Math.max(30, newFol)} trên các kênh.`, `New followers +${Math.max(30, newFol)} across channels.`),
+        igER != null ? bi(`Tỷ lệ tương tác Instagram ≥ ${Math.round((igER + 0.5) * 10) / 10}%.`, `Instagram engagement rate ≥ ${Math.round((igER + 0.5) * 10) / 10}%.`) : null,
+        bi(`Đăng ≥ ${Math.max(14, postsAll)} bài trong tháng.`, `Publish ≥ ${Math.max(14, postsAll)} posts in the month.`),
+      ].filter(Boolean),
+    };
+    const plan = [...nextMonth.content, ...nextMonth.growth, ...nextMonth.ads]; // flat legacy fallback
+
+    // ---- headline / tldr / summary ----
+    let headline = bi('Kênh mạng xã hội duy trì hiện diện ổn định trong tháng.', 'Social channels held a steady presence this month.');
+    if (ig?.vsPrev?.reach?.pct != null && ig.vsPrev.reach.pct > 0) headline = bi(`Reach Instagram tăng ${ig.vsPrev.reach.pct}% so với tháng trước.`, `Instagram reach grew ${ig.vsPrev.reach.pct}% vs last month.`);
+    else if (newFol > 0) headline = bi(`Có thêm ${newFol} người theo dõi mới trong tháng.`, `Gained ${newFol} new followers this month.`);
+    else if (totalReach > 0) headline = bi(`Tiếp cận tổng ${n(totalReach)} người qua các kênh.`, `Reached ${n(totalReach)} people across channels.`);
+
+    const tldr = bi(
+      `Tháng này các kênh organic tiếp cận ${n(totalReach)} người với ${n(totalEng)} lượt tương tác${newFol ? `, thêm ${newFol} follower mới` : ''}. ${ig ? `Instagram là kênh mạnh nhất${igER != null ? ` (tỷ lệ tương tác ${igER}%)` : ''}.` : ''} ${fb && fb.reach == null ? 'Facebook thiếu số liệu do Meta ngừng cung cấp — nên bật crosspost Reels từ Instagram.' : ''} Trọng tâm tháng tới: tăng tần suất Reels và mở rộng phủ sóng sang Facebook.`.replace(/\s+/g, ' ').trim(),
+      `This month organic channels reached ${n(totalReach)} people with ${n(totalEng)} engagements${newFol ? `, adding ${newFol} new followers` : ''}. ${ig ? `Instagram was the strongest channel${igER != null ? ` (engagement rate ${igER}%)` : ''}.` : ''} ${fb && fb.reach == null ? 'Facebook lacks data because Meta discontinued it — enable Reel crossposting from Instagram.' : ''} Next month: increase Reels cadence and extend reach to Facebook.`.replace(/\s+/g, ' ').trim());
+
+    const summary = bi(
+      `Tổng reach ${n(totalReach)}${pctTxt(ig?.vsPrev?.reach) ? ` (${pctTxt(ig?.vsPrev?.reach)} so với tháng trước trên Instagram)` : ''}, ${n(totalEng)} lượt tương tác, ${n(totalViews)} lượt xem, ${postsAll} bài đăng. Đây là kết quả tự nhiên (organic), chưa tính quảng cáo.`,
+      `Total reach ${n(totalReach)}${pctTxt(ig?.vsPrev?.reach) ? ` (${pctTxt(ig?.vsPrev?.reach)} MoM on Instagram)` : ''}, ${n(totalEng)} engagements, ${n(totalViews)} views, ${postsAll} posts. These are organic results, excluding paid ads.`);
+
+    return { headline, tldr, summary, channels, highlights, issues, plan, insights, nextMonth, _ruleBased: true };
+  }
+
   private async draftWithAI(data: Awaited<ReturnType<MarketingService['monthlyData']>>, history: any[] = []): Promise<{ content?: any; model?: string; error?: string }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return { error: 'ANTHROPIC_API_KEY chưa được đặt trên server' };
@@ -453,13 +600,29 @@ export class MarketingService {
     const history = await this.monthlyHistory(user, month, tenantParam, 4).catch(() => [] as any[]);
     const ai = await this.draftWithAI(data, history);
     const ok = !!ai.content;
-    const content = ok ? ai.content : { summary: { vi: '', en: '' }, highlights: [], issues: [], plan: [], _aiUnavailable: true, _aiError: ai.error ?? 'unknown' };
+    const rule = this.ruleBasedDraft(data);
+    let content: any;
+    if (ok) {
+      content = ai.content;
+      // Backfill any section the AI left empty so the report is never partial.
+      const isEmptyArr = (v: any) => !Array.isArray(v) || v.length === 0;
+      for (const k of ['highlights', 'issues', 'insights', 'plan', 'channels']) if (isEmptyArr(content[k])) content[k] = rule[k];
+      const nm = content.nextMonth;
+      const nmEmpty = !nm || (isEmptyArr(nm.content) && isEmptyArr(nm.ads) && isEmptyArr(nm.growth) && isEmptyArr(nm.kpi));
+      if (nmEmpty) content.nextMonth = rule.nextMonth;
+      if (!content.headline?.vi) content.headline = rule.headline;
+      if (!content.tldr?.vi) content.tldr = rule.tldr;
+      if (!content.summary?.vi) content.summary = rule.summary;
+    } else {
+      // No AI (key missing / call failed) — ship the deterministic report so it is NEVER blank.
+      content = { ...rule, _aiUnavailable: true, _aiError: ai.error ?? 'unknown' };
+    }
     const saved = await this.prisma.marketingReport.upsert({
       where: { tenantId_periodMonth: { tenantId, periodMonth: month } },
       create: { tenantId, periodMonth: month, status: 'review', content, dataSnapshot: data as any, aiModel: ok ? (ai.model ?? null) : null },
       update: { content, dataSnapshot: data as any, aiModel: ok ? (ai.model ?? null) : null, status: 'review' },
     });
-    return { ...saved, aiUsed: ok, aiError: ok ? null : ai.error };
+    return { ...saved, aiUsed: ok, aiError: ok ? null : ai.error, reportSource: ok ? 'ai' : 'auto' };
   }
 
   async getReport(user: AuthenticatedUser, month: string, tenantParam?: string) {

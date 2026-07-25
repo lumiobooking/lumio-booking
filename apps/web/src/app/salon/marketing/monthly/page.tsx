@@ -26,11 +26,13 @@ interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi:
 interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
+interface PostRow { id: string; type: string; timestamp: string | null; permalink: string | null; thumbnail: string | null; caption: string | null; likes: number | null; comments: number | null; reach: number | null; views: number | null; saved: number | null; shares: number | null; interactions: number | null }
 interface SocialInsight {
   platform: string;
   followers: number | null; newFollowers: number | null;
   reach: number | null; views: number | null; engagement: number | null;
   profileViews: number | null; postsCount: number | null;
+  posts?: PostRow[];
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
 }
 
@@ -396,6 +398,16 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     if (!cells) return '';
     return `<div style="border:1px solid #eee;border-radius:10px;padding:9px 12px;margin:6px 0"><div style="font-weight:700;color:${col};margin-bottom:4px">${nm}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${cells}</div></div>`;
   }).join('');
+  const igPosts = ((data.socialInsights ?? []).find((x) => x.platform === 'instagram')?.posts ?? []).slice(0, 12);
+  const postsHtml = igPosts.map((p) => {
+    const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+    const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const tl = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : t('Ảnh', 'Photo');
+    const thumb = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0" />` : `<div style="width:40px;height:40px;border-radius:6px;background:#f1f4f9;flex-shrink:0"></div>`;
+    const cell = (label: string, v: number | null) => (v == null ? '' : `<span style="margin-right:10px"><b>${f(v)}</b> <span style="color:#6b7280">${label}</span></span>`);
+    const stats = [cell(t('thích', 'likes'), p.likes), cell(t('bl', 'cmts'), p.comments), cell('reach', p.reach), cell(t('xem', 'views'), p.views), cell(t('lưu', 'saved'), p.saved)].join('');
+    return `<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid #f0ece7">${thumb}<div style="flex:1;min-width:0"><div style="font-size:11px;color:#6b7280">${esc(tl)} · ${dt}${p.caption ? ' · ' + esc(p.caption) : ''}</div><div style="font-size:12px;margin-top:2px">${stats}</div></div></div>`;
+  }).join('');
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} ${data.month}</title><style>
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;padding:26px 22px;line-height:1.5}
@@ -421,6 +433,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   ${b && b.revenuePerSpend != null ? card(`<div class="lbl" style="color:#065f46;margin-bottom:4px">③ ${t('HIỆU QUẢ', 'EFFECTIVENESS')}</div><div style="font-size:16px;color:#065f46">${t('Mỗi', 'Every')} <b>$1</b> ${t('chi ra', 'spent')} → <b>$${b.revenuePerSpend}</b> ${t('doanh thu', 'revenue')}${b.costPerNewCustomerCents != null ? ` &nbsp;·&nbsp; ${t('chi phí mỗi khách mới', 'cost per new customer')}: <b>${money(b.costPerNewCustomerCents)}</b>` : ''}</div>`, '#ecfdf5') : ''}
 
   ${socHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('KÊNH TỰ NHIÊN — FACEBOOK / INSTAGRAM', 'ORGANIC — FACEBOOK / INSTAGRAM')}</div>${socHtml}`) : ''}
+  ${postsHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS')}</div>${postsHtml}`) : ''}
   ${channelsHtml ? `<div style="margin-top:12px"><div class="lbl" style="margin-bottom:2px">${t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION')}</div>${channelsHtml}</div>` : ''}
   ${hiHtml ? card(`<div class="lbl" style="margin-bottom:4px">${t('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div><div style="font-size:12.5px">${hiHtml}</div>`) : ''}
   ${issHtml ? card(`<div class="lbl" style="margin-bottom:4px;color:#b45309">${t('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div><div style="font-size:12.5px">${issHtml}</div>`) : ''}
@@ -517,6 +530,31 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function PostRowView({ p, T }: { p: PostRow; T: (v: string, e: string) => string }) {
+  const img = !!p.thumbnail && p.thumbnail.startsWith('http');
+  const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const typeLabel = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : T('Ảnh', 'Photo');
+  const num = (n: number | null) => (n == null ? null : Number(n).toLocaleString('en-US'));
+  const stat = (label: string, v: number | null) => (v == null ? null : <span key={label} style={{ whiteSpace: 'nowrap' }}><b style={{ color: '#f8fafc' }}>{num(v)}</b> <span style={{ color: '#64748b' }}>{label}</span></span>);
+  const stats = [stat(T('thích', 'likes'), p.likes), stat(T('bl', 'cmts'), p.comments), stat('reach', p.reach), stat(T('xem', 'views'), p.views), stat(T('lưu', 'saved'), p.saved), stat('share', p.shares)].filter(Boolean);
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '8px 10px' }}>
+      {img
+        ? <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: `#1e293b center/cover no-repeat url(${p.thumbnail})` }} />
+        : <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: '#1e293b', display: 'grid', placeItems: 'center', fontSize: 18 }}>📷</span>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: '#a5b4fc', background: '#1e293b', borderRadius: 4, padding: '1px 6px' }}>{typeLabel}</span>
+          <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>{dt}</span>
+          {p.caption && <span style={{ fontSize: 11.5, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caption}</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4, fontSize: 11.5, color: '#e2e8f0' }}>{stats.length ? stats : <span style={{ color: '#64748b', fontSize: 11 }}>{T('chưa có số liệu', 'no metrics')}</span>}</div>
+      </div>
+      {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" style={{ color: '#818cf8', fontSize: 11, textDecoration: 'none', flexShrink: 0 }}>{T('Xem', 'Open')} ↗</a>}
     </div>
   );
 }
@@ -671,6 +709,20 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginTop: 8 }}>
             {data.socialInsights!.map((sIns) => <SocialCard key={sIns.platform} s={sIns} vi={vi} T={T} />)}
           </div>
+          {(() => {
+            const ig = (data.socialInsights ?? []).find((x) => x.platform === 'instagram');
+            const posts = ig?.posts ?? [];
+            if (!posts.length) return null;
+            return (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700, marginBottom: 6 }}>{T('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS')} <span style={{ color: '#475569' }}>· {posts.length}</span></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {posts.slice(0, 12).map((p, i) => <PostRowView key={p.id || i} p={p} T={T} />)}
+                </div>
+                {posts.length > 12 && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{T(`+ ${posts.length - 12} bài khác`, `+ ${posts.length - 12} more posts`)}</div>}
+              </div>
+            );
+          })()}
           <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',
                'Organic (non-paid) numbers pulled directly from Facebook/Instagram. A blank means Meta no longer provides that metric.')}

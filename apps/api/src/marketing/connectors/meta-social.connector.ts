@@ -3,6 +3,7 @@ import {
   MonthlyMetrics,
   OrganicMetrics,
   OrganicResult,
+  PostInsight,
   SocialConnector,
   VerifyResult,
   getJson,
@@ -144,6 +145,62 @@ export class MetaSocialConnector implements SocialConnector {
     }
   }
 
+  /** Instagram per-post breakdown for the month: media list + each post's
+   *  interactions (reach/views/saved/shares/total). Resilient — a post whose
+   *  insights fail still reports likes/comments from the node fields. */
+  private async igMediaBreakdown(igId: string, since: string, until: string, token: string): Promise<PostInsight[]> {
+    const from = new Date(`${since}T00:00:00Z`).getTime();
+    const to = new Date(`${until}T23:59:59Z`).getTime();
+    const s = Math.floor(from / 1000), u = Math.floor(to / 1000);
+    let list: any[] = [];
+    try {
+      const r = await getJson(`${GRAPH}/${encodeURIComponent(igId)}/media?fields=id,caption,media_type,media_product_type,timestamp,permalink,thumbnail_url,media_url,like_count,comments_count&since=${s}&until=${u}&limit=50&access_token=${encodeURIComponent(token)}`);
+      if (r.ok && Array.isArray(r.json?.data)) list = r.json.data;
+    } catch {
+      return [];
+    }
+    // The edge's since/until can be loose — keep only media actually posted this month.
+    list = list.filter((m) => { const t = Date.parse(m?.timestamp || ''); return !Number.isFinite(t) || (t >= from && t <= to); }).slice(0, 40);
+
+    const insights = async (mediaId: string, metrics: string[]): Promise<Record<string, number | null> | null> => {
+      try {
+        const r = await getJson(`${GRAPH}/${encodeURIComponent(mediaId)}/insights?metric=${metrics.join(',')}&access_token=${encodeURIComponent(token)}`);
+        if (!r.ok || !Array.isArray(r.json?.data)) return null;
+        const map: Record<string, number | null> = {};
+        for (const d of r.json.data) { const v = d?.values?.[0]?.value ?? d?.total_value?.value; map[d.name] = numOrNull(v); }
+        return map;
+      } catch {
+        return null;
+      }
+    };
+
+    const posts = await Promise.all(list.map(async (m): Promise<PostInsight> => {
+      const isReel = String(m.media_product_type || '').toUpperCase() === 'REELS' || String(m.media_type || '').toUpperCase() === 'VIDEO';
+      const full = isReel ? ['reach', 'saved', 'shares', 'total_interactions', 'views'] : ['reach', 'saved', 'shares', 'total_interactions'];
+      let ins = await insights(m.id, full);
+      if (!ins) ins = (await insights(m.id, ['reach'])) ?? {};
+      const likes = numOrNull(m.like_count), comments = numOrNull(m.comments_count);
+      const interactions = ins.total_interactions ?? ((likes ?? 0) + (comments ?? 0) + (ins.saved ?? 0) + (ins.shares ?? 0));
+      return {
+        id: String(m.id),
+        type: isReel ? 'reel' : String(m.media_type || 'post').toLowerCase(),
+        timestamp: m.timestamp ?? null,
+        permalink: m.permalink ?? null,
+        thumbnail: m.thumbnail_url || m.media_url || null,
+        caption: m.caption ? String(m.caption).replace(/\s+/g, ' ').slice(0, 120) : null,
+        likes,
+        comments,
+        reach: ins.reach ?? null,
+        views: ins.views ?? null,
+        saved: ins.saved ?? null,
+        shares: ins.shares ?? null,
+        interactions,
+      };
+    }));
+    posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
+    return posts;
+  }
+
   // ---- Organic pull --------------------------------------------------------
 
   async fetchOrganic(creds: ChannelCreds, month: string): Promise<OrganicResult> {
@@ -185,13 +242,13 @@ export class MetaSocialConnector implements SocialConnector {
     const igId: string | undefined = page.instagram_business_account?.id;
     if (igId) {
       const igNode = await this.node(igId, 'followers_count,media_count,username', token);
-      const [igReach, igViews, igEngagement, igNewFollowers, igProfileViews, igPosts] = await Promise.all([
+      const [igReach, igViews, igEngagement, igNewFollowers, igProfileViews, igPostList] = await Promise.all([
         this.ig(igId, ['reach'], since, until, token),
         this.ig(igId, ['views', 'impressions'], since, until, token),
         this.ig(igId, ['total_interactions', 'accounts_engaged'], since, until, token),
         this.ig(igId, ['follower_count'], since, until, token),
         this.ig(igId, ['profile_views'], since, until, token),
-        this.countEdge(igId, 'media', since, until, token),
+        this.igMediaBreakdown(igId, since, until, token),
       ]);
       out.instagram = {
         accountName: igNode?.username ? `@${igNode.username}` : null,
@@ -201,7 +258,8 @@ export class MetaSocialConnector implements SocialConnector {
         views: igViews,
         engagement: igEngagement,
         profileViews: igProfileViews,
-        postsCount: igPosts ?? numOrNull(igNode?.media_count),
+        postsCount: igPostList.length || numOrNull(igNode?.media_count),
+        posts: igPostList,
         raw: { igId, username: igNode?.username ?? null },
       };
     }

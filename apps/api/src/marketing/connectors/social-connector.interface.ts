@@ -38,6 +38,24 @@ export interface MonthlyMetrics {
  * connector returns whatever the API still gives and null for the rest, so a
  * retired metric quietly drops out of the report instead of breaking it.
  */
+/** One post/reel with its month-to-date interactions (Instagram only — Meta
+ * removed Facebook post-level metrics). Any field is null if the API omits it. */
+export interface PostInsight {
+  id: string;
+  type: string;              // reel | image | video | carousel | post
+  timestamp: string | null;
+  permalink: string | null;
+  thumbnail: string | null;
+  caption: string | null;
+  likes: number | null;
+  comments: number | null;
+  reach: number | null;
+  views: number | null;
+  saved: number | null;
+  shares: number | null;
+  interactions: number | null;
+}
+
 export interface OrganicMetrics {
   followers?: number | null;      // total followers at sync time (stable node field)
   newFollowers?: number | null;   // net follows gained in the month
@@ -46,6 +64,7 @@ export interface OrganicMetrics {
   engagement?: number | null;     // total interactions / post engagements
   profileViews?: number | null;   // profile / page views
   postsCount?: number | null;     // posts published in the month
+  posts?: PostInsight[];          // per-post breakdown (Instagram)
   accountName?: string | null;
   raw?: unknown;
 }

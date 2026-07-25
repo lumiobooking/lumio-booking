@@ -176,8 +176,8 @@ export class MetaSocialConnector implements SocialConnector {
 
     const posts = await Promise.all(list.map(async (m): Promise<PostInsight> => {
       const isReel = String(m.media_product_type || '').toUpperCase() === 'REELS' || String(m.media_type || '').toUpperCase() === 'VIDEO';
-      const full = isReel ? ['reach', 'saved', 'shares', 'total_interactions', 'views'] : ['reach', 'saved', 'shares', 'total_interactions'];
-      let ins = await insights(m.id, full);
+      let ins = await insights(m.id, ['reach', 'saved', 'shares', 'total_interactions', 'views']);
+      if (!ins) ins = await insights(m.id, ['reach', 'saved', 'shares', 'total_interactions']);
       if (!ins) ins = (await insights(m.id, ['reach'])) ?? {};
       const likes = numOrNull(m.like_count), comments = numOrNull(m.comments_count);
       const interactions = ins.total_interactions ?? ((likes ?? 0) + (comments ?? 0) + (ins.saved ?? 0) + (ins.shares ?? 0));
@@ -297,6 +297,13 @@ export class MetaSocialConnector implements SocialConnector {
         interactions: (likes ?? 0) + (comments ?? 0) + (shares ?? 0),
       };
     });
+    // FB video/reel view counts live on the video object's `views` field.
+    await Promise.all(posts.filter((p) => p.type === 'reel' || p.type === 'video').map(async (p) => {
+      try {
+        const r = await getJson(`${GRAPH}/${encodeURIComponent(p.id)}?fields=views&access_token=${encodeURIComponent(pageToken)}`);
+        if (r.ok) p.views = numOrNull(r.json?.views);
+      } catch { /* views unavailable */ }
+    }));
     posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
     return { posts, status, error };
   }
@@ -328,12 +335,13 @@ export class MetaSocialConnector implements SocialConnector {
     const fbPostList = fbRes.posts;
     // Page-level engagement insight is dead; sum per-post like+comment+share (still live) instead.
     const fbEngSum = fbPostList.length ? fbPostList.reduce((acc, p) => acc + (p.interactions ?? 0), 0) : null;
+    const fbViewsSum = fbPostList.some((p) => p.views != null) ? fbPostList.reduce((acc, p) => acc + (p.views ?? 0), 0) : null;
     const fb: OrganicMetrics = {
       accountName: page.name ?? null,
       followers: numOrNull(page.followers_count ?? page.fan_count),
       newFollowers: fbNewFollowers,
       reach: fbReach,
-      views: fbViews,
+      views: fbViewsSum ?? fbViews,
       engagement: fbEngSum ?? fbEngRaw,
       profileViews: null,
       postsCount: fbPostList.length || null,

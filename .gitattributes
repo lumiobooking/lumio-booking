@@ -1,0 +1,31 @@
+# Normalize line endings across the team.
+# Repo canonical = LF (the app builds & deploys on Linux / Render).
+# This stops the Windows "LF will be replaced by CRLF" warnings on every commit.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary assets — Git must never touch line endings
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.svg   text eol=lf
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.otf   binary
+*.mp4   binary
+*.mov   binary
+*.xlsx  binary
+*.docx  binary
+*.pptx  binary

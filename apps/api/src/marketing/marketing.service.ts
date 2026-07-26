@@ -433,7 +433,8 @@ export class MarketingService {
     // ---- top post across all networks ----
     let top: any = null;
     for (const sIns of S) for (const pp of (sIns.posts ?? [])) {
-      const score = pp.interactions ?? ((pp.likes ?? 0) + (pp.comments ?? 0));
+      // Rank by VIEWS so the 'best post' matches the views-sorted Top list in the deck.
+      const score = pp.views ?? pp.interactions ?? ((pp.likes ?? 0) + (pp.comments ?? 0));
       if (!top || score > top._score) top = { ...pp, _score: score, _pf: sIns.platform };
     }
 
@@ -484,11 +485,17 @@ export class MarketingService {
     }
     const posts = ig?.posts ?? [];
     const avgOf = (pred: (p: any) => boolean) => { const g = posts.filter(pred); if (!g.length) return null; return Math.round(g.reduce((a: number, p: any) => a + (p.interactions ?? ((p.likes ?? 0) + (p.comments ?? 0))), 0) / g.length); };
+    const reelG = posts.filter((p: any) => /reel|video/i.test(p.type || ''));
+    const imgG = posts.filter((p: any) => /image|photo|carousel/i.test(p.type || ''));
     const reelAvg = avgOf((p) => /reel|video/i.test(p.type || ''));
     const imgAvg = avgOf((p) => /image|photo|carousel/i.test(p.type || ''));
-    if (reelAvg != null && imgAvg != null) insights.push(reelAvg >= imgAvg
+    // Only claim a winning format with a meaningful gap AND enough posts of each type.
+    const enoughFmt = reelG.length >= 2 && imgG.length >= 2 && reelAvg != null && imgAvg != null;
+    const gapPct = enoughFmt ? Math.abs(reelAvg - imgAvg) / Math.max(reelAvg, imgAvg, 1) : 0;
+    if (enoughFmt && gapPct >= 0.15) insights.push(reelAvg > imgAvg
       ? bi(`Reels tạo tương tác cao hơn ảnh tĩnh (${reelAvg} vs ${imgAvg} trung bình/bài) — nên tăng tỷ trọng Reels.`, `Reels drive higher engagement than static photos (${reelAvg} vs ${imgAvg} avg/post) — shift toward Reels.`)
-      : bi(`Ảnh tĩnh đang tương tác tốt hơn Reels (${imgAvg} vs ${reelAvg} trung bình/bài) — giữ tỷ trọng ảnh chất lượng cao.`, `Static photos currently out-engage Reels (${imgAvg} vs ${reelAvg} avg/post) — keep high-quality photos.`));
+      : bi(`Ảnh tĩnh tương tác tốt hơn Reels (${imgAvg} vs ${reelAvg} trung bình/bài) — giữ tỷ trọng ảnh chất lượng cao.`, `Static photos out-engage Reels (${imgAvg} vs ${reelAvg} avg/post) — keep high-quality photos.`));
+    else if (reelG.length + imgG.length > 0) insights.push(bi('Chưa đủ dữ liệu để kết luận Reels hay ảnh hiệu quả hơn — cần thêm bài mỗi định dạng.', 'Not enough data yet to say Reels vs photos win — need more posts of each format.'));
     if (igER != null) insights.push(bi(
       `Tỷ lệ tương tác Instagram ${igER}% trên lượng reach — ${igER >= 2 ? 'ở mức tốt' : 'còn dư địa cải thiện bằng CTA & câu hỏi'}.`,
       `Instagram engagement rate ${igER}% of reach — ${igER >= 2 ? 'a healthy level' : 'room to improve with CTAs & questions'}.`));
@@ -498,8 +505,8 @@ export class MarketingService {
     const ceil50 = (x: any, f = 1.12) => (x == null ? null : Math.ceil((Number(x) * f) / 50) * 50);
     const nextMonth = {
       content: [
-        bi(`Đăng 12-16 bài/tháng, ${reelAvg != null && imgAvg != null && reelAvg >= imgAvg ? 'ưu tiên Reels (định dạng đang thắng)' : 'cân bằng Reels và ảnh chất lượng cao'}.`,
-           `Post 12-16/month, ${reelAvg != null && imgAvg != null && reelAvg >= imgAvg ? 'favouring Reels (the winning format)' : 'balancing Reels and high-quality photos'}.`),
+        bi(`Duy trì nhịp đăng đều (~${Math.max(12, postsAll)} bài/tháng trên các kênh), cân bằng Reels và ảnh chất lượng cao.`,
+           `Keep a steady cadence (~${Math.max(12, postsAll)} posts/month across channels), balancing Reels and quality photos.`),
         bi('Xoay vòng chủ đề: mẫu nail mới, review khách, ảnh trước/sau, ưu đãi trong tuần.', 'Rotate themes: new nail designs, client reviews, before/after, weekly offers.'),
       ],
       ads: [ (data.blended?.totalSpendCents ?? 0) > 0
@@ -546,6 +553,7 @@ export class MarketingService {
       'STRICT RULES: (1) Use ONLY the numbers in the data. NEVER invent or estimate any figure. ' +
       '(2) Attribution is BLENDED — the data does NOT tell you which ad or channel caused which booking, so do NOT claim a specific channel "generated" specific bookings or revenue. Talk about totals and spend allocation instead. ' +
       '(3) If a needed number is missing or zero, say so plainly (e.g. "chưa nhập chi phí" / "no spend entered") rather than guessing. ' +
+      '(3b) NUMBER DISCIPLINE (critical): the app renders every KPI number itself from the data — in your narrative refer to metrics QUALITATIVELY ("reach grew", "the top video") and only quote a figure if it EXACTLY matches the data; never approximate, re-round or invent a number, and never let two sentences state different values for the same metric. The BEST/top post = the one with the most VIEWS. For ads: if spendByChannel has ANY spend, describe ads as running with that exact amount — never write "no ads" when spend > 0. If a comparison has no prior-month value, say "chưa đủ dữ liệu so sánh" instead of implying growth. ' +
       '(4) Output MUST be valid JSON only, matching this EXACT shape, every string in BOTH Vietnamese (vi) and English (en): ' +
       '{"headline":{"vi":"","en":""},"tldr":{"vi":"","en":""},"summary":{"vi":"","en":""},"channels":[{"name":"","verdict":"good","vi":"","en":""}],"highlights":[{"vi":"","en":""}],"issues":[{"vi":"","en":""}],"plan":[{"vi":"","en":""}],"insights":[{"vi":"","en":""}],"nextMonth":{"content":[{"vi":"","en":""}],"ads":[{"vi":"","en":""}],"growth":[{"vi":"","en":""}],"kpi":[{"vi":"","en":""}]}}. ' +
       'headline = the SINGLE most important takeaway of the month in ONE short sentence a busy owner remembers at a glance (e.g. "Doanh thu tăng 31% so với tháng trước"). ' +

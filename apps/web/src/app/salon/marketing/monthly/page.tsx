@@ -605,6 +605,9 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     <div style="margin-top:10px">${panel('◎ ' + t('ĐỀ XUẤT THÁNG TIẾP THEO', 'NEXT-MONTH RECOMMENDATIONS'), recPanel)}</div>
     <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu Google Business Profile lấy trực tiếp từ Google · Một số chỉ số (Profile Strength, tách nguồn tìm kiếm) Google không mở qua API · Lumio duyệt trước khi gửi.', 'Google Business Profile data pulled directly from Google · Some metrics (Profile Strength, search-source split) are not exposed via the API · Reviewed by Lumio.')}</div></div>`;
   }
+  const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents, true)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum('$' + b.revenuePerSpend, t('Doanh thu / $1', 'Revenue / $1'), undefined, true) : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div style="font-size:11px;color:#475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color:#059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div style="font-size:11px;color:#6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
+  const ttI = (data.socialInsights ?? []).find((x) => x.platform === 'tiktok');
+  const ttPanel = ttI ? panel('◆ TikTok', `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(fnum(ttI.followers), t('Follower', 'Followers'), ttI.vsPrev?.followers)}${bignum(fnum(ttI.views), t('Lượt xem', 'Views'), ttI.vsPrev?.views)}${bignum(fnum(ttI.engagement), t('Tương tác', 'Engagement'), ttI.vsPrev?.engagement)}${bignum(String(ttI.postsCount ?? '—'), t('Video', 'Videos'))}</div>`) : '';
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
   @page{size:A4 landscape;margin:8mm}
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0;padding:0;background:#eef2f8}
@@ -622,6 +625,8 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     <div style="display:flex;gap:8px"><span style="width:44px;height:44px;border-radius:12px;background:#1877f2;display:grid;place-items:center;font-weight:800;font-size:20px">f</span><span style="width:44px;height:44px;border-radius:12px;background:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7);display:grid;place-items:center;font-weight:800">◎</span></div>
   </div>
 
+  <div style="margin-top:10px">${panel('◆ ' + t('KẾT QUẢ KINH DOANH THÁNG', 'BUSINESS RESULTS THIS MONTH'), bizNums)}</div>
+
   <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
     ${panel('① ' + t('TỔNG QUAN HIỆU QUẢ', 'PERFORMANCE OVERVIEW'), perfTable)}
     ${panel('② ' + t('TĂNG TRƯỞNG NGƯỜI THEO DÕI', 'FOLLOWER GROWTH'), growth)}
@@ -632,6 +637,9 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     ${panel('④ ' + t('HIỆU QUẢ QUẢNG CÁO', 'ADS'), adsPanel)}
     ${panel('⑤ ' + t('ĐỐI TƯỢNG (IG)', 'AUDIENCE (IG)'), audiencePanel)}
   </div>
+
+  ${channelsHtml ? `<div style="margin-top:10px">${panel('◆ ' + t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION'), channelsHtml)}</div>` : ''}
+  ${ttPanel ? `<div style="margin-top:10px">${ttPanel}</div>` : ''}
 
   <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
     ${panel('① ' + t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div style="font-size:11px;font-weight:700;color:#b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}

@@ -75,6 +75,7 @@ function Inner() {
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tt, setTt] = useState<{ followers: string; newFollowers: string; views: string; engagement: string; postsCount: string }>({ followers: '', newFollowers: '', views: '', engagement: '', postsCount: '' });
   const money = (c: number) => formatPrice(c, currency);
 
   const load = useCallback(async () => {
@@ -114,6 +115,18 @@ function Inner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, loading, busy, report, data, month]);
 
+  useEffect(() => {
+    const t = (data?.socialInsights ?? []).find((x) => x.platform === 'tiktok');
+    setTt(t ? { followers: t.followers?.toString() ?? '', newFollowers: t.newFollowers?.toString() ?? '', views: t.views?.toString() ?? '', engagement: t.engagement?.toString() ?? '', postsCount: t.postsCount?.toString() ?? '' } : { followers: '', newFollowers: '', views: '', engagement: '', postsCount: '' });
+  }, [data]);
+  async function saveManualTt() {
+    setBusy('ttmanual'); setMsg(null); setError(null);
+    try {
+      const numOr = (v: string) => (v.trim() === '' ? null : Number(v));
+      await apiFetch('/marketing/social-manual', { method: 'POST', token, body: { platform: 'tiktok', month, followers: numOr(tt.followers), newFollowers: numOr(tt.newFollowers), views: numOr(tt.views), engagement: numOr(tt.engagement), postsCount: numOr(tt.postsCount) } });
+      setMsg(T('Đã lưu số liệu TikTok tháng ' + month + ' — bấm "Tạo báo cáo bằng AI" để phân tích.', 'TikTok numbers saved for ' + month + ' — click Generate to analyse.')); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
+  }
   async function saveSpend() {
     setBusy('spend'); setMsg(null); setError(null);
     try {
@@ -158,7 +171,7 @@ function Inner() {
   if (loading && !data) return <section><h2 style={{ fontSize: 18 }}>{T('Báo cáo tháng', 'Monthly report')}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
 
   return (
-    <section>
+    <section style={{ maxWidth: 1040, margin: '0 auto' }}>
       <MktTabs vi={vi} active="monthly" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
@@ -194,6 +207,20 @@ function Inner() {
 
       {/* Connected channels (Phase 3) */}
       <ChannelsSection token={token} vi={vi} month={month} onSynced={load} />
+
+      {/* TikTok manual entry — until the TikTok API is connected */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={cardTitle}>{T('TikTok — nhập số liệu tay', 'TikTok — manual numbers')}</div>
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>{T('Nhập số của CẢ THÁNG (đầu tháng → cuối tháng). Hệ thống tự so với tháng trước và AI phân tích. Dùng tạm khi chưa duyệt API TikTok — nối API xong sẽ tự thay số.', 'Enter WHOLE-MONTH totals (1st to last day). The system compares vs last month and AI analyses. Use until the TikTok API is approved — connecting the API later replaces these.')}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          {(([['followers', T('Follower (tổng)', 'Followers (total)')], ['newFollowers', T('Follower mới', 'New followers')], ['views', T('Tổng lượt xem', 'Total views')], ['engagement', T('Tổng tương tác', 'Total engagement')], ['postsCount', T('Số video đăng', 'Videos posted')]]) as [keyof typeof tt, string][]).map(([k, label]) => (
+            <label key={k} style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}
+              <input type="number" inputMode="numeric" value={tt[k]} onChange={(e) => setTt({ ...tt, [k]: e.target.value })} style={{ ...inp, marginTop: 4 }} />
+            </label>
+          ))}
+        </div>
+        <button onClick={saveManualTt} disabled={busy === 'ttmanual'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'ttmanual' ? '…' : T('Lưu số liệu TikTok', 'Save TikTok numbers')}</button>
+      </div>
 
       {/* Spend entry */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
@@ -675,9 +702,10 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
           {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString('en-US') : ''}{c.lastError ? ' · ' + c.lastError : ''}</div>}
           {openP === c.platform && (
             <div style={{ marginTop: 8, background: '#0f172a', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
-              <input style={inp} name="lumio-account-id" autoComplete="off" placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID — vd: 17202153832315858041' : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
+              <input style={inp} name="lumio-account-id" autoComplete="off" placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID — vd: 17202153832315858041' : c.platform === 'tiktok' ? T('Bỏ trống — TikTok nhận diện qua token', 'Leave blank — TikTok is identified by the token') : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
               {c.platform === 'meta_social'
                 ? <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('Token do Lumio cấu hình sẵn trên server — chỉ cần Page ID/username. Instagram tự nhận từ Trang đã liên kết.', 'The token is pre-configured on the Lumio server — just the Page ID/username. Instagram is auto-detected from the linked Page.')}</div>
+                : c.platform === 'tiktok' ? null
                 : <input style={inp} type="password" placeholder={T('Access token', 'Access token')} value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} autoComplete="off" />}
               {c.platform === 'gbp' && <>
                 <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('CHỈ cần Location ID — token Google đã cấu hình sẵn trên server (dùng chung cho mọi salon). Để trống 3 ô dưới. Chỉ điền nếu salon tự dùng tài khoản Google riêng.', 'Just the Location ID — the Google token is pre-configured on the server (shared for all salons). Leave the 3 fields below blank. Only fill them if the salon uses its own Google account.')}</div>
@@ -685,7 +713,11 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
                 <input style={inp} placeholder="OAuth Client ID" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} />
                 <input style={inp} type="password" placeholder="OAuth Client Secret" value={f.clientSecret} onChange={(e) => setF({ ...f, clientSecret: e.target.value })} autoComplete="off" />
               </>}
-              <button onClick={() => connect(c.platform)} disabled={busy === c.platform || !f.externalAccountId} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
+              {c.platform === 'tiktok' && <>
+                <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('Dán Refresh token TikTok của salon — client key/secret đã cấu hình trên server. Ô Account ID để trống.', 'Paste the salon TikTok Refresh token — client key/secret are on the server. Leave Account ID blank.')}</div>
+                <input style={inp} type="password" placeholder="TikTok Refresh token" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} autoComplete="off" />
+              </>}
+              <button onClick={() => connect(c.platform)} disabled={busy === c.platform || (!f.externalAccountId && !f.refreshToken && !f.token)} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
             </div>
           )}
         </div>
@@ -779,8 +811,9 @@ function AudienceSection({ a, T }: { a: { gender?: Record<string, number>; age?:
 
 function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string, e: string) => string }) {
   const isIg = s.platform === 'instagram';
-  const name = isIg ? 'Instagram' : 'Facebook';
-  const color = isIg ? '#e1306c' : '#1877f2';
+  const isTt = s.platform === 'tiktok';
+  const name = isTt ? 'TikTok' : isIg ? 'Instagram' : 'Facebook';
+  const color = isTt ? '#25f4ee' : isIg ? '#e1306c' : '#1877f2';
   const fmt = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   const arrow = (dl?: SocialDelta | null) =>
     dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 10.5, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'}{Math.abs(dl.pct)}%</span> : null;
@@ -994,7 +1027,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
           </div>
           {(data.socialInsights ?? []).filter((x) => (x.posts ?? []).length > 0).map((x) => {
             const posts = x.posts ?? [];
-            const label = x.platform === 'facebook' ? T('CHI TIẾT BÀI FACEBOOK', 'FACEBOOK POSTS') : T('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS');
+            const label = x.platform === 'facebook' ? T('CHI TIẾT BÀI FACEBOOK', 'FACEBOOK POSTS') : x.platform === 'tiktok' ? T('VIDEO TIKTOK', 'TIKTOK VIDEOS') : T('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS');
             return (
               <div key={x.platform} style={{ marginTop: 12 }}>
                 <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700, marginBottom: 6 }}>{label} <span style={{ color: '#475569' }}>· {posts.length}</span></div>

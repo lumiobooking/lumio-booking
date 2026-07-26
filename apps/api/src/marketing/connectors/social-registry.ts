@@ -3,11 +3,12 @@ import { SocialConnector, SocialPlatform } from './social-connector.interface';
 import { MetaConnector } from './meta.connector';
 import { MetaSocialConnector } from './meta-social.connector';
 import { GbpConnector } from './gbp.connector';
-import { TikTokConnector, GoogleAdsConnector } from './scaffold.connectors';
+import { GoogleAdsConnector } from './scaffold.connectors';
+import { TikTokOrganicConnector } from './tiktok.connector';
 
 @Injectable()
 export class SocialRegistry {
-  private readonly all: SocialConnector[] = [new MetaConnector(), new MetaSocialConnector(), new GbpConnector(), new TikTokConnector(), new GoogleAdsConnector()];
+  private readonly all: SocialConnector[] = [new MetaConnector(), new MetaSocialConnector(), new GbpConnector(), new TikTokOrganicConnector(), new GoogleAdsConnector()];
   private readonly map = new Map<SocialPlatform, SocialConnector>(this.all.map((c) => [c.platform, c]));
 
   /** Refuses a disabled connector so an unfinished integration is unreachable. */

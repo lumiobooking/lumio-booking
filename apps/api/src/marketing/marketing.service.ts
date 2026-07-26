@@ -816,7 +816,7 @@ export class MarketingService {
   /** Pull last-month figures from the platform API into the spend table. */
   async syncChannel(user: AuthenticatedUser, platform: string, month: string, tenantParam?: string) {
     // Organic owned-channel (Facebook Page + IG) uses a different pull + store.
-    if (platform === 'meta_social') return this.syncOrganic(user, platform, month, tenantParam);
+    if (platform === 'meta_social' || platform === 'tiktok') return this.syncOrganic(user, platform, month, tenantParam);
     const tenantId = this.tenantId(user, tenantParam);
     if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
     const connector = this.social.get(platform);
@@ -873,6 +873,7 @@ export class MarketingService {
       const rows: Array<{ ch: string; m: any }> = [];
       if (res.facebook) rows.push({ ch: 'facebook', m: res.facebook });
       if (res.instagram) rows.push({ ch: 'instagram', m: res.instagram });
+      if (res.tiktok) rows.push({ ch: 'tiktok', m: res.tiktok });
       for (const { ch, m } of rows) {
         const data = {
           followers: m.followers ?? null,
@@ -918,6 +919,33 @@ export class MarketingService {
   }
 
   /**
+   * Manually entered social numbers for a month (e.g. TikTok before its API is
+   * approved). Stored exactly like a synced row (source='manual') so it flows into
+   * the report card, month-over-month deltas and the AI analysis with no special-casing.
+   * The period is the whole calendar month selected — 1st to last day.
+   */
+  async saveSocialManual(user: AuthenticatedUser, dto: { platform: string; month: string; followers?: number | null; newFollowers?: number | null; views?: number | null; engagement?: number | null; postsCount?: number | null; notes?: string | null; tenantId?: string }) {
+    const tenantId = this.tenantId(user, dto.tenantId);
+    if (!/^\d{4}-\d{2}$/.test(dto.month || '')) throw new BadRequestException('month must be YYYY-MM');
+    if (!dto.platform) throw new BadRequestException('platform is required');
+    const n = (v: any) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+    const data = {
+      followers: n(dto.followers), newFollowers: n(dto.newFollowers),
+      reach: null as number | null, views: n(dto.views), engagement: n(dto.engagement),
+      profileViews: null as number | null, postsCount: n(dto.postsCount),
+      raw: { manual: true, notes: dto.notes ?? null } as any,
+      source: 'manual', syncedAt: new Date(),
+    };
+    const saved = await this.prisma.socialInsight.upsert({
+      where: { tenantId_platform_periodMonth: { tenantId, platform: dto.platform, periodMonth: dto.month } },
+      create: { tenantId, platform: dto.platform, periodMonth: dto.month, ...data },
+      update: data,
+    });
+    await this.audit(tenantId, user.userId, 'marketing.social.manual', { platform: dto.platform, month: dto.month });
+    return { ok: true, platform: dto.platform, month: dto.month, id: (saved as any).id };
+  }
+
+  /**
    * Shared AGENCY credentials from env. Lumio Agency runs the ads for every
    * salon from its own Business Manager, so ONE token can read all managed ad
    * accounts. A salon connection then only needs the account id — no token
@@ -929,6 +957,10 @@ export class MarketingService {
     if ((platform === 'meta' || platform === 'meta_social') && process.env.META_AGENCY_TOKEN) return { token: process.env.META_AGENCY_TOKEN };
     if (platform === 'gbp' && process.env.GBP_AGENCY_REFRESH_TOKEN && process.env.GBP_AGENCY_CLIENT_ID && process.env.GBP_AGENCY_CLIENT_SECRET) {
       return { refreshToken: process.env.GBP_AGENCY_REFRESH_TOKEN, clientId: process.env.GBP_AGENCY_CLIENT_ID, clientSecret: process.env.GBP_AGENCY_CLIENT_SECRET };
+    }
+    if (platform === 'tiktok' && process.env.TIKTOK_AGENCY_CLIENT_KEY && process.env.TIKTOK_AGENCY_CLIENT_SECRET) {
+      // TikTok app key/secret are agency-level; each salon stores only its own refresh token.
+      return { clientId: process.env.TIKTOK_AGENCY_CLIENT_KEY, clientSecret: process.env.TIKTOK_AGENCY_CLIENT_SECRET };
     }
     return null;
   }
@@ -942,7 +974,10 @@ export class MarketingService {
       if (!shared) throw new NotFoundException('Channel not connected (agency token missing on server)');
       return { ...shared, externalAccountId: conn.externalAccountId ?? undefined } as ChannelCreds;
     }
-    return JSON.parse(decryptSecret(conn.credentialEnc)) as ChannelCreds;
+    const stored = JSON.parse(decryptSecret(conn.credentialEnc)) as ChannelCreds;
+    // TikTok stores only the salon refresh token; backfill the agency app key/secret from env.
+    const shared = this.agencyCreds(platform);
+    return { ...(shared ?? {}), ...stored } as ChannelCreds;
   }
 
   private channelView(c: any) {

@@ -74,7 +74,7 @@ export interface OrganicMetrics {
 }
 
 /** A meta_social sync returns both channels resolved from one Facebook Page. */
-export interface OrganicResult { facebook?: OrganicMetrics; instagram?: OrganicMetrics }
+export interface OrganicResult { facebook?: OrganicMetrics; instagram?: OrganicMetrics; tiktok?: OrganicMetrics }
 
 export interface VerifyResult { ok: boolean; accountName?: string; error?: string }
 

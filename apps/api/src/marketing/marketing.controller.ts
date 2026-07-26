@@ -55,6 +55,11 @@ export class MarketingController {
     return this.marketing.deleteWorkLog(user, id);
   }
 
+  @Post('social-manual')
+  saveSocialManual(@CurrentUser() user: AuthenticatedUser, @Body() dto: { platform: string; month: string; followers?: number | null; newFollowers?: number | null; views?: number | null; engagement?: number | null; postsCount?: number | null; notes?: string | null; tenantId?: string }) {
+    return this.marketing.saveSocialManual(user, dto);
+  }
+
   // ---- Monthly report (AI draft → review → approve) ----
   @Get('report')
   getReport(@CurrentUser() user: AuthenticatedUser, @Query('month') month: string, @Query('tenantId') tenantId?: string) {

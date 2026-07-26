@@ -460,68 +460,47 @@ function printReport(data: Monthly | null, c: Content, vi: boolean, money: (n: n
   const list3 = (arr: Item[] | undefined, empty: string) => { const a = (arr ?? []).slice(0, 3); return a.length ? a.map((x) => `<div style="font-size:10.5px;color:#37475f;margin:4px 0;line-height:1.4">• ${esc(L(x))}</div>`).join('') : `<div style="font-size:10.5px;color:#93a1b5">${empty}</div>`; };
   const nm = c.nextMonth;
   const planItems = nm ? [...(nm.content ?? []), ...(nm.growth ?? []), ...(nm.ads ?? [])] : (c.plan ?? []);
-  const footer1 = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px">
-    ${box(`<span style="color:${POS}">${t('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</span>`, list3(c.highlights, t('—', '—')), true)}
-    ${box(`<span style="color:${WARN}">${t('CẦN CẢI THIỆN', 'TO IMPROVE')}</span>`, list3(c.issues, t('—', '—')), true)}
-    ${box(`<span style="color:${LBLUE}">${t('THÁNG TỚI', 'NEXT MONTH')}</span>`, list3(planItems, t('—', '—')), true)}
-  </div>`;
-
-  const header = (sub: string, title: string, tag: string) => `<div style="background:${NAVY};color:#fff;border-radius:10px;padding:9px 14px;display:flex;justify-content:space-between;align-items:center">
-    <div><div style="font-size:9px;letter-spacing:2px;opacity:.65">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div><div style="font-size:17px;font-weight:800;margin-top:1px">${title}</div><div style="font-size:10.5px;opacity:.8;margin-top:1px">${esc(sub)}</div></div>
-    <div style="text-align:right;font-size:10px;opacity:.85"><b style="font-size:13px">Lumio Agency</b><div>${tag}</div></div></div>`;
-  const period = t('Tháng ', 'Month ') + (data.month || '').replace('-', '/') + ' · ' + (data.range ? `${data.range.from} → ${data.range.to}` : '');
+  const period = t('Tháng ', 'Month ') + (data.month || '').replace('-', '/') + (data.range ? ` · ${data.range.from} → ${data.range.to}` : '');
   const summaryLine = L(c.tldr) || L(c.headline) || t('Tổng hợp hiệu quả mạng xã hội trong tháng.', 'Social performance summary for the month.');
+  const header = (title: string) => `<div style="background:${NAVY};color:#fff;border-radius:10px;padding:10px 15px;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:9px;letter-spacing:2px;opacity:.65">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div><div style="font-size:17px;font-weight:800;margin-top:1px">${title}</div><div style="font-size:10px;opacity:.8;margin-top:1px">${esc(period)}</div></div>
+    <div style="text-align:right;font-size:10px;opacity:.85"><b style="font-size:13px">Lumio Agency</b><div>Lux Nail Spa</div></div></div>`;
+  const summaryStrip = `<div style="background:#eef4ff;border:1px solid #d7e5fb;border-radius:10px;padding:8px 13px;font-size:11.5px;color:${NAVY}">${esc(summaryLine)}</div>`;
+  const netRow = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">${netCard(fb, 'Facebook', '#1877F2')}${netCard(ig, 'Instagram', '#E1306C')}</div>`;
+  const contentRow = `<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:9px">${contentBox}${audBox}</div>`;
 
-  const page1 = `<section class="pg">
-    ${header(period, 'FACEBOOK & INSTAGRAM', 'Lux Nail Spa')}
-    <div style="background:#eef4ff;border:1px solid #d7e5fb;border-radius:10px;padding:8px 12px;font-size:11.5px;color:${NAVY}">${esc(summaryLine)}</div>
-    ${kpis1}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">${netCard(fb, 'Facebook', '#1877F2')}${netCard(ig, 'Instagram', '#E1306C')}</div>
-    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:9px;flex:1">${contentBox}${audBox}</div>
-    ${footer1}
-  </section>`;
-
-  // ---- PAGE 2: GBP ----
-  let page2 = '';
   const gv = g?.vsPrev || ({} as NonNullable<GbpData['vsPrev']>);
   const totImp = g?.impressions || 0;
   const gkpi = (label: string, val: number | null | undefined, d?: SocialDelta | null) => kpi(label, nf(val), '', d);
-  const kpis2 = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
-    ${gkpi(t('Lượt xem hồ sơ', 'Profile views'), g?.impressions, gv.impressions)}
-    ${gkpi(t('Lượt gọi', 'Calls'), g?.calls, gv.calls)}
-    ${gkpi(t('Chỉ đường', 'Directions'), g?.directions, gv.directions)}
-    ${gkpi(t('Website click', 'Website clicks'), g?.websiteClicks, gv.websiteClicks)}
-  </div>`;
+  const kpis2 = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">${gkpi(t('Lượt xem hồ sơ', 'Profile views'), g?.impressions, gv.impressions)}${gkpi(t('Lượt gọi', 'Calls'), g?.calls, gv.calls)}${gkpi(t('Chỉ đường', 'Directions'), g?.directions, gv.directions)}${gkpi(t('Website click', 'Website clicks'), g?.websiteClicks, gv.websiteClicks)}</div>`;
   const bar = (label: string, val: number, tot: number, col: string) => { const pct = tot > 0 ? Math.round((val / tot) * 100) : 0; return `<div style="margin:5px 0"><div style="display:flex;justify-content:space-between;font-size:11px;color:${MUT}"><span>${esc(label)}</span><b style="color:${NAVY}">${nf(val)} · ${pct}%</b></div><div style="height:9px;background:#eef2f8;border-radius:5px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${col}"></span></div></div>`; };
-  const discovery = box(t('NGUỒN HIỂN THỊ', 'WHERE SEEN'), `${bar(t('Trên Tìm kiếm', 'On Search'), g?.searchImpr || 0, totImp, '#4285F4')}${bar(t('Trên Maps', 'On Maps'), g?.mapsImpr || 0, totImp, '#34A853')}<div style="height:5px"></div>${bar('Mobile', g?.mobileImpr || 0, totImp, '#5b8def')}${bar('Desktop', g?.desktopImpr || 0, totImp, '#9bb8f0')}`, true);
-  const actArr = [
-    { l: t('Website click', 'Website clicks'), v: g?.websiteClicks ?? 0, c: '#FBBC05' },
-    { l: t('Chỉ đường', 'Directions'), v: g?.directions ?? 0, c: '#34A853' },
-    { l: t('Lượt gọi', 'Calls'), v: g?.calls ?? 0, c: '#4285F4' },
-  ];
+  const discovery = box(t('NGUỒN HIỂN THỊ', 'WHERE SEEN'), `${bar(t('Trên Tìm kiếm', 'On Search'), g?.searchImpr || 0, totImp, '#4285F4')}${bar(t('Trên Maps', 'On Maps'), g?.mapsImpr || 0, totImp, '#34A853')}<div style="height:5px"></div>${bar('Mobile', g?.mobileImpr || 0, totImp, '#5b8def')}${bar('Desktop', g?.desktopImpr || 0, totImp, '#9bb8f0')}`);
+  const actArr = [{ l: t('Website click', 'Website clicks'), v: g?.websiteClicks ?? 0, c: '#FBBC05' }, { l: t('Chỉ đường', 'Directions'), v: g?.directions ?? 0, c: '#34A853' }, { l: t('Lượt gọi', 'Calls'), v: g?.calls ?? 0, c: '#4285F4' }];
   if (g?.bookings != null) actArr.push({ l: t('Đặt lịch (Reserve with Google)', 'Bookings (Reserve with Google)'), v: g.bookings, c: '#EA4335' });
   actArr.sort((a, b) => b.v - a.v);
   const actTot = actArr.reduce((a, x) => a + x.v, 0) || 1;
-  const actions = box(t('HÀNH ĐỘNG CỦA KHÁCH', 'CUSTOMER ACTIONS'), actArr.map((a) => bar(a.l, a.v, actTot, a.c)).join(''), true);
+  const actions = box(t('HÀNH ĐỘNG CỦA KHÁCH', 'CUSTOMER ACTIONS'), actArr.map((a) => bar(a.l, a.v, actTot, a.c)).join(''));
   const kwTop = (g?.keywords ?? []).slice(0, 5);
-  const statusCard = box(t('TRẠNG THÁI KẾT NỐI', 'INTEGRATION STATUS'), `
-    <div style="font-size:10.5px;color:${MUT};line-height:1.9">
-      <div>${t('Đánh giá Google', 'Google reviews')}: ${chip(g?.reviews ? t('Đã có', 'Live') : t('Đang thiết lập API', 'API setup'), g?.reviews ? POS : WARN)}</div>
-      <div>${t('Từ khoá tìm kiếm', 'Search terms')}: ${kwTop.length ? '<b style="color:' + NAVY + '">' + esc(kwTop.map((k) => k.keyword).slice(0, 3).join(', ')) + '</b>' : chip(t('Chưa có dữ liệu', 'No data'))}</div>
-      <div>${t('Xu hướng lịch sử', 'Historical trend')}: ${chip(t('Cần ≥2 tháng', 'Needs ≥2 months'))}</div>
-    </div>`, true);
-  const gplan = box(t('KẾ HOẠCH THÁNG TỚI', 'NEXT-MONTH PLAN'), `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-    <div><div style="font-size:9.5px;font-weight:800;color:${LBLUE}">${t('LUMIO LÀM', 'LUMIO WILL DO')}</div>${list3((nm?.content ?? []).concat(nm?.growth ?? []), '—')}</div>
-    <div><div style="font-size:9.5px;font-weight:800;color:${WARN}">${t('KHÁCH CUNG CẤP', 'CLIENT PROVIDES')}</div><div style="font-size:10.5px;color:#37475f;margin:4px 0">• ${t('Ảnh/video mới của tiệm', 'New salon photos/videos')}</div><div style="font-size:10.5px;color:#37475f">• ${t('Ưu đãi / sự kiện tháng tới', 'Next-month offers / events')}</div></div>
-    <div><div style="font-size:9.5px;font-weight:800;color:${POS}">${t('KPI THÁNG TỚI', 'NEXT-MONTH KPI')}</div>${list3(nm?.kpi, '—')}</div>
+  const statusCard = box(t('TRẠNG THÁI KẾT NỐI', 'INTEGRATION STATUS'), `<div style="font-size:11px;color:${MUT};line-height:1.9"><div>${t('Đánh giá Google', 'Google reviews')}: ${chip(g?.reviews ? t('Đã có', 'Live') : t('Đang thiết lập API', 'API setup'), g?.reviews ? POS : WARN)}</div><div>${t('Từ khoá tìm kiếm', 'Search terms')}: ${kwTop.length ? '<b style="color:' + NAVY + '">' + esc(kwTop.map((k) => k.keyword).slice(0, 3).join(', ')) + '</b>' : chip(t('Chưa có dữ liệu', 'No data'))}</div><div>${t('Xu hướng lịch sử', 'Historical trend')}: ${chip(t('Cần ≥2 tháng', 'Needs ≥2 months'))}</div></div>`);
+  const gplan = box(t('KẾ HOẠCH THÁNG TỚI', 'NEXT-MONTH PLAN'), `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <div><div style="font-size:9.5px;font-weight:800;color:${LBLUE};margin-bottom:3px">${t('LUMIO LÀM', 'LUMIO WILL DO')}</div>${list3((nm?.content ?? []).concat(nm?.growth ?? []), '—')}</div>
+    <div><div style="font-size:9.5px;font-weight:800;color:${WARN};margin-bottom:3px">${t('KHÁCH CUNG CẤP', 'CLIENT PROVIDES')}</div><div style="font-size:11px;color:#37475f;margin:4px 0">• ${t('Ảnh/video mới của tiệm', 'New salon photos/videos')}</div><div style="font-size:11px;color:#37475f">• ${t('Ưu đãi / sự kiện tháng tới', 'Next-month offers / events')}</div></div>
+    <div><div style="font-size:9.5px;font-weight:800;color:${POS};margin-bottom:3px">${t('KPI THÁNG TỚI', 'NEXT-MONTH KPI')}</div>${list3(nm?.kpi, '—')}</div>
   </div>`);
-  page2 = `<section class="pg">
-    ${header(period, 'GOOGLE BUSINESS PROFILE', 'Lux Nail Spa')}
-    ${g ? `${kpis2}
-    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:9px;flex:1">${discovery}${actions}</div>
-    ${statusCard}
-    ${gplan}` : `<div style="background:#fff;border:1px solid ${BORD};border-radius:11px;padding:24px;text-align:center;font-size:12px;color:${MUT}">${t('Chưa đồng bộ dữ liệu Google Business Profile cho tháng này. Vào Marketing → Google Maps → Đồng bộ.', 'Google Business Profile not synced for this month. Go to Marketing → Google Maps → Sync.')}</div>`}
-  </section>`;
+
+  // Flatten into blocks — the print window paginates by measured height and never splits a block.
+  const blk = (inner: string) => `<div class="blk">${inner}</div>`;
+  const asmt = (title: string, col: string, items: Item[] | undefined) => blk(box(`<span style="color:${col}">${title}</span>`, (items ?? []).length ? (items ?? []).map((x) => `<div style="font-size:11.5px;color:#37475f;margin:5px 0;line-height:1.45;padding-left:14px;text-indent:-14px">• ${esc(L(x))}</div>`).join('') : `<div style="font-size:11px;color:#93a1b5">—</div>`));
+  const blocks = [
+    blk(header('FACEBOOK & INSTAGRAM')), blk(summaryStrip), blk(kpis1), blk(netRow), blk(contentRow),
+    asmt(t('ĐIỂM NỔI BẬT', 'HIGHLIGHTS'), POS, c.highlights),
+    asmt(t('CẦN CẢI THIỆN', 'TO IMPROVE'), WARN, c.issues),
+    asmt(t('THÁNG TỚI', 'NEXT MONTH'), LBLUE, planItems),
+    '<div class="brk"></div>',
+    blk(header('GOOGLE BUSINESS PROFILE')),
+    ...(g ? [blk(kpis2), blk(`<div style="display:grid;grid-template-columns:1fr 1.2fr;gap:9px">${discovery}${actions}</div>`), blk(statusCard), blk(gplan)]
+          : [blk(`<div style="background:#fff;border:1px solid ${BORD};border-radius:10px;padding:24px;text-align:center;font-size:12px;color:${MUT}">${t('Chưa đồng bộ dữ liệu Google Business Profile cho tháng này. Vào Marketing → Google Maps → Đồng bộ.', 'Google Business Profile not synced for this month. Go to Marketing → Google Maps → Sync.')}</div>`)]),
+  ].join('');
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Lumio Report ${data.month}</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -530,11 +509,13 @@ function printReport(data: Monthly | null, c: Content, vi: boolean, money: (n: n
   <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:#F6F8FB;font-family:Inter,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${NAVY}}
-  .pg{width:297mm;height:210mm;padding:8mm 11mm;display:flex;flex-direction:column;gap:6px;background:#F6F8FB;overflow:hidden;margin:0 auto 14px;box-shadow:0 2px 14px rgba(11,31,58,.12)}
+  .pg{width:297mm;height:210mm;padding:8mm 11mm;background:#F6F8FB;overflow:hidden;margin:0 auto 14px;box-shadow:0 2px 14px rgba(11,31,58,.12)}
+  .blk{margin-bottom:6px}
+  #flow{position:absolute;left:-9999px;top:0;width:297mm}
   #bar{position:fixed;top:0;left:0;right:0;background:#0B1F3A;color:#fff;font:600 13px Inter,sans-serif;padding:9px 14px;z-index:99;text-align:center}
   </style></head><body>
   <div id="bar"><span>${t('Xem trước báo cáo — cuộn xem cả 2 trang.', 'Preview — scroll to see both pages.')}</span><button id="dl" style="background:#1E77D8;color:#fff;border:0;border-radius:6px;padding:5px 13px;font:700 12px Inter,sans-serif;cursor:pointer;margin-left:10px">\u2b07 ${t('Tải PDF', 'Download PDF')}</button><span id="st" style="margin-left:8px;opacity:.9"></span></div>
-  <div style="height:36px"></div>${page1}${page2}
+  <div style="height:36px"></div><div id="flow">${blocks}</div><div id="pages"></div>
   <script>
   function waitImgs(cb){var i=document.images,n=i.length,c=0;function go(){if(++c>=n)cb()}if(!n)return cb();for(var k=0;k<n;k++){var m=i[k];if(m.complete)go();else{m.onload=go;m.onerror=go}}setTimeout(cb,3500)}
   function run(){var st=document.getElementById('st');st.textContent='${t('Đang tạo…', 'Generating…')}';
@@ -543,7 +524,8 @@ function printReport(data: Monthly | null, c: Content, vi: boolean, money: (n: n
     function next(){if(idx>=pages.length){pdf.save('Lumio-Report-${data.month}.pdf');st.textContent='${t('Đã tải \u2713', 'Downloaded \u2713')}';return}
       html2canvas(pages[idx],{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#F6F8FB'}).then(function(cv){var im=cv.toDataURL('image/jpeg',0.95);if(idx>0)pdf.addPage('a4','landscape');pdf.addImage(im,'JPEG',0,0,297,210);idx++;next()}).catch(function(e){st.textContent='PDF error: '+e})}
     next()}
-  window.onload=function(){var b=document.getElementById('dl');if(b)b.onclick=run;var f=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();f.then(function(){waitImgs(function(){})})}
+  function paginate(){var flow=document.getElementById('flow');var area=document.getElementById('pages');var kids=[].slice.call(flow.children);var cur;function np(){cur=document.createElement('section');cur.className='pg';area.appendChild(cur)}np();for(var i=0;i<kids.length;i++){var b=kids[i];if(b.className==='brk'){np();continue}cur.appendChild(b);if(cur.scrollHeight>cur.clientHeight&&cur.children.length>1){cur.removeChild(b);np();cur.appendChild(b)}}flow.parentNode.removeChild(flow)}
+  window.onload=function(){var b=document.getElementById('dl');if(b)b.onclick=run;var f=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();f.then(function(){waitImgs(function(){paginate()})})}
   </script></body></html>`;
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
 }

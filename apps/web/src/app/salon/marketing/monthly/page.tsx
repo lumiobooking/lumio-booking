@@ -402,7 +402,7 @@ function printReport(data: Monthly | null, c: Content, vi: boolean, money: (n: n
   const sum = (f: (x: SocialInsight) => number | null | undefined) => { const v = nets.map(f).filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
   const chip = (txt: string, col = '#8a97a8') => `<span style="font-size:9px;color:${col};background:${col}14;border:1px solid ${col}40;border-radius:20px;padding:1px 7px;white-space:nowrap">${esc(txt)}</span>`;
   const delta = (d?: SocialDelta | null) => (d && d.pct != null ? `<span style="color:${d.pct >= 0 ? POS : WARN};font-size:10px;font-weight:800">${d.pct >= 0 ? '▲' : '▼'}${Math.abs(d.pct)}%</span>` : chip(t('chưa đủ dữ liệu so sánh', 'no prior month'), '#a9b4c4'));
-  const box = (title: string, inner: string, grow = false) => `<div style="background:#fff;border:1px solid ${BORD};border-radius:11px;padding:11px 13px;${grow ? 'flex:1;' : ''}display:flex;flex-direction:column"><div style="font-size:10px;font-weight:800;letter-spacing:.4px;color:${NAVY};text-transform:uppercase;border-left:3px solid ${LBLUE};padding-left:7px;margin-bottom:8px">${title}</div>${inner}</div>`;
+  const box = (title: string, inner: string, grow = false) => `<div style="background:#fff;border:1px solid ${BORD};border-radius:10px;padding:8px 11px;${grow ? 'flex:1;' : ''}display:flex;flex-direction:column"><div style="font-size:10px;font-weight:800;letter-spacing:.4px;color:${NAVY};text-transform:uppercase;border-left:3px solid ${LBLUE};padding-left:7px;margin-bottom:5px">${title}</div>${inner}</div>`;
 
   // ---- live totals (single source — fixes cross-section number drift) ----
   const totalViews = sum((x) => x.views);
@@ -416,7 +416,7 @@ function printReport(data: Monthly | null, c: Content, vi: boolean, money: (n: n
 
   // ---- KPI card ----
   const kpi = (label: string, val: string | null, sub: string, d?: SocialDelta | null, showDelta = true) =>
-    `<div style="background:#fff;border:1px solid ${BORD};border-radius:11px;padding:10px 12px"><div style="font-size:10.5px;color:${MUT}">${esc(label)}</div><div style="font-size:23px;font-weight:800;color:${NAVY};line-height:1.15;margin:2px 0">${val ?? '—'}</div><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span style="font-size:9px;color:#93a1b5">${esc(sub)}</span>${showDelta ? delta(d) : ''}</div></div>`;
+    `<div style="background:#fff;border:1px solid ${BORD};border-radius:10px;padding:7px 10px"><div style="font-size:10px;color:${MUT}">${esc(label)}</div><div style="font-size:19px;font-weight:800;color:${NAVY};line-height:1.1;margin:1px 0">${val ?? '—'}</div><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span style="font-size:9px;color:#93a1b5">${esc(sub)}</span>${showDelta ? delta(d) : ''}</div></div>`;
 
   // ---- PAGE 1: FB & IG ----
   const kpis1 = `<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:9px">
@@ -466,8 +466,8 @@ function printReport(data: Monthly | null, c: Content, vi: boolean, money: (n: n
     ${box(`<span style="color:${LBLUE}">${t('THÁNG TỚI', 'NEXT MONTH')}</span>`, list3(planItems, t('—', '—')), true)}
   </div>`;
 
-  const header = (sub: string, title: string, tag: string) => `<div style="background:${NAVY};color:#fff;border-radius:11px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-    <div><div style="font-size:9px;letter-spacing:2px;opacity:.65">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div><div style="font-size:19px;font-weight:800;margin-top:2px">${title}</div><div style="font-size:10.5px;opacity:.8;margin-top:1px">${esc(sub)}</div></div>
+  const header = (sub: string, title: string, tag: string) => `<div style="background:${NAVY};color:#fff;border-radius:10px;padding:9px 14px;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:9px;letter-spacing:2px;opacity:.65">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div><div style="font-size:17px;font-weight:800;margin-top:1px">${title}</div><div style="font-size:10.5px;opacity:.8;margin-top:1px">${esc(sub)}</div></div>
     <div style="text-align:right;font-size:10px;opacity:.85"><b style="font-size:13px">Lumio Agency</b><div>${tag}</div></div></div>`;
   const period = t('Tháng ', 'Month ') + (data.month || '').replace('-', '/') + ' · ' + (data.range ? `${data.range.from} → ${data.range.to}` : '');
   const summaryLine = L(c.tldr) || L(c.headline) || t('Tổng hợp hiệu quả mạng xã hội trong tháng.', 'Social performance summary for the month.');
@@ -530,20 +530,20 @@ function printReport(data: Monthly | null, c: Content, vi: boolean, money: (n: n
   <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:#F6F8FB;font-family:Inter,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${NAVY}}
-  .pg{width:297mm;height:210mm;padding:11mm 12mm;display:flex;flex-direction:column;gap:9px;background:#F6F8FB;overflow:hidden}
+  .pg{width:297mm;height:210mm;padding:8mm 11mm;display:flex;flex-direction:column;gap:6px;background:#F6F8FB;overflow:hidden;margin:0 auto 14px;box-shadow:0 2px 14px rgba(11,31,58,.12)}
   #bar{position:fixed;top:0;left:0;right:0;background:#0B1F3A;color:#fff;font:600 13px Inter,sans-serif;padding:9px 14px;z-index:99;text-align:center}
   </style></head><body>
-  <div id="bar">${t('Đang tạo PDF… giữ tab này vài giây.', 'Generating PDF… keep this tab open a few seconds.')}</div>
+  <div id="bar"><span>${t('Xem trước báo cáo — cuộn xem cả 2 trang.', 'Preview — scroll to see both pages.')}</span><button id="dl" style="background:#1E77D8;color:#fff;border:0;border-radius:6px;padding:5px 13px;font:700 12px Inter,sans-serif;cursor:pointer;margin-left:10px">\u2b07 ${t('Tải PDF', 'Download PDF')}</button><span id="st" style="margin-left:8px;opacity:.9"></span></div>
   <div style="height:36px"></div>${page1}${page2}
   <script>
   function waitImgs(cb){var i=document.images,n=i.length,c=0;function go(){if(++c>=n)cb()}if(!n)return cb();for(var k=0;k<n;k++){var m=i[k];if(m.complete)go();else{m.onload=go;m.onerror=go}}setTimeout(cb,3500)}
-  function run(){var bar=document.getElementById('bar');
-    if(!window.html2canvas||!window.jspdf){bar.textContent='${t('Không tải được thư viện PDF — bấm Ctrl+P để in.', 'PDF library did not load — press Ctrl+P to print.')}';return}
+  function run(){var st=document.getElementById('st');st.textContent='${t('Đang tạo…', 'Generating…')}';
+    if(!window.html2canvas||!window.jspdf){st.textContent='${t('Lỗi thư viện — Ctrl+P', 'Lib error — Ctrl+P')}';return}
     var pages=document.querySelectorAll('.pg');var J=window.jspdf.jsPDF;var pdf=new J({orientation:'landscape',unit:'mm',format:'a4'});var idx=0;
-    function next(){if(idx>=pages.length){pdf.save('Lumio-Report-${data.month}.pdf');bar.textContent='${t('Đã tạo PDF — có thể đóng tab.', 'PDF ready — you can close this tab.')}';setTimeout(function(){window.close()},700);return}
-      html2canvas(pages[idx],{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#F6F8FB'}).then(function(cv){var im=cv.toDataURL('image/jpeg',0.95);if(idx>0)pdf.addPage('a4','landscape');pdf.addImage(im,'JPEG',0,0,297,210);idx++;next()}).catch(function(e){bar.textContent='PDF error: '+e+' — Ctrl+P'})}
+    function next(){if(idx>=pages.length){pdf.save('Lumio-Report-${data.month}.pdf');st.textContent='${t('Đã tải \u2713', 'Downloaded \u2713')}';return}
+      html2canvas(pages[idx],{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#F6F8FB'}).then(function(cv){var im=cv.toDataURL('image/jpeg',0.95);if(idx>0)pdf.addPage('a4','landscape');pdf.addImage(im,'JPEG',0,0,297,210);idx++;next()}).catch(function(e){st.textContent='PDF error: '+e})}
     next()}
-  window.onload=function(){var f=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();f.then(function(){waitImgs(function(){setTimeout(run,200)})})}
+  window.onload=function(){var b=document.getElementById('dl');if(b)b.onclick=run;var f=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();f.then(function(){waitImgs(function(){})})}
   </script></body></html>`;
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
 }

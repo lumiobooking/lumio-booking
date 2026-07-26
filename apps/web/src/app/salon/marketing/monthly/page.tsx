@@ -190,7 +190,7 @@ function Inner() {
         <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chỉnh sửa', 'Edit')}</button>
       </div>
 
-      {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => printReport(data, report?.content ?? {}, vi, money)} T={T} />}
+      {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money)} T={T} />}
 
       {mode === 'edit' && (<>
 

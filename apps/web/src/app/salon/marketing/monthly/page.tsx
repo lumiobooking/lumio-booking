@@ -76,6 +76,7 @@ function Inner() {
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [salonName, setSalonName] = useState('');
   const [tt, setTt] = useState<{ followers: string; newFollowers: string; views: string; engagement: string; postsCount: string }>({ followers: '', newFollowers: '', views: '', engagement: '', postsCount: '' });
   const money = (c: number) => formatPrice(c, currency);
 
@@ -86,10 +87,11 @@ function Inner() {
       const [d, r, settings] = await Promise.all([
         apiFetch<Monthly>(`/marketing/monthly?month=${month}`, { token }),
         apiFetch<Report | null>(`/marketing/report?month=${month}`, { token }).catch(() => null),
-        apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string } })),
+        apiFetch<{ booking?: { currency?: string }; company?: { name?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string } })),
       ]);
       setData(d); setReport(r);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
+      if (settings?.company?.name) setSalonName(settings.company.name);
       const draft: Record<string, SpendRow> = {};
       for (const ch of CHANNELS) { const ex = d.spend.find((s) => s.channel === ch); draft[ch] = ex ? { ...ex } : { channel: ch, amountCents: 0 }; }
       setSpendDraft(draft);
@@ -190,7 +192,7 @@ function Inner() {
         <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chỉnh sửa', 'Edit')}</button>
       </div>
 
-      {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money)} T={T} />}
+      {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money, salonName)} T={T} />}
 
       {mode === 'edit' && (<>
 
@@ -387,7 +389,7 @@ function OneCol({ label, value, onChange }: { label: string; value: string; onCh
 }
 
 function esc(s: string) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: number) => string) {
+function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: number) => string, salonName = '') {
   if (!data) return;
   const o = data.outcome; const b = data.blended; const d = data.deltas;
   const t = (v: string, e: string) => (vi ? v : e);
@@ -597,12 +599,10 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       ${panel('◎ ' + t('TỪ KHOÁ KHÁCH TÌM', 'TOP SEARCHES'), kwPanel)}
       ${panel('③ ' + t('XU HƯỚNG LƯỢT XEM', 'VIEWS TREND'), trendPanel)}
     </div>
-    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
+    <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
       ${panel('④ ' + t('TỶ LỆ HÀNH ĐỘNG', 'ACTION RATE'), actionPanel)}
       ${panel('⑤ ' + t('ĐÁNH GIÁ & XẾP HẠNG', 'REVIEWS'), reviewPanel)}
-      ${panel('⑥ ' + t('MỤC TIÊU THÁNG SAU', 'NEXT-MONTH GOALS'), kpiPanel)}
     </div>
-    <div style="margin-top:10px">${panel('◎ ' + t('ĐỀ XUẤT THÁNG TIẾP THEO', 'NEXT-MONTH RECOMMENDATIONS'), recPanel)}</div>
     <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu Google Business Profile lấy trực tiếp từ Google · Một số chỉ số (Profile Strength, tách nguồn tìm kiếm) Google không mở qua API · Lumio duyệt trước khi gửi.', 'Google Business Profile data pulled directly from Google · Some metrics (Profile Strength, search-source split) are not exposed via the API · Reviewed by Lumio.')}</div></div>`;
   }
   const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents, true)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum('$' + b.revenuePerSpend, t('Doanh thu / $1', 'Revenue / $1'), undefined, true) : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div style="font-size:11px;color:#475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color:#059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div style="font-size:11px;color:#6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
@@ -619,10 +619,10 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   <div style="background:linear-gradient(120deg,#0f2a52,#1e3a8a);color:#fff;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px">
     <div>
       <div style="display:inline-block;background:rgba(255,255,255,.16);border-radius:6px;padding:3px 10px;font-size:10.5px;font-weight:700;letter-spacing:1px">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div>
-      <div style="font-size:26px;font-weight:800;letter-spacing:.5px;margin-top:6px">FACEBOOK &amp; INSTAGRAM</div>
-      <div style="font-size:12px;opacity:.85;margin-top:2px">${t('Tháng', 'Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div>
+      <div style="font-size:26px;font-weight:800;letter-spacing:.5px;margin-top:6px">${esc(salonName || t('Báo cáo Marketing', 'Marketing Report'))}</div>
+      <div style="font-size:12px;opacity:.85;margin-top:2px">${t('Báo cáo Marketing tổng hợp · Tháng', 'Marketing report · Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div>
     </div>
-    <div style="display:flex;gap:8px"><span style="width:44px;height:44px;border-radius:12px;background:#1877f2;display:grid;place-items:center;font-weight:800;font-size:20px">f</span><span style="width:44px;height:44px;border-radius:12px;background:linear-gradient(45deg,#f9ce34,#ee2a7b,#6228d7);display:grid;place-items:center;font-weight:800">◎</span></div>
+    <div style="text-align:right;font-size:9.5px;opacity:.8"><div style="font-size:15px;font-weight:800">Lumio Agency</div><div style="margin-top:2px">Facebook · Instagram · TikTok · Google</div></div>
   </div>
 
   <div style="margin-top:10px">${panel('◆ ' + t('KẾT QUẢ KINH DOANH THÁNG', 'BUSINESS RESULTS THIS MONTH'), bizNums)}</div>
@@ -641,15 +641,18 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   ${channelsHtml ? `<div style="margin-top:10px">${panel('◆ ' + t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION'), channelsHtml)}</div>` : ''}
   ${ttPanel ? `<div style="margin-top:10px">${ttPanel}</div>` : ''}
 
-  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
-    ${panel('① ' + t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div style="font-size:11px;font-weight:700;color:#b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}
-    ${panel('◎ ' + t('INSIGHT NỔI BẬT', 'KEY INSIGHTS'), insightsBox)}
-  </div>
-  <div style="margin-top:10px">${panel('◎ ' + t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN & DIRECTION'), kehoachHtml)}</div>
 
   <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.')}</div>
   </div>
   ${gbpHtml}
+  <div class="page">
+  <div style="background:#0f2a52;color:#fff;border-radius:10px;padding:10px 15px;font-size:14px;font-weight:800">${t('TỔNG KẾT & KẾ HOẠCH THÁNG TỚI — TẤT CẢ KÊNH', 'SUMMARY & NEXT-MONTH PLAN — ALL CHANNELS')}</div>
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
+    ${panel('◆ ' + t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div style="font-size:11px;font-weight:700;color:#b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}
+    ${panel('◎ ' + t('INSIGHT NỔI BẬT', 'KEY INSIGHTS'), insightsBox)}
+  </div>
+  <div style="margin-top:10px">${panel('◎ ' + t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN & DIRECTION'), kehoachHtml)}</div>
+  </div>
   <script>window.onload=function(){var i=document.images,n=i.length,c=0;function go(){if(++c>=n){setTimeout(function(){window.print()},150)}}if(!n){window.print();return}for(var k=0;k<n;k++){var m=i[k];if(m.complete)go();else{m.onload=go;m.onerror=go}}setTimeout(function(){window.print()},2500)}</script></body></html>`;
 
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }

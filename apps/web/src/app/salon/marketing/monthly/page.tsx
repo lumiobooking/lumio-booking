@@ -483,20 +483,21 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const S = data.socialInsights ?? [];
   const fb = S.find((x) => x.platform === 'facebook');
   const ig = S.find((x) => x.platform === 'instagram');
+  const tt = S.find((x) => x.platform === 'tiktok');
   const fnum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
   const arS = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span style="color:${dl.pct >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;font-size:10.5px">${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
   const engR = (x?: SocialInsight) => { if (!x || x.engagement == null) return '—'; const denom = x.reach || x.followers; return denom ? `${Math.round((x.engagement / denom) * 1000) / 10}%` : '—'; };
-  const panel = (title: string, inner: string) => `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:12px;padding:12px 14px"><div style="font-weight:800;font-size:12px;color:#0f2a52;margin-bottom:8px;letter-spacing:.2px">${title}</div>${inner}</div>`;
-  const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined) =>
-    `<tr><td style="padding:5px 2px;color:#475569;font-size:11.5px">${label}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${fv} ${arS(fd)}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${iv} ${arS(idv)}</td></tr>`;
+  const panel = (title: string, inner: string) => `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:12px;padding:12px 14px"><div style="font-weight:800;font-size:12px;color:#0B1F3A;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid #E4EAF2;padding-bottom:5px;margin-bottom:9px">${title}</div>${inner}</div>`;
+  const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined, tv?: string, tdv?: SocialDelta | null) =>
+    `<tr><td style="padding:5px 2px;color:#475569;font-size:11.5px">${label}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${fv} ${arS(fd)}</td><td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${iv} ${arS(idv)}</td>${tt ? `<td style="padding:5px 2px;text-align:right;font-weight:700;color:#0f2a52">${tv ?? '—'} ${arS(tdv)}</td>` : ''}</tr>`;
   const perfTable = `<table style="width:100%;border-collapse:collapse">
-    <tr style="font-size:11px"><td></td><td style="text-align:right;padding-bottom:4px"><span style="color:#1877f2;font-weight:800">Facebook</span></td><td style="text-align:right;padding-bottom:4px"><span style="color:#e1306c;font-weight:800">Instagram</span></td></tr>
-    ${prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers)}
-    ${prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? ('<span style="font-size:9px;color:#94a3b8;font-weight:600">' + t('Meta ngừng cung cấp', 'retired by Meta') + '</span>') : fnum(fb?.reach), fb?.vsPrev?.reach, fnum(ig?.reach), ig?.vsPrev?.reach)}
-    ${prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views)}
-    ${prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement)}
-    ${prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null)}
-    ${prow(t('Số follow mới', 'Net followers'), fnum(fb?.newFollowers), fb?.vsPrev?.newFollowers, fnum(ig?.newFollowers), ig?.vsPrev?.newFollowers)}
+    <tr style="font-size:11px"><td></td><td style="text-align:right;padding-bottom:4px"><span style="color:#1877f2;font-weight:800">Facebook</span></td><td style="text-align:right;padding-bottom:4px"><span style="color:#e1306c;font-weight:800">Instagram</span></td>${tt ? '<td style="text-align:right;padding-bottom:4px"><span style="color:#010101;font-weight:800">TikTok</span></td>' : ''}</tr>
+    ${prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers, fnum(tt?.followers), tt?.vsPrev?.followers)}
+    ${prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? ('<span style="font-size:9px;color:#94a3b8;font-weight:600">' + t('Meta ngừng cung cấp', 'retired by Meta') + '</span>') : fnum(fb?.reach), fb?.vsPrev?.reach, fnum(ig?.reach), ig?.vsPrev?.reach, '<span style="font-size:9px;color:#94a3b8;font-weight:600">' + t('Không áp dụng', 'n/a') + '</span>', null)}
+    ${prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views, fnum(tt?.views), tt?.vsPrev?.views)}
+    ${prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement, fnum(tt?.engagement), tt?.vsPrev?.engagement)}
+    ${prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null, engR(tt), null)}
+    ${prow(t('Số follow mới', 'Net followers'), fnum(fb?.newFollowers), fb?.vsPrev?.newFollowers, fnum(ig?.newFollowers), ig?.vsPrev?.newFollowers, fnum(tt?.newFollowers), tt?.vsPrev?.newFollowers)}
   </table>`;
   const igSeries = ig?.series ?? [];
   const cumA: number[] = [];
@@ -606,8 +607,6 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu Google Business Profile lấy trực tiếp từ Google · Một số chỉ số (Profile Strength, tách nguồn tìm kiếm) Google không mở qua API · Lumio duyệt trước khi gửi.', 'Google Business Profile data pulled directly from Google · Some metrics (Profile Strength, search-source split) are not exposed via the API · Reviewed by Lumio.')}</div></div>`;
   }
   const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents, true)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum('$' + b.revenuePerSpend, t('Doanh thu / $1', 'Revenue / $1'), undefined, true) : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div style="font-size:11px;color:#475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color:#059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div style="font-size:11px;color:#6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
-  const ttI = (data.socialInsights ?? []).find((x) => x.platform === 'tiktok');
-  const ttPanel = ttI ? panel('◆ TikTok', `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(fnum(ttI.followers), t('Follower', 'Followers'), ttI.vsPrev?.followers)}${bignum(fnum(ttI.views), t('Lượt xem', 'Views'), ttI.vsPrev?.views)}${bignum(fnum(ttI.engagement), t('Tương tác', 'Engagement'), ttI.vsPrev?.engagement)}${bignum(String(ttI.postsCount ?? '—'), t('Video', 'Videos'))}</div>`) : '';
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
   @page{size:A4 landscape;margin:8mm}
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0;padding:0;background:#eef2f8}
@@ -639,7 +638,6 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   </div>
 
   ${channelsHtml ? `<div style="margin-top:10px">${panel('◆ ' + t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION'), channelsHtml)}</div>` : ''}
-  ${ttPanel ? `<div style="margin-top:10px">${ttPanel}</div>` : ''}
 
 
   <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.')}</div>

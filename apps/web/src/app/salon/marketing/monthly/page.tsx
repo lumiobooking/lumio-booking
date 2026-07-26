@@ -524,8 +524,8 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     ...fbP.map((p) => ({ ...p, _pf: 'FB', _col: '#1877f2' })),
     ...igP.map((p) => ({ ...p, _pf: 'IG', _col: '#e1306c' })),
   ].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 5);
-  const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div style="width:34px;height:34px;border-radius:6px;background:#eef1f6;flex-shrink:0"></div>`; const badge = `<span style="font-size:8.5px;font-weight:800;color:#fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div style="font-size:10.5px;color:#0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div style="color:#94a3b8;font-size:11px">—</div>`;
-  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;border-left:1px solid #eef1f6;padding-left:12px"><div style="font-size:10.5px;color:#94a3b8;margin-bottom:2px">${t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
+  const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color:${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800">${p._pf}</div>`; const badge = `<span style="font-size:8.5px;font-weight:800;color:#fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div style="font-size:10.5px;color:#0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div style="color:#94a3b8;font-size:11px">—</div>`;
+  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div style="font-size:10.5px;color:#94a3b8;margin-bottom:2px">${t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
   const adsPanel = spendLine
     ? `<div style="font-size:12px;color:#0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div style="font-size:11px;color:#6b7280;margin-top:4px">${spendLine}</div></div>`
     : `<div style="font-size:11.5px;color:#94a3b8;line-height:1.6">${t('Chưa chạy quảng cáo tháng này. Khi bật quảng cáo, mục này hiển thị Chi phí · Reach · Click · CPC · CTR · ROAS.', 'No paid ads this month. Once ads run, this shows Spend · Reach · Clicks · CPC · CTR · ROAS.')}</div>`;
@@ -605,7 +605,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu Google Business Profile lấy trực tiếp từ Google · Một số chỉ số (Profile Strength, tách nguồn tìm kiếm) Google không mở qua API · Lumio duyệt trước khi gửi.', 'Google Business Profile data pulled directly from Google · Some metrics (Profile Strength, search-source split) are not exposed via the API · Reviewed by Lumio.')}</div>`;
   }
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
-  @page{size:A4 landscape;margin:7mm}
+  @page{size:A4 landscape;margin:12mm}
   *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0;padding:14px;background:#eef2f8}
   .grid{display:grid;gap:10px}
   </style></head><body>
@@ -637,7 +637,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
 
   <div style="font-size:10px;color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.')}</div>
   ${gbpHtml}
-  <script>window.onload=function(){window.print()}</script></body></html>`;
+  <script>window.onload=function(){var i=document.images,n=i.length,c=0;function go(){if(++c>=n){setTimeout(function(){window.print()},150)}}if(!n){window.print();return}for(var k=0;k<n;k++){var m=i[k];if(m.complete)go();else{m.onload=go;m.onerror=go}}setTimeout(function(){window.print()},2500)}</script></body></html>`;
 
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
 }

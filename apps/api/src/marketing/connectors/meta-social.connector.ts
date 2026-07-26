@@ -297,12 +297,13 @@ export class MetaSocialConnector implements SocialConnector {
         interactions: (likes ?? 0) + (comments ?? 0) + (shares ?? 0),
       };
     });
-    // FB video/reel view counts live on the video object's `views` field.
+    // FB video/reel view counts + cover image live on the video object (per-object
+    // fetch — keeps the reels edge itself resilient).
     await Promise.all(posts.filter((p) => p.type === 'reel' || p.type === 'video').map(async (p) => {
       try {
-        const r = await getJson(`${GRAPH}/${encodeURIComponent(p.id)}?fields=views&access_token=${encodeURIComponent(pageToken)}`);
-        if (r.ok) p.views = numOrNull(r.json?.views);
-      } catch { /* views unavailable */ }
+        const r = await getJson(`${GRAPH}/${encodeURIComponent(p.id)}?fields=views,picture&access_token=${encodeURIComponent(pageToken)}`);
+        if (r.ok) { p.views = numOrNull(r.json?.views); if (!p.thumbnail && r.json?.picture) p.thumbnail = String(r.json.picture); }
+      } catch { /* views/cover unavailable */ }
     }));
     posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
     return { posts, status, error };

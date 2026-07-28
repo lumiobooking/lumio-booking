@@ -1498,6 +1498,7 @@ model MessengerConnection {
   pageId    String  @unique // Facebook Page id (routes incoming webhooks to a tenant)
   igId      String? @unique // linked Instagram business account id (routes IG DMs)
   pageToken String // Page access token (secret) used to send replies (FB + IG)
+  pageName  String? // cached Facebook Page name (captured at connect via pages_show_list)
   enabled   Boolean @default(false)
   greeting  String? // optional opening line
   aiInstruction String? // brand-voice / extra guidance for the bot
@@ -1516,6 +1517,7 @@ model MessengerThread {
 
   pageId   String
   senderId String // the customer's page-scoped id (PSID)
+  senderName String? // customer's display name (best-effort from Graph profile)
 
   history  Json    @default("[]") // recent turns for context
   lastText String? // last customer message (admin preview)

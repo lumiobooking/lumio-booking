@@ -100,6 +100,7 @@ export class MessengerService {
     return {
       connected: Boolean(c?.pageId && c?.pageToken),
       pageId: c?.pageId ?? '',
+      pageName: c?.pageName ?? '',
       igId: c?.igId ?? '',
       enabled: c?.enabled ?? false,
       greeting: c?.greeting ?? '',
@@ -162,8 +163,8 @@ export class MessengerService {
       const igId = chosen.instagram_business_account?.id || null;
       await this.prisma.messengerConnection.upsert({
         where: { tenantId },
-        update: { pageId: chosen.id, igId, pageToken: chosen.access_token, enabled: true },
-        create: { tenantId, pageId: chosen.id, igId, pageToken: chosen.access_token, enabled: true },
+        update: { pageId: chosen.id, igId, pageToken: chosen.access_token, pageName: chosen.name || null, enabled: true },
+        create: { tenantId, pageId: chosen.id, igId, pageToken: chosen.access_token, pageName: chosen.name || null, enabled: true },
       });
       // Subscribe the Page to our app's webhook so messages start flowing.
       await fetch(
@@ -251,7 +252,7 @@ export class MessengerService {
     const tenantId = this.tenantId(user);
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 50,
-      select: { id: true, senderId: true, lastText: true, handoff: true, updatedAt: true },
+      select: { id: true, senderId: true, senderName: true, lastText: true, handoff: true, updatedAt: true },
     });
     return rows;
   }
@@ -285,6 +286,13 @@ export class MessengerService {
     });
     const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
     if (!res.ok || out.error) {
+      // Keep an auditable "Failed" row in the activity log, then surface the error.
+      const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      const failed = [...hist, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString() }].slice(-MAX_TURNS);
+      await this.prisma.messengerThread.update({
+        where: { id: thread.id },
+        data: { history: failed as unknown as Prisma.InputJsonValue },
+      }).catch(() => undefined);
       throw new BadRequestException(out.error?.message || 'Facebook rejected the message (the 24h messaging window may have closed).');
     }
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
@@ -305,13 +313,17 @@ export class MessengerService {
     const tenantId = this.tenantId(user);
     const c = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
     if (!c?.pageId || !c?.pageToken) return { connected: false as const };
-    let pageName = '';
+    let pageName = c.pageName || '';
     let subscribed = false;
     let fields: string[] = [];
     try {
-      const nameRes = await fetch(`${GRAPH}/${c.pageId}?fields=name&access_token=${encodeURIComponent(c.pageToken)}`);
-      const nameJson = (await nameRes.json().catch(() => ({}))) as { name?: string };
-      pageName = nameJson.name || '';
+      // Page name is captured at connect (pages_show_list). Only hit the Graph
+      // node as a fallback — a direct name read can require pages_read_engagement.
+      if (!pageName) {
+        const nameRes = await fetch(`${GRAPH}/${c.pageId}?fields=name&access_token=${encodeURIComponent(c.pageToken)}`);
+        const nameJson = (await nameRes.json().catch(() => ({}))) as { name?: string };
+        pageName = nameJson.name || '';
+      }
       const subRes = await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageToken)}`);
       const subJson = (await subRes.json().catch(() => ({}))) as { data?: { subscribed_fields?: string[] }[] };
       const app = (subJson.data || [])[0];
@@ -336,30 +348,31 @@ export class MessengerService {
    *  the "Messenger Activity" evidence block a reviewer records. */
   async activity(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageName: true, pageId: true } });
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 20,
-      select: { id: true, senderId: true, history: true, updatedAt: true },
+      select: { id: true, senderId: true, senderName: true, history: true, updatedAt: true },
     });
     type Ev = { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean };
     const events: Ev[] = [];
     for (const r of rows) {
-      const hist = (Array.isArray(r.history) ? r.history : []) as (Turn & { manual?: boolean; at?: string })[];
-      const shortId = `PSID …${String(r.senderId).slice(-6)}`;
+      const hist = (Array.isArray(r.history) ? r.history : []) as (Turn & { manual?: boolean; failed?: boolean; at?: string })[];
+      const who = r.senderName || `PSID …${String(r.senderId).slice(-6)}`;
       for (const turn of hist) {
         const isIn = turn.role === 'user';
         events.push({
           threadId: r.id,
-          user: shortId,
+          user: who,
           direction: isIn ? 'in' : 'out',
           text: String(turn.content || '').slice(0, 300),
-          status: isIn ? 'Received' : (turn.manual ? 'Sent (manual)' : 'Sent (bot)'),
+          status: isIn ? 'Received' : (turn.failed ? 'Failed' : 'Sent'),
           at: turn.at || r.updatedAt.toISOString(),
           manual: Boolean(turn.manual),
         });
       }
     }
     events.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-    return events.slice(0, 60);
+    return { page: conn?.pageName || '', pageId: conn?.pageId || '', events: events.slice(0, 60) };
   }
 
   // ---- webhook -------------------------------------------------------------
@@ -396,6 +409,11 @@ export class MessengerService {
       update: { lastText: text.slice(0, 300) },
       create: { tenantId: conn.tenantId, pageId, senderId, lastText: text.slice(0, 300) },
     });
+    // Best-effort: resolve the customer's display name once (User Profile API).
+    if (!thread.senderName) {
+      const name = await this.fetchSenderName(conn.pageToken, senderId);
+      if (name) await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { senderName: name } }).catch(() => undefined);
+    }
     if (thread.handoff) return; // a human is handling this conversation
 
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
@@ -408,7 +426,8 @@ export class MessengerService {
       reply = 'Thanks for your message! A team member will get back to you shortly. 💕';
     }
     await this.sendText(conn.pageToken, senderId, reply);
-    const nextHistory = [...history, { role: 'user', content: text }, { role: 'assistant', content: reply }].slice(-MAX_TURNS);
+    const now = new Date().toISOString();
+    const nextHistory = [...history, { role: 'user', content: text, at: now }, { role: 'assistant', content: reply, at: now }].slice(-MAX_TURNS);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       data: { history: nextHistory as unknown as Prisma.InputJsonValue },
@@ -592,6 +611,18 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
     } catch (e) {
       return `Could not complete "${name}": ${String((e as Error).message || e).slice(0, 160)}. Tell the customer and offer another time or ask for correct details.`;
     }
+  }
+
+  /** Best-effort profile lookup (User Profile API): the customer's display name.
+   *  Works for app-role users in dev mode and for all users once pages_messaging
+   *  is approved. Falls back to null — callers keep showing the PSID. */
+  private async fetchSenderName(pageToken: string, psid: string): Promise<string | null> {
+    try {
+      const r = await fetch(`${GRAPH}/${psid}?fields=first_name,last_name&access_token=${encodeURIComponent(pageToken)}`);
+      const j = (await r.json().catch(() => ({}))) as { first_name?: string; last_name?: string };
+      const name = [j.first_name, j.last_name].filter(Boolean).join(' ').trim();
+      return name || null;
+    } catch { return null; }
   }
 
   // ---- Facebook Send API ---------------------------------------------------

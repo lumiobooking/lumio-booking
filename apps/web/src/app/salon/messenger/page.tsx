@@ -12,13 +12,14 @@ import { useLang } from '../../../lib/i18n';
 
 interface BotFact { label: string; value: string; on: boolean }
 interface MConf {
-  connected: boolean; pageId: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
+  connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
 }
-interface MThread { id: string; senderId: string; lastText: string | null; handoff: boolean; updatedAt: string }
+interface MThread { id: string; senderId: string; senderName?: string | null; lastText: string | null; handoff: boolean; updatedAt: string }
 interface FactRow extends BotFact { custom: boolean }
 interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; verifiedAt?: string; webhookUrl?: string }
 interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean }
+interface ActivityRes { page: string; pageId: string; events: ActivityEv[] }
 
 // Common things customers ask a nail salon. label = sent to the bot (English);
 // vi/en = what the salon admin sees; ph = example hint.
@@ -48,7 +49,9 @@ const DICT: Record<string, { vi: string; en: string }> = {
   disconnectConfirm: { vi: 'Ngắt kết nối Facebook Page khỏi tiệm này? Bot sẽ ngừng trả lời cho đến khi kết nối lại.', en: 'Disconnect this Facebook Page from the salon? The bot will stop replying until you reconnect.' },
   disconnected: { vi: 'Đã ngắt kết nối Facebook.', en: 'Facebook disconnected.' },
   connecting: { vi: 'Đang mở Facebook…', en: 'Opening Facebook…' },
-  fbConnectedMsg: { vi: 'Đã kết nối Facebook thành công ✓', en: 'Facebook connected successfully ✓' },
+  fbConnectedMsg: { vi: 'Đã kết nối Facebook Page thành công ✓', en: 'Facebook Page connected successfully ✓' },
+  fbSubscribedMsg: { vi: 'Đã đăng ký Page vào webhook thành công ✓', en: 'Page subscribed to webhook events successfully ✓' },
+  sendingAs: { vi: 'Gửi từ Page', en: 'Sending as' },
   fbErrorMsg: { vi: 'Kết nối Facebook thất bại', en: 'Facebook connection failed' },
   advanced: { vi: 'Nhập thủ công (nâng cao)', en: 'Manual entry (advanced)' },
   advancedHint: { vi: 'Chỉ dùng nếu bạn tự tạo token trong Meta. Hầu hết tiệm chỉ cần nút xanh phía trên.', en: 'Only if you create a token yourself in Meta. Most salons just need the blue button above.' },
@@ -153,6 +156,8 @@ function Inner() {
   const [convoSearch, setConvoSearch] = useState(''); // filter the conversations list
   const [wh, setWh] = useState<WebhookStatus | null>(null);       // live webhook subscription status
   const [activity, setActivity] = useState<ActivityEv[]>([]);     // in/out message log
+  const [activityPage, setActivityPage] = useState('');           // Page the log is tied to
+  const [sentAt, setSentAt] = useState<string | null>(null);      // timestamp of the last manual send
   const [showWebhook, setShowWebhook] = useState(false);          // advanced manual webhook fold
   const [sendTo, setSendTo] = useState('');                       // recipient thread for test send
   const [sendMsg, setSendMsg] = useState('');
@@ -190,7 +195,7 @@ function Inner() {
     if (!fb) return;
     if (fb === 'connected') {
       const page = p.get('page');
-      setNotice(`${DICT.fbConnectedMsg[lang as Lang]}${page ? ` — ${page}` : ''}`);
+      setNotice(`${DICT.fbConnectedMsg[lang as Lang]}${page ? ` — ${page}` : ''}\n${DICT.fbSubscribedMsg[lang as Lang]}`);
     } else {
       const msg = p.get('msg');
       setError(`${DICT.fbErrorMsg[lang as Lang]}${msg ? `: ${decodeURIComponent(msg)}` : ''}`);
@@ -230,9 +235,9 @@ function Inner() {
         apiFetch<MConf>('/messenger', { token }),
         apiFetch<MThread[]>('/messenger/threads', { token }).catch(() => [] as MThread[]),
         apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => ({ connected: false } as WebhookStatus)),
-        apiFetch<ActivityEv[]>('/messenger/activity', { token }).catch(() => [] as ActivityEv[]),
+        apiFetch<ActivityRes>('/messenger/activity', { token }).catch(() => ({ page: '', pageId: '', events: [] } as ActivityRes)),
       ]);
-      setC(conf); setThreads(th); setWh(whs); setActivity(act);
+      setC(conf); setThreads(th); setWh(whs); setActivity(act.events || []); setActivityPage(act.page || '');
       setSendTo((prev) => prev || th[0]?.id || '');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
@@ -263,10 +268,11 @@ function Inner() {
   // Real user-initiated Send API call from the app UI (Messenger permission demo).
   async function sendTest() {
     if (!token || !sendMsg.trim()) return;
-    setSending(true); setSendResult(null);
+    setSending(true); setSendResult(null); setSentAt(null);
     try {
-      await apiFetch('/messenger/send', { method: 'POST', token, body: { threadId: sendTo || undefined, text: sendMsg.trim() } });
+      const res = await apiFetch<{ ok: boolean; at?: string }>('/messenger/send', { method: 'POST', token, body: { threadId: sendTo || undefined, text: sendMsg.trim() } });
       setSendResult('ok'); setSendMsg('');
+      setSentAt(res.at ? new Date(res.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null);
       await load();
     } catch (e) {
       setSendResult(e instanceof Error ? e.message : 'Send failed');
@@ -285,7 +291,7 @@ function Inner() {
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('title')}</h1>
       <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}
-      {notice && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#22c55e', color: '#bbf7d0', fontSize: 13.5 }}>{notice}</div>}
+      {notice && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#22c55e', color: '#bbf7d0', fontSize: 13.5, whiteSpace: 'pre-line', lineHeight: 1.6 }}>{notice}</div>}
 
       {/* Connect */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
@@ -359,7 +365,7 @@ function Inner() {
         <div style={{ ...ui.card, marginBottom: 16 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('connDetailsTitle')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-            <Field label={t('pageName')} value={wh?.pageName || '—'} />
+            <Field label={t('pageName')} value={wh?.pageName || c.pageName || '—'} />
             <Field label={t('pageIdLabel')} value={wh?.pageId || c.pageId || '—'} mono />
             <Field label={t('connStatus')} value={t('connected')} good />
             <Field label={t('webhookSub')} value={wh?.subscribed ? t('statusActive') : t('statusInactive')} good={!!wh?.subscribed} warn={!wh?.subscribed} />
@@ -451,17 +457,20 @@ function Inner() {
           <p style={{ color: '#f59e0b', fontSize: 13 }}>{t('noRecipient')}</p>
         ) : (
           <>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10 }}>
+              {t('sendingAs')}: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{wh?.pageName || c.pageName || '—'}</span>
+            </div>
             <label style={ui.label}>{t('recipient')}</label>
             <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 10 }}>
               {threads.map((th) => (
-                <option key={th.id} value={th.id}>PSID …{th.senderId.slice(-6)} — {(th.lastText || '').slice(0, 40) || 'conversation'}</option>
+                <option key={th.id} value={th.id}>{th.senderName || `PSID …${th.senderId.slice(-6)}`} — {(th.lastText || '').slice(0, 40) || 'conversation'}</option>
               ))}
             </select>
             <label style={ui.label}>{t('messageLabel')}</label>
             <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
-              {sendResult === 'ok' && <span style={{ color: '#22c55e', fontSize: 12.5 }}>{t('sentOk')}</span>}
+              {sendResult === 'ok' && <span style={{ color: '#22c55e', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
               {sendResult && sendResult !== 'ok' && <span style={{ color: '#fca5a5', fontSize: 12.5 }}>{sendResult}</span>}
             </div>
           </>
@@ -470,7 +479,12 @@ function Inner() {
 
       {/* Messenger activity — chronological in/out log (App Review evidence) */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('activityTitle')}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>{t('activityTitle')}</div>
+        {(activityPage || wh?.pageName || c.pageName) && (
+          <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
+            Page: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
+          </div>
+        )}
         {activity.length === 0 ? (
           <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noActivity')}</p>
         ) : (
@@ -484,11 +498,11 @@ function Inner() {
               <tbody>
                 {activity.map((ev, i) => (
                   <tr key={i} style={{ borderTop: '1px solid #1e293b' }}>
-                    <td style={tdc}>{new Date(ev.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                     <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
                     <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
                     <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
-                    <td style={tdc}>{ev.status}</td>
+                    <td style={{ ...tdc, color: ev.status === 'Failed' ? '#fca5a5' : ev.status === 'Received' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
                   </tr>
                 ))}
               </tbody>
@@ -517,7 +531,9 @@ function Inner() {
                   {shown.map((th) => (
                     <div key={th.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{th.lastText || '—'}</div>
+                        <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {th.senderName && <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}
+                        </div>
                         <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(th.updatedAt).toLocaleString('en-US')}{th.handoff ? ` · ⚠️ ${t('handedOff')}` : ''}</div>
                       </div>
                       {th.handoff

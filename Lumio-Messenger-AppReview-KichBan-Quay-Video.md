@@ -33,7 +33,7 @@ Trang **Messenger** (Salon admin) giờ có đủ 4 khối bằng chứng để 
 |---|---|---|
 | **Connection details** | Facebook Page (tên) · Page ID · Status: Connected · **Webhook subscription: Active** · Subscribed events: `messages`, `messaging_postbacks`, `message_reactions` · Last verified | `pages_manage_metadata` |
 | **Send a test message** | Chọn hội thoại (Recipient) → soạn tin → nút **Send message** → **Message sent ✓** | `pages_messaging` |
-| **Messenger activity** | Bảng log: Time · Direction (Incoming/Outgoing) · User (PSID) · Message · Status (Received / Sent) | Cả hai (event đi vào + tin gửi ra) |
+| **Messenger activity** | Dòng `Page: Lumio Booking` + bảng log: Time (ngày+giờ) · Direction (Incoming/Outgoing) · User (**tên khách**) · Message · Status (Received / Sent / Failed) | Cả hai (event đi vào + tin gửi ra) |
 | **Webhook (manual — advanced)** | Thu gọn mặc định; kèm ghi chú "app tự subscribe khi Connect" | Tránh gây hiểu nhầm |
 
 **Kỹ thuật:** khối "Connection details" đọc **trực tiếp từ Graph API** `GET /{page-id}/subscribed_apps` → chứng minh Page thật sự đã subscribe app (không phải chữ tĩnh). Nút Send gọi `POST /me/messages` thật và ghi vào Activity.
@@ -47,6 +47,7 @@ Trang **Messenger** (Salon admin) giờ có đủ 4 khối bằng chứng để 
 ## 3. Chuẩn bị trước khi quay (checklist)
 
 - [ ] **Deploy** `lumio-api` + `lumio-web`, hard-refresh trang Messenger.
+- [ ] Bấm **Reconnect Facebook** MỘT lần sau deploy — để hệ thống lưu **tên Page** (Lumio Booking) và tên khách vào kết nối (kết nối cũ tạo trước bản cập nhật nên chưa có tên).
 - [ ] **Đổi giao diện app sang tiếng Anh** (English) — Meta bắt buộc UI tiếng Anh trong video. Dùng nút chuyển ngôn ngữ (VI → EN).
 - [ ] **1 Page test** (ví dụ *Lumio Booking*) đã bấm **Connect with Facebook** → hiện Status: Connected + Webhook: Active.
 - [ ] **1 tài khoản Facebook khác** đóng vai KHÁCH (test user), đã cài **Messenger** trên điện thoại hoặc mở **messenger.com** trên 1 cửa sổ riêng.
@@ -93,7 +94,7 @@ Quay **một video liền mạch 2–4 phút**, chia 3 phần. Mỗi cảnh có 
 - [Caption] `A test user sends a message to the same Page from Messenger — this triggers a "messages" webhook event`
 
 **Cảnh B3 — Sự kiện đi vào ứng dụng**
-- [Việc cần làm] Quay lại trang Messenger, refresh. Ở khối **Messenger activity**, dòng mới xuất hiện: **Incoming · PSID …xxxxxx · "META REVIEW INBOUND…" · Received**. (Bot cũng có thể tự trả lời → dòng **Outgoing · Sent (bot)**.)
+- [Việc cần làm] Quay lại trang Messenger, refresh. Ở khối **Messenger activity**, dòng mới xuất hiện: **Incoming · <tên khách test> · "META REVIEW INBOUND…" · Received** (kèm dòng `Page: Lumio Booking` ngay trên bảng). (Bot cũng có thể tự trả lời → thêm dòng **Outgoing · Sent**.)
 - [Caption] `The webhook event arrives in the app and appears in Messenger Activity (Incoming / Received), tied to the same Page`
 
 > ✅ Phần B đã chứng minh đủ 2 ý reviewer cần: (1) app subscribe Page vào sự kiện, (2) sự kiện webhook thật đi vào app, gắn đúng Page.
@@ -103,11 +104,11 @@ Quay **một video liền mạch 2–4 phút**, chia 3 phần. Mỗi cảnh có 
 ### PHẦN C — `pages_messaging` (gửi tin THẬT từ app + hiện trong Messenger)
 
 **Cảnh C1 — Chọn tài sản (Page/hội thoại) trong app**
-- [Việc cần làm] Cuộn tới khối **Send a test message**. Ở **Recipient**, chọn hội thoại của khách test vừa nhắn (PSID …xxxxxx). Page đang dùng vẫn hiển thị ở khối Connection phía trên.
+- [Việc cần làm] Cuộn tới khối **Send a test message**. Khối này hiện **Sending as: Lumio Booking**. Ở **Recipient**, chọn hội thoại của khách test vừa nhắn (hiện tên khách). Page đang dùng vẫn hiển thị ở khối Connection phía trên.
 - [Caption] `Step 1 — Select the Page conversation (asset) to reply to`
 
 **Cảnh C2 — Gửi tin THẬT từ giao diện app**
-- [Việc cần làm] Gõ vào ô **Message** một câu dễ nhận: `Hi! This is Lumio confirming your appointment — reply CONFIRM.` Bấm **Send message**. Chờ hiện **Message sent ✓**.
+- [Việc cần làm] Gõ vào ô **Message** một câu dễ nhận: `Hi! This is Lumio confirming your appointment — reply CONFIRM.` Bấm **Send message**. Chờ hiện **Message sent ✓ · <giờ gửi>**.
 - [Caption] `Step 2 — Live send action from the app UI: clicking "Send message" calls POST /me/messages`
 
 **Cảnh C3 — Tin xuất hiện trong Messenger (native client)**
@@ -115,7 +116,7 @@ Quay **một video liền mạch 2–4 phút**, chia 3 phần. Mỗi cảnh có 
 - [Caption] `Step 3 — The same message is delivered in the native Messenger client, sent from the Page`
 
 **Cảnh C4 — Đối chiếu trong Activity**
-- [Việc cần làm] Về app, khối **Messenger activity** có dòng **Outgoing · Sent (manual)** đúng nội dung vừa gửi.
+- [Việc cần làm] Về app, khối **Messenger activity** có dòng **Outgoing · Sent** đúng nội dung vừa gửi (kèm tên người nhận + thời gian).
 - [Caption] `The outgoing message is logged in the app as Sent`
 
 > ✅ Phần C chứng minh đủ 3 ý: (1) chọn Page/hội thoại, (2) live send từ app UI, (3) tin hiện trong Messenger native.

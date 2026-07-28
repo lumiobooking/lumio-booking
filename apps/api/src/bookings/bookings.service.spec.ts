@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { BookingsService } from './bookings.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -124,6 +124,55 @@ describe('BookingsService double-booking prevention', () => {
     expect(result.assignedStaffId).toBeNull();
     // No staff -> no advisory lock / overlap check needed.
     expect(prisma._tx.$executeRaw).not.toHaveBeenCalled();
+  });
+});
+
+describe('BookingsService reschedule', () => {
+  const booked = {
+    id: 'appt-1',
+    tenantId: 'tenant-a',
+    status: 'CONFIRMED',
+    assignedStaffId: 'staff-1',
+    startTime: new Date('2099-06-20T14:00:00.000Z'),
+    endTime: new Date('2099-06-20T15:00:00.000Z'), // 60-minute visit
+  };
+
+  function primed(opts: { overlapConflict: boolean; booking?: any | null }) {
+    const prisma = makePrisma({ overlapConflict: opts.overlapConflict });
+    prisma.appointment.findFirst = jest.fn(async ({ where }: any) =>
+      opts.booking === null || where.tenantId !== 'tenant-a' ? null : (opts.booking ?? booked),
+    ) as any;
+    (prisma._tx.appointment as any).updateMany = jest.fn(async () => ({ count: 1 }));
+    return prisma;
+  }
+
+  it('404s when the booking belongs to another tenant', async () => {
+    const prisma = primed({ overlapConflict: false, booking: null });
+    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    await expect(svc.reschedule(salonA, 'appt-of-tenant-b', '2099-06-21T10:00:00.000Z')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects a move onto a conflicting slot and does not update', async () => {
+    const prisma = primed({ overlapConflict: true });
+    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    await expect(svc.reschedule(salonA, 'appt-1', '2099-06-21T10:00:00.000Z')).rejects.toBeInstanceOf(ConflictException);
+    expect((prisma._tx.appointment as any).updateMany).not.toHaveBeenCalled();
+  });
+
+  it('moves the booking, preserving duration and status', async () => {
+    const prisma = primed({ overlapConflict: false });
+    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    await svc.reschedule(salonA, 'appt-1', '2099-06-21T10:00:00.000Z');
+    const data = (prisma._tx.appointment as any).updateMany.mock.calls[0][0].data;
+    expect(data.startTime.toISOString()).toBe('2099-06-21T10:00:00.000Z');
+    expect(data.endTime.toISOString()).toBe('2099-06-21T11:00:00.000Z'); // +60 min kept
+    expect(data.status).toBeUndefined(); // status untouched
+  });
+
+  it('refuses to reschedule a finished booking', async () => {
+    const prisma = primed({ overlapConflict: false, booking: { ...booked, status: 'COMPLETED' } });
+    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    await expect(svc.reschedule(salonA, 'appt-1', '2099-06-21T10:00:00.000Z')).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 

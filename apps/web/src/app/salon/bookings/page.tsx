@@ -242,6 +242,10 @@ function BookingsInner() {
                   )}
                   {ACTIVE_STATUSES.includes(b.status) && (
                     <>
+                      <RescheduleControl current={b.startTime} onMove={(iso) => action(b.id, 'reschedule', { startTime: iso })} />
+                      {b.status !== 'PENDING' && (
+                        <AssignControl staff={staff.filter((s) => s.isActive)} onAssign={(staffId) => action(b.id, 'assign', { staffId })} label={t('bk.changeStaff')} />
+                      )}
                       <a href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`} style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}>{t('bk.checkout')}</a>
                       <button onClick={() => action(b.id, 'complete')} style={smallOk}>{t('bk.complete')}</button>
                       <button onClick={() => { if (confirm(t('bk.confirmNoShow'))) action(b.id, 'no-show'); }} style={smallWarn}>{t('bk.noShow')}</button>
@@ -325,6 +329,14 @@ function BookingsInner() {
                       )}
                       {ACTIVE_STATUSES.includes(b.status) && (
                         <>
+                          <RescheduleControl current={b.startTime} onMove={(iso) => action(b.id, 'reschedule', { startTime: iso })} />
+                          {b.status !== 'PENDING' && (
+                            <AssignControl
+                              staff={staff.filter((s) => s.isActive)}
+                              onAssign={(staffId) => action(b.id, 'assign', { staffId })}
+                              label={t('bk.changeStaff')}
+                            />
+                          )}
                           <a
                             href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
                             style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}
@@ -373,9 +385,11 @@ function BookingsInner() {
 function AssignControl({
   staff,
   onAssign,
+  label,
 }: {
   staff: Staff[];
   onAssign: (staffId: string) => void;
+  label?: string;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -383,7 +397,7 @@ function AssignControl({
   return (
     <span style={{ display: 'flex', gap: 4 }}>
       <select value={staffId} onChange={(e) => setStaffId(e.target.value)} style={{ ...ui.input, padding: '4px 8px', width: 'auto' }}>
-        <option value="">{t('bk.assignTo')}</option>
+        <option value="">{label ?? t('bk.assignTo')}</option>
         {staff.map((s) => (
           <option key={s.id} value={s.id}>
             {s.firstName} {s.lastName ?? ''}
@@ -393,6 +407,36 @@ function AssignControl({
       <button disabled={!staffId} onClick={() => staffId && onAssign(staffId)} style={smallOk}>
         {t('bk.assign')}
       </button>
+    </span>
+  );
+}
+
+// One-click reschedule: button → datetime picker prefilled with the current
+// start → Move. Duration is preserved server-side; conflicts are re-checked.
+function RescheduleControl({ current, onMove }: { current: string; onMove: (iso: string) => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState('');
+  const toLocalInput = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  if (!open) {
+    return (
+      <button onClick={() => { setVal(toLocalInput(current)); setOpen(true); }} style={actBtnOutline('#38bdf8')}>
+        {t('bk.reschedule')}
+      </button>
+    );
+  }
+  return (
+    <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input type="datetime-local" value={val} onChange={(e) => setVal(e.target.value)} style={{ ...ui.input, padding: '4px 8px', width: 'auto' }} />
+      <button disabled={!val} onClick={() => { if (val) { onMove(new Date(val).toISOString()); setOpen(false); } }} style={smallOk}>
+        {t('bk.move')}
+      </button>
+      <button onClick={() => setOpen(false)} style={actBtnOutline('#94a3b8')}>✕</button>
     </span>
   );
 }
@@ -410,8 +454,8 @@ function CreateBookingForm({
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [form, setForm] = useState({
-    serviceId: '',
     startLocal: '',
     staffId: '',
     customerFirstName: '',
@@ -425,17 +469,24 @@ function CreateBookingForm({
   function up(key: keyof typeof form, v: string) {
     setForm((f) => ({ ...f, [key]: v }));
   }
+  const toggleSvc = (id: string) =>
+    setServiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const totalMinutes = serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (serviceIds.length === 0) { setError(t('bk.pickAtLeastOne')); return; }
     setSubmitting(true);
     try {
       await apiFetch('/bookings', {
         method: 'POST',
         token,
         body: {
-          serviceId: form.serviceId,
+          // First pick = primary service; the rest ride along as service lines
+          // (same visit, durations added up server-side).
+          serviceId: serviceIds[0],
+          serviceIds,
           // datetime-local is local time; convert to a UTC ISO string.
           startTime: new Date(form.startLocal).toISOString(),
           staffId: form.staffId || undefined,
@@ -456,17 +507,22 @@ function CreateBookingForm({
   return (
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <label>
-          <span style={ui.label}>{t('bk.fService')}</span>
-          <select style={ui.input} value={form.serviceId} onChange={(e) => up('serviceId', e.target.value)} required>
-            <option value="">{t('bk.selectService')}</option>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <span style={ui.label}>
+            {t('bk.fService')}
+            {serviceIds.length > 0 && (
+              <span style={{ color: '#94a3b8', fontWeight: 400 }}> · {serviceIds.length} {t('bk.servicesPicked')} · {t('bk.totalDuration')} {totalMinutes} min</span>
+            )}
+          </span>
+          <div style={{ border: '1px solid #334155', borderRadius: 8, background: '#0f172a', maxHeight: 168, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 2 }}>
             {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.durationMinutes} min)
-              </option>
+              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: serviceIds.includes(s.id) ? '#1e293b' : 'transparent', fontSize: 13, color: serviceIds.includes(s.id) ? '#e2e8f0' : '#cbd5e1' }}>
+                <input type="checkbox" checked={serviceIds.includes(s.id)} onChange={() => toggleSvc(s.id)} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name} ({s.durationMinutes} min)</span>
+              </label>
             ))}
-          </select>
-        </label>
+          </div>
+        </div>
         <label>
           <span style={ui.label}>{t('bk.dateTime')}</span>
           <input

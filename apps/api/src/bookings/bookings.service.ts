@@ -1303,14 +1303,19 @@ export class BookingsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.lockStaffSlot(tx, tenantId, staffId);
       await this.assertNoOverlap(tx, tenantId, staffId, booking.startTime, booking.endTime, id);
+      // Changing the tech on an already-confirmed/arrived visit must NOT restart
+      // the accept/confirm workflow — keep the status, just swap the person.
+      const keepStatus =
+        booking.status === AppointmentStatus.CONFIRMED || booking.status === AppointmentStatus.ARRIVED;
       await tx.appointment.updateMany({
         where: { id, tenantId },
         data: {
           assignedStaffId: staffId,
-          status: AppointmentStatus.ASSIGNED,
           assignedAt: new Date(),
-          responseDeadline: addMinutes(new Date(), 30),
           rejectedAt: null,
+          ...(keepStatus
+            ? {}
+            : { status: AppointmentStatus.ASSIGNED, responseDeadline: addMinutes(new Date(), 30) }),
         },
       });
       return tx.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
@@ -1327,6 +1332,49 @@ export class BookingsService {
 
     // Notify the assigned technician (fire-and-forget).
     this.sendStaffAssignmentEmail(tenantId, id).catch(() => undefined);
+
+    return updated;
+  }
+
+  /** Move a booking to a new date & time (admin reschedule). Duration and
+   *  status are preserved; the assigned technician's calendar is re-checked
+   *  race-safely so the move can never create a double booking. */
+  async reschedule(user: AuthenticatedUser, id: string, startTimeIso: string) {
+    const tenantId = this.tenantId(user);
+    const booking = await this.getById(user, id);
+    const finalStates: AppointmentStatus[] = [
+      AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED,
+      AppointmentStatus.NO_SHOW, AppointmentStatus.REJECTED,
+    ];
+    if (finalStates.includes(booking.status)) {
+      throw new BadRequestException('This booking is finished and can no longer be rescheduled.');
+    }
+    const newStart = new Date(startTimeIso);
+    if (Number.isNaN(newStart.getTime())) throw new BadRequestException('Invalid start time');
+    const durationMs = booking.endTime.getTime() - booking.startTime.getTime();
+    const newEnd = new Date(newStart.getTime() + durationMs);
+    const staffId = booking.assignedStaffId;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (staffId) {
+        await this.lockStaffSlot(tx, tenantId, staffId);
+        await this.assertNoOverlap(tx, tenantId, staffId, newStart, newEnd, id);
+      }
+      await tx.appointment.updateMany({
+        where: { id, tenantId },
+        data: { startTime: newStart, endTime: newEnd },
+      });
+      return tx.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'booking.rescheduled',
+      resourceType: 'appointment',
+      resourceId: id,
+      metadata: { from: booking.startTime.toISOString(), to: newStart.toISOString() },
+    });
 
     return updated;
   }

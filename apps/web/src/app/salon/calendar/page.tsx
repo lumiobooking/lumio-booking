@@ -216,9 +216,9 @@ function Inner() {
   const monthLabel = view.toLocaleString(locale, { month: 'long', year: 'numeric' });
   const name = (c: { firstName: string; lastName?: string | null } | null) => (c ? c.firstName : '');
 
-  async function action(id: string, path: string) {
+  async function action(id: string, path: string, body?: unknown) {
     try {
-      await apiFetch(`/bookings/${id}/${path}`, { method: 'POST', token });
+      await apiFetch(`/bookings/${id}/${path}`, { method: 'POST', token, body });
       setSelected(null);
       await load();
     } catch (err) {
@@ -699,7 +699,7 @@ function segBtn(active: boolean): React.CSSProperties {
 }
 
 function BookingDetail({ booking: b, tz, onClose, onAction }: {
-  booking: Booking; tz?: string; onClose: () => void; onAction: (id: string, path: string) => void;
+  booking: Booking; tz?: string; onClose: () => void; onAction: (id: string, path: string, body?: unknown) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -736,6 +736,7 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         <DetailRow label={t('cal.dTechnician')} value={tech} />
+        {active && <QuickEdit b={b} onAction={onAction} />}
         {(() => { const sm = sourceMeta(b.source); return sm ? <DetailRow label={t('cal.dSource')} value={`${sm.icon} ${t(sm.key)}`} /> : null; })()}
         {(() => { const dm = deviceMeta(b.device); return dm ? <DetailRow label={t('cal.dDevice')} value={`${dm.icon} ${t(dm.key)}`} /> : null; })()}
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
@@ -774,6 +775,42 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
         )}
       </div>
     </>
+  );
+}
+
+// Inline quick edit inside the details drawer: move the booking to a new
+// date/time (duration kept, conflicts re-checked server-side) or hand it to a
+// different technician — one click each, no extra screens.
+function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
+  const { token } = useAuth();
+  const { lang } = useLang();
+  const [staff, setStaff] = useState<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>([]);
+  const [staffId, setStaffId] = useState('');
+  const [when, setWhen] = useState(() => {
+    const d = new Date(b.startTime);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>('/staff', { token })
+      .then((list) => setStaff(list.filter((x) => x.isActive)))
+      .catch(() => undefined);
+  }, [token]);
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #1f2937', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...ui.input, padding: '6px 8px', flex: 1, minWidth: 0 }} />
+        <button onClick={() => onAction(b.id, 'reschedule', { startTime: new Date(when).toISOString() })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <select value={staffId} onChange={(e) => setStaffId(e.target.value)} style={{ ...ui.input, padding: '6px 8px', flex: 1, minWidth: 0 }}>
+          <option value="">{tr('bk.changeStaff', lang)}</option>
+          {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
+        </select>
+        <button disabled={!staffId} onClick={() => staffId && onAction(b.id, 'assign', { staffId })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.change', lang)}</button>
+      </div>
+    </div>
   );
 }
 

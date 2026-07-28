@@ -67,4 +67,9 @@ export class MessengerController {
   clearReviewData(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.clearReviewData(user);
   }
+
+  @Post('clear-conversations')
+  clearConversations(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.clearAllConversations(user);
+  }
 }

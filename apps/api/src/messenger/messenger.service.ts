@@ -265,6 +265,16 @@ export class MessengerService {
     return { ok: true };
   }
 
+  /** Danger zone (salon admin): delete ALL Messenger conversation history for
+   *  this tenant — used to start a clean App-Review recording. The Facebook
+   *  connection, tokens, webhook subscription and bot settings are untouched. */
+  async clearAllConversations(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const res = await this.prisma.messengerThread.deleteMany({ where: { tenantId } });
+    await this.audit(tenantId, 'messenger.conversations_cleared');
+    return { ok: true as const, removed: res.count };
+  }
+
   /** Remove ONLY Meta-review test turns (content containing "META-REVIEW-") from
    *  this tenant's threads. Real customer messages, threads, tokens and the
    *  Facebook connection are untouched. */

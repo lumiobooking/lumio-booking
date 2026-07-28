@@ -318,6 +318,16 @@ function Inner() {
       await silentRefresh();
     } catch (e) { setError(e instanceof Error ? e.message : 'Clear failed'); }
   }
+  async function clearAllConvos() {
+    if (!token) return;
+    if (!window.confirm('Delete ALL Messenger conversations for this salon? This clears the entire Activity log and conversation list so you can start a fresh recording. The Facebook connection, webhook and bot settings are kept.')) return;
+    try {
+      await apiFetch('/messenger/clear-conversations', { method: 'POST', token });
+      setReviewNotice('All conversations cleared — you have a clean slate.');
+      setTimeout(() => setReviewNotice(null), 5000);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Clear failed'); }
+  }
   function copy(text: string, key: string) {
     try { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(''), 1500); } catch { /* ignore */ }
   }
@@ -424,6 +434,9 @@ function Inner() {
         </div>
       )}
 
+      {/* Evidence blocks appear only once a Page is connected — a fresh page
+          starts with just the Connect card, then these light up on connect. */}
+      {c.connected && <>
       {/* Send a test message — a real user-initiated Send API call from the app UI */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('sendTestTitle')}</div>
@@ -480,6 +493,7 @@ function Inner() {
             <button onClick={genReviewId} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>Generate new review ID</button>
             {reviewId && <button onClick={() => copy(reviewId, 'rid')} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{copied === 'rid' ? '✓' : 'Copy'}</button>}
             <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: '#fca5a5', borderColor: '#7f1d1d' }}>Clear review test data</button>
+            <button onClick={clearAllConvos} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: '#fca5a5', borderColor: '#7f1d1d' }}>Clear ALL conversations</button>
             {reviewNotice && <span style={{ color: '#22c55e' }}>{reviewNotice}</span>}
           </div>
         )}
@@ -508,6 +522,8 @@ function Inner() {
           </div>
         )}
       </div>
+
+      </>}
 
       {/* Webhook manual setup — advanced. The app auto-subscribes the Page on connect. */}
       <div style={{ ...ui.card, marginBottom: 16 }}>

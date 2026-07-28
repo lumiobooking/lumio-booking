@@ -44,6 +44,38 @@ Trang **Messenger** (Salon admin) giờ có đủ 4 khối bằng chứng để 
 
 ---
 
+## 2b. RESET VỀ TRẠNG THÁI SẠCH (làm ngay trước khi quay)
+
+Mục tiêu: trang Messenger trông như salon mới tinh — không dữ liệu test cũ, không tiếng Việt lẫn lộn.
+
+1. Deploy bản mới nhất (`lumio-api` + `lumio-web`) → hard refresh.
+2. Chuyển giao diện sang **EN**.
+3. Trang Messenger → khối **Messenger activity** → tick **Meta Review Mode** → bấm **Clear ALL conversations** → xác nhận. (Xóa TOÀN BỘ hội thoại + activity của salon này; kết nối Facebook, webhook, cấu hình bot GIỮ NGUYÊN.)
+4. Bấm **Disconnect** ở khối Connect (để video bắt đầu từ "Not connected"). Sau khi disconnect, các khối Send test / Activity **tự ẩn** — trang chỉ còn nút Connect: đúng cảnh mở đầu.
+5. Đóng tab thừa, tắt notification máy tính, mở sẵn Messenger trên điện thoại của tài khoản KHÁCH.
+6. Bắt đầu quay theo kịch bản mục 4. Khi Connect xong, các khối bằng chứng tự xuất hiện — chi tiết này quay lên rất thuyết phục.
+7. Sau khi Connect, bật lại **Meta Review Mode** + bấm **Generate new review ID** → dùng mã đó trong MỌI tin nhắn của video.
+
+---
+
+## 2c. BẢNG ĐỐI CHIẾU — từng yêu cầu Meta đã từ chối ↔ tính năng hiện có
+
+| # | Meta yêu cầu (nguyên văn rejection) | Đã có trong hệ thống | Quay ở cảnh |
+|---|---|---|---|
+| 1 | The complete Meta login flow | Nút Connect with Facebook → OAuth thật | A1–A2 |
+| 2 | A user granting app access to the permission | Màn chọn Page + 4 quyền hiển thị | A3 |
+| 3 | (metadata) where your app subscribes to Page events | Tự gọi `POST /{page-id}/subscribed_apps` khi connect + thông báo 2 dòng "connected + subscribed" + khối Connection details đọc live `GET /subscribed_apps` → Webhook: Active + events | A4, B1 |
+| 4 | (metadata) a sample webhook event arriving in your app, tied to the same Page | Messenger Activity: dòng `Page: <tên>`, Incoming + tên khách + nội dung + Received + timestamp giây; tự cập nhật (polling 8s) + nút Refresh activity | B2–B3 |
+| 5 | (messaging) asset selection (Page visible) | Connection details (Page name + ID) + "Sending as: <Page>" + Recipient (tên khách, Last message) | C1 |
+| 6 | (messaging) a live send action from your app | Nút Send message → "Sending…" → gọi thật `POST /me/messages` → "Message sent successfully · Status: Sent · giờ" + dòng Outgoing/Sent highlight; lỗi → Failed, giữ nội dung | C2 |
+| 7 | (messaging) the delivered message in the native client | Quay app Messenger điện thoại nhận đúng câu | C3 |
+| 8 | Use English as the app UI language, captions & tooltips | Toggle EN + caption tiếng Anh từng cảnh trong kịch bản | Toàn video |
+| 9 | Server-to-server / system user token? | KHÔNG — Facebook Login frontend, luồng hiển thị đầy đủ (ghi rõ trong Notes) | Notes |
+
+Hỗ trợ quay sạch: **Meta Review Mode** (chỉ hiện tin `META-REVIEW-`), **Review Test ID** (Generate/Copy), **Clear review test data**, **Clear ALL conversations**.
+
+---
+
 ## 3. Chuẩn bị trước khi quay (checklist)
 
 - [ ] **Deploy** `lumio-api` + `lumio-web`, hard-refresh trang Messenger.
@@ -54,6 +86,7 @@ Trang **Messenger** (Salon admin) giờ có đủ 4 khối bằng chứng để 
 - [ ] Cách đưa màn điện thoại vào video: **phản chiếu màn hình** lên máy tính (iPhone: QuickTime/AirPlay · Android: scrcpy) hoặc **quay trực tiếp điện thoại** rõ nét trong cùng video.
 - [ ] Phần mềm quay màn hình: **Loom / OBS / QuickTime** (Mac) — quay **1080p**, có thể quay kèm màn điện thoại (AirPlay/scrcpy) hoặc quay điện thoại bằng camera.
 - [ ] Chuẩn bị **caption tiếng Anh** (chữ overlay). Có thể dùng CapCut, Descript, hoặc thêm text ngay khi quay bằng cách hiện chú thích trên màn.
+- [ ] Thêm tài khoản KHÁCH test vào **Meta App → App Roles → Testers** (để app đọc được TÊN khách khi chưa duyệt quyền; không có role sẽ hiện PSID).
 - [ ] Đăng nhập **admin Lumio**, mở trang **Messenger**, sẵn sàng.
 
 > 💡 Reviewer đọc caption tiếng Anh. Nếu không tiện làm caption, **thuyết minh bằng giọng tiếng Anh** cũng được, nhưng **caption chữ an toàn hơn** vì rõ ràng và không phụ thuộc âm thanh.

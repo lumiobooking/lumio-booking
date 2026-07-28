@@ -117,7 +117,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
   sendMsgPh: { vi: 'vd: Dạ em xác nhận lịch của anh/chị ạ.', en: 'e.g. Hi! Confirming your appointment is booked.' },
   sendMessageBtn: { vi: 'Gửi tin nhắn', en: 'Send message' },
   sendingMsg: { vi: 'Đang gửi…', en: 'Sending…' },
-  sentOk: { vi: 'Đã gửi ✓', en: 'Message sent ✓' },
+  sentOk: { vi: 'Gửi thành công · Trạng thái: Sent', en: 'Message sent successfully · Status: Sent' },
+  refreshActivity: { vi: 'Làm mới', en: 'Refresh activity' },
   noRecipient: { vi: 'Chưa có cuộc trò chuyện — khách phải nhắn Page trước (cửa sổ 24 giờ).', en: 'No conversation yet \u2014 a customer must message the Page first (24-hour window).' },
   activityTitle: { vi: 'Hoạt động Messenger', en: 'Messenger activity' },
   noActivity: { vi: 'Chưa có hoạt động.', en: 'No activity yet.' },
@@ -163,6 +164,10 @@ function Inner() {
   const [sendMsg, setSendMsg] = useState('');
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
+  const [sentAtIso, setSentAtIso] = useState<string | null>(null);   // exact row to highlight
+  const [reviewMode, setReviewMode] = useState(false);               // Meta Review Mode (filter META-REVIEW-)
+  const [reviewId, setReviewId] = useState('');                      // current Review Test ID
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
 
   // Seed the checklist from stored facts once the config loads: every predefined
   // row shows (ticked/filled if saved), plus any custom rows the salon added.
@@ -244,6 +249,22 @@ function Inner() {
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
+  // Lightweight auto-refresh: keeps Activity/threads current without reloading
+  // the page (reviewer sees new webhook events appear on their own).
+  const silentRefresh = useCallback(async () => {
+    if (!token) return;
+    const [th, act] = await Promise.all([
+      apiFetch<MThread[]>('/messenger/threads', { token }).catch(() => null),
+      apiFetch<ActivityRes>('/messenger/activity', { token }).catch(() => null),
+    ]);
+    if (th) setThreads(th);
+    if (act) { setActivity(act.events || []); setActivityPage(act.page || ''); }
+  }, [token]);
+  useEffect(() => {
+    const id = setInterval(silentRefresh, 8000);
+    return () => clearInterval(id);
+  }, [silentRefresh]);
+
   async function save(patch: Partial<MConf> & { pageToken?: string }) {
     if (!c) return;
     setSaving(true); setError(null); setSaved(false);
@@ -272,11 +293,30 @@ function Inner() {
     try {
       const res = await apiFetch<{ ok: boolean; at?: string }>('/messenger/send', { method: 'POST', token, body: { threadId: sendTo || undefined, text: sendMsg.trim() } });
       setSendResult('ok'); setSendMsg('');
-      setSentAt(res.at ? new Date(res.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null);
+      setSentAtIso(res.at || null);
+      setSentAt(res.at ? new Date(res.at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null);
       await load();
     } catch (e) {
       setSendResult(e instanceof Error ? e.message : 'Send failed');
     } finally { setSending(false); }
+  }
+  // Meta Review Mode helpers — English-only by design (reviewer-facing).
+  function genReviewId() {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const id = `META-REVIEW-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+    setReviewId(id);
+    if (!sendMsg.trim()) setSendMsg(`${id} — `);
+  }
+  async function clearReview() {
+    if (!token) return;
+    if (!window.confirm('This will remove only Meta Review test activity. Customer conversations will not be deleted.')) return;
+    try {
+      await apiFetch('/messenger/clear-review-data', { method: 'POST', token });
+      setReviewNotice('Meta Review test activity cleared successfully.');
+      setTimeout(() => setReviewNotice(null), 5000);
+      await silentRefresh();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Clear failed'); }
   }
   function copy(text: string, key: string) {
     try { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(''), 1500); } catch { /* ignore */ }
@@ -285,6 +325,9 @@ function Inner() {
   if (loading || !c) {
     return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: '#94a3b8' }}>{t('loading')}</p></section>;
   }
+
+  // Meta Review Mode: show only reviewer-tagged messages (real data stays in DB).
+  const shownActivity = reviewMode ? activity.filter((e) => e.text.includes('META-REVIEW-')) : activity;
 
   return (
     <section style={{ maxWidth: 820 }}>
@@ -393,11 +436,17 @@ function Inner() {
               {t('sendingAs')}: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{wh?.pageName || c.pageName || '—'}</span>
             </div>
             <label style={ui.label}>{t('recipient')}</label>
-            <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 10 }}>
+            <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 4 }}>
               {threads.map((th) => (
-                <option key={th.id} value={th.id}>{th.senderName || `PSID …${th.senderId.slice(-6)}`} — {(th.lastText || '').slice(0, 40) || 'conversation'}</option>
+                <option key={th.id} value={th.id}>{th.senderName || `PSID …${th.senderId.slice(-6)}`}</option>
               ))}
             </select>
+            {(() => {
+              const cur = threads.find((x) => x.id === sendTo) || threads[0];
+              return cur?.lastText
+                ? <div style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px' }}>Last message: {cur.lastText.slice(0, 90)}</div>
+                : <div style={{ marginBottom: 10 }} />;
+            })()}
             <label style={ui.label}>{t('messageLabel')}</label>
             <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -411,16 +460,33 @@ function Inner() {
 
       {/* Messenger activity — chronological in/out log (App Review evidence) */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>{t('activityTitle')}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>{t('activityTitle')}</div>
+          <button onClick={silentRefresh} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{t('refreshActivity')}</button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, color: '#e2e8f0', marginLeft: 'auto' }}>
+            <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
+            Meta Review Mode
+          </label>
+        </div>
         {(activityPage || wh?.pageName || c.pageName) && (
           <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
             Page: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
           </div>
         )}
-        {activity.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noActivity')}</p>
+        {reviewMode && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12.5 }}>
+            <span style={{ color: '#94a3b8' }}>Review Test ID:</span>
+            <code style={{ color: '#e2e8f0', fontWeight: 700 }}>{reviewId || '—'}</code>
+            <button onClick={genReviewId} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>Generate new review ID</button>
+            {reviewId && <button onClick={() => copy(reviewId, 'rid')} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{copied === 'rid' ? '✓' : 'Copy'}</button>}
+            <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: '#fca5a5', borderColor: '#7f1d1d' }}>Clear review test data</button>
+            {reviewNotice && <span style={{ color: '#22c55e' }}>{reviewNotice}</span>}
+          </div>
+        )}
+        {shownActivity.length === 0 ? (
+          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{reviewMode ? 'No review activity yet — send a message containing the Review Test ID.' : t('noActivity')}</p>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
@@ -428,9 +494,9 @@ function Inner() {
                 </tr>
               </thead>
               <tbody>
-                {activity.map((ev, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #1e293b' }}>
-                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                {shownActivity.map((ev, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #1e293b', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                     <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
                     <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
                     <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
@@ -551,7 +617,7 @@ function Inner() {
   );
 }
 
-const thc: React.CSSProperties = { padding: '6px 10px', fontWeight: 600 };
+const thc: React.CSSProperties = { padding: '6px 10px', fontWeight: 600, position: 'sticky', top: 0, background: '#1e293b', zIndex: 1 };
 const tdc: React.CSSProperties = { padding: '6px 10px', color: '#cbd5e1', verticalAlign: 'top' };
 
 function Field({ label, value, mono, good, warn }: { label: string; value: string; mono?: boolean; good?: boolean; warn?: boolean }) {

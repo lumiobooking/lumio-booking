@@ -265,6 +265,35 @@ export class MessengerService {
     return { ok: true };
   }
 
+  /** Remove ONLY Meta-review test turns (content containing "META-REVIEW-") from
+   *  this tenant's threads. Real customer messages, threads, tokens and the
+   *  Facebook connection are untouched. */
+  async clearReviewData(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const rows = await this.prisma.messengerThread.findMany({
+      where: { tenantId }, select: { id: true, history: true, lastText: true },
+    });
+    let removed = 0;
+    for (const r of rows) {
+      const hist = (Array.isArray(r.history) ? r.history : []) as Turn[];
+      const kept = hist.filter((t) => !String((t as { content?: unknown }).content ?? '').includes('META-REVIEW-'));
+      if (kept.length === hist.length) continue;
+      removed += hist.length - kept.length;
+      const lastUser = [...kept].reverse().find((t) => t.role === 'user');
+      await this.prisma.messengerThread.update({
+        where: { id: r.id },
+        data: {
+          history: kept as unknown as Prisma.InputJsonValue,
+          lastText: r.lastText && r.lastText.includes('META-REVIEW-')
+            ? (lastUser ? String(lastUser.content).slice(0, 300) : null)
+            : r.lastText,
+        },
+      });
+    }
+    await this.audit(tenantId, 'messenger.review_data_cleared');
+    return { ok: true as const, removed };
+  }
+
   /** Manually send a message from the connected Page to a conversation. The
    *  salon (or a Meta reviewer) triggers a REAL Send API call from the app UI —
    *  this is the user-initiated "live send" the Messenger permission requires. */
@@ -295,14 +324,15 @@ export class MessengerService {
       }).catch(() => undefined);
       throw new BadRequestException(out.error?.message || 'Facebook rejected the message (the 24h messaging window may have closed).');
     }
+    const sentAtIso = new Date().toISOString(); // single timestamp: history row === API response
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-    const next = [...history, { role: 'assistant', content: body, manual: true, at: new Date().toISOString() }].slice(-MAX_TURNS);
+    const next = [...history, { role: 'assistant', content: body, manual: true, at: sentAtIso, messageId: out.message_id || null }].slice(-MAX_TURNS);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       data: { history: next as unknown as Prisma.InputJsonValue, lastText: thread.lastText ?? null },
     });
     await this.audit(tenantId, 'messenger.manual_send');
-    return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: new Date().toISOString() };
+    return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso };
   }
 
   /** Verify the connected Page is subscribed to our app's webhook (the
@@ -392,14 +422,14 @@ export class MessengerService {
         const senderId = ev.sender?.id;
         const text = ev.message?.text;
         if (!senderId || !text || ev.message?.is_echo) continue;
-        await this.handleMessage(entryId, senderId, text).catch((e) =>
+        await this.handleMessage(entryId, senderId, text, ev.timestamp).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
       }
     }
   }
 
-  private async handleMessage(entryId: string, senderId: string, text: string): Promise<void> {
+  private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number): Promise<void> {
     // Route by Facebook Page id OR the linked Instagram account id.
     const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
     if (!conn || !conn.enabled || !conn.pageToken) return;
@@ -426,8 +456,10 @@ export class MessengerService {
       reply = 'Thanks for your message! A team member will get back to you shortly. 💕';
     }
     await this.sendText(conn.pageToken, senderId, reply);
-    const now = new Date().toISOString();
-    const nextHistory = [...history, { role: 'user', content: text, at: now }, { role: 'assistant', content: reply, at: now }].slice(-MAX_TURNS);
+    // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
+    const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+    const outAt = new Date().toISOString();
+    const nextHistory = [...history, { role: 'user', content: text, at: inAt }, { role: 'assistant', content: reply, at: outAt }].slice(-MAX_TURNS);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       data: { history: nextHistory as unknown as Prisma.InputJsonValue },
@@ -642,4 +674,5 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
 interface MessagingEvent {
   sender?: { id?: string };
   message?: { text?: string; is_echo?: boolean };
+  timestamp?: number; // ms epoch set by Meta on the webhook event
 }

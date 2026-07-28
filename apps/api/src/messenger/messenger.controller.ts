@@ -62,4 +62,9 @@ export class MessengerController {
   send(@CurrentUser() user: AuthenticatedUser, @Body() dto: SendTestDto) {
     return this.svc.sendManual(user, dto.threadId, dto.text);
   }
+
+  @Post('clear-review-data')
+  clearReviewData(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.clearReviewData(user);
+  }
 }

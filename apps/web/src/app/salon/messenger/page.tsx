@@ -593,7 +593,9 @@ function Inner() {
         )}
       </div>
 
-      {/* Conversations */}
+      {/* Conversations — hidden until a Page is connected, so a fresh page
+          shows nothing but the Connect card (clean App-Review opening shot). */}
+      {c.connected && (
       <div style={{ ...ui.card }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
         {threads.length === 0 ? (
@@ -629,6 +631,7 @@ function Inner() {
           );
         })()}
       </div>
+      )}
     </section>
   );
 }

@@ -51,7 +51,7 @@ Mục tiêu: trang Messenger trông như salon mới tinh — không dữ liệu
 1. Deploy bản mới nhất (`lumio-api` + `lumio-web`) → hard refresh.
 2. Chuyển giao diện sang **EN**.
 3. Trang Messenger → khối **Messenger activity** → tick **Meta Review Mode** → bấm **Clear ALL conversations** → xác nhận. (Xóa TOÀN BỘ hội thoại + activity của salon này; kết nối Facebook, webhook, cấu hình bot GIỮ NGUYÊN.)
-4. Bấm **Disconnect** ở khối Connect (để video bắt đầu từ "Not connected"). Sau khi disconnect, các khối Send test / Activity **tự ẩn** — trang chỉ còn nút Connect: đúng cảnh mở đầu.
+4. Bấm **Disconnect** ở khối Connect (để video bắt đầu từ "Not connected"). Sau khi disconnect, các khối Send test / Activity / **Conversations** đều **tự ẩn** — trang chỉ còn nút Connect + cấu hình bot trống: đúng cảnh mở đầu.
 5. Đóng tab thừa, tắt notification máy tính, mở sẵn Messenger trên điện thoại của tài khoản KHÁCH.
 6. Bắt đầu quay theo kịch bản mục 4. Khi Connect xong, các khối bằng chứng tự xuất hiện — chi tiết này quay lên rất thuyết phục.
 7. Sau khi Connect, bật lại **Meta Review Mode** + bấm **Generate new review ID** → dùng mã đó trong MỌI tin nhắn của video.

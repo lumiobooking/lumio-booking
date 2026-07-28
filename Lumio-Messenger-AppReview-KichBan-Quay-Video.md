@@ -50,7 +50,8 @@ Trang **Messenger** (Salon admin) giờ có đủ 4 khối bằng chứng để 
 - [ ] Bấm **Reconnect Facebook** MỘT lần sau deploy — để hệ thống lưu **tên Page** (Lumio Booking) và tên khách vào kết nối (kết nối cũ tạo trước bản cập nhật nên chưa có tên).
 - [ ] **Đổi giao diện app sang tiếng Anh** (English) — Meta bắt buộc UI tiếng Anh trong video. Dùng nút chuyển ngôn ngữ (VI → EN).
 - [ ] **1 Page test** (ví dụ *Lumio Booking*) đã bấm **Connect with Facebook** → hiện Status: Connected + Webhook: Active.
-- [ ] **1 tài khoản Facebook khác** đóng vai KHÁCH (test user), đã cài **Messenger** trên điện thoại hoặc mở **messenger.com** trên 1 cửa sổ riêng.
+- [ ] **1 tài khoản Facebook khác** đóng vai KHÁCH (test user), dùng **ứng dụng Messenger trên ĐIỆN THOẠI** (native client — reviewer yêu cầu; Messenger trên trình duyệt là phương án dự phòng, yếu hơn).
+- [ ] Cách đưa màn điện thoại vào video: **phản chiếu màn hình** lên máy tính (iPhone: QuickTime/AirPlay · Android: scrcpy) hoặc **quay trực tiếp điện thoại** rõ nét trong cùng video.
 - [ ] Phần mềm quay màn hình: **Loom / OBS / QuickTime** (Mac) — quay **1080p**, có thể quay kèm màn điện thoại (AirPlay/scrcpy) hoặc quay điện thoại bằng camera.
 - [ ] Chuẩn bị **caption tiếng Anh** (chữ overlay). Có thể dùng CapCut, Descript, hoặc thêm text ngay khi quay bằng cách hiện chú thích trên màn.
 - [ ] Đăng nhập **admin Lumio**, mở trang **Messenger**, sẵn sàng.
@@ -90,7 +91,7 @@ Quay **một video liền mạch 2–4 phút**, chia 3 phần. Mỗi cảnh có 
 - [Caption] `The app subscribed this Page to webhook events via POST /{page-id}/subscribed_apps. Status is read live from GET /{page-id}/subscribed_apps.`
 
 **Cảnh B2 — Tạo một sự kiện webhook thật**
-- [Việc cần làm] Chuyển sang **điện thoại/messenger.com của tài khoản KHÁCH**. Nhắn cho Page (Lumio Booking) một tin, ví dụ: `META REVIEW INBOUND — hello Lumio`. Quay rõ tin này gửi tới **đúng Page** đã setup.
+- [Việc cần làm] Chuyển sang **ứng dụng Messenger trên điện thoại của tài khoản KHÁCH** (ưu tiên native app). Nhắn cho Page (Lumio Booking) một tin, ví dụ: `META REVIEW INBOUND — hello Lumio`. Quay rõ tin này gửi tới **đúng Page** đã setup.
 - [Caption] `A test user sends a message to the same Page from Messenger — this triggers a "messages" webhook event`
 
 **Cảnh B3 — Sự kiện đi vào ứng dụng**
@@ -112,7 +113,7 @@ Quay **một video liền mạch 2–4 phút**, chia 3 phần. Mỗi cảnh có 
 - [Caption] `Step 2 — Live send action from the app UI: clicking "Send message" calls POST /me/messages`
 
 **Cảnh C3 — Tin xuất hiện trong Messenger (native client)**
-- [Việc cần làm] Chuyển sang **điện thoại/messenger.com của khách test**. Quay rõ **đúng câu vừa gửi** xuất hiện trong cuộc trò chuyện với Page, gửi từ **Lumio Booking**.
+- [Việc cần làm] Chuyển sang **ứng dụng Messenger trên điện thoại của khách test** (native client — bắt buộc cho cảnh này). Quay rõ **đúng câu vừa gửi** xuất hiện trong cuộc trò chuyện với Page, gửi từ **Lumio Booking**.
 - [Caption] `Step 3 — The same message is delivered in the native Messenger client, sent from the Page`
 
 **Cảnh C4 — Đối chiếu trong Activity**

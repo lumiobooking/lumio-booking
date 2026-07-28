@@ -272,7 +272,7 @@ function Inner() {
     try {
       const res = await apiFetch<{ ok: boolean; at?: string }>('/messenger/send', { method: 'POST', token, body: { threadId: sendTo || undefined, text: sendMsg.trim() } });
       setSendResult('ok'); setSendMsg('');
-      setSentAt(res.at ? new Date(res.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null);
+      setSentAt(res.at ? new Date(res.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null);
       await load();
     } catch (e) {
       setSendResult(e instanceof Error ? e.message : 'Send failed');
@@ -381,6 +381,68 @@ function Inner() {
         </div>
       )}
 
+      {/* Send a test message — a real user-initiated Send API call from the app UI */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('sendTestTitle')}</div>
+        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
+        {threads.length === 0 ? (
+          <p style={{ color: '#f59e0b', fontSize: 13 }}>{t('noRecipient')}</p>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10 }}>
+              {t('sendingAs')}: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{wh?.pageName || c.pageName || '—'}</span>
+            </div>
+            <label style={ui.label}>{t('recipient')}</label>
+            <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 10 }}>
+              {threads.map((th) => (
+                <option key={th.id} value={th.id}>{th.senderName || `PSID …${th.senderId.slice(-6)}`} — {(th.lastText || '').slice(0, 40) || 'conversation'}</option>
+              ))}
+            </select>
+            <label style={ui.label}>{t('messageLabel')}</label>
+            <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
+              {sendResult === 'ok' && <span style={{ color: '#22c55e', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
+              {sendResult && sendResult !== 'ok' && <span style={{ color: '#fca5a5', fontSize: 12.5 }}>{sendResult}</span>}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Messenger activity — chronological in/out log (App Review evidence) */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>{t('activityTitle')}</div>
+        {(activityPage || wh?.pageName || c.pageName) && (
+          <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
+            Page: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
+          </div>
+        )}
+        {activity.length === 0 ? (
+          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noActivity')}</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+                  <th style={thc}>{t('colTime')}</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activity.map((ev, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #1e293b' }}>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
+                    <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
+                    <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
+                    <td style={{ ...tdc, color: ev.status === 'Failed' ? '#fca5a5' : ev.status === 'Received' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Webhook manual setup — advanced. The app auto-subscribes the Page on connect. */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <button onClick={() => setShowWebhook((v) => !v)} style={{ ...ghost, fontSize: 12.5 }}>
@@ -446,68 +508,6 @@ function Inner() {
               {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
             </div>
           </>
-        )}
-      </div>
-
-      {/* Send a test message — a real user-initiated Send API call from the app UI */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('sendTestTitle')}</div>
-        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
-        {threads.length === 0 ? (
-          <p style={{ color: '#f59e0b', fontSize: 13 }}>{t('noRecipient')}</p>
-        ) : (
-          <>
-            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10 }}>
-              {t('sendingAs')}: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{wh?.pageName || c.pageName || '—'}</span>
-            </div>
-            <label style={ui.label}>{t('recipient')}</label>
-            <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 10 }}>
-              {threads.map((th) => (
-                <option key={th.id} value={th.id}>{th.senderName || `PSID …${th.senderId.slice(-6)}`} — {(th.lastText || '').slice(0, 40) || 'conversation'}</option>
-              ))}
-            </select>
-            <label style={ui.label}>{t('messageLabel')}</label>
-            <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
-              {sendResult === 'ok' && <span style={{ color: '#22c55e', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
-              {sendResult && sendResult !== 'ok' && <span style={{ color: '#fca5a5', fontSize: 12.5 }}>{sendResult}</span>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Messenger activity — chronological in/out log (App Review evidence) */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>{t('activityTitle')}</div>
-        {(activityPage || wh?.pageName || c.pageName) && (
-          <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
-            Page: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
-          </div>
-        )}
-        {activity.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noActivity')}</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-              <thead>
-                <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
-                  <th style={thc}>{t('colTime')}</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activity.map((ev, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #1e293b' }}>
-                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                    <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
-                    <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
-                    <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
-                    <td style={{ ...tdc, color: ev.status === 'Failed' ? '#fca5a5' : ev.status === 'Received' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
 

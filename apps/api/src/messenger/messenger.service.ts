@@ -264,6 +264,104 @@ export class MessengerService {
     return { ok: true };
   }
 
+  /** Manually send a message from the connected Page to a conversation. The
+   *  salon (or a Meta reviewer) triggers a REAL Send API call from the app UI —
+   *  this is the user-initiated "live send" the Messenger permission requires. */
+  async sendManual(user: AuthenticatedUser, threadId: string | undefined, text: string) {
+    const tenantId = this.tenantId(user);
+    const body = (text || '').trim();
+    if (!body) throw new BadRequestException('Message text is required.');
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+    if (!conn?.pageId || !conn?.pageToken) throw new BadRequestException('Connect a Facebook Page first.');
+    const thread = threadId
+      ? await this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId } })
+      : await this.prisma.messengerThread.findFirst({ where: { tenantId }, orderBy: { updatedAt: 'desc' } });
+    if (!thread) throw new NotFoundException('No conversation yet — the customer must message the Page first (24h messaging window).');
+
+    const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(conn.pageToken)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ recipient: { id: thread.senderId }, messaging_type: 'RESPONSE', message: { text: body.slice(0, 1900) } }),
+    });
+    const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
+    if (!res.ok || out.error) {
+      throw new BadRequestException(out.error?.message || 'Facebook rejected the message (the 24h messaging window may have closed).');
+    }
+    const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+    const next = [...history, { role: 'assistant', content: body, manual: true, at: new Date().toISOString() }].slice(-MAX_TURNS);
+    await this.prisma.messengerThread.update({
+      where: { id: thread.id },
+      data: { history: next as unknown as Prisma.InputJsonValue, lastText: thread.lastText ?? null },
+    });
+    await this.audit(tenantId, 'messenger.manual_send');
+    return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: new Date().toISOString() };
+  }
+
+  /** Verify the connected Page is subscribed to our app's webhook (the
+   *  pages_manage_metadata use case) and return the Page name + subscribed fields.
+   *  This reads GET /{page-id}/subscribed_apps straight from the Graph API so the
+   *  UI shows the real subscription state, not a hard-coded label. */
+  async webhookStatus(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const c = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+    if (!c?.pageId || !c?.pageToken) return { connected: false as const };
+    let pageName = '';
+    let subscribed = false;
+    let fields: string[] = [];
+    try {
+      const nameRes = await fetch(`${GRAPH}/${c.pageId}?fields=name&access_token=${encodeURIComponent(c.pageToken)}`);
+      const nameJson = (await nameRes.json().catch(() => ({}))) as { name?: string };
+      pageName = nameJson.name || '';
+      const subRes = await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageToken)}`);
+      const subJson = (await subRes.json().catch(() => ({}))) as { data?: { subscribed_fields?: string[] }[] };
+      const app = (subJson.data || [])[0];
+      subscribed = Boolean(app);
+      fields = app?.subscribed_fields || [];
+    } catch (e) {
+      this.logger.warn(`webhook status check failed: ${String(e).slice(0, 120)}`);
+    }
+    return {
+      connected: true as const,
+      pageId: c.pageId,
+      pageName,
+      subscribed,
+      fields,
+      verifiedAt: new Date().toISOString(),
+      webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
+    };
+  }
+
+  /** Flatten recent conversation turns into a chronological activity log
+   *  (incoming customer messages + outgoing app replies, newest first). Powers
+   *  the "Messenger Activity" evidence block a reviewer records. */
+  async activity(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const rows = await this.prisma.messengerThread.findMany({
+      where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 20,
+      select: { id: true, senderId: true, history: true, updatedAt: true },
+    });
+    type Ev = { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean };
+    const events: Ev[] = [];
+    for (const r of rows) {
+      const hist = (Array.isArray(r.history) ? r.history : []) as (Turn & { manual?: boolean; at?: string })[];
+      const shortId = `PSID …${String(r.senderId).slice(-6)}`;
+      for (const turn of hist) {
+        const isIn = turn.role === 'user';
+        events.push({
+          threadId: r.id,
+          user: shortId,
+          direction: isIn ? 'in' : 'out',
+          text: String(turn.content || '').slice(0, 300),
+          status: isIn ? 'Received' : (turn.manual ? 'Sent (manual)' : 'Sent (bot)'),
+          at: turn.at || r.updatedAt.toISOString(),
+          manual: Boolean(turn.manual),
+        });
+      }
+    }
+    events.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    return events.slice(0, 60);
+  }
+
   // ---- webhook -------------------------------------------------------------
   verify(mode: string, token: string, challenge: string): string | null {
     if (mode === 'subscribe' && token === this.verifyToken()) return challenge;

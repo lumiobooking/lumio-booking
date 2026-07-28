@@ -954,6 +954,28 @@ export class MarketingService {
   }
 
   /**
+   * Manually entered Google Business Profile reviews for a month (rating, total,
+   * new this month, bad reviews). Merged into the gbp snapshot's raw WITHOUT
+   * overwriting the synced Maps metrics. Used until the Google reviews API is on.
+   */
+  async saveGbpReviews(user: AuthenticatedUser, dto: { month: string; rating?: number | null; totalReviews?: number | null; newReviews?: number | null; badReviews?: number | null; tenantId?: string }) {
+    const tenantId = this.tenantId(user, dto.tenantId);
+    if (!/^\d{4}-\d{2}$/.test(dto.month || '')) throw new BadRequestException('month must be YYYY-MM');
+    const n = (v: any) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+    const existing = await this.prisma.socialInsight.findUnique({ where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: dto.month } } });
+    const raw: any = (existing?.raw as any) ?? {};
+    raw.gbp = raw.gbp ?? {};
+    raw.gbp.reviews = { rating: n(dto.rating), count: n(dto.totalReviews), newThisMonth: n(dto.newReviews), badCount: n(dto.badReviews), manual: true };
+    await this.prisma.socialInsight.upsert({
+      where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: dto.month } },
+      create: { tenantId, platform: 'gbp', periodMonth: dto.month, raw, source: 'manual', syncedAt: new Date() },
+      update: { raw },
+    });
+    await this.audit(tenantId, user.userId, 'marketing.gbp.reviews', { month: dto.month });
+    return { ok: true, month: dto.month };
+  }
+
+  /**
    * Shared AGENCY credentials from env. Lumio Agency runs the ads for every
    * salon from its own Business Manager, so ONE token can read all managed ad
    * accounts. A salon connection then only needs the account id — no token

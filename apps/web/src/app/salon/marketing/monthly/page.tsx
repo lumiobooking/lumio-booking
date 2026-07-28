@@ -34,7 +34,7 @@ interface GbpData {
   keywords?: { keyword: string; count: number | null }[];
   vsPrev?: { impressions: SocialDelta | null; calls: SocialDelta | null; directions: SocialDelta | null; websiteClicks: SocialDelta | null; bookings: SocialDelta | null; conversations: SocialDelta | null };
   series?: { month: string; impressions: number | null; calls: number | null; directions: number | null; websiteClicks: number | null; bookings: number | null }[];
-  reviews?: { rating: number | null; count: number | null; recent?: { author: string; rating: number; comment: string; time?: string }[] } | null;
+  reviews?: { rating: number | null; count: number | null; newThisMonth?: number | null; badCount?: number | null; recent?: { author: string; rating: number; comment: string; time?: string }[] } | null;
 }
 interface PostRow { id: string; type: string; timestamp: string | null; permalink: string | null; thumbnail: string | null; caption: string | null; likes: number | null; comments: number | null; reach: number | null; views: number | null; saved: number | null; shares: number | null; interactions: number | null }
 interface SocialInsight {
@@ -78,6 +78,7 @@ function Inner() {
   const [loading, setLoading] = useState(true);
   const [salonName, setSalonName] = useState('');
   const [tt, setTt] = useState<{ followers: string; newFollowers: string; views: string; engagement: string; postsCount: string }>({ followers: '', newFollowers: '', views: '', engagement: '', postsCount: '' });
+  const [gr, setGr] = useState<{ rating: string; totalReviews: string; newReviews: string; badReviews: string }>({ rating: '', totalReviews: '', newReviews: '', badReviews: '' });
   const money = (c: number) => formatPrice(c, currency);
 
   const load = useCallback(async () => {
@@ -121,6 +122,8 @@ function Inner() {
   useEffect(() => {
     const t = (data?.socialInsights ?? []).find((x) => x.platform === 'tiktok');
     setTt(t ? { followers: t.followers?.toString() ?? '', newFollowers: t.newFollowers?.toString() ?? '', views: t.views?.toString() ?? '', engagement: t.engagement?.toString() ?? '', postsCount: t.postsCount?.toString() ?? '' } : { followers: '', newFollowers: '', views: '', engagement: '', postsCount: '' });
+    const gp = data?.gbp?.reviews;
+    setGr(gp ? { rating: gp.rating?.toString() ?? '', totalReviews: gp.count?.toString() ?? '', newReviews: gp.newThisMonth?.toString() ?? '', badReviews: gp.badCount?.toString() ?? '' } : { rating: '', totalReviews: '', newReviews: '', badReviews: '' });
   }, [data]);
   async function saveManualTt() {
     setBusy('ttmanual'); setMsg(null); setError(null);
@@ -128,6 +131,14 @@ function Inner() {
       const numOr = (v: string) => (v.trim() === '' ? null : Number(v));
       await apiFetch('/marketing/social-manual', { method: 'POST', token, body: { platform: 'tiktok', month, followers: numOr(tt.followers), newFollowers: numOr(tt.newFollowers), views: numOr(tt.views), engagement: numOr(tt.engagement), postsCount: numOr(tt.postsCount) } });
       setMsg(T('Đã lưu số liệu TikTok tháng ' + month + ' — bấm "Tạo báo cáo bằng AI" để phân tích.', 'TikTok numbers saved for ' + month + ' — click Generate to analyse.')); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
+  }
+  async function saveGbpReviews() {
+    setBusy('grev'); setMsg(null); setError(null);
+    try {
+      const numOr = (v: string) => (v.trim() === '' ? null : Number(v));
+      await apiFetch('/marketing/gbp-reviews', { method: 'POST', token, body: { month, rating: numOr(gr.rating), totalReviews: numOr(gr.totalReviews), newReviews: numOr(gr.newReviews), badReviews: numOr(gr.badReviews) } });
+      setMsg(T('Đã lưu đánh giá Google tháng ' + month + '.', 'Google reviews saved for ' + month + '.')); await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
   }
   async function saveSpend() {
@@ -223,6 +234,20 @@ function Inner() {
           ))}
         </div>
         <button onClick={saveManualTt} disabled={busy === 'ttmanual'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'ttmanual' ? '…' : T('Lưu số liệu TikTok', 'Save TikTok numbers')}</button>
+      </div>
+
+      {/* Google reviews manual entry — until the reviews API is on */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={cardTitle}>{T('Google — Đánh giá (nhập tay)', 'Google — Reviews (manual)')}</div>
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>{T('Lấy từ Google Business Profile: điểm sao trung bình, tổng số review, review MỚI trong tháng, review xấu (≤2★). Dùng tạm khi chưa bật API đánh giá Google.', 'From Google Business Profile: average rating, total reviews, NEW reviews this month, bad reviews (≤2★). Use until the Google reviews API is on.')}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+          {(([['rating', T('Điểm trung bình (vd 4.8)', 'Avg rating (e.g. 4.8)')], ['totalReviews', T('Tổng số review', 'Total reviews')], ['newReviews', T('Review mới trong tháng', 'New reviews this month')], ['badReviews', T('Review xấu (≤2★)', 'Bad reviews (≤2★)')]]) as [keyof typeof gr, string][]).map(([k, label]) => (
+            <label key={k} style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}
+              <input type="number" inputMode="decimal" value={gr[k]} onChange={(e) => setGr({ ...gr, [k]: e.target.value })} style={{ ...inp, marginTop: 4 }} />
+            </label>
+          ))}
+        </div>
+        <button onClick={saveGbpReviews} disabled={busy === 'grev'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'grev' ? '…' : T('Lưu đánh giá Google', 'Save Google reviews')}</button>
       </div>
 
       {/* Spend entry */}
@@ -576,9 +601,14 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const kpiRow = (label: string, cur: number | null | undefined) => (cur != null ? `<div style="display:flex;justify-content:space-between;font-size:11.5px;margin:3px 0"><span style="color:#475569">${esc(label)}</span><b style="color:#0f2a52">≥ ${fnum(up(cur))}</b></div>` : '');
     const kpiPanel = `${kpiRow(t('Lượt xem hồ sơ', 'Profile views'), g.impressions)}${kpiRow(t('Lượt gọi', 'Calls'), g.calls)}${kpiRow(t('Lượt chỉ đường', 'Directions'), g.directions)}${kpiRow(t('Lượt truy cập web', 'Website'), g.websiteClicks)}${kpiRow(t('Lượt đặt lịch', 'Bookings'), g.bookings)}` || '<div style="font-size:11px;color:#94a3b8">—</div>';
     const rv = g.reviews;
-    const reviewPanel = rv && rv.rating != null
-      ? `<div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:28px;font-weight:800;color:#0f2a52">${rv.rating}</div><div style="color:#f59e0b;font-size:15px">★★★★★</div><div style="font-size:11px;color:#64748b">(${fnum(rv.count)} ${t('đánh giá', 'reviews')})</div></div>${(rv.recent || []).slice(0, 3).map((r) => `<div style="border-top:1px solid #eef1f6;padding:5px 0;font-size:10.5px"><b>${esc(r.author || '')}</b> · <span style="color:#f59e0b">${'★'.repeat(r.rating || 0)}</span><div style="color:#475569">${esc((r.comment || '').slice(0, 90))}</div></div>`).join('')}`
-      : `<div style="font-size:11px;color:#94a3b8;line-height:1.6">${t('Đang thiết lập API đánh giá Google để tự kéo số sao + review mới nhất.', 'Setting up the Google reviews API to auto-pull rating + latest reviews.')}</div>`;
+    const stars = (n: number) => '★'.repeat(Math.max(0, Math.min(5, Math.round(n)))) + '☆'.repeat(Math.max(0, 5 - Math.round(n)));
+    const reviewPanel = rv && (rv.rating != null || rv.count != null)
+      ? `<div style="display:flex;align-items:center;gap:8px"><div style="font-size:30px;font-weight:800;color:#0f2a52">${rv.rating ?? '—'}</div><div><div style="color:#f59e0b;font-size:15px;line-height:1">${stars(rv.rating || 0)}</div><div style="font-size:10.5px;color:#64748b">${fnum(rv.count)} ${t('đánh giá', 'reviews')}</div></div></div>
+        <div style="display:flex;gap:18px;margin-top:10px;border-top:1px solid #eef1f6;padding-top:8px">
+          <div><div style="font-size:19px;font-weight:800;color:#16A34A">${rv.newThisMonth != null ? '+' + fnum(rv.newThisMonth) : '—'}</div><div style="font-size:10px;color:#64748b">${t('review mới tháng này', 'new this month')}</div></div>
+          <div><div style="font-size:19px;font-weight:800;color:${(rv.badCount || 0) > 0 ? '#DC2626' : '#0f2a52'}">${rv.badCount != null ? fnum(rv.badCount) : '—'}</div><div style="font-size:10px;color:#64748b">${t('review xấu (≤2★)', 'bad (≤2★)')}</div></div>
+        </div>${(rv.recent || []).slice(0, 2).map((r) => `<div style="border-top:1px solid #eef1f6;padding:5px 0;font-size:10.5px;margin-top:4px"><b>${esc(r.author || '')}</b> · <span style="color:#f59e0b">${'★'.repeat(r.rating || 0)}</span><div style="color:#475569">${esc((r.comment || '').slice(0, 90))}</div></div>`).join('')}`
+      : `<div style="font-size:11px;color:#94a3b8;line-height:1.6">${t('Chưa có dữ liệu đánh giá — vào Chỉnh sửa → “Google — Đánh giá (nhập tay)” để nhập rating, tổng review, review mới, review xấu.', 'No review data — go to Edit → “Google — Reviews (manual)” to enter rating, totals, new & bad reviews.')}</div>`;
     const recs: string[] = [];
     if ((g.bookings || 0) === 0) recs.push(t('Bật Đặt lịch qua Google (Reserve with Google) để khách đặt ngay trên Maps.', 'Turn on Reserve with Google so customers book from Maps.'));
     recs.push(t('Đăng 2–3 bài/tuần (ưu đãi, ảnh trước/sau) để giữ hồ sơ hoạt động.', 'Post 2–3/week (offers, before/after) to keep the profile active.'));

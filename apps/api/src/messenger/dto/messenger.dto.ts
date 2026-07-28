@@ -12,6 +12,11 @@ export class UpdateMessengerDto {
   @IsOptional() @IsArray() botFacts?: { label: string; value: string; on: boolean }[];
 }
 
+export class SendTestDto {
+  @IsOptional() @IsString() @MaxLength(60) threadId?: string;
+  @IsString() @MaxLength(1900) text!: string;
+}
+
 export class HandoffDto {
   @IsOptional() @IsBoolean() handoff?: boolean;
 }

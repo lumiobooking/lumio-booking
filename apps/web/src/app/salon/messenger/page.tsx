@@ -17,6 +17,8 @@ interface MConf {
 }
 interface MThread { id: string; senderId: string; lastText: string | null; handoff: boolean; updatedAt: string }
 interface FactRow extends BotFact { custom: boolean }
+interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; verifiedAt?: string; webhookUrl?: string }
+interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean }
 
 // Common things customers ask a nail salon. label = sent to the bot (English);
 // vi/en = what the salon admin sees; ph = example hint.
@@ -92,7 +94,37 @@ const DICT: Record<string, { vi: string; en: string }> = {
   giveBack: { vi: 'Trả lại cho bot', en: 'Give back to bot' },
   handedOff: { vi: 'người thật đang xử lý', en: 'human handling' },
   loading: { vi: 'Đang tải…', en: 'Loading…' },
-  pendingNote: { vi: 'Lưu ý: bot chạy được sau khi Meta duyệt quyền nhắn tin (pages_messaging).', en: 'Note: works after Meta approves messaging permission (pages_messaging).' },
+  pendingNote: { vi: 'Nhắn tin được bật cho các Facebook Page do quản trị viên hợp lệ kết nối.', en: 'Messaging is enabled for Facebook Pages connected by an authorized Page administrator.' },
+  connDetailsTitle: { vi: 'Thông tin kết nối', en: 'Connection details' },
+  pageName: { vi: 'Facebook Page', en: 'Facebook Page' },
+  pageIdLabel: { vi: 'Page ID', en: 'Page ID' },
+  connStatus: { vi: 'Trạng thái', en: 'Status' },
+  webhookSub: { vi: 'Webhook subscription', en: 'Webhook subscription' },
+  statusActive: { vi: 'Active', en: 'Active' },
+  statusInactive: { vi: 'Chưa subscribe', en: 'Inactive' },
+  subscribedEvents: { vi: 'Sự kiện đã đăng ký', en: 'Subscribed events' },
+  lastVerified: { vi: 'Kiểm tra lần cuối', en: 'Last verified' },
+  notSubscribed: { vi: 'Page chưa subscribe app — bấm \u201cKết nối lại Facebook\u201d.', en: 'Page not subscribed yet \u2014 click \u201cReconnect Facebook\u201d.' },
+  webhookAdvancedTitle: { vi: 'Webhook (cấu hình thủ công \u2014 nâng cao)', en: 'Webhook (manual setup \u2014 advanced)' },
+  webhookAutoNote: { vi: 'Hệ thống tự động subscribe Page vào webhook khi bạn bấm \u201cKết nối với Facebook\u201d. Phần dưới chỉ dùng khi tự cấu hình trong Meta App.', en: 'The app subscribes your Page to the webhook automatically when you click \u201cConnect with Facebook\u201d. The fields below are only for manual configuration in your own Meta App.' },
+  sendTestTitle: { vi: 'Gửi tin nhắn thử', en: 'Send a test message' },
+  sendTestHint: { vi: 'Chọn một cuộc trò chuyện gần đây và gửi tin nhắn từ ứng dụng. Tin được gửi tới khách trong Messenger qua Page.', en: 'Pick a recent conversation and send a message from the app. It is delivered to the customer in Messenger through the Page.' },
+  recipient: { vi: 'Người nhận', en: 'Recipient' },
+  messageLabel: { vi: 'Tin nhắn', en: 'Message' },
+  sendMsgPh: { vi: 'vd: Dạ em xác nhận lịch của anh/chị ạ.', en: 'e.g. Hi! Confirming your appointment is booked.' },
+  sendMessageBtn: { vi: 'Gửi tin nhắn', en: 'Send message' },
+  sendingMsg: { vi: 'Đang gửi…', en: 'Sending…' },
+  sentOk: { vi: 'Đã gửi ✓', en: 'Message sent ✓' },
+  noRecipient: { vi: 'Chưa có cuộc trò chuyện — khách phải nhắn Page trước (cửa sổ 24 giờ).', en: 'No conversation yet \u2014 a customer must message the Page first (24-hour window).' },
+  activityTitle: { vi: 'Hoạt động Messenger', en: 'Messenger activity' },
+  noActivity: { vi: 'Chưa có hoạt động.', en: 'No activity yet.' },
+  colTime: { vi: 'Thời gian', en: 'Time' },
+  colDirection: { vi: 'Chiều', en: 'Direction' },
+  colUser: { vi: 'Người dùng', en: 'User' },
+  colMessage: { vi: 'Tin nhắn', en: 'Message' },
+  colStatus: { vi: 'Trạng thái', en: 'Status' },
+  dirIn: { vi: 'Đến', en: 'Incoming' },
+  dirOut: { vi: 'Đi', en: 'Outgoing' },
 };
 
 export default function MessengerPage() {
@@ -119,6 +151,13 @@ function Inner() {
   const [factsInit, setFactsInit] = useState(false);
   const [infoOpen, setInfoOpen] = useState(true);     // fold the business-info checklist
   const [convoSearch, setConvoSearch] = useState(''); // filter the conversations list
+  const [wh, setWh] = useState<WebhookStatus | null>(null);       // live webhook subscription status
+  const [activity, setActivity] = useState<ActivityEv[]>([]);     // in/out message log
+  const [showWebhook, setShowWebhook] = useState(false);          // advanced manual webhook fold
+  const [sendTo, setSendTo] = useState('');                       // recipient thread for test send
+  const [sendMsg, setSendMsg] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
 
   // Seed the checklist from stored facts once the config loads: every predefined
   // row shows (ticked/filled if saved), plus any custom rows the salon added.
@@ -187,11 +226,14 @@ function Inner() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const [conf, th] = await Promise.all([
+      const [conf, th, whs, act] = await Promise.all([
         apiFetch<MConf>('/messenger', { token }),
         apiFetch<MThread[]>('/messenger/threads', { token }).catch(() => [] as MThread[]),
+        apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => ({ connected: false } as WebhookStatus)),
+        apiFetch<ActivityEv[]>('/messenger/activity', { token }).catch(() => [] as ActivityEv[]),
       ]);
-      setC(conf); setThreads(th);
+      setC(conf); setThreads(th); setWh(whs); setActivity(act);
+      setSendTo((prev) => prev || th[0]?.id || '');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -217,6 +259,18 @@ function Inner() {
   async function handoff(id: string, val: boolean) {
     try { await apiFetch(`/messenger/threads/${id}/handoff`, { method: 'POST', token, body: { handoff: val } }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+  }
+  // Real user-initiated Send API call from the app UI (Messenger permission demo).
+  async function sendTest() {
+    if (!token || !sendMsg.trim()) return;
+    setSending(true); setSendResult(null);
+    try {
+      await apiFetch('/messenger/send', { method: 'POST', token, body: { threadId: sendTo || undefined, text: sendMsg.trim() } });
+      setSendResult('ok'); setSendMsg('');
+      await load();
+    } catch (e) {
+      setSendResult(e instanceof Error ? e.message : 'Send failed');
+    } finally { setSending(false); }
   }
   function copy(text: string, key: string) {
     try { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(''), 1500); } catch { /* ignore */ }
@@ -300,19 +354,47 @@ function Inner() {
         <p style={{ color: '#64748b', fontSize: 11.5, margin: '12px 0 0' }}>{t('pendingNote')}</p>
       </div>
 
-      {/* Webhook */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('webhookTitle')}</div>
-        {([['webhookUrl', c.webhookUrl], ['verifyToken', c.verifyToken]] as const).map(([k, val]) => (
-          <div key={k} style={{ marginBottom: 8 }}>
-            <label style={ui.label}>{t(k)}</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input readOnly value={val} style={{ ...ui.input, fontFamily: 'monospace', fontSize: 12.5 }} />
-              <button onClick={() => copy(val, k)} style={{ ...ghost, whiteSpace: 'nowrap' }}>{copied === k ? t('copied') : t('copy')}</button>
-            </div>
+      {/* Connection details + live webhook subscription status (App Review evidence) */}
+      {c.connected && (
+        <div style={{ ...ui.card, marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('connDetailsTitle')}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <Field label={t('pageName')} value={wh?.pageName || '—'} />
+            <Field label={t('pageIdLabel')} value={wh?.pageId || c.pageId || '—'} mono />
+            <Field label={t('connStatus')} value={t('connected')} good />
+            <Field label={t('webhookSub')} value={wh?.subscribed ? t('statusActive') : t('statusInactive')} good={!!wh?.subscribed} warn={!wh?.subscribed} />
           </div>
-        ))}
-        <p style={{ color: '#94a3b8', fontSize: 12, margin: '8px 0 0', lineHeight: 1.5 }}>{t('webhookHint')}</p>
+          <div style={{ marginTop: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', fontSize: 12.5 }}>
+            <div style={{ color: '#94a3b8', marginBottom: 4 }}>{t('subscribedEvents')}</div>
+            <div style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+              {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
+            </div>
+            {wh?.verifiedAt && <div style={{ color: '#64748b', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString('en-US')}</div>}
+          </div>
+          {!wh?.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
+        </div>
+      )}
+
+      {/* Webhook manual setup — advanced. The app auto-subscribes the Page on connect. */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <button onClick={() => setShowWebhook((v) => !v)} style={{ ...ghost, fontSize: 12.5 }}>
+          {showWebhook ? '▾ ' : '▸ '}{t('webhookAdvancedTitle')}
+        </button>
+        {showWebhook && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>{t('webhookAutoNote')}</p>
+            {([['webhookUrl', c.webhookUrl], ['verifyToken', c.verifyToken]] as const).map(([k, val]) => (
+              <div key={k} style={{ marginBottom: 8 }}>
+                <label style={ui.label}>{t(k)}</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input readOnly value={val} style={{ ...ui.input, fontFamily: 'monospace', fontSize: 12.5 }} />
+                  <button onClick={() => copy(val, k)} style={{ ...ghost, whiteSpace: 'nowrap' }}>{copied === k ? t('copied') : t('copy')}</button>
+                </div>
+              </div>
+            ))}
+            <p style={{ color: '#64748b', fontSize: 11.5, margin: '8px 0 0', lineHeight: 1.5 }}>{t('webhookHint')}</p>
+          </div>
+        )}
       </div>
 
       {/* Behaviour */}
@@ -361,6 +443,60 @@ function Inner() {
         )}
       </div>
 
+      {/* Send a test message — a real user-initiated Send API call from the app UI */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('sendTestTitle')}</div>
+        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
+        {threads.length === 0 ? (
+          <p style={{ color: '#f59e0b', fontSize: 13 }}>{t('noRecipient')}</p>
+        ) : (
+          <>
+            <label style={ui.label}>{t('recipient')}</label>
+            <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 10 }}>
+              {threads.map((th) => (
+                <option key={th.id} value={th.id}>PSID …{th.senderId.slice(-6)} — {(th.lastText || '').slice(0, 40) || 'conversation'}</option>
+              ))}
+            </select>
+            <label style={ui.label}>{t('messageLabel')}</label>
+            <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
+              {sendResult === 'ok' && <span style={{ color: '#22c55e', fontSize: 12.5 }}>{t('sentOk')}</span>}
+              {sendResult && sendResult !== 'ok' && <span style={{ color: '#fca5a5', fontSize: 12.5 }}>{sendResult}</span>}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Messenger activity — chronological in/out log (App Review evidence) */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('activityTitle')}</div>
+        {activity.length === 0 ? (
+          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noActivity')}</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+                  <th style={thc}>{t('colTime')}</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activity.map((ev, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #1e293b' }}>
+                    <td style={tdc}>{new Date(ev.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
+                    <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
+                    <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
+                    <td style={tdc}>{ev.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Conversations */}
       <div style={{ ...ui.card }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
@@ -396,6 +532,18 @@ function Inner() {
         })()}
       </div>
     </section>
+  );
+}
+
+const thc: React.CSSProperties = { padding: '6px 10px', fontWeight: 600 };
+const tdc: React.CSSProperties = { padding: '6px 10px', color: '#cbd5e1', verticalAlign: 'top' };
+
+function Field({ label, value, mono, good, warn }: { label: string; value: string; mono?: boolean; good?: boolean; warn?: boolean }) {
+  return (
+    <div>
+      <div style={{ color: '#94a3b8', fontSize: 11.5, marginBottom: 3 }}>{label}</div>
+      <div style={{ color: good ? '#22c55e' : warn ? '#f59e0b' : '#e2e8f0', fontSize: 13.5, fontWeight: 600, fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value}</div>
+    </div>
   );
 }
 

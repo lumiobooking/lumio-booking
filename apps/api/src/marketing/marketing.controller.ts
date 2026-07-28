@@ -60,6 +60,11 @@ export class MarketingController {
     return this.marketing.saveSocialManual(user, dto);
   }
 
+  @Post('gbp-reviews')
+  saveGbpReviews(@CurrentUser() user: AuthenticatedUser, @Body() dto: { month: string; rating?: number | null; totalReviews?: number | null; newReviews?: number | null; badReviews?: number | null; tenantId?: string }) {
+    return this.marketing.saveGbpReviews(user, dto);
+  }
+
   // ---- Monthly report (AI draft → review → approve) ----
   @Get('report')
   getReport(@CurrentUser() user: AuthenticatedUser, @Query('month') month: string, @Query('tenantId') tenantId?: string) {

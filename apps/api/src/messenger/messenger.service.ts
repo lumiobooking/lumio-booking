@@ -265,6 +265,19 @@ export class MessengerService {
     return { ok: true };
   }
 
+  /** Salon admin labels a conversation with the customer's name (CRM-style).
+   *  Used when the Graph profile lookup is unavailable (e.g. pre-approval). */
+  async renameThread(user: AuthenticatedUser, id: string, name: string) {
+    const tenantId = this.tenantId(user);
+    const clean = (name || '').trim().slice(0, 80);
+    if (!clean) throw new BadRequestException('Name is required.');
+    const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!row) throw new NotFoundException('Thread not found');
+    await this.prisma.messengerThread.update({ where: { id: row.id }, data: { senderName: clean } });
+    await this.audit(tenantId, 'messenger.thread_renamed');
+    return { ok: true as const, name: clean };
+  }
+
   /** Danger zone (salon admin): delete ALL Messenger conversation history for
    *  this tenant — used to start a clean App-Review recording. The Facebook
    *  connection, tokens, webhook subscription and bot settings are untouched. */

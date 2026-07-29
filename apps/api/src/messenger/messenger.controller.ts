@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
-import { HandoffDto, SendTestDto, UpdateMessengerDto } from './dto/messenger.dto';
+import { HandoffDto, RenameThreadDto, SendTestDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -44,6 +44,11 @@ export class MessengerController {
   @Post('threads/:id/handoff')
   handoff(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: HandoffDto) {
     return this.svc.setHandoff(user, id, dto.handoff ?? true);
+  }
+
+  @Post('threads/:id/rename')
+  rename(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RenameThreadDto) {
+    return this.svc.renameThread(user, id, dto.name);
   }
 
   @Get('webhook-status')

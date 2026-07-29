@@ -286,6 +286,13 @@ function Inner() {
     try { await apiFetch(`/messenger/threads/${id}/handoff`, { method: 'POST', token, body: { handoff: val } }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   }
+  // Manual label when the Graph name lookup isn't available (pre-approval).
+  async function renameThread(id: string, current: string) {
+    const name = window.prompt('Customer name for this conversation:', current || '');
+    if (!name || !name.trim()) return;
+    try { await apiFetch(`/messenger/threads/${id}/rename`, { method: 'POST', token, body: { name: name.trim() } }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Rename failed'); }
+  }
   // Real user-initiated Send API call from the app UI (Messenger permission demo).
   async function sendTest() {
     if (!token || !sendMsg.trim()) return;
@@ -620,6 +627,7 @@ function Inner() {
                         </div>
                         <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(th.updatedAt).toLocaleString('en-US')}{th.handoff ? ` · ⚠️ ${t('handedOff')}` : ''}</div>
                       </div>
+                      <button onClick={() => renameThread(th.id, th.senderName || '')} title="Set customer name" style={{ ...ghost, padding: '6px 10px' }}>✎</button>
                       {th.handoff
                         ? <button onClick={() => handoff(th.id, false)} style={ghost}>{t('giveBack')}</button>
                         : <button onClick={() => handoff(th.id, true)} style={ghost}>{t('takeOver')}</button>}

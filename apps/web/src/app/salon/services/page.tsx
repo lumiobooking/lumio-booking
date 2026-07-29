@@ -181,6 +181,8 @@ function ServicesInner() {
       <CategoryManager token={token!} categories={categories} onChanged={load} />
 
       <WeekdayDiscountCard token={token!} categories={categories} />
+      <FirstVisitDiscountCard token={token!} />
+      <GroupDiscountCard token={token!} />
       <DateDiscountCard token={token!} categories={categories} />
 
       {categories.length > 0 && (
@@ -935,6 +937,142 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.addRule')}</button>
+            <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- First-visit discount (automatic % off for new customers) ---------------
+function FirstVisitDiscountCard({ token }: { token: string }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [percent, setPercent] = useState(10);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    apiFetch<{ firstVisitDiscount?: { enabled: boolean; percent: number; message: string } }>('/settings', { token })
+      .then((s) => {
+        const f = s.firstVisitDiscount;
+        if (f) { setEnabled(!!f.enabled); setPercent(f.percent || 10); setMessage(f.message || ''); }
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, [open, loaded, token]);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, percent, message } }); setMsg(t('sv.saved')); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+        {open ? '▾' : '▸'} {t('sv.fvTitle')}
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.fvDesc')}</p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <span style={{ fontSize: 14 }}>{t('sv.fvEnable')}</span>
+          </label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+            <label>
+              <span style={ui.label}>{t('sv.fvPercent')}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="number" min={1} max={90} value={percent} onChange={(e) => setPercent(parseInt(e.target.value, 10) || 0)} style={{ ...ui.input, width: 90 }} />
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+              </div>
+            </label>
+            <label style={{ flex: 1, minWidth: 220 }}>
+              <span style={ui.label}>{t('sv.fvHeadline')}</span>
+              <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="10% off your first visit!" />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Group discount (bring your friends — tiered by party size) --------------
+interface GroupTier { minSize: number; percent: number }
+
+function GroupDiscountCard({ token }: { token: string }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [message, setMessage] = useState('');
+  const [tiers, setTiers] = useState<GroupTier[]>([{ minSize: 2, percent: 10 }, { minSize: 3, percent: 15 }]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    apiFetch<{ groupDiscount?: { enabled: boolean; message: string; tiers: GroupTier[] } }>('/settings', { token })
+      .then((s) => {
+        const g = s.groupDiscount;
+        if (g) { setEnabled(!!g.enabled); setMessage(g.message || ''); if (Array.isArray(g.tiers) && g.tiers.length) setTiers(g.tiers); }
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, [open, loaded, token]);
+
+  function upd(i: number, patch: Partial<GroupTier>) { setTiers(tiers.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
+  async function save() {
+    setBusy(true); setMsg(null);
+    try { await apiFetch('/settings/group-discount', { method: 'PATCH', token, body: { enabled, message, tiers } }); setMsg(t('sv.saved')); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+        {open ? '▾' : '▸'} {t('sv.grTitle')}
+      </button>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.grDesc')}</p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <span style={{ fontSize: 14 }}>{t('sv.grEnable')}</span>
+          </label>
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <span style={ui.label}>{t('sv.grHeadline')}</span>
+            <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Bring your friends and save!" />
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {tiers.map((r, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input type="number" min={2} max={20} value={r.minSize} onChange={(e) => upd(i, { minSize: parseInt(e.target.value, 10) || 2 })} style={{ ...ui.input, width: 80 }} />
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.grPeople')}</span>
+                <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 90 }} />
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                <button onClick={() => setTiers(tiers.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setTiers([...tiers, { minSize: Math.min(20, (tiers[tiers.length - 1]?.minSize ?? 1) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
           </div>

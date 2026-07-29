@@ -85,11 +85,13 @@ export class PublicSalonController {
 
   private async buildSalon(tenant: { id: string; name: string; slug: string; businessType: string; timezone: string; branding: unknown; contactPhone: string | null }) {
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit, pos, areaRows, extra, ratingAgg, analytics] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, firstVisit, groupDiscount, pos, areaRows, extra, ratingAgg, analytics] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
       this.settings.getDepositSettings(tenant.id),
+      this.settings.getFirstVisitDiscount(tenant.id),
+      this.settings.getGroupDiscount(tenant.id),
       this.settings.getPosSettings(tenant.id).catch(() => null),
       this.prisma.restaurantTable.findMany({ where: { tenantId: tenant.id, isActive: true, area: { not: null } }, select: { area: true }, distinct: ['area'] }),
       this.settings.getCompanyExtra(tenant.id).catch(() => ({} as { address?: string })),
@@ -125,6 +127,10 @@ export class PublicSalonController {
       weekdayDiscounts,
       dateDiscounts,
       deposit,
+      // Program promos (public-safe): shown as banners; the % is applied
+      // server-side at booking time so it can never be spoofed client-side.
+      firstVisit: firstVisit.enabled && firstVisit.percent > 0 ? firstVisit : { enabled: false, percent: 0, message: '' },
+      groupDiscount: groupDiscount.enabled && groupDiscount.tiers.length > 0 ? groupDiscount : { enabled: false, message: '', tiers: [] },
       // Card surcharge (dual pricing) — only the two public-safe fields, no secrets.
       cardFee: { enabled: !!pos?.cardSurchargeEnabled && (pos?.cardSurchargePercent ?? 0) > 0, percent: pos?.cardSurchargePercent ?? 0 },
       analytics,

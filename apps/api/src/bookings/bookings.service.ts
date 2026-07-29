@@ -176,6 +176,52 @@ export class BookingsService {
     }
   }
 
+  /** Category-independent program promos: first-visit (verified new customer)
+   *  and group size (party of 2+). Returns the single BEST % — program promos
+   *  never stack with each other or with weekday/date rules (max wins), and a
+   *  promo lookup failure must never break booking. */
+  private async programDiscountPercent(tenantId: string, dto: CreateBookingDto): Promise<number> {
+    let best = 0;
+    try {
+      const [fvRow, grRow] = await Promise.all([
+        this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'first_visit_discount' } } }),
+        this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'group_discount' } } }),
+      ]);
+
+      // First visit — only when we can verify identity (phone/email given) and
+      // the customer has never actually visited (no ARRIVED/COMPLETED history).
+      const fv = fvRow?.value as { enabled?: boolean; percent?: number } | undefined;
+      const phone = (dto.customerPhone || '').trim();
+      const email = (dto.customerEmail || '').trim().toLowerCase();
+      if (fv?.enabled && (fv.percent ?? 0) > 0 && (phone || email)) {
+        const or: Prisma.CustomerWhereInput[] = [];
+        if (phone) or.push({ phone });
+        if (email) or.push({ email });
+        const existing = await this.prisma.customer.findFirst({ where: { tenantId, OR: or }, select: { id: true } });
+        let isNew = true;
+        if (existing) {
+          const visits = await this.prisma.appointment.count({
+            where: { tenantId, customerId: existing.id, status: { in: [AppointmentStatus.ARRIVED, AppointmentStatus.COMPLETED] } },
+          });
+          isNew = visits === 0;
+        }
+        if (isNew) best = Math.max(best, fv.percent!);
+      }
+
+      // Group size — best tier whose minSize the party reaches.
+      const gr = grRow?.value as { enabled?: boolean; tiers?: Array<{ minSize?: number; percent?: number }> } | undefined;
+      const size = dto.partySize ?? 1;
+      if (gr?.enabled && Array.isArray(gr.tiers) && size >= 2) {
+        for (const t of gr.tiers) {
+          if ((t?.minSize ?? 99) <= size && (t?.percent ?? 0) > best) best = t.percent!;
+        }
+      }
+    } catch {
+      best = 0; // promos are best-effort
+    }
+    return Math.min(90, Math.max(0, best));
+  }
+
   private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto) {
     // Only ever upgrade consent to true (never silently revoke a prior opt-in
     // just because a returning customer left the box unchecked this time).
@@ -336,10 +382,14 @@ export class BookingsService {
     const addonPrice = addons.reduce((s, a) => s + a.priceCents, 0);
     const addonDuration = addons.reduce((s, a) => s + a.durationMinutes, 0);
 
-    // Primary service: its own discount, then the weekday promo for its category.
+    // Program promos that don't depend on the category (first visit / group).
+    // Policy: ONE best promo % per line — never stacked on top of weekday/date.
+    const programPct = await this.programDiscountPercent(tenantId, dto);
+
+    // Primary service: its own discount, then the best promo for its category.
     const primaryDisc = Math.min(90, Math.max(0, service.discountPercent ?? 0));
     const primaryNet = Math.round((service.priceCents * (100 - primaryDisc)) / 100);
-    const primaryWd = await this.promoDiscountPercent(tenantId, start, service.categoryId);
+    const primaryWd = Math.max(await this.promoDiscountPercent(tenantId, start, service.categoryId), programPct);
     const primaryFinal = Math.round((primaryNet * (100 - primaryWd)) / 100);
 
     // Extra services in the SAME visit (multi-service). The first service stays
@@ -353,7 +403,7 @@ export class BookingsService {
     for (const s of extraServices) {
       const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
       const net = Math.round((s.priceCents * (100 - disc)) / 100);
-      const wd = await this.promoDiscountPercent(tenantId, start, s.categoryId);
+      const wd = Math.max(await this.promoDiscountPercent(tenantId, start, s.categoryId), programPct);
       extraItems.push({ id: s.id, name: s.name, priceCents: Math.round((net * (100 - wd)) / 100), durationMinutes: s.durationMinutes, kind: 'service' });
     }
     const extraPrice = extraItems.reduce((sum, x) => sum + x.priceCents, 0);

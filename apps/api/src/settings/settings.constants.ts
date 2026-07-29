@@ -45,6 +45,48 @@ export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
   rules: [],
 };
 
+// First-visit discount: automatic % off for NEW customers (no prior visit).
+// Verified server-side by phone/email at booking time — never stacks with other
+// promos (the single best % wins).
+export const FIRST_VISIT_DISCOUNT_KEY = 'first_visit_discount';
+
+export interface FirstVisitDiscount {
+  enabled: boolean;
+  percent: number; // 1-90
+  message: string; // headline shown on the booking page
+}
+
+export const DEFAULT_FIRST_VISIT_DISCOUNT: FirstVisitDiscount = {
+  enabled: false,
+  percent: 10,
+  message: '10% off your first visit!',
+};
+
+// Group ("bring your friends") discount: % off by party size, tiered
+// (e.g. 2+ people 10%, 3+ people 15%). Applied automatically from the
+// "People" field on the booking page; best tier wins, never stacks.
+export const GROUP_DISCOUNT_KEY = 'group_discount';
+
+export interface GroupDiscountTier {
+  minSize: number; // party size at which the tier kicks in (2-20)
+  percent: number; // 1-90
+}
+
+export interface GroupDiscount {
+  enabled: boolean;
+  message: string;
+  tiers: GroupDiscountTier[];
+}
+
+export const DEFAULT_GROUP_DISCOUNT: GroupDiscount = {
+  enabled: false,
+  message: 'Bring your friends and save!',
+  tiers: [
+    { minSize: 2, percent: 10 },
+    { minSize: 3, percent: 15 },
+  ],
+};
+
 // Special-date discounts: run a sale on specific calendar dates or date ranges
 // (holidays, a grand-opening week) — NOT recurring by weekday. Each rule applies
 // a % off in a category (or all) from startDate to endDate inclusive. Dates are

@@ -124,6 +124,22 @@ export class SettingsController {
     return this.settings.updateWeekdayDiscounts(user, dto);
   }
 
+  @Patch('first-visit-discount')
+  updateFirstVisitDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { enabled?: boolean; percent?: number; message?: string },
+  ) {
+    return this.settings.updateFirstVisitDiscount(user, dto);
+  }
+
+  @Patch('group-discount')
+  updateGroupDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }> },
+  ) {
+    return this.settings.updateGroupDiscount(user, dto);
+  }
+
   @Patch('date-discounts')
   updateDateDiscounts(
     @CurrentUser() user: AuthenticatedUser,

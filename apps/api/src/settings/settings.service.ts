@@ -56,6 +56,12 @@ import {
   DEPOSIT_SETTINGS_KEY,
   DepositSettings,
   DEFAULT_DEPOSIT_SETTINGS,
+  FIRST_VISIT_DISCOUNT_KEY,
+  DEFAULT_FIRST_VISIT_DISCOUNT,
+  FirstVisitDiscount,
+  GROUP_DISCOUNT_KEY,
+  DEFAULT_GROUP_DISCOUNT,
+  GroupDiscount,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -746,6 +752,8 @@ export class SettingsService {
       loyalty: await this.getLoyaltySettings(tenantId),
       review: await this.getReviewSettings(tenantId),
       weekdayDiscounts: await this.getWeekdayDiscounts(tenantId),
+      firstVisitDiscount: await this.getFirstVisitDiscount(tenantId),
+      groupDiscount: await this.getGroupDiscount(tenantId),
       dateDiscounts: await this.getDateDiscounts(tenantId),
       reminders: await this.getReminderSettings(tenantId),
       deposit: await this.getDepositSettings(tenantId),
@@ -753,6 +761,51 @@ export class SettingsService {
       rebooking: await this.getRebookingSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };
+  }
+
+  async getFirstVisitDiscount(tenantId: string): Promise<FirstVisitDiscount> {
+    return this.readKey<FirstVisitDiscount>(tenantId, FIRST_VISIT_DISCOUNT_KEY, DEFAULT_FIRST_VISIT_DISCOUNT);
+  }
+
+  async updateFirstVisitDiscount(user: AuthenticatedUser, dto: Partial<FirstVisitDiscount>) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getFirstVisitDiscount(tenantId);
+    const next: FirstVisitDiscount = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      percent: typeof dto.percent === 'number' ? Math.min(90, Math.max(1, Math.round(dto.percent))) : cur.percent,
+      message: typeof dto.message === 'string' ? dto.message.slice(0, 160) : cur.message,
+    };
+    await this.writeKey(tenantId, FIRST_VISIT_DISCOUNT_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.first_visit_discount_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
+  }
+
+  async getGroupDiscount(tenantId: string): Promise<GroupDiscount> {
+    return this.readKey<GroupDiscount>(tenantId, GROUP_DISCOUNT_KEY, DEFAULT_GROUP_DISCOUNT);
+  }
+
+  async updateGroupDiscount(user: AuthenticatedUser, dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }> }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getGroupDiscount(tenantId);
+    // Sanitize tiers: 2-20 people, 1-90 %, max 5 tiers, sorted by size.
+    const tiers = Array.isArray(dto.tiers)
+      ? dto.tiers
+          .map((t) => ({
+            minSize: Math.min(20, Math.max(2, Math.round(Number(t?.minSize) || 0))),
+            percent: Math.min(90, Math.max(1, Math.round(Number(t?.percent) || 0))),
+          }))
+          .filter((t) => t.minSize >= 2 && t.percent >= 1)
+          .slice(0, 5)
+          .sort((a, b) => a.minSize - b.minSize)
+      : cur.tiers;
+    const next: GroupDiscount = {
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
+      message: typeof dto.message === 'string' ? dto.message.slice(0, 160) : cur.message,
+      tiers,
+    };
+    await this.writeKey(tenantId, GROUP_DISCOUNT_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.group_discount_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
   }
 
   async getDepositSettings(tenantId: string): Promise<DepositSettings> {

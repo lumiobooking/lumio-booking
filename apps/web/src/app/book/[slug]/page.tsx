@@ -102,6 +102,8 @@ interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string }; booking?: BookingRules;
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
+  firstVisit?: { enabled: boolean; percent: number; message: string };
+  groupDiscount?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] };
   rating?: { value: number; count: number } | null;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
@@ -714,6 +716,7 @@ export default function PublicBookingPage() {
               {step === 1 && (
                 <>
                   <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
+                  <ProgramBanner fv={salon?.firstVisit} gr={salon?.groupDiscount} />
                   {/* A day picker used to sit here. It was removed on purpose: date and time
                       belong together (nobody thinks "the 15th" — they think "tomorrow at 2"),
                       and step 3 already asks for both. Two pickers for one answer made people
@@ -1855,6 +1858,30 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
           <button onClick={submit} disabled={busy} style={{ ...ctaBtn, marginTop: 10 }}>{busy ? 'Joining…' : 'Join waitlist'}</button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Always-on program promos (first visit / bring friends). Display only — the
+// actual % is applied server-side at booking time (can't be spoofed).
+function ProgramBanner({ fv, gr }: {
+  fv?: { enabled: boolean; percent: number; message: string };
+  gr?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] };
+}) {
+  const lines: string[] = [];
+  if (fv?.enabled && fv.percent > 0) {
+    lines.push(`🎁 ${fv.message || `${fv.percent}% off your first visit!`} — applied automatically`);
+  }
+  if (gr?.enabled && gr.tiers.length > 0) {
+    const tiers = gr.tiers.map((t) => `${t.minSize}+ people: ${t.percent}% off`).join(' · ');
+    lines.push(`👯 ${gr.message || 'Bring your friends and save!'} — ${tiers}`);
+  }
+  if (lines.length === 0) return null;
+  return (
+    <div style={{ background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 12, padding: '10px 14px', margin: '10px 0 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {lines.map((l, i) => (
+        <div key={i} style={{ fontSize: 12.5, color: '#7c5c22', fontWeight: 600, lineHeight: 1.5 }}>{l}</div>
+      ))}
     </div>
   );
 }

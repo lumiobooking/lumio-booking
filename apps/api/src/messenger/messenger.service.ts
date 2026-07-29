@@ -526,6 +526,7 @@ Goal: help them book an appointment.
 To book you MUST collect: their name, their phone number, which service, and a specific date & time. Ask for whatever is missing, one or two things at a time.
 You MAY also ask for their email so the salon can send an email confirmation — this is OPTIONAL; if they skip or decline, book anyway without it.
 Use the get_services tool to tell them what's available and to get service ids. When you have name + phone + service + a specific date/time, call create_booking (include their email if they gave one). After it succeeds, confirm the details warmly and let them know a confirmation is on its way.
+CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
 As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
 The salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.
 ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
@@ -663,6 +664,7 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
         } as CreateBookingDto;
         const booking = await this.bookings.createForTenant(tenantId, dto, null, 'messenger');
         const b = booking as { id?: string };
+        this.logger.log(`bot booking CREATED id=${b.id} start=${startTime} local="${local}" tz=${tz} service=${serviceId} phone=…${phone.slice(-4)}`);
         // Auto-assign a technician (fair rotation) when the salon runs in auto mode —
         // same as the public web flow — so AI bookings don't land unassigned.
         if (b.id) {
@@ -683,7 +685,9 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       }
       return `Unknown tool ${name}.`;
     } catch (e) {
-      return `Could not complete "${name}": ${String((e as Error).message || e).slice(0, 160)}. Tell the customer and offer another time or ask for correct details.`;
+      const msg = String((e as Error).message || e).slice(0, 160);
+      this.logger.warn(`bot tool ${name} FAILED: ${msg}`);
+      return `ERROR — the "${name}" call failed: ${msg}. Do NOT tell the customer it succeeded. Apologize, explain briefly, and offer another time or ask for corrected details.`;
     }
   }
 

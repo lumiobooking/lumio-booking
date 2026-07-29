@@ -455,6 +455,7 @@ function CreateBookingForm({
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [svcQ, setSvcQ] = useState(''); // type-to-filter: many salons have 50+ services
   const [form, setForm] = useState({
     startLocal: '',
     staffId: '',
@@ -472,6 +473,9 @@ function CreateBookingForm({
   const toggleSvc = (id: string) =>
     setServiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const totalMinutes = serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0);
+  const svcShown = svcQ.trim()
+    ? services.filter((s) => s.name.toLowerCase().includes(svcQ.trim().toLowerCase()))
+    : services;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -514,8 +518,30 @@ function CreateBookingForm({
               <span style={{ color: '#94a3b8', fontWeight: 400 }}> · {serviceIds.length} {t('bk.servicesPicked')} · {t('bk.totalDuration')} {totalMinutes} min</span>
             )}
           </span>
+          {/* Picked services stay visible as chips while staff searches for the next one. */}
+          {serviceIds.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {serviceIds.map((id) => {
+                const s = services.find((x) => x.id === id);
+                if (!s) return null;
+                return (
+                  <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1e3a8a', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                    {s.name}
+                    <button type="button" onClick={() => toggleSvc(id)} style={{ background: 'none', border: 'none', color: '#93c5fd', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <input
+            value={svcQ}
+            onChange={(e) => setSvcQ(e.target.value)}
+            placeholder={t('bk.searchService')}
+            style={{ ...ui.input, marginBottom: 8 }}
+          />
           <div style={{ border: '1px solid #334155', borderRadius: 8, background: '#0f172a', maxHeight: 168, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 2 }}>
-            {services.map((s) => (
+            {svcShown.length === 0 && <span style={{ color: '#94a3b8', fontSize: 13, padding: '6px 8px' }}>{t('bk.noSvcMatch')}</span>}
+            {svcShown.map((s) => (
               <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: serviceIds.includes(s.id) ? '#1e293b' : 'transparent', fontSize: 13, color: serviceIds.includes(s.id) ? '#e2e8f0' : '#cbd5e1' }}>
                 <input type="checkbox" checked={serviceIds.includes(s.id)} onChange={() => toggleSvc(s.id)} style={{ flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name} ({s.durationMinutes} min)</span>

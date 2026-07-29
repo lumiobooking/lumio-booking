@@ -226,6 +226,22 @@ function Inner() {
     }
   }
 
+  // Right-click on any booking chip → delete (with confirm). Cancel keeps
+  // history; delete removes the row for cluttered test/mistake bookings.
+  async function removeBooking(id: string) {
+    const msg = lang === 'vi'
+      ? 'Xóa vĩnh viễn booking này? Không thể hoàn tác. (Muốn giữ lịch sử thì dùng Cancel.)'
+      : 'Delete this booking permanently? This cannot be undone. (Use Cancel to keep history.)';
+    if (!window.confirm(msg)) return;
+    try {
+      await apiFetch(`/bookings/${id}`, { method: 'DELETE', token });
+      setSelected(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
   if (mode === 'floor') {
     return (
       <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '14px 18px', overflow: 'auto' } : undefined}>
@@ -320,8 +336,8 @@ function Inner() {
             </div>
           </div>
           {dayLayout === 'grid'
-            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />
-            : <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} />}
+            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onDelete={removeBooking} />
+            : <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onDelete={removeBooking} />}
         </div>
       ) : isMobile ? (
         /* Phones: day-by-day agenda — nearest day to today on top, paginated. */
@@ -347,6 +363,7 @@ function Inner() {
                     const m = statusBucket(b.status);
                     return (
                       <div key={b.id} onClick={() => setSelected(b)}
+                        onContextMenu={(e) => { e.preventDefault(); removeBooking(b.id); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
                         <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{fmtT(b.startTime)}</span>
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{b.service?.name ? ' · ' + b.service.name : ''}</span>
@@ -403,6 +420,7 @@ function Inner() {
                       return (
                         <div key={b.id} className="cal-ev" title={`${t('cal.st' + m.key)} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
                           onClick={() => setSelected(b)}
+                          onContextMenu={(e) => { e.preventDefault(); removeBooking(b.id); }}
                           style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5, background: `${m.color}1f`, borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.55 : 1, overflow: 'hidden' }}>
                           {(() => { const sm = sourceMeta(b.source); return sm ? <span style={{ flexShrink: 0, fontSize: 10 }} title={t(sm.key)}>{sm.icon}</span> : null; })()}
                           <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
@@ -440,8 +458,8 @@ function avatarColor(id: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-function DayView({ date, items, tz, isMobile, onOpen, today }: {
-  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date;
+function DayView({ date, items, tz, isMobile, onOpen, today, onDelete }: {
+  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onDelete?: (id: string) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -551,7 +569,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today }: {
               const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
               const isNext = nextB?.id === b.id;
               return (
-                <div key={b.id} onClick={() => onOpen(b)} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${b.service?.name ?? ''}`}
+                <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onDelete) { e.preventDefault(); onDelete(b.id); } }} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${b.service?.name ?? ''}`}
                   style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 4px)`, width: `calc(${w}% - 8px)`,
                     background: dim ? '#161f30' : `linear-gradient(180deg, ${m.color}26, ${m.color}12)`,
                     border: `1px solid ${m.color}55`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
@@ -600,8 +618,8 @@ function DayView({ date, items, tz, isMobile, onOpen, today }: {
 // Day view as a scannable card grid — grouped by morning / afternoon / evening,
 // wrapping into as many columns as fit. Much easier to read on a busy day than a
 // squished time-axis.
-function DayGrid({ date, items, tz, isMobile, onOpen, today }: {
-  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date;
+function DayGrid({ date, items, tz, isMobile, onOpen, today, onDelete }: {
+  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onDelete?: (id: string) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -656,7 +674,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today }: {
                   const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
                   const isNext = b.id === nextId;
                   return (
-                    <div key={b.id} onClick={() => onOpen(b)} className="cal-day-card"
+                    <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onDelete) { e.preventDefault(); onDelete(b.id); } }} className="cal-day-card"
                       style={{ background: dim ? '#161f30' : '#111a2c', border: `1px solid ${m.color}44`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
                         padding: '10px 12px', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
                         boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.3)',

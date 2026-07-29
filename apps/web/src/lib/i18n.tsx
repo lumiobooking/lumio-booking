@@ -339,6 +339,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'bk.servicesPicked': { en: 'selected', vi: 'đã chọn' },
   'bk.totalDuration': { en: 'total', vi: 'tổng' },
   'bk.pickAtLeastOne': { en: 'Pick at least one service.', vi: 'Chọn ít nhất một dịch vụ.' },
+  'bk.searchService': { en: 'Type to search services…', vi: 'Gõ tên dịch vụ để tìm…' },
+  'bk.noSvcMatch': { en: 'No services match.', vi: 'Không tìm thấy dịch vụ.' },
   'bk.reschedule': { en: 'Reschedule', vi: 'Dời lịch' },
   'bk.move': { en: 'Move', vi: 'Dời' },
   'bk.changeStaff': { en: 'Change staff…', vi: 'Đổi nhân viên…' },

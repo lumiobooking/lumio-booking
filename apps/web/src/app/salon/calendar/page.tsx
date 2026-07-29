@@ -69,6 +69,8 @@ function Inner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
+  // Right-click context menu on a booking chip: { screen position, booking }.
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; b: Booking } | null>(null);
   const [search, setSearch] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
@@ -336,8 +338,8 @@ function Inner() {
             </div>
           </div>
           {dayLayout === 'grid'
-            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onDelete={removeBooking} />
-            : <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onDelete={removeBooking} />}
+            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} />
+            : <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} />}
         </div>
       ) : isMobile ? (
         /* Phones: day-by-day agenda — nearest day to today on top, paginated. */
@@ -363,7 +365,7 @@ function Inner() {
                     const m = statusBucket(b.status);
                     return (
                       <div key={b.id} onClick={() => setSelected(b)}
-                        onContextMenu={(e) => { e.preventDefault(); removeBooking(b.id); }}
+                        onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
                         <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{fmtT(b.startTime)}</span>
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{b.service?.name ? ' · ' + b.service.name : ''}</span>
@@ -420,7 +422,7 @@ function Inner() {
                       return (
                         <div key={b.id} className="cal-ev" title={`${t('cal.st' + m.key)} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
                           onClick={() => setSelected(b)}
-                          onContextMenu={(e) => { e.preventDefault(); removeBooking(b.id); }}
+                          onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                           style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5, background: `${m.color}1f`, borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.55 : 1, overflow: 'hidden' }}>
                           {(() => { const sm = sourceMeta(b.source); return sm ? <span style={{ flexShrink: 0, fontSize: 10 }} title={t(sm.key)}>{sm.icon}</span> : null; })()}
                           <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
@@ -438,6 +440,32 @@ function Inner() {
       </div>
       </div>
       )}
+
+      {ctxMenu && (() => {
+        const b = ctxMenu.b;
+        const canArrive = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'].includes(b.status);
+        const isActive = canArrive || b.status === 'ARRIVED';
+        const top = Math.max(8, Math.min(ctxMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 250));
+        const left = Math.max(8, Math.min(ctxMenu.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 210));
+        const close = () => setCtxMenu(null);
+        return (
+          <>
+            {/* click-away backdrop (right-click also closes) */}
+            <div onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+            <div style={{ position: 'fixed', top, left, zIndex: 61, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, minWidth: 190, boxShadow: '0 14px 34px rgba(0,0,0,0.55)', padding: 4 }}>
+              <div style={{ padding: '7px 12px 6px', fontSize: 11.5, color: '#94a3b8', borderBottom: '1px solid #273449', marginBottom: 3, maxWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {fmtT(b.startTime)} · {name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}
+              </div>
+              <CtxItem label={`👁 ${lang === 'vi' ? 'Xem chi tiết' : 'View details'}`} onClick={() => { setSelected(b); close(); }} />
+              {canArrive && <CtxItem label={`🙋 ${t('cal.arrive')}`} onClick={() => { close(); action(b.id, 'arrive'); }} />}
+              {isActive && <CtxItem label={`✅ ${t('cal.complete')}`} onClick={() => { close(); action(b.id, 'complete'); }} />}
+              {isActive && <CtxItem color="#f59e0b" label={`✖ ${t('cal.cancel')}`} onClick={() => { close(); action(b.id, 'cancel'); }} />}
+              <div style={{ borderTop: '1px solid #273449', margin: '3px 0' }} />
+              <CtxItem color="#f87171" label={`🗑 ${lang === 'vi' ? 'Xóa booking' : 'Delete booking'}`} onClick={() => { close(); removeBooking(b.id); }} />
+            </div>
+          </>
+        );
+      })()}
 
       {selected && (
         <BookingDetail booking={selected} tz={tz} onClose={() => setSelected(null)} onAction={action} />
@@ -458,8 +486,8 @@ function avatarColor(id: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-function DayView({ date, items, tz, isMobile, onOpen, today, onDelete }: {
-  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onDelete?: (id: string) => void;
+function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
+  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onCtx?: (b: Booking, x: number, y: number) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -569,7 +597,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onDelete }: {
               const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
               const isNext = nextB?.id === b.id;
               return (
-                <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onDelete) { e.preventDefault(); onDelete(b.id); } }} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${b.service?.name ?? ''}`}
+                <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${b.service?.name ?? ''}`}
                   style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 4px)`, width: `calc(${w}% - 8px)`,
                     background: dim ? '#161f30' : `linear-gradient(180deg, ${m.color}26, ${m.color}12)`,
                     border: `1px solid ${m.color}55`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
@@ -618,8 +646,8 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onDelete }: {
 // Day view as a scannable card grid — grouped by morning / afternoon / evening,
 // wrapping into as many columns as fit. Much easier to read on a busy day than a
 // squished time-axis.
-function DayGrid({ date, items, tz, isMobile, onOpen, today, onDelete }: {
-  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onDelete?: (id: string) => void;
+function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
+  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onCtx?: (b: Booking, x: number, y: number) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -674,7 +702,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onDelete }: {
                   const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
                   const isNext = b.id === nextId;
                   return (
-                    <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onDelete) { e.preventDefault(); onDelete(b.id); } }} className="cal-day-card"
+                    <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card"
                       style={{ background: dim ? '#161f30' : '#111a2c', border: `1px solid ${m.color}44`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
                         padding: '10px 12px', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
                         boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.3)',
@@ -708,6 +736,19 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onDelete }: {
         </div>
       )}
       <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>{t('cal.dayHint')}</p>
+    </div>
+  );
+}
+
+function CtxItem({ label, onClick, color }: { label: string; onClick: () => void; color?: string }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, color: color ?? '#e2e8f0', cursor: 'pointer', borderRadius: 6, whiteSpace: 'nowrap' }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = '#273449'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      {label}
     </div>
   );
 }

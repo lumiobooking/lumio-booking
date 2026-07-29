@@ -412,6 +412,11 @@ export class MessengerService {
         select: { id: true, senderId: true },
       });
       for (const t of nameless) {
+        // Cooldown: a lookup Meta rejects (pre-approval) would otherwise retry on
+        // every 8s poll and spam the logs — try each thread at most every 15 min.
+        const last = this.nameLookupTriedAt.get(t.id) ?? 0;
+        if (Date.now() - last < 15 * 60 * 1000) continue;
+        this.nameLookupTriedAt.set(t.id, Date.now());
         const name = await this.fetchSenderName(conn.pageToken, t.senderId);
         if (name) await this.prisma.messengerThread.update({ where: { id: t.id }, data: { senderName: name } }).catch(() => undefined);
       }
@@ -685,6 +690,9 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
   /** Best-effort profile lookup (User Profile API): the customer's display name.
    *  Works for app-role users in dev mode and for all users once pages_messaging
    *  is approved. Falls back to null — callers keep showing the PSID. */
+  // Per-thread cooldown for profile lookups (in-memory; resets on restart).
+  private readonly nameLookupTriedAt = new Map<string, number>();
+
   private async fetchSenderName(pageToken: string, psid: string): Promise<string | null> {
     try {
       const r = await fetch(`${GRAPH}/${psid}?fields=first_name,last_name,name&access_token=${encodeURIComponent(pageToken)}`);

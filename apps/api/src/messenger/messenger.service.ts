@@ -388,7 +388,21 @@ export class MessengerService {
    *  the "Messenger Activity" evidence block a reviewer records. */
   async activity(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
-    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageName: true, pageId: true } });
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageName: true, pageId: true, pageToken: true } });
+    // Opportunistic backfill: try to resolve missing customer names for the few
+    // most-recent threads (e.g. right after the person accepted a Tester role) —
+    // no new inbound message required, just a Refresh.
+    if (conn?.pageToken) {
+      const nameless = await this.prisma.messengerThread.findMany({
+        where: { tenantId, senderName: null, updatedAt: { gte: new Date(Date.now() - 7 * 24 * 3600 * 1000) } },
+        orderBy: { updatedAt: 'desc' }, take: 3,
+        select: { id: true, senderId: true },
+      });
+      for (const t of nameless) {
+        const name = await this.fetchSenderName(conn.pageToken, t.senderId);
+        if (name) await this.prisma.messengerThread.update({ where: { id: t.id }, data: { senderName: name } }).catch(() => undefined);
+      }
+    }
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 20,
       select: { id: true, senderId: true, senderName: true, history: true, updatedAt: true },
@@ -660,9 +674,15 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
    *  is approved. Falls back to null — callers keep showing the PSID. */
   private async fetchSenderName(pageToken: string, psid: string): Promise<string | null> {
     try {
-      const r = await fetch(`${GRAPH}/${psid}?fields=first_name,last_name&access_token=${encodeURIComponent(pageToken)}`);
-      const j = (await r.json().catch(() => ({}))) as { first_name?: string; last_name?: string };
-      const name = [j.first_name, j.last_name].filter(Boolean).join(' ').trim();
+      const r = await fetch(`${GRAPH}/${psid}?fields=first_name,last_name,name&access_token=${encodeURIComponent(pageToken)}`);
+      const j = (await r.json().catch(() => ({}))) as { first_name?: string; last_name?: string; name?: string; error?: { message?: string; code?: number } };
+      if (j.error) {
+        // Visible in server logs: usually means the PSID user has no app role yet
+        // (User Profile API is role-gated until pages_messaging is approved).
+        this.logger.warn(`profile lookup failed for PSID …${psid.slice(-6)}: ${(j.error.message || '').slice(0, 120)}`);
+        return null;
+      }
+      const name = ([j.first_name, j.last_name].filter(Boolean).join(' ').trim()) || (j.name || '').trim();
       return name || null;
     } catch { return null; }
   }

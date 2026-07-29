@@ -725,7 +725,7 @@ export default function PublicBookingPage() {
                   <SoonestBar rules={rules} services={services} accent={accent} />
                   <ServicePicker
                     services={services} categories={categories} selectedIds={pickedServiceIds}
-                    onToggle={toggleService} fmt={fmt} accent={accent}
+                    onToggle={toggleService} fmt={fmt} accent={accent} cardFee={salon?.cardFee}
                     subscribe={subscribe} pinning={pinning} stickyTop={fullscreen ? 58 : 64}
                   />
                   {serviceAddons.length > 0 && (
@@ -740,7 +740,7 @@ export default function PublicBookingPage() {
                               style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
                               <span style={{ flex: 1, textAlign: 'left' }}>
                                 <span style={rowTitle}>{a.name}</span>
-                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span> </>}<b style={{ color: accent }}>+{fmt(a.priceCents)}</b></span>
+                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span> </>}<b style={{ color: accent }}>+{salon?.cardFee?.enabled && salon.cardFee.percent > 0 ? <>💵 </> : null}{fmt(a.priceCents)}</b>{salon?.cardFee?.enabled && salon.cardFee.percent > 0 && <span style={{ color: '#8fa0bb', fontWeight: 700 }}> · 💳 +{fmt(Math.round(a.priceCents * (1 + salon.cardFee.percent / 100)))}</span>}</span>
                               </span>
                               <PlusCheck on={on} accent={accent} />
                             </button>
@@ -1173,9 +1173,12 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
 // Step 1 · Services: sticky category tabs + one section per category.
 // Scrolling moves the tabs (scroll-spy); tapping a tab scrolls to the section.
 // ---------------------------------------------------------------------------
-function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, subscribe, pinning, stickyTop }: {
+function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, cardFee, subscribe, pinning, stickyTop }: {
   services: Service[]; categories: Category[]; selectedIds: string[];
   onToggle: (id: string) => void; fmt: (c: number) => string; accent: string;
+  /** Dual pricing (US nail-salon "cash discount" model): when the salon passes
+   *  card fees on, the menu shows BOTH prices up-front so customers can choose. */
+  cardFee?: { enabled: boolean; percent: number };
   /** Embed only: the host page's viewport feed. The tabs follow the scroll and stay
    *  pinned with it, even though the iframe itself never scrolls. */
   subscribe: (fn: HostSub) => () => void;
@@ -1262,6 +1265,11 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
     ? [{ id: 'search', name: `Results for “${q.trim()}”`, items: services.filter((s) => s.name.toLowerCase().includes(search)) }]
     : groups;
 
+  // Dual pricing: card price = cash price + surcharge % (rounded to the cent),
+  // exactly how the salon's printed menu is built ($55 -> $56.65 at 3%).
+  const dualPct = cardFee?.enabled && cardFee.percent > 0 ? cardFee.percent : 0;
+  const toCard = (cents: number) => Math.round(cents * (1 + dualPct / 100));
+
   return (
     <div ref={pin.boxRef}>
       <div ref={(node) => { tabsRef.current = node; pin.elRef.current = node; }} className="lumio-tabs" style={{
@@ -1295,6 +1303,11 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
         </div>
       )}
 
+      {dualPct > 0 && (
+        <div style={{ margin: '2px 0 14px', fontSize: 12.5, color: '#5b6b85', fontWeight: 700, background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px', display: 'inline-block' }}>
+          💵 Cash price · 💳 Card price (+{dualPct}%)
+        </div>
+      )}
       {shown.map((g) => (
         <div key={g.id} ref={(el) => { sectionRefs.current[g.id] = el; }} style={{ marginBottom: 22, scrollMarginTop: 130 }}>
           <SectionLabel accent={accent}>{g.name}</SectionLabel>
@@ -1316,7 +1329,14 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                     <span style={rowMeta}>
                       {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span>{' '}</>}
                       {disc > 0 && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
-                      <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
+                      {dualPct > 0 ? (
+                        <>
+                          <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}💵 {fmt(svcNetCents(s))}</b>
+                          <span style={{ color: '#8fa0bb', fontWeight: 700 }}> · 💳 {fmt(toCard(svcNetCents(s)))}</span>
+                        </>
+                      ) : (
+                        <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
+                      )}
                     </span>
                   </span>
                   <PlusCheck on={on} accent={accent} />

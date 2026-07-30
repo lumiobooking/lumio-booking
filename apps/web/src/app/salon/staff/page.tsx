@@ -14,6 +14,8 @@ import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../c
 interface Service {
   id: string;
   name: string;
+  durationMinutes?: number | null;
+  priceCents?: number | null;
   category?: { id: string; name: string } | null;
 }
 
@@ -866,7 +868,8 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [q, setQ] = useState('');
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [selOnly, setSelOnly] = useState(false);
+  const [cat, setCat] = useState<string>('__all__');
   if (all.length === 0) return <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServices')}</p>;
 
   const ql = q.trim().toLowerCase();
@@ -874,93 +877,145 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
   const has = (id: string) => ids.includes(id);
   const toggle = (id: string) => set(has(id) ? ids.filter((x) => x !== id) : [...ids, id]);
 
-  // Groups are built from ALL services so the per-group counters stay correct
-  // while searching; only the visible items get filtered.
-  const groups: { key: string; name: string; items: Service[] }[] = [];
+  const cats: { key: string; name: string; items: Service[] }[] = [];
   const byKey = new Map<string, { key: string; name: string; items: Service[] }>();
-  for (const s of all) {
-    const key = s.category?.id ?? '__none__';
+  for (const sv of all) {
+    const key = sv.category?.id ?? '__none__';
     let g = byKey.get(key);
-    if (!g) { g = { key, name: s.category?.name ?? t('st.skOther'), items: [] }; byKey.set(key, g); groups.push(g); }
-    g.items.push(s);
+    if (!g) { g = { key, name: sv.category?.name ?? t('st.skOther'), items: [] }; byKey.set(key, g); cats.push(g); }
+    g.items.push(sv);
   }
 
-  const shown = groups
-    .map((g) => ({ ...g, visible: searching ? g.items.filter((s) => s.name.toLowerCase().includes(ql)) : g.items }))
-    .filter((g) => g.visible.length > 0);
+  const active = cat === '__all__' ? null : byKey.get(cat) ?? null;
+  let list: Service[] = active ? active.items : all;
+  if (searching) list = all.filter((sv) => sv.name.toLowerCase().includes(ql));
+  if (selOnly) list = list.filter((sv) => has(sv.id));
 
+  const listIds = list.map((sv) => sv.id);
+  const listAllOn = listIds.length > 0 && listIds.every((id) => has(id));
+  const midTitle = searching ? t('st.skResults') : active ? active.name : t('st.skAllServices');
+  const picked = ids.map((id) => all.find((sv) => sv.id === id)).filter(Boolean) as Service[];
   const allOn = ids.length >= all.length;
-  const anyOpen = searching || Object.values(open).some(Boolean);
-  const picked = ids.map((id) => all.find((s) => s.id === id)).filter(Boolean) as Service[];
+  const catName = (sv: Service) => sv.category?.name ?? t('st.skOther');
+  const meta = (sv: Service) => {
+    const bits: string[] = [];
+    if (sv.durationMinutes) bits.push(`${sv.durationMinutes} min`);
+    if (typeof sv.priceCents === 'number' && sv.priceCents > 0) bits.push(`$${(sv.priceCents / 100).toFixed(2)}`);
+    return bits.join(' · ');
+  };
+
+  const colH = 330;
+  const rowBtn = (on: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+    padding: '7px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13,
+    background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontWeight: on ? 600 : 400,
+  });
+  const countPill = (n: number, tot: number): React.CSSProperties => ({
+    marginLeft: 'auto', fontSize: 11, padding: '1px 7px', borderRadius: 999, fontWeight: 600,
+    background: n > 0 ? '#4338ca' : '#1e293b', color: n > 0 ? '#e0e7ff' : '#64748b',
+  });
+  const colHead: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: '#64748b',
+    padding: '8px 10px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 8,
+  };
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+      {/* Toolbar: search · selected-only · counter · select all */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('st.skSearchPh')} style={{ ...ui.input, width: '100%', paddingLeft: 30, boxSizing: 'border-box' }} />
         </div>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>{t('st.skSelected').replace('{n}', String(ids.length)).replace('{m}', String(all.length))}</span>
-        <button type="button" onClick={() => setOpen(anyOpen ? {} : Object.fromEntries(groups.map((g) => [g.key, true])))} style={{ fontSize: 12, padding: '5px 10px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
-          {anyOpen ? t('st.skCollapseAll') : t('st.skExpandAll')}
+        <button type="button" onClick={() => setSelOnly((v) => !v)} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 999, border: `1px solid ${selOnly ? '#6366f1' : '#334155'}`, background: selOnly ? '#312e81' : 'transparent', color: selOnly ? '#c7d2fe' : '#94a3b8', cursor: 'pointer', fontWeight: 600 }}>
+          {selOnly ? '✓ ' : ''}{t('st.skSelectedOnly')}
         </button>
-        <button type="button" onClick={() => set(allOn ? [] : all.map((s) => s.id))} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>{t('st.skSelected').replace('{n}', String(ids.length)).replace('{m}', String(all.length))}</span>
+        <button type="button" onClick={() => set(allOn ? [] : all.map((sv) => sv.id))} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}>
           {allOn ? t('st.clearAll') : t('st.selectAll')}
         </button>
       </div>
 
-      {picked.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, maxHeight: 104, overflowY: 'auto' }}>
-          {picked.map((s) => (
-            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, background: '#312e81', border: '1px solid #6366f1', color: '#c7d2fe', fontSize: 12 }}>
-              {s.name}
-              <button type="button" onClick={() => toggle(s.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
-            </span>
-          ))}
+      {/* 3 columns: categories · services · selected */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden', background: '#0b1220' }}>
+        {/* Column 1 — categories */}
+        <div style={{ width: 210, minWidth: 180, flex: '0 1 210px', borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column' }}>
+          <div style={colHead}>{t('st.skCategories')}</div>
+          <div style={{ maxHeight: colH, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <button type="button" onClick={() => { setCat('__all__'); setSelOnly(false); }} style={rowBtn(cat === '__all__' && !selOnly)}>
+              <span>★</span><span>{t('st.skAllServices')}</span><span style={countPill(ids.length, all.length)}>{all.length}</span>
+            </button>
+            <button type="button" onClick={() => { setCat('__all__'); setSelOnly(true); }} style={rowBtn(selOnly)}>
+              <span>✓</span><span>{t('st.skSelectedCol')}</span><span style={countPill(ids.length, ids.length)}>{ids.length}</span>
+            </button>
+            <div style={{ height: 1, background: '#1e293b', margin: '4px 6px' }} />
+            {cats.map((g) => {
+              const sel = g.items.filter((sv) => has(sv.id)).length;
+              return (
+                <button key={g.key} type="button" onClick={() => { setCat(g.key); setSelOnly(false); }} style={rowBtn(cat === g.key && !selOnly)}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
+                  <span style={countPill(sel, g.items.length)}>{sel > 0 ? `${sel}/${g.items.length}` : g.items.length}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      )}
 
-      {shown.length === 0 ? (
-        <p style={{ color: '#64748b', fontSize: 13 }}>{t('st.skNoMatch')} &quot;{q}&quot;</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {shown.map((g) => {
-            const vids = g.visible.map((s) => s.id);
-            const gAllOn = vids.every((id) => has(id));
-            const selCount = g.items.filter((s) => has(s.id)).length;
-            const isOpen = searching || !!open[g.key];
-            return (
-              <div key={g.key} style={{ border: '1px solid #1e293b', borderRadius: 10, overflow: 'hidden', background: '#0b1220' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px' }}>
-                  <button type="button" onClick={() => setOpen((p) => ({ ...p, [g.key]: !p[g.key] }))} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, border: 'none', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', textAlign: 'left', padding: 0, fontSize: 13, fontWeight: 600 }}>
-                    <span style={{ color: '#64748b', fontSize: 11, width: 10 }}>{isOpen ? '▾' : '▸'}</span>
-                    <span style={{ textTransform: 'uppercase', letterSpacing: 0.4, color: '#cbd5e1' }}>{g.name}</span>
-                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: selCount > 0 ? '#312e81' : '#1e293b', color: selCount > 0 ? '#c7d2fe' : '#64748b', fontWeight: 600 }}>
-                      {selCount}/{g.items.length}
+        {/* Column 2 — services in the active category */}
+        <div style={{ flex: '1 1 300px', minWidth: 260, borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column' }}>
+          <div style={colHead}>
+            <span style={{ color: '#cbd5e1' }}>{midTitle}</span>
+            <span style={{ color: '#64748b', textTransform: 'none', letterSpacing: 0 }}>{list.filter((sv) => has(sv.id)).length}/{list.length}</span>
+            {list.length > 0 && (
+              <button type="button" onClick={() => set(listAllOn ? ids.filter((id) => !listIds.includes(id)) : [...new Set([...ids, ...listIds])])} style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
+                {listAllOn ? t('st.skNone') : t('st.skAll')}
+              </button>
+            )}
+          </div>
+          <div style={{ maxHeight: colH, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {list.length === 0 ? (
+              <p style={{ color: '#64748b', fontSize: 13, padding: '10px 6px' }}>{searching ? `${t('st.skNoMatch')} "${q}"` : t('st.skEmptyList')}</p>
+            ) : list.map((sv) => {
+              const on = has(sv.id);
+              const m = meta(sv);
+              return (
+                <label key={sv.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '7px 10px', borderRadius: 8, cursor: 'pointer', background: on ? '#312e81' : 'transparent', border: `1px solid ${on ? '#4338ca' : 'transparent'}` }}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(sv.id)} style={{ marginTop: 2 }} />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, color: on ? '#e0e7ff' : '#e2e8f0' }}>{sv.name}</span>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                      {(searching || cat === '__all__' || selOnly) ? catName(sv) + (m ? ` · ${m}` : '') : m}
                     </span>
-                  </button>
-                  <button type="button" onClick={() => set(gAllOn ? ids.filter((id) => !vids.includes(id)) : [...new Set([...ids, ...vids])])} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
-                    {gAllOn ? t('st.skNone') : t('st.skAll')}
-                  </button>
-                </div>
-                {isOpen && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '2px 10px 10px' }}>
-                    {g.visible.map((s) => {
-                      const on = has(s.id);
-                      return (
-                        <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontSize: 13, cursor: 'pointer' }}>
-                          <input type="checkbox" checked={on} onChange={() => toggle(s.id)} />
-                          {s.name}
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </div>
-      )}
+
+        {/* Column 3 — what this technician can do */}
+        <div style={{ width: 220, minWidth: 190, flex: '0 1 220px', display: 'flex', flexDirection: 'column' }}>
+          <div style={colHead}>
+            <span style={{ color: '#cbd5e1' }}>{t('st.skSelectedCol')}</span>
+            <span style={{ color: '#64748b', textTransform: 'none' }}>{ids.length}</span>
+            {ids.length > 0 && (
+              <button type="button" onClick={() => set([])} style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
+                {t('st.clearAll')}
+              </button>
+            )}
+          </div>
+          <div style={{ maxHeight: colH, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {picked.length === 0 ? (
+              <p style={{ color: '#64748b', fontSize: 12, padding: '10px 6px' }}>{t('st.skEmptySel')}</p>
+            ) : picked.map((sv) => (
+              <span key={sv.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8, background: '#1e1b4b', border: '1px solid #4338ca', color: '#c7d2fe', fontSize: 12 }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sv.name}>{sv.name}</span>
+                <button type="button" onClick={() => toggle(sv.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

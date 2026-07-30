@@ -304,6 +304,11 @@ export default function HomePage() {
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></div>
             <p style={{ fontSize: 13, margin: '6px 0 0' }}>Booking &amp; salon management software.</p>
+            <p style={{ fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.6, color: '#64748b' }}>
+              Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731, USA<br />
+              <a href="tel:+15128868189" style={{ color: '#94a3b8', textDecoration: 'none' }}>+1 (512) 886-8189</a> ·{' '}
+              <a href="mailto:lumioagency.com@gmail.com" style={{ color: '#94a3b8', textDecoration: 'none' }}>lumioagency.com@gmail.com</a>
+            </p>
           </div>
           <div style={{ display: 'flex', gap: 20, fontSize: 14, flexWrap: 'wrap' }}>
             <a href="#features" style={{ color: '#94a3b8', textDecoration: 'none' }}>Features</a>
@@ -311,6 +316,9 @@ export default function HomePage() {
             <Link href="/privacy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Privacy Policy</Link>
             <Link href="/terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Terms &amp; SMS Terms</Link>
             <Link href="/sms-optin" style={{ color: '#94a3b8', textDecoration: 'none' }}>Text Alerts</Link>
+            <Link href="/booking-policy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Cancellation Policy</Link>
+            <Link href="/merchant-terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Merchant Agreement</Link>
+            <Link href="/company" style={{ color: '#94a3b8', textDecoration: 'none' }}>Company</Link>
             <Link href="/support" style={{ color: '#94a3b8', textDecoration: 'none' }}>Support</Link>
             <Link href="/login" style={{ color: '#94a3b8', textDecoration: 'none' }}>Sign in</Link>
           </div>

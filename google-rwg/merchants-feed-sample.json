@@ -1,0 +1,321 @@
+{
+  "metadata": {
+    "generation_timestamp": "1785392220",
+    "processing_instruction": "PROCESS_AS_COMPLETE",
+    "total_shards": 1
+  },
+  "merchant": [
+    {
+      "merchant_id": "nails-for-you",
+      "name": "Nails For You",
+      "telephone": "+19054549288",
+      "url": "https://lumiobooking.com/nails-for-you",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "227 Vodden St E Suite E Unit 13",
+          "locality": "Brampton",
+          "region": "ON",
+          "country": "CA",
+          "postal_code": "L6V 1N2"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/nails-for-you",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "happy-nails-spa",
+      "name": "Happy Nails & Spa",
+      "telephone": "+12895538686",
+      "url": "https://lumiobooking.com/happy-nails-spa",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "10501 Weston Rd",
+          "locality": "Vaughan",
+          "region": "ON",
+          "country": "CA",
+          "postal_code": "L4H 4G8"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/happy-nails-spa",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "vina-nails-spa",
+      "name": "Vina Nails & Spa at Tatum Phoenix",
+      "telephone": "+16026032420",
+      "url": "https://lumiobooking.com/vina-nails-spa",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "4757 E Greenway Rd #107B",
+          "locality": "Phoenix",
+          "region": "AZ",
+          "country": "US",
+          "postal_code": "85032"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/vina-nails-spa",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "lux-nail-spa",
+      "name": "Lux Nail Spa",
+      "telephone": "+18304963214",
+      "url": "https://lumiobooking.com/lux-nail-spa",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "516 Junction Hwy",
+          "locality": "Kerrville",
+          "region": "TX",
+          "country": "US",
+          "postal_code": "78028"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/lux-nail-spa",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "t-u-nails",
+      "name": "T U Nails",
+      "telephone": "+17654477258",
+      "url": "https://lumiobooking.com/t-u-nails",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "4921 IN-26 #500",
+          "locality": "Lafayette",
+          "region": "IN",
+          "country": "US",
+          "postal_code": "47905"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/t-u-nails",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "a-l-wellness-yyc",
+      "name": "A-L Wellness YYC",
+      "telephone": "+15874350838",
+      "url": "https://lumiobooking.com/a-l-wellness-yyc",
+      "category": "Medical spa",
+      "geo": {
+        "address": {
+          "street_address": "8855 Macleod Trl SW #205",
+          "locality": "Calgary",
+          "region": "AB",
+          "country": "CA",
+          "postal_code": "T2H 0M2"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/a-l-wellness-yyc",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "luv-nails",
+      "name": "Luv Nails",
+      "telephone": "+14373355528",
+      "url": "https://lumiobooking.com/luv-nails",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "28 Queen St W",
+          "locality": "Brampton",
+          "region": "ON",
+          "country": "CA",
+          "postal_code": "L6X 1A1"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/luv-nails",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "spa-manipedi",
+      "name": "Spa ManiPedi - Sherbrooke Ouest",
+      "telephone": "+15144881818",
+      "url": "https://lumiobooking.com/spa-manipedi",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "5131 Sherbrooke St W",
+          "locality": "Montreal",
+          "region": "QC",
+          "country": "CA",
+          "postal_code": "H4A 1T2"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/spa-manipedi",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "fremantle-nail-spa",
+      "name": "Fremantle Nail Spa",
+      "telephone": "+61893355417",
+      "url": "https://lumiobooking.com/fremantle-nail-spa",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "Unit 4/12 Queen St",
+          "locality": "Fremantle",
+          "region": "WA",
+          "country": "AU",
+          "postal_code": "6160"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/fremantle-nail-spa",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "model-nails-salon",
+      "name": "Model Nails Salon Morgan Bessemer",
+      "telephone": "+12054249966",
+      "url": "https://lumiobooking.com/model-nails-salon",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "2904 Morgan Rd Ste 104",
+          "locality": "Bessemer",
+          "region": "AL",
+          "country": "US",
+          "postal_code": "35022"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/model-nails-salon",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "saigon-palace-cafe",
+      "name": "Saigon Palace Cafe - Vietnamese Restaurant",
+      "telephone": "+61753387379",
+      "url": "https://lumiobooking.com/saigon-palace-cafe",
+      "category": "Vietnamese restaurant",
+      "geo": {
+        "address": {
+          "street_address": "174 Alexandra Parade",
+          "locality": "Alexandra Headland",
+          "region": "QLD",
+          "country": "AU",
+          "postal_code": "4572"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/saigon-palace-cafe",
+          "action_link_type": "ACTION_LINK_TYPE_MAKE_DINING_RESERVATION",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "aura-nail-lab",
+      "name": "Aura Nail Lab",
+      "telephone": "+13103102995",
+      "url": "https://lumiobooking.com/aura-nail-lab",
+      "category": "Nail salon",
+      "geo": {
+        "address": {
+          "street_address": "1317 Santa Monica Blvd",
+          "locality": "Santa Monica",
+          "region": "CA",
+          "country": "US",
+          "postal_code": "90404"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/aura-nail-lab",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    },
+    {
+      "merchant_id": "lux-her-spa",
+      "name": "Lux Her Spa",
+      "telephone": "+19499194263",
+      "url": "https://lumiobooking.com/lux-her-spa",
+      "category": "Spa",
+      "geo": {
+        "address": {
+          "street_address": "212 E Grand Ave",
+          "locality": "Alhambra",
+          "region": "CA",
+          "country": "US",
+          "postal_code": "91801"
+        }
+      },
+      "action_link": [
+        {
+          "url": "https://lumiobooking.com/lux-her-spa",
+          "action_link_type": "ACTION_LINK_TYPE_BOOK_APPOINTMENT",
+          "language": "en",
+          "platform": "ACTION_PLATFORM_WEB_APPLICATION"
+        }
+      ]
+    }
+  ]
+}

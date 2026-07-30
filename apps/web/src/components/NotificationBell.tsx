@@ -10,7 +10,7 @@ import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import { BookingDetailSheet } from './BookingDetailSheet';
 
-interface Item { id: string; type: 'booking' | 'cancel' | 'payment'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null }
+interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
 const ACT_SEEN_KEY = 'lumio_activity_seen';
 
@@ -18,6 +18,7 @@ const TYPE_META: Record<string, { bg: string; icon: string }> = {
   booking: { bg: '#6366f1', icon: 'M3 4h18v17H3zM8 2v4M16 2v4M3 10h18M12 13v5M9.5 15.5h5' },
   cancel: { bg: '#ef4444', icon: 'M3 4h18v17H3zM8 2v4M16 2v4M3 10h18M9.5 14l5 4M14.5 14l-5 4' },
   payment: { bg: '#10b981', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
+  report: { bg: '#f59e0b', icon: 'M6 3h9l5 5v13H6zM14 3v6h6M9 13h6M9 17h4' },
 };
 
 /**
@@ -79,7 +80,14 @@ export function NotificationBell() {
     if (s < 86400) return Math.floor(s / 3600) + L(' giờ', 'h');
     return Math.floor(s / 86400) + L(' ngày', 'd');
   };
-  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : L('· TT', '· Paid');
+  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' ? '' : L('· TT', '· Paid');
+  // A month-end marketing report: the backend sends the raw status so each
+  // language words it itself.
+  const reportText = (status: string) => status === 'approved'
+    ? L('— báo cáo marketing đã duyệt', '— marketing report approved')
+    : status === 'sent'
+      ? L('— báo cáo marketing đã gửi', '— marketing report sent')
+      : L('— báo cáo marketing đang chờ duyệt', '— marketing report waiting for approval');
 
   const recent = items.slice(0, 15);
 
@@ -113,9 +121,9 @@ export function NotificationBell() {
                 <p style={{ color: '#64748b', fontSize: 13.5, padding: '22px 15px', textAlign: 'center', margin: 0 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
               ) : recent.map((i) => {
                 const m = TYPE_META[i.type];
-                const clickable = !!i.appointmentId;
+                const clickable = !!i.appointmentId || !!i.link;
                 const hovered = hoverId === i.id;
-                const go = () => { setOpen(false); if (i.appointmentId) setOpenId(i.appointmentId); else router.push('/salon/activity'); };
+                const go = () => { setOpen(false); if (i.appointmentId) setOpenId(i.appointmentId); else if (i.link) router.push(i.link); else router.push('/salon/activity'); };
                 return (
                   <button
                     key={i.id}
@@ -130,7 +138,7 @@ export function NotificationBell() {
                       </svg>
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 13.5, color: '#e5e9f0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {verb(i.type)} {i.detail}</span>
+                      <span style={{ display: 'block', fontSize: 13.5, color: '#e5e9f0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : `${verb(i.type)} ${i.detail}`}</span>
                       <span style={{ display: 'block', fontSize: 11.5, color: '#64748b', marginTop: 1 }}>{rel(i.at)}</span>
                     </span>
                     {clickable && (

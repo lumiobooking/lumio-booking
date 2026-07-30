@@ -83,6 +83,12 @@ export class MarketingController {
     return this.marketing.approveReport(user, dto.month, dto.tenantId);
   }
 
+  /** Is month-end auto-drafting on, and where does each recent month stand. */
+  @Get('auto-status')
+  autoStatus(@CurrentUser() user: AuthenticatedUser, @Query('tenantId') tenantId?: string) {
+    return this.marketing.autoReportStatus(user, tenantId);
+  }
+
   /** Manually trigger the month-end auto-draft (super admin only). For testing
    * and for re-running after a month closes. Idempotent. */
   @Post('auto-generate')

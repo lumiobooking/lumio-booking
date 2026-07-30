@@ -3,8 +3,11 @@ import { MarketingController } from './marketing.controller';
 import { MarketingService } from './marketing.service';
 import { MarketingScheduler } from './marketing.scheduler';
 import { SocialRegistry } from './connectors/social-registry';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
+  imports: [NotificationsModule, SettingsModule],
   controllers: [MarketingController],
   providers: [MarketingService, MarketingScheduler, SocialRegistry],
 })

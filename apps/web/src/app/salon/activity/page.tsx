@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -9,7 +10,7 @@ import { PushEnable } from '../../../components/PushEnable';
 import { BookingDetailSheet } from '../../../components/BookingDetailSheet';
 import { usePaged, Pager } from '../../../components/ListFilter';
 
-interface Item { id: string; type: 'booking' | 'cancel' | 'payment'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null }
+interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
 const ACT_SEEN_KEY = 'lumio_activity_seen';
 
@@ -21,15 +22,17 @@ const TYPE_META: Record<string, { bg: string; icon: string }> = {
   booking: { bg: '#6366f1', icon: 'M3 4h18v17H3zM8 2v4M16 2v4M3 10h18M12 13v5M9.5 15.5h5' },
   cancel: { bg: '#ef4444', icon: 'M3 4h18v17H3zM8 2v4M16 2v4M3 10h18M9.5 14l5 4M14.5 14l-5 4' },
   payment: { bg: '#10b981', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
+  report: { bg: '#f59e0b', icon: 'M6 3h9l5 5v13H6zM14 3v6h6M9 13h6M9 17h4' },
 };
 
 function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
+  const router = useRouter();
   const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment'>('all');
+  const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment' | 'report'>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tz, setTz] = useState<string | undefined>(() => (typeof window !== 'undefined' ? (window.localStorage.getItem('lumio_tz') || undefined) : undefined));
@@ -73,7 +76,12 @@ function Inner() {
     if (dd === start - 86400000) return L('HÔM QUA', 'YESTERDAY');
     return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', { day: 'numeric', month: 'short' }).toUpperCase();
   };
-  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : L('· Thanh toán', '· Paid');
+  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' ? '' : L('· Thanh toán', '· Paid');
+  const reportText = (status: string) => status === 'approved'
+    ? L('— báo cáo marketing đã duyệt', '— marketing report approved')
+    : status === 'sent'
+      ? L('— báo cáo marketing đã gửi', '— marketing report sent')
+      : L('— báo cáo marketing đang chờ duyệt', '— marketing report waiting for approval');
 
   const shown = useMemo(() => items.filter((i) => filter === 'all' || i.type === filter), [items, filter]);
   const pg = usePaged(shown, 20);
@@ -89,6 +97,7 @@ function Inner() {
     { k: 'booking', label: L('Đặt lịch', 'Bookings') },
     { k: 'cancel', label: L('Huỷ', 'Cancels') },
     { k: 'payment', label: L('Đơn hàng', 'Payments') },
+    { k: 'report', label: L('Báo cáo', 'Reports') },
   ];
 
   return (
@@ -113,9 +122,9 @@ function Inner() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {list.map((i) => {
                 const m = TYPE_META[i.type];
-                const clickable = !!i.appointmentId;
+                const clickable = !!i.appointmentId || !!i.link;
                 const hovered = hoverId === i.id;
-                const open = () => { if (i.appointmentId) setOpenId(i.appointmentId); };
+                const open = () => { if (i.appointmentId) setOpenId(i.appointmentId); else if (i.link) router.push(i.link); };
                 return (
                   <div
                     key={i.id}
@@ -134,7 +143,7 @@ function Inner() {
                       </svg>
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, color: '#f1f5f9', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {verb(i.type)} {i.detail}</div>
+                      <div style={{ fontSize: 14.5, color: '#f1f5f9', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : `${verb(i.type)} ${i.detail}`}</div>
                       {(i.when || i.type === 'payment') && <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{i.when ? whenText(i.when) : L('Đã thanh toán', 'Paid')}</div>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>

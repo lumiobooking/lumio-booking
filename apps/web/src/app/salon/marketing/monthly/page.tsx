@@ -27,6 +27,11 @@ interface Item { vi: string; en: string }
 interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi: string; en: string }
 interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; insights?: Item[]; nextMonth?: { content?: Item[]; ads?: Item[]; growth?: Item[]; kpi?: Item[] }; _aiUnavailable?: boolean; _aiError?: string }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
+interface AutoStatus {
+  enabled: boolean;
+  months: { month: string; label: string; status: string | null; createdAt: string | null; approvedAt: string | null; sentAt: string | null }[];
+  lastNotice: { month: string | null; recipient: string; status: string; at: string } | null;
+}
 interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
 interface GbpData {
   impressions?: number | null; mapsImpr?: number | null; searchImpr?: number | null; desktopImpr?: number | null; mobileImpr?: number | null;
@@ -34,7 +39,7 @@ interface GbpData {
   keywords?: { keyword: string; count: number | null }[];
   vsPrev?: { impressions: SocialDelta | null; calls: SocialDelta | null; directions: SocialDelta | null; websiteClicks: SocialDelta | null; bookings: SocialDelta | null; conversations: SocialDelta | null };
   series?: { month: string; impressions: number | null; calls: number | null; directions: number | null; websiteClicks: number | null; bookings: number | null }[];
-  reviews?: { rating: number | null; count: number | null; newThisMonth?: number | null; badCount?: number | null; recent?: { author: string; rating: number; comment: string; time?: string }[] } | null;
+  reviews?: { rating: number | null; count: number | null; newThisMonth?: number | null; badCount?: number | null; manual?: boolean; source?: string; syncedAt?: string; recent?: { author: string; rating: number; comment: string; time?: string }[] } | null;
 }
 interface PostRow { id: string; type: string; timestamp: string | null; permalink: string | null; thumbnail: string | null; caption: string | null; likes: number | null; comments: number | null; reach: number | null; views: number | null; saved: number | null; shares: number | null; interactions: number | null }
 interface SocialInsight {
@@ -68,6 +73,7 @@ function Inner() {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [data, setData] = useState<Monthly | null>(null);
   const [report, setReport] = useState<Report | null>(null);
+  const [auto, setAuto] = useState<AutoStatus | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [spendDraft, setSpendDraft] = useState<Record<string, SpendRow>>({});
   const [showMetrics, setShowMetrics] = useState(false);
@@ -85,12 +91,13 @@ function Inner() {
     if (!token) return;
     setLoading(true);
     try {
-      const [d, r, settings] = await Promise.all([
+      const [d, r, settings, a] = await Promise.all([
         apiFetch<Monthly>(`/marketing/monthly?month=${month}`, { token }),
         apiFetch<Report | null>(`/marketing/report?month=${month}`, { token }).catch(() => null),
         apiFetch<{ booking?: { currency?: string }; company?: { name?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string } })),
+        apiFetch<AutoStatus>('/marketing/auto-status', { token }).catch(() => null),
       ]);
-      setData(d); setReport(r);
+      setData(d); setReport(r); setAuto(a);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
       if (settings?.company?.name) setSalonName(settings.company.name);
       const draft: Record<string, SpendRow> = {};
@@ -236,10 +243,28 @@ function Inner() {
         <button onClick={saveManualTt} disabled={busy === 'ttmanual'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'ttmanual' ? '…' : T('Lưu số liệu TikTok', 'Save TikTok numbers')}</button>
       </div>
 
-      {/* Google reviews manual entry — until the reviews API is on */}
+      {/* Google reviews — automatic from mirrored reviews, with a manual override */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={cardTitle}>{T('Google — Đánh giá (nhập tay)', 'Google — Reviews (manual)')}</div>
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>{T('Lấy từ Google Business Profile: điểm sao trung bình, tổng số review, review MỚI trong tháng, review xấu (≤2★). Dùng tạm khi chưa bật API đánh giá Google.', 'From Google Business Profile: average rating, total reviews, NEW reviews this month, bad reviews (≤2★). Use until the Google reviews API is on.')}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={cardTitle}>{T('Google — Đánh giá', 'Google — Reviews')}</div>
+          {(() => {
+            const rv = data?.gbp?.reviews;
+            if (!rv) return <span style={{ fontSize: 11, color: '#64748b', border: '1px solid #334155', borderRadius: 999, padding: '1px 9px' }}>{T('chưa có số', 'no data')}</span>;
+            const auto = rv.manual !== true;
+            return (
+              <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto ? '#22c55e' : '#f59e0b', border: `1px solid ${auto ? '#22c55e' : '#f59e0b'}` }}>
+                {auto ? T('TỰ ĐỘNG', 'AUTOMATIC') : T('ĐANG NHẬP TAY', 'MANUAL OVERRIDE')}
+              </span>
+            );
+          })()}
+        </div>
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>
+          {data?.gbp?.reviews && data.gbp.reviews.manual !== true
+            ? T('Số này tự tính từ các đánh giá Google đã đồng bộ trong mục "Google reviews" (điểm trung bình, tổng số, review mới trong tháng, review ≤2★). Chỉ nhập tay nếu muốn ghi đè.',
+                'These figures are computed from the Google reviews already synced in "Google reviews" (average rating, total, new this month, ≤2★). Type below only to override.')
+            : T('Đang ghi đè bằng số nhập tay. Muốn quay lại số tự động: xoá trống cả 4 ô rồi bấm Lưu. Chưa kết nối đồng bộ đánh giá? Vào Reviews & rewards → Google reviews để kết nối.',
+                'Manual numbers are overriding the automatic ones. To go back to automatic: clear all four boxes and Save. Not syncing reviews yet? Connect it in Reviews & rewards → Google reviews.')}
+        </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
           {(([['rating', T('Điểm trung bình (vd 4.8)', 'Avg rating (e.g. 4.8)')], ['totalReviews', T('Tổng số review', 'Total reviews')], ['newReviews', T('Review mới trong tháng', 'New reviews this month')], ['badReviews', T('Review xấu (≤2★)', 'Bad reviews (≤2★)')]]) as [keyof typeof gr, string][]).map(([k, label]) => (
             <label key={k} style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}
@@ -248,6 +273,11 @@ function Inner() {
           ))}
         </div>
         <button onClick={saveGbpReviews} disabled={busy === 'grev'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'grev' ? '…' : T('Lưu đánh giá Google', 'Save Google reviews')}</button>
+        {data?.gbp?.reviews?.syncedAt && data.gbp.reviews.manual !== true && (
+          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 10 }}>
+            {T('cập nhật ', 'updated ')}{new Date(data.gbp.reviews.syncedAt).toLocaleString(vi ? 'vi-VN' : 'en-US')}
+          </span>
+        )}
       </div>
 
       {/* Spend entry */}
@@ -310,6 +340,8 @@ function Inner() {
         )}
       </div>
 
+      {auto && <AutoReportCard auto={auto} vi={vi} T={T} onOpen={(m) => setMonth(m)} />}
+
       {/* Report */}
       <ReportEditor
         report={report} vi={vi} T={T} busy={busy}
@@ -318,6 +350,60 @@ function Inner() {
       />
       </>)}
     </section>
+  );
+}
+
+/**
+ * Month-end automation status. The scheduler drafts LAST month in the first days
+ * of a new month and emails the salon admins; this card is where a salon can see
+ * that it actually happened (and what still needs approving) instead of trusting it.
+ */
+function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean; T: (v: string, e: string) => string; onOpen: (month: string) => void }) {
+  const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+  const statusChip = (st: string | null) => {
+    const map: Record<string, [string, string]> = {
+      review: ['#f59e0b', T('Chờ duyệt', 'In review')],
+      approved: ['#22c55e', T('Đã duyệt', 'Approved')],
+      sent: ['#6366f1', T('Đã gửi', 'Sent')],
+      draft: ['#94a3b8', 'Draft'],
+    };
+    const [color, label] = st ? (map[st] ?? ['#94a3b8', st]) : ['#475569', T('Chưa có nháp', 'No draft')];
+    return <span style={{ color, border: `1px solid ${color}`, borderRadius: 999, padding: '1px 9px', fontSize: 11, fontWeight: 700 }}>{label}</span>;
+  };
+  return (
+    <div style={{ ...ui.card, marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>{T('Báo cáo tự động cuối tháng', 'Month-end auto-report')}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto.enabled ? '#22c55e' : '#94a3b8', border: `1px solid ${auto.enabled ? '#22c55e' : '#475569'}` }}>
+          {auto.enabled ? T('ĐANG BẬT', 'ON') : T('ĐANG TẮT', 'OFF')}
+        </span>
+      </div>
+      <p style={{ fontSize: 11.5, color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+        {auto.enabled
+          ? T('Đầu tháng hệ thống tự kéo số từ các kênh đã kết nối, viết nháp báo cáo của tháng vừa kết thúc và gửi email báo cho quản lý. Nháp luôn ở trạng thái Chờ duyệt — không có gì đến tay khách trước khi bạn bấm Duyệt.',
+              'At the start of each month the system pulls numbers from connected channels, drafts the report for the month that just ended and emails the salon admins. Drafts always stay In review — nothing reaches a client until you approve.')
+          : T('Hiện tắt — báo cáo phải bấm tạo thủ công.', 'Currently off — reports must be generated manually.')}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {auto.months.map((m) => (
+          <div key={m.month} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: '#cbd5e1', borderTop: '1px solid #1e293b', paddingTop: 6 }}>
+            <span style={{ minWidth: 120, fontWeight: 600 }}>{m.label}</span>
+            {statusChip(m.status)}
+            <span style={{ color: '#64748b', fontSize: 11.5 }}>
+              {m.status ? T('nháp ngày ', 'drafted ') + fmtDate(m.createdAt) : T('không có dữ liệu để viết báo cáo', 'no activity to report on')}
+              {m.approvedAt ? T(' · duyệt ', ' · approved ') + fmtDate(m.approvedAt) : ''}
+            </span>
+            {m.status && <button onClick={() => onOpen(m.month)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #334155', color: '#a5b4fc', borderRadius: 999, padding: '3px 11px', fontSize: 11.5, cursor: 'pointer', fontWeight: 600 }}>{T('Mở', 'Open')}</button>}
+          </div>
+        ))}
+      </div>
+      {auto.lastNotice && (
+        <p style={{ fontSize: 11, color: '#64748b', margin: '10px 0 0' }}>
+          {T('Email báo nháp gần nhất: ', 'Last draft notice: ')}<b style={{ color: '#94a3b8' }}>{auto.lastNotice.recipient}</b>
+          {' · '}{fmtDate(auto.lastNotice.at)}{' · '}{auto.lastNotice.status}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -639,7 +725,8 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents, true)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum('$' + b.revenuePerSpend, t('Doanh thu / $1', 'Revenue / $1'), undefined, true) : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div style="font-size:11px;color:#475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color:#059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div style="font-size:11px;color:#6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
   @page{size:A4 landscape;margin:8mm}
-  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0;padding:0;background:#eef2f8}
+  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0 auto;padding:0;background:#eef2f8;width:281mm}
+  @media print{body{background:#fff;width:auto}}
   .grid{display:grid;gap:10px;break-inside:avoid}
   .page{border:1.5px solid #cdd6e6;border-radius:14px;background:#f6f8fb;padding:14px 16px}
   .brk{page-break-before:always;height:0}
@@ -681,7 +768,23 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   </div>
   <div style="margin-top:10px">${panel('◎ ' + t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN & DIRECTION'), kehoachHtml)}</div>
   </div>
-  <script>window.onload=function(){var i=document.images,n=i.length,c=0;function go(){if(++c>=n){setTimeout(function(){window.print()},150)}}if(!n){window.print();return}for(var k=0;k<n;k++){var m=i[k];if(m.complete)go();else{m.onload=go;m.onerror=go}}setTimeout(function(){window.print()},2500)}</script></body></html>`;
+  <script>
+  function fitPages(){
+    var MM=96/25.4, MAX=(210-16)*MM; /* A4 landscape printable height = 194mm */
+    var ps=document.querySelectorAll('.page');
+    for(var i=0;i<ps.length;i++){
+      var el=ps[i]; el.style.zoom=''; var h=el.getBoundingClientRect().height;
+      if(h>MAX){ var f=Math.max(0.6,(MAX-4)/h); el.style.zoom=f; }
+    }
+  }
+  window.onload=function(){
+    var i=document.images,n=i.length,c=0;
+    function go(){ if(++c>=n){ setTimeout(function(){ fitPages(); window.print(); },150); } }
+    if(!n){ fitPages(); window.print(); return; }
+    for(var k=0;k<n;k++){ var m=i[k]; if(m.complete)go(); else { m.onload=go; m.onerror=go; } }
+    setTimeout(function(){ fitPages(); window.print(); },2500);
+  };
+  </script></body></html>`;
 
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }
 }

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus } from '@prisma/client';
+import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus, NotificationChannel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { deriveAcquisition, AcquisitionSource } from './acquisition.util';
@@ -7,6 +7,9 @@ import { CANONICAL_SOURCES, CanonicalSource, normalizeSource } from '../common/s
 import { SocialRegistry } from './connectors/social-registry';
 import { ChannelCreds } from './connectors/social-connector.interface';
 import { encryptSecret, decryptSecret, maskHint, encConfigured } from '../payments-hub/crypto.util';
+import { NotificationsService } from '../notifications/notifications.service';
+import { SettingsService } from '../settings/settings.service';
+import { publicWebBase } from '../common/public-url.util';
 
 /**
  * Marketing module — Phase 0 (read-only).
@@ -29,7 +32,12 @@ type ChannelRow = { key: CanonicalSource; bookings: number; showed: number; reve
 
 @Injectable()
 export class MarketingService {
-  constructor(private readonly prisma: PrismaService, private readonly social: SocialRegistry) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly social: SocialRegistry,
+    private readonly notifications: NotificationsService,
+    private readonly settings: SettingsService,
+  ) {}
 
   private tenantId(user: AuthenticatedUser, requested?: string): string {
     const id = resolveTenantScope(user, requested);
@@ -646,6 +654,9 @@ export class MarketingService {
 
   async generateReport(user: AuthenticatedUser, month: string, tenantParam?: string) {
     const tenantId = this.tenantId(user, tenantParam);
+    // Reviews are mirrored continuously by the Google Reviews module; refresh the
+    // month's figures right before writing so the draft quotes today's rating.
+    await this.refreshGbpReviews(tenantId, month).catch(() => undefined);
     const data = await this.monthlyData(user, month, tenantParam);
     const history = await this.monthlyHistory(user, month, tenantParam, 4).catch(() => [] as any[]);
     const ai = await this.draftWithAI(data, history);
@@ -710,6 +721,120 @@ export class MarketingService {
    * always approves before anything reaches a client. A system run acts as a
    * super admin scoped to one explicit tenant, so tenant isolation still holds.
    */
+  /**
+   * Tell the salon a month-end draft is waiting. Without this the scheduler
+   * writes a report nobody knows about. Email goes to the salon's own admins
+   * (falling back to the tenant contact email) over the salon's own mail
+   * provider — the same chain booking confirmations use. Never throws: a mail
+   * problem must not fail the report run.
+   */
+  private async notifyDraftReady(tenantId: string, month: string) {
+    try {
+      const [tenant, admins] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true } }),
+        this.prisma.user.findMany({
+          where: { tenantId, isActive: true, role: { in: [UserRole.SALON_ADMIN] } },
+          select: { email: true },
+          take: 5,
+        }),
+      ]);
+      const to = Array.from(new Set([...admins.map((a) => a.email), tenant?.contactEmail ?? ''].filter((e) => !!e && e.includes('@'))));
+      if (to.length === 0) return;
+
+      const salon = tenant?.name ?? 'your salon';
+      const label = this.monthLabel(month);
+      const link = `${publicWebBase()}/salon/marketing/monthly?month=${month}`;
+      const subject = `${label} marketing report is drafted — review & approve`;
+      const text = `The ${label} marketing report for ${salon} has been drafted automatically and is waiting for your review. Open it, check the numbers, edit if needed, then click Approve: ${link}`;
+      const html = `<p>The <strong>${label}</strong> marketing report for <strong>${salon}</strong> has been drafted automatically.</p>`
+        + `<p>It is waiting in <em>In review</em> — check the numbers, edit anything you want, then Approve before sending it to the client.</p>`
+        + `<p style="margin:16px 0"><a href="${link}" style="background:#6366f1;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600">Open the report</a></p>`
+        + `<p style="color:#64748b;font-size:13px">Nothing is sent to anyone until you approve it.</p>`;
+
+      const n = await this.settings.getNotificationSettings(tenantId);
+      const senderName = n.senderName || salon;
+      const replyTo = n.replyTo || n.senderEmail || undefined;
+      const smtp = n.smtp.user && n.smtp.pass
+        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
+        : undefined;
+      const brevo = n.brevo.apiKey && n.senderEmail
+        ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || senderName }
+        : undefined;
+      const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+        ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+        : undefined;
+
+      await Promise.allSettled(to.map((recipient) => this.notifications.send({
+        tenantId,
+        channel: NotificationChannel.EMAIL,
+        recipient,
+        subject,
+        body: text,
+        html,
+        smtp,
+        brevo,
+        gmail,
+        mailService: n.mailService,
+        senderName,
+        replyTo,
+        relatedType: 'marketing_report',
+        relatedId: month,
+      })));
+    } catch (e) {
+      this.logger.warn(`Draft-ready notice failed for tenant ${tenantId} ${month}: ${String(e)}`);
+    }
+  }
+
+  private monthLabel(month: string): string {
+    const [y, m] = month.split('-').map((x) => parseInt(x, 10));
+    if (!y || !m) return month;
+    return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  }
+
+  /**
+   * What the salon sees on the report page: is month-end auto-drafting on, and
+   * where does each of the last few months stand. Derived from real rows — no
+   * "last run" bookkeeping to drift out of sync.
+   */
+  async autoReportStatus(user: AuthenticatedUser, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    const enabled = (process.env.MARKETING_AUTOREPORT_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true';
+    const months: string[] = [];
+    const now = new Date();
+    for (let i = 1; i <= 3; i++) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+    }
+    const rows = await this.prisma.marketingReport.findMany({
+      where: { tenantId, periodMonth: { in: months } },
+      select: { periodMonth: true, status: true, createdAt: true, approvedAt: true, sentAt: true },
+    });
+    const byMonth = new Map(rows.map((r) => [r.periodMonth, r]));
+    const lastNotice = await this.prisma.notification.findFirst({
+      where: { tenantId, relatedType: 'marketing_report' },
+      orderBy: { createdAt: 'desc' },
+      select: { relatedId: true, recipient: true, status: true, createdAt: true },
+    });
+    return {
+      enabled,
+      // The scheduler drafts LAST month during the first 5 days of a month.
+      months: months.map((m) => {
+        const r = byMonth.get(m);
+        return {
+          month: m,
+          label: this.monthLabel(m),
+          status: r?.status ?? null,
+          createdAt: r?.createdAt ?? null,
+          approvedAt: r?.approvedAt ?? null,
+          sentAt: r?.sentAt ?? null,
+        };
+      }),
+      lastNotice: lastNotice
+        ? { month: lastNotice.relatedId, recipient: lastNotice.recipient, status: lastNotice.status, at: lastNotice.createdAt }
+        : null,
+    };
+  }
+
   async runMonthlyAutoGenerate(targetMonth?: string) {
     const month = targetMonth ?? this.previousMonth();
     const { from, to } = this.monthRange(month);
@@ -737,6 +862,7 @@ export class MarketingService {
         // never blocks the report — its error is recorded on the connection.
         await this.syncAllChannels(sys, t.id, month).catch(() => undefined);
         await this.generateReport(sys, month, t.id);
+        await this.notifyDraftReady(t.id, month);
         generated++;
       } catch (e) {
         failed++;
@@ -822,6 +948,72 @@ export class MarketingService {
   }
 
   /** Pull last-month figures from the platform API into the spend table. */
+  /**
+   * Google review stats for a month, computed from the reviews the Google
+   * Reviews module already mirrors into our own table. That module holds the
+   * business.manage OAuth, so nothing extra has to be approved here — and the
+   * numbers are real rows, not a typed-in guess.
+   *
+   * Returns null when nothing has been mirrored (salon has not connected review
+   * sync), so a salon's manually entered numbers are left alone.
+   */
+  private async gbpReviewStats(tenantId: string, month: string) {
+    const { from, to } = this.monthRange(month);
+    const rows = await this.prisma.googleReview.findMany({
+      where: { tenantId },
+      select: { starRating: true, reviewCreatedAt: true, createdAt: true, reviewerName: true, comment: true },
+      orderBy: [{ reviewCreatedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 5000,
+    });
+    if (rows.length === 0) return null;
+    const at = (r: { reviewCreatedAt: Date | null; createdAt: Date }) => r.reviewCreatedAt ?? r.createdAt;
+    // Everything that existed by the end of the reported month — a June report
+    // must not include a July review.
+    const upto = rows.filter((r) => at(r) <= to);
+    const count = upto.length;
+    const rating = count > 0 ? Math.round((upto.reduce((sum, r) => sum + (r.starRating || 0), 0) / count) * 10) / 10 : null;
+    const inMonth = rows.filter((r) => at(r) >= from && at(r) <= to);
+    return {
+      rating,
+      count: count || null,
+      newThisMonth: inMonth.length,
+      badCount: inMonth.filter((r) => (r.starRating || 0) <= 2).length,
+      recent: inMonth.slice(0, 3).map((r) => ({
+        author: r.reviewerName ?? '',
+        rating: r.starRating || 0,
+        comment: (r.comment ?? '').slice(0, 300),
+        time: at(r).toISOString(),
+      })),
+      manual: false,
+      source: 'google_reviews',
+      syncedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Refresh the review block of a month's GBP snapshot from mirrored reviews.
+   * Runs on every month-end sync, independent of whether the GBP Performance
+   * API is connected. A salon's manual numbers win — clearing them (saving all
+   * four fields empty) hands the month back to the automatic figures.
+   */
+  async refreshGbpReviews(tenantId: string, month: string): Promise<{ updated: boolean }> {
+    const auto = await this.gbpReviewStats(tenantId, month);
+    if (!auto) return { updated: false };
+    const existing = await this.prisma.socialInsight.findUnique({
+      where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: month } },
+    });
+    const raw: any = (existing?.raw as any) ?? {};
+    if (raw?.gbp?.reviews?.manual === true) return { updated: false };
+    raw.gbp = raw.gbp ?? {};
+    raw.gbp.reviews = auto;
+    await this.prisma.socialInsight.upsert({
+      where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: month } },
+      create: { tenantId, platform: 'gbp', periodMonth: month, raw, source: 'api', syncedAt: new Date() },
+      update: { raw },
+    });
+    return { updated: true };
+  }
+
   async syncChannel(user: AuthenticatedUser, platform: string, month: string, tenantParam?: string) {
     // Organic owned-channel (Facebook Page + IG) uses a different pull + store.
     if (platform === 'meta_social' || platform === 'tiktok') return this.syncOrganic(user, platform, month, tenantParam);
@@ -843,6 +1035,14 @@ export class MarketingService {
       // Google Business Profile: also store a rich monthly snapshot (for the GBP deck).
       if (platform === 'gbp' && m.raw && (m.raw as any).gbp) {
         const g = (m.raw as any).gbp;
+        // Keep the review block: the Performance API does not return reviews, so
+        // overwriting raw wholesale would erase what review sync (or a human) put there.
+        const prev = await this.prisma.socialInsight.findUnique({
+          where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: month } },
+        });
+        const prevReviews = (prev?.raw as any)?.gbp?.reviews ?? null;
+        const autoReviews = prevReviews?.manual === true ? null : await this.gbpReviewStats(tenantId, month);
+        g.reviews = autoReviews ?? prevReviews ?? null;
         const actions = (g.calls ?? 0) + (g.directions ?? 0) + (g.websiteClicks ?? 0) + (g.bookings ?? 0) + (g.conversations ?? 0);
         const gdata = {
           followers: g.impressions ?? null,   // repurposed so the monthly-series machinery charts impressions
@@ -923,6 +1123,9 @@ export class MarketingService {
         synced++;
       } catch { /* recorded on the connection */ }
     }
+    // Reviews live in their own module (own OAuth), so refresh them whether or
+    // not the GBP Performance channel is connected.
+    await this.refreshGbpReviews(tenantId, month).catch(() => undefined);
     return { synced };
   }
 
@@ -965,7 +1168,14 @@ export class MarketingService {
     const existing = await this.prisma.socialInsight.findUnique({ where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: dto.month } } });
     const raw: any = (existing?.raw as any) ?? {};
     raw.gbp = raw.gbp ?? {};
-    raw.gbp.reviews = { rating: n(dto.rating), count: n(dto.totalReviews), newThisMonth: n(dto.newReviews), badCount: n(dto.badReviews), manual: true };
+    const vals = [n(dto.rating), n(dto.totalReviews), n(dto.newReviews), n(dto.badReviews)];
+    if (vals.every((v) => v == null)) {
+      // All fields cleared = "stop overriding": fall back to the automatic
+      // figures derived from mirrored Google reviews (null if none mirrored).
+      raw.gbp.reviews = (await this.gbpReviewStats(tenantId, dto.month)) ?? null;
+    } else {
+      raw.gbp.reviews = { rating: vals[0], count: vals[1], newThisMonth: vals[2], badCount: vals[3], manual: true };
+    }
     await this.prisma.socialInsight.upsert({
       where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: dto.month } },
       create: { tenantId, platform: 'gbp', periodMonth: dto.month, raw, source: 'manual', syncedAt: new Date() },

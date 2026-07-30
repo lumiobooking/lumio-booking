@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppointmentStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-export type ActivityType = 'booking' | 'cancel' | 'payment';
+export type ActivityType = 'booking' | 'cancel' | 'payment' | 'report';
 
 export interface ActivityItem {
   id: string;
@@ -12,6 +12,7 @@ export interface ActivityItem {
   at: string; // ISO timestamp of when the event happened (booked/cancelled/paid)
   when: string | null; // the appointment's start time (ISO) for booking/cancel events
   appointmentId: string | null; // the booking this event points to (null for POS-only payments)
+  link?: string | null; // in-app page to open when the event is not a booking
 }
 
 /**
@@ -46,6 +47,15 @@ export class ActivityService {
         customer: { select: { firstName: true, lastName: true } },
         service: { select: { name: true } },
       },
+    });
+
+    // Month-end marketing reports drafted automatically — otherwise a salon
+    // never learns a draft is sitting in review.
+    const reports = await this.prisma.marketingReport.findMany({
+      where: { tenantId, createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      take: 12,
+      select: { id: true, periodMonth: true, status: true, createdAt: true },
     });
 
     const pays = await this.prisma.payment.findMany({
@@ -83,6 +93,23 @@ export class ActivityService {
         amt = '$' + Math.round(p.amountCents / 100);
       }
       items.push({ id: 'p_' + p.id, type: 'payment', customer: this.nameOf(p.appointment?.customer), detail: amt, at: p.paidAt.toISOString(), when: null, appointmentId: p.appointmentId ?? null });
+    }
+
+    for (const r of reports) {
+      const [y, m] = r.periodMonth.split('-').map((x) => parseInt(x, 10));
+      const label = y && m
+        ? new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+        : r.periodMonth;
+      items.push({
+        id: 'r_' + r.id,
+        type: 'report',
+        customer: label,
+        detail: r.status, // 'review' | 'approved' | 'sent' — the UI words it per language
+        at: r.createdAt.toISOString(),
+        when: null,
+        appointmentId: null,
+        link: `/salon/marketing/monthly?month=${r.periodMonth}`,
+      });
     }
 
     items.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));

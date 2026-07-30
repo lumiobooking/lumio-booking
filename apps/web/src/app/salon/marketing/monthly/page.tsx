@@ -517,7 +517,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const arrow = (dl?: Delta) => {
     if (!dl || dl.pct == null) return '';
     const up = dl.pct >= 0;
-    return `<span class="t-h3" style="color:${up ? '#059669' : '#dc2626'};font-weight:700">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
+    return `<span class="t-cap" style="color:${up ? '#059669' : '#dc2626'};font-weight:700">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
   };
   const bignum = (val: string, label: string, dl?: Delta, green?: boolean) =>
     `<div style="flex:1;min-width:78px;text-align:center"><div class="t-num" style="font-weight:800;color:${green ? '#059669' : '#111827'};line-height:1.15">${val}</div><div class="t-body" style="color:#6b7280;margin-top:2px">${label}</div><div class="t-cap" style="">${arrow(dl)}</div></div>`;
@@ -555,7 +555,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   };
   const channelsHtml = (c.channels ?? []).map((ch) => {
     const col = vColor[ch.verdict] || '#6b7280'; const met = chMet(ch.name);
-    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:8px 12px;margin:6px 0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span class="t-body" style="color:#6b7280">${esc(met)}</span>` : ''}</div><div class="t-h3" style="color:#374151;margin-top:3px">${esc(L(ch))}</div>${chTrendTxt(ch.name)}</div>`;
+    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:9px 13px;margin:0 0 9px;break-inside:avoid;-webkit-column-break-inside:avoid"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="t-body" style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span class="t-cap" style="color:#6b7280">${esc(met)}</span>` : ''}</div><div class="t-body" style="color:#374151;font-weight:400;margin-top:3px">${esc(L(ch))}</div>${chTrendTxt(ch.name)}</div>`;
   }).join('');
   const hiHtml = (c.highlights ?? []).map((x) => `<div style="margin:3px 0">✓ ${esc(L(x))}</div>`).join('');
   const issHtml = (c.issues ?? []).map((x) => `<div style="margin:3px 0">▲ ${esc(L(x))}</div>`).join('');
@@ -577,7 +577,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const thumb = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0" />` : `<div style="width:40px;height:40px;border-radius:6px;background:#f1f4f9;flex-shrink:0"></div>`;
     const cell = (label: string, v: number | null) => (v == null ? '' : `<span style="margin-right:10px"><b>${f(v)}</b> <span style="color:#6b7280">${label}</span></span>`);
     const stats = [cell(t('thích', 'likes'), p.likes), cell(t('bl', 'cmts'), p.comments), cell('reach', p.reach), cell(t('xem', 'views'), p.views), cell(t('lưu', 'saved'), p.saved)].join('');
-    return `<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid #f0ece7">${thumb}<div style="flex:1;min-width:0"><div class="t-body" style="color:#6b7280">${esc(tl)} · ${dt}${p.caption ? ' · ' + esc(p.caption) : ''}</div><div class="t-h3" style="margin-top:2px">${stats}</div></div></div>`;
+    return `<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid #f0ece7">${thumb}<div style="flex:1;min-width:0"><div class="t-body" style="color:#6b7280">${esc(tl)} · ${dt}${p.caption ? ' · ' + esc(p.caption) : ''}</div><div class="t-body" style="margin-top:2px">${stats}</div></div></div>`;
   }).join('');
 
   const igAud = (data.socialInsights ?? []).find((x) => x.platform === 'instagram')?.audience;
@@ -588,7 +588,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const gRows = ['F', 'M', 'U'].filter((k) => g[k] != null).map((k) => `<span style="margin-right:14px">${esc(gl[k] || k)}: <b>${Math.round((g[k] / gt) * 1000) / 10}%</b></span>`).join('');
     const age = igAud.age || {}; const at = Object.values(age).reduce((a, b) => a + b, 0) || 1;
     const ageRows = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pct = Math.round((age[k] / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span class="t-body" style="width:44px;color:#6b7280">${k}</span><span style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:#6366f1"></span></span><span class="t-body" style="width:38px;text-align:right">${pct}%</span></div>`; }).join('');
-    audienceHtml = `${gRows ? `<div class="t-h3" style="color:#374151;margin-bottom:6px"><b>${t('Giới tính', 'Gender')}</b> — ${gRows}</div>` : ''}${ageRows ? `<div class="lbl" style="margin-bottom:2px">${t('Độ tuổi', 'Age')}</div>${ageRows}` : ''}`;
+    audienceHtml = `${gRows ? `<div class="t-body" style="color:#374151;margin-bottom:6px"><b>${t('Giới tính', 'Gender')}</b> — ${gRows}</div>` : ''}${ageRows ? `<div class="lbl" style="margin-bottom:2px">${t('Độ tuổi', 'Age')}</div>${ageRows}` : ''}`;
   }
   // ---- Client deck (landscape, matches the agency template) ----
   const S = data.socialInsights ?? [];
@@ -642,7 +642,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div class="t-cap" style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color:${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800">${p._pf}</div>`; const badge = `<span class="t-cap" style="font-weight:800;color:#fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color:#0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color:#94a3b8;">—</div>`;
   const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color:#94a3b8;margin-bottom:2px">${t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
   const adsPanel = spendLine
-    ? `<div class="t-h3" style="color:#0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div class="t-body" style="color:#6b7280;margin-top:4px">${spendLine}</div></div>`
+    ? `<div class="t-body" style="color:#0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div class="t-body" style="color:#6b7280;margin-top:4px">${spendLine}</div></div>`
     : `<div class="t-body" style="color:#94a3b8;line-height:1.6">${t('Chưa chạy quảng cáo tháng này. Khi bật quảng cáo, mục này hiển thị Chi phí · Reach · Click · CPC · CTR · ROAS.', 'No paid ads this month. Once ads run, this shows Spend · Reach · Clicks · CPC · CTR · ROAS.')}</div>`;
   let donutHtml = '';
   if (igAud?.gender) { const g = igAud.gender; const gt = Object.values(g).reduce((a, b2) => a + b2, 0) || 1; let acc = 0; const seg = ([['F', '#e1306c'], ['M', '#3b82f6'], ['U', '#cbd5e1']] as [string, string][]).map(([k, cc]) => { const pctv = Math.round(((g[k] || 0) / gt) * 1000) / 10; const from = acc; acc += pctv; return `${cc} ${from}% ${acc}%`; }).join(','); const leg = ([['F', t('Nữ', 'Female'), '#e1306c'], ['M', t('Nam', 'Male'), '#3b82f6'], ['U', t('Khác', 'Other'), '#cbd5e1']] as [string, string, string][]).filter(([k]) => g[k] != null).map(([k, lb, cc]) => `<div class="t-body" style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:9px;height:9px;border-radius:2px;background:${cc}"></span><span style="color:#475569">${esc(lb)}</span><b style="margin-left:auto;color:#0f2a52">${Math.round(((g[k] || 0) / gt) * 1000) / 10}%</b></div>`).join(''); donutHtml = `<div style="display:flex;gap:12px;align-items:center"><div style="width:76px;height:76px;border-radius:50%;flex-shrink:0;background:conic-gradient(${seg});-webkit-mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%);mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%)"></div><div style="flex:1">${leg}</div></div>`; }
@@ -707,7 +707,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     <div style="background:linear-gradient(120deg,#1a73e8,#174ea6);color:#fff;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
       <div><div class="t-cap" style="display:inline-block;background:rgba(255,255,255,.16);border-radius:6px;padding:2px 9px;font-weight:700;letter-spacing:1.4px;opacity:.9">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div>
       <div class="t-title" style="font-weight:800;margin-top:5px;line-height:1.1">GOOGLE BUSINESS PROFILE</div>
-      <div class="t-h3" style="opacity:.85;margin-top:2px">${t('Tháng', 'Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div></div>
+      <div class="t-body" style="opacity:.85;margin-top:3px;font-weight:400">${t('Tháng', 'Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div></div>
       <span class="t-num2" style="width:46px;height:46px;border-radius:12px;background:#fff;display:grid;place-items:center;font-weight:800;color:#1a73e8">G</span>
     </div>
     <div style="margin-top:10px">${panel('① ' + t('TỔNG QUAN HIỆU QUẢ GBP', 'GBP PERFORMANCE'), overview)}</div>
@@ -734,13 +734,13 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   table{width:100%;border-collapse:collapse}
   td{vertical-align:middle}
   /* Type scale — every size in this document comes from here, nowhere else. */
-  .t-title{font-size:44px;font-weight:800;letter-spacing:.2px;line-height:1.1}
-  .t-num  {font-size:40px;font-weight:800;line-height:1.1}
-  .t-num2 {font-size:27px;font-weight:800;line-height:1.15}
-  .t-h2   {font-size:22px;font-weight:800;letter-spacing:.3px}
-  .t-h3   {font-size:18px;font-weight:800;letter-spacing:.4px}
-  .t-body {font-size:16.5px}
-  .t-cap  {font-size:14.5px}
+  .t-title{font-size:33px;font-weight:800;letter-spacing:.2px;line-height:1.12}
+  .t-num  {font-size:31px;font-weight:800;line-height:1.12}
+  .t-num2 {font-size:24px;font-weight:800;line-height:1.15}
+  .t-h2   {font-size:20px;font-weight:800;letter-spacing:.3px}
+  .t-h3   {font-size:17px;font-weight:800;letter-spacing:.3px}
+  .t-body {font-size:15.5px;font-weight:400}
+  .t-cap  {font-size:13.5px;font-weight:400}
   .muted{color:#7a8ba6;line-height:1.5}
   .empty{color:#8496b0;background:#f7f9fc;border:1px dashed #dde4ef;border-radius:10px;padding:16px 14px;text-align:center}
   </style></head><body>
@@ -751,7 +751,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       <div class="t-title" style="font-weight:800;letter-spacing:.2px;margin-top:5px;line-height:1.1">${esc(salonName || t('Báo cáo Marketing', 'Marketing Report'))}</div>
       <div class="t-body" style="opacity:.85;margin-top:3px">${t('Báo cáo Marketing tổng hợp · Tháng', 'Marketing report · Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div>
     </div>
-    <div class="t-cap" style="text-align:right;opacity:.8"><div class="t-h3" style="font-weight:800">Lumio Agency</div><div style="margin-top:2px">Facebook · Instagram · TikTok · Google</div></div>
+    <div class="t-cap" style="text-align:right;opacity:.8"><div class="t-body" style="font-weight:800">Lumio Agency</div><div style="margin-top:2px">Facebook · Instagram · TikTok · Google</div></div>
   </div>
 
   <div style="margin-top:10px">${panel('◆ ' + t('KẾT QUẢ KINH DOANH THÁNG', 'BUSINESS RESULTS THIS MONTH'), bizNums)}</div>

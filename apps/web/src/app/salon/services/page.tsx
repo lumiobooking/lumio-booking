@@ -10,6 +10,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Service {
   id: string;
@@ -135,6 +136,7 @@ function ServicesInner() {
     (s) => s.createdAt,
   );
   const pg = usePaged(visible, 25);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   async function fillImages(overwrite: boolean) {
     const ask = overwrite
@@ -221,10 +223,13 @@ function ServicesInner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/services/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
+                <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('sv.colName')}</th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colCategory')}</th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colDuration')}</th>
@@ -236,17 +241,18 @@ function ServicesInner() {
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td style={ui.td} colSpan={6}>
+                  <td style={ui.td} colSpan={7}>
                     {t('sv.empty')}
                   </td>
                 </tr>
               )}
               {pg.paged.map((s) => (
-                <FragmentRow key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
+                <FragmentRow key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} selected={bulk.has(s.id)} onSelect={() => bulk.toggle(s.id)} />
               ))}
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>
@@ -255,8 +261,8 @@ function ServicesInner() {
 
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
 
-function FragmentRow({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved }: {
-  service: Service; token: string; categories: Category[]; staff: Staff[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
+function FragmentRow({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved, selected, onSelect }: {
+  service: Service; token: string; categories: Category[]; staff: Staff[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void; selected?: boolean; onSelect?: () => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -264,7 +270,8 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
   const [editing, setEditing] = useState(false);
   return (
     <>
-      <tr style={{ borderTop: '1px solid #334155' }}>
+      <tr style={{ borderTop: '1px solid #334155', background: selected ? '#1e1b4b' : undefined }}>
+        <td style={{ ...ui.td, width: 34 }}>{onSelect && <BulkRowBox on={!!selected} onChange={onSelect} />}</td>
         <td style={ui.td}>
           <div>
             {s.name}

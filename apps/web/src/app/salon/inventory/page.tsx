@@ -9,6 +9,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Supply {
   id: string; name: string; unit: string; stockQty: number; lowStockThreshold: number;
@@ -56,6 +57,7 @@ function Inner() {
   const lowCount = items.filter((i) => i.lowStock).length;
   const visible = items.filter((i) => matchesQuery(`${i.name} ${i.supplier ?? ''}`, q) && (!lowOnly || i.lowStock));
   const pg = usePaged(visible, 25);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -121,9 +123,12 @@ function Inner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/supplies/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>
+              <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>{t('iv.colName')}</th>
               <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('iv.colStock')}</th>
               <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('iv.colThreshold')}</th>
@@ -132,10 +137,11 @@ function Inner() {
               <th style={ui.th}>{t('iv.colActions')}</th>
             </tr></thead>
             <tbody>
-              {visible.length === 0 && <tr><td style={ui.td} colSpan={6}>{t('iv.empty')}</td></tr>}
+              {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('iv.empty')}</td></tr>}
               {pg.paged.map((i) => (
                 <Fragment key={i.id}>
-                  <tr style={{ borderTop: '1px solid #334155', opacity: i.isActive ? 1 : 0.5 }}>
+                  <tr style={{ borderTop: '1px solid #334155', opacity: i.isActive ? 1 : 0.5, background: bulk.has(i.id) ? '#1e1b4b' : undefined }}>
+                    <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(i.id)} onChange={() => bulk.toggle(i.id)} /></td>
                     <td style={ui.td}>
                       {i.name}{' '}
                       {i.lowStock && <span style={{ marginLeft: 4, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span>}
@@ -180,6 +186,7 @@ function Inner() {
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>

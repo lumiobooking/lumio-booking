@@ -10,6 +10,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Entry {
   id: string; customerName: string; phone: string | null; email: string | null;
@@ -60,6 +61,7 @@ function Inner() {
   }
 
   const pg = usePaged(rows, 20);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -94,16 +96,20 @@ function Inner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/waitlist/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>
+              <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>{t('wl.colAdded')}</th><th style={ui.th}>{t('wl.colCustomer')}</th><th style={ui.th}>{t('wl.colContact')}</th>
               <th style={ui.th}>{t('wl.colService')}</th><th style={ui.th}>{t('wl.colWants')}</th><th style={ui.th}>{t('wl.colStatus')}</th><th style={ui.th}>{t('wl.colActions')}</th>
             </tr></thead>
             <tbody>
-              {rows.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('wl.empty')}</td></tr>}
+              {rows.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('wl.empty')}</td></tr>}
               {pg.paged.map((e) => (
-                <tr key={e.id} style={{ borderTop: '1px solid #334155' }}>
+                <tr key={e.id} style={{ borderTop: '1px solid #334155', background: bulk.has(e.id) ? '#1e1b4b' : undefined }}>
+                  <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(e.id)} onChange={() => bulk.toggle(e.id)} /></td>
                   <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(e.createdAt).toLocaleDateString('en-US')}</td>
                   <td style={ui.td}>{e.customerName}{e.note ? <div style={{ color: '#64748b', fontSize: 12 }}>{e.note}</div> : null}</td>
                   <td style={{ ...ui.td, color: '#cbd5e1' }}>{e.phone || e.email || '—'}</td>
@@ -122,6 +128,7 @@ function Inner() {
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>

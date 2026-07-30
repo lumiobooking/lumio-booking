@@ -8,6 +8,7 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { ImportCsv } from '../../../components/ImportCsv';
 import { compressImageToFit } from '../../../lib/image';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Item { id: string; name: string; category: string | null; priceCents: number; currency: string; description: string | null; imageUrl: string | null; isActive: boolean; sortOrder: number }
 
@@ -137,6 +138,8 @@ function Inner() {
   const cats = useMemo(() => grouped.map(([c]) => c), [grouped]);
   useEffect(() => { if (cats.length && activeCat !== '__all' && !cats.includes(activeCat)) setActiveCat(cats[0]); }, [cats, activeCat]);
   const shownGroups = activeCat === '__all' ? grouped : grouped.filter(([c]) => c === activeCat);
+  const shownIds = shownGroups.flatMap(([, list]) => list.map((it) => it.id));
+  const bulk = useBulkSelect(shownIds);
   const catTab = (on: boolean): React.CSSProperties => ({ padding: '7px 14px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' });
 
   return (
@@ -180,12 +183,23 @@ function Inner() {
         </div>
       )}
 
+      {shownIds.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+            <BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} />
+            {tr('bulk.selectAll', lang)}
+          </label>
+        </div>
+      )}
+      <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/menu-items/${id}`, { method: 'DELETE', token }), load)} />
+
       {shownGroups.map(([cat, list]) => (
         <div key={cat} style={{ marginTop: 4 }}>
           {activeCat === '__all' && <div style={{ fontSize: 13, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: '#475569' }}>· {list.length}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {list.map((it) => (
-              <div key={it.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 10, opacity: it.isActive ? 1 : 0.5 }}>
+              <div key={it.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 10, opacity: it.isActive ? 1 : 0.5, borderColor: bulk.has(it.id) ? '#4338ca' : undefined, background: bulk.has(it.id) ? '#1e1b4b' : undefined }}>
+                <BulkRowBox on={bulk.has(it.id)} onChange={() => bulk.toggle(it.id)} />
                 <MenuThumb url={it.imageUrl} onSet={(d) => patch(it.id, { imageUrl: d })} onClear={() => patch(it.id, { imageUrl: '' })} />
                 <input style={{ ...ui.input, flex: '2 1 150px', minWidth: 120 }} value={it.name}
                   onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, name: e.target.value } : x)))}

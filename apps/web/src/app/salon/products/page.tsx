@@ -9,6 +9,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Product {
   id: string; name: string; sku: string | null; barcode?: string | null; priceCents: number; discountPercent?: number; currency: string;
@@ -86,6 +87,7 @@ function Inner() {
     (p) => p.createdAt,
   );
   const pg = usePaged(visible, 25);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -150,16 +152,20 @@ function Inner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/pos/products/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>
+              <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>{t('pd.colName')}</th><th style={ui.th}>{t('pd.colPrice')}</th><th style={ui.th}>{t('pd.colTaxable')}</th><th style={ui.th}>{t('pd.colStock')}</th><th style={ui.th}>{t('pd.colStatus')}</th><th style={ui.th}>{t('pd.colActions')}</th>
             </tr></thead>
             <tbody>
-              {visible.length === 0 && <tr><td style={ui.td} colSpan={6}>{t('pd.empty')}</td></tr>}
+              {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('pd.empty')}</td></tr>}
               {pg.paged.map((p) => (
                 <Fragment key={p.id}>
-                  <tr style={{ borderTop: '1px solid #334155' }}>
+                  <tr style={{ borderTop: '1px solid #334155', background: bulk.has(p.id) ? '#1e1b4b' : undefined }}>
+                    <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
                     <td style={ui.td}>{p.name}{p.sku ? <span style={{ color: '#64748b', fontSize: 12 }}> · {p.sku}</span> : null}</td>
                     <td style={ui.td}>
                       {p.discountPercent && p.discountPercent > 0 ? (
@@ -181,7 +187,7 @@ function Inner() {
                     </td>
                   </tr>
                   {editId === p.id && (
-                    <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
                       <ProductForm token={token!} product={p} onDone={async () => { setEditId(null); await load(); }} />
                     </td></tr>
                   )}
@@ -190,6 +196,7 @@ function Inner() {
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>

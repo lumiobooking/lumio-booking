@@ -10,6 +10,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Payment {
   id: string;
@@ -71,6 +72,7 @@ function Inner() {
   );
   const totalPaid = visible.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
   const pg = usePaged(visible, 20);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -115,10 +117,13 @@ function Inner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto', marginTop: 12 }}>
+        <div style={{ marginTop: 12 }}>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/payments/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
+                <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('pm.colDate')}</th>
                 <th style={ui.th}>{t('pm.colAmount')}</th>
                 <th style={ui.th}>{t('pm.colType')}</th>
@@ -129,10 +134,11 @@ function Inner() {
             </thead>
             <tbody>
               {visible.length === 0 && (
-                <tr><td style={ui.td} colSpan={6}>{t('pm.empty')}</td></tr>
+                <tr><td style={ui.td} colSpan={7}>{t('pm.empty')}</td></tr>
               )}
               {pg.paged.map((p) => (
-                <tr key={p.id} style={{ borderTop: '1px solid #334155' }}>
+                <tr key={p.id} style={{ borderTop: '1px solid #334155', background: bulk.has(p.id) ? '#1e1b4b' : undefined }}>
+                  <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString('en-US')}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
                   <td style={ui.td}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</td>
@@ -146,6 +152,7 @@ function Inner() {
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>

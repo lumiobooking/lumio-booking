@@ -10,6 +10,7 @@ import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Service {
   id: string;
@@ -310,6 +311,7 @@ function StaffInner() {
     (m) => m.createdAt,
   );
   const pg = usePaged(visible, 20);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -395,10 +397,13 @@ function StaffInner() {
           <Pager paged={pg} />
         </MList>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/staff/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
+                <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('st.colName')}</th>
                 <th style={ui.th}>{t('st.colContact')}</th>
                 <th style={ui.th}>{t('st.colSkills')}</th>
@@ -410,14 +415,15 @@ function StaffInner() {
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td style={ui.td} colSpan={6}>
+                  <td style={ui.td} colSpan={7}>
                     {t('st.empty')}
                   </td>
                 </tr>
               )}
               {pg.paged.map((m) => (
                 <Fragment key={m.id}>
-                <tr style={{ borderTop: '1px solid #334155' }}>
+                <tr style={{ borderTop: '1px solid #334155', background: bulk.has(m.id) ? '#1e1b4b' : undefined }}>
+                  <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
                   <td style={ui.td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <Avatar url={m.avatarUrl} name={m.firstName} />
@@ -471,7 +477,7 @@ function StaffInner() {
                 </tr>
                 {editFor === m.id && (
                   <tr>
-                    <td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                    <td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
                       <StaffEditPanel
                         token={token!}
                         member={m}
@@ -483,7 +489,7 @@ function StaffInner() {
                 )}
                 {loginFor === m.id && (
                   <tr>
-                    <td colSpan={6} style={{ padding: 14, background: '#0f172a' }}>
+                    <td colSpan={7} style={{ padding: 14, background: '#0f172a' }}>
                       <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>
                         {(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}
                       </div>
@@ -506,6 +512,7 @@ function StaffInner() {
             </tbody>
           </table>
           <Pager paged={pg} />
+          </div>
         </div>
       )}
     </section>

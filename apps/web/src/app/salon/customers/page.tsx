@@ -10,6 +10,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, useDateRange, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Customer {
   id: string;
@@ -126,6 +127,7 @@ function Inner() {
   }, [customers, range, bMonth, q, sort]);
 
   const pg = usePaged(filtered, 20);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
   const withBirthday = customers.filter((c) => c.birthDate).length;
 
   const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
@@ -205,10 +207,13 @@ function Inner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/customers/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
+                <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <Th k="name" label={t('cu.colName')} />
                 <th style={ui.th}>{t('cu.colEmail')}</th>
                 <th style={ui.th}>{t('cu.colPhone')}</th>
@@ -222,10 +227,11 @@ function Inner() {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td style={ui.td} colSpan={9}>{t('cu.empty')}</td></tr>
+                <tr><td style={ui.td} colSpan={10}>{t('cu.empty')}</td></tr>
               )}
               {pg.paged.map((c) => (
-                <tr key={c.id} style={{ borderTop: '1px solid #334155' }}>
+                <tr key={c.id} style={{ borderTop: '1px solid #334155', background: bulk.has(c.id) ? '#1e1b4b' : undefined }}>
+                  <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(c.id)} onChange={() => bulk.toggle(c.id)} /></td>
                   <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a></td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.email ?? '—'}</td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>{c.phone ?? '—'}</td>
@@ -245,6 +251,7 @@ function Inner() {
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>

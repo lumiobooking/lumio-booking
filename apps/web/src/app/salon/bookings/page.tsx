@@ -10,6 +10,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface NamedRef {
   id: string;
@@ -174,6 +175,7 @@ function BookingsInner() {
   );
   const unconfirmedCount = bookings.filter(isUnconfirmed).length;
   const pg = usePaged(visible, 20);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -260,10 +262,13 @@ function BookingsInner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/bookings/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1e293b' }}>
+                <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colWhen')}</th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colCustomer')}</th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colService')}</th>
@@ -276,13 +281,14 @@ function BookingsInner() {
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td style={ui.td} colSpan={7}>
+                  <td style={ui.td} colSpan={8}>
                     {t('bk.noBookings')}
                   </td>
                 </tr>
               )}
               {pg.paged.map((b) => (
-                <tr key={b.id} style={{ borderTop: '1px solid #334155' }}>
+                <tr key={b.id} style={{ borderTop: '1px solid #334155', background: bulk.has(b.id) ? '#1e1b4b' : undefined }}>
+                  <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(b.id)} onChange={() => bulk.toggle(b.id)} /></td>
                   <td style={ui.td}>{new Date(b.startTime).toLocaleString('en-US')}</td>
                   <td style={ui.td}>
                     {b.customer?.id
@@ -376,6 +382,7 @@ function BookingsInner() {
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>

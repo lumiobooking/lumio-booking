@@ -10,6 +10,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface OrderItem {
   id: string; kind: 'SERVICE' | 'PRODUCT'; name: string; quantity: number;
@@ -129,6 +130,7 @@ function Inner() {
   );
   const paidTotal = visible.filter((o) => o.status === 'PAID').reduce((s, o) => s + o.totalCents, 0);
   const pg = usePaged(visible, 20);
+  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
     <section>
@@ -177,17 +179,21 @@ function Inner() {
           <Pager paged={pg} />
         </>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div>
+          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/pos/orders/${id}`, { method: 'DELETE', token }), load)} />
+          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: '#1e293b' }}>
+              <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>#</th><th style={ui.th}>{t('or.colDate')}</th><th style={ui.th}>{t('or.colItems')}</th>
               <th style={ui.th}>{t('or.colTotal')}</th><th style={ui.th}>{t('or.colMethod')}</th><th style={ui.th}>{t('or.colStatus')}</th><th style={ui.th}>{t('or.colActions')}</th>
             </tr></thead>
             <tbody>
-              {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('or.empty')}</td></tr>}
+              {visible.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('or.empty')}</td></tr>}
               {pg.paged.map((o) => (
                 <Fragment key={o.id}>
-                  <tr style={{ borderTop: '1px solid #334155', cursor: 'pointer' }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
+                  <tr style={{ borderTop: '1px solid #334155', cursor: 'pointer', background: bulk.has(o.id) ? '#1e1b4b' : undefined }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
+                    <td style={{ ...ui.td, width: 34 }} onClick={(e) => e.stopPropagation()}><BulkRowBox on={bulk.has(o.id)} onChange={() => bulk.toggle(o.id)} /></td>
                     <td style={ui.td}>#{o.orderNumber}</td>
                     <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(o.createdAt).toLocaleString('en-US')}</td>
                     <td style={{ ...ui.td, color: '#cbd5e1' }}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? <span style={{ marginLeft: 6, fontSize: 11, color: '#818cf8' }}>{t('or.fromBooking')}</span> : null}</td>
@@ -203,7 +209,7 @@ function Inner() {
                     </td>
                   </tr>
                   {openId === o.id && (
-                    <tr><td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={8} style={{ padding: 16, background: '#0f172a' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 520 }}>
                         {o.items.map((l) => (
                           <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
@@ -225,6 +231,7 @@ function Inner() {
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
+          </div>
         </div>
       )}
     </section>

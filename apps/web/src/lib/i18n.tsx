@@ -663,6 +663,14 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'st.skResults': { en: 'Search results', vi: 'Kết quả tìm kiếm' },
   'st.skEmptySel': { en: 'Nothing selected yet', vi: 'Chưa chọn dịch vụ nào' },
   'st.skEmptyList': { en: 'No services here', vi: 'Không có dịch vụ' },
+  // Bulk delete (shared by every admin list)
+  'bulk.selected': { en: '{n} selected', vi: 'Đã chọn {n}' },
+  'bulk.selectAll': { en: 'Select all rows', vi: 'Chọn tất cả dòng' },
+  'bulk.deleteSelected': { en: 'Delete selected', vi: 'Xoá các mục đã chọn' },
+  'bulk.deleting': { en: 'Deleting…', vi: 'Đang xoá…' },
+  'bulk.clear': { en: 'Clear', vi: 'Bỏ chọn' },
+  'bulk.confirm': { en: 'Delete {n}? This cannot be undone.', vi: 'Xoá {n}? Không thể hoàn tác.' },
+  'bulk.someFailed': { en: '{n} could not be deleted (still in use).', vi: '{n} mục không xoá được (đang được sử dụng).' },
   // Orders
   'or.title': { en: 'Orders', vi: 'Đơn hàng' },
   'or.ordersWord': { en: 'orders', vi: 'đơn' },

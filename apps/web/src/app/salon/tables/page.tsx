@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { ImportCsv } from '../../../components/ImportCsv';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Table { id: string; name: string; seats: number; area: string | null; isActive: boolean; sortOrder: number }
 
@@ -45,6 +46,7 @@ function Inner() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [tables, setTables] = useState<Table[]>([]);
+  const bulk = useBulkSelect(tables.map((r) => r.id));
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', seats: '2', area: '' });
   const [busy, setBusy] = useState(false);
@@ -126,10 +128,20 @@ function Inner() {
         <button type="submit" disabled={busy} style={ui.primaryBtn}>{t('tb.add')}</button>
       </form>
 
-      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {tables.length > 0 && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#94a3b8', cursor: 'pointer', marginTop: 14 }}>
+          <BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} />
+          {tr('bulk.selectAll', lang)}
+        </label>
+      )}
+      <div style={{ marginTop: 10 }}>
+        <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/tables/${id}`, { method: 'DELETE', token }), load)} />
+      </div>
+      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {tables.length === 0 && <p style={{ color: '#64748b', fontSize: 14 }}>{t('tb.empty')}</p>}
         {tables.map((tb) => (
-          <div key={tb.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 12, opacity: tb.isActive ? 1 : 0.55 }}>
+          <div key={tb.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 12, opacity: tb.isActive ? 1 : 0.55, borderColor: bulk.has(tb.id) ? '#4338ca' : undefined, background: bulk.has(tb.id) ? '#1e1b4b' : undefined }}>
+            <BulkRowBox on={bulk.has(tb.id)} onChange={() => bulk.toggle(tb.id)} />
             <input style={{ ...ui.input, width: 110 }} value={tb.name}
               onChange={(e) => setTables((xs) => xs.map((x) => (x.id === tb.id ? { ...x, name: e.target.value } : x)))}
               onBlur={(e) => patch(tb.id, { name: e.target.value })} />

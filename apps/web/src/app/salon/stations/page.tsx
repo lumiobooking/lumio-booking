@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { useLang } from '../../../lib/i18n';
 
 interface SType { id: string; name: string; keywords: string | null; sortOrder: number; isActive: boolean }
@@ -87,6 +88,7 @@ function Inner() {
     ...types.map((t) => ({ id: t.id, name: t.name, list: rows.filter((r) => r.stationTypeId === t.id) })),
     { id: '', name: vi ? 'Chưa phân loại' : 'Untyped', list: rows.filter((r) => !r.stationTypeId) },
   ].filter((g) => g.list.length > 0);
+  const pick = useBulkSelect(rows.map((r) => r.id));
 
   return (
     <section>
@@ -136,6 +138,14 @@ function Inner() {
         <button type="submit" style={ui.primaryBtn}>{vi ? '+ Thêm nhanh' : '+ Quick add'}</button>
       </form>
 
+      {rows.length > 0 && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#94a3b8', cursor: 'pointer', margin: '0 0 8px' }}>
+          <BulkAllBox on={pick.allOn} onChange={pick.toggleAll} />
+          {vi ? 'Chọn tất cả ghế' : 'Select all chairs'}
+        </label>
+      )}
+      <BulkBar count={pick.count} ids={pick.sel} onClear={pick.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/stations/${id}`, { method: 'DELETE', token }), load)} />
+
       {rows.length === 0 ? (
         <div style={{ ...ui.card, color: '#64748b' }}>{vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo.' : 'No chairs yet. Use "Quick add" above.'}</div>
       ) : groups.map((g) => (
@@ -143,7 +153,8 @@ function Inner() {
           <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
             {g.list.map((s) => (
-              <div key={s.id} style={{ ...ui.card, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, opacity: s.isActive ? 1 : 0.5 }}>
+              <div key={s.id} style={{ ...ui.card, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, opacity: s.isActive ? 1 : 0.5, borderColor: pick.has(s.id) ? '#4338ca' : undefined, background: pick.has(s.id) ? '#1e1b4b' : undefined }}>
+                <BulkRowBox on={pick.has(s.id)} onChange={() => pick.toggle(s.id)} />
                 <input defaultValue={s.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.name) patch(s.id, { name: v }); }}
                   style={{ ...ui.input, flex: 1, minWidth: 0, padding: '7px 10px' }} />
                 <select value={s.stationTypeId ?? ''} onChange={(e) => patch(s.id, { stationTypeId: e.target.value })} style={{ ...ui.input, width: 'auto', padding: '7px 8px' }}>

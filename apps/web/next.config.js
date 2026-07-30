@@ -11,6 +11,10 @@ const nextConfig = {
   env: {
     // Base URL of the backend API (defaults to the 8005 dev port).
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api',
+    // Identity of this build. Render sets RENDER_GIT_COMMIT; locally we fall
+    // back to the build timestamp. The app compares it against /api/build and
+    // reloads itself when a newer deploy is live.
+    NEXT_PUBLIC_BUILD_ID: process.env.RENDER_GIT_COMMIT ?? String(Date.now()),
   },
   // Clean per-salon URLs: yourdomain.com/<salon-slug> serves the booking page.
   // `afterFiles` runs AFTER real routes, so /salon, /login, /super-admin, /staff,

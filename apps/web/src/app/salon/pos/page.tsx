@@ -340,6 +340,7 @@ function Register() {
       if (appointmentId) {
         try {
           const appt = await apiFetch<{
+            priceCents?: number;
             service: { id: string; name: string } | null;
             assignedStaff: { id: string } | null;
             addons?: Array<{ id?: string; name?: string; priceCents?: number; durationMinutes?: number; kind?: string; staffMemberId?: string }>;
@@ -348,10 +349,19 @@ function Register() {
             const lines: Line[] = [];
             if (appt.service) {
               const s = services.find((x) => x.id === appt.service!.id);
-              const d = s?.discountPercent ?? 0;
               const base = s?.priceCents ?? 0;
-              const unit = d > 0 ? Math.round((base * (100 - d)) / 100) : base;
-              lines.push({ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: appt.service.id, name: appt.service.name, origUnitPriceCents: base, unitPriceCents: unit, discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: appt.assignedStaff?.id ?? '' });
+              // The appointment stores the FINAL booked price (service sale +
+              // weekday/date promo + visit/group programs, best % per line).
+              // Charge THAT — never re-derive from the catalog, or the discount
+              // the customer was promised at booking would silently disappear.
+              const addonsTotal = (appt.addons ?? []).reduce((sum, it) => sum + (it.priceCents ?? 0), 0);
+              const savedPrimary = Math.max(0, (appt.priceCents ?? 0) - addonsTotal);
+              const legacyD = s?.discountPercent ?? 0;
+              const legacyUnit = legacyD > 0 ? Math.round((base * (100 - legacyD)) / 100) : base;
+              const unit = (appt.priceCents ?? 0) > 0 ? savedPrimary : legacyUnit; // old rows w/o price fall back
+              const orig = Math.max(base, unit);
+              const d = orig > 0 && unit < orig ? Math.round(((orig - unit) / orig) * 100) : 0;
+              lines.push({ uid: `u${uidSeq++}`, kind: 'SERVICE', refId: appt.service.id, name: appt.service.name, origUnitPriceCents: orig, unitPriceCents: unit, discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: appt.assignedStaff?.id ?? '' });
             }
             for (const it of appt.addons ?? []) {
               const isSvc = it.kind === 'service';

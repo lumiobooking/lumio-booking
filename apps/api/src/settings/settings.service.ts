@@ -764,16 +764,39 @@ export class SettingsService {
   }
 
   async getFirstVisitDiscount(tenantId: string): Promise<FirstVisitDiscount> {
-    return this.readKey<FirstVisitDiscount>(tenantId, FIRST_VISIT_DISCOUNT_KEY, DEFAULT_FIRST_VISIT_DISCOUNT);
+    const v = await this.readKey<FirstVisitDiscount>(tenantId, FIRST_VISIT_DISCOUNT_KEY, DEFAULT_FIRST_VISIT_DISCOUNT);
+    // Normalize: settings saved before visit-tiers existed become a visit-1 rule.
+    const rules = Array.isArray(v.rules) && v.rules.length
+      ? v.rules
+      : (v.percent > 0 ? [{ visit: 1, percent: v.percent }] : []);
+    return { ...v, rules };
   }
 
-  async updateFirstVisitDiscount(user: AuthenticatedUser, dto: Partial<FirstVisitDiscount>) {
+  async updateFirstVisitDiscount(
+    user: AuthenticatedUser,
+    dto: { enabled?: boolean; percent?: number; message?: string; rules?: Array<{ visit?: number; percent?: number }> },
+  ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getFirstVisitDiscount(tenantId);
+    // Sanitize tiers: visit 1-100, 1-90 %, unique visit numbers, max 10, sorted.
+    const rules = Array.isArray(dto.rules)
+      ? [...new Map(
+          dto.rules
+            .map((r) => ({
+              visit: Math.min(100, Math.max(1, Math.round(Number(r?.visit) || 0))),
+              percent: Math.min(90, Math.max(1, Math.round(Number(r?.percent) || 0))),
+            }))
+            .filter((r) => r.visit >= 1 && r.percent >= 1)
+            .map((r) => [r.visit, r] as const),
+        ).values()].sort((a, b) => a.visit - b.visit).slice(0, 10)
+      : (cur.rules ?? []);
     const next: FirstVisitDiscount = {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
-      percent: typeof dto.percent === 'number' ? Math.min(90, Math.max(1, Math.round(dto.percent))) : cur.percent,
+      // Legacy field mirrors the visit-1 tier so older readers keep working.
+      percent: rules.find((r) => r.visit === 1)?.percent
+        ?? (typeof dto.percent === 'number' ? Math.min(90, Math.max(1, Math.round(dto.percent))) : cur.percent),
       message: typeof dto.message === 'string' ? dto.message.slice(0, 160) : cur.message,
+      rules,
     };
     await this.writeKey(tenantId, FIRST_VISIT_DISCOUNT_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.first_visit_discount_updated', resourceType: 'tenant', resourceId: tenantId });

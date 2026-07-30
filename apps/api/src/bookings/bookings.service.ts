@@ -188,24 +188,31 @@ export class BookingsService {
         this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'group_discount' } } }),
       ]);
 
-      // First visit — only when we can verify identity (phone/email given) and
-      // the customer has never actually visited (no ARRIVED/COMPLETED history).
-      const fv = fvRow?.value as { enabled?: boolean; percent?: number } | undefined;
+      // Visit-based tiers — identity must be verifiable (phone/email given).
+      // visitNumber = completed/arrived visits so far + 1 (the visit being booked);
+      // a tier fires only on its EXACT visit number (visit 1 = brand-new customer,
+      // visit 5 = returning-customer thank-you, etc.).
+      const fv = fvRow?.value as { enabled?: boolean; percent?: number; rules?: Array<{ visit?: number; percent?: number }> } | undefined;
       const phone = (dto.customerPhone || '').trim();
       const email = (dto.customerEmail || '').trim().toLowerCase();
-      if (fv?.enabled && (fv.percent ?? 0) > 0 && (phone || email)) {
-        const or: Prisma.CustomerWhereInput[] = [];
-        if (phone) or.push({ phone });
-        if (email) or.push({ email });
-        const existing = await this.prisma.customer.findFirst({ where: { tenantId, OR: or }, select: { id: true } });
-        let isNew = true;
-        if (existing) {
-          const visits = await this.prisma.appointment.count({
-            where: { tenantId, customerId: existing.id, status: { in: [AppointmentStatus.ARRIVED, AppointmentStatus.COMPLETED] } },
-          });
-          isNew = visits === 0;
+      if (fv?.enabled && (phone || email)) {
+        const rules = Array.isArray(fv.rules) && fv.rules.length
+          ? fv.rules
+          : ((fv.percent ?? 0) > 0 ? [{ visit: 1, percent: fv.percent! }] : []);
+        if (rules.length) {
+          const or: Prisma.CustomerWhereInput[] = [];
+          if (phone) or.push({ phone });
+          if (email) or.push({ email });
+          const existing = await this.prisma.customer.findFirst({ where: { tenantId, OR: or }, select: { id: true } });
+          const visits = existing
+            ? await this.prisma.appointment.count({
+                where: { tenantId, customerId: existing.id, status: { in: [AppointmentStatus.ARRIVED, AppointmentStatus.COMPLETED] } },
+              })
+            : 0;
+          const visitNumber = visits + 1;
+          const hit = rules.find((r) => (r?.visit ?? 0) === visitNumber);
+          if (hit && (hit.percent ?? 0) > 0) best = Math.max(best, Math.min(90, hit.percent!));
         }
-        if (isNew) best = Math.max(best, fv.percent!);
       }
 
       // Group size — best tier whose minSize the party reaches.

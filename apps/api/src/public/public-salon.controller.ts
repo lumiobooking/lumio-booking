@@ -129,7 +129,7 @@ export class PublicSalonController {
       deposit,
       // Program promos (public-safe): shown as banners; the % is applied
       // server-side at booking time so it can never be spoofed client-side.
-      firstVisit: firstVisit.enabled && firstVisit.percent > 0 ? firstVisit : { enabled: false, percent: 0, message: '' },
+      firstVisit: firstVisit.enabled && (firstVisit.rules?.length ?? 0) > 0 ? firstVisit : { enabled: false, percent: 0, message: '', rules: [] },
       groupDiscount: groupDiscount.enabled && groupDiscount.tiers.length > 0 ? groupDiscount : { enabled: false, message: '', tiers: [] },
       // Card surcharge (dual pricing) — only the two public-safe fields, no secrets.
       cardFee: { enabled: !!pos?.cardSurchargeEnabled && (pos?.cardSurchargePercent ?? 0) > 0, percent: pos?.cardSurchargePercent ?? 0 },

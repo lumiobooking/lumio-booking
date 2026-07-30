@@ -50,16 +50,25 @@ export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
 // promos (the single best % wins).
 export const FIRST_VISIT_DISCOUNT_KEY = 'first_visit_discount';
 
+export interface VisitDiscountRule {
+  visit: number; // exact visit number the discount applies to (1 = first visit)
+  percent: number; // 1-90
+}
+
 export interface FirstVisitDiscount {
   enabled: boolean;
-  percent: number; // 1-90
+  percent: number; // legacy single % (kept in sync with the visit-1 rule)
   message: string; // headline shown on the booking page
+  // Visit-based tiers: e.g. visit 1 → 10%, visit 5 → 15% (returning-customer
+  // thank-you). Older saved settings without rules are normalized on read.
+  rules?: VisitDiscountRule[];
 }
 
 export const DEFAULT_FIRST_VISIT_DISCOUNT: FirstVisitDiscount = {
   enabled: false,
   percent: 10,
   message: '10% off your first visit!',
+  rules: [{ visit: 1, percent: 10 }],
 };
 
 // Group ("bring your friends") discount: % off by party size, tiered

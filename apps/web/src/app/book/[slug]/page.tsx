@@ -102,7 +102,7 @@ interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string }; booking?: BookingRules;
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
-  firstVisit?: { enabled: boolean; percent: number; message: string };
+  firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] };
   groupDiscount?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] };
   rating?: { value: number; count: number } | null;
 }
@@ -300,10 +300,18 @@ export default function PublicBookingPage() {
     setExtraServiceIds((p) => [...p, id]);
   };
 
-  // Prices: each service keeps its own discount + the promo for its own category.
+  // Group tier the customer already qualifies for (party size is known
+  // client-side). Mirrors the server rule exactly: ONE best % per line —
+  // max(weekday/date promo, group tier) — never stacked.
+  const partyN = parseInt(form.partySize, 10) || 1;
+  const groupPct = salon?.groupDiscount?.enabled && partyN >= 2
+    ? salon.groupDiscount.tiers.reduce((b, ti) => (ti.minSize <= partyN && ti.percent > b ? ti.percent : b), 0)
+    : 0;
+
+  // Prices: each service keeps its own discount + the best promo for its line.
   const lineFor = (s: Service) => {
     const net = svcNetCents(s);
-    const promo = promoPctFor(salon, selectedDate, s.categoryId ?? null);
+    const promo = Math.max(promoPctFor(salon, selectedDate, s.categoryId ?? null), groupPct);
     return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, fullCents: s.priceCents, priceCents: Math.round((net * (100 - promo)) / 100), imageUrl: s.imageUrl ?? null };
   };
   const cartLines = pickedServiceIds
@@ -1590,6 +1598,11 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 800, color: INK, fontSize: 15 }}>
           <span>Total</span><span>{fmt(totalCents)}</span>
         </div>
+        {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
+          <div style={{ fontSize: 12, color: '#7c5c22', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>
+            🎁 Visit reward: we check your visit count automatically (by phone/email) and the matching discount is applied to your booking price.
+          </div>
+        )}
         {depositCents > 0 && (() => {
           const feePct = cardFee?.enabled ? cardFee.percent : 0;
           const fee = feePct > 0 ? Math.round((depositCents * feePct) / 100) : 0;
@@ -1885,12 +1898,15 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
 // Always-on program promos (first visit / bring friends). Display only — the
 // actual % is applied server-side at booking time (can't be spoofed).
 function ProgramBanner({ fv, gr }: {
-  fv?: { enabled: boolean; percent: number; message: string };
+  fv?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] };
   gr?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] };
 }) {
   const lines: string[] = [];
-  if (fv?.enabled && fv.percent > 0) {
-    lines.push(`🎁 ${fv.message || `${fv.percent}% off your first visit!`} — applied automatically`);
+  const ord = (n: number) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
+  const fvRules = fv?.enabled ? (fv.rules?.length ? fv.rules : (fv.percent > 0 ? [{ visit: 1, percent: fv.percent }] : [])) : [];
+  if (fvRules.length) {
+    const tiers = fvRules.map((r) => `${ord(r.visit)} visit: ${r.percent}% off`).join(' · ');
+    lines.push(`🎁 ${fv!.message || 'Visit rewards'} — ${tiers} (applied automatically)`);
   }
   if (gr?.enabled && gr.tiers.length > 0) {
     const tiers = gr.tiers.map((t) => `${t.minSize}+ people: ${t.percent}% off`).join(' · ');

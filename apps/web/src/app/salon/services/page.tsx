@@ -947,31 +947,37 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
 }
 
 // ---- First-visit discount (automatic % off for new customers) ---------------
+interface VisitTier { visit: number; percent: number }
+
 function FirstVisitDiscountCard({ token }: { token: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [percent, setPercent] = useState(10);
   const [message, setMessage] = useState('');
+  const [rules, setRules] = useState<VisitTier[]>([{ visit: 1, percent: 10 }]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || loaded) return;
-    apiFetch<{ firstVisitDiscount?: { enabled: boolean; percent: number; message: string } }>('/settings', { token })
+    apiFetch<{ firstVisitDiscount?: { enabled: boolean; percent: number; message: string; rules?: VisitTier[] } }>('/settings', { token })
       .then((s) => {
         const f = s.firstVisitDiscount;
-        if (f) { setEnabled(!!f.enabled); setPercent(f.percent || 10); setMessage(f.message || ''); }
+        if (f) {
+          setEnabled(!!f.enabled); setMessage(f.message || '');
+          setRules(Array.isArray(f.rules) && f.rules.length ? f.rules : [{ visit: 1, percent: f.percent || 10 }]);
+        }
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
   }, [open, loaded, token]);
 
+  function upd(i: number, patch: Partial<VisitTier>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, percent, message } }); setMsg(t('sv.saved')); }
+    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -988,20 +994,23 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.fvEnable')}</span>
           </label>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
-            <label>
-              <span style={ui.label}>{t('sv.fvPercent')}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="number" min={1} max={90} value={percent} onChange={(e) => setPercent(parseInt(e.target.value, 10) || 0)} style={{ ...ui.input, width: 90 }} />
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <span style={ui.label}>{t('sv.fvHeadline')}</span>
+            <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="10% off your first visit!" />
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rules.map((r, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.fvVisitNo')}</span>
+                <input type="number" min={1} max={100} value={r.visit} onChange={(e) => upd(i, { visit: parseInt(e.target.value, 10) || 1 })} style={{ ...ui.input, width: 80 }} />
+                <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 90 }} />
                 <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
               </div>
-            </label>
-            <label style={{ flex: 1, minWidth: 220 }}>
-              <span style={ui.label}>{t('sv.fvHeadline')}</span>
-              <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="10% off your first visit!" />
-            </label>
+            ))}
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => setRules([...rules, { visit: Math.min(100, (rules[rules.length - 1]?.visit ?? 0) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
           </div>

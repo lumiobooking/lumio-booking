@@ -866,63 +866,96 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [q, setQ] = useState('');
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   if (all.length === 0) return <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServices')}</p>;
 
   const ql = q.trim().toLowerCase();
+  const searching = ql.length > 0;
   const has = (id: string) => ids.includes(id);
   const toggle = (id: string) => set(has(id) ? ids.filter((x) => x !== id) : [...ids, id]);
 
-  const groups: { name: string; items: Service[] }[] = [];
-  const byKey = new Map<string, { name: string; items: Service[] }>();
+  // Groups are built from ALL services so the per-group counters stay correct
+  // while searching; only the visible items get filtered.
+  const groups: { key: string; name: string; items: Service[] }[] = [];
+  const byKey = new Map<string, { key: string; name: string; items: Service[] }>();
   for (const s of all) {
-    if (ql && !s.name.toLowerCase().includes(ql)) continue;
     const key = s.category?.id ?? '__none__';
     let g = byKey.get(key);
-    if (!g) { g = { name: s.category?.name ?? t('st.skOther'), items: [] }; byKey.set(key, g); groups.push(g); }
+    if (!g) { g = { key, name: s.category?.name ?? t('st.skOther'), items: [] }; byKey.set(key, g); groups.push(g); }
     g.items.push(s);
   }
+
+  const shown = groups
+    .map((g) => ({ ...g, visible: searching ? g.items.filter((s) => s.name.toLowerCase().includes(ql)) : g.items }))
+    .filter((g) => g.visible.length > 0);
+
   const allOn = ids.length >= all.length;
+  const anyOpen = searching || Object.values(open).some(Boolean);
+  const picked = ids.map((id) => all.find((s) => s.id === id)).filter(Boolean) as Service[];
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('st.skSearchPh')} style={{ ...ui.input, width: '100%', paddingLeft: 30, boxSizing: 'border-box' }} />
         </div>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>{t('st.skSelected').replace('{n}', String(ids.length)).replace('{m}', String(all.length))}</span>
+        <button type="button" onClick={() => setOpen(anyOpen ? {} : Object.fromEntries(groups.map((g) => [g.key, true])))} style={{ fontSize: 12, padding: '5px 10px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
+          {anyOpen ? t('st.skCollapseAll') : t('st.skExpandAll')}
+        </button>
         <button type="button" onClick={() => set(allOn ? [] : all.map((s) => s.id))} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}>
           {allOn ? t('st.clearAll') : t('st.selectAll')}
         </button>
       </div>
 
-      {groups.length === 0 ? (
+      {picked.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, maxHeight: 104, overflowY: 'auto' }}>
+          {picked.map((s) => (
+            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, background: '#312e81', border: '1px solid #6366f1', color: '#c7d2fe', fontSize: 12 }}>
+              {s.name}
+              <button type="button" onClick={() => toggle(s.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {shown.length === 0 ? (
         <p style={{ color: '#64748b', fontSize: 13 }}>{t('st.skNoMatch')} &quot;{q}&quot;</p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {groups.map((g) => {
-            const gids = g.items.map((s) => s.id);
-            const gAllOn = gids.every((id) => has(id));
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {shown.map((g) => {
+            const vids = g.visible.map((s) => s.id);
+            const gAllOn = vids.every((id) => has(id));
+            const selCount = g.items.filter((s) => has(s.id)).length;
+            const isOpen = searching || !!open[g.key];
             return (
-              <div key={g.name}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>{g.name}</span>
-                  <button type="button" onClick={() => set(gAllOn ? ids.filter((id) => !gids.includes(id)) : [...new Set([...ids, ...gids])])} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
+              <div key={g.key} style={{ border: '1px solid #1e293b', borderRadius: 10, overflow: 'hidden', background: '#0b1220' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px' }}>
+                  <button type="button" onClick={() => setOpen((p) => ({ ...p, [g.key]: !p[g.key] }))} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, border: 'none', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', textAlign: 'left', padding: 0, fontSize: 13, fontWeight: 600 }}>
+                    <span style={{ color: '#64748b', fontSize: 11, width: 10 }}>{isOpen ? '▾' : '▸'}</span>
+                    <span style={{ textTransform: 'uppercase', letterSpacing: 0.4, color: '#cbd5e1' }}>{g.name}</span>
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: selCount > 0 ? '#312e81' : '#1e293b', color: selCount > 0 ? '#c7d2fe' : '#64748b', fontWeight: 600 }}>
+                      {selCount}/{g.items.length}
+                    </span>
+                  </button>
+                  <button type="button" onClick={() => set(gAllOn ? ids.filter((id) => !vids.includes(id)) : [...new Set([...ids, ...vids])])} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
                     {gAllOn ? t('st.skNone') : t('st.skAll')}
                   </button>
-                  <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {g.items.map((s) => {
-                    const on = has(s.id);
-                    return (
-                      <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#475569'}`, background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontSize: 13, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={on} onChange={() => toggle(s.id)} />
-                        {s.name}
-                      </label>
-                    );
-                  })}
-                </div>
+                {isOpen && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '2px 10px 10px' }}>
+                    {g.visible.map((s) => {
+                      const on = has(s.id);
+                      return (
+                        <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontSize: 13, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={on} onChange={() => toggle(s.id)} />
+                          {s.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -653,6 +653,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'st.skNoMatch': { en: 'No services match', vi: 'Không có dịch vụ khớp' },
   'st.skAll': { en: 'All', vi: 'Chọn nhóm' },
   'st.skNone': { en: 'None', vi: 'Bỏ nhóm' },
+  'st.skExpandAll': { en: 'Expand all', vi: 'Mở tất cả' },
+  'st.skCollapseAll': { en: 'Collapse all', vi: 'Thu gọn tất cả' },
   // Orders
   'or.title': { en: 'Orders', vi: 'Đơn hàng' },
   'or.ordersWord': { en: 'orders', vi: 'đơn' },

@@ -236,25 +236,12 @@ function BookingsInner() {
                 <MRow label={t('bk.colStaff')}>{staffName(b.assignedStaff)}</MRow>
                 <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(b.id)} /></MRow>
                 <MActions>
-                  {b.status === 'PENDING' && (
-                    <>
-                      <button onClick={() => action(b.id, 'auto-assign')} style={smallOk}>{t('bk.autoAssign')}</button>
-                      <AssignControl staff={staff.filter((s) => s.isActive)} onAssign={(staffId) => action(b.id, 'assign', { staffId })} />
-                    </>
-                  )}
-                  {ACTIVE_STATUSES.includes(b.status) && (
-                    <>
-                      <RescheduleControl current={b.startTime} onMove={(iso) => action(b.id, 'reschedule', { startTime: iso })} />
-                      {b.status !== 'PENDING' && (
-                        <AssignControl staff={staff.filter((s) => s.isActive)} onAssign={(staffId) => action(b.id, 'assign', { staffId })} label={t('bk.changeStaff')} />
-                      )}
-                      <a href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`} style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}>{t('bk.checkout')}</a>
-                      <button onClick={() => action(b.id, 'complete')} style={smallOk}>{t('bk.complete')}</button>
-                      <button onClick={() => { if (confirm(t('bk.confirmNoShow'))) action(b.id, 'no-show'); }} style={smallWarn}>{t('bk.noShow')}</button>
-                      <button onClick={() => { if (confirm(t('bk.confirmCancel'))) action(b.id, 'cancel'); }} style={actBtnOutline('#ef4444')}>{t('bk.cancel')}</button>
-                    </>
-                  )}
-                  <button onClick={() => removeBooking(b.id)} style={actBtnOutline('#94a3b8')}>{t('bk.delete')}</button>
+                  <BookingActions
+                    b={b} staff={staff} t={t}
+                    checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
+                    onAction={(path, body) => action(b.id, path, body)}
+                    onDelete={() => removeBooking(b.id)}
+                  />
                 </MActions>
               </MCard>
             ))}
@@ -317,65 +304,12 @@ function BookingsInner() {
                     <PaymentCell payment={paymentByBooking.get(b.id)} />
                   </td>
                   <td style={ui.td}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', maxWidth: 360 }}>
-                      {b.status === 'PENDING' && (
-                        <>
-                          <button
-                            onClick={() => action(b.id, 'auto-assign')}
-                            style={smallOk}
-                            title={t('bk.autoAssignHint')}
-                          >
-                            {t('bk.autoAssign')}
-                          </button>
-                          <AssignControl
-                            staff={staff.filter((s) => s.isActive)}
-                            onAssign={(staffId) => action(b.id, 'assign', { staffId })}
-                          />
-                        </>
-                      )}
-                      {ACTIVE_STATUSES.includes(b.status) && (
-                        <>
-                          <RescheduleControl current={b.startTime} onMove={(iso) => action(b.id, 'reschedule', { startTime: iso })} />
-                          {b.status !== 'PENDING' && (
-                            <AssignControl
-                              staff={staff.filter((s) => s.isActive)}
-                              onAssign={(staffId) => action(b.id, 'assign', { staffId })}
-                              label={t('bk.changeStaff')}
-                            />
-                          )}
-                          <a
-                            href={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
-                            style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}
-                            title={t('bk.checkoutHint')}
-                          >
-                            {t('bk.checkout')}
-                          </a>
-                          <button onClick={() => action(b.id, 'complete')} style={smallOk}>
-                            {t('bk.complete')}
-                          </button>
-                          <button
-                            onClick={() => { if (confirm(t('bk.confirmNoShow'))) action(b.id, 'no-show'); }}
-                            style={smallWarn}
-                            title={t('bk.noShowHint')}
-                          >
-                            {t('bk.noShow')}
-                          </button>
-                          <button
-                            onClick={() => { if (confirm(t('bk.confirmCancel'))) action(b.id, 'cancel'); }}
-                            style={actBtnOutline('#ef4444')}
-                          >
-                            {t('bk.cancel')}
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => removeBooking(b.id)}
-                        style={{ ...actBtnOutline('#94a3b8') }}
-                        title={t('bk.deleteHint')}
-                      >
-                        {t('bk.delete')}
-                      </button>
-                    </div>
+                    <BookingActions
+                      b={b} staff={staff} t={t}
+                      checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
+                      onAction={(path, body) => action(b.id, path, body)}
+                      onDelete={() => removeBooking(b.id)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -389,64 +323,122 @@ function BookingsInner() {
   );
 }
 
-function AssignControl({
-  staff,
-  onAssign,
-  label,
-}: {
+/**
+ * One booking's actions, arranged by how often they are used instead of all at
+ * once: the next step in the visit is a filled button, the two "change the plan"
+ * controls sit next to it as quiet icons, and everything destructive hides in a
+ * ⋯ menu so nobody cancels a booking by mis-tapping.
+ */
+function BookingActions({ b, staff, t, checkoutHref, onAction, onDelete }: {
+  b: Booking;
   staff: Staff[];
-  onAssign: (staffId: string) => void;
-  label?: string;
+  t: (k: string) => string;
+  checkoutHref: string;
+  onAction: (path: string, body?: Record<string, unknown>) => void;
+  onDelete: () => void;
 }) {
-  const { lang } = useLang();
-  const t = (k: string) => tr(k, lang);
-  const [staffId, setStaffId] = useState('');
+  const [menu, setMenu] = useState(false);
+  const [panel, setPanel] = useState<'none' | 'move' | 'staff'>('none');
+  const active = ACTIVE_STATUSES.includes(b.status);
+  const pending = b.status === 'PENDING';
+  const live = staff.filter((s) => s.isActive);
+
+  const iconBtn: React.CSSProperties = {
+    width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 8,
+    border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 14,
+  };
+
   return (
-    <span style={{ display: 'flex', gap: 4 }}>
-      <select value={staffId} onChange={(e) => setStaffId(e.target.value)} style={{ ...ui.input, padding: '4px 8px', width: 'auto' }}>
-        <option value="">{label ?? t('bk.assignTo')}</option>
-        {staff.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.firstName} {s.lastName ?? ''}
-          </option>
-        ))}
-      </select>
-      <button disabled={!staffId} onClick={() => staffId && onAssign(staffId)} style={smallOk}>
-        {t('bk.assign')}
-      </button>
-    </span>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Next step in the visit */}
+        {pending ? (
+          <button onClick={() => onAction('auto-assign')} title={t('bk.autoAssignHint')} style={{ ...actBtnFilled('#22c55e') }}>
+            {t('bk.autoAssign')}
+          </button>
+        ) : active ? (
+          <a href={checkoutHref} title={t('bk.checkoutHint')} style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}>
+            {t('bk.checkout')}
+          </a>
+        ) : null}
+
+        {/* Change the plan — icons, because they are used far less than the step above */}
+        {active && (
+          <>
+            <button onClick={() => setPanel(panel === 'move' ? 'none' : 'move')} title={t('bk.reschedule')} style={{ ...iconBtn, ...(panel === 'move' ? { borderColor: '#6366f1', color: '#a5b4fc' } : {}) }}>🗓</button>
+            <button onClick={() => setPanel(panel === 'staff' ? 'none' : 'staff')} title={pending ? t('bk.assign') : t('bk.changeStaff')} style={{ ...iconBtn, ...(panel === 'staff' ? { borderColor: '#6366f1', color: '#a5b4fc' } : {}) }}>👤</button>
+          </>
+        )}
+
+        {/* Everything that ends or undoes the booking */}
+        <button onClick={() => setMenu((v) => !v)} title={t('bk.colActions')} style={{ ...iconBtn, ...(menu ? { borderColor: '#6366f1', color: '#a5b4fc' } : {}) }}>⋯</button>
+      </div>
+
+      {panel === 'move' && (
+        <InlineMove current={b.startTime} t={t} onMove={(iso) => { onAction('reschedule', { startTime: iso }); setPanel('none'); }} onClose={() => setPanel('none')} />
+      )}
+      {panel === 'staff' && (
+        <select
+          autoFocus
+          defaultValue=""
+          onChange={(e) => { if (e.target.value) { onAction('assign', { staffId: e.target.value }); setPanel('none'); } }}
+          style={{ ...ui.input, padding: '6px 8px', fontSize: 13, minWidth: 170 }}
+        >
+          <option value="">{pending ? t('bk.assign') : t('bk.changeStaff')}</option>
+          {live.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
+        </select>
+      )}
+
+      {menu && (
+        <>
+          <div onClick={() => setMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', top: 36, left: 0, zIndex: 41, minWidth: 190, background: '#0f172a', border: '1px solid #223047', borderRadius: 10, boxShadow: '0 14px 40px rgba(0,0,0,.5)', padding: 5 }}>
+            {active && (
+              <>
+                <MenuItem label={`✅ ${t('bk.complete')}`} color="#22c55e" onClick={() => { setMenu(false); onAction('complete'); }} />
+                <MenuItem label={`⚠ ${t('bk.noShow')}`} color="#f97316" onClick={() => { setMenu(false); if (confirm(t('bk.confirmNoShow'))) onAction('no-show'); }} />
+                <MenuItem label={`✖ ${t('bk.cancel')}`} color="#ef4444" onClick={() => { setMenu(false); if (confirm(t('bk.confirmCancel'))) onAction('cancel'); }} />
+                <div style={{ height: 1, background: '#1e293b', margin: '4px 6px' }} />
+              </>
+            )}
+            <MenuItem label={`🗑 ${t('bk.delete')}`} color="#f87171" onClick={() => { setMenu(false); onDelete(); }} />
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
-// One-click reschedule: button → datetime picker prefilled with the current
-// start → Move. Duration is preserved server-side; conflicts are re-checked.
-function RescheduleControl({ current, onMove }: { current: string; onMove: (iso: string) => void }) {
-  const { lang } = useLang();
-  const t = (k: string) => tr(k, lang);
-  const [open, setOpen] = useState(false);
-  const [val, setVal] = useState('');
-  const toLocalInput = (iso: string) => {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-  if (!open) {
-    return (
-      <button onClick={() => { setVal(toLocalInput(current)); setOpen(true); }} style={actBtnOutline('#38bdf8')}>
-        {t('bk.reschedule')}
-      </button>
-    );
-  }
+function MenuItem({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+  const [hov, setHov] = useState(false);
   return (
-    <span style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-      <input type="datetime-local" value={val} onChange={(e) => setVal(e.target.value)} style={{ ...ui.input, padding: '4px 8px', width: 'auto' }} />
-      <button disabled={!val} onClick={() => { if (val) { onMove(new Date(val).toISOString()); setOpen(false); } }} style={smallOk}>
-        {t('bk.move')}
-      </button>
-      <button onClick={() => setOpen(false)} style={actBtnOutline('#94a3b8')}>✕</button>
-    </span>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none', background: hov ? '#1a2436' : 'transparent', color, fontSize: 13, cursor: 'pointer' }}
+    >
+      {label}
+    </button>
   );
 }
+
+/** Date+time picker that opens under the 🗓 icon. */
+function InlineMove({ current, t, onMove, onClose }: { current: string; t: (k: string) => string; onMove: (iso: string) => void; onClose: () => void }) {
+  const [val, setVal] = useState(() => {
+    const d = new Date(current);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input type="datetime-local" value={val} onChange={(e) => setVal(e.target.value)} style={{ ...ui.input, padding: '5px 8px', fontSize: 13 }} />
+      <button disabled={!val} onClick={() => val && onMove(new Date(val).toISOString())} style={smallOk}>{t('bk.move')}</button>
+      <button onClick={onClose} style={actBtnOutline('#94a3b8')}>✕</button>
+    </div>
+  );
+}
+
 
 function CreateBookingForm({
   token,

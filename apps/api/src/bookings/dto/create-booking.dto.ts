@@ -115,6 +115,8 @@ export class CreateBookingDto {
   @IsOptional() @IsString() @MaxLength(120) utmCampaign?: string;
   @IsOptional() @IsString() @MaxLength(120) utmContent?: string;
   @IsOptional() @IsString() @MaxLength(120) utmTerm?: string;
+  /** Promo code from a campaign link (?offer=BDAY30). */
+  @IsOptional() @IsString() @MaxLength(16) offerCode?: string;
   // Google click ids can be long opaque tokens.
   @IsOptional() @IsString() @MaxLength(300) gclid?: string;
   @IsOptional() @IsString() @MaxLength(300) gbraid?: string;

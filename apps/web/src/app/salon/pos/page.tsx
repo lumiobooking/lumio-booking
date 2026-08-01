@@ -349,8 +349,16 @@ function Register() {
             service: { id: string; name: string } | null;
             assignedStaff: { id: string } | null;
             addons?: Array<{ id?: string; name?: string; priceCents?: number; durationMinutes?: number; kind?: string; staffMemberId?: string }>;
+            offerCode?: string | null;
           }>(`/bookings/${appointmentId}`, { token });
           if (alive && appt) {
+            // The customer booked from a campaign link: the code rode along on
+            // the booking, so the till applies it without anyone typing it.
+            if (appt.offerCode) {
+              apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(appt.offerCode)}`, { token })
+                .then((r) => { if (alive && r) { setPromo(r); setPromoInput(r.code); } })
+                .catch(() => undefined);
+            }
             const lines: Line[] = [];
             if (appt.service) {
               const s = services.find((x) => x.id === appt.service!.id);

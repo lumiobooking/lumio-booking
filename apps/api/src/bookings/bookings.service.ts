@@ -459,6 +459,7 @@ export class BookingsService {
           source: source ?? (actorUserId ? 'admin' : 'online'),
           device: device ?? null,
           utmSource: dto.utmSource?.slice(0, 120) || null,
+          offerCode: dto.offerCode?.trim().toUpperCase().slice(0, 16) || null,
           utmMedium: dto.utmMedium?.slice(0, 120) || null,
           utmCampaign: dto.utmCampaign?.slice(0, 120) || null,
           utmContent: dto.utmContent?.slice(0, 120) || null,

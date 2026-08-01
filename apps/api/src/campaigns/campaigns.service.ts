@@ -35,6 +35,18 @@ type CustomerRow = { id: string; firstName: string; email: string | null; phone:
  * never has to lay the offer out by hand — and they render to NOTHING when the
  * offer is off, so a message never promises a gift that does not exist.
  */
+/**
+ * The booking link a campaign sends out. It carries UTM attribution AND the
+ * offer code, so the customer never has to remember anything: they tap the
+ * button, book, and the code rides along to the till.
+ */
+function campaignLink(slug: string | null | undefined, key: CampaignKey, o?: CampaignOffer | null): string {
+  const base = bookingUrl(slug);
+  const q = new URLSearchParams({ utm_source: 'lumio', utm_medium: 'campaign', utm_campaign: key });
+  if (o?.enabled && o.code) q.set('offer', o.code.trim().toUpperCase());
+  return `${base}?${q.toString()}`;
+}
+
 function offerVars(o: CampaignOffer | undefined | null): Record<string, string> {
   const label = offerLabel(o);
   if (!o?.enabled || !label) {
@@ -242,7 +254,7 @@ export class CampaignsService {
     const pct: Record<string, string> = {
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
-      booking_link: bookingUrl(tenant.slug),
+      booking_link: campaignLink(tenant.slug, dto.campaign, msg.offer),
       customer_name: 'Test',
       ...offerVars(msg.offer),
     };
@@ -258,7 +270,7 @@ export class CampaignsService {
           salon: tenant.name,
           accent,
           contact: tenant.contactPhone || tenant.contactEmail || '',
-          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, accent, bookingUrl(tenant.slug)),
+          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, accent, pct.booking_link),
         }),
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo,
@@ -318,6 +330,7 @@ export class CampaignsService {
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
       booking_link: bookingUrl(tenant.slug),
+      salon_slug: tenant.slug ?? '',
       // Carried through so the branded email shell uses the salon's own colour.
       accent_color: this.settings.brandingFrom(tenant.branding).accentColor || '#6366f1',
     };
@@ -436,7 +449,12 @@ export class CampaignsService {
     transport: ReturnType<CampaignsService['buildTransport']>,
     n: Awaited<ReturnType<SettingsService['getNotificationSettings']>>,
   ): Promise<boolean> {
-    const pct: Record<string, string> = { ...basePct, customer_name: c.firstName || 'there', ...offerVars(msg.offer) };
+    const pct: Record<string, string> = {
+      ...basePct,
+      customer_name: c.firstName || 'there',
+      booking_link: campaignLink(basePct.salon_slug, key, msg.offer),
+      ...offerVars(msg.offer),
+    };
     const related = { relatedType: campaignRelatedType(key), relatedId: c.id };
 
     // These are MARKETING messages (birthday / win-back), sent only to customers

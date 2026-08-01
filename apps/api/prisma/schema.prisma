@@ -1086,6 +1086,9 @@ model Appointment {
   utmCampaign String?
   utmContent  String?
   utmTerm     String?
+  // Promo code the customer arrived with (from a campaign email/SMS link). The
+  // till reads it at checkout, so nobody has to remember or read out a code.
+  offerCode   String?
   // Google ad click ids — first-party proof the booking came from a paid click.
   gclid       String?
   gbraid      String?

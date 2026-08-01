@@ -249,6 +249,11 @@ export default function PublicBookingPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Offer code the visitor arrived with (campaign email/SMS link → ?offer=CODE).
+  const [offerCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return (new URLSearchParams(window.location.search).get('offer') || '').toUpperCase().slice(0, 16);
+  });
   const [step, setStep] = useState<Step>(1);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [serviceId, setServiceId] = useState('');
@@ -494,6 +499,9 @@ export default function PublicBookingPage() {
             // first-party attribution as lumio_lu / lumio_rf / lumio_at; on the
             // hosted page this window IS the landing context.
             return {
+              // Promo code from a campaign link — travels with the booking so the
+              // till applies it without the customer reciting anything.
+              offerCode: (g('offer') || '').toUpperCase().slice(0, 16) || undefined,
               utmSource: g('utm_source'), utmMedium: g('utm_medium'), utmCampaign: g('utm_campaign'), utmContent: g('utm_content'),
               utmTerm: g('utm_term'), gclid: g('gclid'), gbraid: g('gbraid'), wbraid: g('wbraid'),
               attrLandingUrl: (g('lumio_lu') || window.location.href).slice(0, 900),
@@ -724,6 +732,14 @@ export default function PublicBookingPage() {
               {step === 1 && (
                 <>
                   <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
+                  {offerCode && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 12, padding: '11px 14px', marginBottom: 12 }}>
+                      <span style={{ fontSize: 18 }}>🎁</span>
+                      <span style={{ fontSize: 13.5, color: '#065f46', lineHeight: 1.5 }}>
+                        Your offer <b style={{ fontFamily: 'ui-monospace, Menlo, monospace', letterSpacing: 1 }}>{offerCode}</b> is attached to this booking — the salon applies it when you pay. Nothing to remember.
+                      </span>
+                    </div>
+                  )}
                   <ProgramBanner fv={salon?.firstVisit} gr={salon?.groupDiscount} />
                   {/* A day picker used to sit here. It was removed on purpose: date and time
                       belong together (nobody thinks "the 15th" — they think "tomorrow at 2"),

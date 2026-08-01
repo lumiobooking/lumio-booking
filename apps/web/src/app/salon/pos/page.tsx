@@ -97,25 +97,6 @@ function Register() {
   const [bookedOffer, setBookedOffer] = useState<string | null>(null);
   // Cash-tip logging is an occasional correction, not part of taking payment.
   const [tipOpen, setTipOpen] = useState(false);
-  // Full screen for the whole checkout page (same behaviour as the calendar):
-  // browser fullscreen + the section pinned over everything, so the catalog and
-  // the ticket both get the entire display.
-  const [ticketFull, setTicketFull] = useState(false);
-  const toggleFull = useCallback(() => {
-    setTicketFull((f) => {
-      const next = !f;
-      try {
-        if (next) document.documentElement.requestFullscreen?.().catch(() => undefined);
-        else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
-      } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-  useEffect(() => {
-    const onFs = () => { if (!document.fullscreenElement) setTicketFull(false); };
-    document.addEventListener('fullscreenchange', onFs);
-    return () => document.removeEventListener('fullscreenchange', onFs);
-  }, []);
   const [promoBusy, setPromoBusy] = useState(false);
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
   const [tendered, setTendered] = useState('');
@@ -1065,11 +1046,7 @@ function Register() {
   if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
 
   return (
-    <section style={ticketFull
-      // Same treatment the calendar uses: cover the whole viewport, own scroll,
-      // so the checkout screen is the only thing on the display.
-      ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '12px 16px', overflow: 'auto' }
-      : { paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined }}>
+    <section style={{ paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined }}>
       <style>{`
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
         .pos-card:hover { border-color: #6366f1 !important; background: #1e293b !important; }
@@ -1112,10 +1089,10 @@ function Register() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : 16, alignItems: isMobile ? 'start' : 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : 16, alignItems: 'start' }}>
         {/* Catalog */}
         {(!isMobile || mobileView === 'catalog') && (
-        <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : 'calc(100vh - 130px)', minHeight: 0 }}>
+        <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', maxHeight: isMobile ? 'none' : 'calc(100vh - 130px)' }}>
           {/* Tabs with counts */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
             <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>{t('po.tabServices')}<TabCount n={services.length} active={tab === 'SERVICE'} /></button>
@@ -1238,34 +1215,18 @@ function Register() {
 
         {/* Ticket */}
         {(!isMobile || mobileView === 'ticket') && (
-        <div style={{
-          ...ui.card,
-          // The money block below is sticky inside this card, so the card itself
-          // scrolls with the page — no inner scrollbox that can clip the list.
-          ...(isMobile ? {} : { display: 'flex', flexDirection: 'column' }),
-        }}>
+        <div style={{ ...ui.card, position: isMobile ? 'static' : 'sticky', top: 12 }}>
           {isMobile && (
             <button onClick={() => setMobileView('catalog')} style={{ ...ghost, marginBottom: 12, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
           )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px' }}>
             <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
             <div style={{ display: 'flex', gap: 6 }}>
-              {!isMobile && (
-                <button
-                  onClick={toggleFull}
-                  title={t('po.fullscreenHint')}
-                  style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap', borderColor: ticketFull ? '#6366f1' : undefined, color: ticketFull ? '#c7d2fe' : undefined }}
-                >
-                  {ticketFull ? `⤡ ${t('po.fullscreenOff')}` : `⤢ ${t('po.fullscreenOn')}`}
-                </button>
-              )}
               <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>📱 {t('po.ipad')}</button>
               <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
             </div>
           </div>
           {ipadPanel && <IpadPairPanel session={displaySession} onRotate={rotateDisplay} onClose={() => setIpadPanel(false)} t={t} />}
-
-          <div>
 
           <CustomerBox
             token={token} t={t}
@@ -1332,16 +1293,6 @@ function Register() {
             </div>
           )}
 
-          </div>
-
-          {/* Money + tender: sticks to the bottom of the viewport while the item
-              list scrolls behind it, so the total and the pay button are always
-              in reach without hiding anything. */}
-          <div style={isMobile ? undefined : {
-            position: 'sticky', bottom: 0, zIndex: 5,
-            background: '#111827', borderTop: '1px solid #1e293b',
-            paddingTop: 10, marginTop: 10, paddingBottom: 2,
-          }}>
           {/* Totals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, marginBottom: 12 }}>
             <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
@@ -1659,7 +1610,6 @@ function Register() {
             <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>
               {submitting ? t('po.processing') : t('po.payPrint').replace('{x}', formatPrice(money.due, currency))}
             </button>
-          </div>
           </div>
         </div>
         )}

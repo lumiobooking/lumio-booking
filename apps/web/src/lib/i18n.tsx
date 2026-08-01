@@ -781,6 +781,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.promoApply': { en: 'Apply', vi: 'Áp dụng' },
   'po.promoBad': { en: 'Code not recognised or no longer active.', vi: 'Mã không đúng hoặc đã ngừng.' },
   'po.promoGift': { en: 'Gift offer — hand it over, no money is deducted.', vi: 'Ưu đãi tặng quà — trao quà cho khách, không trừ tiền.' },
+  'po.promoStale': { en: 'This booking came with code {code}, but that offer is no longer active — apply manually if you want to honour it.', vi: 'Lịch này đến kèm mã {code}, nhưng ưu đãi đó không còn hiệu lực — muốn giữ lời hứa thì giảm tay.' },
   'po.tax': { en: 'Tax ({r}% retail)', vi: 'Thuế ({r}% hàng bán)' },
   'po.tips': { en: 'Tips', vi: 'Tip' },
   'po.cardFee': { en: 'Card fee ({r}%)', vi: 'Phí thẻ ({r}%)' },

@@ -86,7 +86,15 @@ export class CampaignsController {
   }
 
   /** Send a sample of one campaign to the admin's own email/phone (template + delivery test). */
-  /** Till: what is this promo code worth? Returns null when the code is not live. */
+  /**
+   * Till: what is this promo code worth? Returns null when the code is not live.
+   *
+   * STAFF is allowed here on purpose — the person on the register is usually a
+   * receptionist or technician, not the salon admin. Without this the code
+   * lookup 403s and the promo box silently stays empty, which looks exactly
+   * like "the feature does not work".
+   */
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Get('code/:code')
   lookupCode(@CurrentUser() user: AuthenticatedUser, @Param('code') code: string) {
     return this.campaigns.lookupCode(user, code);

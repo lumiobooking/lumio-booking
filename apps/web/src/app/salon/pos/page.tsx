@@ -355,9 +355,16 @@ function Register() {
             // The customer booked from a campaign link: the code rode along on
             // the booking, so the till applies it without anyone typing it.
             if (appt.offerCode) {
-              apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(appt.offerCode)}`, { token })
-                .then((r) => { if (alive && r) { setPromo(r); setPromoInput(r.code); } })
-                .catch(() => undefined);
+              const booked = appt.offerCode;
+              apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(booked)}`, { token })
+                .then((r) => {
+                  if (!alive) return;
+                  if (r) { setPromo(r); setPromoInput(r.code); }
+                  // The booking carried a code the campaign no longer offers.
+                  // Say so instead of leaving an empty box the cashier cannot explain.
+                  else { setPromoInput(booked); setPromoErr(t('po.promoStale').replace('{code}', booked)); }
+                })
+                .catch(() => { if (alive) { setPromoInput(booked); setPromoErr(t('po.promoStale').replace('{code}', booked)); } });
             }
             const lines: Line[] = [];
             if (appt.service) {

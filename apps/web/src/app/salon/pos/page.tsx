@@ -1438,29 +1438,43 @@ function Register() {
             </div>
           )}
 
-          {/* Payment method + split toggle */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
-            {!split && <>
-              <button onClick={() => setPayMethod('CASH')} style={tabBtn(payMethod === 'CASH')}>{t('po.cash')}</button>
-              <button onClick={() => setPayMethod('CARD')} style={tabBtn(payMethod === 'CARD')}>{t('po.card')}{cardSurchargeOn && cardSurchargePct > 0 ? ` +${cardSurchargePct}%` : ''}</button>
-              <button onClick={() => setPayMethod('TRANSFER')} style={tabBtn(payMethod === 'TRANSFER')}>{t('po.transfer')}</button>
-            </>}
-            {split && <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#c7d2fe' }}>➗ {t('po.splitTitle')}</span>}
-            {!split && cardSurchargeOn && cardSurchargePct > 0 && payMethod === 'CARD' && money.cardSurcharge > 0 && (
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#fbbf24', whiteSpace: 'nowrap' }}>{t('po.cardFee').replace('{r}', String(cardSurchargePct))}: +{formatPrice(money.cardSurcharge, currency)}</span>
+          {/* Payment method: one segmented control, three equal thirds — the
+              cashier's most-used control should never reflow or wrap. Split
+              sits underneath as a quiet option, not a fourth competing button. */}
+          <div style={{ marginBottom: 10 }}>
+            {!split && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, background: '#0f172a', border: '1px solid #223047', borderRadius: 12, padding: 4 }}>
+                {([
+                  ['CASH', `💵 ${t('po.cash')}`],
+                  ['CARD', `💳 ${t('po.card')}${cardSurchargeOn && cardSurchargePct > 0 ? ` +${cardSurchargePct}%` : ''}`],
+                  ['TRANSFER', `🏦 ${t('po.transfer')}`],
+                ] as const).map(([m, label]) => (
+                  <button key={m} onClick={() => setPayMethod(m as typeof payMethod)} style={payTab(payMethod === m)}>{label}</button>
+                ))}
+              </div>
             )}
-            <button
-              onClick={() => {
-                if (split) { setSplit(false); setParts([]); }
-                else {
-                  setSplit(true);
-                  // Seed two parts: the whole due on cash, 0 on card — the cashier edits.
-                  setParts([{ method: 'CASH', amount: (money.due / 100).toFixed(2) }, { method: 'CARD', amount: '' }]);
-                }
-              }}
-              style={{ ...chip, borderColor: split ? '#6366f1' : '#334155', color: split ? '#c7d2fe' : '#94a3b8', whiteSpace: 'nowrap' }}>
-              {split ? t('po.splitOff') : `➗ ${t('po.splitOn')}`}
-            </button>
+            {split && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px' }}>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: '#c7d2fe' }}>➗ {t('po.splitTitle')}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+              {!split && cardSurchargeOn && cardSurchargePct > 0 && payMethod === 'CARD' && money.cardSurcharge > 0 && (
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#fbbf24' }}>{t('po.cardFee').replace('{r}', String(cardSurchargePct))}: +{formatPrice(money.cardSurcharge, currency)}</span>
+              )}
+              <button
+                onClick={() => {
+                  if (split) { setSplit(false); setParts([]); }
+                  else {
+                    setSplit(true);
+                    // Seed two parts: the whole due on cash, 0 on card — the cashier edits.
+                    setParts([{ method: 'CASH', amount: (money.due / 100).toFixed(2) }, { method: 'CARD', amount: '' }]);
+                  }
+                }}
+                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: split ? '#c7d2fe' : '#64748b', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '2px 4px', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                {split ? t('po.splitOff') : `➗ ${t('po.splitOn')}`}
+              </button>
+            </div>
           </div>
 
           {split && (
@@ -1738,6 +1752,13 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
+/** One third of the payment segmented control. Fixed height, never wraps. */
+const payTab = (active: boolean): React.CSSProperties => ({
+  height: 46, padding: '0 6px', borderRadius: 9, border: 'none', cursor: 'pointer',
+  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#cbd5e1',
+  fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+});
 const tabBtn = (active: boolean): React.CSSProperties => ({
   flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + (active ? '#6366f1' : '#334155'),
   background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#cbd5e1', fontSize: 14, fontWeight: 600, cursor: 'pointer',

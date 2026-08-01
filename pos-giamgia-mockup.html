@@ -1,0 +1,53 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Mã ưu đãi & Giảm giá</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111827;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#e2e8f0;padding:26px}
+h3{font-size:12px;letter-spacing:.08em;color:#64748b;margin:0 0 8px;font-weight:700}
+.wrap{max-width:420px;margin:0 auto}
+.old{border:1px dashed #334155;border-radius:10px;padding:12px;margin-bottom:26px}
+.kv{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;color:#94a3b8;min-height:30px}
+.kv b{color:#e2e8f0}
+.inp{background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px}
+.grp{background:#0f172a;border:1px solid #223047;border-radius:10px;padding:7px;display:flex;flex-direction:column;gap:6px;margin:3px 0 5px}
+.row{display:flex;align-items:center;gap:6px}
+.lbl{color:#94a3b8;font-size:12.5px;width:72px;flex-shrink:0}
+.fill{flex:1;min-width:0;padding:5px 8px}
+.apply{background:#4f46e5;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;padding:5px 12px;flex-shrink:0}
+.seg{display:flex;gap:2px;background:#111827;border:1px solid #223047;border-radius:8px;padding:2px;flex-shrink:0}
+.seg span{width:30px;text-align:center;padding:4px 0;border-radius:6px;font-size:13px;font-weight:700;color:#94a3b8}
+.seg span.on{background:#4f46e5;color:#fff}
+.out{width:62px;text-align:right;font-size:12.5px;font-weight:700;flex-shrink:0}
+.g{color:#22c55e}.dim{color:#475569}
+.ok{color:#22c55e;font-size:12.5px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.x{border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:11px;padding:2px 8px;flex-shrink:0}
+.tot{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #334155;margin-top:4px;padding-top:7px}
+.tot span{font-size:15px;font-weight:700}.tot b{color:#22c55e;font-size:22px;font-weight:800}
+</style></head><body><div class="wrap">
+<h3>TRƯỚC — 2 dòng rời, ô nhập lệch nhau</h3>
+<div class="old">
+ <div class="kv">Tạm tính<b>$107.00</b></div>
+ <div class="kv">Mã ưu đãi<span><input class="inp" style="width:130px;padding:5px 8px" placeholder="ENTER CODE"> <button class="apply">Apply</button></span></div>
+ <div class="kv">Giảm giá $<input class="inp" style="width:92px;padding:4px 7px;text-align:right"></div>
+</div>
+
+<h3>SAU — 1 khối, trạng thái mặc định</h3>
+<div class="kv">Tạm tính<b>$107.00</b></div>
+<div class="grp"><div class="row"><span class="lbl">🏷️ Mã ưu đãi</span><input class="inp fill" placeholder="Nhập mã" style="text-transform:uppercase"><button class="apply">Áp dụng</button></div><div class="row"><span class="lbl">✂️ Giảm giá</span><span class="seg"><span class="on">$</span><span class="">%</span></span><input class="inp fill" style="text-align:right" value=""><span class="out dim">—</span></div></div>
+
+<h3>SAU — giảm theo số tiền</h3>
+<div class="kv">Tạm tính<b>$107.00</b></div>
+<div class="grp"><div class="row"><span class="lbl">🏷️ Mã ưu đãi</span><input class="inp fill" placeholder="Nhập mã" style="text-transform:uppercase"><button class="apply">Áp dụng</button></div><div class="row"><span class="lbl">✂️ Giảm giá</span><span class="seg"><span class="on">$</span><span class="">%</span></span><input class="inp fill" style="text-align:right" value="10"><span class="out g">−$10.00</span></div></div>
+
+<h3>SAU — giảm theo phần trăm</h3>
+<div class="kv">Tạm tính<b>$107.00</b></div>
+<div class="grp"><div class="row"><span class="lbl">🏷️ Mã ưu đãi</span><input class="inp fill" placeholder="Nhập mã" style="text-transform:uppercase"><button class="apply">Áp dụng</button></div><div class="row"><span class="lbl">✂️ Giảm giá</span><span class="seg"><span class="">$</span><span class="on">%</span></span><input class="inp fill" style="text-align:right" value="10"><span class="out g">−$10.70</span></div></div>
+
+<h3>SAU — đã áp mã ưu đãi + giảm thêm 5%</h3>
+<div class="kv">Tạm tính<b>$107.00</b></div>
+<div class="grp"><div class="row"><span class="lbl">🏷️ Mã ưu đãi</span><span class="ok">123456 · 5% off your next visit </span><span class="g" style="font-size:12.5px;font-weight:700">−$5.35</span><span class="x">✕</span></div><div class="row"><span class="lbl">✂️ Giảm giá</span><span class="seg"><span class="">$</span><span class="on">%</span></span><input class="inp fill" style="text-align:right" value="5"><span class="out g">−$5.35</span></div></div>
+<div class="kv" style="color:#22c55e;font-weight:600">Bạn tiết kiệm<span>−$10.70</span></div>
+<div class="tot"><span>Tổng</span><b>$96.30</b></div>
+
+<h3>SAU — nhập sai mã</h3>
+<div class="kv">Tạm tính<b>$107.00</b></div>
+<div class="grp"><div class="row"><span class="lbl">🏷️ Mã ưu đãi</span><input class="inp fill" placeholder="Nhập mã" style="text-transform:uppercase"><button class="apply">Áp dụng</button></div><div style="color:#f87171;font-size:12px">Mã không đúng hoặc đã ngừng.</div><div class="row"><span class="lbl">✂️ Giảm giá</span><span class="seg"><span class="on">$</span><span class="">%</span></span><input class="inp fill" style="text-align:right" value=""><span class="out dim">—</span></div></div>
+</div></body></html>

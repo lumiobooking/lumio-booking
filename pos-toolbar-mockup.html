@@ -1,0 +1,69 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Bố cục thanh công cụ</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b1120;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#e2e8f0;padding:22px}
+h3{font-size:11.5px;letter-spacing:.08em;color:#64748b;margin:0 0 10px;font-weight:700}
+.frame{border:1px solid #1f2937;border-radius:10px;background:#0b1120;padding:12px;margin-bottom:26px}
+.grid{display:grid;grid-template-columns:1fr 300px;gap:12px}
+.colL{display:flex;flex-direction:column;gap:10px;min-height:0}
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bar h1{font-size:16px;margin:0;margin-right:auto}
+.btn{border:1px solid #334155;border-radius:8px;background:transparent;color:#e2e8f0;font-size:11px;padding:5px 9px;white-space:nowrap}
+.banner{background:#1e293b;border:1px solid #4f46e5;color:#c7d2fe;padding:7px 10px;border-radius:8px;font-size:11.5px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:12px}
+.cat{flex:1;min-height:0}
+.svcs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.s{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px;font-size:10.5px}
+.s b{display:block;font-size:11px;margin-bottom:3px}
+.s i{color:#22c55e;font-style:normal;font-weight:700}
+.tick{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:12px;display:flex;flex-direction:column;overflow:hidden}
+.cust{border:1px solid #4f46e5;border-radius:8px;background:#0f172a;padding:7px;font-size:11px;margin-bottom:9px}
+.li{border-bottom:1px solid #334155;padding:6px 0;font-size:11px;display:flex;justify-content:space-between}
+.money{background:#111827;border-top:1px solid #334155;margin:auto -12px -12px;padding:10px 12px 12px;border-radius:0 0 12px 12px}
+.kv{display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;padding:2px 0}
+.tot{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #334155;margin-top:4px;padding-top:6px}
+.tot span{font-size:12px;font-weight:700}.tot b{color:#22c55e;font-size:17px;font-weight:800}
+.pay{display:flex;gap:6px;margin-top:8px}
+.pay .a{flex:1;border:1px solid #334155;border-radius:8px;font-size:11px;padding:9px;text-align:center}
+.pay .b{flex:2;background:#6366f1;border-radius:8px;font-size:12px;font-weight:600;padding:9px;text-align:center;color:#fff}
+.tag{font-size:10px;color:#64748b;margin-top:6px}
+</style></head><body>
+<h3>TRƯỚC — thanh công cụ + thông báo chiếm hết bề ngang, cột bill bị đẩy xuống</h3>
+<div class="frame">
+  <div class="bar" style="margin-bottom:9px"><h1>Bán hàng (POS)</h1><span class="btn">☐ In tại quầy lễ tân</span><span class="btn">⏸ Giữ bill</span><span class="btn">🧾 Bill chờ</span><span class="btn">📱 iPad</span><span class="btn">🖥 Màn hình khách</span><span class="btn">Quản lý sản phẩm</span></div>
+  <div class="banner" style="margin-bottom:10px">🧾 Đang thanh toán một lịch đặt cho Lumio Service — lịch sẽ được đánh dấu Hoàn thành sau khi trả tiền.</div>
+  <div class="grid" style="height:300px">
+    <div class="card cat"><div class="svcs"><div class="s"><b>Dịch vụ 1</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 2</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 3</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 4</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 5</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 6</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 7</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 8</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 9</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 10</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 11</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 12</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 13</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 14</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 15</b><i>$45.00</i> · 45 phút</div></div></div>
+    <div class="tick" style="height:100%">
+  <div class="cust">👤 Lumio Service · ⭐ 0 điểm</div>
+  <div style="flex:1;min-height:0;overflow:auto"><div class="li"><span>Dịch vụ 1</span><span>$45.00</span></div><div class="li"><span>Dịch vụ 2</span><span>$45.00</span></div><div class="li"><span>Dịch vụ 3</span><span>$45.00</span></div><div class="li"><span>Dịch vụ 4</span><span>$45.00</span></div></div>
+  <div class="money">
+    <div class="kv"><span>Tạm tính</span><span>$142.00</span></div>
+    <div class="kv"><span>Mã ưu đãi · Giảm giá</span><span style="color:#22c55e">−$15.10</span></div>
+    <div class="tot"><span>Tổng</span><b>$134.90</b></div>
+    <div class="pay"><span class="a">Xoá hết</span><span class="b">Trả &amp; In · $134.90</span></div>
+  </div></div>
+  </div>
+  <div class="tag">Cột bill bắt đầu thấp hơn đỉnh trang ~90px → mất chiều cao, nội dung dài phải cuộn.</div>
+</div>
+
+<h3>SAU — gom thanh công cụ + thông báo vào cột dịch vụ; cột bill chạy suốt từ trên xuống</h3>
+<div class="frame">
+  <div class="grid" style="height:390px">
+    <div class="colL">
+      <div class="bar"><h1>Bán hàng (POS)</h1><span class="btn">☐ In tại quầy lễ tân</span><span class="btn">⏸ Giữ bill</span><span class="btn">🧾 Bill chờ</span><span class="btn">📱 iPad</span><span class="btn">🖥 Màn hình khách</span><span class="btn">Quản lý sản phẩm</span></div>
+      <div class="banner">🧾 Đang thanh toán một lịch đặt cho Lumio Service — lịch sẽ được đánh dấu Hoàn thành sau khi trả tiền.</div>
+      <div class="card cat" style="overflow:auto"><div class="svcs"><div class="s"><b>Dịch vụ 1</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 2</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 3</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 4</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 5</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 6</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 7</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 8</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 9</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 10</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 11</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 12</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 13</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 14</b><i>$45.00</i> · 45 phút</div><div class="s"><b>Dịch vụ 15</b><i>$45.00</i> · 45 phút</div></div></div>
+    </div>
+    <div class="tick" style="height:100%">
+  <div class="cust">👤 Lumio Service · ⭐ 0 điểm</div>
+  <div style="flex:1;min-height:0;overflow:auto"><div class="li"><span>Dịch vụ 1</span><span>$45.00</span></div><div class="li"><span>Dịch vụ 2</span><span>$45.00</span></div><div class="li"><span>Dịch vụ 3</span><span>$45.00</span></div><div class="li"><span>Dịch vụ 4</span><span>$45.00</span></div></div>
+  <div class="money">
+    <div class="kv"><span>Tạm tính</span><span>$142.00</span></div>
+    <div class="kv"><span>Mã ưu đãi · Giảm giá</span><span style="color:#22c55e">−$15.10</span></div>
+    <div class="tot"><span>Tổng</span><b>$134.90</b></div>
+    <div class="pay"><span class="a">Xoá hết</span><span class="b">Trả &amp; In · $134.90</span></div>
+  </div></div>
+  </div>
+  <div class="tag">Cột bill cao thêm ~90px · thanh công cụ nằm trên lưới dịch vụ, không ăn chiều cao của bill.</div>
+</div>
+</body></html>

@@ -106,6 +106,7 @@ function Register() {
   const [heldBills, setHeldBills] = useState<{ id: string; label: string | null; totalCents: number; payload: unknown; createdAt: string }[]>([]);
   const [showHeld, setShowHeld] = useState(false);
   const [orderDiscount, setOrderDiscount] = useState('');
+  const [discountMode, setDiscountMode] = useState<'AMOUNT' | 'PERCENT'>('AMOUNT');
   // Promo code from a marketing campaign (win-back / reactivation / birthday).
   const [promoInput, setPromoInput] = useState('');
   const [promo, setPromo] = useState<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(null);
@@ -521,7 +522,7 @@ function Register() {
       await apiFetch('/pos/held', { method: 'POST', token, body: {
         label: customerLabel || bookingCustomer || 'Walk-in',
         totalCents: money.total,
-        payload: { cart, customerId, customerLabel, orderDiscount },
+        payload: { cart, customerId, customerLabel, orderDiscount, discountMode },
       } });
       clearCart();
       await loadHeld();
@@ -529,11 +530,11 @@ function Register() {
   }
   function recall(h: { id: string; payload: unknown }) {
     if (cart.length > 0 && !window.confirm(lang === 'vi' ? 'Thay giỏ hàng hiện tại bằng bill này?' : 'Replace the current cart with this bill?')) return;
-    const pp = (h.payload || {}) as { cart?: Line[]; customerId?: string | null; customerLabel?: string | null; orderDiscount?: string };
+    const pp = (h.payload || {}) as { cart?: Line[]; customerId?: string | null; customerLabel?: string | null; orderDiscount?: string; discountMode?: 'AMOUNT' | 'PERCENT' };
     setCart(Array.isArray(pp.cart) ? pp.cart.map((l) => ({ ...l, uid: `u${uidSeq++}` })) : []);
     setCustomerId(pp.customerId ?? null);
     setCustomerLabel(pp.customerLabel ?? null);
-    setOrderDiscount(pp.orderDiscount ?? '');
+    setOrderDiscount(pp.orderDiscount ?? ''); setDiscountMode(pp.discountMode ?? 'AMOUNT');
     setShowHeld(false);
     apiFetch(`/pos/held/${h.id}`, { method: 'DELETE', token }).then(loadHeld).catch(() => {});
   }
@@ -569,6 +570,16 @@ function Register() {
     }
   }
 
+  async function applyPromo() {
+    if (!token || !promoInput.trim() || promoBusy) return;
+    setPromoBusy(true); setPromoErr(null);
+    try {
+      const r = await apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(promoInput.trim())}`, { token });
+      if (r) setPromo(r); else setPromoErr(t('po.promoBad'));
+    } catch { setPromoErr(t('po.promoBad')); }
+    finally { setPromoBusy(false); }
+  }
+
   const money = useMemo(() => {
     const subtotal = cart.reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
     // Savings from per-item promo discounts (list price vs net price).
@@ -576,7 +587,10 @@ function Register() {
     const productBase = cart.filter((l) => l.kind === 'PRODUCT').reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
     // A percent/amount promo lands on top of whatever was typed in the discount
     // box; a gift promo is handed over at the counter and must not deduct money.
-    const typedDiscount = Math.round((parseFloat(orderDiscount) || 0) * 100);
+    const typedRaw = parseFloat(orderDiscount) || 0;
+    const typedDiscount = discountMode === 'PERCENT'
+      ? Math.round((subtotal * Math.max(0, Math.min(100, typedRaw))) / 100)
+      : Math.round(Math.max(0, typedRaw) * 100);
     const promoCents = promo?.appliesDiscount
       ? (promo.kind === 'percent' ? Math.round((subtotal * Math.min(90, promo.value)) / 100) : promo.value)
       : 0;
@@ -608,8 +622,8 @@ function Register() {
     const splitCents = parts.reduce((sum, p) => sum + Math.round((parseFloat(p.amount) || 0) * 100), 0);
     const change = split ? Math.max(0, splitCents - due) : (payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0);
     const splitRemaining = due - splitCents; // >0 = still owed, <0 = change
-    return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
-  }, [cart, orderDiscount, promo, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
+    return { subtotal, itemSavings, discount, typedDiscount, promoCents, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
+  }, [cart, orderDiscount, discountMode, promo, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
 
   // ---- Customer-facing display (2nd monitor). Mirrors the live cart to the
   // /pos-display page via BroadcastChannel — same browser, no server, no internet. ----
@@ -1061,6 +1075,58 @@ function Register() {
     setTimeout(() => iframe.remove(), 60000);
   }
 
+  const headerBar = (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, flexShrink: 0,
+          marginBottom: wide ? 0 : 16,
+          ...(wide ? { borderTop: '1px solid #334155', paddingTop: 10 } : null),
+        }}>
+          <h1 style={{ fontSize: wide ? 16 : 22, margin: 0 }}>{t('po.title')}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#cbd5e1', cursor: 'pointer' }}>
+              <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
+              🖨️ {t('po.printReception')}
+            </label>
+            <button onClick={park} disabled={cart.length === 0} title={lang === 'vi' ? 'Giữ bill hiện tại để phục vụ khách khác' : 'Hold the current ticket to serve someone else'} style={{ ...ghost, opacity: cart.length ? 1 : 0.5, cursor: cart.length ? 'pointer' : 'default' }}>⏸️ {lang === 'vi' ? 'Giữ bill' : 'Hold'}</button>
+            <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` (${heldBills.length})` : ''}</button>
+            {wide && (
+              <>
+                <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={ghost}>📱 {t('po.ipad')}</button>
+                <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={ghost}>🖥️ {t('po.custScreen')}</button>
+              </>
+            )}
+            <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
+          </div>
+        </div>
+  );
+  const banners = (
+    <>
+        {appointmentId && (
+          <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
+            {t('po.checkoutBanner').replace('{for}', bookingCustomer ? t('po.checkoutFor').replace('{name}', bookingCustomer) : '')}
+          </div>
+        )}
+        {!appointmentId && customerId && bookingCustomer && (
+          <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
+            {t('po.newSaleA')}<strong>{bookingCustomer}</strong>{t('po.newSaleB')}
+          </div>
+        )}
+        {error && <div style={ui.banner}>{error}</div>}
+        {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
+        {!online && (
+          <div style={{ background: '#78350f', color: '#fde68a', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>📴</span> {t('po.offlineMode')}
+          </div>
+        )}
+        {pendingSync > 0 && (
+          <div style={{ background: '#1e293b', border: '1px solid #475569', color: '#cbd5e1', padding: '8px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span>⏳ {t('po.pendingSync').replace('{n}', String(pendingSync))}</span>
+            {online && <button onClick={syncPending} style={{ ...ghost, padding: '6px 12px', fontSize: 13 }}>{t('po.syncNow')}</button>}
+          </div>
+        )}
+    </>
+  );
+
   if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
 
   return (
@@ -1075,49 +1141,8 @@ function Register() {
         .pos-card:hover { border-color: #6366f1 !important; background: #1e293b !important; }
         .pos-card:active { transform: scale(.97); }
       `}</style>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: wide ? 10 : 16, flexShrink: 0 }}>
-        <h1 style={{ fontSize: wide ? 18 : 22, margin: 0 }}>{t('po.title')}</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#cbd5e1', cursor: 'pointer' }}>
-            <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
-            🖨️ {t('po.printReception')}
-          </label>
-          <button onClick={park} disabled={cart.length === 0} title={lang === 'vi' ? 'Giữ bill hiện tại để phục vụ khách khác' : 'Hold the current ticket to serve someone else'} style={{ ...ghost, opacity: cart.length ? 1 : 0.5, cursor: cart.length ? 'pointer' : 'default' }}>⏸️ {lang === 'vi' ? 'Giữ bill' : 'Hold'}</button>
-          <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` (${heldBills.length})` : ''}</button>
-          {wide && (
-            <>
-              <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={ghost}>📱 {t('po.ipad')}</button>
-              <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={ghost}>🖥️ {t('po.custScreen')}</button>
-            </>
-          )}
-          <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
-        </div>
-      </div>
-
-      {appointmentId && (
-        <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
-          {t('po.checkoutBanner').replace('{for}', bookingCustomer ? t('po.checkoutFor').replace('{name}', bookingCustomer) : '')}
-        </div>
-      )}
-      {!appointmentId && customerId && bookingCustomer && (
-        <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
-          {t('po.newSaleA')}<strong>{bookingCustomer}</strong>{t('po.newSaleB')}
-        </div>
-      )}
-      {error && <div style={ui.banner}>{error}</div>}
-      {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
-      {!online && (
-        <div style={{ background: '#78350f', color: '#fde68a', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>📴</span> {t('po.offlineMode')}
-        </div>
-      )}
-      {pendingSync > 0 && (
-        <div style={{ background: '#1e293b', border: '1px solid #475569', color: '#cbd5e1', padding: '8px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span>⏳ {t('po.pendingSync').replace('{n}', String(pendingSync))}</span>
-          {online && <button onClick={syncPending} style={{ ...ghost, padding: '6px 12px', fontSize: 13 }}>{t('po.syncNow')}</button>}
-        </div>
-      )}
-
+      {!wide && headerBar}
+      {!wide && banners}
       <div style={{
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
@@ -1346,56 +1371,88 @@ function Register() {
 
           {/* Money + tender + pay: pinned to the bottom of the ticket panel, so it
               stays on screen no matter how many lines the bill has. */}
+          {/* The money block is darker than the card it sits in, so it has to
+              bleed out to the card's edges and carry its own inset — otherwise
+              the numbers and inputs run straight into its border and read as
+              clipped. ui.card padding is 20, hence the -20 bleed. */}
           <div style={isMobile ? undefined : wide ? {
             flex: '0 1 auto', minHeight: 0, overflowY: 'auto', marginTop: 'auto',
-            background: '#111827', paddingTop: 8, borderTop: '1px solid #334155',
+            marginLeft: -20, marginRight: -20, marginBottom: -20,
+            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
+            background: '#111827', borderTop: '1px solid #334155', borderRadius: '0 0 12px 12px',
           } : {
-            position: 'sticky', bottom: 0, zIndex: 3, marginTop: 'auto',
-            background: '#111827', paddingTop: 8, borderTop: '1px solid #334155',
+            position: 'sticky', bottom: -20, zIndex: 3, marginTop: 'auto',
+            marginLeft: -20, marginRight: -20, marginBottom: -20,
+            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
+            background: '#111827', borderTop: '1px solid #334155', borderRadius: '0 0 12px 12px',
           }}>
           {/* Totals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
             <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ color: '#94a3b8' }}>{t('po.promoCode')}</span>
-              {promo ? (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ color: '#22c55e', fontSize: 12.5, fontWeight: 600 }}>{promo.code} · {promo.label}</span>
-                  <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>✕</button>
-                </span>
-              ) : (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input
-                    value={promoInput}
-                    onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }}
-                    placeholder={t('po.promoPh')}
-                    style={{ ...ui.input, width: 130, padding: '5px 8px', fontSize: 13, textTransform: 'uppercase' }}
-                  />
-                  <button
-                    disabled={!promoInput.trim() || promoBusy}
-                    onClick={async () => {
-                      if (!token) return;
-                      setPromoBusy(true); setPromoErr(null);
-                      try {
-                        const r = await apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(promoInput.trim())}`, { token });
-                        if (r) setPromo(r); else setPromoErr(t('po.promoBad'));
-                      } catch { setPromoErr(t('po.promoBad')); }
-                      finally { setPromoBusy(false); }
-                    }}
-                    style={{ ...ui.primaryBtn, padding: '5px 12px', fontSize: 12 }}
-                  >
-                    {promoBusy ? '…' : t('po.promoApply')}
-                  </button>
-                </span>
+            {/* Promo code + manual discount. One boxed group: both are "money
+                coming off this ticket", and both used to eat a full row each.
+                The discount takes either a flat amount or a percent — the
+                cashier picks with the $ / % switch instead of doing the math. */}
+            <div style={{ background: '#0f172a', border: '1px solid #223047', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#94a3b8', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
+                {promo ? (
+                  <>
+                    <span style={{ flex: 1, minWidth: 0, color: '#22c55e', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${promo.code} · ${promo.label}`}>{promo.code} · {promo.label}</span>
+                    {money.promoCents > 0 && <span style={{ color: '#22c55e', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>−{formatPrice(money.promoCents, currency)}</span>}
+                    <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={promoInput}
+                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } }}
+                      placeholder={t('po.promoPh')}
+                      style={{ ...ui.input, flex: 1, minWidth: 0, padding: '5px 8px', fontSize: 13, textTransform: 'uppercase' }}
+                    />
+                    <button
+                      disabled={!promoInput.trim() || promoBusy}
+                      onClick={applyPromo}
+                      style={{ ...ui.primaryBtn, padding: '5px 12px', fontSize: 12, flexShrink: 0, opacity: (!promoInput.trim() || promoBusy) ? 0.5 : 1 }}
+                    >
+                      {promoBusy ? '…' : t('po.promoApply')}
+                    </button>
+                  </>
+                )}
+              </div>
+              {promoErr && <div style={{ color: '#f87171', fontSize: 12 }}>{promoErr}</div>}
+              {promo && !promo.appliesDiscount && (
+                <div style={{ color: '#fbbf24', fontSize: 12 }}>{t('po.promoGift')}</div>
               )}
-            </div>
-            {promoErr && <div style={{ color: '#f87171', fontSize: 12, textAlign: 'right' }}>{promoErr}</div>}
-            {promo && !promo.appliesDiscount && (
-              <div style={{ color: '#fbbf24', fontSize: 12, textAlign: 'right' }}>{t('po.promoGift')}</div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 30 }}>
-              <span style={{ color: '#94a3b8' }}>{t('po.discountD')}</span>
-              <input type="number" min={0} step="0.01" value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} style={{ ...ui.input, width: 92, padding: '4px 7px', fontSize: 13, textAlign: 'right' }} />
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#94a3b8', fontSize: 12.5, width: 72, flexShrink: 0 }}>✂️ {t('po.discountLbl')}</span>
+                <div style={{ display: 'flex', gap: 2, background: '#111827', border: '1px solid #223047', borderRadius: 8, padding: 2, flexShrink: 0 }}>
+                  {([['AMOUNT', '$', t('po.discByAmount')], ['PERCENT', '%', t('po.discByPercent')]] as const).map(([m, sym, hint]) => (
+                    <button
+                      key={m}
+                      title={hint}
+                      onClick={() => setDiscountMode(m as 'AMOUNT' | 'PERCENT')}
+                      style={{
+                        width: 30, padding: '4px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                        border: '1px solid ' + (discountMode === m ? '#4f46e5' : 'transparent'),
+                        background: discountMode === m ? '#4f46e5' : 'transparent',
+                        color: discountMode === m ? '#fff' : '#94a3b8',
+                      }}
+                    >{sym}</button>
+                  ))}
+                </div>
+                <input
+                  type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} max={discountMode === 'PERCENT' ? 100 : undefined}
+                  value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)}
+                  placeholder="0"
+                  style={{ ...ui.input, flex: 1, minWidth: 0, padding: '5px 8px', fontSize: 13, textAlign: 'right' }}
+                />
+                <span style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? '#22c55e' : '#475569', flexShrink: 0 }}>
+                  {money.typedDiscount > 0 ? `−${formatPrice(money.typedDiscount, currency)}` : '—'}
+                </span>
+              </div>
             </div>
             {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
             {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
@@ -1668,7 +1725,7 @@ function Register() {
           )}
           <div style={{
             display: 'flex', gap: 8, paddingBottom: 2,
-            ...(wide ? { position: 'sticky', bottom: 0, background: '#111827', paddingTop: 6, zIndex: 2 } : null),
+            ...(wide ? { position: 'sticky', bottom: -14, background: '#111827', paddingTop: 8, paddingBottom: 14, marginBottom: -14, zIndex: 2 } : null),
           }}>
             <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>
             <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>
@@ -1679,6 +1736,15 @@ function Register() {
         </div>
         )}
       </div>
+
+      {/* Wide mode docks the toolbar and the page banners under the two columns,
+          so the ticket column can start at the very top of the screen. */}
+      {wide && (
+        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+          {banners}
+          {headerBar}
+        </div>
+      )}
 
       {/* Mobile: sticky total + go-to-ticket bar so checkout is one tap away. */}
       {isMobile && mobileView === 'catalog' && (

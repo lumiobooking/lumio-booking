@@ -1,0 +1,50 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Lề khối thanh toán</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b1120;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#e2e8f0;padding:26px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:26px;max-width:900px;margin:0 auto}
+h3{font-size:11.5px;letter-spacing:.08em;color:#64748b;margin:0 0 9px;font-weight:700}
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;overflow:hidden}
+.stub{font-size:12.5px;color:#64748b;padding-bottom:12px}
+.money{background:#111827;border-top:1px solid #334155}
+/* TRƯỚC: khối tiền thụt vào 20px nhưng không có padding riêng → chữ dính viền */
+.before .money{padding-top:8px;margin:0}
+/* SAU: tràn ra sát mép thẻ, tự có lề trong 20px */
+.after .money{margin:0 -20px -20px;padding:12px 20px 14px;border-radius:0 0 12px 12px}
+.kv{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;color:#94a3b8;min-height:30px}
+.kv b{color:#e2e8f0;font-weight:600}
+.inp{background:#0f172a;border:1px solid #475569;border-radius:8px;color:#e2e8f0;font-size:13px;padding:5px 9px}
+.g{color:#22c55e}.y{color:#eab308}
+.tot{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #334155;margin-top:4px;padding-top:8px}
+.tot span{font-size:15px;font-weight:700}.tot b{color:#22c55e;font-size:22px;font-weight:800}
+.gc{display:flex;gap:6px;margin-top:10px}
+.gc .inp{flex:1}
+.gcb{border:1px solid #334155;border-radius:8px;background:transparent;color:#e2e8f0;font-size:13px;padding:7px 12px;white-space:nowrap}
+.x{border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:11px;padding:2px 8px;background:none}
+.pay{display:flex;gap:8px;margin-top:12px}
+.pay .a{flex:1;border:1px solid #334155;border-radius:8px;background:transparent;color:#e2e8f0;font-size:13px;padding:12px;text-align:center}
+.pay .b{flex:2;border:none;border-radius:8px;background:#6366f1;color:#fff;font-size:15px;font-weight:600;padding:12px;text-align:center}
+.note{font-size:11.5px;color:#64748b;margin-top:10px;text-align:center}
+</style></head><body>
+<div class="row2">
+  <div><h3>TRƯỚC — chữ và ô nhập dính mép, nhìn như bị cắt</h3>
+    <div class="card before"><div class="stub">🧾 Danh sách dịch vụ…</div><div class="money">
+      <div class="kv">Tạm tính<b>$142.00</b></div>
+      <div class="kv">Mã ưu đãi<span style="display:flex;align-items:center;gap:8px"><span class="g" style="font-size:12.5px;font-weight:600">123456 · 5% off your next visit</span><span class="x">✕</span></span></div>
+      <div class="kv">Giảm giá $<input class="inp" style="width:92px;text-align:right"></div>
+      <div class="kv"><span class="y">Đổi điểm (0 điểm có sẵn)</span><input class="inp" style="width:110px;text-align:right" placeholder="tối thiểu 100"></div>
+      <div class="kv g" style="font-weight:600">Bạn tiết kiệm<span>−$15.10</span></div>
+      <div class="tot"><span>Tổng</span><b>$134.90</b></div>
+      <div class="gc"><input class="inp" placeholder="Mã thẻ quà tặng…"><span class="gcb">🎁 Thẻ quà tặng</span></div>
+      <div class="pay"><span class="a">Xoá hết</span><span class="b">Trả &amp; In · $134.90</span></div></div></div></div>
+  <div><h3>SAU — khối tiền tràn sát mép thẻ, chừa lề trong 20px</h3>
+    <div class="card after"><div class="stub">🧾 Danh sách dịch vụ…</div><div class="money">
+      <div class="kv">Tạm tính<b>$142.00</b></div>
+      <div class="kv">Mã ưu đãi<span style="display:flex;align-items:center;gap:8px"><span class="g" style="font-size:12.5px;font-weight:600">123456 · 5% off your next visit</span><span class="x">✕</span></span></div>
+      <div class="kv">Giảm giá $<input class="inp" style="width:92px;text-align:right"></div>
+      <div class="kv"><span class="y">Đổi điểm (0 điểm có sẵn)</span><input class="inp" style="width:110px;text-align:right" placeholder="tối thiểu 100"></div>
+      <div class="kv g" style="font-weight:600">Bạn tiết kiệm<span>−$15.10</span></div>
+      <div class="tot"><span>Tổng</span><b>$134.90</b></div>
+      <div class="gc"><input class="inp" placeholder="Mã thẻ quà tặng…"><span class="gcb">🎁 Thẻ quà tặng</span></div>
+      <div class="pay"><span class="a">Xoá hết</span><span class="b">Trả &amp; In · $134.90</span></div></div></div>
+    <div class="note">Viền phân cách kéo hết chiều ngang · bo tròn 2 góc dưới trùng thẻ</div></div>
+</div></body></html>

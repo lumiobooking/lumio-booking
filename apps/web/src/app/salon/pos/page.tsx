@@ -1338,11 +1338,11 @@ function Register() {
           />
 
           {cart.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 14, ...(wide ? { flex: '1 1 auto', minHeight: 40 } : null) }}>{t('po.tapToAdd')}</p>
+            <p style={{ color: '#94a3b8', fontSize: 14, ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null) }}>{t('po.tapToAdd')}</p>
           ) : (
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 10, marginBottom: wide ? 8 : 12,
-              ...(wide ? { flex: '1 1 auto', minHeight: 80, overflowY: 'auto', paddingRight: 4 } : null),
+              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto', paddingRight: 4 } : null),
             }}>
               {cart.map((l) => (
                 <div key={l.uid} style={{ borderBottom: '1px solid #334155', paddingBottom: 7 }}>
@@ -1405,7 +1405,7 @@ function Register() {
               the numbers and inputs run straight into its border and read as
               clipped. ui.card padding is 20, hence the -20 bleed. */}
           <div style={isMobile ? undefined : wide ? {
-            flex: '0 1 auto', minHeight: 0, overflowY: 'auto', marginTop: 'auto',
+            flex: '0 0 auto', marginTop: 'auto',
             marginLeft: -20, marginRight: -20, marginBottom: -20,
             paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
             background: '#111827', borderTop: '1px solid #334155', borderRadius: '0 0 12px 12px',
@@ -1754,7 +1754,7 @@ function Register() {
           )}
           <div style={{
             display: 'flex', gap: 8, paddingBottom: 2,
-            ...(wide ? { position: 'sticky', bottom: -14, background: '#111827', paddingTop: 8, paddingBottom: 14, marginBottom: -14, zIndex: 2 } : null),
+            ...(wide ? { paddingTop: 8 } : null),
           }}>
             <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>
             <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>

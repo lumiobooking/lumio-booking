@@ -64,6 +64,25 @@ function Register() {
   const isMobile = useIsMobile();
   const params = useSearchParams();
   const [uiPref, setUiPref] = useState<'v1' | 'v2' | null>(null);
+  // Real browser full screen (same as the calendar): the register fills the
+  // monitor so the customer can follow the bill from across the counter.
+  const [fullscreen, setFullscreen] = useState(false);
+  const toggleFull = useCallback(() => {
+    setFullscreen((f) => {
+      const next = !f;
+      try {
+        if (next) { document.documentElement.requestFullscreen?.().catch(() => undefined); }
+        else if (document.fullscreenElement) { document.exitFullscreen?.().catch(() => undefined); }
+      } catch { /* not supported */ }
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    // Esc leaves browser full screen without telling React — listen for it.
+    const onFs = () => { if (!document.fullscreenElement) setFullscreen(false); };
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
   useEffect(() => {
     const q = params.get('ui');
     if (q === 'v1' || q === 'v2') { try { localStorage.setItem('lumio_pos_ui', q); } catch { /* private mode */ } setUiPref(q); return; }
@@ -1094,6 +1113,11 @@ function Register() {
                 <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={ghost}>🖥️ {t('po.custScreen')}</button>
               </>
             )}
+            {!isMobile && (
+              <button onClick={toggleFull} title={t('po.fullHint')} style={{ ...ghost, ...(fullscreen ? { borderColor: '#4f46e5', color: '#c7d2fe' } : null) }}>
+                {fullscreen ? `✕ ${t('po.fullOff')}` : `⛶ ${t('po.fullOn')}`}
+              </button>
+            )}
             <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
           </div>
         </div>
@@ -1133,7 +1157,9 @@ function Register() {
       paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined,
       // Wide mode: the register owns exactly one screen. Nothing below the fold,
       // so the pay button can never be scrolled away.
-      ...(wide ? { height: 'calc(100vh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+      ...(wide && !fullscreen ? { height: 'calc(100vh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+      // Full screen: cover the shell entirely — no sidebar, no page header.
+      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', background: '#0b1120', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
     }}>
       <style>{`
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }

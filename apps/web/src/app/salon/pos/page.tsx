@@ -1472,13 +1472,26 @@ function Register() {
                     >{sym}</button>
                   ))}
                 </div>
-                <input
-                  type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} max={discountMode === 'PERCENT' ? 100 : undefined}
-                  value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)}
-                  placeholder="0"
-                  style={{ ...ui.input, flex: 1, minWidth: 0, padding: '5px 8px', fontSize: 13, textAlign: 'right' }}
-                />
-                <span style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? '#22c55e' : '#475569', flexShrink: 0 }}>
+                {/* The unit sits inside the field: "5" alone reads as five
+                    dollars OR five percent, and a cashier shouldn't have to
+                    check which switch is lit to know which one it is. */}
+                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                  <input
+                    type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} max={discountMode === 'PERCENT' ? 100 : undefined}
+                    value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)}
+                    placeholder="0"
+                    style={{ ...ui.input, width: '100%', padding: discountMode === 'PERCENT' ? '5px 24px 5px 8px' : '5px 8px 5px 20px', fontSize: 13, textAlign: 'right' }}
+                  />
+                  <span style={{
+                    position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                    ...(discountMode === 'PERCENT' ? { right: 9 } : { left: 9 }),
+                    fontSize: 12.5, fontWeight: 700, color: orderDiscount ? '#94a3b8' : '#475569', pointerEvents: 'none',
+                  }}>{discountMode === 'PERCENT' ? '%' : '$'}</span>
+                </div>
+                <span
+                  title={discountMode === 'PERCENT' && money.typedDiscount > 0 ? `${orderDiscount}% × ${formatPrice(money.subtotal, currency)}` : undefined}
+                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? '#22c55e' : '#475569', flexShrink: 0 }}
+                >
                   {money.typedDiscount > 0 ? `−${formatPrice(money.typedDiscount, currency)}` : '—'}
                 </span>
               </div>

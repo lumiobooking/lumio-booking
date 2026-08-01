@@ -460,6 +460,7 @@ function CreateBookingForm({
     staffId: '',
     customerFirstName: '',
     customerLastName: '',
+    customerBirthDate: '',
     customerEmail: '',
     customerPhone: '',
   });
@@ -503,6 +504,8 @@ function CreateBookingForm({
           staffId: form.staffId || undefined,
           customerFirstName: form.customerFirstName,
           customerLastName: form.customerLastName || undefined,
+          // Birthday is opt-in and only used for birthday campaigns.
+          customerBirthDate: form.customerBirthDate || undefined,
           customerEmail: form.customerEmail || undefined,
           customerPhone: form.customerPhone || undefined,
         },
@@ -601,22 +604,33 @@ function CreateBookingForm({
         </FormSection>
 
         <FormSection title={t('bk.secWho')}>
-          <div style={fieldGrid}>
+          {/* Short labels: the section heading already says these are the
+              customer's, so "Customer first name" only repeats itself. Five
+              fields fit one line on a laptop; birthday feeds the birthday
+              campaign and is never required. */}
+          <div style={custGrid}>
             <label>
-              <FieldLabel raw={t('bk.custFirstName')} required optionalWord={t('bk.optional')} />
+              <FieldLabel raw={t('bk.fFirst')} required optionalWord={t('bk.optional')} />
               <input style={ui.input} value={form.customerFirstName} onChange={(e) => up('customerFirstName', e.target.value)} placeholder="Anna" required />
             </label>
             <label>
-              <FieldLabel raw={t('bk.custLastName')} optionalWord={t('bk.optional')} />
+              <FieldLabel raw={t('bk.fLast')} optionalWord={t('bk.optional')} />
               <input style={ui.input} value={form.customerLastName} onChange={(e) => up('customerLastName', e.target.value)} placeholder="Nguyen" />
             </label>
             <label>
-              <FieldLabel raw={t('bk.custEmail')} optionalWord={t('bk.optional')} />
+              <FieldLabel raw={t('bk.fPhone')} optionalWord={t('bk.optional')} />
+              <input style={ui.input} value={form.customerPhone} onChange={(e) => up('customerPhone', e.target.value)} placeholder="+1 512 886 8189" />
+            </label>
+            <label>
+              <FieldLabel raw={t('bk.fEmail')} optionalWord={t('bk.optional')} />
               <input style={ui.input} type="email" value={form.customerEmail} onChange={(e) => up('customerEmail', e.target.value)} placeholder="anna@email.com" />
             </label>
             <label>
-              <FieldLabel raw={t('bk.custPhone')} optionalWord={t('bk.optional')} />
-              <input style={ui.input} value={form.customerPhone} onChange={(e) => up('customerPhone', e.target.value)} placeholder="+1 512 886 8189" />
+              <FieldLabel raw={t('bk.fBirth')} optionalWord={t('bk.optional')} hint={`🎂 ${t('bk.birthWhy')}`} />
+              <input
+                style={ui.input} type="date" max={new Date().toISOString().slice(0, 10)}
+                value={form.customerBirthDate} onChange={(e) => up('customerBirthDate', e.target.value)}
+              />
             </label>
           </div>
         </FormSection>
@@ -654,11 +668,11 @@ function FormSection({ title, children }: { title: string; children: React.React
 
 // Labels come from i18n with "(optional)" baked in. Pull it out and show it as
 // a quiet tag instead, so every label is the same short shape.
-function FieldLabel({ raw, required, optionalWord }: { raw: string; required?: boolean; optionalWord: string }) {
+function FieldLabel({ raw, required, optionalWord, hint }: { raw: string; required?: boolean; optionalWord: string; hint?: string }) {
   const isOpt = /\((tuỳ chọn|tùy chọn|optional)\)/i.test(raw);
   const text = raw.replace(/\s*\((tuỳ chọn|tùy chọn|optional)\)\s*/i, '').trim();
   return (
-    <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }} title={hint}>
       {text}
       {required && <span style={{ color: '#f87171', fontWeight: 700 }}>*</span>}
       {isOpt && !required && (
@@ -669,6 +683,8 @@ function FieldLabel({ raw, required, optionalWord }: { raw: string; required?: b
 }
 
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 };
+// Five customer fields; birthday is the narrowest so it gets a smaller floor.
+const custGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 };
 
 // Read-only payment status. Money is collected only through POS / Checkout
 // (single source of truth) so a booking can never be paid twice — once here

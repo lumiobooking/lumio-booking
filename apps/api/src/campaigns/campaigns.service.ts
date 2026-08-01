@@ -436,7 +436,7 @@ export class CampaignsService {
     transport: ReturnType<CampaignsService['buildTransport']>,
     n: Awaited<ReturnType<SettingsService['getNotificationSettings']>>,
   ): Promise<boolean> {
-    const pct = { ...basePct, customer_name: c.firstName || 'there', ...offerVars(msg.offer) };
+    const pct: Record<string, string> = { ...basePct, customer_name: c.firstName || 'there', ...offerVars(msg.offer) };
     const related = { relatedType: campaignRelatedType(key), relatedId: c.id };
 
     // These are MARKETING messages (birthday / win-back), sent only to customers

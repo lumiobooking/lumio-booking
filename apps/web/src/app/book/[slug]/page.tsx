@@ -249,10 +249,31 @@ export default function PublicBookingPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Offer code the visitor arrived with (campaign email/SMS link → ?offer=CODE).
+  /**
+   * Offer code the visitor arrived with (campaign email/SMS link → ?offer=CODE).
+   *
+   * Remembered for 7 days, because the link is not always the last thing that
+   * happens: an installed PWA can re-launch on its start_url (no query string),
+   * a customer can bounce to their calendar and come back, or share the page
+   * with the params trimmed. Losing the code there would quietly cost the
+   * customer their offer and cost us the attribution.
+   */
   const [offerCode] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
-    return (new URLSearchParams(window.location.search).get('offer') || '').toUpperCase().slice(0, 16);
+    const KEY = 'lumio_offer';
+    const TTL = 7 * 24 * 60 * 60 * 1000;
+    const fromUrl = (new URLSearchParams(window.location.search).get('offer') || '').toUpperCase().slice(0, 16);
+    try {
+      if (fromUrl) {
+        window.localStorage.setItem(KEY, JSON.stringify({ code: fromUrl, at: Date.now() }));
+        return fromUrl;
+      }
+      const raw = window.localStorage.getItem(KEY);
+      if (!raw) return '';
+      const saved = JSON.parse(raw) as { code?: string; at?: number };
+      if (!saved?.code || !saved.at || Date.now() - saved.at > TTL) { window.localStorage.removeItem(KEY); return ''; }
+      return saved.code.toUpperCase().slice(0, 16);
+    } catch { return fromUrl; }
   });
   const [step, setStep] = useState<Step>(1);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -500,8 +521,9 @@ export default function PublicBookingPage() {
             // hosted page this window IS the landing context.
             return {
               // Promo code from a campaign link — travels with the booking so the
-              // till applies it without the customer reciting anything.
-              offerCode: (g('offer') || '').toUpperCase().slice(0, 16) || undefined,
+              // till applies it without the customer reciting anything. Falls back
+              // to the remembered code when the PWA re-launched without params.
+              offerCode: offerCode || undefined,
               utmSource: g('utm_source'), utmMedium: g('utm_medium'), utmCampaign: g('utm_campaign'), utmContent: g('utm_content'),
               utmTerm: g('utm_term'), gclid: g('gclid'), gbraid: g('gbraid'), wbraid: g('wbraid'),
               attrLandingUrl: (g('lumio_lu') || window.location.href).slice(0, 900),

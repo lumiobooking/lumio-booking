@@ -6,7 +6,7 @@ import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { bookingUrl } from '../common/public-url.util';
 import { ReferralService } from '../referral/referral.service';
-import { referralBlockHtml, referralBlockText } from '../notifications/email-template';
+import { referralBlockHtml, referralBlockText, renderTemplatedEmailHtml } from '../notifications/email-template';
 import {
   CAMPAIGN_SETTINGS_KEY,
   CampaignKey,
@@ -64,6 +64,45 @@ function escapeHtml(s: string): string {
 function bodyToHtml(text: string): string {
   const parts = text.split('\n').map((l) => (l.trim() ? `<p style="margin:0 0 10px">${escapeHtml(l)}</p>` : '')).join('');
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#374151">${parts}</div>`;
+}
+
+/** The offer, as a box the eye lands on — code included, ready to read out at the counter. */
+function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string): string {
+  const label = offerLabel(o);
+  if (!o?.enabled || !label) return '';
+  const code = (o.code || '').trim().toUpperCase();
+  const expiry = o.expiryDays > 0
+    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+    : '';
+  return `<table style="width:100%;border-collapse:collapse;margin:0 0 18px;"><tr><td style="border:1.5px dashed ${escapeHtml(accent)};border-radius:12px;padding:16px 18px;background:#fbfbff;">
+    <div style="font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:#8b93a7;margin-bottom:4px;">Your gift</div>
+    <div style="font-size:17px;font-weight:700;color:#111827;line-height:1.35;">${escapeHtml(label)}</div>
+    ${code ? `<div style="margin-top:12px;"><span style="display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:2px;color:${escapeHtml(accent)};background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 16px;">${escapeHtml(code)}</span>
+      <span style="font-size:12.5px;color:#6b7280;margin-left:8px;">show this code at the salon</span></div>` : ''}
+    ${expiry ? `<div style="font-size:12.5px;color:#6b7280;margin-top:10px;">Valid through ${escapeHtml(expiry)}</div>` : ''}
+  </td></tr></table>`;
+}
+
+/**
+ * Campaign email body as real HTML: paragraphs, the offer box where
+ * %offer_block% sits, and one clear Book button — instead of the flat wall of
+ * plain text these campaigns used to send.
+ */
+function campaignBodyHtml(template: string, pct: Record<string, string>, offer: CampaignOffer | undefined, accent: string, bookingLink: string): string {
+  const MARK = '@@LUMIO_OFFER@@';
+  const filled = fillPct(template, { ...pct, offer_block: MARK + '\n\n' });
+  const paras = filled
+    .split(/\n{2,}/)
+    .filter((p) => p.trim())
+    .map((p) => `<p style="margin:0 0 14px;color:#374151;font-size:15px;line-height:1.7;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  const withOffer = paras.replace(new RegExp(`<p[^>]*>${MARK}</p>`), offerBoxHtml(offer, accent));
+  const cta = bookingLink
+    ? `<table style="width:100%;border-collapse:collapse;margin:6px 0 4px;"><tr><td align="center">
+        <a href="${escapeHtml(bookingLink)}" style="display:inline-block;background:${escapeHtml(accent)};color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 30px;border-radius:10px;">Book my visit</a>
+      </td></tr></table>`
+    : '';
+  return withOffer + cta;
 }
 
 @Injectable()
@@ -194,11 +233,12 @@ export class CampaignsService {
     const msg = cs[dto.campaign] as CampaignMessage;
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, slug: true, contactEmail: true, contactPhone: true },
+      select: { name: true, slug: true, contactEmail: true, contactPhone: true, branding: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     const n = await this.settings.getNotificationSettings(tenantId);
     const transport = this.buildTransport(n, tenant.name);
+    const accent = this.settings.brandingFrom(tenant.branding).accentColor || '#6366f1';
     const pct: Record<string, string> = {
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
@@ -213,7 +253,13 @@ export class CampaignsService {
       const bodyText = fillPct(msg.body, pct);
       const rec = await this.notifications.send({
         tenantId, channel: NotificationChannel.EMAIL, recipient: email,
-        subject: `[TEST] ${fillPct(msg.subject, pct)}`, body: bodyText, html: bodyToHtml(bodyText),
+        subject: `[TEST] ${fillPct(msg.subject, pct)}`, body: bodyText,
+        html: renderTemplatedEmailHtml({
+          salon: tenant.name,
+          accent,
+          contact: tenant.contactPhone || tenant.contactEmail || '',
+          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, accent, bookingUrl(tenant.slug)),
+        }),
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo,
         relatedType: 'campaign_test', relatedId: dto.campaign,
@@ -256,7 +302,7 @@ export class CampaignsService {
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, slug: true, contactEmail: true, contactPhone: true, timezone: true },
+      select: { name: true, slug: true, contactEmail: true, contactPhone: true, timezone: true, branding: true },
     });
     if (!tenant) return counts;
     const tz = tenant.timezone || 'America/New_York';
@@ -272,6 +318,8 @@ export class CampaignsService {
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
       booking_link: bookingUrl(tenant.slug),
+      // Carried through so the branded email shell uses the salon's own colour.
+      accent_color: this.settings.brandingFrom(tenant.branding).accentColor || '#6366f1',
     };
     // Offer wording differs per campaign, so it is merged in per send below.
     let used = 0;
@@ -421,7 +469,13 @@ export class CampaignsService {
       const bodyText = fillPct(msg.body, pct);
       jobs.push(this.notifications.send({
         tenantId, channel: NotificationChannel.EMAIL, recipient: c.email,
-        subject: fillPct(msg.subject, pct), body: bodyText + refTextEmail, html: bodyToHtml(bodyText) + refHtml,
+        subject: fillPct(msg.subject, pct), body: bodyText + refTextEmail,
+        html: renderTemplatedEmailHtml({
+          salon: pct.salon_name,
+          accent: pct.accent_color || '#6366f1',
+          contact: pct.salon_contact,
+          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, pct.accent_color || '#6366f1', pct.booking_link) + refHtml,
+        }),
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo, ...related,
       }));

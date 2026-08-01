@@ -1,0 +1,86 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Form tạo lịch</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b1120;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#e2e8f0;padding:26px}
+.wrap{max-width:940px;margin:0 auto}
+h3{font-size:11.5px;letter-spacing:.08em;color:#64748b;margin:0 0 10px;font-weight:700}
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden;margin-bottom:28px}
+.old{padding:20px}
+.lbl{display:block;font-size:12px;color:#cbd5e1;margin-bottom:6px}
+.inp{width:100%;box-sizing:border-box;padding:9px 11px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:14px}
+.inp.ph{color:#475569}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.btn{padding:9px 14px;border-radius:8px;border:none;background:#6366f1;color:#fff;font-weight:600;font-size:13px;margin-top:14px;display:inline-block}
+.head{display:flex;align-items:center;gap:11px;padding:14px 20px;border-bottom:1px solid #334155}
+.ico{width:34px;height:34px;border-radius:10px;background:#1e3a8a;display:flex;align-items:center;justify-content:center;font-size:16px}
+.head b{font-size:15px}
+.head .sub{font-size:12px;color:#94a3b8}
+.body{padding:20px;display:flex;flex-direction:column;gap:18px}
+.sec{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.sec span{font-size:11px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-transform:uppercase}
+.sec i{flex:1;height:1px;background:#334155;display:block}
+.fl{display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;margin-bottom:6px}
+.req{color:#f87171;font-weight:700}
+.opt{font-size:10.5px;color:#64748b;border:1px solid #334155;border-radius:5px;padding:1px 5px;font-weight:600}
+.foot{display:flex;align-items:center;gap:12px;padding:13px 20px;border-top:1px solid #334155;background:#0f172a}
+.foot .hint{color:#64748b;font-size:12.5px;flex:1}
+.foot .go{padding:10px 22px;border-radius:8px;border:none;background:#6366f1;color:#fff;font-weight:600;font-size:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#1e3a8a;color:#dbeafe;border-radius:999px;padding:4px 10px;font-size:12.5px;font-weight:600;margin:0 6px 8px 0}
+.svcbox{border:1px solid #334155;border-radius:8px;background:#0f172a;padding:6px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px}
+.svcbox label{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font-size:13px;color:#cbd5e1}
+.focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.18)}
+.note{font-size:11.5px;color:#64748b;margin:-18px 0 26px}
+</style></head><body><div class="wrap">
+
+<h3>TRƯỚC</h3>
+<div class="card"><div class="old">
+  <div class="grid4">
+    <label><span class="lbl">Ngày &amp; giờ</span><input class="inp ph" value="mm/dd/yyyy --:--"></label>
+    <label><span class="lbl">Giao thợ (tuỳ chọn)</span><input class="inp" value="— Chưa giao (chờ xử lý) —"></label>
+    <label><span class="lbl">Tên khách</span><input class="inp"></label>
+    <label><span class="lbl">Email khách (tuỳ chọn)</span><input class="inp"></label>
+    <label><span class="lbl">SĐT khách (tuỳ chọn)</span><input class="inp"></label>
+  </div>
+  <span class="btn">Tạo lịch</span>
+</div></div>
+<div class="note">Không có ô Họ · nhãn dài không đều · nút trôi lơ lửng · không biết trường nào bắt buộc.</div>
+
+<h3>SAU</h3>
+<div class="card">
+  <div class="head"><span class="ico">📅</span>
+    <div><b>Tạo lịch</b><div class="sub">2 đã chọn · tổng 75 min · dự kiến xong 15:15</div></div></div>
+  <div class="body">
+    <div>
+      <div class="sec"><span>Dịch vụ</span><i></i></div>
+      <div><span class="chip">Acrylic Refill ✕</span><span class="chip">Gel Manicure ✕</span></div>
+      <input class="inp ph" value="Gõ tên dịch vụ để tìm…" style="margin-bottom:8px">
+      <div class="svcbox">
+        <label><input type="checkbox" checked> Acrylic Refill (45 min)</label>
+        <label><input type="checkbox" checked> Gel Manicure (30 min)</label>
+        <label><input type="checkbox"> Pedicure (45 min)</label>
+        <label><input type="checkbox"> Take Off (20 min)</label>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec"><span>Lịch hẹn</span><i></i></div>
+      <div class="grid">
+        <label><span class="fl">Ngày &amp; giờ <span class=req>*</span></span><input class="inp focus" value="08/01/2026 14:00"></label>
+        <label><span class="fl">Giao thợ <span class=opt>tuỳ chọn</span></span><input class="inp" value="— Chưa giao (chờ xử lý) —"></label>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec"><span>Khách hàng</span><i></i></div>
+      <div class="grid">
+        <label><span class="fl">Tên khách <span class=req>*</span></span><input class="inp ph" value="Anna"></label>
+        <label><span class="fl">Họ <span class=opt>tuỳ chọn</span></span><input class="inp ph" value="Nguyen"></label>
+        <label><span class="fl">Email khách <span class=opt>tuỳ chọn</span></span><input class="inp ph" value="anna@email.com"></label>
+        <label><span class="fl">SĐT khách <span class=opt>tuỳ chọn</span></span><input class="inp ph" value="+1 512 886 8189"></label>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="hint">Tên khách + ngày &amp; giờ là bắt buộc</span><span class="go">+ Tạo lịch</span></div>
+</div>
+<div class="note">Thêm ô <b>Họ</b> · chia 3 nhóm có tiêu đề · dấu * cho bắt buộc, thẻ “tuỳ chọn” cho phần còn lại · header tóm tắt thời lượng &amp; giờ xong · nút nằm trong thanh đáy, khoá lại khi chưa chọn dịch vụ · ô đang gõ có viền tím.</div>
+</div></body></html>

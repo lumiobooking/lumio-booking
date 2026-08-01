@@ -472,6 +472,14 @@ function CreateBookingForm({
   const toggleSvc = (id: string) =>
     setServiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const totalMinutes = serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0);
+  // Expected finish time, so staff can see the slot the booking will occupy.
+  const endsAt = (() => {
+    if (!form.startLocal || totalMinutes <= 0) return '';
+    const d = new Date(form.startLocal);
+    if (Number.isNaN(d.getTime())) return '';
+    d.setMinutes(d.getMinutes() + totalMinutes);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  })();
   const svcShown = svcQ.trim()
     ? services.filter((s) => s.name.toLowerCase().includes(svcQ.trim().toLowerCase()))
     : services;
@@ -508,9 +516,27 @@ function CreateBookingForm({
   }
 
   return (
-    <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <div style={{ gridColumn: '1 / -1' }}>
+    <form onSubmit={submit} className="bkf" style={{ ...ui.card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
+      <style>{`
+        .bkf input, .bkf select { transition: border-color .12s ease, box-shadow .12s ease; }
+        .bkf input:focus, .bkf select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); }
+        .bkf input::placeholder { color: #475569; }
+      `}</style>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 20px', borderBottom: '1px solid #334155' }}>
+        <span style={{ width: 34, height: 34, borderRadius: 10, background: '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📅</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}>{t('bk.createBooking')}</div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>
+            {serviceIds.length === 0
+              ? t('bk.pickSvcFirst')
+              : `${serviceIds.length} ${t('bk.servicesPicked')} · ${t('bk.totalDuration')} ${totalMinutes} min${endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}`}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div>
           <span style={ui.label}>
             {t('bk.fService')}
             {serviceIds.length > 0 && (
@@ -548,47 +574,101 @@ function CreateBookingForm({
             ))}
           </div>
         </div>
-        <label>
-          <span style={ui.label}>{t('bk.dateTime')}</span>
-          <input
-            style={ui.input}
-            type="datetime-local"
-            value={form.startLocal}
-            onChange={(e) => up('startLocal', e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          <span style={ui.label}>{t('bk.assignStaff')}</span>
-          <select style={ui.input} value={form.staffId} onChange={(e) => up('staffId', e.target.value)}>
-            <option value="">{t('bk.leaveUnassigned')}</option>
-            {staff.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.firstName} {s.lastName ?? ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span style={ui.label}>{t('bk.custFirstName')}</span>
-          <input style={ui.input} value={form.customerFirstName} onChange={(e) => up('customerFirstName', e.target.value)} required />
-        </label>
-        <label>
-          <span style={ui.label}>{t('bk.custEmail')}</span>
-          <input style={ui.input} type="email" value={form.customerEmail} onChange={(e) => up('customerEmail', e.target.value)} />
-        </label>
-        <label>
-          <span style={ui.label}>{t('bk.custPhone')}</span>
-          <input style={ui.input} value={form.customerPhone} onChange={(e) => up('customerPhone', e.target.value)} />
-        </label>
+        <FormSection title={t('bk.secWhen')}>
+          <div style={fieldGrid}>
+            <label>
+              <FieldLabel raw={t('bk.dateTime')} required optionalWord={t('bk.optional')} />
+              <input
+                style={ui.input}
+                type="datetime-local"
+                value={form.startLocal}
+                onChange={(e) => up('startLocal', e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <FieldLabel raw={t('bk.assignStaff')} optionalWord={t('bk.optional')} />
+              <select style={ui.input} value={form.staffId} onChange={(e) => up('staffId', e.target.value)}>
+                <option value="">{t('bk.leaveUnassigned')}</option>
+                {staff.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.firstName} {s.lastName ?? ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </FormSection>
+
+        <FormSection title={t('bk.secWho')}>
+          <div style={fieldGrid}>
+            <label>
+              <FieldLabel raw={t('bk.custFirstName')} required optionalWord={t('bk.optional')} />
+              <input style={ui.input} value={form.customerFirstName} onChange={(e) => up('customerFirstName', e.target.value)} placeholder="Anna" required />
+            </label>
+            <label>
+              <FieldLabel raw={t('bk.custLastName')} optionalWord={t('bk.optional')} />
+              <input style={ui.input} value={form.customerLastName} onChange={(e) => up('customerLastName', e.target.value)} placeholder="Nguyen" />
+            </label>
+            <label>
+              <FieldLabel raw={t('bk.custEmail')} optionalWord={t('bk.optional')} />
+              <input style={ui.input} type="email" value={form.customerEmail} onChange={(e) => up('customerEmail', e.target.value)} placeholder="anna@email.com" />
+            </label>
+            <label>
+              <FieldLabel raw={t('bk.custPhone')} optionalWord={t('bk.optional')} />
+              <input style={ui.input} value={form.customerPhone} onChange={(e) => up('customerPhone', e.target.value)} placeholder="+1 512 886 8189" />
+            </label>
+          </div>
+        </FormSection>
       </div>
-      {error && <div style={ui.banner}>{error}</div>}
-      <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn, marginTop: 14 }}>
-        {submitting ? t('bk.creating') : t('bk.createBooking')}
-      </button>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '13px 20px', borderTop: '1px solid #334155', background: '#0f172a' }}>
+        {error
+          ? <span style={{ color: '#f87171', fontSize: 13, flex: 1, minWidth: 160 }}>{error}</span>
+          : <span style={{ color: '#64748b', fontSize: 12.5, flex: 1, minWidth: 160 }}>{t('bk.custFirstName')} + {t('bk.dateTime').toLowerCase()} {lang === 'vi' ? 'là bắt buộc' : 'are required'}</span>}
+        <button
+          type="submit"
+          disabled={submitting || serviceIds.length === 0}
+          style={{ ...ui.primaryBtn, padding: '10px 22px', fontSize: 14, opacity: (submitting || serviceIds.length === 0) ? 0.5 : 1, cursor: (submitting || serviceIds.length === 0) ? 'not-allowed' : 'pointer' }}
+        >
+          {submitting ? t('bk.creating') : `+ ${t('bk.createBooking')}`}
+        </button>
+      </div>
     </form>
   );
 }
+
+// Section heading: a small caps label with a hairline running to the edge, so
+// a long form reads as two short ones instead of a wall of inputs.
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>{title}</span>
+        <span style={{ flex: 1, height: 1, background: '#334155' }} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Labels come from i18n with "(optional)" baked in. Pull it out and show it as
+// a quiet tag instead, so every label is the same short shape.
+function FieldLabel({ raw, required, optionalWord }: { raw: string; required?: boolean; optionalWord: string }) {
+  const isOpt = /\((tuỳ chọn|tùy chọn|optional)\)/i.test(raw);
+  const text = raw.replace(/\s*\((tuỳ chọn|tùy chọn|optional)\)\s*/i, '').trim();
+  return (
+    <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }}>
+      {text}
+      {required && <span style={{ color: '#f87171', fontWeight: 700 }}>*</span>}
+      {isOpt && !required && (
+        <span style={{ fontSize: 10.5, color: '#64748b', border: '1px solid #334155', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{optionalWord}</span>
+      )}
+    </span>
+  );
+}
+
+const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 };
 
 // Read-only payment status. Money is collected only through POS / Checkout
 // (single source of truth) so a booking can never be paid twice — once here

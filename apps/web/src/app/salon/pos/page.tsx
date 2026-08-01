@@ -40,12 +40,11 @@ interface Line {
 
 let uidSeq = 1;
 
-// Full-screen register layout ("wide"). Rolled out salon by salon: the pilot
-// list below gets it now, everyone else keeps the old layout until POS_V2_ALL
-// is flipped to true. A cashier can also force either layout for their own
-// browser with ?ui=v2 / ?ui=v1 — handy for a side-by-side check.
-const POS_V2_ALL = false;
-const POS_V2_PILOT = ['service.lumioagency@gmail.com'];
+// Full-screen register layout ("wide"). Live for every salon. A cashier can
+// still force either layout for their own browser with ?ui=v2 / ?ui=v1 — kept
+// as an escape hatch on an odd screen, not as a rollout switch.
+const POS_V2_ALL = true;
+const POS_V2_PILOT: string[] = [];
 
 export default function PosPage() {
   const { lang } = useLang();

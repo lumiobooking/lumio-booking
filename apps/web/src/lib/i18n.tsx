@@ -772,6 +772,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.addonBadge': { en: 'ADD-ON', vi: 'THÊM' },
   'po.technician': { en: 'Technician…', vi: 'Thợ…' },
   'po.tipPh': { en: 'Tip $', vi: 'Tip $' },
+  'po.editPriceHint': { en: 'Tap to charge a different price for this line', vi: 'Bấm để sửa giá tính cho dòng này' },
+  'po.resetPrice': { en: 'Back to menu price', vi: 'Về giá niêm yết' },
   'po.subtotal': { en: 'Subtotal', vi: 'Tạm tính' },
   'po.discountD': { en: 'Discount $', vi: 'Giảm giá $' },
   'po.tax': { en: 'Tax ({r}% retail)', vi: 'Thuế ({r}% hàng bán)' },

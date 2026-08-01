@@ -419,6 +419,37 @@ function Register() {
   function updateLine(uid: string, patch: Partial<Line>) {
     setCart((c) => c.map((l) => (l.uid === uid ? { ...l, ...patch } : l)));
   }
+  /**
+   * Charge a different price for one line — the salon quoted $12 for a Take Off
+   * but only did part of it and charges $5. We keep the catalog price in
+   * origUnitPriceCents so the receipt, the reports and the tech's commission all
+   * still show what was marked down, instead of silently pretending the service
+   * always cost $5.
+   */
+  function setLinePrice(uid: string, dollars: string) {
+    const cents = Math.max(0, Math.round((parseFloat(dollars) || 0) * 100));
+    setCart((c) => c.map((l) => {
+      if (l.uid !== uid) return l;
+      const orig = Math.max(l.origUnitPriceCents, cents);
+      const pct = orig > 0 && cents < orig ? Math.round(((orig - cents) / orig) * 100) : 0;
+      return { ...l, unitPriceCents: cents, origUnitPriceCents: orig, discountPercent: pct };
+    }));
+  }
+  function resetLinePrice(uid: string) {
+    setCart((c) => c.map((l) => {
+      if (l.uid !== uid) return l;
+      const cat = catalogPrice(l);
+      return cat == null ? l : { ...l, unitPriceCents: cat, origUnitPriceCents: cat, discountPercent: 0 };
+    }));
+  }
+  /** List price from the catalog for this line (null when it is a free-text line). */
+  function catalogPrice(l: Line): number | null {
+    const src = l.kind === 'SERVICE' ? services.find((x) => x.id === l.refId) : products.find((x) => x.id === l.refId);
+    if (!src) return null;
+    const d = src.discountPercent ?? 0;
+    return d > 0 ? Math.round((src.priceCents * (100 - d)) / 100) : src.priceCents;
+  }
+
   function removeLine(uid: string) {
     setCart((c) => c.filter((l) => l.uid !== uid));
   }
@@ -1178,15 +1209,25 @@ function Register() {
                       <span style={{ minWidth: 20, textAlign: 'center' }}>{l.quantity}</span>
                       <button onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={qtyBtn}>+</button>
                     </div>
-                    <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                      {l.discountPercent > 0 ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {l.discountPercent > 0 && (
+                        <>
                           <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
                           <span style={{ background: '#ef4444', color: '#fff', borderRadius: 5, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>-{l.discountPercent}%</span>
-                          <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(l.unitPriceCents * l.quantity, currency)}</span>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>{formatPrice(l.unitPriceCents * l.quantity, currency)}</span>
+                        </>
+                      )}
+                      <span style={{ color: '#94a3b8', fontSize: 12 }}>$</span>
+                      <input
+                        type="number" min={0} step="0.01" inputMode="decimal"
+                        title={t('po.editPriceHint')}
+                        value={(l.unitPriceCents / 100).toString()}
+                        onChange={(e) => setLinePrice(l.uid, e.target.value)}
+                        onFocus={(e) => e.currentTarget.select()}
+                        style={{ ...ui.input, width: 82, padding: '5px 8px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? '#22c55e' : '#e2e8f0', fontWeight: 600 }}
+                      />
+                      {l.quantity > 1 && <span style={{ color: '#64748b', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
+                      {catalogPrice(l) != null && catalogPrice(l) !== l.unitPriceCents && (
+                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 7px', fontSize: 11, cursor: 'pointer' }}>↺</button>
                       )}
                     </div>
                   </div>

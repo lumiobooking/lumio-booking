@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentStatus, PaymentStatus } from '@prisma/client';
+import { AppointmentStatus, PaymentStatus, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
@@ -278,6 +278,61 @@ export class OverviewService {
       .sort((a, b) => b.revenueCents - a.revenueCents || b.bookings - a.bookings)
       .slice(0, 5);
 
+    // --- Counter markdowns -------------------------------------------------
+    // Every till line sold below its list price. The POS stores these as
+    // list price + discountCents (never as a cheaper service), so this is the
+    // real amount given away at the counter — the number a salon owner needs to
+    // see, because a free hand with the price button is invisible otherwise.
+    const markdownItems = await this.prisma.orderItem.findMany({
+      where: {
+        tenantId,
+        discountCents: { gt: 0 },
+        createdAt: { gte: from, lte: to },
+        order: { status: { in: [OrderStatus.PAID, OrderStatus.OPEN] } },
+      },
+      select: {
+        name: true,
+        quantity: true,
+        unitPriceCents: true,
+        discountCents: true,
+        lineTotalCents: true,
+        staffMemberId: true,
+        createdAt: true,
+      },
+    });
+    const mdStaffIds = Array.from(new Set(markdownItems.map((i) => i.staffMemberId).filter(Boolean))) as string[];
+    const mdStaff = mdStaffIds.length
+      ? await this.prisma.staffMember.findMany({ where: { tenantId, id: { in: mdStaffIds } }, select: { id: true, firstName: true, lastName: true } })
+      : [];
+    const mdStaffName = new Map(mdStaff.map((s2) => [s2.id, `${s2.firstName} ${s2.lastName ?? ''}`.trim()]));
+
+    const byNameMap = new Map<string, { name: string; lines: number; listCents: number; chargedCents: number; discountCents: number }>();
+    const byStaffMap = new Map<string, { staffId: string | null; name: string; lines: number; listCents: number; chargedCents: number; discountCents: number }>();
+    let markdownTotal = 0;
+    let markdownList = 0;
+    for (const it of markdownItems) {
+      const list = it.unitPriceCents * it.quantity;
+      markdownTotal += it.discountCents;
+      markdownList += list;
+      const n = byNameMap.get(it.name) ?? { name: it.name, lines: 0, listCents: 0, chargedCents: 0, discountCents: 0 };
+      n.lines += 1; n.listCents += list; n.chargedCents += it.lineTotalCents; n.discountCents += it.discountCents;
+      byNameMap.set(it.name, n);
+      const sid = it.staffMemberId ?? '';
+      const st = byStaffMap.get(sid) ?? { staffId: it.staffMemberId ?? null, name: mdStaffName.get(sid) ?? 'Unassigned', lines: 0, listCents: 0, chargedCents: 0, discountCents: 0 };
+      st.lines += 1; st.listCents += list; st.chargedCents += it.lineTotalCents; st.discountCents += it.discountCents;
+      byStaffMap.set(sid, st);
+    }
+    const markdowns = {
+      totalDiscountCents: markdownTotal,
+      listValueCents: markdownList,
+      chargedCents: Math.max(0, markdownList - markdownTotal),
+      lines: markdownItems.length,
+      // Share of what those lines were worth that was given away.
+      discountRate: markdownList > 0 ? Math.round((markdownTotal / markdownList) * 1000) / 10 : 0,
+      byService: Array.from(byNameMap.values()).sort((a, b) => b.discountCents - a.discountCents).slice(0, 10),
+      byStaff: Array.from(byStaffMap.values()).sort((a, b) => b.discountCents - a.discountCents).slice(0, 10),
+    };
+
     return {
       range: { from: dayKey(from), to: dayKey(to) },
       kpis: {
@@ -298,6 +353,7 @@ export class OverviewService {
       series,
       topStaff,
       topServices,
+      markdowns,
       upcoming: upcomingBookings,
     };
   }

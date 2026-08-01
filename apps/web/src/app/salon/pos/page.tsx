@@ -784,16 +784,24 @@ function Register() {
       discountCents: money.discount,
       redeemPoints: money.redeemPts || undefined,
       giftCardCode: giftCard?.code || undefined,
-      items: cart.map((l) => ({
-        kind: l.kind,
-        serviceId: l.kind === 'SERVICE' && !l.isAddon ? l.refId : undefined,
-        productId: l.kind === 'PRODUCT' ? l.refId : undefined,
-        name: l.name,
-        unitPriceCents: l.unitPriceCents,
-        quantity: l.quantity,
-        tipCents: l.tipCents,
-        staffMemberId: l.staffMemberId || undefined,
-      })),
+      // A marked-down line is stored as list price + a discount, never as a
+      // cheaper service. The money charged is identical (gross − discount), but
+      // the record keeps WHAT was given away — otherwise a $12 Take Off sold at
+      // $5 looks in the data like a $5 service and the giveaway is invisible.
+      items: cart.map((l) => {
+        const marked = l.origUnitPriceCents > l.unitPriceCents;
+        return {
+          kind: l.kind,
+          serviceId: l.kind === 'SERVICE' && !l.isAddon ? l.refId : undefined,
+          productId: l.kind === 'PRODUCT' ? l.refId : undefined,
+          name: l.name,
+          unitPriceCents: marked ? l.origUnitPriceCents : l.unitPriceCents,
+          discountCents: marked ? (l.origUnitPriceCents - l.unitPriceCents) * l.quantity : undefined,
+          quantity: l.quantity,
+          tipCents: l.tipCents,
+          staffMemberId: l.staffMemberId || undefined,
+        };
+      }),
       tenders: tenderList,
     };
     setSubmitting(true); setError(null); setOkMsg(null);

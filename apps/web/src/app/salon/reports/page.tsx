@@ -32,6 +32,13 @@ interface Dash {
   series: { date: string; bookings: number; revenueCents: number }[];
   topStaff: Ranked[];
   topServices: Ranked[];
+  markdowns?: Markdowns;
+}
+interface MdRow { name: string; staffId?: string | null; lines: number; listCents: number; chargedCents: number; discountCents: number }
+interface Markdowns {
+  totalDiscountCents: number; listValueCents: number; chargedCents: number;
+  lines: number; discountRate: number;
+  byService: MdRow[]; byStaff: MdRow[];
 }
 
 /* --------------------------------------------------------------- labels --- */
@@ -232,6 +239,9 @@ function Inner() {
         </Card>
       </div>
 
+      {/* Counter markdowns — money given away by editing prices at the till */}
+      <MarkdownCard md={dash?.markdowns} money={money} T={T} vi={vi} />
+
       {/* Peak hours + Weekday */}
       <div className="rp-2col" style={grid2}>
         <Card title={T('Giờ cao điểm', 'Peak hours')}>
@@ -387,6 +397,78 @@ function Hours({ byHour, vi }: { byHour: number[]; vi: boolean }) {
         {[0, 6, 12, 18, 23].map((h) => <span key={h}>{hr(h)}</span>)}
       </div>
       <p style={{ ...hint, marginTop: 8 }}>{vi ? 'Giờ đông nhất' : 'Busiest'}: <strong style={{ color: '#f59e0b' }}>{hr(peak)}</strong> ({max})</p>
+    </div>
+  );
+}
+
+/**
+ * What the counter gave away. Sold-below-list lines are stored as list price +
+ * discount, so this is real money, not an estimate. Hidden when a salon never
+ * marks anything down — an empty scolding panel helps nobody.
+ */
+function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number) => string; T: (v: string, e: string) => string; vi: boolean }) {
+  if (!md || md.lines === 0) return null;
+  const heavy = md.discountRate >= 20;
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{T('Giảm giá tại quầy', 'Counter markdowns')}</span>
+        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+          {T('Tiền đã giảm khi sửa giá lúc thanh toán', 'Money given away by editing prices at checkout')}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        {[
+          [T('Tổng đã giảm', 'Given away'), money(md.totalDiscountCents), heavy ? '#f87171' : '#fbbf24'],
+          [T('Giá niêm yết', 'List value'), money(md.listValueCents), '#cbd5e1'],
+          [T('Thực thu', 'Actually charged'), money(md.chargedCents), '#22c55e'],
+          [T('Tỉ lệ giảm', 'Markdown rate'), `${md.discountRate}%`, heavy ? '#f87171' : '#cbd5e1'],
+          [T('Số dòng', 'Lines'), String(md.lines), '#cbd5e1'],
+        ].map(([label, value, color]) => (
+          <div key={label} style={{ flex: '1 1 130px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="rp-2col" style={grid2}>
+        <MdTable title={T('Dịch vụ bị giảm nhiều nhất', 'Most marked-down services')} rows={md.byService} money={money} T={T} />
+        <MdTable title={T('Theo thợ', 'By technician')} rows={md.byStaff} money={money} T={T} />
+      </div>
+      {heavy && (
+        <p style={{ fontSize: 11.5, color: '#fca5a5', margin: '10px 0 0', lineHeight: 1.5 }}>
+          {T(`Đang giảm ${md.discountRate}% giá trị của những dòng này. Nếu một dịch vụ luôn bị sửa giá, nên tách thành dịch vụ riêng với giá đúng thay vì sửa tay mỗi lần.`,
+             `${md.discountRate}% of the list value of these lines was given away. If one service is always edited, create it as its own service at the real price instead of re-keying it every time.`)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MdTable({ title, rows, money, T }: { title: string; rows: MdRow[]; money: (c: number) => string; T: (v: string, e: string) => string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>{title}</div>
+      {rows.length === 0 ? <div style={{ fontSize: 12.5, color: '#64748b' }}>—</div> : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ color: '#64748b' }}>
+              <th style={{ textAlign: 'left', padding: '4px 0', fontWeight: 600 }}>{T('Tên', 'Name')}</th>
+              <th style={{ textAlign: 'right', padding: '4px 0', fontWeight: 600 }}>{T('Lần', 'Lines')}</th>
+              <th style={{ textAlign: 'right', padding: '4px 0', fontWeight: 600 }}>{T('Đã giảm', 'Given away')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={(r.staffId ?? '') + r.name} style={{ borderTop: '1px solid #1e293b' }}>
+                <td style={{ padding: '5px 0', color: '#e2e8f0' }}>{r.name}</td>
+                <td style={{ padding: '5px 0', textAlign: 'right', color: '#94a3b8' }}>{r.lines}</td>
+                <td style={{ padding: '5px 0', textAlign: 'right', color: '#fbbf24', fontWeight: 600 }}>{money(r.discountCents)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

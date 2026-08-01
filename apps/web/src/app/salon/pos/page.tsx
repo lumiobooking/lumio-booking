@@ -1082,7 +1082,7 @@ function Register() {
           ...(wide ? { borderTop: '1px solid #334155', paddingTop: 10 } : null),
         }}>
           <h1 style={{ fontSize: wide ? 16 : 22, margin: 0 }}>{t('po.title')}</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: wide ? 8 : 14, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#cbd5e1', cursor: 'pointer' }}>
               <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
               🖨️ {t('po.printReception')}
@@ -1146,6 +1146,10 @@ function Register() {
       <div style={{
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
+        // Wide mode: row 1 is the catalog + ticket, row 2 is the toolbar strip
+        // under the catalog only — the ticket spans both rows and keeps the
+        // extra height for itself.
+        ...(wide ? { gridTemplateRows: 'minmax(0, 1fr) auto', rowGap: 10 } : null),
         gap: isMobile ? 12 : 16,
         alignItems: wide ? 'stretch' : 'start',
         ...(wide ? { flex: 1, minHeight: 0 } : null),
@@ -1155,7 +1159,7 @@ function Register() {
         <div style={{
           ...ui.card, display: 'flex', flexDirection: 'column',
           maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100vh - 130px)'),
-          ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden' } : null),
+          ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
         }}>
           {/* Tabs with counts */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
@@ -1284,7 +1288,7 @@ function Register() {
           position: (isMobile || wide) ? 'static' : 'sticky',
           top: 12,
           ...(isMobile ? {} : wide
-            ? { height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }
+            ? { height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gridColumn: 2, gridRow: '1 / -1' }
             : { maxHeight: 'calc(100vh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
         }}>
           {isMobile && (
@@ -1735,16 +1739,16 @@ function Register() {
           </div>
         </div>
         )}
-      </div>
 
-      {/* Wide mode docks the toolbar and the page banners under the two columns,
-          so the ticket column can start at the very top of the screen. */}
-      {wide && (
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-          {banners}
-          {headerBar}
-        </div>
-      )}
+        {/* Toolbar + page banners live under the catalog only, so the ticket
+            column can run the full height of the screen beside them. */}
+        {wide && (
+          <div style={{ gridColumn: 1, gridRow: 2, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {banners}
+            {headerBar}
+          </div>
+        )}
+      </div>
 
       {/* Mobile: sticky total + go-to-ticket bar so checkout is one tap away. */}
       {isMobile && mobileView === 'catalog' && (

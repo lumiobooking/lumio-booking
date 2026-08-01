@@ -28,6 +28,7 @@ function Inner() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [defaults, setDefaults] = useState<CampaignSettings | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,11 +36,12 @@ function Inner() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const [s, st] = await Promise.all([
+      const [s, dflt, st] = await Promise.all([
         apiFetch<CampaignSettings>('/campaigns/settings', { token }),
+        apiFetch<CampaignSettings>('/campaigns/defaults', { token }).catch(() => null),
         apiFetch<Stats>('/campaigns/stats', { token }).catch(() => ({ winBack: 0, reactivation: 0, birthday: 0 })),
       ]);
-      setF(s); setStats(st);
+      setF(s); setDefaults(dflt); setStats(st);
     } catch (e) {
       setError(e instanceof Error ? e.message : tr('mk.loadFail', lang));
     } finally { setLoading(false); }
@@ -99,9 +101,9 @@ function Inner() {
         </div>
       </div>
 
-      <CampaignCard t={t} campKey="winBack" token={token} adminEmail={adminEmail} title={t('mk.winBack')} desc={t('mk.winBackDesc')} sent={stats.winBack} hasDays camp={f.winBack} onChange={(p) => patchCamp('winBack', p)} />
-      <CampaignCard t={t} campKey="reactivation" token={token} adminEmail={adminEmail} title={t('mk.reactivation')} desc={t('mk.reactivationDesc')} sent={stats.reactivation} hasDays camp={f.reactivation} onChange={(p) => patchCamp('reactivation', p)} />
-      <CampaignCard t={t} campKey="birthday" token={token} adminEmail={adminEmail} title={t('mk.birthday')} desc={t('mk.birthdayDesc')} sent={stats.birthday} camp={f.birthday} onChange={(p) => patchCamp('birthday', p)} />
+      <CampaignCard t={t} campKey="winBack" token={token} adminEmail={adminEmail} title={t('mk.winBack')} desc={t('mk.winBackDesc')} sent={stats.winBack} hasDays camp={f.winBack} suggested={defaults?.winBack} onChange={(p) => patchCamp('winBack', p)} />
+      <CampaignCard t={t} campKey="reactivation" token={token} adminEmail={adminEmail} title={t('mk.reactivation')} desc={t('mk.reactivationDesc')} sent={stats.reactivation} hasDays camp={f.reactivation} suggested={defaults?.reactivation} onChange={(p) => patchCamp('reactivation', p)} />
+      <CampaignCard t={t} campKey="birthday" token={token} adminEmail={adminEmail} title={t('mk.birthday')} desc={t('mk.birthdayDesc')} sent={stats.birthday} camp={f.birthday} suggested={defaults?.birthday} onChange={(p) => patchCamp('birthday', p)} />
 
       <ReferralSection token={token} t={t} />
 
@@ -113,8 +115,8 @@ function Inner() {
   );
 }
 
-function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, hasDays, onChange }: {
-  t: (k: string) => string; campKey: CampKey; token: string | null; adminEmail?: string; title: string; desc: string; sent: number; camp: Lapsed | Msg; hasDays?: boolean; onChange: (p: Partial<Lapsed>) => void;
+function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, hasDays, suggested, onChange }: {
+  t: (k: string) => string; campKey: CampKey; token: string | null; adminEmail?: string; title: string; desc: string; sent: number; camp: Lapsed | Msg; hasDays?: boolean; suggested?: Msg; onChange: (p: Partial<Lapsed>) => void;
 }) {
   const c = camp as Lapsed;
   const [testing, setTesting] = useState(false);
@@ -184,6 +186,15 @@ function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, 
           <button type="button" onClick={sendTest} disabled={testing} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>
             {testing ? t('mk.testSending') : `🧪 ${t('mk.testSend')}`}
           </button>
+          {suggested && (
+            <button
+              type="button"
+              onClick={() => { if (confirm(t('mk.useSuggestedConfirm'))) onChange({ subject: suggested.subject, body: suggested.body, smsBody: suggested.smsBody }); }}
+              style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}
+            >
+              ✍️ {t('mk.useSuggested')}
+            </button>
+          )}
           <span style={{ fontSize: 11.5, color: '#64748b' }}>{adminEmail ? t('mk.testHint').replace('{email}', adminEmail) : t('mk.testNoEmail')}</span>
         </div>
       )}

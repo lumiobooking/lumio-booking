@@ -6,7 +6,21 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { CampaignsService } from './campaigns.service';
-import { CampaignKey } from './campaigns.constants';
+import { CampaignKey, DEFAULT_CAMPAIGN_SETTINGS } from './campaigns.constants';
+
+/**
+ * The offer attached to a campaign. This MUST be declared: the global validation
+ * pipe runs with whitelist:true, so any property missing from the DTO is stripped
+ * from the request — which silently reverted every saved offer to "off".
+ */
+class CampaignOfferDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsIn(['percent', 'amount', 'gift']) kind?: 'percent' | 'amount' | 'gift';
+  @IsOptional() @IsInt() @Min(0) @Max(1_000_000) value?: number;
+  @IsOptional() @IsString() @MaxLength(120) gift?: string;
+  @IsOptional() @IsString() @MaxLength(16) code?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(365) expiryDays?: number;
+}
 
 class CampaignMessageDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
@@ -15,6 +29,7 @@ class CampaignMessageDto {
   @IsOptional() @IsString() @MaxLength(200) subject?: string;
   @IsOptional() @IsString() @MaxLength(4000) body?: string;
   @IsOptional() @IsString() @MaxLength(600) smsBody?: string;
+  @IsOptional() @ValidateNested() @Type(() => CampaignOfferDto) offer?: CampaignOfferDto;
 }
 
 class LapsedCampaignDto extends CampaignMessageDto {
@@ -48,6 +63,15 @@ export class CampaignsController {
   @Patch('settings')
   updateSettings(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateCampaignsDto) {
     return this.campaigns.updateSettings(user, dto);
+  }
+
+  /**
+   * The recommended templates. A salon that saved the old copy keeps it forever
+   * otherwise — new defaults only apply to salons that never touched theirs.
+   */
+  @Get('defaults')
+  defaults() {
+    return DEFAULT_CAMPAIGN_SETTINGS;
   }
 
   @Get('stats')

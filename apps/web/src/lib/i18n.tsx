@@ -1275,6 +1275,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'mk.smsBody': { en: 'SMS message', vi: 'Nội dung SMS' },
   'mk.placeholders': { en: 'Placeholders: %customer_name% %salon_name% %salon_contact% %booking_link%', vi: 'Biến: %customer_name% %salon_name% %salon_contact% %booking_link%' },
   'mk.offerVars': { en: 'Offer variables: %offer% %offer_code% %offer_expiry% %offer_block% (ready-made paragraph) %offer_sms%', vi: 'Biến ưu đãi: %offer% %offer_code% %offer_expiry% %offer_block% (đoạn viết sẵn) %offer_sms%' },
+  'mk.useSuggested': { en: 'Use recommended copy', vi: 'Dùng mẫu gợi ý' },
+  'mk.useSuggestedConfirm': { en: 'Replace the subject, email body and SMS text with the recommended version? Your current wording will be lost.', vi: 'Thay tiêu đề, nội dung email và SMS bằng mẫu gợi ý? Nội dung đang có sẽ mất.' },
   'mk.offerTitle': { en: 'Offer', vi: 'Ưu đãi' },
   'mk.offerHelp': { en: 'What the customer gets. Off = the message is only a reminder. The code is typed at the till, which applies the discount automatically.', vi: 'Khách được gì. Tắt = tin chỉ là lời nhắc. Mã được nhập ở quầy, hệ thống tự trừ tiền.' },
   'mk.offerKind': { en: 'Offer type', vi: 'Loại ưu đãi' },

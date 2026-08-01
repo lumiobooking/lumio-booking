@@ -136,6 +136,20 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // Routes hidden because Super Admin set the feature to platform-managed.
   const [hiddenHrefs, setHiddenHrefs] = useState<string[]>([]);
   const [isRestaurant, setIsRestaurant] = useState<boolean>(() => readCachedRestaurant());
+  // Sidebar collapsed? Remembered, so a cashier who works on the POS all day
+  // keeps the wide screen instead of re-collapsing it on every page.
+  const [navHidden, setNavHidden] = useState(false);
+  useEffect(() => {
+    try { setNavHidden(window.localStorage.getItem('lumio_nav_hidden') === '1'); } catch { /* ignore */ }
+  }, []);
+  const toggleNav = useCallback(() => {
+    setNavHidden((v) => {
+      const next = !v;
+      try { window.localStorage.setItem('lumio_nav_hidden', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
   // Which sidebar groups are expanded (persisted). The group holding the active
   // route auto-expands so the current page is always reachable.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -350,15 +364,26 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   // ---------------------------- Desktop ----------------------------
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: '230px 1fr', background: '#0b1120' }}>
-      <aside style={{ background: '#111827', borderRight: '1px solid #1f2937', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
-        {brand}
-        <BranchSwitcher />
-        {navList}
-        {footer}
-      </aside>
+    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: navHidden ? '1fr' : '230px 1fr', background: '#0b1120' }}>
+      {!navHidden && (
+        <aside style={{ background: '#111827', borderRight: '1px solid #1f2937', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
+          {brand}
+          <BranchSwitcher />
+          {navList}
+          {footer}
+        </aside>
+      )}
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <header style={{ position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'rgba(11,17,32,0.82)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid #1f2937' }}>
+          <button
+            onClick={toggleNav}
+            title={navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu — màn hình rộng hơn' : 'Collapse menu — wider screen')}
+            aria-label={navHidden ? 'Show menu' : 'Collapse menu'}
+            style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: '#1e293b', border: '1px solid #475569', color: '#e2e8f0', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            {navHidden ? '☰' : '⟨⟨'}
+            <span>{navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu' : 'Collapse menu')}</span>
+          </button>
           <NotificationBell />
         </header>
         <main style={{ padding: '22px 32px 40px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>

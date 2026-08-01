@@ -1240,21 +1240,14 @@ function Register() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
               {cart.map((l) => (
-                <div key={l.uid} style={{ borderBottom: '1px solid #334155', paddingBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>
+                <div key={l.uid} style={{ borderBottom: '1px solid #334155', paddingBottom: 7 }}>
+                  {/* Row 1: what it is + what it costs — the two things read together. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.name}>
                       {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>{t('po.addonBadge')}</span>}
                       {l.name}
                     </div>
-                    <button onClick={() => removeLine(l.uid)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16 }}>×</button>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <button onClick={() => updateLine(l.uid, { quantity: Math.max(1, l.quantity - 1) })} style={qtyBtn}>−</button>
-                      <span style={{ minWidth: 20, textAlign: 'center' }}>{l.quantity}</span>
-                      <button onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={qtyBtn}>+</button>
-                    </div>
-                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
                       {l.discountPercent > 0 && (
                         <>
                           <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
@@ -1268,16 +1261,23 @@ function Register() {
                         value={(l.unitPriceCents / 100).toString()}
                         onChange={(e) => setLinePrice(l.uid, e.target.value)}
                         onFocus={(e) => e.currentTarget.select()}
-                        style={{ ...ui.input, width: 82, padding: '5px 8px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? '#22c55e' : '#e2e8f0', fontWeight: 600 }}
+                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? '#22c55e' : '#e2e8f0', fontWeight: 600 }}
                       />
                       {l.quantity > 1 && <span style={{ color: '#64748b', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
                       {catalogPrice(l) != null && catalogPrice(l) !== l.unitPriceCents && (
-                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 7px', fontSize: 11, cursor: 'pointer' }}>↺</button>
+                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}>↺</button>
                       )}
+                      <button onClick={() => removeLine(l.uid)} title={t('po.clear')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, padding: '0 2px' }}>×</button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                    <select value={l.staffMemberId} onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })} style={{ ...ui.input, padding: '5px 8px', fontSize: 13, flex: 1, minWidth: 120 }}>
+                  {/* Row 2: the controls, one line, no wrapping. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <button onClick={() => updateLine(l.uid, { quantity: Math.max(1, l.quantity - 1) })} style={qtyBtn}>−</button>
+                      <span style={{ minWidth: 18, textAlign: 'center', fontSize: 13 }}>{l.quantity}</span>
+                      <button onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={qtyBtn}>+</button>
+                    </div>
+                    <select value={l.staffMemberId} onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })} style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, flex: 1, minWidth: 0 }}>
                       <option value="">{t('po.technician')}</option>
                       {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
                     </select>
@@ -1285,7 +1285,7 @@ function Register() {
                       type="number" min={0} step="0.01" placeholder={t('po.tipPh')}
                       value={l.tipCents ? (l.tipCents / 100).toString() : ''}
                       onChange={(e) => updateLine(l.uid, { tipCents: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100)) })}
-                      style={{ ...ui.input, padding: '5px 8px', fontSize: 13, width: 80 }}
+                      style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, width: 68, flexShrink: 0 }}
                     />
                   </div>
                 </div>
@@ -1294,7 +1294,7 @@ function Register() {
           )}
 
           {/* Totals */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, marginBottom: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
             <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ color: '#94a3b8' }}>{t('po.promoCode')}</span>
@@ -1333,9 +1333,9 @@ function Register() {
             {promo && !promo.appliesDiscount && (
               <div style={{ color: '#fbbf24', fontSize: 12, textAlign: 'right' }}>{t('po.promoGift')}</div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 30 }}>
               <span style={{ color: '#94a3b8' }}>{t('po.discountD')}</span>
-              <input type="number" min={0} step="0.01" value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} style={{ ...ui.input, width: 100, padding: '5px 8px', textAlign: 'right' }} />
+              <input type="number" min={0} step="0.01" value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} style={{ ...ui.input, width: 92, padding: '4px 7px', fontSize: 13, textAlign: 'right' }} />
             </div>
             {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
             {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
@@ -1346,7 +1346,7 @@ function Register() {
                 <input
                   type="number" min={0} value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)}
                   placeholder={t('po.minPts').replace('{n}', String(loyalty.minRedeemPoints))}
-                  style={{ ...ui.input, width: 110, padding: '5px 8px', textAlign: 'right' }}
+                  style={{ ...ui.input, width: 100, padding: '4px 7px', fontSize: 13, textAlign: 'right' }}
                 />
               </div>
             )}
@@ -1360,14 +1360,15 @@ function Register() {
                 <span>{t('po.youSaved')}</span><span>−{formatPrice(money.savings, currency)}</span>
               </div>
             )}
-            <div style={{ borderTop: '1px solid #334155', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700 }}>
-              <span>{t('po.total')}</span><span style={{ color: '#22c55e' }}>{formatPrice(money.total, currency)}</span>
+            <div style={{ borderTop: '1px solid #334155', marginTop: 4, paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{t('po.total')}</span>
+              <span style={{ color: '#22c55e', fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{formatPrice(money.total, currency)}</span>
             </div>
           </div>
 
           {/* Gift card redemption (online only — needs a live balance check) */}
           {online && (
-            <div style={{ marginBottom: 10 }}>
+            <div style={{ marginBottom: 8 }}>
               {giftCard ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
                   <span style={{ fontSize: 13, color: '#a5f3fc' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
@@ -1792,7 +1793,7 @@ function EmptyState({ text }: { text: string }) {
   return <div style={{ color: '#64748b', fontSize: 14, textAlign: 'center', padding: '36px 12px' }}>{text}</div>;
 }
 const qtyBtn: React.CSSProperties = {
-  width: 28, height: 28, borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 16,
+  width: 24, height: 24, borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 14, lineHeight: 1,
 };
 const chip: React.CSSProperties = {
   padding: '5px 10px', borderRadius: 999, border: '1px solid #475569', background: '#0f172a', color: '#cbd5e1', fontSize: 12, cursor: 'pointer',

@@ -95,6 +95,8 @@ function Register() {
   // Code the booking arrived with. Kept in its own state so the lookup below is
   // not cancelled when the prefill effect re-runs.
   const [bookedOffer, setBookedOffer] = useState<string | null>(null);
+  // Cash-tip logging is an occasional correction, not part of taking payment.
+  const [tipOpen, setTipOpen] = useState(false);
   const [promoBusy, setPromoBusy] = useState(false);
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
   const [tendered, setTendered] = useState('');
@@ -1391,10 +1393,21 @@ function Register() {
             </div>
           )}
 
-          {/* Direct tip to the tech(s) on this ticket — scan their QR. */}
-          {tipTechs.length > 0 && (
+          {/* Direct tip to the tech(s) on this ticket — opened on demand. */}
+          {tipTechs.length > 0 && !tipOpen && (
+            <button
+              onClick={() => setTipOpen(true)}
+              style={{ marginBottom: 12, width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px dashed #334155', background: 'transparent', color: '#64748b', fontSize: 12, cursor: 'pointer', textAlign: 'left' }}
+            >
+              💸 {t('po.tipTitle')}
+            </button>
+          )}
+          {tipTechs.length > 0 && tipOpen && (
             <div style={{ marginBottom: 12, border: '1px solid #155e75', borderRadius: 10, padding: 10, background: '#0f172a' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#a5f3fc', marginBottom: 4 }}>💸 {t('po.tipTitle')}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#a5f3fc' }}>💸 {t('po.tipTitle')}</div>
+                <button onClick={() => setTipOpen(false)} aria-label="close" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#64748b', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>{t('po.tipQrAfterNote')}</div>
               <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
                 {t('po.tipSuggest')}: 15% {formatPrice(Math.round(money.subtotal * 0.15), currency)} · 18% {formatPrice(Math.round(money.subtotal * 0.18), currency)} · 20% {formatPrice(Math.round(money.subtotal * 0.2), currency)}

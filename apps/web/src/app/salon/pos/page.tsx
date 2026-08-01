@@ -40,6 +40,13 @@ interface Line {
 
 let uidSeq = 1;
 
+// Full-screen register layout ("wide"). Rolled out salon by salon: the pilot
+// list below gets it now, everyone else keeps the old layout until POS_V2_ALL
+// is flipped to true. A cashier can also force either layout for their own
+// browser with ?ui=v2 / ?ui=v1 — handy for a side-by-side check.
+const POS_V2_ALL = false;
+const POS_V2_PILOT = ['service.lumioagency@gmail.com'];
+
 export default function PosPage() {
   const { lang } = useLang();
   return (
@@ -52,11 +59,22 @@ export default function PosPage() {
 }
 
 function Register() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const isMobile = useIsMobile();
   const params = useSearchParams();
+  const [uiPref, setUiPref] = useState<'v1' | 'v2' | null>(null);
+  useEffect(() => {
+    const q = params.get('ui');
+    if (q === 'v1' || q === 'v2') { try { localStorage.setItem('lumio_pos_ui', q); } catch { /* private mode */ } setUiPref(q); return; }
+    try { const saved = localStorage.getItem('lumio_pos_ui'); if (saved === 'v1' || saved === 'v2') setUiPref(saved); } catch { /* private mode */ }
+  }, [params]);
+  // The wide layout only applies to desktop; phones keep the two-view flow.
+  const pilot = POS_V2_ALL
+    || POS_V2_PILOT.includes((user?.email ?? '').toLowerCase())
+    || POS_V2_PILOT.includes(user?.tenantId ?? '\u0000');
+  const wide = !isMobile && (uiPref ? uiPref === 'v2' : pilot);
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
   const [walkInId] = useState<string | null>(() => params.get('walkInId'));
@@ -1046,14 +1064,19 @@ function Register() {
   if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
 
   return (
-    <section style={{ paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined }}>
+    <section style={{
+      paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined,
+      // Wide mode: the register owns exactly one screen. Nothing below the fold,
+      // so the pay button can never be scrolled away.
+      ...(wide ? { height: 'calc(100vh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+    }}>
       <style>{`
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
         .pos-card:hover { border-color: #6366f1 !important; background: #1e293b !important; }
         .pos-card:active { transform: scale(.97); }
       `}</style>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, margin: 0 }}>{t('po.title')}</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: wide ? 10 : 16, flexShrink: 0 }}>
+        <h1 style={{ fontSize: wide ? 18 : 22, margin: 0 }}>{t('po.title')}</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#cbd5e1', cursor: 'pointer' }}>
             <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
@@ -1061,6 +1084,12 @@ function Register() {
           </label>
           <button onClick={park} disabled={cart.length === 0} title={lang === 'vi' ? 'Giữ bill hiện tại để phục vụ khách khác' : 'Hold the current ticket to serve someone else'} style={{ ...ghost, opacity: cart.length ? 1 : 0.5, cursor: cart.length ? 'pointer' : 'default' }}>⏸️ {lang === 'vi' ? 'Giữ bill' : 'Hold'}</button>
           <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` (${heldBills.length})` : ''}</button>
+          {wide && (
+            <>
+              <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={ghost}>📱 {t('po.ipad')}</button>
+              <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={ghost}>🖥️ {t('po.custScreen')}</button>
+            </>
+          )}
           <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
         </div>
       </div>
@@ -1089,10 +1118,20 @@ function Register() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: isMobile ? 12 : 16, alignItems: 'start' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
+        gap: isMobile ? 12 : 16,
+        alignItems: wide ? 'stretch' : 'start',
+        ...(wide ? { flex: 1, minHeight: 0 } : null),
+      }}>
         {/* Catalog */}
         {(!isMobile || mobileView === 'catalog') && (
-        <div style={{ ...ui.card, display: 'flex', flexDirection: 'column', maxHeight: isMobile ? 'none' : 'calc(100vh - 130px)' }}>
+        <div style={{
+          ...ui.card, display: 'flex', flexDirection: 'column',
+          maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100vh - 130px)'),
+          ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden' } : null),
+        }}>
           {/* Tabs with counts */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
             <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>{t('po.tabServices')}<TabCount n={services.length} active={tab === 'SERVICE'} /></button>
@@ -1215,10 +1254,18 @@ function Register() {
 
         {/* Ticket */}
         {(!isMobile || mobileView === 'ticket') && (
-        <div style={{ ...ui.card, position: isMobile ? 'static' : 'sticky', top: 12 }}>
+        <div style={{
+          ...ui.card,
+          position: (isMobile || wide) ? 'static' : 'sticky',
+          top: 12,
+          ...(isMobile ? {} : wide
+            ? { height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }
+            : { maxHeight: 'calc(100vh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
+        }}>
           {isMobile && (
             <button onClick={() => setMobileView('catalog')} style={{ ...ghost, marginBottom: 12, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
           )}
+          {!wide && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px' }}>
             <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -1226,6 +1273,7 @@ function Register() {
               <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
             </div>
           </div>
+          )}
           {ipadPanel && <IpadPairPanel session={displaySession} onRotate={rotateDisplay} onClose={() => setIpadPanel(false)} t={t} />}
 
           <CustomerBox
@@ -1236,9 +1284,12 @@ function Register() {
           />
 
           {cart.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('po.tapToAdd')}</p>
+            <p style={{ color: '#94a3b8', fontSize: 14, ...(wide ? { flex: '1 1 auto', minHeight: 40 } : null) }}>{t('po.tapToAdd')}</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 10, marginBottom: wide ? 8 : 12,
+              ...(wide ? { flex: '1 1 auto', minHeight: 80, overflowY: 'auto', paddingRight: 4 } : null),
+            }}>
               {cart.map((l) => (
                 <div key={l.uid} style={{ borderBottom: '1px solid #334155', paddingBottom: 7 }}>
                   {/* Row 1: what it is + what it costs — the two things read together. */}
@@ -1293,6 +1344,15 @@ function Register() {
             </div>
           )}
 
+          {/* Money + tender + pay: pinned to the bottom of the ticket panel, so it
+              stays on screen no matter how many lines the bill has. */}
+          <div style={isMobile ? undefined : wide ? {
+            flex: '0 1 auto', minHeight: 0, overflowY: 'auto', marginTop: 'auto',
+            background: '#111827', paddingTop: 8, borderTop: '1px solid #334155',
+          } : {
+            position: 'sticky', bottom: 0, zIndex: 3, marginTop: 'auto',
+            background: '#111827', paddingTop: 8, borderTop: '1px solid #334155',
+          }}>
           {/* Totals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
             <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
@@ -1606,11 +1666,15 @@ function Register() {
               </div>
             </div>
           )}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{
+            display: 'flex', gap: 8, paddingBottom: 2,
+            ...(wide ? { position: 'sticky', bottom: 0, background: '#111827', paddingTop: 6, zIndex: 2 } : null),
+          }}>
             <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>
             <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>
               {submitting ? t('po.processing') : t('po.payPrint').replace('{x}', formatPrice(money.due, currency))}
             </button>
+          </div>
           </div>
         </div>
         )}

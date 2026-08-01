@@ -1,0 +1,150 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Lumio POS · 4 dịch vụ</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#070b14;
+ font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#e2e8f0}
+.app{height:100%;display:flex;flex-direction:column;background:#070b14}
+
+/* ── TOP BAR ── */
+.top{flex:0 0 auto;display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid #17203a;background:#0a0f1c}
+.brand{display:flex;align-items:center;gap:9px}
+.logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:15px}
+.bname{font-size:13px;font-weight:700;line-height:1.15}
+.bname i{display:block;font-style:normal;font-size:9.5px;font-weight:600;color:#818cf8;letter-spacing:.12em}
+.vline{width:1px;height:26px;background:#1c2740}
+.ttl{font-size:16px;font-weight:700}
+.cust-chip{display:flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #2a3550;border-radius:10px;padding:5px 10px}
+.av{width:24px;height:24px;border-radius:7px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-size:12px}
+.cust-chip b{font-size:12.5px;font-weight:600}
+.pt{font-size:11.5px;color:#eab308}
+.spacer{flex:1}
+.tbtn{display:flex;align-items:center;gap:6px;background:#0f172a;border:1px solid #253150;border-radius:9px;padding:6px 11px;font-size:12px;color:#cbd5e1;white-space:nowrap}
+.tbtn.live{border-color:#4f46e5;color:#a5b4fc}
+
+/* ── BODY GRID ── */
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 430px;gap:12px;padding:12px 14px}
+.col{min-height:0;display:flex;flex-direction:column}
+
+/* ── LEFT ── */
+.search{display:flex;align-items:center;gap:10px;background:#0c1322;border:1px solid #1c2740;border-radius:11px;padding:9px 12px;font-size:12.5px;color:#64748b;margin-bottom:9px}
+.search .cam{margin-left:auto;color:#94a3b8;font-size:13px}
+.chips{display:flex;gap:6px;overflow:hidden;margin-bottom:10px;flex:0 0 auto}
+.chip{background:#0c1322;border:1px solid #1c2740;border-radius:16px;padding:5px 11px;font-size:11.5px;color:#94a3b8;white-space:nowrap}
+.chip.on{background:#4f46e5;border-color:#4f46e5;color:#fff;font-weight:600}
+.sec{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#94a3b8;margin:2px 0 8px}
+.sec .sort{margin-left:auto;font-weight:500;letter-spacing:0;color:#64748b;font-size:11.5px}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;flex:0 0 auto}
+.qc{background:#0c1322;border:1px solid #1c2740;border-radius:10px;padding:9px 11px}
+.qc b{display:block;font-size:12.5px;font-weight:600;margin-bottom:3px}
+.qc span{font-size:11px;color:#94a3b8}
+.scrollwrap{flex:1;min-height:0;overflow:auto;padding-right:3px}
+.svcs{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.svc{background:#0c1322;border:1px solid #1c2740;border-radius:11px;padding:10px}
+.svc-h{display:flex;gap:8px;margin-bottom:9px}
+.ic{width:28px;height:28px;flex:0 0 28px;border-radius:8px;background:linear-gradient(135deg,#312e81,#4c1d95);display:flex;align-items:center;justify-content:center;font-size:13px}
+.svc-n{font-size:12.5px;font-weight:600;line-height:1.25}
+.svc-d{font-size:10.5px;color:#64748b;margin-top:2px}
+.svc-f{display:flex;align-items:center;gap:6px}
+.price{font-size:13.5px;font-weight:700}
+.price.sale{color:#f87171}
+.old{font-size:10.5px;color:#475569;text-decoration:line-through}
+.badge{background:#4f46e5;color:#fff;font-size:9.5px;font-weight:700;border-radius:5px;padding:2px 5px}
+.plus{margin-left:auto;width:24px;height:24px;border-radius:7px;background:#131c30;border:1px solid #253150;display:flex;align-items:center;justify-content:center;font-size:14px;color:#a5b4fc}
+
+/* ── RIGHT ── */
+.panel{background:#0a0f1c;border:1px solid #1c2740;border-radius:13px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.cust{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid #17203a}
+.cust .av{width:34px;height:34px;border-radius:10px;border:1px solid #4f46e5;font-size:15px}
+.cust b{font-size:13.5px;font-weight:600;display:block}
+.cust .pt{font-size:11px}
+.ib{width:28px;height:28px;border-radius:8px;background:#0f172a;border:1px solid #253150;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94a3b8}
+.ordhead{display:flex;align-items:center;padding:9px 12px 7px;font-size:12px;font-weight:600;color:#cbd5e1}
+.ordhead .clr{margin-left:auto;font-size:11.5px;color:#fb7185;font-weight:500}
+.lines{flex:1;min-height:0;overflow:auto;padding:0 12px 4px}
+.line{padding:9px 0;border-bottom:1px solid #141d33}
+.l1{display:flex;align-items:flex-start;gap:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:#6366f1;margin-top:5px;flex:0 0 7px}
+.l-n{flex:1;min-width:0}
+.l-n b{font-size:12.5px;font-weight:600;display:block;line-height:1.3}
+.l-n span{font-size:10.5px;color:#64748b}
+.qty{display:flex;align-items:center;gap:9px;background:#0f172a;border:1px solid #253150;border-radius:8px;padding:3px 9px;font-size:11.5px;color:#cbd5e1}
+.l-p{font-size:13px;font-weight:700;min-width:58px;text-align:right}
+.l-p.sale{color:#f87171}
+.dots{color:#475569;font-size:13px;padding-left:2px}
+.l2{display:flex;align-items:center;gap:7px;margin:7px 0 0 15px}
+.sel{flex:1;display:flex;align-items:center;gap:6px;background:#0f172a;border:1px solid #253150;border-radius:8px;padding:5px 9px;font-size:11.5px;color:#cbd5e1}
+.sel .cv{margin-left:auto;color:#64748b}
+.note{display:flex;align-items:center;gap:5px;background:#0f172a;border:1px solid #253150;border-radius:8px;padding:5px 9px;font-size:11.5px;color:#94a3b8}
+.foot{flex:0 0 auto;border-top:1px solid #17203a;padding:10px 12px 12px;background:#0c1322}
+.kv{display:flex;align-items:center;font-size:12px;color:#94a3b8;padding:3px 0}
+.kv b{margin-left:auto;color:#e2e8f0;font-weight:600}
+.kv .lnk{margin-left:auto;color:#818cf8;font-size:11.5px}
+.kv .lnk+b{margin-left:10px}
+.total{display:flex;align-items:baseline;padding:7px 0 9px;border-top:1px solid #17203a;margin-top:5px}
+.total span{font-size:17px;font-weight:700}
+.total b{margin-left:auto;font-size:26px;font-weight:800;color:#818cf8;letter-spacing:-.02em}
+.rowbtn{display:flex;align-items:center;gap:7px;background:#101827;border:1px solid #253150;border-radius:9px;padding:7px 10px;font-size:11.5px;color:#cbd5e1;margin-bottom:8px}
+.rowbtn .cv{margin-left:auto;color:#64748b}
+.utils{display:flex;gap:6px;margin-bottom:8px}
+.util{flex:1;background:#101827;border:1px solid #253150;border-radius:9px;padding:6px 4px;font-size:11px;color:#cbd5e1;text-align:center}
+.pays{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:8px}
+.pay{background:#101827;border:1px solid #253150;border-radius:9px;padding:9px 4px;font-size:12px;font-weight:600;color:#cbd5e1;text-align:center}
+.pay.on{background:#4f46e5;border-color:#4f46e5;color:#fff}
+.cash{display:flex;align-items:center;gap:6px;margin-bottom:9px}
+.cash .lbl{font-size:11.5px;color:#94a3b8;white-space:nowrap}
+.cash .inp{flex:1;background:#0f172a;border:1px solid #253150;border-radius:8px;padding:6px 9px;font-size:11.5px;color:#64748b}
+.cash .q{background:#0f172a;border:1px solid #253150;border-radius:8px;padding:6px 9px;font-size:11.5px;color:#cbd5e1}
+.acts{display:flex;gap:7px}
+.primary{flex:1;background:#4f46e5;border-radius:10px;padding:12px;font-size:14.5px;font-weight:700;color:#fff;text-align:center}
+.print{background:#101827;border:1px solid #253150;border-radius:10px;padding:12px 16px;font-size:12.5px;color:#cbd5e1;display:flex;align-items:center;gap:6px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:3px}
+</style></head><body>
+<div class="app">
+  <div class="top">
+    <span class="brand"><span class="logo">◈</span><span class="bname">Lumio<i>POS</i></span></span>
+    <span class="vline"></span><span class="ttl">Bán hàng (POS)</span>
+    <span class="cust-chip"><span class="av">👤</span><span><b>Lumio Service</b></span><span class="pt">⭐ 0 điểm</span><span style="color:#64748b">⌄</span></span>
+    <span class="spacer"></span>
+    <span class="tbtn live">◷ Đang đặt lịch</span><span class="tbtn">⏸ Giữ bill</span>
+    <span class="tbtn">🧾 Bill chờ · 3</span><span class="tbtn">🖥 Màn hình khách</span><span class="tbtn">···</span>
+  </div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="search">🔍 Tìm dịch vụ, sản phẩm hoặc quét mã…<span class="cam">📷</span></div>
+      <div class="chips"><span class="chip on">Tất cả</span><span class="chip">Add-ons</span><span class="chip">Body Massage</span>
+        <span class="chip">Facial</span><span class="chip">Luxury Mani &amp; Pedi</span><span class="chip">Nails</span>
+        <span class="chip">Waxing</span><span class="chip">Eyelash</span><span class="chip">Acrylic</span><span class="chip">›</span></div>
+      <div class="sec">⭐ DÙNG NHIỀU</div>
+      <div class="quick">
+        <div class="qc"><b>Acrylic Refill</b><span>45 phút · $45.00</span></div>
+        <div class="qc"><b>Take Off</b><span>20 phút · $20.00</span></div>
+        <div class="qc"><b>French / Ombre</b><span>15 phút · $15.00</span></div>
+        <div class="qc"><b>Gel-X</b><span>60 phút · $55.00</span></div></div>
+      <div class="sec">DỊCH VỤ &amp; SẢN PHẨM<span class="sort">Sắp xếp: Phổ biến ⌄</span></div>
+      <div class="scrollwrap"><div class="svcs"><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Acrylic Refill</div><div class="svc-d">45 phút</div></div></div><div class="svc-f"><span class="price">$45.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Take Off</div><div class="svc-d">20 phút</div></div></div><div class="svc-f"><span class="price">$20.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">French / Ombre (add-on)</div><div class="svc-d">15 phút</div></div></div><div class="svc-f"><span class="price">$15.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Shellac (add-on)</div><div class="svc-d">15 phút</div></div></div><div class="svc-f"><span class="price">$30.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Colour (add-on)</div><div class="svc-d">15 phút</div></div></div><div class="svc-f"><span class="price sale">$27.00</span><span class="old">$30.00</span><span class="badge">-10%</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Take Off & Manicure</div><div class="svc-d">30 phút</div></div></div><div class="svc-f"><span class="price">$35.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Nail Repair</div><div class="svc-d">10 phút</div></div></div><div class="svc-f"><span class="price sale">$6.30</span><span class="old">$7.00</span><span class="badge">-10%</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Nail Art</div><div class="svc-d">10 phút</div></div></div><div class="svc-f"><span class="price">$7.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Finger Nail Polish</div><div class="svc-d">10 phút</div></div></div><div class="svc-f"><span class="price">$15.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Toe Nail Polish</div><div class="svc-d">15 phút</div></div></div><div class="svc-f"><span class="price sale">$27.00</span><span class="old">$30.00</span><span class="badge">-10%</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Full Body Massage (1hr)</div><div class="svc-d">60 phút</div></div></div><div class="svc-f"><span class="price">$70.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Half Body Massage</div><div class="svc-d">30 phút</div></div></div><div class="svc-f"><span class="price">$40.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Gel-X Full Set</div><div class="svc-d">60 phút</div></div></div><div class="svc-f"><span class="price">$55.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Pedicure Deluxe</div><div class="svc-d">45 phút</div></div></div><div class="svc-f"><span class="price">$55.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Gel Manicure</div><div class="svc-d">30 phút</div></div></div><div class="svc-f"><span class="price">$35.00</span><span class="plus">+</span></div></div><div class="svc"><div class="svc-h"><span class="ic">💅</span><div><div class="svc-n">Eyelash Extension</div><div class="svc-d">60 phút</div></div></div><div class="svc-f"><span class="price">$80.00</span><span class="plus">+</span></div></div></div></div>
+    </div>
+
+    <div class="col"><div class="panel">
+      <div class="cust"><span class="av">👤</span>
+        <span style="flex:1;min-width:0"><b>Lumio Service</b><span class="pt">⭐ 0 điểm · Khách quen</span></span>
+        <span class="ib">📞</span><span class="ib">💬</span><span class="ib">✉</span><span class="ib">›</span></div>
+
+      <div class="ordhead">Đơn hàng (4)<span class="clr">Xóa tất cả</span></div>
+      <div class="lines"><div class="line"><div class="l1"><span class="dot"></span><span class="l-n"><b>Acrylic Refill</b><span>45 phút</span></span><span class="qty">−&nbsp;&nbsp;1&nbsp;&nbsp;+</span><span class="old" style="margin-right:4px">$50.00</span><span class="badge" style="margin-right:4px">-10%</span><span class="l-p sale">$45.00</span><span class="dots">⋮</span></div><div class="l2"><span class="sel">👤 Lisa Nguyễn<span class="cv">⌄</span></span><span class="note">✎ Ghi chú</span><span class="note">💲 Tip</span></div></div><div class="line"><div class="l1"><span class="dot"></span><span class="l-n"><b>Take Off</b><span>20 phút</span></span><span class="qty">−&nbsp;&nbsp;1&nbsp;&nbsp;+</span><span class="l-p">$20.00</span><span class="dots">⋮</span></div><div class="l2"><span class="sel">👤 Thoa<span class="cv">⌄</span></span><span class="note">✎ Ghi chú</span><span class="note">💲 Tip</span></div></div><div class="line"><div class="l1"><span class="dot"></span><span class="l-n"><b>French / Ombre (add-on)</b><span>15 phút</span></span><span class="qty">−&nbsp;&nbsp;1&nbsp;&nbsp;+</span><span class="l-p">$15.00</span><span class="dots">⋮</span></div><div class="l2"><span class="sel">👤 Thoa<span class="cv">⌄</span></span><span class="note">✎ Ghi chú</span><span class="note">💲 Tip</span></div></div><div class="line"><div class="l1"><span class="dot"></span><span class="l-n"><b>Toe Nail Polish</b><span>15 phút</span></span><span class="qty">−&nbsp;&nbsp;1&nbsp;&nbsp;+</span><span class="old" style="margin-right:4px">$30.00</span><span class="badge" style="margin-right:4px">-10%</span><span class="l-p sale">$27.00</span><span class="dots">⋮</span></div><div class="l2"><span class="sel">👤 Lisa Nguyễn<span class="cv">⌄</span></span><span class="note">✎ Ghi chú</span><span class="note">💲 Tip</span></div></div></div>
+
+      <div class="foot">
+        <div class="kv">Tạm tính<b>$107.00</b></div>
+        <div class="kv">Giảm giá <span style="color:#818cf8;font-size:11px">· mã 123456 −5%</span><span class="lnk">Đổi mã</span><b style="color:#4ade80">−$5.35</b></div>
+        <div class="kv">Tip (tùy chọn)<b>$0.00</b></div>
+        <div class="total"><span>Tổng</span><b>$101.65</b></div>
+        <div class="rowbtn">🎁 Ưu đãi · Điểm thưởng · Gift card<span class="cv">⌄</span></div>
+        <div class="utils"><span class="util">💸 Tip tiền mặt</span><span class="util">➗ Chia bill</span><span class="util">🏷 Giảm giá $</span></div>
+        <div class="pays"><span class="pay on">💵 Tiền mặt</span><span class="pay">💳 Thẻ +3%</span><span class="pay">🏦 CK</span></div>
+        <div class="cash"><span class="lbl">Khách đưa</span><span class="inp">Nhập số tiền…</span>
+          <span class="q">$110</span><span class="q">$120</span><span class="q">🖩</span></div>
+        <div class="acts"><span class="primary">Thanh toán &nbsp;$101.65</span><span class="print">🖨 In bill</span></div>
+      </div>
+    </div></div>
+  </div>
+</div></body></html>

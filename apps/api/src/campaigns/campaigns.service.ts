@@ -16,6 +16,7 @@ import {
   LapsedCampaign,
   campaignRelatedType,
   offerLabel,
+  offerTeaser,
   CampaignOffer,
   DEFAULT_OFFER,
 } from './campaigns.constants';
@@ -50,7 +51,7 @@ function campaignLink(slug: string | null | undefined, key: CampaignKey, o?: Cam
 function offerVars(o: CampaignOffer | undefined | null): Record<string, string> {
   const label = offerLabel(o);
   if (!o?.enabled || !label) {
-    return { offer: '', offer_code: '', offer_expiry: '', offer_block: '', offer_sms: '' };
+    return { offer: '', offer_code: '', offer_expiry: '', offer_block: '', offer_sms: '', offer_subject: '' };
   }
   const code = (o.code || '').trim().toUpperCase();
   const expiry = o.expiryDays > 0
@@ -63,6 +64,8 @@ function offerVars(o: CampaignOffer | undefined | null): Record<string, string> 
     offer_code: code,
     offer_expiry: expiry,
     offer_block: `Your welcome back gift: ${label}.${codeLine}${expiryLine}\n\n`,
+    // Subject-line teaser: an offer nobody sees before opening does not exist.
+    offer_subject: ` — ${offerTeaser(o)}`,
     offer_sms: `${label}${code ? ` (code ${code})` : ''}${expiry ? `, until ${expiry}` : ''}. `,
   };
 }
@@ -86,12 +89,19 @@ function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string): stri
   const expiry = o.expiryDays > 0
     ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
     : '';
-  return `<table style="width:100%;border-collapse:collapse;margin:0 0 18px;"><tr><td style="border:1.5px dashed ${escapeHtml(accent)};border-radius:12px;padding:16px 18px;background:#fbfbff;">
-    <div style="font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:#8b93a7;margin-bottom:4px;">Your gift</div>
-    <div style="font-size:17px;font-weight:700;color:#111827;line-height:1.35;">${escapeHtml(label)}</div>
-    ${code ? `<div style="margin-top:12px;"><span style="display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:2px;color:${escapeHtml(accent)};background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 16px;">${escapeHtml(code)}</span>
-      <span style="font-size:12.5px;color:#6b7280;margin-left:8px;">show this code at the salon</span></div>` : ''}
-    ${expiry ? `<div style="font-size:12.5px;color:#6b7280;margin-top:10px;">Valid through ${escapeHtml(expiry)}</div>` : ''}
+  // The headline is the value itself (5% OFF), because that is the only line a
+  // skimming reader is guaranteed to see.
+  const big = o.kind === 'percent' ? `${Math.max(0, Math.min(90, o.value))}% OFF`
+    : o.kind === 'amount' ? `$${(Math.max(0, o.value) / 100).toFixed(0)} OFF`
+    : 'A GIFT FOR YOU';
+  const sub = o.kind === 'gift' ? label : `on your next visit`;
+  return `<table style="width:100%;border-collapse:collapse;margin:4px 0 20px;"><tr><td style="border:2px dashed ${escapeHtml(accent)};border-radius:14px;padding:20px;background:#fbfbff;text-align:center;">
+    <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:#8b93a7;">Just for you</div>
+    <div style="font-size:34px;font-weight:800;color:${escapeHtml(accent)};line-height:1.15;margin:6px 0 2px;">${escapeHtml(big)}</div>
+    <div style="font-size:15px;color:#374151;line-height:1.5;">${escapeHtml(sub)}</div>
+    ${code ? `<div style="margin-top:14px;"><span style="display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:19px;font-weight:700;letter-spacing:3px;color:#111827;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 20px;">${escapeHtml(code)}</span></div>
+      <div style="font-size:12.5px;color:#6b7280;margin-top:8px;">Book with the button below and it is applied automatically — or show this code at the salon.</div>` : ''}
+    ${expiry ? `<div style="font-size:13px;color:#b45309;font-weight:600;margin-top:12px;">Valid through ${escapeHtml(expiry)}</div>` : ''}
   </td></tr></table>`;
 }
 

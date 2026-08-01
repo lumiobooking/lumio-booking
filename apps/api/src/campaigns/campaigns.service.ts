@@ -20,6 +20,9 @@ import {
   DEFAULT_OFFER,
 } from './campaigns.constants';
 
+/** What a PATCH may carry: every field optional, including inside the offer. */
+type CampaignPatch = Partial<Omit<CampaignMessage, 'offer'>> & { offer?: Partial<CampaignOffer> };
+
 const DAY = 86_400_000;
 const SEND_CAP_PER_RUN = 300; // safety cap so a misconfig can't blast the whole list
 
@@ -120,12 +123,17 @@ export class CampaignsService {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { sendHour?: number; winBack?: Partial<LapsedCampaign>; reactivation?: Partial<LapsedCampaign>; birthday?: Partial<CampaignMessage> },
+    dto: {
+      sendHour?: number;
+      winBack?: CampaignPatch & { daysSince?: number };
+      reactivation?: CampaignPatch & { daysSince?: number };
+      birthday?: CampaignPatch;
+    },
   ): Promise<CampaignSettings> {
     const tenantId = this.tid(user);
     const cur = await this.getForTenant(tenantId);
     const offerOf = (c?: CampaignOffer, p?: Partial<CampaignOffer>) => CampaignsService.sanitizeOffer(c, p);
-    const msg = (c: CampaignMessage, p?: Partial<CampaignMessage>): CampaignMessage => ({
+    const msg = (c: CampaignMessage, p?: CampaignPatch): CampaignMessage => ({
       enabled: typeof p?.enabled === 'boolean' ? p.enabled : c.enabled,
       email: typeof p?.email === 'boolean' ? p.email : c.email,
       sms: typeof p?.sms === 'boolean' ? p.sms : c.sms,

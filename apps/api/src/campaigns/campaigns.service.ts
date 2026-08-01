@@ -15,12 +15,42 @@ import {
   DEFAULT_CAMPAIGN_SETTINGS,
   LapsedCampaign,
   campaignRelatedType,
+  offerLabel,
+  CampaignOffer,
+  DEFAULT_OFFER,
 } from './campaigns.constants';
 
 const DAY = 86_400_000;
 const SEND_CAP_PER_RUN = 300; // safety cap so a misconfig can't blast the whole list
 
 type CustomerRow = { id: string; firstName: string; email: string | null; phone: string | null; smsConsent: boolean };
+
+/**
+ * %offer_block% / %offer_sms% / %offer% / %offer_code% / %offer_expiry%
+ *
+ * The block variants render a ready-made paragraph (or SMS fragment) so a salon
+ * never has to lay the offer out by hand — and they render to NOTHING when the
+ * offer is off, so a message never promises a gift that does not exist.
+ */
+function offerVars(o: CampaignOffer | undefined | null): Record<string, string> {
+  const label = offerLabel(o);
+  if (!o?.enabled || !label) {
+    return { offer: '', offer_code: '', offer_expiry: '', offer_block: '', offer_sms: '' };
+  }
+  const code = (o.code || '').trim().toUpperCase();
+  const expiry = o.expiryDays > 0
+    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+    : '';
+  const codeLine = code ? ` Show the code ${code} at the salon.` : '';
+  const expiryLine = expiry ? ` Valid through ${expiry}.` : '';
+  return {
+    offer: label,
+    offer_code: code,
+    offer_expiry: expiry,
+    offer_block: `Your welcome back gift: ${label}.${codeLine}${expiryLine}\n\n`,
+    offer_sms: `${label}${code ? ` (code ${code})` : ''}${expiry ? `, until ${expiry}` : ''}. `,
+  };
+}
 
 function fillPct(template: string, data: Record<string, string>): string {
   return template.replace(/%(\w+)%/g, (_m, k: string) => (data[k] == null ? '' : String(data[k])));
@@ -69,12 +99,32 @@ export class CampaignsService {
   }
 
   /** Salon Admin updates campaign settings. Validates + clamps, then persists. */
+  /** Sanitise an incoming offer: a bad percent or a stray code must never reach a customer. */
+  private static sanitizeOffer(cur: CampaignOffer | undefined, p?: Partial<CampaignOffer>): CampaignOffer {
+    const base: CampaignOffer = cur ?? { ...DEFAULT_OFFER };
+    const kind = p?.kind === 'percent' || p?.kind === 'amount' || p?.kind === 'gift' ? p.kind : base.kind;
+    const rawValue = typeof p?.value === 'number' ? p.value : base.value;
+    const value = kind === 'percent'
+      ? Math.min(90, Math.max(0, Math.round(rawValue)))
+      : Math.max(0, Math.round(rawValue));
+    return {
+      enabled: typeof p?.enabled === 'boolean' ? p.enabled : base.enabled,
+      kind,
+      value,
+      gift: (typeof p?.gift === 'string' ? p.gift : base.gift).slice(0, 120),
+      // Codes are read aloud at the counter — keep them short, upper case, no spaces.
+      code: (typeof p?.code === 'string' ? p.code : base.code).toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 16),
+      expiryDays: Math.min(365, Math.max(0, Math.round(typeof p?.expiryDays === 'number' ? p.expiryDays : base.expiryDays))),
+    };
+  }
+
   async updateSettings(
     user: AuthenticatedUser,
     dto: { sendHour?: number; winBack?: Partial<LapsedCampaign>; reactivation?: Partial<LapsedCampaign>; birthday?: Partial<CampaignMessage> },
   ): Promise<CampaignSettings> {
     const tenantId = this.tid(user);
     const cur = await this.getForTenant(tenantId);
+    const offerOf = (c?: CampaignOffer, p?: Partial<CampaignOffer>) => CampaignsService.sanitizeOffer(c, p);
     const msg = (c: CampaignMessage, p?: Partial<CampaignMessage>): CampaignMessage => ({
       enabled: typeof p?.enabled === 'boolean' ? p.enabled : c.enabled,
       email: typeof p?.email === 'boolean' ? p.email : c.email,
@@ -82,6 +132,7 @@ export class CampaignsService {
       subject: typeof p?.subject === 'string' ? p.subject : c.subject,
       body: typeof p?.body === 'string' ? p.body : c.body,
       smsBody: typeof p?.smsBody === 'string' ? p.smsBody : c.smsBody,
+      offer: offerOf(c.offer, p?.offer),
     });
     const next: CampaignSettings = {
       sendHour: typeof dto.sendHour === 'number' ? Math.min(23, Math.max(0, Math.round(dto.sendHour))) : cur.sendHour,
@@ -145,6 +196,7 @@ export class CampaignsService {
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
       booking_link: bookingUrl(tenant.slug),
       customer_name: 'Test',
+      ...offerVars(msg.offer),
     };
     const out = { email: 'skipped', sms: 'skipped' };
 
@@ -213,6 +265,7 @@ export class CampaignsService {
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
       booking_link: bookingUrl(tenant.slug),
     };
+    // Offer wording differs per campaign, so it is merged in per send below.
     let used = 0;
 
     // Lapsed-customer campaigns (win-back, reactivation).
@@ -284,6 +337,39 @@ export class CampaignsService {
     return !!n;
   }
 
+  /**
+   * Look up a promo code typed at the till. Codes are shared per campaign, so
+   * this only answers "is this a live offer, and what is it worth" — the till
+   * applies it. Returns null for unknown or disabled codes rather than throwing,
+   * so a typo does not look like a system error to a cashier.
+   */
+  async lookupCode(user: AuthenticatedUser, rawCode: string) {
+    const tenantId = this.tid(user);
+    const code = (rawCode || '').trim().toUpperCase();
+    if (!code) return null;
+    const cs = await this.getForTenant(tenantId);
+    const entries: Array<[CampaignKey, CampaignMessage]> = [
+      ['winBack', cs.winBack],
+      ['reactivation', cs.reactivation],
+      ['birthday', cs.birthday],
+    ];
+    for (const [key, camp] of entries) {
+      const o = camp.offer;
+      if (!o?.enabled || !o.code) continue;
+      if (o.code.toUpperCase() !== code) continue;
+      return {
+        campaign: key,
+        code: o.code.toUpperCase(),
+        kind: o.kind,
+        value: o.value,
+        label: offerLabel(o),
+        // A gift is handed over, not deducted — the till must not discount it.
+        appliesDiscount: o.kind !== 'gift',
+      };
+    }
+    return null;
+  }
+
   /** Send one customer their campaign message. SMS requires explicit consent; email requires an address. Returns true if anything was sent. */
   private async sendToCustomer(
     tenantId: string,
@@ -294,7 +380,7 @@ export class CampaignsService {
     transport: ReturnType<CampaignsService['buildTransport']>,
     n: Awaited<ReturnType<SettingsService['getNotificationSettings']>>,
   ): Promise<boolean> {
-    const pct = { ...basePct, customer_name: c.firstName || 'there' };
+    const pct = { ...basePct, customer_name: c.firstName || 'there', ...offerVars(msg.offer) };
     const related = { relatedType: campaignRelatedType(key), relatedId: c.id };
 
     // These are MARKETING messages (birthday / win-back), sent only to customers

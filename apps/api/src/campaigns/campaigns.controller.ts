@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Param } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
@@ -62,6 +62,12 @@ export class CampaignsController {
   }
 
   /** Send a sample of one campaign to the admin's own email/phone (template + delivery test). */
+  /** Till: what is this promo code worth? Returns null when the code is not live. */
+  @Get('code/:code')
+  lookupCode(@CurrentUser() user: AuthenticatedUser, @Param('code') code: string) {
+    return this.campaigns.lookupCode(user, code);
+  }
+
   @Post('test')
   test(@CurrentUser() user: AuthenticatedUser, @Body() dto: TestSendDto) {
     return this.campaigns.testSend(user, dto);

@@ -6,6 +6,32 @@
 //   %customer_name% %salon_name% %salon_contact% %booking_link%
 export const CAMPAIGN_SETTINGS_KEY = 'campaign_settings';
 
+/**
+ * The incentive attached to a campaign. Without one, a win-back message is just
+ * a reminder — and "enjoy a little something on us" with nothing behind it is
+ * worse than silence, because the customer arrives expecting a gift the front
+ * desk has never heard of. One shared code per campaign: the salon reads it off
+ * the ticket and the till applies it.
+ */
+export interface CampaignOffer {
+  enabled: boolean;
+  kind: 'percent' | 'amount' | 'gift'; // % off · fixed $ off · a free extra
+  value: number; // percent (1–90) or cents (for 'amount'); ignored for 'gift'
+  gift: string; // what the customer gets when kind = 'gift'
+  code: string; // shared code shown in the message and typed at the till
+  expiryDays: number; // how long the message says the offer lasts (0 = no expiry line)
+}
+
+export const DEFAULT_OFFER: CampaignOffer = { enabled: false, kind: 'percent', value: 15, gift: '', code: '', expiryDays: 21 };
+
+/** Human wording for the offer, used for the %offer% placeholder. */
+export function offerLabel(o?: CampaignOffer | null): string {
+  if (!o?.enabled) return '';
+  if (o.kind === 'gift') return (o.gift || '').trim();
+  if (o.kind === 'amount') return `$${(Math.max(0, o.value) / 100).toFixed(2)} off your next visit`;
+  return `${Math.max(0, Math.min(90, o.value))}% off your next visit`;
+}
+
 export interface CampaignMessage {
   enabled: boolean;
   email: boolean;
@@ -13,6 +39,7 @@ export interface CampaignMessage {
   subject: string; // email subject
   body: string; // email body (plain text / light HTML)
   smsBody: string; // SMS text (keep short; STOP wording auto-respected)
+  offer?: CampaignOffer;
 }
 
 export interface LapsedCampaign extends CampaignMessage {
@@ -33,32 +60,35 @@ export const DEFAULT_CAMPAIGN_SETTINGS: CampaignSettings = {
     email: true,
     sms: false,
     daysSince: 45,
-    subject: 'We miss you at %salon_name%!',
+    subject: 'Your nails are due, %customer_name% — %salon_name%',
     body:
-      'Hi %customer_name%,\n\nIt has been a little while since your last visit to %salon_name% — we would love to see you again! Treat yourself to some self-care.\n\nBook anytime: %booking_link%\n\nSee you soon! 💅\n%salon_name% · %salon_contact%',
+      'Hi %customer_name%,\n\nIt has been about six weeks since your last visit to %salon_name%, which is right about when most sets are ready for a refresh.\n\nYour chair is waiting whenever you are — mornings midweek are our quietest if you prefer a calm room.\n\n%offer_block%Book in under a minute: %booking_link%\n\nSee you soon,\n%salon_name% · %salon_contact%',
     smsBody:
-      '%salon_name%: We miss you, %customer_name%! Book your next visit: %booking_link% Reply STOP to opt out.',
+      '%salon_name%: Hi %customer_name%, your set is about due for a refresh. %offer_sms%Book: %booking_link% Reply STOP to opt out.',
+    offer: { enabled: false, kind: 'gift', value: 0, gift: 'a free nail-art accent on us', code: '', expiryDays: 21 },
   },
   reactivation: {
     enabled: false,
     email: true,
     sms: false,
     daysSince: 120,
-    subject: 'A little treat to welcome you back to %salon_name%',
+    subject: '%customer_name%, come back to %salon_name% — this one is on us',
     body:
-      'Hi %customer_name%,\n\nWe have not seen you in a while and we would love to welcome you back to %salon_name%. Come in for your next appointment and enjoy a little something on us.\n\nBook now: %booking_link%\n\nHope to see you soon!\n%salon_name% · %salon_contact%',
+      'Hi %customer_name%,\n\nIt has been a few months since we last looked after you at %salon_name%, and we would love to have you back.\n\n%offer_block%Nothing has changed about the part you liked — same technicians, same care, same clean room. Pick any time that suits you and we will take it from there.\n\nBook now: %booking_link%\n\nWarmly,\n%salon_name% · %salon_contact%',
     smsBody:
-      '%salon_name%: We would love to welcome you back, %customer_name%! Book here: %booking_link% Reply STOP to opt out.',
+      '%salon_name%: %customer_name%, we would love to have you back. %offer_sms%Book: %booking_link% Reply STOP to opt out.',
+    offer: { enabled: false, kind: 'percent', value: 20, gift: '', code: '', expiryDays: 21 },
   },
   birthday: {
     enabled: false,
     email: true,
     sms: false,
-    subject: 'Happy birthday from %salon_name%! 🎉',
+    subject: 'Happy birthday, %customer_name% 🎉',
     body:
-      'Happy birthday, %customer_name%! 🎉\n\nEveryone at %salon_name% wishes you a wonderful day. Come celebrate with a little pampering — book your birthday treat anytime.\n\nBook now: %booking_link%\n\nWith love,\n%salon_name% · %salon_contact%',
+      'Happy birthday, %customer_name%!\n\nEveryone at %salon_name% hopes today is a good one — and that someone else is doing the cooking.\n\n%offer_block%Come in whenever suits you this month and let us spoil you a little.\n\nBook your birthday visit: %booking_link%\n\nWith love,\nThe team at %salon_name% · %salon_contact%',
     smsBody:
-      'Happy birthday from %salon_name%, %customer_name%! 🎉 Treat yourself — book here: %booking_link% Reply STOP to opt out.',
+      'Happy birthday from %salon_name%, %customer_name%! 🎉 %offer_sms%Book: %booking_link% Reply STOP to opt out.',
+    offer: { enabled: false, kind: 'gift', value: 0, gift: 'a free birthday add-on — nail art or a 10-minute hand massage', code: '', expiryDays: 30 },
   },
 };
 

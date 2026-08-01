@@ -88,6 +88,11 @@ function Register() {
   const [heldBills, setHeldBills] = useState<{ id: string; label: string | null; totalCents: number; payload: unknown; createdAt: string }[]>([]);
   const [showHeld, setShowHeld] = useState(false);
   const [orderDiscount, setOrderDiscount] = useState('');
+  // Promo code from a marketing campaign (win-back / reactivation / birthday).
+  const [promoInput, setPromoInput] = useState('');
+  const [promo, setPromo] = useState<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(null);
+  const [promoErr, setPromoErr] = useState<string | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
   const [tendered, setTendered] = useState('');
   // Split payment: one bill settled with several methods (e.g. part cash, part card).
@@ -525,7 +530,13 @@ function Register() {
     // Savings from per-item promo discounts (list price vs net price).
     const itemSavings = cart.reduce((s, l) => s + (l.origUnitPriceCents - l.unitPriceCents) * l.quantity, 0);
     const productBase = cart.filter((l) => l.kind === 'PRODUCT').reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
-    const discount = Math.min(Math.round((parseFloat(orderDiscount) || 0) * 100), subtotal);
+    // A percent/amount promo lands on top of whatever was typed in the discount
+    // box; a gift promo is handed over at the counter and must not deduct money.
+    const typedDiscount = Math.round((parseFloat(orderDiscount) || 0) * 100);
+    const promoCents = promo?.appliesDiscount
+      ? (promo.kind === 'percent' ? Math.round((subtotal * Math.min(90, promo.value)) / 100) : promo.value)
+      : 0;
+    const discount = Math.min(typedDiscount + promoCents, subtotal);
     const tax = Math.round((productBase * taxRate) / 100);
     const tip = cart.reduce((s, l) => s + l.tipCents, 0);
     // Loyalty redemption (only when enabled, a customer is attached, and >= min).
@@ -554,7 +565,7 @@ function Register() {
     const change = split ? Math.max(0, splitCents - due) : (payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0);
     const splitRemaining = due - splitCents; // >0 = still owed, <0 = change
     return { subtotal, itemSavings, discount, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
-  }, [cart, orderDiscount, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
+  }, [cart, orderDiscount, promo, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
 
   // ---- Customer-facing display (2nd monitor). Mirrors the live cart to the
   // /pos-display page via BroadcastChannel — same browser, no server, no internet. ----
@@ -1259,6 +1270,43 @@ function Register() {
           {/* Totals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, marginBottom: 12 }}>
             <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ color: '#94a3b8' }}>{t('po.promoCode')}</span>
+              {promo ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: '#22c55e', fontSize: 12.5, fontWeight: 600 }}>{promo.code} · {promo.label}</span>
+                  <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>✕</button>
+                </span>
+              ) : (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    value={promoInput}
+                    onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }}
+                    placeholder={t('po.promoPh')}
+                    style={{ ...ui.input, width: 130, padding: '5px 8px', fontSize: 13, textTransform: 'uppercase' }}
+                  />
+                  <button
+                    disabled={!promoInput.trim() || promoBusy}
+                    onClick={async () => {
+                      if (!token) return;
+                      setPromoBusy(true); setPromoErr(null);
+                      try {
+                        const r = await apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(promoInput.trim())}`, { token });
+                        if (r) setPromo(r); else setPromoErr(t('po.promoBad'));
+                      } catch { setPromoErr(t('po.promoBad')); }
+                      finally { setPromoBusy(false); }
+                    }}
+                    style={{ ...ui.primaryBtn, padding: '5px 12px', fontSize: 12 }}
+                  >
+                    {promoBusy ? '…' : t('po.promoApply')}
+                  </button>
+                </span>
+              )}
+            </div>
+            {promoErr && <div style={{ color: '#f87171', fontSize: 12, textAlign: 'right' }}>{promoErr}</div>}
+            {promo && !promo.appliesDiscount && (
+              <div style={{ color: '#fbbf24', fontSize: 12, textAlign: 'right' }}>{t('po.promoGift')}</div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ color: '#94a3b8' }}>{t('po.discountD')}</span>
               <input type="number" min={0} step="0.01" value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} style={{ ...ui.input, width: 100, padding: '5px 8px', textAlign: 'right' }} />

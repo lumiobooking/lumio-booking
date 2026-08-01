@@ -7,7 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 
-interface Msg { enabled: boolean; email: boolean; sms: boolean; subject: string; body: string; smsBody: string }
+interface Offer { enabled: boolean; kind: 'percent' | 'amount' | 'gift'; value: number; gift: string; code: string; expiryDays: number }
+interface Msg { enabled: boolean; email: boolean; sms: boolean; subject: string; body: string; smsBody: string; offer?: Offer }
 interface Lapsed extends Msg { daysSince: number }
 interface CampaignSettings { sendHour: number; winBack: Lapsed; reactivation: Lapsed; birthday: Msg }
 type Stats = { winBack: number; reactivation: number; birthday: number };
@@ -152,6 +153,12 @@ function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, 
         )}
       </div>
 
+      <OfferEditor
+        offer={camp.offer}
+        t={t}
+        onChange={(patch) => onChange({ offer: { ...(camp.offer ?? { enabled: false, kind: 'percent', value: 15, gift: '', code: '', expiryDays: 21 }), ...patch } })}
+      />
+
       {camp.email && (
         <>
           <label style={{ display: 'block', marginBottom: 10 }}>
@@ -171,6 +178,7 @@ function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, 
         </label>
       )}
       <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.placeholders')}</p>
+      <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.offerVars')}</p>
       {camp.email && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e293b' }}>
           <button type="button" onClick={sendTest} disabled={testing} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>
@@ -266,5 +274,67 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
       <span style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${checked ? '#a5b4fc' : '#64748b'}`, background: checked ? '#6366f1' : 'transparent', display: 'grid', placeItems: 'center', fontSize: 11, color: '#fff' }}>{checked ? '✓' : ''}</span>
       {label}
     </button>
+  );
+}
+
+/**
+ * The incentive attached to one campaign. A campaign with no offer is only a
+ * reminder; an offer promised in the copy with nothing configured here is worse
+ * — the customer arrives asking for a gift the front desk knows nothing about.
+ */
+function OfferEditor({ offer, t, onChange }: { offer?: Offer; t: (k: string) => string; onChange: (p: Partial<Offer>) => void }) {
+  const o: Offer = offer ?? { enabled: false, kind: 'percent', value: 15, gift: '', code: '', expiryDays: 21 };
+  const kinds: { k: Offer['kind']; label: string }[] = [
+    { k: 'percent', label: t('mk.offPercent') },
+    { k: 'amount', label: t('mk.offAmount') },
+    { k: 'gift', label: t('mk.offGift') },
+  ];
+  return (
+    <div style={{ border: '1px solid #1e293b', borderRadius: 10, padding: '12px 14px', margin: '0 0 14px', background: '#0b1220' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>🎁 {t('mk.offerTitle')}</span>
+        <Toggle on={o.enabled} onChange={(v) => onChange({ enabled: v })} label={t('mk.enable')} />
+      </div>
+      <p style={{ color: '#64748b', fontSize: 11.5, margin: '4px 0 0', lineHeight: 1.5 }}>{t('mk.offerHelp')}</p>
+
+      {o.enabled && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
+          <label>
+            <span style={ui.label}>{t('mk.offerKind')}</span>
+            <select style={{ ...ui.input, width: 170 }} value={o.kind} onChange={(e) => onChange({ kind: e.target.value as Offer['kind'] })}>
+              {kinds.map((k) => <option key={k.k} value={k.k}>{k.label}</option>)}
+            </select>
+          </label>
+
+          {o.kind === 'percent' && (
+            <label>
+              <span style={ui.label}>{t('mk.offerPercent')}</span>
+              <input style={{ ...ui.input, width: 90 }} type="number" min={1} max={90} value={o.value} onChange={(e) => onChange({ value: Math.max(0, Math.min(90, Number(e.target.value))) })} />
+            </label>
+          )}
+          {o.kind === 'amount' && (
+            <label>
+              <span style={ui.label}>{t('mk.offerAmount')}</span>
+              <input style={{ ...ui.input, width: 110 }} type="number" min={0} step="0.01" value={(o.value / 100).toString()} onChange={(e) => onChange({ value: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100)) })} />
+            </label>
+          )}
+          {o.kind === 'gift' && (
+            <label style={{ flex: '1 1 260px' }}>
+              <span style={ui.label}>{t('mk.offerGift')}</span>
+              <input style={ui.input} value={o.gift} placeholder={t('mk.offerGiftPh')} onChange={(e) => onChange({ gift: e.target.value })} />
+            </label>
+          )}
+
+          <label>
+            <span style={ui.label}>{t('mk.offerCode')}</span>
+            <input style={{ ...ui.input, width: 150, textTransform: 'uppercase' }} value={o.code} placeholder="WELCOME20" onChange={(e) => onChange({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 16) })} />
+          </label>
+          <label>
+            <span style={ui.label}>{t('mk.offerExpiry')}</span>
+            <input style={{ ...ui.input, width: 110 }} type="number" min={0} max={365} value={o.expiryDays} onChange={(e) => onChange({ expiryDays: Math.max(0, Math.min(365, Number(e.target.value))) })} />
+          </label>
+        </div>
+      )}
+    </div>
   );
 }

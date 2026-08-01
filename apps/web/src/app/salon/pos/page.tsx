@@ -92,6 +92,9 @@ function Register() {
   const [promoInput, setPromoInput] = useState('');
   const [promo, setPromo] = useState<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(null);
   const [promoErr, setPromoErr] = useState<string | null>(null);
+  // Code the booking arrived with. Kept in its own state so the lookup below is
+  // not cancelled when the prefill effect re-runs.
+  const [bookedOffer, setBookedOffer] = useState<string | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
   const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
   const [tendered, setTendered] = useState('');
@@ -354,18 +357,7 @@ function Register() {
           if (alive && appt) {
             // The customer booked from a campaign link: the code rode along on
             // the booking, so the till applies it without anyone typing it.
-            if (appt.offerCode) {
-              const booked = appt.offerCode;
-              apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(booked)}`, { token })
-                .then((r) => {
-                  if (!alive) return;
-                  if (r) { setPromo(r); setPromoInput(r.code); }
-                  // The booking carried a code the campaign no longer offers.
-                  // Say so instead of leaving an empty box the cashier cannot explain.
-                  else { setPromoInput(booked); setPromoErr(t('po.promoStale').replace('{code}', booked)); }
-                })
-                .catch(() => { if (alive) { setPromoInput(booked); setPromoErr(t('po.promoStale').replace('{code}', booked)); } });
-            }
+            if (appt.offerCode) setBookedOffer(appt.offerCode);
             const lines: Line[] = [];
             if (appt.service) {
               const s = services.find((x) => x.id === appt.service!.id);
@@ -436,6 +428,23 @@ function Register() {
       return [...c, { uid: `u${uidSeq++}`, kind: 'PRODUCT', refId: p.id, name: p.name, origUnitPriceCents: p.priceCents, unitPriceCents: net(p.priceCents, d), discountPercent: d, quantity: 1, tipCents: 0, staffMemberId: '' }];
     });
   }
+  // Apply the booking's campaign code once, on its own timeline.
+  useEffect(() => {
+    if (!token || !bookedOffer) return;
+    let alive = true;
+    apiFetch<{ code: string; label: string; kind: string; value: number; appliesDiscount: boolean } | null>(`/campaigns/code/${encodeURIComponent(bookedOffer)}`, { token })
+      .then((r) => {
+        if (!alive) return;
+        if (r) { setPromo(r); setPromoInput(r.code); setPromoErr(null); }
+        // The booking carried a code the campaign no longer offers — say so
+        // instead of leaving an empty box the cashier cannot explain.
+        else { setPromoInput(bookedOffer); setPromoErr(t('po.promoStale').replace('{code}', bookedOffer)); }
+      })
+      .catch(() => { if (alive) { setPromoInput(bookedOffer); setPromoErr(t('po.promoStale').replace('{code}', bookedOffer)); } });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, bookedOffer]);
+
   function updateLine(uid: string, patch: Partial<Line>) {
     setCart((c) => c.map((l) => (l.uid === uid ? { ...l, ...patch } : l)));
   }

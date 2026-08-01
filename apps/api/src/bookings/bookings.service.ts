@@ -1342,8 +1342,12 @@ export class BookingsService {
   }
 
   async getById(user: AuthenticatedUser, id: string) {
+    // A platform admin has no tenantId of their own; scoping by one would throw
+    // "No tenant context" and the caller would see a 404 for a booking that
+    // exists. Salon users stay pinned to their own tenant, as always.
+    const scope = resolveTenantScope(user);
     const appointment = await this.prisma.appointment.findFirst({
-      where: { id, tenantId: this.tenantId(user) },
+      where: scope ? { id, tenantId: scope } : { id },
       include: BOOKING_INCLUDE,
     });
     if (!appointment) {

@@ -94,7 +94,7 @@ export class CampaignsController {
    * lookup 403s and the promo box silently stays empty, which looks exactly
    * like "the feature does not work".
    */
-  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF, UserRole.SUPER_ADMIN)
   @Get('code/:code')
   lookupCode(@CurrentUser() user: AuthenticatedUser, @Param('code') code: string) {
     return this.campaigns.lookupCode(user, code);

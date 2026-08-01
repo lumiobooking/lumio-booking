@@ -66,7 +66,10 @@ export class BookingsController {
     return this.bookings.list(user, filters);
   }
 
-  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  // SUPER_ADMIN reads too: the agency runs the salons it hosts, and support work
+  // (and the POS checkout screen) dies with a silent 403 without it. Read-only —
+  // every write below stays salon-scoped.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF, UserRole.SUPER_ADMIN)
   @Caps('bookings')
   @Get(':id')
   getOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

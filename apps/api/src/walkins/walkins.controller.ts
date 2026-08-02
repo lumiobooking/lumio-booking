@@ -38,6 +38,13 @@ class AddServiceDto {
   @IsOptional() @IsInt() @Min(0) @Max(600) extraMinutes?: number;
 }
 
+class UpdateLineDto {
+  @IsOptional() @IsString() serviceId?: string;
+  @IsOptional() @IsInt() @Min(0) priceCents?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(600) durationMinutes?: number;
+  @IsOptional() @IsString() staffId?: string;
+}
+
 class StationDto {
   @IsOptional() @IsString() @MaxLength(24) station?: string;
 }
@@ -106,6 +113,17 @@ export class WalkinsController {
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
     return this.walkins.addService(user, id, dto.serviceId, dto.staffId, dto.serviceIds, dto.extraMinutes);
+  }
+
+  // Edit one line in place: service, price, minutes or tech.
+  @Patch(':id/services/:lineId')
+  updateService(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('lineId') lineId: string,
+    @Body() dto: UpdateLineDto,
+  ) {
+    return this.walkins.updateService(user, id, lineId, dto);
   }
 
   @Delete(':id/services/:lineId')

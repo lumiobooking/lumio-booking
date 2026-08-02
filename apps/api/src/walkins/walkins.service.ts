@@ -32,7 +32,15 @@ const INCLUDE = {
   stationRef: { select: { id: true, name: true, kind: true } },
 };
 
-export interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
+export interface WalkInItem {
+  lineId: string;
+  serviceId: string;
+  name: string;
+  priceCents: number;
+  /** Minutes for this line. Seeded from the catalogue, editable per ticket. */
+  durationMinutes?: number;
+  staffId: string | null;
+}
 
 /**
  * Walk-in queue + fair turn rotation ("lượt"). The front desk adds walk-in
@@ -56,11 +64,11 @@ export class WalkinsService {
 
   /** Snapshot a service into a ticket line (net price after its own discount). */
   private async buildItem(tenantId: string, serviceId: string, staffId: string | null): Promise<WalkInItem> {
-    const svc = await this.prisma.service.findFirst({ where: { id: serviceId, tenantId }, select: { id: true, name: true, priceCents: true, discountPercent: true } });
+    const svc = await this.prisma.service.findFirst({ where: { id: serviceId, tenantId }, select: { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true } });
     if (!svc) throw new BadRequestException('Service not found');
     const d = Math.min(90, Math.max(0, svc.discountPercent ?? 0));
     const net = d > 0 ? Math.round((svc.priceCents * (100 - d)) / 100) : svc.priceCents;
-    return { lineId: randomUUID(), serviceId: svc.id, name: svc.name, priceCents: net, staffId };
+    return { lineId: randomUUID(), serviceId: svc.id, name: svc.name, priceCents: net, durationMinutes: svc.durationMinutes, staffId };
   }
 
   private startOfToday(): Date {
@@ -200,7 +208,7 @@ export class WalkinsService {
       // DONE walk-ins today WITH their ticket, so a turn credits EVERY tech who did a
       // service on the visit (a customer who moved to a 2nd tech gives both a turn) —
       // not only the tech the walk-in was first assigned to.
-      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today } }, select: { assignedStaffId: true, items: true } }),
+      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today } }, include: INCLUDE, orderBy: { doneAt: 'desc' } }),
       this.prisma.appointment.groupBy({ by: ['assignedStaffId'], where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: today }, assignedStaffId: { not: null } }, _count: { _all: true } }),
     ]);
 
@@ -259,7 +267,10 @@ export class WalkinsService {
       ? available.reduce((a, b) => (b.turns < a.turns ? b : a)).id
       : null;
 
-    return { waiting, serving, booked, staff: board.map((s) => ({ ...s, nextUp: s.id === nextUpStaffId })), nextUpStaffId };
+    // Finished today, most recent first: a ticket marked Done by mistake (or done
+    // before the customer paid) has to be reachable again for checkout.
+    const done = doneWalkIns.slice(0, 20);
+    return { waiting, serving, booked, done, staff: board.map((s) => ({ ...s, nextUp: s.id === nextUpStaffId })), nextUpStaffId };
   }
 
   /** Check in an online booking: place the customer on a chair as a floor ticket
@@ -381,6 +392,40 @@ export class WalkinsService {
     if (extraMinutes !== undefined) data.extraMinutes = Math.max(0, Math.min(600, Math.round(extraMinutes)));
     if (Object.keys(data).length === 0) return this.prisma.walkIn.findFirst({ where: { id: w.id }, include: INCLUDE });
     return this.prisma.walkIn.update({ where: { id: w.id }, data, include: INCLUDE });
+  }
+
+  /**
+   * Edit one line of a running ticket. Any subset: swap the service, correct the
+   * price the customer was quoted, change how long it takes, or hand that line
+   * to another tech. Swapping the service re-seeds name/price/minutes from the
+   * catalogue unless the caller sends its own values.
+   */
+  async updateService(
+    user: AuthenticatedUser,
+    id: string,
+    lineId: string,
+    dto: { serviceId?: string; priceCents?: number; durationMinutes?: number; staffId?: string | null },
+  ) {
+    const w = await this.mine(user, id);
+    const items = this.itemsOf(w);
+    const idx = items.findIndex((x) => x.lineId === lineId);
+    if (idx < 0) throw new NotFoundException('Line not found');
+    let line = { ...items[idx] };
+
+    if (dto.serviceId && dto.serviceId !== line.serviceId) {
+      const fresh = await this.buildItem(w.tenantId, dto.serviceId, line.staffId);
+      line = { ...fresh, lineId: line.lineId }; // keep the line's identity
+    }
+    if (dto.priceCents !== undefined) line.priceCents = Math.max(0, Math.round(dto.priceCents));
+    if (dto.durationMinutes !== undefined) line.durationMinutes = Math.max(0, Math.min(600, Math.round(dto.durationMinutes)));
+    if (dto.staffId !== undefined) line.staffId = dto.staffId || null;
+
+    items[idx] = line;
+    return this.prisma.walkIn.update({
+      where: { id: w.id },
+      data: { items: items as unknown as Prisma.InputJsonValue },
+      include: INCLUDE,
+    });
   }
 
   /** Remove one service line from a walk-in's ticket. */

@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { displayBaseUrl, displayPairUrl } from '../common/public-url.util';
+import { CustomersService } from '../customers/customers.service';
 
 // Server-only split used to attribute the after-payment QR tip across the ticket's
 // technician(s). Never exposed to the paired device.
@@ -18,7 +19,99 @@ interface PayTicket {
 export class DisplayService {
   private readonly logger = new Logger('Display');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly customers: CustomersService,
+  ) {}
+
+  /** Resolve a paired device's token to its tenant, or 404. */
+  private async tenantOfToken(token: string): Promise<string> {
+    const s = await this.prisma.displaySession.findUnique({ where: { token }, select: { tenantId: true } });
+    if (!s) throw new NotFoundException('This device is no longer paired.');
+    return s.tenantId;
+  }
+
+  /**
+   * Kiosk: the salon's own name/branding + the menu the customer can pick from.
+   * Public by design — the token is the credential and it only ever exposes what
+   * a customer standing in the shop can already see on the wall.
+   */
+  async checkInMenu(token: string) {
+    const tenantId = await this.tenantOfToken(token);
+    const [tenant, services] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true } }),
+      this.prisma.service.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true, priceCents: true, durationMinutes: true, category: { select: { id: true, name: true } } },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+    ]);
+    const b = (tenant?.branding ?? {}) as { logoUrl?: string; accentColor?: string };
+    return {
+      salonName: tenant?.name ?? '',
+      logoUrl: b.logoUrl ?? null,
+      accentColor: b.accentColor ?? '#6366f1',
+      services,
+    };
+  }
+
+  /**
+   * Kiosk: the customer checks themselves in. The ticket lands in the WAITING
+   * queue — never auto-assigned to a tech, because the front desk decides who
+   * takes it. Staff can add or fix anything afterwards on the walk-in board.
+   */
+  async selfCheckIn(
+    token: string,
+    dto: { firstName?: string; lastName?: string; phone?: string; email?: string; birthDate?: string; serviceIds?: string[]; partySize?: number; note?: string },
+  ) {
+    const tenantId = await this.tenantOfToken(token);
+    const name = (dto.firstName ?? '').trim().slice(0, 80);
+    if (!name) throw new BadRequestException('Please enter your name.');
+
+    // Only services that really belong to this salon and are on the menu.
+    const ids = [...new Set(dto.serviceIds ?? [])].filter(Boolean).slice(0, 12);
+    const svcs = ids.length
+      ? await this.prisma.service.findMany({
+          where: { id: { in: ids }, tenantId, isActive: true },
+          select: { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true },
+        })
+      : [];
+    const items = svcs.map((sv) => {
+      const d = Math.min(90, Math.max(0, sv.discountPercent ?? 0));
+      return {
+        lineId: randomBytes(12).toString('base64url'),
+        serviceId: sv.id,
+        name: sv.name,
+        priceCents: d > 0 ? Math.round((sv.priceCents * (100 - d)) / 100) : sv.priceCents,
+        durationMinutes: sv.durationMinutes,
+        staffId: null as string | null,
+      };
+    });
+
+    // Build the CRM record so a self-served walk-in is remarketable like any other.
+    const linked = (dto.phone?.trim() || dto.email?.trim())
+      ? await this.customers.findOrCreateByContact(tenantId, {
+          firstName: name, lastName: dto.lastName, phone: dto.phone, email: dto.email, birthDate: dto.birthDate,
+        })
+      : null;
+
+    const walkIn = await this.prisma.walkIn.create({
+      data: {
+        tenantId,
+        serviceId: svcs[0]?.id ?? null,
+        customerId: linked?.id ?? null,
+        customerName: `${name}${dto.lastName?.trim() ? ' ' + dto.lastName.trim() : ''}`.slice(0, 80),
+        phone: dto.phone?.trim().slice(0, 40) || null,
+        note: dto.note?.trim().slice(0, 300) || null,
+        partySize: Math.max(1, Math.min(20, Math.round(dto.partySize ?? 1))),
+        items: items as unknown as Prisma.InputJsonValue,
+        source: 'walkin',
+        status: WalkInStatus.WAITING,
+      },
+      select: { id: true },
+    });
+    return { ok: true, id: walkIn.id, queued: true };
+  }
 
   private tid(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);

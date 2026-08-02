@@ -9,7 +9,7 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 
-interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
+interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null }
 interface WalkIn {
   id: string; customerId: string | null; customerName: string | null; phone: string | null; note: string | null;
   partySize: number; status: string; createdAt: string; assignedAt: string | null;
@@ -21,7 +21,7 @@ interface WalkIn {
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
 }
 interface StaffTurn { id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean }
-interface Board { waiting: WalkIn[]; serving: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null }
+interface Board { waiting: WalkIn[]; serving: WalkIn[]; done?: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null }
 interface Service { id: string; name: string }
 
 export default function WalkinsPage() {
@@ -109,6 +109,11 @@ function Inner() {
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
+  async function updateServiceLine(id: string, lineId: string, patch: Record<string, unknown>) {
+    setError(null);
+    try { await apiFetch(`/walkins/${id}/services/${lineId}`, { method: 'PATCH', token, body: patch }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+  }
   async function removeServiceLine(id: string, lineId: string) {
     setError(null);
     try { await apiFetch(`/walkins/${id}/services/${lineId}`, { method: 'DELETE', token }); await load(); }
@@ -131,6 +136,8 @@ function Inner() {
       <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
+
+      <KioskPanel t={t} />
 
       {/* Three labelled blocks instead of one long strip of inputs: who the
           customer is (kept for marketing), what they want (several services at
@@ -200,6 +207,30 @@ function Inner() {
           <button type="submit" style={{ ...ui.primaryBtn, padding: '10px 20px', fontSize: 14 }}>{t('wi.addQueue')}</button>
         </div>
       </form>
+
+      {(board?.done ?? []).length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {/* Marked Done too early, or done before the customer paid — the ticket
+              has to stay reachable, not vanish off the board. */}
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '4px 0 8px' }}>{t('wi.doneToday')}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {(board?.done ?? []).map((d) => {
+              const total = (d.items ?? []).reduce((sum, it) => sum + (it.priceCents || 0), 0);
+              const href = `/salon/pos?walkInId=${d.id}&serviceId=${d.service?.id ?? ''}&staffId=${d.assignedStaff?.id ?? ''}&customerId=${d.customerId ?? ''}&customer=${encodeURIComponent(d.customerName || '')}`;
+              return (
+                <div key={d.id} style={{ ...ui.card, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 10, opacity: 0.9 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>{d.customerName || 'Walk-in'}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{fullName(d.assignedStaff) || '—'} · {formatPrice(total, currency)}</div>
+                  </div>
+                  <button onClick={() => act(`${d.id}/reactivate`)} style={{ border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{t('wi.reopen')}</button>
+                  <a href={href} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, textDecoration: 'none', whiteSpace: 'nowrap' }}>{t('wi.checkout')}</a>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '4px 0 8px' }}>{t('wi.turnsToday')}</div>
       {staff.length === 0 ? (
@@ -274,7 +305,7 @@ function Inner() {
         return (
           <WalkInTicketSheet
             w={w} staff={staff} services={services} t={t} currency={currency}
-            onAdd={addServiceLine} onRemove={removeServiceLine} onStation={setStationFor}
+            onAdd={addServiceLine} onUpdateLine={updateServiceLine} onRemove={removeServiceLine} onStation={setStationFor}
             onDone={async () => { await act(`${w.id}/done`); setOpenId(null); }}
             onClose={() => setOpenId(null)}
           />
@@ -371,9 +402,10 @@ const stationChip: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#c7d
 /** Full ticket editor for one in-service walk-in, in a focused overlay: service
  *  lines (each with its tech), add a service, edit station, checkout, done. Opened
  *  from a compact card so the board itself stays a clean overview. Portaled to body. */
-function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, onStation, onDone, onClose }: {
+function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLine, onRemove, onStation, onDone, onClose }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
   onAdd: (id: string, serviceId: string, staffId: string, extraMinutes?: number) => Promise<void> | void;
+  onUpdateLine: (id: string, lineId: string, patch: Record<string, unknown>) => Promise<void> | void;
   onRemove: (id: string, lineId: string) => Promise<void> | void;
   onStation: (id: string, station: string) => void;
   onDone: () => void;
@@ -429,15 +461,10 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, o
             {items.length === 0 ? (
               <div style={{ padding: '12px', color: '#64748b', fontSize: 13 }}>{t('wi.noLines')}</div>
             ) : items.map((it) => (
-              <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #1e293b' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-                  <div style={{ color: '#94a3b8', fontSize: 11 }}>{techLabel(it.staffId)}</div>
-                </div>
-                <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
-                <button onClick={() => onRemove(w.id, it.lineId)} title={t('wi.removeLine')} aria-label={t('wi.removeLine')}
-                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
-              </div>
+              <LineRow
+                key={it.lineId} it={it} w={w} staff={staff} services={services} t={t} currency={currency}
+                techLabel={techLabel} onUpdateLine={onUpdateLine} onRemove={onRemove}
+              />
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: '#0f172a' }}>
               <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
@@ -490,10 +517,145 @@ function SecHead({ label, extra }: { label: string; extra?: string }) {
 }
 
 function WiLabel({ text, opt, hint }: { text: string; opt?: string; hint?: string }) {
+  // Some i18n strings already carry "(optional)"; strip it so the tag isn't said twice.
+  const clean = text.replace(/\s*\((tuỳ chọn|tùy chọn|optional)\)\s*/i, '').trim();
   return (
     <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }} title={hint}>
-      {text}
+      {clean}
       {opt && <span style={{ fontSize: 10.5, color: '#64748b', border: '1px solid #334155', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{opt}</span>}
     </span>
+  );
+}
+
+/**
+ * One ticket line. Read-only by default; the pencil turns it into four small
+ * fields — service, tech, price, minutes — because a nail ticket is negotiated
+ * at the chair, not fixed by the menu.
+ */
+function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine, onRemove }: {
+  it: WalkInItem; w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
+  techLabel: (id: string | null) => string;
+  onUpdateLine: (id: string, lineId: string, patch: Record<string, unknown>) => Promise<void> | void;
+  onRemove: (id: string, lineId: string) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [svc, setSvc] = useState(it.serviceId);
+  const [tech, setTech] = useState(it.staffId ?? '');
+  const [price, setPrice] = useState((it.priceCents / 100).toFixed(2));
+  const [mins, setMins] = useState(String(it.durationMinutes ?? ''));
+  const [busy, setBusy] = useState(false);
+
+  function reset() {
+    setSvc(it.serviceId); setTech(it.staffId ?? '');
+    setPrice((it.priceCents / 100).toFixed(2)); setMins(String(it.durationMinutes ?? ''));
+    setEditing(false);
+  }
+  async function save() {
+    setBusy(true);
+    try {
+      const patch: Record<string, unknown> = {};
+      if (svc && svc !== it.serviceId) patch.serviceId = svc;
+      const cents = Math.max(0, Math.round((parseFloat(price) || 0) * 100));
+      if (cents !== it.priceCents) patch.priceCents = cents;
+      const m = mins.trim() === '' ? undefined : Math.max(0, parseInt(mins, 10) || 0);
+      if (m !== undefined && m !== (it.durationMinutes ?? undefined)) patch.durationMinutes = m;
+      if ((tech || null) !== (it.staffId ?? null)) patch.staffId = tech;
+      if (Object.keys(patch).length) await onUpdateLine(w.id, it.lineId, patch);
+      setEditing(false);
+    } finally { setBusy(false); }
+  }
+
+  if (!editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #1e293b' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+          <div style={{ color: '#94a3b8', fontSize: 11 }}>
+            {techLabel(it.staffId)}
+            {it.durationMinutes ? <span style={{ color: '#64748b' }}> · {it.durationMinutes} {t('wi.mins')}</span> : null}
+          </div>
+        </div>
+        <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
+        <button onClick={() => setEditing(true)} title={t('wi.editLine')} aria-label={t('wi.editLine')}
+          style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>✎</button>
+        <button onClick={() => onRemove(w.id, it.lineId)} title={t('wi.removeLine')} aria-label={t('wi.removeLine')}
+          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding: '10px 12px', borderBottom: '1px solid #1e293b', background: '#0f172a', display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <select value={svc} onChange={(e) => setSvc(e.target.value)} style={{ ...ui.input, padding: '7px 8px', fontSize: 13 }}>
+        {services.every((x) => x.id !== svc) && <option value={svc}>{it.name}</option>}
+        {services.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <select value={tech} onChange={(e) => setTech(e.target.value)} style={{ ...ui.input, padding: '7px 8px', fontSize: 12.5, flex: 1, minWidth: 110 }}>
+          <option value="">{t('wi.unassignedTech')}</option>
+          {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 11.5, color: '#94a3b8' }}>$</span>
+          <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)}
+            style={{ ...ui.input, width: 78, padding: '7px 8px', fontSize: 12.5, textAlign: 'right' }} />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="number" min={0} max={600} step={5} value={mins} placeholder="0" onChange={(e) => setMins(e.target.value)}
+            style={{ ...ui.input, width: 64, padding: '7px 8px', fontSize: 12.5, textAlign: 'right' }} />
+          <span style={{ fontSize: 11.5, color: '#64748b' }}>{t('wi.mins')}</span>
+        </label>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={save} disabled={busy} style={{ ...ui.primaryBtn, padding: '7px 14px', fontSize: 12.5, opacity: busy ? 0.5 : 1 }}>{busy ? '…' : t('wi.lineSave')}</button>
+        <button onClick={reset} style={{ border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, cursor: 'pointer' }}>{t('wi.lineCancel')}</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Pair the customer-facing iPad. Deliberately quiet — it is a one-time setup,
+ * not something the front desk touches every day — but always reachable,
+ * because a rotated code makes the kiosk stop working until it is re-entered.
+ */
+function KioskPanel({ t }: { t: (k: string) => string }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [s, setS] = useState<{ pairCode: string; displayUrl: string } | null>(null);
+  const load = useCallback(async () => {
+    if (!token) return;
+    try { setS(await apiFetch<{ pairCode: string; displayUrl: string }>('/display/session', { token })); }
+    catch { /* not fatal — the desk still works without a kiosk */ }
+  }, [token]);
+  useEffect(() => { if (open && !s) load(); }, [open, s, load]);
+  const url = s ? s.displayUrl.replace(/\/display\/?$/, '/checkin') : '';
+
+  return (
+    <div style={{ ...ui.card, padding: open ? 14 : '10px 14px', marginBottom: 16 }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}
+      >
+        📱 {t('wi.kiosk')}<span style={{ marginLeft: 'auto', color: '#64748b' }}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 12, padding: '12px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 10.5, color: '#94a3b8', letterSpacing: '0.1em', fontWeight: 700 }}>CODE</div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 4, color: '#c7d2fe' }}>{s?.pairCode ?? '······'}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>
+              {t('wi.kioskHow').replace('%url%', '')}
+            </div>
+            {url && <div style={{ fontSize: 13, color: '#818cf8', wordBreak: 'break-all', fontWeight: 600 }}>{url}</div>}
+          </div>
+          <button
+            onClick={async () => { if (!token) return; try { setS(await apiFetch('/display/rotate', { method: 'POST', token })); } catch { /* ignore */ } }}
+            style={{ border: '1px solid #334155', background: 'transparent', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}
+          >{t('wi.kioskNew')}</button>
+        </div>
+      )}
+    </div>
   );
 }

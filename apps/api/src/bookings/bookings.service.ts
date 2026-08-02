@@ -1655,21 +1655,16 @@ export class BookingsService {
       await this.payments.unsettleOnUncomplete(tenantId, id, user.userId);
     }
 
-    const stamp: Partial<Record<AppointmentStatus, 'arrivedAt' | 'completedAt' | 'cancelledAt'>> = {
-      [AppointmentStatus.ARRIVED]: 'arrivedAt',
-      [AppointmentStatus.COMPLETED]: 'completedAt',
-      [AppointmentStatus.CANCELLED]: 'cancelledAt',
-    };
-    const field = stamp[status];
-    await this.prisma.appointment.updateMany({
-      where: { id, tenantId },
-      data: {
-        status,
-        ...(field ? { [field]: new Date() } : {}),
-        // Reopening clears the finished stamp so reports stop counting it.
-        ...(wasCompleted && !willComplete ? { completedAt: null } : {}),
-      },
-    });
+    // Written out field by field on purpose: a computed key would type as a
+    // string index signature and slip past Prisma's input checking.
+    const now = new Date();
+    const data: Prisma.AppointmentUpdateManyMutationInput = { status };
+    if (status === AppointmentStatus.ARRIVED) data.arrivedAt = now;
+    if (status === AppointmentStatus.COMPLETED) data.completedAt = now;
+    if (status === AppointmentStatus.CANCELLED) data.cancelledAt = now;
+    // Reopening clears the finished stamp so reports stop counting it.
+    if (wasCompleted && !willComplete) data.completedAt = null;
+    await this.prisma.appointment.updateMany({ where: { id, tenantId }, data });
     await this.audit.log({
       tenantId, userId: user.userId, action: 'booking.status_set',
       resourceType: 'appointment', resourceId: id, metadata: { from: a.status, to: status },
@@ -1752,7 +1747,14 @@ export class BookingsService {
     await this.audit.log({
       tenantId, userId: user.userId, action: 'booking.lines_edited',
       resourceType: 'appointment', resourceId: id,
-      metadata: { added: added.map((x) => x.name), removed: removed.map((x) => x.name), extraMinutes: extra, priceCents: newPrice },
+      // Names are optional on a stored line, and `undefined` is not valid JSON —
+      // Prisma.InputJsonValue rejects it, so drop the blanks before logging.
+      metadata: {
+        added: added.map((x) => x.name ?? '').filter(Boolean),
+        removed: removed.map((x) => x.name ?? '').filter(Boolean),
+        extraMinutes: extra,
+        priceCents: newPrice,
+      },
     });
     return updated;
   }

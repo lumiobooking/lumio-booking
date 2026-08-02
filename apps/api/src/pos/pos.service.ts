@@ -314,7 +314,10 @@ export class PosService {
             where: { id: dto.appointmentId, tenantId },
             select: { serviceId: true, startTime: true, endTime: true },
           });
-          let sync: { priceCents: number; addons: Prisma.InputJsonValue; endTime: Date } | null = null;
+          const apptData: Prisma.AppointmentUpdateManyMutationInput = {
+            status: AppointmentStatus.COMPLETED,
+            completedAt: new Date(),
+          };
           if (appt) {
             const svcLines = lines.filter((l) => l.kind === OrderItemKind.SERVICE);
             if (svcLines.length > 0) {
@@ -340,17 +343,12 @@ export class PosService {
               // Never shrink a visit that already ran long; only extend it.
               const currentMinutes = Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60000);
               const minutes = Math.max(5, Math.max(currentMinutes, totalMinutes));
-              sync = {
-                priceCents: svcLines.reduce((sum, l) => sum + l.lineTotalCents, 0),
-                addons: extraLines as unknown as Prisma.InputJsonValue,
-                endTime: new Date(appt.startTime.getTime() + minutes * 60000),
-              };
+              apptData.priceCents = svcLines.reduce((sum, l) => sum + l.lineTotalCents, 0);
+              apptData.addons = extraLines as unknown as Prisma.InputJsonValue;
+              apptData.endTime = new Date(appt.startTime.getTime() + minutes * 60000);
             }
           }
-          await tx.appointment.updateMany({
-            where: { id: dto.appointmentId, tenantId },
-            data: { status: AppointmentStatus.COMPLETED, completedAt: new Date(), ...(sync ?? {}) },
-          });
+          await tx.appointment.updateMany({ where: { id: dto.appointmentId, tenantId }, data: apptData });
         }
         // Checking out a walk-in marks it Done (front desk doesn't need a second step).
         if (dto.walkInId) {

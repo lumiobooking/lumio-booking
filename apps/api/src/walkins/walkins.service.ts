@@ -9,8 +9,16 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 
 export interface AddWalkInDto {
   customerName?: string;
+  lastName?: string;
   phone?: string;
+  email?: string;
+  /** YYYY-MM-DD. Optional; feeds the birthday campaign. */
+  birthDate?: string;
   serviceId?: string;
+  /** Additional services picked in the same go (the walk-in norm). */
+  serviceIds?: string[];
+  /** Minutes to allow on top of the services. */
+  extraMinutes?: number;
   note?: string;
   partySize?: number;
   assignedStaffId?: string;
@@ -110,7 +118,13 @@ export class WalkinsService {
       assignedStaffId = await this.nextUpStaffId(tenantId);
     }
     const assigned = !!assignedStaffId;
-    const items = serviceId ? [await this.buildItem(tenantId, serviceId, assignedStaffId)] : [];
+    // Every service the customer asked for, in the order picked. The first one
+    // stays the ticket's headline service (it drives the chair match).
+    const wanted = [...new Set([...(serviceId ? [serviceId] : []), ...(dto.serviceIds ?? [])])].filter(Boolean);
+    const items: WalkInItem[] = [];
+    for (const sid of wanted) {
+      try { items.push(await this.buildItem(tenantId, sid, assignedStaffId)); } catch { /* removed from the menu */ }
+    }
     // A customer takes a chair once a tech starts. Auto-pick a free chair, preferring
     // one whose kind matches the service (pedi service -> pedi chair). Front desk can
     // drag them to another chair on the floor view.
@@ -119,8 +133,17 @@ export class WalkinsService {
       : null;
     // Find-or-create a CRM customer by phone so the walk-in earns loyalty and is
     // remarketable. Skips when no phone is given (no key to dedupe on).
-    const linked = dto.phone?.trim()
-      ? await this.customers.findOrCreateByContact(tenantId, { firstName: dto.customerName, phone: dto.phone })
+    // An email is just as good a key as a phone, and the birthday feeds the
+    // birthday campaign — a walk-in should build the same customer record a
+    // booking does.
+    const linked = (dto.phone?.trim() || dto.email?.trim())
+      ? await this.customers.findOrCreateByContact(tenantId, {
+          firstName: dto.customerName,
+          lastName: dto.lastName,
+          phone: dto.phone,
+          email: dto.email,
+          birthDate: dto.birthDate,
+        })
       : null;
     return this.prisma.walkIn.create({
       data: {
@@ -131,6 +154,7 @@ export class WalkinsService {
         phone: dto.phone?.trim().slice(0, 40) || null,
         note: dto.note?.trim().slice(0, 300) || null,
         partySize: Math.max(1, Math.min(20, Math.round(dto.partySize ?? 1))),
+        extraMinutes: dto.extraMinutes ? Math.max(0, Math.min(600, Math.round(dto.extraMinutes))) : null,
         assignedStaffId,
         items: items as unknown as Prisma.InputJsonValue,
         station: dto.station?.trim().slice(0, 24) || null,
@@ -339,10 +363,24 @@ export class WalkinsService {
   }
 
   /** Add a service line to a walk-in's running ticket (front desk OR the tech). */
-  async addService(user: AuthenticatedUser, id: string, serviceId: string, staffId?: string) {
+  async addService(
+    user: AuthenticatedUser,
+    id: string,
+    serviceId?: string,
+    staffId?: string,
+    serviceIds?: string[],
+    extraMinutes?: number,
+  ) {
     const w = await this.mine(user, id);
-    const line = await this.buildItem(w.tenantId, serviceId, staffId ?? w.assignedStaffId ?? null);
-    return this.prisma.walkIn.update({ where: { id: w.id }, data: { items: [...this.itemsOf(w), line] as unknown as Prisma.InputJsonValue }, include: INCLUDE });
+    const ids = [...new Set([...(serviceId ? [serviceId] : []), ...(serviceIds ?? [])])].filter(Boolean);
+    const lines: WalkInItem[] = [];
+    for (const sid of ids) lines.push(await this.buildItem(w.tenantId, sid, staffId ?? w.assignedStaffId ?? null));
+    const data: Prisma.WalkInUpdateInput = {};
+    if (lines.length) data.items = [...this.itemsOf(w), ...lines] as unknown as Prisma.InputJsonValue;
+    // Sent explicitly (including 0) → replace the stored estimate.
+    if (extraMinutes !== undefined) data.extraMinutes = Math.max(0, Math.min(600, Math.round(extraMinutes)));
+    if (Object.keys(data).length === 0) return this.prisma.walkIn.findFirst({ where: { id: w.id }, include: INCLUDE });
+    return this.prisma.walkIn.update({ where: { id: w.id }, data, include: INCLUDE });
   }
 
   /** Remove one service line from a walk-in's ticket. */

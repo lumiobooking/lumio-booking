@@ -14,6 +14,8 @@ interface WalkIn {
   id: string; customerId: string | null; customerName: string | null; phone: string | null; note: string | null;
   partySize: number; status: string; createdAt: string; assignedAt: string | null;
   station: string | null;
+  // Minutes the front desk tacked on after the customer was already seated.
+  extraMinutes?: number | null;
   items: WalkInItem[];
   service: { id: string; name: string } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
@@ -41,7 +43,10 @@ function Inner() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto', station: '' });
+  const BLANK_FORM = { customerName: '', lastName: '', phone: '', email: '', birthDate: '', partySize: '1', staffChoice: 'auto', station: '', extraMinutes: '' };
+  const [form, setForm] = useState(BLANK_FORM);
+  // A walk-in rarely wants exactly one thing; the picker adds to this list.
+  const [pickedIds, setPickedIds] = useState<string[]>([]);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [currency, setCurrency] = useState('USD');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -68,8 +73,14 @@ function Inner() {
     try {
       const body: Record<string, unknown> = {
         customerName: form.customerName.trim() || undefined,
+        lastName: form.lastName.trim() || undefined,
         phone: form.phone.trim() || undefined,
-        serviceId: form.serviceId || undefined,
+        email: form.email.trim() || undefined,
+        birthDate: form.birthDate || undefined,
+        // First pick leads (it decides which kind of chair to look for).
+        serviceId: pickedIds[0] || undefined,
+        serviceIds: pickedIds.length > 1 ? pickedIds.slice(1) : undefined,
+        extraMinutes: parseInt(form.extraMinutes, 10) || undefined,
         partySize: parseInt(form.partySize, 10) || 1,
         station: form.station.trim() || undefined,
       };
@@ -78,7 +89,7 @@ function Inner() {
       if (form.staffChoice === 'auto') body.autoAssign = true;
       else if (form.staffChoice !== 'wait') body.assignedStaffId = form.staffChoice;
       await apiFetch('/walkins', { method: 'POST', token, body });
-      setForm({ customerName: '', phone: '', serviceId: '', partySize: '1', staffChoice: 'auto', station: '' });
+      setForm(BLANK_FORM); setPickedIds([]);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add'); }
   }
@@ -88,10 +99,15 @@ function Inner() {
     catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
 
-  async function addServiceLine(id: string, serviceId: string, staffId: string) {
+  async function addServiceLine(id: string, serviceId: string, staffId: string, extraMinutes?: number) {
     setError(null);
-    try { await apiFetch(`/walkins/${id}/services`, { method: 'POST', token, body: { serviceId, staffId: staffId || undefined } }); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+    try {
+      await apiFetch(`/walkins/${id}/services`, {
+        method: 'POST', token,
+        body: { serviceId: serviceId || undefined, staffId: staffId || undefined, extraMinutes },
+      });
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
   async function removeServiceLine(id: string, lineId: string) {
     setError(null);
@@ -116,22 +132,73 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      <form onSubmit={add} style={{ ...ui.card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end', marginBottom: 16 }}>
-        <label><span style={ui.label}>{t('wi.customer')}</span><input style={ui.input} value={form.customerName} placeholder={t('wi.namePh')} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
-        <label><span style={ui.label}>{t('wi.phone')}</span><input style={ui.input} value={form.phone} inputMode="tel" onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-        <label><span style={ui.label}>{t('wi.service')}</span>
-          <ServiceSearchSelect services={services} value={form.serviceId} onChange={(id) => setForm({ ...form, serviceId: id })} placeholder={t('wi.serviceSearch')} />
-        </label>
-        <label><span style={ui.label}>{t('wi.partySize')}</span><input style={ui.input} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></label>
-        <label><span style={ui.label}>{t('wi.station')}</span><input style={ui.input} value={form.station} placeholder={t('wi.stationPh')} onChange={(e) => setForm({ ...form, station: e.target.value })} /></label>
-        <label><span style={ui.label}>{lang === 'vi' ? 'Thợ' : 'Technician'}</span>
-          <select style={ui.input} value={form.staffChoice} onChange={(e) => setForm({ ...form, staffChoice: e.target.value })}>
-            <option value="auto">{lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next'}</option>
-            {(board?.staff ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
-            <option value="wait">{lang === 'vi' ? 'Chỉ thêm vào hàng chờ' : 'Add to waiting'}</option>
-          </select>
-        </label>
-        <button type="submit" style={ui.primaryBtn}>{t('wi.addQueue')}</button>
+      {/* Three labelled blocks instead of one long strip of inputs: who the
+          customer is (kept for marketing), what they want (several services at
+          once), and where they sit. */}
+      <form onSubmit={add} style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <SecHead label={t('wi.secWho')} />
+            <div style={wiGrid}>
+              <label><WiLabel text={t('wi.customer')} opt={t('wi.optional')} /><input style={ui.input} value={form.customerName} placeholder={t('wi.namePh')} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
+              <label><WiLabel text={t('wi.lastName')} opt={t('wi.optional')} /><input style={ui.input} value={form.lastName} placeholder="Nguyen" onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></label>
+              <label><WiLabel text={t('wi.phone')} opt={t('wi.optional')} /><input style={ui.input} value={form.phone} inputMode="tel" placeholder="+1 512 886 8189" onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
+              <label><WiLabel text={t('wi.email')} opt={t('wi.optional')} /><input style={ui.input} type="email" value={form.email} placeholder="anna@email.com" onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+              <label><WiLabel text={t('wi.birth')} opt={t('wi.optional')} /><input style={ui.input} type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} /></label>
+            </div>
+          </div>
+
+          <div>
+            <SecHead label={t('wi.secWhat')} extra={pickedIds.length ? `${pickedIds.length} ${t('wi.picked')}` : undefined} />
+            {pickedIds.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {pickedIds.map((id) => {
+                  const sv = services.find((x) => x.id === id);
+                  return (
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1e3a8a', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                      {sv?.name ?? id}
+                      <button type="button" onClick={() => setPickedIds((v) => v.filter((x) => x !== id))} style={{ background: 'none', border: 'none', color: '#93c5fd', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <div style={wiGrid}>
+              <label style={{ gridColumn: 'span 2', minWidth: 0 }}>
+                <WiLabel text={t('wi.service')} opt={t('wi.optional')} />
+                <ServiceSearchSelect
+                  services={services} value=""
+                  onChange={(id) => { if (id) setPickedIds((v) => (v.includes(id) ? v : [...v, id])); }}
+                  placeholder={t('wi.serviceSearch')}
+                />
+              </label>
+              <label>
+                <WiLabel text={t('wi.extraTime')} opt={t('wi.optional')} hint={t('wi.extraTimeHint')} />
+                <input style={ui.input} type="number" min={0} max={600} step={5} value={form.extraMinutes} placeholder="0" onChange={(e) => setForm({ ...form, extraMinutes: e.target.value })} />
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <SecHead label={t('wi.secSeat')} />
+            <div style={wiGrid}>
+              <label><WiLabel text={t('wi.partySize')} /><input style={ui.input} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></label>
+              <label><WiLabel text={t('wi.station')} opt={t('wi.optional')} /><input style={ui.input} value={form.station} placeholder={t('wi.stationPh')} onChange={(e) => setForm({ ...form, station: e.target.value })} /></label>
+              <label style={{ gridColumn: 'span 2', minWidth: 0 }}><WiLabel text={lang === 'vi' ? 'Thợ' : 'Technician'} />
+                <select style={ui.input} value={form.staffChoice} onChange={(e) => setForm({ ...form, staffChoice: e.target.value })}>
+                  <option value="auto">{lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next'}</option>
+                  {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
+                  <option value="wait">{lang === 'vi' ? 'Chỉ thêm vào hàng chờ' : 'Add to waiting'}</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: '1px solid #334155', background: '#0f172a' }}>
+          <span style={{ flex: 1, fontSize: 12.5, color: '#64748b' }}>{t('wi.subtitle')}</span>
+          <button type="submit" style={{ ...ui.primaryBtn, padding: '10px 20px', fontSize: 14 }}>{t('wi.addQueue')}</button>
+        </div>
       </form>
 
       <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '4px 0 8px' }}>{t('wi.turnsToday')}</div>
@@ -306,7 +373,7 @@ const stationChip: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#c7d
  *  from a compact card so the board itself stays a clean overview. Portaled to body. */
 function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, onStation, onDone, onClose }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
-  onAdd: (id: string, serviceId: string, staffId: string) => Promise<void> | void;
+  onAdd: (id: string, serviceId: string, staffId: string, extraMinutes?: number) => Promise<void> | void;
   onRemove: (id: string, lineId: string) => Promise<void> | void;
   onStation: (id: string, station: string) => void;
   onDone: () => void;
@@ -314,6 +381,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, o
 }) {
   const [svcId, setSvcId] = useState('');
   const [techId, setTechId] = useState('');
+  const [extra, setExtra] = useState(String(w.extraMinutes ?? ''));
   const [station, setStation] = useState(w.station ?? '');
   const [busy, setBusy] = useState(false);
   const items = w.items ?? [];
@@ -324,11 +392,15 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, o
     if (s) return s.name;
     return w.assignedStaff && w.assignedStaff.id === id ? fullName(w.assignedStaff) : t('wi.unassignedTech');
   };
+  const extraChanged = (extra.trim() === '' ? null : Math.max(0, parseInt(extra, 10) || 0)) !== (w.extraMinutes ?? null);
   async function add() {
-    if (!svcId || busy) return;
+    // Either half can be empty: add a service, change the time, or both.
+    if ((!svcId && !extraChanged) || busy) return;
     setBusy(true);
-    try { await onAdd(w.id, svcId, techId); setSvcId(''); }
-    finally { setBusy(false); }
+    try {
+      await onAdd(w.id, svcId, techId, extraChanged ? Math.max(0, parseInt(extra, 10) || 0) : undefined);
+      setSvcId('');
+    } finally { setBusy(false); }
   }
   const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
   const content = (
@@ -381,7 +453,16 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, o
               <option value="">{t('wi.sameTech')}</option>
               {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
-            <button onClick={add} disabled={!svcId || busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: svcId && !busy ? 1 : 0.5 }}>{busy ? '…' : t('wi.addLine')}</button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }} title={t('wi.extraTimeHint')}>
+              <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{t('wi.extraTime')}</span>
+              <input
+                type="number" min={0} max={600} step={5} value={extra} placeholder="0"
+                onChange={(e) => setExtra(e.target.value)}
+                style={{ width: 64, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: 12.5, padding: '7px 8px', textAlign: 'right' }}
+              />
+              <span style={{ fontSize: 11.5, color: '#64748b' }}>m</span>
+            </label>
+            <button onClick={add} disabled={(!svcId && !extraChanged) || busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: ((svcId || extraChanged) && !busy) ? 1 : 0.5 }}>{busy ? '…' : t('wi.addLine')}</button>
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -394,4 +475,25 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onRemove, o
     </div>
   );
   return typeof document === 'undefined' ? null : createPortal(content, document.body);
+}
+
+const wiGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 };
+
+function SecHead({ label, extra }: { label: string; extra?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>{label}</span>
+      {extra && <span style={{ fontSize: 11.5, color: '#818cf8', fontWeight: 600 }}>{extra}</span>}
+      <span style={{ flex: 1, height: 1, background: '#334155' }} />
+    </div>
+  );
+}
+
+function WiLabel({ text, opt, hint }: { text: string; opt?: string; hint?: string }) {
+  return (
+    <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }} title={hint}>
+      {text}
+      {opt && <span style={{ fontSize: 10.5, color: '#64748b', border: '1px solid #334155', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{opt}</span>}
+    </span>
+  );
 }

@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, IsBoolean } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, IsBoolean } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -9,8 +9,15 @@ import { WalkinsService } from './walkins.service';
 
 class AddWalkInDto {
   @IsOptional() @IsString() @MaxLength(80) customerName?: string;
+  @IsOptional() @IsString() @MaxLength(80) lastName?: string;
   @IsOptional() @IsString() @MaxLength(40) phone?: string;
+  @IsOptional() @IsString() @MaxLength(160) email?: string;
+  // YYYY-MM-DD. Feeds the birthday campaign, never required to be served.
+  @IsOptional() @IsString() @MaxLength(10) birthDate?: string;
   @IsOptional() @IsString() serviceId?: string;
+  // A walk-in usually asks for more than one thing at once.
+  @IsOptional() @IsArray() @IsString({ each: true }) serviceIds?: string[];
+  @IsOptional() @IsInt() @Min(0) @Max(600) extraMinutes?: number;
   @IsOptional() @IsString() @MaxLength(300) note?: string;
   @IsOptional() @IsInt() @Min(1) @Max(20) partySize?: number;
   @IsOptional() @IsString() assignedStaffId?: string;
@@ -23,8 +30,12 @@ class AssignDto {
 }
 
 class AddServiceDto {
-  @IsString() serviceId!: string;
+  // One id or a batch — the front desk often adds two things at once.
+  @IsOptional() @IsString() serviceId?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) serviceIds?: string[];
   @IsOptional() @IsString() staffId?: string;
+  // Minutes to tack on to the ticket's estimate (replaces the stored value).
+  @IsOptional() @IsInt() @Min(0) @Max(600) extraMinutes?: number;
 }
 
 class StationDto {
@@ -94,7 +105,7 @@ export class WalkinsController {
 
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
-    return this.walkins.addService(user, id, dto.serviceId, dto.staffId);
+    return this.walkins.addService(user, id, dto.serviceId, dto.staffId, dto.serviceIds, dto.extraMinutes);
   }
 
   @Delete(':id/services/:lineId')

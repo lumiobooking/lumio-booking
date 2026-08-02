@@ -379,19 +379,13 @@ function Inner() {
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : '#475569' }} />
           🖥️ {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
         </button>
-        <button
-          onClick={() => { const next = !qrOn; setQrOn(next); if (next) { setFormOpen(false); pushToScreen('qr'); } else pushToScreen('idle'); }}
-          disabled={!checkinUrl}
-          title={t('wi.qrHow')}
-          style={{
-            border: `1px solid ${qrOn ? '#4f46e5' : '#334155'}`, background: qrOn ? 'rgba(79,70,229,0.14)' : 'transparent',
-            color: qrOn ? '#c7d2fe' : '#cbd5e1', borderRadius: 8, padding: '10px 14px',
-            fontSize: 13, cursor: checkinUrl ? 'pointer' : 'not-allowed', opacity: checkinUrl ? 1 : 0.5,
-            display: 'flex', alignItems: 'center', gap: 7,
-          }}
-        >📲 {qrOn ? t('wi.qrHide') : t('wi.qrOnScreen')}</button>
         <span style={{ flex: 1 }} />
-        <KioskInline t={t} />
+        <KioskInline
+          t={t}
+          qrOn={qrOn}
+          canShow={!!checkinUrl}
+          onToggleQr={() => { const next = !qrOn; setQrOn(next); if (next) { setFormOpen(false); pushToScreen('qr'); } else pushToScreen('idle'); }}
+        />
       </div>
 
       {/* Three labelled blocks instead of one long strip of inputs: who the
@@ -527,7 +521,31 @@ function Inner() {
                   <div style={{ fontWeight: 600, color: '#e2e8f0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}{w.partySize > 1 ? ` · ${w.partySize} ${t('wi.people')}` : ''}</div>
                   <div style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>{waitedMins(w.createdAt)}′</div>
                 </div>
-                <div style={{ color: '#94a3b8', fontSize: 12, margin: '2px 0 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.service?.name ?? t('wi.noService')}{w.phone ? ` · ${w.phone}` : ''}</div>
+                {w.phone && <div style={{ color: '#94a3b8', fontSize: 12, margin: '2px 0 0' }}>{w.phone}</div>}
+                {(() => {
+                  const items = w.items ?? [];
+                  const total = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
+                  const mins = items.reduce((sum, it) => sum + (it.durationMinutes || 0), 0);
+                  if (items.length === 0) {
+                    return <div style={{ color: '#64748b', fontSize: 12, margin: '6px 0 10px' }}>{w.service?.name ?? t('wi.noService')}</div>;
+                  }
+                  return (
+                    <div style={{ margin: '8px 0 10px', border: '1px solid #263041', borderRadius: 8, overflow: 'hidden' }}>
+                      {items.map((it) => (
+                        <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid #1e293b' }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
+                          {it.durationMinutes ? <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>{it.durationMinutes}′</span> : null}
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#e2e8f0', flexShrink: 0 }}>{formatPrice(it.priceCents || 0, currency)}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: '#0f172a' }}>
+                        <span style={{ flex: 1, fontSize: 11.5, fontWeight: 700, color: '#94a3b8' }}>{t('wi.subtotal')}</span>
+                        {mins > 0 && <span style={{ fontSize: 11.5, color: '#64748b' }}>{mins} {t('wi.mins')}</span>}
+                        <span style={{ fontSize: 14, fontWeight: 800, color: '#22c55e' }}>{formatPrice(total, currency)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <select style={{ ...ui.input, padding: '7px 10px', flex: 1, minWidth: 120 }} value={sel} onChange={(e) => setPick({ ...pick, [w.id]: e.target.value })}>
                     <option value="">{t('wi.pickStaff')}</option>
@@ -875,7 +893,15 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
  * not something the front desk touches every day — but always reachable,
  * because a rotated code makes the kiosk stop working until it is re-entered.
  */
-function KioskInline({ t }: { t: (k: string) => string }) {
+/**
+ * Everything about the self check-in link in one place. There is only one link
+ * and one code — the choices are just where you put it: on the customer screen
+ * for the person standing here, on paper at the counter, or on a tablet by the
+ * door. Splitting that into two buttons only made staff wonder which was which.
+ */
+function KioskInline({ t, qrOn, canShow, onToggleQr }: {
+  t: (k: string) => string; qrOn: boolean; canShow: boolean; onToggleQr: () => void;
+}) {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
   const [s, setS] = useState<{ pairCode: string; displayUrl: string } | null>(null);
@@ -891,28 +917,82 @@ function KioskInline({ t }: { t: (k: string) => string }) {
     <div style={{ position: 'relative' }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{ background: 'none', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', fontSize: 12.5, cursor: 'pointer', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 7 }}
+        style={{
+          background: qrOn ? 'rgba(79,70,229,0.14)' : 'none',
+          border: `1px solid ${qrOn ? '#4f46e5' : '#334155'}`, borderRadius: 8,
+          color: qrOn ? '#c7d2fe' : '#94a3b8', fontSize: 12.5, cursor: 'pointer',
+          padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 7,
+        }}
       >
-        📱 {t('wi.kiosk')}<span style={{ color: '#64748b' }}>{open ? '▴' : '▾'}</span>
+        📲 {t('wi.kiosk')}
+        {qrOn && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />{t('wi.qrLive')}
+        </span>}
+        <span style={{ color: '#64748b' }}>{open ? '▴' : '▾'}</span>
       </button>
       {open && (
-        <div style={{ ...ui.card, position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 'min(520px, 86vw)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 12, padding: '12px 20px', textAlign: 'center' }}>
+        <div style={{ ...ui.card, position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 'min(560px, 88vw)', display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          {/* The QR IS the link — a code to type is the fallback, not the point. */}
+          <div style={{ textAlign: 'center' }}>
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=1&data=${encodeURIComponent(url)}`}
+                alt={t('wi.kioskScan')}
+                style={{ width: 156, height: 156, background: '#fff', borderRadius: 12, padding: 8, display: 'block' }}
+              />
+            ) : (
+              <div style={{ width: 156, height: 156, borderRadius: 12, background: '#0f172a', border: '1px solid #334155' }} />
+            )}
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{t('wi.kioskScan')}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 190 }}>
             <div style={{ fontSize: 10.5, color: '#94a3b8', letterSpacing: '0.1em', fontWeight: 700 }}>CODE</div>
-            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 4, color: '#c7d2fe' }}>{s?.pairCode ?? '······'}</div>
-          </div>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>
-              {t('wi.kioskHow').replace('%url%', '')}
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: '#c7d2fe', marginBottom: 8 }}>{s?.pairCode ?? '······'}</div>
+            <div style={{ fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.55, marginBottom: 10 }}>{t('wi.kioskHow')}</div>
+            {url && <div style={{ fontSize: 12, color: '#818cf8', wordBreak: 'break-all', fontWeight: 600, marginBottom: 10 }}>{url}</div>}
+            <button
+              onClick={onToggleQr}
+              disabled={!canShow}
+              style={{
+                width: '100%', marginBottom: 8, borderRadius: 8, padding: '10px 12px', fontSize: 12.5, fontWeight: 600,
+                cursor: canShow ? 'pointer' : 'not-allowed', opacity: canShow ? 1 : 0.5,
+                border: `1px solid ${qrOn ? '#4f46e5' : '#334155'}`,
+                background: qrOn ? '#4f46e5' : 'transparent', color: qrOn ? '#fff' : '#cbd5e1',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+              }}
+            >🖥️ {qrOn ? t('wi.qrHide') : t('wi.qrOnScreen')}</button>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => { if (url) printQr(url, t('wi.kioskScan')); }}
+                disabled={!url}
+                style={{ border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: url ? 'pointer' : 'not-allowed', opacity: url ? 1 : 0.5 }}
+              >🖨️ {t('wi.kioskPrint')}</button>
+              <button
+                onClick={async () => { if (!token) return; try { setS(await apiFetch('/display/rotate', { method: 'POST', token })); } catch { /* ignore */ } }}
+                style={{ border: '1px solid #334155', background: 'transparent', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}
+              >{t('wi.kioskNew')}</button>
             </div>
-            {url && <div style={{ fontSize: 13, color: '#818cf8', wordBreak: 'break-all', fontWeight: 600 }}>{url}</div>}
           </div>
-          <button
-            onClick={async () => { if (!token) return; try { setS(await apiFetch('/display/rotate', { method: 'POST', token })); } catch { /* ignore */ } }}
-            style={{ border: '1px solid #334155', background: 'transparent', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}
-          >{t('wi.kioskNew')}</button>
         </div>
       )}
     </div>
   );
+}
+
+/** Open a clean print sheet with just the QR — for a counter card or door sign. */
+function printQr(url: string, title: string) {
+  const src = `https://api.qrserver.com/v1/create-qr-code/?size=900x900&margin=2&data=${encodeURIComponent(url)}`;
+  const w = window.open('', '_blank', 'width=620,height=780');
+  if (!w) return;
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>${title}</title>
+    <style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a;text-align:center}
+      h1{font-size:34px;margin:0 0 10px}p{font-size:17px;color:#475569;margin:0 0 26px}
+      img{width:340px;height:340px}</style>
+    <h1>${title}</h1><p>Scan with your phone camera</p><img src="${src}" alt="">`);
+  w.document.close();
+  const go = () => { try { w.focus(); w.print(); } catch { /* user cancelled */ } };
+  w.onload = () => setTimeout(go, 200);
+  setTimeout(go, 900);
 }

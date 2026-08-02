@@ -220,11 +220,16 @@ function Inner() {
 
   async function action(id: string, path: string, body?: unknown) {
     try {
-      await apiFetch(`/bookings/${id}/${path}`, { method: 'POST', token, body });
-      setSelected(null);
+      const updated = await apiFetch<Booking>(`/bookings/${id}/${path}`, { method: 'POST', token, body });
+      // Status changes and visit edits keep the drawer open showing the new
+      // state; the one-shot actions (arrive/complete/cancel) close it as before.
+      if ((path === 'status' || path === 'lines') && updated && typeof updated === 'object') setSelected(updated);
+      else setSelected(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      const raw = err instanceof Error ? err.message : 'Action failed';
+      // The API speaks English; the one message staff hit often gets translated.
+      setError(/in the past/i.test(raw) ? t('cal.pastTime') : raw);
     }
   }
 
@@ -813,6 +818,11 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
           <DetailRow label={t('cal.dAddons')} value={b.addons.filter((a) => a.kind !== 'service').map((a) => a.name).join(', ')} />
         )}
 
+        {/* Status is editable in BOTH directions and at ANY status: pressing
+            Complete by mistake used to leave the front desk with no way back. */}
+        <StatusPicker b={b} onAction={onAction} />
+        <VisitEditor b={b} onAction={onAction} />
+
         <div style={{ borderTop: '1px solid #1f2937', margin: '16px 0 12px' }} />
         <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>{t('cal.customer')}</div>
         <DetailRow label={t('cal.dName')} value={fullName} />
@@ -836,6 +846,127 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
     </>
   );
 }
+
+const ALL_STATUSES = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED', 'ARRIVED', 'COMPLETED', 'NO_SHOW', 'CANCELLED', 'REJECTED'] as const;
+
+/**
+ * Free-form status change. The old drawer hid every action once a visit was
+ * finished, so a mis-click on Complete was permanent from the UI's point of
+ * view. Money follows the status server-side.
+ */
+function StatusPicker({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [next, setNext] = useState(b.status);
+  useEffect(() => { setNext(b.status); }, [b.status, b.id]);
+  return (
+    <div style={{ border: '1px solid #334155', borderRadius: 10, padding: 10, marginTop: 12, background: '#0f172a' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 7 }}>{t('cal.setStatus')}</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <select value={next} onChange={(e) => setNext(e.target.value)} style={{ ...ui.input, flex: 1, padding: '7px 8px', fontSize: 13 }}>
+          {ALL_STATUSES.map((sName) => <option key={sName} value={sName}>{t(`cal.st${sName}`)}</option>)}
+        </select>
+        <button
+          disabled={next === b.status}
+          onClick={() => onAction(b.id, 'status', { status: next })}
+          style={{ ...ui.primaryBtn, padding: '7px 14px', fontSize: 13, opacity: next === b.status ? 0.5 : 1, cursor: next === b.status ? 'default' : 'pointer' }}
+        >{t('cal.apply')}</button>
+      </div>
+      {b.status === 'COMPLETED' && (
+        <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>{t('cal.statusHint')}</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Adjust a visit that is already running: the customer asks for one more
+ * service, or the work is taking longer. Both change the price and the finish
+ * time, and the server re-checks the technician's slot before saving.
+ */
+function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
+  const { token } = useAuth();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const [services, setServices] = useState<{ id: string; name: string; durationMinutes: number; priceCents: number }[]>([]);
+  const [pick, setPick] = useState('');
+  const [minutes, setMinutes] = useState(0);
+  const [drop, setDrop] = useState<number[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open || !token || services.length) return;
+    apiFetch<{ id: string; name: string; durationMinutes: number; priceCents: number; isActive: boolean }[]>('/services', { token })
+      .then((r) => setServices(r.filter((x) => x.isActive)))
+      .catch(() => undefined);
+  }, [open, token, services.length]);
+  useEffect(() => { setPick(''); setMinutes(0); setDrop([]); }, [b.id]);
+
+  const lines = b.addons ?? [];
+  const dirty = !!pick || minutes !== 0 || drop.length > 0;
+  if (b.status === 'CANCELLED' || b.status === 'REJECTED') return null;
+
+  return (
+    <div style={{ border: '1px solid #334155', borderRadius: 10, padding: 10, marginTop: 8, background: '#0f172a' }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}
+      >
+        {t('cal.editVisit')}<span style={{ marginLeft: 'auto', color: '#64748b' }}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {lines.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {lines.map((a, i) => (
+                <label key={`${a.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: drop.includes(i) ? '#64748b' : '#cbd5e1', textDecoration: drop.includes(i) ? 'line-through' : 'none' }}>
+                  <input
+                    type="checkbox" checked={drop.includes(i)}
+                    onChange={() => setDrop((d) => d.includes(i) ? d.filter((x) => x !== i) : [...d, i])}
+                  />
+                  {a.name} <span style={{ marginLeft: 'auto', color: '#64748b' }}>{t('cal.removeLine')}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...ui.input, padding: '7px 8px', fontSize: 13 }}>
+            <option value="">{t('cal.addService')}</option>
+            {services.map((sv) => <option key={sv.id} value={sv.id}>{sv.name} · {sv.durationMinutes}m</option>)}
+          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12.5, color: '#94a3b8', flex: 1 }}>{t('cal.addTime')}</span>
+            {[15, 30, 60].map((m) => (
+              <button key={m} onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
+            ))}
+            <button onClick={() => setMinutes(0)} style={chipBtn} disabled={minutes === 0}>↺</button>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: minutes ? '#22c55e' : '#475569', width: 46, textAlign: 'right' }}>
+              {minutes ? `+${minutes}m` : '—'}
+            </span>
+          </div>
+          <button
+            disabled={!dirty || busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onAction(b.id, 'lines', {
+                  ...(pick ? { addServiceIds: [pick] } : {}),
+                  ...(drop.length ? { removeIndexes: drop } : {}),
+                  ...(minutes ? { extraMinutes: minutes } : {}),
+                });
+              } finally { setBusy(false); setPick(''); setMinutes(0); setDrop([]); }
+            }}
+            style={{ ...ui.primaryBtn, padding: '9px', fontSize: 13, opacity: (!dirty || busy) ? 0.5 : 1, cursor: (!dirty || busy) ? 'default' : 'pointer' }}
+          >{busy ? t('cal.savingVisit') : t('cal.saveVisit')}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const chipBtn: React.CSSProperties = {
+  border: '1px solid #334155', background: 'transparent', color: '#cbd5e1',
+  borderRadius: 7, padding: '4px 8px', fontSize: 12, cursor: 'pointer',
+};
 
 // Inline quick edit inside the details drawer: move the booking to a new
 // date/time (duration kept, conflicts re-checked server-side) or hand it to a

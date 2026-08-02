@@ -246,14 +246,27 @@ export class WalkinsService {
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, tenantId },
       select: {
-        id: true, customerId: true, source: true, assignedStaffId: true,
+        id: true, customerId: true, source: true, assignedStaffId: true, addons: true,
         customer: { select: { firstName: true, lastName: true, phone: true } },
         service: { select: { id: true, name: true } },
       },
     });
     if (!appt) throw new NotFoundException('Appointment not found');
     const custName = appt.customer ? `${appt.customer.firstName}${appt.customer.lastName ? ' ' + appt.customer.lastName : ''}`.trim() : null;
-    const items = appt.service ? [await this.buildItem(tenantId, appt.service.id, appt.assignedStaffId ?? null)] : [];
+    // A multi-service booking used to arrive at the chair with only its primary
+    // service, so the extras had to be typed in again at the till.
+    const extraLines = (Array.isArray(appt.addons) ? (appt.addons as unknown as { id?: string; kind?: string; staffMemberId?: string | null }[]) : [])
+      .filter((a) => a?.kind === 'service' && a?.id);
+    const items: WalkInItem[] = appt.service
+      ? [await this.buildItem(tenantId, appt.service.id, appt.assignedStaffId ?? null)]
+      : [];
+    for (const line of extraLines) {
+      try {
+        items.push(await this.buildItem(tenantId, line.id!, line.staffMemberId ?? appt.assignedStaffId ?? null));
+      } catch {
+        // A service deleted since the booking was taken shouldn't block check-in.
+      }
+    }
     const stationId = await this.freeStationId(tenantId, this.svcMatchText(appt.service?.name, null));
     const walkIn = await this.prisma.walkIn.create({
       data: {

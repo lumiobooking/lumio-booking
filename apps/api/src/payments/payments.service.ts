@@ -176,6 +176,33 @@ export class PaymentsService {
     if (appt.customerId) await this.loyalty.award(this.prisma, tenantId, appt.customerId, remainder, 'appointment', payment.id);
   }
 
+  /**
+   * Undo settleOnComplete when a finished booking is reopened: the at-salon
+   * money goes back to PENDING (so it leaves revenue) and the points it earned
+   * are taken back. Pressing Complete again re-collects and re-awards.
+   *
+   * Only PAY_LATER payments are touched — an online/deposit charge really was
+   * taken from the customer, and a POS order is settled on its own ticket.
+   */
+  async unsettleOnUncomplete(tenantId: string, appointmentId: string, actorUserId: string | null) {
+    const pays = await this.prisma.payment.findMany({
+      where: { tenantId, appointmentId, status: PaymentStatus.PAID, type: PaymentType.PAY_LATER },
+      select: { id: true },
+    });
+    for (const p of pays) {
+      await this.prisma.payment.updateMany({
+        where: { id: p.id, tenantId },
+        data: { status: PaymentStatus.PENDING, paidAt: null },
+      });
+      await this.loyalty.reverseForRef(this.prisma, tenantId, 'appointment', p.id, 'Booking reopened');
+      await this.audit.log({
+        tenantId, userId: actorUserId, action: 'payment.unsettled',
+        resourceType: 'payment', resourceId: p.id, metadata: { appointmentId, via: 'reopen' },
+      });
+    }
+    return pays.length;
+  }
+
   /** Required deposit (cents) for a booking, per the salon's deposit policy + customer history. */
   async requiredDeposit(tenantId: string, customerId: string | null, priceCents: number, d: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }): Promise<number> {
     if (!d.enabled || priceCents <= 0) return 0;

@@ -37,6 +37,9 @@ interface Booking {
   notes: string | null;
   customer: (NamedRef & { phone?: string | null }) | null;
   service: { id: string; name: string } | null;
+  // Extra services booked in the same visit are stored as line items on the
+  // appointment (kind: 'service'); add-ons live in the same array without a kind.
+  addons?: { id?: string; name?: string; kind?: string }[] | null;
   assignedStaff: NamedRef | null;
 }
 interface Payment {
@@ -169,7 +172,7 @@ function BookingsInner() {
       (b) =>
         range.inRange(b.startTime) &&
         (!needsConfirm || isUnconfirmed(b)) &&
-        matchesQuery(`${staffName(b.customer)} ${b.customer?.phone ?? ''} ${(b.customer?.phone ?? '').replace(/\D/g, '')} ${b.service?.name ?? ''} ${staffName(b.assignedStaff)} ${b.status}`, q),
+        matchesQuery(`${staffName(b.customer)} ${b.customer?.phone ?? ''} ${(b.customer?.phone ?? '').replace(/\D/g, '')} ${serviceNames(b).join(' ')} ${staffName(b.assignedStaff)} ${b.status}`, q),
     ),
     (b) => b.startTime,
   );
@@ -232,7 +235,7 @@ function BookingsInner() {
                     : staffName(b.customer)}
                 </MHead>
                 <MRow label={t('bk.colWhen')}>{new Date(b.startTime).toLocaleString('en-US')}</MRow>
-                <MRow label={t('bk.colService')}>{b.service?.name ?? '—'}</MRow>
+                <MRow label={t('bk.colService')}><ServiceCell b={b} /></MRow>
                 <MRow label={t('bk.colStaff')}>{staffName(b.assignedStaff)}</MRow>
                 <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(b.id)} /></MRow>
                 <MActions>
@@ -282,7 +285,7 @@ function BookingsInner() {
                       ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
                       : staffName(b.customer)}
                   </td>
-                  <td style={ui.td}>{b.service?.name ?? '—'}</td>
+                  <td style={ui.td}><ServiceCell b={b} /></td>
                   <td style={ui.td}>{staffName(b.assignedStaff)}</td>
                   <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
                     <span
@@ -685,6 +688,31 @@ function FieldLabel({ raw, required, optionalWord, hint }: { raw: string; requir
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 };
 // Five customer fields; birthday is the narrowest so it gets a smaller floor.
 const custGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 };
+
+/** Every service on the visit: the primary plus any extra service lines. */
+function serviceNames(b: Booking): string[] {
+  const extra = (b.addons ?? []).filter((a) => a?.kind === 'service').map((a) => a?.name ?? '').filter(Boolean);
+  return [b.service?.name ?? '', ...extra].filter(Boolean);
+}
+
+/**
+ * A visit can hold several services. Showing only the first one made staff
+ * think the extras had been lost, so the rest are listed underneath.
+ */
+function ServiceCell({ b }: { b: Booking }) {
+  const names = serviceNames(b);
+  if (names.length === 0) return <>—</>;
+  return (
+    <span>
+      {names[0]}
+      {names.length > 1 && (
+        <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+          + {names.slice(1).join(' · ')}
+        </span>
+      )}
+    </span>
+  );
+}
 
 // Read-only payment status. Money is collected only through POS / Checkout
 // (single source of truth) so a booking can never be paid twice — once here

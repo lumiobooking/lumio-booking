@@ -303,11 +303,53 @@ export class PosService {
             });
           }
         }
-        // Checking out a booking completes it.
+        // Checking out a booking completes it — and writes the till's version of
+        // the visit back onto the appointment. A cashier who adds a service at
+        // checkout used to leave the calendar showing the old price and the old
+        // finish time; now the two agree. The first service line stays the
+        // primary (it is what serviceId points at); the rest become stored
+        // lines, exactly as the booking form records them.
         if (dto.appointmentId) {
+          const appt = await tx.appointment.findFirst({
+            where: { id: dto.appointmentId, tenantId },
+            select: { serviceId: true, startTime: true, endTime: true },
+          });
+          let sync: { priceCents: number; addons: Prisma.InputJsonValue; endTime: Date } | null = null;
+          if (appt) {
+            const svcLines = lines.filter((l) => l.kind === OrderItemKind.SERVICE);
+            if (svcLines.length > 0) {
+              // Durations come from the catalogue; a product line adds no time.
+              const ids = [...new Set(svcLines.map((l) => l.serviceId).filter((x): x is string => !!x))];
+              const svcs = ids.length
+                ? await tx.service.findMany({ where: { id: { in: ids }, tenantId }, select: { id: true, durationMinutes: true } })
+                : [];
+              const mins = new Map(svcs.map((x) => [x.id, x.durationMinutes]));
+              const primaryIdx = svcLines.findIndex((l) => l.serviceId === appt.serviceId);
+              const rest = svcLines.filter((_, i) => i !== (primaryIdx >= 0 ? primaryIdx : 0));
+              const extraLines = rest.map((l) => ({
+                id: l.serviceId ?? undefined,
+                name: l.name,
+                priceCents: l.lineTotalCents,
+                durationMinutes: l.serviceId ? (mins.get(l.serviceId) ?? 0) : 0,
+                kind: 'service' as const,
+                staffMemberId: l.staffMemberId,
+              }));
+              const totalMinutes = svcLines.reduce(
+                (sum, l) => sum + (l.serviceId ? (mins.get(l.serviceId) ?? 0) : 0) * l.quantity, 0,
+              );
+              // Never shrink a visit that already ran long; only extend it.
+              const currentMinutes = Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60000);
+              const minutes = Math.max(5, Math.max(currentMinutes, totalMinutes));
+              sync = {
+                priceCents: svcLines.reduce((sum, l) => sum + l.lineTotalCents, 0),
+                addons: extraLines as unknown as Prisma.InputJsonValue,
+                endTime: new Date(appt.startTime.getTime() + minutes * 60000),
+              };
+            }
+          }
           await tx.appointment.updateMany({
             where: { id: dto.appointmentId, tenantId },
-            data: { status: AppointmentStatus.COMPLETED, completedAt: new Date() },
+            data: { status: AppointmentStatus.COMPLETED, completedAt: new Date(), ...(sync ?? {}) },
           });
         }
         // Checking out a walk-in marks it Done (front desk doesn't need a second step).

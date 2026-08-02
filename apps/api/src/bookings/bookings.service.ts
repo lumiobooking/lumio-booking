@@ -406,6 +406,11 @@ export class BookingsService {
     const extraServices = extraIds.length
       ? await this.prisma.service.findMany({ where: { id: { in: extraIds }, tenantId, isActive: true } })
       : [];
+    // Fail loudly. Silently dropping an inactive/foreign id used to produce a
+    // booking with fewer services (and a lower price) than the staff picked.
+    if (extraServices.length !== extraIds.length) {
+      throw new BadRequestException('One or more selected services are unavailable.');
+    }
     const extraItems: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
     for (const s of extraServices) {
       const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
@@ -1625,6 +1630,131 @@ export class BookingsService {
     const appt = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { customerId: true } });
     await this.referral.rewardOnCompletion(tenantId, appt?.customerId, id);
     return result;
+  }
+
+  /**
+   * Set any status directly, in either direction — a receptionist who pressed
+   * Complete too early must be able to walk it back.
+   *
+   * Money follows the status: leaving COMPLETED takes back the at-salon payment
+   * and the loyalty points it earned; entering COMPLETED collects and awards
+   * them again. Deposits/online charges and POS orders are never touched.
+   */
+  async setStatus(user: AuthenticatedUser, id: string, status: AppointmentStatus) {
+    const tenantId = this.tenantId(user);
+    const a = await this.prisma.appointment.findFirst({
+      where: { id, tenantId },
+      select: { status: true, customerId: true },
+    });
+    if (!a) throw new NotFoundException('Booking not found');
+    if (a.status === status) return this.getById(user, id);
+
+    const wasCompleted = a.status === AppointmentStatus.COMPLETED;
+    const willComplete = status === AppointmentStatus.COMPLETED;
+    if (wasCompleted && !willComplete) {
+      await this.payments.unsettleOnUncomplete(tenantId, id, user.userId);
+    }
+
+    const stamp: Partial<Record<AppointmentStatus, 'arrivedAt' | 'completedAt' | 'cancelledAt'>> = {
+      [AppointmentStatus.ARRIVED]: 'arrivedAt',
+      [AppointmentStatus.COMPLETED]: 'completedAt',
+      [AppointmentStatus.CANCELLED]: 'cancelledAt',
+    };
+    const field = stamp[status];
+    await this.prisma.appointment.updateMany({
+      where: { id, tenantId },
+      data: {
+        status,
+        ...(field ? { [field]: new Date() } : {}),
+        // Reopening clears the finished stamp so reports stop counting it.
+        ...(wasCompleted && !willComplete ? { completedAt: null } : {}),
+      },
+    });
+    await this.audit.log({
+      tenantId, userId: user.userId, action: 'booking.status_set',
+      resourceType: 'appointment', resourceId: id, metadata: { from: a.status, to: status },
+    });
+
+    if (willComplete && !wasCompleted) {
+      await this.payments.settleOnComplete(tenantId, id, user.userId);
+      await this.referral.rewardOnCompletion(tenantId, a.customerId, id);
+    }
+    return this.getById(user, id);
+  }
+
+  /**
+   * Edit an in-flight visit: add services, drop lines, or stretch the time.
+   * Prices and the end time move together, and the new end time is checked for
+   * overlap exactly like a reschedule, so a longer visit cannot silently sit on
+   * top of the next customer.
+   */
+  async editLines(
+    user: AuthenticatedUser,
+    id: string,
+    dto: { addServiceIds?: string[]; removeIndexes?: number[]; extraMinutes?: number },
+  ) {
+    const tenantId = this.tenantId(user);
+    const b = await this.prisma.appointment.findFirst({ where: { id, tenantId } });
+    if (!b) throw new NotFoundException('Booking not found');
+    if (b.status === AppointmentStatus.CANCELLED || b.status === AppointmentStatus.REJECTED) {
+      throw new BadRequestException('This booking is cancelled and can no longer be edited.');
+    }
+
+    type Item = { id?: string; name?: string; priceCents?: number; durationMinutes?: number; kind?: string; staffMemberId?: string | null };
+    const current: Item[] = Array.isArray(b.addons) ? (b.addons as unknown as Item[]) : [];
+
+    // 1) Drop the lines the salon removed (by position in the stored list).
+    const drop = new Set((dto.removeIndexes ?? []).filter((n) => Number.isInteger(n) && n >= 0));
+    const kept = current.filter((_, i) => !drop.has(i));
+    const removed = current.filter((_, i) => drop.has(i));
+    const removedPrice = removed.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
+    const removedMinutes = removed.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0);
+
+    // 2) Add the new services, priced the same way the booking form prices them.
+    const addIds = [...new Set(dto.addServiceIds ?? [])].filter(Boolean);
+    const added: Item[] = [];
+    if (addIds.length) {
+      const svcs = await this.prisma.service.findMany({ where: { id: { in: addIds }, tenantId, isActive: true } });
+      if (svcs.length !== addIds.length) throw new BadRequestException('One or more selected services are unavailable.');
+      for (const sv of svcs) {
+        const disc = Math.min(90, Math.max(0, sv.discountPercent ?? 0));
+        const net = Math.round((sv.priceCents * (100 - disc)) / 100);
+        const wd = await this.promoDiscountPercent(tenantId, b.startTime, sv.categoryId);
+        added.push({
+          id: sv.id, name: sv.name, durationMinutes: sv.durationMinutes, kind: 'service',
+          priceCents: Math.round((net * (100 - wd)) / 100),
+        });
+      }
+    }
+    const addedPrice = added.reduce((sum, x) => sum + (x.priceCents ?? 0), 0);
+    const addedMinutes = added.reduce((sum, x) => sum + (x.durationMinutes ?? 0), 0);
+
+    // 3) Manual time on top (the "customer wants longer" case).
+    const extra = Math.max(-600, Math.min(600, Math.round(dto.extraMinutes ?? 0)));
+
+    const curMinutes = Math.round((b.endTime.getTime() - b.startTime.getTime()) / 60000);
+    const newMinutes = Math.max(5, curMinutes + addedMinutes - removedMinutes + extra);
+    const newPrice = Math.max(0, b.priceCents + addedPrice - removedPrice);
+    const newEnd = addMinutes(b.startTime, newMinutes);
+    const lines = [...kept, ...added];
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (b.assignedStaffId && newEnd.getTime() > b.endTime.getTime()) {
+        await this.lockStaffSlot(tx, tenantId, b.assignedStaffId);
+        await this.assertNoOverlap(tx, tenantId, b.assignedStaffId, b.startTime, newEnd, id);
+      }
+      await tx.appointment.updateMany({
+        where: { id, tenantId },
+        data: { endTime: newEnd, priceCents: newPrice, addons: lines as unknown as Prisma.InputJsonValue },
+      });
+      return tx.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+    });
+    await this.audit.log({
+      tenantId, userId: user.userId, action: 'booking.lines_edited',
+      resourceType: 'appointment', resourceId: id,
+      metadata: { added: added.map((x) => x.name), removed: removed.map((x) => x.name), extraMinutes: extra, priceCents: newPrice },
+    });
+    return updated;
   }
 
   noShow(user: AuthenticatedUser, id: string) {

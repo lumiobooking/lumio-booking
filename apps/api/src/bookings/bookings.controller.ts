@@ -16,6 +16,8 @@ import { AssignBookingDto } from './dto/assign-booking.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { AssignTableDto } from './dto/assign-table.dto';
 import { RejectBookingDto } from './dto/reject-booking.dto';
+import { SetStatusDto } from './dto/set-status.dto';
+import { EditLinesDto } from './dto/edit-lines.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -159,6 +161,33 @@ export class BookingsController {
   @HttpCode(200)
   complete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.bookings.complete(user, id);
+  }
+
+  // Manual status change in either direction — including reopening a finished
+  // visit. Money and loyalty follow the status (see BookingsService.setStatus).
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Post(':id/status')
+  @HttpCode(200)
+  setStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: SetStatusDto,
+  ) {
+    return this.bookings.setStatus(user, id, dto.status);
+  }
+
+  // Add services / drop lines / stretch the time on a visit already in progress.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Post(':id/lines')
+  @HttpCode(200)
+  editLines(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: EditLinesDto,
+  ) {
+    return this.bookings.editLines(user, id, dto);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

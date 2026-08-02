@@ -77,7 +77,12 @@ export class LoyaltyService {
    * caller also guards this to a live PAID sale). Balance is clamped at 0.
    */
   async reverseForRef(db: Db, tenantId: string, refType: string, refId: string, reason = 'Sale reversed'): Promise<void> {
-    const txns = await db.loyaltyTransaction.findMany({ where: { tenantId, refType, refId } });
+    // Include prior reversals for the same ref: a booking can be completed,
+    // reopened (reversed) and completed again, and each reversal must only undo
+    // what is still outstanding — not the whole history.
+    const txns = await db.loyaltyTransaction.findMany({
+      where: { tenantId, refId, refType: { in: [refType, `${refType}-reversal`] } },
+    });
     if (txns.length === 0) return;
     // Net points each customer gained from this ref (earned positive, redeemed negative).
     const byCustomer = new Map<string, number>();

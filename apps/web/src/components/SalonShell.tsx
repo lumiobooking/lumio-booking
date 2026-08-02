@@ -25,6 +25,9 @@ const GROUPS: NavGroup[] = [
   { id: 'ops', label: 'Operations', icon: '🗂', items: [
     { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
     { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
+    // Front-desk check-in board: seat a customer, run their ticket, hand it to
+    // the till. Its route and permission always existed — the nav entry didn't.
+    { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: '🚶' },
     { href: '/salon/activity', label: 'Activity', icon: '🔔' },
     { href: '/salon/tables', label: 'Tables', icon: '🍽', biz: 'restaurant' },
     { href: '/salon/menu', label: 'Menu', icon: '🍜', biz: 'restaurant' },

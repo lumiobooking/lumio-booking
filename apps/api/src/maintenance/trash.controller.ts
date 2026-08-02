@@ -53,6 +53,29 @@ export class TrashController {
         const pays = (snap.payments ?? []) as Prisma.PaymentUncheckedCreateInput[];
         if (pays.length) await tx.payment.createMany({ data: pays, skipDuplicates: true });
       }
+      if (item.entity === 'customer') {
+        const cust = snap.customer as Prisma.CustomerUncheckedCreateInput | null;
+        if (cust) await tx.customer.createMany({ data: [cust], skipDuplicates: true });
+        const appts = (snap.appointments ?? []) as Prisma.AppointmentUncheckedCreateInput[];
+        if (appts.length) await tx.appointment.createMany({ data: appts, skipDuplicates: true });
+        const loyalty = (snap.loyalty ?? []) as Prisma.LoyaltyTransactionUncheckedCreateInput[];
+        if (loyalty.length) await tx.loyaltyTransaction.createMany({ data: loyalty, skipDuplicates: true });
+      }
+
+      if (item.entity === 'order') {
+        // The receipt was stored with its lines nested; split them back out.
+        const raw = snap.order as (Prisma.OrderUncheckedCreateInput & { items?: unknown[]; payments?: unknown[] }) | null;
+        if (raw) {
+          const { items, payments, ...header } = raw as Record<string, unknown>;
+          await tx.order.createMany({ data: [header as Prisma.OrderUncheckedCreateInput], skipDuplicates: true });
+          const lines = (items ?? []) as Prisma.OrderItemUncheckedCreateInput[];
+          if (lines.length) await tx.orderItem.createMany({ data: lines, skipDuplicates: true });
+          void payments;
+        }
+        const mirrored = (snap.payments ?? []) as Prisma.PaymentUncheckedCreateInput[];
+        if (mirrored.length) await tx.payment.createMany({ data: mirrored, skipDuplicates: true });
+      }
+
       await this.trash.markRestored(tx, item.id, tenantId);
     });
 

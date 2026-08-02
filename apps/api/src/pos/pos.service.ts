@@ -13,6 +13,7 @@ import { normalizeSource } from '../common/source.util';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { TrashService } from '../maintenance/trash.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
@@ -30,6 +31,7 @@ export class PosService {
     private readonly settings: SettingsService,
     private readonly loyalty: LoyaltyService,
     private readonly giftCards: GiftCardsService,
+    private readonly trash: TrashService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -425,7 +427,17 @@ export class PosService {
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
 
+    // Snapshot the whole receipt (header + lines) before anything is undone, so
+    // a deleted sale can be reconstructed from the bin.
+    const mirrored = await this.prisma.payment.findMany({ where: { tenantId, providerReference: `order:${id}` } });
+    const label = `#${order.orderNumber} · ${(order.totalCents / 100).toFixed(2)} ${order.currency}`;
+
     await this.prisma.$transaction(async (tx) => {
+      await this.trash.capture(tx, {
+        tenantId, entity: 'order', entityId: id, label,
+        snapshot: { order, payments: mirrored },
+        deletedByUserId: user.userId,
+      });
       // Restock + re-credit gift cards only if it was still a live PAID sale
       // (a VOID order was already restocked/re-credited).
       if (order.status === OrderStatus.PAID) {

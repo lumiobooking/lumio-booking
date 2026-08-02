@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { TrashService } from '../maintenance/trash.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly trash: TrashService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -247,10 +249,25 @@ export class CustomersService {
   /** Delete a customer (and, by cascade, their appointments). Admin only. */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    const existing = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { id: true } });
+    const existing = await this.prisma.customer.findFirst({ where: { id, tenantId } });
     if (!existing) throw new NotFoundException('Customer not found');
-    // deleteMany with tenantId is a safety net so a forged id can't touch another tenant.
-    await this.prisma.customer.deleteMany({ where: { id, tenantId } });
+
+    // A customer takes their appointments and loyalty ledger with them, so all
+    // three go into the bin together — restoring a customer without their
+    // history would be worse than not restoring at all.
+    const appts = await this.prisma.appointment.findMany({ where: { tenantId, customerId: id } });
+    const loyalty = await this.prisma.loyaltyTransaction.findMany({ where: { tenantId, customerId: id } });
+    const label = `${existing.firstName} ${existing.lastName ?? ''}`.trim() + (existing.phone ? ` · ${existing.phone}` : '');
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.trash.capture(tx, {
+        tenantId, entity: 'customer', entityId: id, label,
+        snapshot: { customer: existing, appointments: appts, loyalty },
+        deletedByUserId: user.userId,
+      });
+      // deleteMany with tenantId is a safety net so a forged id can't touch another tenant.
+      await tx.customer.deleteMany({ where: { id, tenantId } });
+    });
     await this.audit.log({ tenantId, userId: user.userId, action: 'customer.deleted', resourceType: 'customer', resourceId: id });
     return { id, deleted: true };
   }

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MaintenanceModule } from '../maintenance/maintenance.module';
 import { PosController } from './pos.controller';
 import { PosService } from './pos.service';
 import { HeldBillsController } from './held-bills.controller';
@@ -8,7 +9,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { GiftCardsModule } from '../gift-cards/gift-cards.module';
 
 @Module({
-  imports: [SettingsModule, LoyaltyModule, GiftCardsModule], // tax/currency + loyalty + gift cards
+  imports: [MaintenanceModule, SettingsModule, LoyaltyModule, GiftCardsModule], // tax/currency + loyalty + gift cards
   controllers: [PosController, HeldBillsController],
   providers: [PosService, HeldBillsService],
   exports: [PosService],

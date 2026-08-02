@@ -19,6 +19,7 @@ import { MarketingModule } from './marketing/marketing.module';
 import { EmailCampaignsModule } from './email-campaigns/email-campaigns.module';
 import { MenuModule } from './menu/menu.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { PublicModule } from './public/public.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -73,6 +74,7 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     MenuModule,
     // Booking foundation (anti double-booking, race-condition safe).
     BookingsModule,
+    MaintenanceModule,
     // WordPress plugin connector: API keys + public (API-key-authenticated)
     // endpoints the plugin calls.
     ApiKeysModule,

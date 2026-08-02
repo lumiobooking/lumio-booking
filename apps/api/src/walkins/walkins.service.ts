@@ -71,10 +71,34 @@ export class WalkinsService {
     return { lineId: randomUUID(), serviceId: svc.id, name: svc.name, priceCents: net, durationMinutes: svc.durationMinutes, staffId };
   }
 
-  private startOfToday(): Date {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+  /**
+   * Midnight in the SALON'S timezone, not the server's. Render runs in UTC, so
+   * the old server-local version rolled the day over at 5pm Pacific / 8pm
+   * Eastern: the turn counters and "Finished today" reset in the middle of the
+   * evening shift, right when techs care most about whose turn it is.
+   */
+  private async startOfToday(tenantId: string): Promise<Date> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const tz = t?.timezone || 'UTC';
+    try {
+      const now = new Date();
+      // Today's date as it reads on the salon's wall clock.
+      const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+      const utcGuess = new Date(`${ymd}T00:00:00Z`);
+      // What that instant looks like in the salon's zone tells us the offset,
+      // DST included — subtract it to land on real local midnight.
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+      }).formatToParts(utcGuess);
+      const num = (type: string) => Number(parts.find((x) => x.type === type)?.value ?? 0);
+      const asUtc = Date.UTC(num('year'), num('month') - 1, num('day'), num('hour') % 24, num('minute'), num('second'));
+      return new Date(utcGuess.getTime() - (asUtc - utcGuess.getTime()));
+    } catch {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
   }
 
   /** Lowercased text used to route a service to a chair type (its name + category). */
@@ -177,7 +201,7 @@ export class WalkinsService {
 
   /** The tech "up next" = currently free (not serving) with the fewest turns today. */
   private async nextUpStaffId(tenantId: string): Promise<string | null> {
-    const today = this.startOfToday();
+    const today = await this.startOfToday(tenantId);
     const [serving, staff, doneWalkIns, completedAppts] = await Promise.all([
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING }, select: { assignedStaffId: true } }),
       this.prisma.staffMember.findMany({ where: { tenantId, isActive: true, takesAppointments: true }, select: { id: true }, orderBy: [{ bookingPriority: 'desc' }, { firstName: 'asc' }] }),
@@ -196,7 +220,7 @@ export class WalkinsService {
   /** The live board: waiting queue, in-service, and per-tech turn counts. */
   async board(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
-    const today = this.startOfToday();
+    const today = await this.startOfToday(tenantId);
     const [waiting, serving, staff, doneWalkIns, completedAppts] = await Promise.all([
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.WAITING }, include: INCLUDE, orderBy: { createdAt: 'asc' } }),
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING }, include: INCLUDE, orderBy: { assignedAt: 'asc' } }),

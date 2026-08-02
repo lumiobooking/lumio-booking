@@ -14,8 +14,14 @@
 import { useEffect, useRef, useState, CSSProperties } from 'react';
 
 type Line = { name: string; qty: number; lineCents: number; staff?: string };
+// Walk-in self check-in shares this screen: reception flips the SAME customer
+// monitor into a form instead of opening a second window.
+type CheckInService = { id: string; name: string; priceCents: number; durationMinutes: number; category?: { id: string; name: string } | null };
+type CheckInForm = { firstName: string; lastName: string; phone: string; email: string; birthDate: string; partySize: number };
+type CheckIn = { services: CheckInService[]; form: CheckInForm; picked: string[]; done?: boolean };
+
 type DisplayState = {
-  status: 'idle' | 'active' | 'paid';
+  status: 'idle' | 'active' | 'paid' | 'checkin';
   currency: string;
   salonName?: string;
   salonLogo?: string;
@@ -36,6 +42,9 @@ type DisplayState = {
   tipBaseCents?: number;
   tipTechs?: { name: string; qr?: string; handle?: string }[];
   reviewUrl?: string;
+  checkin?: CheckIn;
+  /** Set by reception when it closes the form, to release the screen. */
+  checkinExit?: boolean;
 };
 
 const TIP_PERCENTS = [15, 18, 20];
@@ -81,7 +90,7 @@ export default function PosDisplayPage() {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
     const ch = new BroadcastChannel('lumio-pos-display');
     chRef.current = ch;
-    let mode: 'mirror' | 'paid' = 'mirror';
+    let mode: 'mirror' | 'paid' | 'checkin' = 'mirror';
     let lastSig = '';
     ch.onmessage = (e) => {
       const d = e.data;
@@ -93,6 +102,14 @@ export default function PosDisplayPage() {
       if (sig === lastSig) return;
       lastSig = sig;
       const stt = d.state.status;
+      // Check-in owns the screen while it is up: the register keeps heartbeating
+      // its own idle state from another tab and would otherwise steal it back.
+      if (stt === 'checkin') { mode = 'checkin'; setS({ ...EMPTY, ...d.state }); return; }
+      if (mode === 'checkin') {
+        const realSale = stt === 'paid' || (stt === 'active' && (d.state.lines?.length ?? 0) > 0);
+        if (!realSale && !d.state.checkinExit) return;   // ignore the register's idle heartbeat
+        mode = 'mirror';                                  // reception closed it, or a sale started
+      }
       if (stt === 'active' && (d.state.lines?.length ?? 0) > 0) {
         mode = 'mirror'; setTipped(false); setRevealTip(false); setChosenTip(null); setKeypad(false);
         setS({ ...EMPTY, ...d.state }); return;
@@ -157,6 +174,11 @@ export default function PosDisplayPage() {
       {s.salonName ? <div style={{ fontSize: 'clamp(18px, 2.6vw, 28px)', fontWeight: 800, color: '#1e293b' }}>{s.salonName}</div> : null}
     </div>
   ) : null;
+
+  // Walk-in self check-in takes over the same monitor — no second window.
+  if (s.status === 'checkin' && s.checkin) {
+    return <CheckInScreen st={s.checkin} salonName={s.salonName} logo={s.salonLogo} send={(type, payload) => chRef.current?.postMessage({ type, payload })} />;
+  }
 
   const imgWelcome = (s.status === 'idle' || (s.status === 'active' && s.lines.length === 0)) && !!s.salonWelcome;
   return (
@@ -607,3 +629,128 @@ const menuBtn: CSSProperties = {
   padding: '13px 14px', borderRadius: 12, border: 'none',
   fontSize: 15, fontWeight: 700, cursor: 'pointer',
 };
+
+
+/**
+ * Customer-facing walk-in check-in, rendered on the register's own display.
+ * Everything the customer touches is posted straight back to reception, which
+ * owns the session and does the saving — this screen never calls the API.
+ */
+function CheckInScreen({ st, salonName, logo, send }: {
+  st: CheckIn; salonName?: string; logo?: string;
+  send: (type: string, payload?: unknown) => void;
+}) {
+  const [cat, setCat] = useState<string | null>(null);
+  const cats: { id: string; name: string }[] = [];
+  const seen = new Set<string>();
+  for (const sv of st.services) if (sv.category && !seen.has(sv.category.id)) { seen.add(sv.category.id); cats.push(sv.category); }
+  const shown = st.services.filter((sv) => !cat || sv.category?.id === cat);
+  const picked = st.picked.map((id) => st.services.find((x) => x.id === id)).filter(Boolean) as CheckInService[];
+  const total = picked.reduce((sum, x) => sum + x.priceCents, 0);
+  const mins = picked.reduce((sum, x) => sum + x.durationMinutes, 0);
+  const f = st.form;
+
+  if (st.done) {
+    return (
+      <div style={{ ...page, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div>
+          <div style={{ width: 128, height: 128, borderRadius: '50%', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64, margin: '0 auto 26px' }}>✓</div>
+          <div style={{ fontSize: 'clamp(30px, 5vw, 52px)', fontWeight: 900, color: '#0f172a' }}>You&rsquo;re checked in</div>
+          <div style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', color: '#475569', marginTop: 12 }}>
+            {f.firstName ? `Thank you, ${f.firstName}. ` : ''}Please take a seat — we&rsquo;ll call you shortly.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const input: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', padding: '16px 16px', borderRadius: 14,
+    border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontSize: 19, minHeight: 62,
+  };
+  const chip = (on: boolean): React.CSSProperties => ({
+    border: `2px solid ${on ? '#4f46e5' : '#e2e8f0'}`, background: on ? '#4f46e5' : '#fff',
+    color: on ? '#fff' : '#475569', borderRadius: 999, padding: '13px 20px',
+    fontSize: 16.5, fontWeight: 600, cursor: 'pointer', minHeight: 54, whiteSpace: 'nowrap',
+  });
+
+  return (
+    <div style={{ ...page, padding: 0, display: 'flex', flexDirection: 'column', height: '100dvh' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 28px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+        {logo
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={logo} alt="" style={{ height: 42, width: 'auto', borderRadius: 10 }} />
+          : <span style={{ width: 42, height: 42, borderRadius: 13, background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21 }}>✦</span>}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 'clamp(18px, 2.4vw, 24px)', fontWeight: 800, color: '#0f172a' }}>{salonName || 'Welcome'}</div>
+          <div style={{ fontSize: 15, color: '#64748b' }}>Please fill this in — or let us do it for you</div>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '22px 28px', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a', marginBottom: 16 }}>Your details</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginBottom: 28 }}>
+          <label><span style={lbl}>First name <span style={{ color: '#ef4444' }}>*</span></span>
+            <input value={f.firstName} onChange={(e) => send('form', { firstName: e.target.value })} placeholder="Anna" style={input} autoCapitalize="words" /></label>
+          <label><span style={lbl}>Last name</span>
+            <input value={f.lastName} onChange={(e) => send('form', { lastName: e.target.value })} placeholder="Nguyen" style={input} autoCapitalize="words" /></label>
+          <label><span style={lbl}>Mobile number</span>
+            <input value={f.phone} onChange={(e) => send('form', { phone: e.target.value })} placeholder="+1 512 886 8189" style={input} inputMode="tel" /></label>
+          <label><span style={lbl}>Email</span>
+            <input value={f.email} onChange={(e) => send('form', { email: e.target.value })} placeholder="anna@email.com" style={input} inputMode="email" autoCapitalize="off" /></label>
+          <label><span style={lbl}>Birthday</span>
+            <input type="date" max={new Date().toISOString().slice(0, 10)} value={f.birthDate} onChange={(e) => send('form', { birthDate: e.target.value })} style={input} /></label>
+          <label><span style={lbl}>How many of you?</span>
+            <div style={{ display: 'flex', gap: 9 }}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} onClick={() => send('form', { partySize: n })} style={{ ...chip(f.partySize === n), flex: 1, padding: '13px 0' }}>{n}{n === 5 ? '+' : ''}</button>
+              ))}
+            </div></label>
+        </div>
+
+        <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a', marginBottom: 14 }}>What would you like today?</div>
+        {cats.length > 0 && (
+          <div style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 12 }}>
+            <button onClick={() => setCat(null)} style={chip(cat === null)}>All</button>
+            {cats.map((c) => <button key={c.id} onClick={() => setCat(c.id)} style={chip(cat === c.id)}>{c.name}</button>)}
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 13, marginTop: 8 }}>
+          {shown.map((sv) => {
+            const on = st.picked.includes(sv.id);
+            return (
+              <button key={sv.id} onClick={() => send('toggleService', sv.id)}
+                style={{
+                  textAlign: 'left', borderRadius: 16, padding: '15px 17px', cursor: 'pointer',
+                  background: on ? '#eef2ff' : '#fff', border: `2px solid ${on ? '#4f46e5' : '#e2e8f0'}`,
+                  minHeight: 100, display: 'flex', flexDirection: 'column', gap: 8,
+                }}>
+                <span style={{ fontSize: 17.5, fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>{sv.name}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto' }}>
+                  <span style={{ fontSize: 18.5, fontWeight: 800, color: '#16a34a' }}>{money(sv.priceCents, 'USD')}</span>
+                  <span style={{ fontSize: 14, color: '#94a3b8' }}>{sv.durationMinutes} min</span>
+                  {on && <span style={{ marginLeft: 'auto', fontSize: 19, color: '#4f46e5' }}>✓</span>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 28px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
+        <span style={{ fontSize: 16.5, color: '#475569' }}>
+          {picked.length > 0
+            ? <>{picked.length} selected · <strong style={{ color: '#16a34a' }}>{money(total, 'USD')}</strong> · {mins} min</>
+            : 'Pick anything you like — or tell us at the chair'}
+        </span>
+        <span style={{ flex: 1 }} />
+        <button onClick={() => send('submit')} disabled={!f.firstName.trim()}
+          style={{ border: 'none', background: '#4f46e5', color: '#fff', borderRadius: 14, padding: '16px 38px', fontSize: 19, fontWeight: 700, cursor: 'pointer', minHeight: 62, opacity: f.firstName.trim() ? 1 : 0.45 }}>
+          I&rsquo;m done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const lbl: React.CSSProperties = { display: 'block', fontSize: 15, color: '#475569', marginBottom: 7, fontWeight: 600 };

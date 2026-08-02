@@ -63,6 +63,7 @@ function Inner() {
   const [pick, setPick] = useState<Record<string, string>>({});
   const [currency, setCurrency] = useState('USD');
   const [salonName, setSalonName] = useState('');
+  const [salonLogo, setSalonLogo] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -71,11 +72,13 @@ function Inner() {
       const [b, svc, settings] = await Promise.all([
         apiFetch<Board>('/walkins/board', { token }),
         apiFetch<Service[]>('/services', { token }).catch(() => []),
-        apiFetch<{ booking?: { currency?: string }; company?: { name?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string } })),
+        apiFetch<{ booking?: { currency?: string }; company?: { name?: string }; branding?: { logoUrl?: string } }>('/settings', { token })
+          .catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string }; branding?: { logoUrl?: string } })),
       ]);
       setBoard(b); setServices(svc);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
       if (settings?.company?.name) setSalonName(settings.company.name);
+      if (settings?.branding?.logoUrl) setSalonLogo(settings.branding.logoUrl);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -93,27 +96,38 @@ function Inner() {
     const { form: f, pickedIds: p } = liveRef.current;
     chRef.current?.postMessage({
       type: 'state',
+      // Same envelope the register uses, so the customer display it is already
+      // showing simply switches mode — no second window to open.
       state: {
-        mode,
+        status: mode === 'idle' ? 'idle' : 'checkin',
+        checkinExit: mode === 'idle' ? true : undefined,
+        currency: 'USD',
         salonName: salonName || '',
-        accent: '#6366f1',
-        services: services.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents ?? 0, durationMinutes: x.durationMinutes ?? 0, category: x.category ?? null })),
-        form: {
-          firstName: f.customerName, lastName: f.lastName, phone: f.phone,
-          email: f.email, birthDate: f.birthDate, partySize: parseInt(f.partySize, 10) || 1,
+        salonLogo: salonLogo || undefined,
+        lines: [],
+        subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
+        checkin: {
+          done: mode === 'thanks',
+          services: services.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents ?? 0, durationMinutes: x.durationMinutes ?? 0, category: x.category ?? null })),
+          form: {
+            firstName: f.customerName, lastName: f.lastName, phone: f.phone,
+            email: f.email, birthDate: f.birthDate, partySize: parseInt(f.partySize, 10) || 1,
+          },
+          picked: p,
         },
-        picked: p,
       },
     });
-  }, [salonName, services]);
+  }, [salonName, salonLogo, services]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
-    const ch = new BroadcastChannel('lumio-checkin-display');
+    const ch = new BroadcastChannel('lumio-pos-display');
     chRef.current = ch;
     ch.onmessage = (e: MessageEvent) => {
       const msg = e.data as { type: string; payload?: unknown };
-      if (msg?.type === 'hello') { setScreenOn(true); pushToScreen(liveRef.current.formOpen ? 'form' : 'idle'); return; }
+      // The display asks for state when it loads (and the register answers the
+      // same message) — only reply while our form is actually open.
+      if (msg?.type === 'request') { setScreenOn(true); if (liveRef.current.formOpen) pushToScreen('form'); return; }
       if (msg?.type === 'form') {
         // The customer is typing on the other monitor.
         const p = (msg.payload ?? {}) as Partial<{ firstName: string; lastName: string; phone: string; email: string; birthDate: string; partySize: number }>;
@@ -142,9 +156,11 @@ function Inner() {
   // Mirror every desk keystroke onto the customer screen while the form is open.
   useEffect(() => { if (screenOn) pushToScreen(formOpen ? 'form' : 'idle'); }, [form, pickedIds, formOpen, screenOn, pushToScreen]);
 
+  // Same window name the register uses, so this focuses the display that is
+  // already open on the second monitor instead of spawning another one.
   function openCustomerScreen() {
     if (typeof window === 'undefined') return;
-    winRef.current = window.open('/checkin-display', 'lumioCheckinDisplay', 'width=1200,height=820');
+    winRef.current = window.open('/pos-display', 'lumioCustomerDisplay', 'width=1100,height=760');
     setScreenOn(true);
   }
   function startNew() {
@@ -231,7 +247,7 @@ function Inner() {
           someone actually walks in. The customer monitor stays connected. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
         <button
-          onClick={() => (formOpen ? setFormOpen(false) : startNew())}
+          onClick={() => { if (formOpen) { setFormOpen(false); pushToScreen('idle'); } else startNew(); }}
           style={{ ...ui.primaryBtn, padding: '11px 20px', fontSize: 14.5 }}
         >{formOpen ? t('wi.closeForm') : t('wi.newWalkin')}</button>
         <button

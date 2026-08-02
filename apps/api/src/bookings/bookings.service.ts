@@ -30,6 +30,7 @@ import { SettingsService } from '../settings/settings.service';
 import { ReminderSettings, ReviewSettings, RebookingSettings } from '../settings/settings.constants';
 import { PaymentsService } from '../payments/payments.service';
 import { ReferralService } from '../referral/referral.service';
+import { TrashService } from '../maintenance/trash.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
@@ -70,6 +71,7 @@ export class BookingsService {
     private readonly payments: PaymentsService,
     private readonly referral: ReferralService,
     private readonly push: PushService,
+    private readonly trash: TrashService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -1780,8 +1782,22 @@ export class BookingsService {
    */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    await this.getById(user, id); // 404 + tenant ownership
+    const booking = await this.getById(user, id); // 404 + tenant ownership
+
+    // Snapshot before removing. A booking carries its payments, so both go into
+    // the bin together — restoring half of it would leave money orphaned.
+    const row = await this.prisma.appointment.findFirst({ where: { id, tenantId } });
+    const pays = await this.prisma.payment.findMany({ where: { tenantId, appointmentId: id } });
+    const b = booking as { customer?: { firstName?: string; lastName?: string | null } | null; service?: { name?: string } | null; startTime?: Date };
+    const who = `${b?.customer?.firstName ?? ''} ${b?.customer?.lastName ?? ''}`.trim() || 'Walk-in';
+    const label = `${who} · ${b?.service?.name ?? 'Service'} · ${b?.startTime ? new Date(b.startTime).toISOString().slice(0, 16).replace('T', ' ') : ''}`;
+
     await this.prisma.$transaction(async (tx) => {
+      await this.trash.capture(tx, {
+        tenantId, entity: 'appointment', entityId: id, label,
+        snapshot: { appointment: row, payments: pays },
+        deletedByUserId: user.userId,
+      });
       await tx.payment.deleteMany({ where: { tenantId, appointmentId: id } });
       await tx.appointment.deleteMany({ where: { id, tenantId } });
     });

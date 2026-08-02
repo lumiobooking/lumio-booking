@@ -67,6 +67,8 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },
     { href: '/salon/connections', label: 'Connections', icon: '🔌' },
     { href: '/salon/settings', label: 'Settings', icon: '⚙' },
+    // Deleted items live here for a week before they are gone for good.
+    { href: '/salon/trash', label: 'Recycle bin', icon: '🗑' },
   ] },
 ];
 
@@ -83,6 +85,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
   '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
+  '/salon/trash': 'settings',
   '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/usage-costs': 'billing', '/salon/settings': 'settings',
   '/salon/chain': 'reports', // multi-branch consolidated report
 };

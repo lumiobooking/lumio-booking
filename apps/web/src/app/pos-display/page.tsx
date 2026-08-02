@@ -98,10 +98,22 @@ export default function PosDisplayPage() {
     chRef.current = ch;
     let mode: 'mirror' | 'paid' | 'checkin' = 'mirror';
     let lastSig = '';
+    // The register's own screen (welcome image, salon name, review QR). Kept so
+    // that leaving check-in restores exactly what was there before — not a bare
+    // fallback welcome with no review QR.
+    let lastRegister: DisplayState | null = null;
+    const restore = () => {
+      mode = 'mirror';
+      lastSig = '';
+      setS(lastRegister ?? EMPTY);
+      // Ask whichever register is open to replay its live state on top.
+      ch.postMessage({ type: 'request' });
+    };
     ch.onmessage = (e) => {
       const d = e.data;
-      // The register just opened — it takes the screen back from check-in.
-      if (d?.type === 'claim') { if (mode === 'checkin') { mode = 'mirror'; setS(EMPTY); } return; }
+      // The register just opened, or reception closed the check-in — either way
+      // the screen goes back to what the register was showing.
+      if (d?.type === 'claim' || d?.type === 'checkinRelease') { if (mode === 'checkin') restore(); return; }
       if (!d || d.type !== 'state' || !d.state) return;
       // Ignore identical re-pushes (the register heartbeats the same paid state).
       // Re-rendering on every heartbeat is what made the Tip button occasionally
@@ -113,6 +125,8 @@ export default function PosDisplayPage() {
       // Check-in owns the screen while it is up: the register keeps heartbeating
       // its own idle state from another tab and would otherwise steal it back.
       if (stt === 'checkin') { mode = 'checkin'; setS({ ...EMPTY, ...d.state }); return; }
+      // Remember the register's own view so check-in can hand it straight back.
+      lastRegister = { ...EMPTY, ...d.state };
       if (mode === 'checkin') {
         const realSale = stt === 'paid' || (stt === 'active' && (d.state.lines?.length ?? 0) > 0);
         if (!realSale && !d.state.checkinExit) return;   // ignore the register's idle heartbeat

@@ -84,7 +84,10 @@ function Inner() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
-  useLiveRefresh(load, 15000);
+  // The board is the shared source of truth between reception, the techs' chair
+  // app and self check-ins from a phone — so it refreshes itself often enough
+  // that nobody ever reaches for the reload button.
+  useLiveRefresh(load, 5000);
 
   // Keep the newest form state in a ref so the channel handler (registered once)
   // always reads current values instead of the ones captured at mount.
@@ -93,20 +96,33 @@ function Inner() {
   const addRef = useRef<() => void>(() => undefined);
   const checkinUrlRef = useRef('');
   const qrTextRef = useRef({ title: '', hint: '' });
+  const thanksNameRef = useRef<string | null>(null);
+  // True while this page is the one driving the customer screen, so it only
+  // hands the screen back when it actually had it.
+  const ownsScreenRef = useRef(false);
+  // Walk-ins already waiting when the QR went up — anything new after that is a
+  // customer who just checked themselves in on their phone.
+  const knownWaitingRef = useRef<Set<string>>(new Set());
 
   const [qrOn, setQrOn] = useState(false);
+  // Name to greet on the display after a self check-in lands (the customer used
+  // their own phone, so it is not in the desk's form).
+  const [thanksName, setThanksName] = useState<string | null>(null);
   const [pairCode, setPairCode] = useState('');
   const checkinUrl = pairCode && typeof window !== 'undefined' ? `${window.location.origin}/checkin?c=${pairCode}` : '';
 
   const pushToScreen = useCallback((mode: 'idle' | 'form' | 'thanks' | 'qr') => {
+    // Handing the screen back must NOT push a stripped-down idle state — that
+    // wiped the salon's welcome image and the Google review QR. Tell the display
+    // to restore the register's own view instead.
+    if (mode === 'idle') { chRef.current?.postMessage({ type: 'checkinRelease' }); return; }
     const { form: f, pickedIds: p } = liveRef.current;
     chRef.current?.postMessage({
       type: 'state',
       // Same envelope the register uses, so the customer display it is already
       // showing simply switches mode — no second window to open.
       state: {
-        status: mode === 'idle' ? 'idle' : 'checkin',
-        checkinExit: mode === 'idle' ? true : undefined,
+        status: 'checkin',
         currency: 'USD',
         salonName: salonName || '',
         salonLogo: salonLogo || undefined,
@@ -119,7 +135,8 @@ function Inner() {
           qrHint: mode === 'qr' ? qrTextRef.current.hint : undefined,
           services: services.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents ?? 0, durationMinutes: x.durationMinutes ?? 0, category: x.category ?? null })),
           form: {
-            firstName: f.customerName, lastName: f.lastName, phone: f.phone,
+            firstName: mode === 'thanks' && thanksNameRef.current ? thanksNameRef.current : f.customerName,
+            lastName: f.lastName, phone: f.phone,
             email: f.email, birthDate: f.birthDate, partySize: parseInt(f.partySize, 10) || 1,
           },
           picked: p,
@@ -163,10 +180,39 @@ function Inner() {
   }, [pushToScreen]);
 
   // Mirror every desk keystroke onto the customer screen while the form is open.
+  useEffect(() => { thanksNameRef.current = thanksName; }, [thanksName]);
+
   useEffect(() => {
-    if (qrOn) pushToScreen('qr');
-    else if (formOpen) pushToScreen('form');
-  }, [form, pickedIds, formOpen, qrOn, pushToScreen]);
+    if (thanksName) { ownsScreenRef.current = true; pushToScreen('thanks'); }
+    else if (qrOn) { ownsScreenRef.current = true; pushToScreen('qr'); }
+    else if (formOpen) { ownsScreenRef.current = true; pushToScreen('form'); }
+    else if (ownsScreenRef.current) { ownsScreenRef.current = false; pushToScreen('idle'); }
+  }, [form, pickedIds, formOpen, qrOn, thanksName, pushToScreen]);
+
+  // While the QR is up, watch the queue: the phone posts straight to the API, so
+  // the arrival of a new waiting ticket IS the signal that the customer is done.
+  useEffect(() => {
+    if (!qrOn) { knownWaitingRef.current = new Set((board?.waiting ?? []).map((x) => x.id)); return; }
+    const fresh = (board?.waiting ?? []).filter((x) => !knownWaitingRef.current.has(x.id));
+    if (fresh.length === 0) return;
+    knownWaitingRef.current = new Set((board?.waiting ?? []).map((x) => x.id));
+    setThanksName((fresh[0].customerName || '').split(' ')[0] || '');
+  }, [board, qrOn]);
+
+  // Thank-you sits for a moment, then the QR closes itself and the screen goes
+  // back to the salon's welcome — ready for the next customer, no staff action.
+  useEffect(() => {
+    if (thanksName === null) return;
+    const id = window.setTimeout(() => { setThanksName(null); setQrOn(false); }, 6000);
+    return () => window.clearTimeout(id);
+  }, [thanksName]);
+
+  // A phone check-in should show up in seconds, not on the 15s board tick.
+  useEffect(() => {
+    if (!qrOn) return;
+    const id = window.setInterval(() => { void load(); }, 2000);
+    return () => window.clearInterval(id);
+  }, [qrOn, load]);
 
   // Say hello on mount too: a display window opened before this page has already
   // sent its own 'request' and would otherwise never hear from us.
@@ -177,12 +223,7 @@ function Inner() {
   // Leaving this page (to POS, calendar, anywhere) hands the customer screen
   // back to whoever else drives it. Without this the monitor would sit on the
   // check-in form while the cashier is ringing someone up.
-  useEffect(() => () => {
-    chRef.current?.postMessage({
-      type: 'state',
-      state: { status: 'idle', checkinExit: true, currency: 'USD', lines: [], subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0 },
-    });
-  }, []);
+  useEffect(() => () => { chRef.current?.postMessage({ type: 'checkinRelease' }); }, []);
 
   // The QR the customer scans comes from the salon's own display pairing code.
   useEffect(() => {

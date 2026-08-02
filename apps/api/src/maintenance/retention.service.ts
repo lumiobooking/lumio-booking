@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { TrashService } from './trash.service';
 
 /**
  * Housekeeping for the operational logs that grow without bound.
@@ -27,7 +28,10 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   static readonly DEAD_WALKIN_DAYS = 30;   // cancelled tickets that never took money
   private readonly BATCH = 5000;           // keep each delete short so nothing locks up
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly trash: TrashService,
+  ) {}
 
   onModuleInit() {
     // OFF until explicitly switched on. Deleting rows is the one thing that
@@ -54,9 +58,9 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   private async tick() {
     try {
       const r = await this.sweep();
-      const total = r.auditLogs + r.notifications + r.deadWalkIns;
+      const total = r.auditLogs + r.notifications + r.deadWalkIns + r.trash;
       if (total > 0) {
-        this.logger.log(`Pruned ${total} row(s): audit ${r.auditLogs}, notifications ${r.notifications}, dead walk-ins ${r.deadWalkIns}.`);
+        this.logger.log(`Pruned ${total} row(s): audit ${r.auditLogs}, notifications ${r.notifications}, dead walk-ins ${r.deadWalkIns}, bin ${r.trash}.`);
       }
     } catch (e) {
       this.logger.warn(`Retention sweep failed: ${(e as Error).message}`);
@@ -68,7 +72,11 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
    * see the effect. Platform-wide: retention is a housekeeping policy, not a
    * per-salon setting.
    */
-  async sweep(): Promise<{ auditLogs: number; notifications: number; deadWalkIns: number }> {
+  async sweep(): Promise<{ auditLogs: number; notifications: number; deadWalkIns: number; trash: number }> {
+    // Empty the recycle bin of anything past its grace period. This runs even
+    // when the log pruning below is switched off, because the bin promises a
+    // fixed window and must keep that promise.
+    const trash = await this.trash.purgeExpired();
     const auditLogs = await this.prisma.auditLog.deleteMany({
       where: { createdAt: { lt: this.daysAgo(RetentionService.AUDIT_DAYS) } },
     });
@@ -103,6 +111,6 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    return { auditLogs: auditLogs.count, notifications: notifications.count, deadWalkIns };
+    return { auditLogs: auditLogs.count, notifications: notifications.count, deadWalkIns, trash };
   }
 }

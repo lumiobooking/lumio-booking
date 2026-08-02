@@ -278,6 +278,7 @@ model Tenant {
   @@index([status])
   @@index([accountGroupId])
   @@map("tenants")
+  trashItems      TrashItem[]
 }
 
 /// Billing subscription history for a tenant.
@@ -2313,4 +2314,36 @@ model SocialInsight {
   @@unique([tenantId, platform, periodMonth])
   @@index([tenantId, periodMonth])
   @@map("social_insights")
+}
+
+/// Recycle bin. Anything deleted in the app is snapshotted here first and only
+/// leaves the database for good after the grace period. Restoring re-inserts
+/// the snapshot, so a mis-click costs a minute instead of the data.
+model TrashItem {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// What was deleted: "appointment", "customer", "service", "order", ...
+  entity String
+  /// Primary key of the deleted row, so a restore can detect a clash.
+  entityId String
+
+  /// Human label shown in the bin ("Anna · Manicure · Jul 30, 4:00 PM").
+  label String
+
+  /// Full row(s) as JSON. Child rows (payments, order items…) ride along under
+  /// their own keys so a restore can put the whole thing back.
+  snapshot Json
+
+  deletedByUserId String?
+  deletedAt       DateTime @default(now())
+  /// When the sweeper may delete this for good.
+  expiresAt       DateTime
+  /// Set when someone puts it back; kept as a record that it was restored.
+  restoredAt      DateTime?
+
+  @@index([tenantId, entity, deletedAt])
+  @@index([expiresAt])
+  @@map("trash_items")
 }

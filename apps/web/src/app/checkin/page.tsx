@@ -50,8 +50,20 @@ export default function CheckInKiosk() {
   const [err, setErr] = useState<string | null>(null);
 
   // Restore a previous pairing so the iPad comes back up ready after a reboot.
+  // A phone arriving from the salon's QR carries ?c=CODE and pairs itself — the
+  // customer never sees a code screen. Nothing is stored on a phone: one visit,
+  // one session (the URL param is enough to get going).
   useEffect(() => {
-    try { setToken(localStorage.getItem(TOKEN_KEY)); } catch { /* private mode */ }
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(TOKEN_KEY); } catch { /* private mode */ }
+    const code = new URLSearchParams(window.location.search).get('c');
+    if (code) {
+      apiFetch<{ token: string }>('/display/pair', { method: 'POST', body: { pairCode: code.toUpperCase() } })
+        .then((r) => setToken(r.token))
+        .catch(() => setToken(saved));
+      return;
+    }
+    setToken(saved);
   }, []);
 
   const loadMenu = useCallback(async (tk: string) => {
@@ -185,10 +197,15 @@ export default function CheckInKiosk() {
   const canNext = step === 1 ? form.firstName.trim().length > 0 : true;
 
   return (
-    <main style={{ ...screen, alignItems: 'stretch', padding: 0 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+    <main style={{ ...screen, alignItems: 'stretch', padding: 0, display: 'block' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', width: '100%' }}>
         {/* Header: who they are checking in with + how far along they are */}
-        <header style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 24px', borderBottom: '1px solid #1e293b', flexShrink: 0 }}>
+        <header style={{
+          display: 'flex', alignItems: 'center', gap: 12, padding: 'clamp(12px, 3.5vw, 18px) clamp(14px, 4vw, 24px)',
+          borderBottom: '1px solid #1e293b', flexShrink: 0,
+          position: 'sticky', top: 0, background: '#0b1120', zIndex: 5,
+          paddingTop: 'max(clamp(12px, 3.5vw, 18px), env(safe-area-inset-top))',
+        }}>
           {menu.logoUrl
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={menu.logoUrl} alt="" style={{ height: 40, width: 'auto', borderRadius: 8 }} />
@@ -204,27 +221,27 @@ export default function CheckInKiosk() {
           </div>
         </header>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '22px 24px', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ flex: 1, padding: 'clamp(16px, 4vw, 22px) clamp(14px, 4vw, 24px)' }}>
           {/* ---- Step 1: who ---- */}
           {step === 1 && (
             <>
               <h2 style={stepTitle}>Your details</h2>
               <p style={stepHint}>Only your first name is required. The rest lets us text your reminders and birthday treats.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 14 }}>
                 <Field label="First name" required>
-                  <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Anna" style={bigInput} autoCapitalize="words" />
+                  <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="Anna" style={bigInput} autoCapitalize="words" autoComplete="given-name" enterKeyHint="next" />
                 </Field>
                 <Field label="Last name">
-                  <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Nguyen" style={bigInput} autoCapitalize="words" />
+                  <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Nguyen" style={bigInput} autoCapitalize="words" autoComplete="family-name" enterKeyHint="next" />
                 </Field>
                 <Field label="Mobile number">
-                  <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+1 512 886 8189" style={bigInput} inputMode="tel" />
+                  <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+1 512 886 8189" style={bigInput} inputMode="tel" type="tel" autoComplete="tel" enterKeyHint="next" />
                 </Field>
                 <Field label="Email">
-                  <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="anna@email.com" style={bigInput} inputMode="email" autoCapitalize="off" />
+                  <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="anna@email.com" style={bigInput} inputMode="email" type="email" autoComplete="email" autoCapitalize="off" autoCorrect="off" enterKeyHint="next" />
                 </Field>
                 <Field label="Birthday">
-                  <input type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} style={bigInput} />
+                  <input type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} style={bigInput} autoComplete="bday" />
                 </Field>
                 <Field label="How many of you?">
                   <div style={{ display: 'flex', gap: 10 }}>
@@ -243,8 +260,24 @@ export default function CheckInKiosk() {
           {/* ---- Step 2: what ---- */}
           {step === 2 && (
             <>
-              <h2 style={stepTitle}>What would you like today?</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                <h2 style={{ ...stepTitle, margin: 0 }}>What would you like today?</h2>
+                <span style={{
+                  fontSize: 14.5, fontWeight: 800, borderRadius: 999, padding: '5px 12px',
+                  background: picked.length ? accent : '#1e293b', color: picked.length ? '#fff' : '#94a3b8',
+                }}>{picked.length} selected</span>
+              </div>
               <p style={stepHint}>Tap everything you want — you can change it with us at the chair.</p>
+              {pickedList.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                  {pickedList.map((s) => (
+                    <button key={s.id} onClick={() => setPicked((v) => v.filter((x) => x !== s.id))}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(99,102,241,0.16)', border: `1px solid ${accent}`, color: '#c7d2fe', borderRadius: 999, padding: '8px 13px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}>
+                      {s.name}<span style={{ fontSize: 16 }}>✕</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {cats.length > 0 && (
                 <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 12, marginBottom: 4 }}>
                   <button onClick={() => setCat(null)} style={{ ...pill, ...(cat === null ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>All</button>
@@ -253,7 +286,9 @@ export default function CheckInKiosk() {
                   ))}
                 </div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+              {/* Two columns on a phone, more as the screen grows — never a single
+                  endless list the customer has to scroll past. */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(46%, 220px), 1fr))', gap: 'clamp(8px, 2.5vw, 14px)' }}>
                 {shown.map((s) => {
                   const on = picked.includes(s.id);
                   return (
@@ -261,17 +296,25 @@ export default function CheckInKiosk() {
                       key={s.id}
                       onClick={() => setPicked((v) => (on ? v.filter((x) => x !== s.id) : [...v, s.id]))}
                       style={{
-                        textAlign: 'left', borderRadius: 16, padding: '16px 18px', cursor: 'pointer',
-                        background: on ? 'rgba(99,102,241,0.14)' : '#111827',
+                        position: 'relative', textAlign: 'left', borderRadius: 16,
+                        padding: 'clamp(12px, 3.4vw, 16px) clamp(13px, 3.6vw, 18px)', cursor: 'pointer',
+                        background: on ? accent : '#111827',
                         border: `2px solid ${on ? accent : '#1e293b'}`,
-                        color: '#e2e8f0', minHeight: 104, display: 'flex', flexDirection: 'column', gap: 8,
+                        boxShadow: on ? '0 8px 20px rgba(79,70,229,0.3)' : 'none',
+                        color: '#e2e8f0', minHeight: 96, display: 'flex', flexDirection: 'column', gap: 7,
                       }}
                     >
-                      <span style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.25 }}>{s.name}</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto' }}>
-                        <span style={{ fontSize: 19, fontWeight: 800, color: on ? '#fff' : '#22c55e' }}>{money(s.priceCents)}</span>
-                        <span style={{ fontSize: 14, color: '#94a3b8' }}>{s.durationMinutes} min</span>
-                        {on && <span style={{ marginLeft: 'auto', fontSize: 20, color: accent }}>✓</span>}
+                      {on && (
+                        <span style={{
+                          position: 'absolute', top: -10, right: -8, width: 30, height: 30, borderRadius: '50%',
+                          background: '#22c55e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 17, fontWeight: 900, border: '3px solid #0b1120',
+                        }}>✓</span>
+                      )}
+                      <span style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 700, lineHeight: 1.25 }}>{s.name}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 'auto', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 'clamp(16px, 4.2vw, 19px)', fontWeight: 800, color: on ? '#fff' : '#22c55e' }}>{money(s.priceCents)}</span>
+                        <span style={{ fontSize: 13.5, color: on ? 'rgba(255,255,255,0.78)' : '#94a3b8' }}>{s.durationMinutes} min</span>
                       </span>
                     </button>
                   );
@@ -319,7 +362,13 @@ export default function CheckInKiosk() {
         </div>
 
         {/* Sticky action bar: thumbs live at the bottom of a tablet */}
-        <footer style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 24px', borderTop: '1px solid #1e293b', background: '#0f172a', flexShrink: 0 }}>
+        <footer style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: 'clamp(12px, 3.5vw, 16px) clamp(14px, 4vw, 24px)',
+          paddingBottom: 'max(clamp(12px, 3.5vw, 16px), env(safe-area-inset-bottom))',
+          borderTop: '1px solid #1e293b', background: '#0f172a',
+          position: 'sticky', bottom: 0, zIndex: 5,
+        }}>
           {step > 1
             ? <button onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} style={ghostBtn}>Back</button>
             : <span style={{ fontSize: 15, color: '#64748b' }}>Step {step} of 3</span>}
@@ -330,11 +379,11 @@ export default function CheckInKiosk() {
           )}
           <span style={{ flex: 1 }} />
           {step < 3 ? (
-            <button onClick={() => setStep((s) => (s + 1) as 2 | 3)} disabled={!canNext} style={{ ...primary(accent), opacity: canNext ? 1 : 0.45 }}>
+            <button onClick={() => setStep((s) => (s + 1) as 2 | 3)} disabled={!canNext} style={{ ...primary(accent), flex: '1 1 160px', opacity: canNext ? 1 : 0.45 }}>
               Continue
             </button>
           ) : (
-            <button onClick={submit} disabled={busy} style={{ ...primary(accent), opacity: busy ? 0.6 : 1 }}>
+            <button onClick={submit} disabled={busy} style={{ ...primary(accent), flex: '1 1 160px', opacity: busy ? 0.6 : 1 }}>
               {busy ? 'Checking you in…' : 'Check in'}
             </button>
           )}
@@ -365,19 +414,24 @@ function Row({ k, v }: { k: string; v: string }) {
   );
 }
 
+// No fixed height: on a phone the on-screen keyboard shrinks the viewport, and a
+// locked 100dvh traps the focused field behind it. Let the page flow and keep the
+// action bar sticky instead — that behaves on iOS, Android and a 27" monitor.
 const screen: CSSProperties = {
-  minHeight: '100dvh', height: '100dvh', background: '#0b1120', color: '#e2e8f0',
+  minHeight: '100dvh', background: '#0b1120', color: '#e2e8f0',
   fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  padding: 'clamp(14px, 4vw, 24px)',
   WebkitTapHighlightColor: 'transparent',
 };
 const panel: CSSProperties = {
   background: '#111827', border: '1px solid #1e293b', borderRadius: 18, padding: 28, width: '100%',
 };
+// 16px is the floor: anything smaller makes iOS Safari zoom the page on focus.
 const bigInput: CSSProperties = {
-  width: '100%', boxSizing: 'border-box', padding: '18px 18px', borderRadius: 14,
+  width: '100%', boxSizing: 'border-box', padding: 'clamp(14px, 4vw, 18px)', borderRadius: 14,
   border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0',
-  fontSize: 20, colorScheme: 'dark', minHeight: 64,
+  fontSize: 'clamp(17px, 4.4vw, 20px)', colorScheme: 'dark', minHeight: 58,
 };
 const pill: CSSProperties = {
   border: '2px solid #1e293b', background: '#111827', color: '#cbd5e1',
@@ -391,5 +445,5 @@ const primary = (accent: string): CSSProperties => ({
   border: 'none', background: accent, color: '#fff', borderRadius: 14,
   padding: '16px 34px', fontSize: 19, fontWeight: 700, cursor: 'pointer', minHeight: 60,
 });
-const stepTitle: CSSProperties = { fontSize: 28, fontWeight: 800, margin: '0 0 6px' };
-const stepHint: CSSProperties = { fontSize: 16.5, color: '#94a3b8', margin: '0 0 20px', lineHeight: 1.5 };
+const stepTitle: CSSProperties = { fontSize: 'clamp(21px, 5.6vw, 28px)', fontWeight: 800, margin: '0 0 6px' };
+const stepHint: CSSProperties = { fontSize: 'clamp(14.5px, 3.8vw, 16.5px)', color: '#94a3b8', margin: '0 0 18px', lineHeight: 1.5 };

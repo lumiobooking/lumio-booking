@@ -18,7 +18,13 @@ type Line = { name: string; qty: number; lineCents: number; staff?: string };
 // monitor into a form instead of opening a second window.
 type CheckInService = { id: string; name: string; priceCents: number; durationMinutes: number; category?: { id: string; name: string } | null };
 type CheckInForm = { firstName: string; lastName: string; phone: string; email: string; birthDate: string; partySize: number };
-type CheckIn = { services: CheckInService[]; form: CheckInForm; picked: string[]; done?: boolean };
+type CheckIn = {
+  services: CheckInService[]; form: CheckInForm; picked: string[]; done?: boolean;
+  /** When set, the screen shows a big QR instead of the form: the customer
+   *  fills it in on their own phone. */
+  qr?: string;
+  qrTitle?: string; qrHint?: string;
+};
 
 type DisplayState = {
   status: 'idle' | 'active' | 'paid' | 'checkin';
@@ -94,6 +100,8 @@ export default function PosDisplayPage() {
     let lastSig = '';
     ch.onmessage = (e) => {
       const d = e.data;
+      // The register just opened — it takes the screen back from check-in.
+      if (d?.type === 'claim') { if (mode === 'checkin') { mode = 'mirror'; setS(EMPTY); } return; }
       if (!d || d.type !== 'state' || !d.state) return;
       // Ignore identical re-pushes (the register heartbeats the same paid state).
       // Re-rendering on every heartbeat is what made the Tip button occasionally
@@ -641,14 +649,46 @@ function CheckInScreen({ st, salonName, logo, send }: {
   send: (type: string, payload?: unknown) => void;
 }) {
   const [cat, setCat] = useState<string | null>(null);
+  // Tap feedback must be instant. The desk is authoritative, but waiting for its
+  // echo made the cards look unresponsive, so paint the choice immediately and
+  // let the next push from reception confirm it.
+  const [local, setLocal] = useState<string[]>(st.picked);
+  useEffect(() => { setLocal(st.picked); }, [st.picked]);
+  const isOn = (id: string) => local.includes(id);
+  const tap = (id: string) => {
+    setLocal((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
+    send('toggleService', id);
+  };
   const cats: { id: string; name: string }[] = [];
   const seen = new Set<string>();
   for (const sv of st.services) if (sv.category && !seen.has(sv.category.id)) { seen.add(sv.category.id); cats.push(sv.category); }
   const shown = st.services.filter((sv) => !cat || sv.category?.id === cat);
-  const picked = st.picked.map((id) => st.services.find((x) => x.id === id)).filter(Boolean) as CheckInService[];
+  const picked = local.map((id) => st.services.find((x) => x.id === id)).filter(Boolean) as CheckInService[];
   const total = picked.reduce((sum, x) => sum + x.priceCents, 0);
   const mins = picked.reduce((sum, x) => sum + x.durationMinutes, 0);
   const f = st.form;
+
+  // "Scan and use your own phone" — the same check-in, on the customer's device.
+  if (st.qr) {
+    const src = `https://api.qrserver.com/v1/create-qr-code/?size=520x520&margin=1&data=${encodeURIComponent(st.qr)}`;
+    return (
+      <div style={{ ...page, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div style={{ maxWidth: 760 }}>
+          <div style={{ fontSize: 'clamp(28px, 4.6vw, 46px)', fontWeight: 900, color: '#0f172a', marginBottom: 10 }}>
+            {st.qrTitle || 'Scan to check in'}
+          </div>
+          <div style={{ fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#475569', marginBottom: 26 }}>
+            {st.qrHint || 'Point your camera here, then fill in your details on your phone.'}
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="Check-in QR" style={{ width: 'min(46vh, 420px)', height: 'min(46vh, 420px)', background: '#fff', borderRadius: 22, padding: 16, boxShadow: '0 18px 44px rgba(15,23,42,0.16)' }} />
+          <div style={{ fontSize: 'clamp(14px, 1.8vw, 18px)', color: '#94a3b8', marginTop: 22 }}>
+            Prefer not to? Just tell the front desk — we&rsquo;ll do it for you.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (st.done) {
     return (
@@ -665,8 +705,11 @@ function CheckInScreen({ st, salonName, logo, send }: {
   }
 
   const input: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box', padding: '16px 16px', borderRadius: 14,
-    border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontSize: 19, minHeight: 62,
+    width: '100%', boxSizing: 'border-box', padding: 'clamp(13px, 2.2vw, 16px)', borderRadius: 14,
+    border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a',
+    // Never below 16px: iOS Safari zooms the whole page when a smaller field
+    // takes focus, which on a wall-mounted display looks like a glitch.
+    fontSize: 'clamp(17px, 2.1vw, 19px)', minHeight: 56,
   };
   const chip = (on: boolean): React.CSSProperties => ({
     border: `2px solid ${on ? '#4f46e5' : '#e2e8f0'}`, background: on ? '#4f46e5' : '#fff',
@@ -675,8 +718,13 @@ function CheckInScreen({ st, salonName, logo, send }: {
   });
 
   return (
-    <div style={{ ...page, padding: 0, display: 'flex', flexDirection: 'column', height: '100dvh' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 28px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+    <div style={{ ...page, padding: 0, display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: 'clamp(12px, 2.4vw, 18px) clamp(14px, 2.6vw, 28px)',
+        borderBottom: '1px solid #e2e8f0', flexShrink: 0,
+        position: 'sticky', top: 0, background: '#fff', zIndex: 5,
+      }}>
         {logo
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={logo} alt="" style={{ height: 42, width: 'auto', borderRadius: 10 }} />
@@ -687,17 +735,17 @@ function CheckInScreen({ st, salonName, logo, send }: {
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '22px 28px', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ flex: 1, padding: 'clamp(16px, 2.6vw, 22px) clamp(14px, 2.6vw, 28px)' }}>
         <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a', marginBottom: 16 }}>Your details</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginBottom: 28 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 13, marginBottom: 26 }}>
           <label><span style={lbl}>First name <span style={{ color: '#ef4444' }}>*</span></span>
-            <input value={f.firstName} onChange={(e) => send('form', { firstName: e.target.value })} placeholder="Anna" style={input} autoCapitalize="words" /></label>
+            <input value={f.firstName} onChange={(e) => send('form', { firstName: e.target.value })} placeholder="Anna" style={input} autoCapitalize="words" autoComplete="given-name" enterKeyHint="next" /></label>
           <label><span style={lbl}>Last name</span>
-            <input value={f.lastName} onChange={(e) => send('form', { lastName: e.target.value })} placeholder="Nguyen" style={input} autoCapitalize="words" /></label>
+            <input value={f.lastName} onChange={(e) => send('form', { lastName: e.target.value })} placeholder="Nguyen" style={input} autoCapitalize="words" autoComplete="family-name" enterKeyHint="next" /></label>
           <label><span style={lbl}>Mobile number</span>
-            <input value={f.phone} onChange={(e) => send('form', { phone: e.target.value })} placeholder="+1 512 886 8189" style={input} inputMode="tel" /></label>
+            <input value={f.phone} onChange={(e) => send('form', { phone: e.target.value })} placeholder="+1 512 886 8189" style={input} inputMode="tel" type="tel" autoComplete="tel" enterKeyHint="next" /></label>
           <label><span style={lbl}>Email</span>
-            <input value={f.email} onChange={(e) => send('form', { email: e.target.value })} placeholder="anna@email.com" style={input} inputMode="email" autoCapitalize="off" /></label>
+            <input value={f.email} onChange={(e) => send('form', { email: e.target.value })} placeholder="anna@email.com" style={input} inputMode="email" type="email" autoComplete="email" autoCapitalize="off" autoCorrect="off" enterKeyHint="next" /></label>
           <label><span style={lbl}>Birthday</span>
             <input type="date" max={new Date().toISOString().slice(0, 10)} value={f.birthDate} onChange={(e) => send('form', { birthDate: e.target.value })} style={input} /></label>
           <label><span style={lbl}>How many of you?</span>
@@ -708,28 +756,53 @@ function CheckInScreen({ st, salonName, logo, send }: {
             </div></label>
         </div>
 
-        <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a', marginBottom: 14 }}>What would you like today?</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <span style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a' }}>What would you like today?</span>
+          <span style={{
+            fontSize: 15.5, fontWeight: 800, borderRadius: 999, padding: '6px 14px',
+            background: picked.length ? '#4f46e5' : '#e2e8f0', color: picked.length ? '#fff' : '#64748b',
+          }}>{picked.length} selected</span>
+        </div>
+        {picked.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            {picked.map((sv) => (
+              <button key={sv.id} onClick={() => tap(sv.id)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#3730a3', borderRadius: 999, padding: '9px 14px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
+                {sv.name}<span style={{ color: '#6366f1', fontSize: 17 }}>✕</span>
+              </button>
+            ))}
+          </div>
+        )}
         {cats.length > 0 && (
           <div style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 12 }}>
             <button onClick={() => setCat(null)} style={chip(cat === null)}>All</button>
             {cats.map((c) => <button key={c.id} onClick={() => setCat(c.id)} style={chip(cat === c.id)}>{c.name}</button>)}
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 13, marginTop: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(46%, 215px), 1fr))', gap: 'clamp(9px, 1.6vw, 13px)', marginTop: 8 }}>
           {shown.map((sv) => {
-            const on = st.picked.includes(sv.id);
+            const on = isOn(sv.id);
             return (
-              <button key={sv.id} onClick={() => send('toggleService', sv.id)}
+              <button key={sv.id} onClick={() => tap(sv.id)}
                 style={{
-                  textAlign: 'left', borderRadius: 16, padding: '15px 17px', cursor: 'pointer',
-                  background: on ? '#eef2ff' : '#fff', border: `2px solid ${on ? '#4f46e5' : '#e2e8f0'}`,
+                  position: 'relative', textAlign: 'left', borderRadius: 16, padding: '15px 17px', cursor: 'pointer',
+                  background: on ? '#4f46e5' : '#fff',
+                  border: `3px solid ${on ? '#4f46e5' : '#e2e8f0'}`,
+                  boxShadow: on ? '0 8px 20px rgba(79,70,229,0.28)' : 'none',
                   minHeight: 100, display: 'flex', flexDirection: 'column', gap: 8,
+                  transition: 'background .12s ease, box-shadow .12s ease',
                 }}>
-                <span style={{ fontSize: 17.5, fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>{sv.name}</span>
+                {on && (
+                  <span style={{
+                    position: 'absolute', top: -12, right: -10, width: 34, height: 34, borderRadius: '50%',
+                    background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 19, fontWeight: 900, border: '3px solid #fff',
+                  }}>✓</span>
+                )}
+                <span style={{ fontSize: 17.5, fontWeight: 700, color: on ? '#fff' : '#0f172a', lineHeight: 1.25 }}>{sv.name}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto' }}>
-                  <span style={{ fontSize: 18.5, fontWeight: 800, color: '#16a34a' }}>{money(sv.priceCents, 'USD')}</span>
-                  <span style={{ fontSize: 14, color: '#94a3b8' }}>{sv.durationMinutes} min</span>
-                  {on && <span style={{ marginLeft: 'auto', fontSize: 19, color: '#4f46e5' }}>✓</span>}
+                  <span style={{ fontSize: 18.5, fontWeight: 800, color: on ? '#fff' : '#16a34a' }}>{money(sv.priceCents, 'USD')}</span>
+                  <span style={{ fontSize: 14, color: on ? 'rgba(255,255,255,0.75)' : '#94a3b8' }}>{sv.durationMinutes} min</span>
                 </span>
               </button>
             );
@@ -737,15 +810,21 @@ function CheckInScreen({ st, salonName, logo, send }: {
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 28px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        padding: 'clamp(12px, 2.4vw, 16px) clamp(14px, 2.6vw, 28px)',
+        paddingBottom: 'max(clamp(12px, 2.4vw, 16px), env(safe-area-inset-bottom))',
+        borderTop: '1px solid #e2e8f0', background: '#f8fafc',
+        position: 'sticky', bottom: 0, zIndex: 5,
+      }}>
         <span style={{ fontSize: 16.5, color: '#475569' }}>
           {picked.length > 0
-            ? <>{picked.length} selected · <strong style={{ color: '#16a34a' }}>{money(total, 'USD')}</strong> · {mins} min</>
+            ? <><strong style={{ color: '#4f46e5' }}>{picked.length} service{picked.length > 1 ? 's' : ''}</strong> · <strong style={{ color: '#16a34a' }}>{money(total, 'USD')}</strong> · about {mins} min</>
             : 'Pick anything you like — or tell us at the chair'}
         </span>
         <span style={{ flex: 1 }} />
         <button onClick={() => send('submit')} disabled={!f.firstName.trim()}
-          style={{ border: 'none', background: '#4f46e5', color: '#fff', borderRadius: 14, padding: '16px 38px', fontSize: 19, fontWeight: 700, cursor: 'pointer', minHeight: 62, opacity: f.firstName.trim() ? 1 : 0.45 }}>
+          style={{ border: 'none', background: '#4f46e5', color: '#fff', borderRadius: 14, padding: '15px clamp(22px, 4vw, 38px)', fontSize: 'clamp(17px, 2.2vw, 19px)', fontWeight: 700, cursor: 'pointer', minHeight: 58, flex: '1 1 150px', opacity: f.firstName.trim() ? 1 : 0.45 }}>
           I&rsquo;m done
         </button>
       </div>

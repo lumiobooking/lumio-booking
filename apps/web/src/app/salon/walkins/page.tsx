@@ -91,8 +91,14 @@ function Inner() {
   const liveRef = useRef({ form, pickedIds, formOpen });
   useEffect(() => { liveRef.current = { form, pickedIds, formOpen }; }, [form, pickedIds, formOpen]);
   const addRef = useRef<() => void>(() => undefined);
+  const checkinUrlRef = useRef('');
+  const qrTextRef = useRef({ title: '', hint: '' });
 
-  const pushToScreen = useCallback((mode: 'idle' | 'form' | 'thanks') => {
+  const [qrOn, setQrOn] = useState(false);
+  const [pairCode, setPairCode] = useState('');
+  const checkinUrl = pairCode && typeof window !== 'undefined' ? `${window.location.origin}/checkin?c=${pairCode}` : '';
+
+  const pushToScreen = useCallback((mode: 'idle' | 'form' | 'thanks' | 'qr') => {
     const { form: f, pickedIds: p } = liveRef.current;
     chRef.current?.postMessage({
       type: 'state',
@@ -108,6 +114,9 @@ function Inner() {
         subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
         checkin: {
           done: mode === 'thanks',
+          qr: mode === 'qr' ? checkinUrlRef.current : undefined,
+          qrTitle: mode === 'qr' ? qrTextRef.current.title : undefined,
+          qrHint: mode === 'qr' ? qrTextRef.current.hint : undefined,
           services: services.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents ?? 0, durationMinutes: x.durationMinutes ?? 0, category: x.category ?? null })),
           form: {
             firstName: f.customerName, lastName: f.lastName, phone: f.phone,
@@ -154,7 +163,34 @@ function Inner() {
   }, [pushToScreen]);
 
   // Mirror every desk keystroke onto the customer screen while the form is open.
-  useEffect(() => { if (screenOn) pushToScreen(formOpen ? 'form' : 'idle'); }, [form, pickedIds, formOpen, screenOn, pushToScreen]);
+  useEffect(() => {
+    if (qrOn) pushToScreen('qr');
+    else if (formOpen) pushToScreen('form');
+  }, [form, pickedIds, formOpen, qrOn, pushToScreen]);
+
+  // Say hello on mount too: a display window opened before this page has already
+  // sent its own 'request' and would otherwise never hear from us.
+  useEffect(() => { chRef.current?.postMessage({ type: 'request' }); }, []);
+  useEffect(() => { checkinUrlRef.current = checkinUrl; }, [checkinUrl]);
+  useEffect(() => { qrTextRef.current = { title: t('wi.qrScanTitle'), hint: t('wi.qrScanHint') }; }, [t]);
+
+  // Leaving this page (to POS, calendar, anywhere) hands the customer screen
+  // back to whoever else drives it. Without this the monitor would sit on the
+  // check-in form while the cashier is ringing someone up.
+  useEffect(() => () => {
+    chRef.current?.postMessage({
+      type: 'state',
+      state: { status: 'idle', checkinExit: true, currency: 'USD', lines: [], subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0 },
+    });
+  }, []);
+
+  // The QR the customer scans comes from the salon's own display pairing code.
+  useEffect(() => {
+    if (!token || pairCode) return;
+    apiFetch<{ pairCode: string }>('/display/session', { token })
+      .then((r) => setPairCode(r.pairCode))
+      .catch(() => undefined);
+  }, [token, pairCode]);
 
   // Same window name the register uses, so this focuses the display that is
   // already open on the second monitor instead of spawning another one.
@@ -164,6 +200,7 @@ function Inner() {
     setScreenOn(true);
   }
   function startNew() {
+    setQrOn(false);
     setForm(BLANK_FORM); setPickedIds([]); setFormOpen(true);
     // Push immediately: the customer should see the form the moment it opens.
     setTimeout(() => pushToScreen('form'), 0);
@@ -191,6 +228,7 @@ function Inner() {
       else if (form.staffChoice !== 'wait') body.assignedStaffId = form.staffChoice;
       await apiFetch('/walkins', { method: 'POST', token, body });
       pushToScreen('thanks');
+      setQrOn(false);
       setForm(BLANK_FORM); setPickedIds([]); setFormOpen(false);
       // Leave the thank-you up for a moment, then reset the customer screen.
       setTimeout(() => pushToScreen('idle'), 6000);
@@ -262,6 +300,17 @@ function Inner() {
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : '#475569' }} />
           🖥️ {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
         </button>
+        <button
+          onClick={() => { const next = !qrOn; setQrOn(next); if (next) { setFormOpen(false); pushToScreen('qr'); } else pushToScreen('idle'); }}
+          disabled={!checkinUrl}
+          title={t('wi.qrHow')}
+          style={{
+            border: `1px solid ${qrOn ? '#4f46e5' : '#334155'}`, background: qrOn ? 'rgba(79,70,229,0.14)' : 'transparent',
+            color: qrOn ? '#c7d2fe' : '#cbd5e1', borderRadius: 8, padding: '10px 14px',
+            fontSize: 13, cursor: checkinUrl ? 'pointer' : 'not-allowed', opacity: checkinUrl ? 1 : 0.5,
+            display: 'flex', alignItems: 'center', gap: 7,
+          }}
+        >📲 {qrOn ? t('wi.qrHide') : t('wi.qrOnScreen')}</button>
         <span style={{ flex: 1 }} />
         <KioskInline t={t} />
       </div>

@@ -687,6 +687,11 @@ function Register() {
       // tech's QR to pay directly). We log it against the just-paid ticket's techs.
       else if (d?.type === 'tipDirect' && typeof d.amountCents === 'number') logPaidTip(Math.max(0, Math.round(d.amountCents)));
     };
+    // Opening the register claims the customer screen: if it is sitting on the
+    // walk-in check-in form, it goes back to the register's own view. One system
+    // owns the monitor at a time, and the last one opened wins.
+    ch.postMessage({ type: 'claim' });
+    ch.postMessage(displayPayloadRef.current);
     return () => { ch.close(); displayChRef.current = null; };
   }, []);
   // Distribute a customer-chosen tip across the service lines (by value), so each

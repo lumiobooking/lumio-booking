@@ -54,6 +54,9 @@ function Inner() {
   const params = useParams();
   const id = String(params?.id ?? '');
   const [c, setC] = useState<CustomerDetail | null>(null);
+  // Same rule as the calendar: every date on this page reads on the salon's
+  // clock, so a visit never appears on the wrong day to a viewer abroad.
+  const [salonTz, setSalonTz] = useState('');
   const pgAppts = usePaged(c?.appointments ?? [], 15);
   const pgLoyalty = usePaged(c?.loyaltyTransactions ?? [], 15);
   const [loading, setLoading] = useState(true);
@@ -69,6 +72,9 @@ function Inner() {
     try {
       const data = await apiFetch<CustomerDetail>(`/customers/${id}`, { token });
       setC(data);
+      apiFetch<{ company?: { timezone?: string } }>('/settings', { token })
+        .then((st) => { if (st?.company?.timezone) setSalonTz(st.company.timezone); })
+        .catch(() => undefined);
       setBday(data.birthDate ? data.birthDate.slice(0, 10) : '');
       apiFetch<{ code: string; link: string }>(`/referral/customer/${id}`, { token })
         .then((r) => setRefLink(r.link))
@@ -109,7 +115,7 @@ function Inner() {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 24, margin: 0 }}>{c.firstName} {c.lastName ?? ''}</h1>
           <div style={{ color: '#94a3b8', fontSize: 14 }}>
-            {c.email ?? t('cu.noEmail')} · {c.phone ?? t('cu.noPhone')} · {t('cu.since')} {new Date(c.createdAt).toLocaleDateString('en-US')}
+            {c.email ?? t('cu.noEmail')} · {c.phone ?? t('cu.noPhone')} · {t('cu.since')} {fmtDate(c.createdAt, salonTz)}
           </div>
         </div>
         <a
@@ -127,7 +133,7 @@ function Inner() {
         <Kpi label={t('cu.kBookings')} value={String(c.stats.bookings)} accent="#3b82f6" />
         <Kpi label={t('cu.kCompleted')} value={String(c.stats.completed)} accent="#a855f7" />
         <Kpi label={t('cu.kNoShows')} value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : '#64748b'} />
-        <Kpi label={t('cu.kLastVisit')} value={c.stats.lastVisit ? new Date(c.stats.lastVisit).toLocaleDateString('en-US') : '—'} accent="#06b6d4" />
+        <Kpi label={t('cu.kLastVisit')} value={c.stats.lastVisit ? fmtDate(c.stats.lastVisit, salonTz) : '—'} accent="#06b6d4" />
       </div>
 
       <div style={{ ...ui.card, marginBottom: 18, display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
@@ -157,7 +163,7 @@ function Inner() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {pgLoyalty.paged.map((tx) => (
               <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
-                <span style={{ color: '#cbd5e1' }}>{new Date(tx.createdAt).toLocaleDateString('en-US')} · {tx.reason}</span>
+                <span style={{ color: '#cbd5e1' }}>{fmtDate(tx.createdAt, salonTz)} · {tx.reason}</span>
                 <span style={{ color: tx.points >= 0 ? '#22c55e' : '#f97316', fontWeight: 600 }}>{tx.points >= 0 ? '+' : ''}{tx.points} {t('cu.pts')} <span style={{ color: '#64748b', fontWeight: 400 }}>({t('cu.bal')} {tx.balanceAfter})</span></span>
               </div>
             ))}
@@ -186,7 +192,7 @@ function Inner() {
             {(c.orders ?? []).length === 0 && <tr><td style={ui.td} colSpan={4}>{t('cu.noSales')}</td></tr>}
             {(c.orders ?? []).map((o) => (
               <tr key={o.id} style={{ borderTop: '1px solid #334155' }}>
-                <td style={ui.td}>{new Date(o.createdAt).toLocaleString('en-US')}</td>
+                <td style={ui.td}>{fmtDateTime(o.createdAt, salonTz)}</td>
                 <td style={ui.td}>#{o.orderNumber}</td>
                 <td style={ui.td}>
                   {o.items.length === 0 ? '—' : o.items.map((it) => `${it.name}${it.quantity > 1 ? ` ×${it.quantity}` : ''}`).join(' · ')}
@@ -210,7 +216,7 @@ function Inner() {
               const pay = a.payments[0];
               return (
                 <tr key={a.id} style={{ borderTop: '1px solid #334155' }}>
-                  <td style={ui.td}>{new Date(a.startTime).toLocaleString('en-US')}</td>
+                  <td style={ui.td}>{fmtDateTime(a.startTime, salonTz)}</td>
                   <td style={ui.td}>{a.service?.name ?? '—'}</td>
                   <td style={ui.td}>{a.assignedStaff ? `${a.assignedStaff.firstName} ${a.assignedStaff.lastName ?? ''}`.trim() : '—'}</td>
                   <td style={ui.td}><span style={{ color: STATUS_COLORS[a.status] ?? '#94a3b8', fontWeight: 600 }}>{a.status}</span></td>
@@ -242,4 +248,16 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent: s
       <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{value}</div>
     </div>
   );
+}
+
+/** Dates on the salon's own clock — never the viewer's. */
+function fmtDate(iso: string, tz: string): string {
+  const d = new Date(iso);
+  try { return d.toLocaleDateString('en-US', tz ? { timeZone: tz } : undefined); }
+  catch { return d.toLocaleDateString('en-US'); }
+}
+function fmtDateTime(iso: string, tz: string): string {
+  const d = new Date(iso);
+  try { return d.toLocaleString('en-US', tz ? { timeZone: tz } : undefined); }
+  catch { return d.toLocaleString('en-US'); }
 }

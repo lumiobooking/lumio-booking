@@ -80,6 +80,10 @@ function BookingsInner() {
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  // Dates must read in the SALON's timezone, not the viewer's. Without this a
+  // 4:00 PM appointment showed as 3:00 AM the NEXT DAY to anyone whose computer
+  // sits in another timezone — the calendar and this table disagreed.
+  const [salonTz, setSalonTz] = useState<string>('');
   const [staff, setStaff] = useState<Staff[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,16 +95,18 @@ function BookingsInner() {
     setLoading(true);
     setError(null);
     try {
-      const [b, s, st, p] = await Promise.all([
+      const [b, s, st, p, settings] = await Promise.all([
         apiFetch<Booking[]>('/bookings', { token }),
         apiFetch<Service[]>('/services', { token }),
         apiFetch<Staff[]>('/staff', { token }),
         apiFetch<Payment[]>('/payments', { token }),
+        apiFetch<{ company?: { timezone?: string } }>('/settings', { token }).catch(() => ({} as { company?: { timezone?: string } })),
       ]);
       setBookings(b);
       setServices(s);
       setStaff(st);
       setPayments(p);
+      if (settings?.company?.timezone) setSalonTz(settings.company.timezone);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load bookings');
     } finally {
@@ -234,7 +240,7 @@ function BookingsInner() {
                     ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(b.customer)}</a>
                     : staffName(b.customer)}
                 </MHead>
-                <MRow label={t('bk.colWhen')}>{new Date(b.startTime).toLocaleString('en-US')}</MRow>
+                <MRow label={t('bk.colWhen')}>{fmtWhen(b.startTime, salonTz)}</MRow>
                 <MRow label={t('bk.colService')}><ServiceCell b={b} /></MRow>
                 <MRow label={t('bk.colStaff')}>{staffName(b.assignedStaff)}</MRow>
                 <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(b.id)} /></MRow>
@@ -279,7 +285,7 @@ function BookingsInner() {
               {pg.paged.map((b) => (
                 <tr key={b.id} style={{ borderTop: '1px solid #334155', background: bulk.has(b.id) ? '#1e1b4b' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(b.id)} onChange={() => bulk.toggle(b.id)} /></td>
-                  <td style={ui.td}>{new Date(b.startTime).toLocaleString('en-US')}</td>
+                  <td style={ui.td}>{fmtWhen(b.startTime, salonTz)}</td>
                   <td style={ui.td}>
                     {b.customer?.id
                       ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
@@ -688,6 +694,16 @@ function FieldLabel({ raw, required, optionalWord, hint }: { raw: string; requir
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 };
 // Five customer fields; birthday is the narrowest so it gets a smaller floor.
 const custGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 };
+
+/** A booking time as the salon reads it on its own wall clock. */
+function fmtWhen(iso: string, tz: string): string {
+  const d = new Date(iso);
+  try {
+    return d.toLocaleString('en-US', tz ? { timeZone: tz } : undefined);
+  } catch {
+    return d.toLocaleString('en-US'); // unknown zone → viewer's clock
+  }
+}
 
 /** Every service on the visit: the primary plus any extra service lines. */
 function serviceNames(b: Booking): string[] {

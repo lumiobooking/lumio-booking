@@ -105,8 +105,8 @@ function Inner() {
 
   // Keep the newest form state in a ref so the channel handler (registered once)
   // always reads current values instead of the ones captured at mount.
-  const liveRef = useRef({ form, pickedIds, formOpen });
-  useEffect(() => { liveRef.current = { form, pickedIds, formOpen }; }, [form, pickedIds, formOpen]);
+  const liveRef = useRef({ form, pickedIds, formOpen, qrOn: false });
+
   const addRef = useRef<() => void>(() => undefined);
   const checkinUrlRef = useRef('');
   const qrTextRef = useRef({ title: '', hint: '' });
@@ -115,6 +115,21 @@ function Inner() {
   const salonLogoRef = useRef('');
   const salonWelcomeRef = useRef('');
   const reviewUrlRef = useRef<string | null>(null);
+
+  /** The salon's real welcome: cover image, logo, name and the review QR. */
+  const sendWelcome = useCallback(() => {
+    chRef.current?.postMessage({
+      type: 'state',
+      state: {
+        status: 'idle', checkinExit: true, currency: 'USD', lines: [],
+        subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
+        salonName: salonNameRef.current || undefined,
+        salonLogo: salonLogoRef.current || undefined,
+        salonWelcome: salonWelcomeRef.current || undefined,
+        reviewUrl: reviewUrlRef.current || undefined,
+      },
+    });
+  }, []);
   // True while this page is the one driving the customer screen, so it only
   // hands the screen back when it actually had it.
   const ownsScreenRef = useRef(false);
@@ -187,7 +202,17 @@ function Inner() {
       const msg = e.data as { type: string; payload?: unknown };
       // The display asks for state when it loads (and the register answers the
       // same message) — only reply while our form is actually open.
-      if (msg?.type === 'request') { setScreenOn(true); if (liveRef.current.formOpen) pushToScreen('form'); return; }
+      // A display that just loaded asks whoever is around for something to show.
+      // The register answers when it is open; when it is NOT (staff opened the
+      // screen straight from this page) nobody replied and it sat on the bare
+      // fallback welcome — no cover image, no review QR. Answer it ourselves.
+      if (msg?.type === 'request') {
+        setScreenOn(true);
+        if (liveRef.current.formOpen) pushToScreen('form');
+        else if (liveRef.current.qrOn) pushToScreen('qr');
+        else sendWelcome();
+        return;
+      }
       if (msg?.type === 'form') {
         // The customer is typing on the other monitor.
         const p = (msg.payload ?? {}) as Partial<{ firstName: string; lastName: string; phone: string; email: string; birthDate: string; partySize: number }>;
@@ -214,6 +239,7 @@ function Inner() {
   }, [pushToScreen]);
 
   // Mirror every desk keystroke onto the customer screen while the form is open.
+  useEffect(() => { liveRef.current = { form, pickedIds, formOpen, qrOn }; }, [form, pickedIds, formOpen, qrOn]);
   useEffect(() => { thanksNameRef.current = thanksName; }, [thanksName]);
   useEffect(() => {
     salonNameRef.current = salonName; salonLogoRef.current = salonLogo;
@@ -277,6 +303,9 @@ function Inner() {
     if (typeof window === 'undefined') return;
     winRef.current = window.open('/pos-display', 'lumioCustomerDisplay', 'width=1100,height=760');
     setScreenOn(true);
+    // If the window was already open, window.open only focuses it and no
+    // 'request' is sent — push the welcome so it is never left on the fallback.
+    window.setTimeout(() => { if (!liveRef.current.formOpen && !liveRef.current.qrOn) sendWelcome(); }, 500);
   }
   function startNew() {
     setQrOn(false);

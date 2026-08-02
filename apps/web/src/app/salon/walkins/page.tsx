@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, FormEvent, CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, FormEvent, CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
@@ -22,7 +22,12 @@ interface WalkIn {
 }
 interface StaffTurn { id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean }
 interface Board { waiting: WalkIn[]; serving: WalkIn[]; done?: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null }
-interface Service { id: string; name: string }
+interface Service {
+  id: string; name: string;
+  // Needed by the customer screen so it can show price and length per service.
+  priceCents?: number; durationMinutes?: number;
+  category?: { id: string; name: string } | null;
+}
 
 export default function WalkinsPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -47,8 +52,17 @@ function Inner() {
   const [form, setForm] = useState(BLANK_FORM);
   // A walk-in rarely wants exactly one thing; the picker adds to this list.
   const [pickedIds, setPickedIds] = useState<string[]>([]);
+  // The form is a drawer, not a permanent header: reception looks at the board
+  // all day and only needs the form when someone walks in.
+  const [formOpen, setFormOpen] = useState(false);
+  // Second monitor facing the customer. Same browser, so BroadcastChannel keeps
+  // both screens in step with no pairing, no login and no network.
+  const [screenOn, setScreenOn] = useState(false);
+  const chRef = useRef<BroadcastChannel | null>(null);
+  const winRef = useRef<Window | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [currency, setCurrency] = useState('USD');
+  const [salonName, setSalonName] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -57,10 +71,11 @@ function Inner() {
       const [b, svc, settings] = await Promise.all([
         apiFetch<Board>('/walkins/board', { token }),
         apiFetch<Service[]>('/services', { token }).catch(() => []),
-        apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string } })),
+        apiFetch<{ booking?: { currency?: string }; company?: { name?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string } })),
       ]);
       setBoard(b); setServices(svc);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
+      if (settings?.company?.name) setSalonName(settings.company.name);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -68,8 +83,78 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(load, 15000);
 
-  async function add(e: FormEvent) {
-    e.preventDefault(); setError(null);
+  // Keep the newest form state in a ref so the channel handler (registered once)
+  // always reads current values instead of the ones captured at mount.
+  const liveRef = useRef({ form, pickedIds, formOpen });
+  useEffect(() => { liveRef.current = { form, pickedIds, formOpen }; }, [form, pickedIds, formOpen]);
+  const addRef = useRef<() => void>(() => undefined);
+
+  const pushToScreen = useCallback((mode: 'idle' | 'form' | 'thanks') => {
+    const { form: f, pickedIds: p } = liveRef.current;
+    chRef.current?.postMessage({
+      type: 'state',
+      state: {
+        mode,
+        salonName: salonName || '',
+        accent: '#6366f1',
+        services: services.map((x) => ({ id: x.id, name: x.name, priceCents: x.priceCents ?? 0, durationMinutes: x.durationMinutes ?? 0, category: x.category ?? null })),
+        form: {
+          firstName: f.customerName, lastName: f.lastName, phone: f.phone,
+          email: f.email, birthDate: f.birthDate, partySize: parseInt(f.partySize, 10) || 1,
+        },
+        picked: p,
+      },
+    });
+  }, [salonName, services]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const ch = new BroadcastChannel('lumio-checkin-display');
+    chRef.current = ch;
+    ch.onmessage = (e: MessageEvent) => {
+      const msg = e.data as { type: string; payload?: unknown };
+      if (msg?.type === 'hello') { setScreenOn(true); pushToScreen(liveRef.current.formOpen ? 'form' : 'idle'); return; }
+      if (msg?.type === 'form') {
+        // The customer is typing on the other monitor.
+        const p = (msg.payload ?? {}) as Partial<{ firstName: string; lastName: string; phone: string; email: string; birthDate: string; partySize: number }>;
+        setForm((f) => ({
+          ...f,
+          ...(p.firstName !== undefined ? { customerName: p.firstName } : {}),
+          ...(p.lastName !== undefined ? { lastName: p.lastName } : {}),
+          ...(p.phone !== undefined ? { phone: p.phone } : {}),
+          ...(p.email !== undefined ? { email: p.email } : {}),
+          ...(p.birthDate !== undefined ? { birthDate: p.birthDate } : {}),
+          ...(p.partySize !== undefined ? { partySize: String(p.partySize) } : {}),
+        }));
+        setFormOpen(true);
+      }
+      if (msg?.type === 'toggleService') {
+        const id = String(msg.payload ?? '');
+        setPickedIds((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]));
+      }
+      // The customer pressed "I'm done" — the desk owns the token, so the desk saves.
+      if (msg?.type === 'submit') void addRef.current();
+    };
+    return () => { ch.close(); chRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushToScreen]);
+
+  // Mirror every desk keystroke onto the customer screen while the form is open.
+  useEffect(() => { if (screenOn) pushToScreen(formOpen ? 'form' : 'idle'); }, [form, pickedIds, formOpen, screenOn, pushToScreen]);
+
+  function openCustomerScreen() {
+    if (typeof window === 'undefined') return;
+    winRef.current = window.open('/checkin-display', 'lumioCheckinDisplay', 'width=1200,height=820');
+    setScreenOn(true);
+  }
+  function startNew() {
+    setForm(BLANK_FORM); setPickedIds([]); setFormOpen(true);
+    // Push immediately: the customer should see the form the moment it opens.
+    setTimeout(() => pushToScreen('form'), 0);
+  }
+
+  async function add(e?: FormEvent) {
+    e?.preventDefault(); setError(null);
     try {
       const body: Record<string, unknown> = {
         customerName: form.customerName.trim() || undefined,
@@ -89,10 +174,15 @@ function Inner() {
       if (form.staffChoice === 'auto') body.autoAssign = true;
       else if (form.staffChoice !== 'wait') body.assignedStaffId = form.staffChoice;
       await apiFetch('/walkins', { method: 'POST', token, body });
-      setForm(BLANK_FORM); setPickedIds([]);
+      pushToScreen('thanks');
+      setForm(BLANK_FORM); setPickedIds([]); setFormOpen(false);
+      // Leave the thank-you up for a moment, then reset the customer screen.
+      setTimeout(() => pushToScreen('idle'), 6000);
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add'); }
   }
+  addRef.current = () => { void add(); };
+
   async function act(path: string, body?: unknown) {
     setError(null);
     try { await apiFetch(`/walkins/${path}`, { method: 'PATCH', token, body }); await load(); }
@@ -137,11 +227,33 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      <KioskPanel t={t} />
+      {/* Reception looks at the board all day; the form only appears when
+          someone actually walks in. The customer monitor stays connected. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <button
+          onClick={() => (formOpen ? setFormOpen(false) : startNew())}
+          style={{ ...ui.primaryBtn, padding: '11px 20px', fontSize: 14.5 }}
+        >{formOpen ? t('wi.closeForm') : t('wi.newWalkin')}</button>
+        <button
+          onClick={openCustomerScreen}
+          title={t('wi.custScreenHint')}
+          style={{
+            border: `1px solid ${screenOn ? '#4f46e5' : '#334155'}`, background: 'transparent',
+            color: screenOn ? '#c7d2fe' : '#cbd5e1', borderRadius: 8, padding: '10px 14px',
+            fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
+          }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : '#475569' }} />
+          🖥️ {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
+        </button>
+        <span style={{ flex: 1 }} />
+        <KioskInline t={t} />
+      </div>
 
       {/* Three labelled blocks instead of one long strip of inputs: who the
           customer is (kept for marketing), what they want (several services at
           once), and where they sit. */}
+      {formOpen && (
       <form onSubmit={add} style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
@@ -207,6 +319,7 @@ function Inner() {
           <button type="submit" style={{ ...ui.primaryBtn, padding: '10px 20px', fontSize: 14 }}>{t('wi.addQueue')}</button>
         </div>
       </form>
+      )}
 
       {(board?.done ?? []).length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -618,7 +731,7 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
  * not something the front desk touches every day — but always reachable,
  * because a rotated code makes the kiosk stop working until it is re-entered.
  */
-function KioskPanel({ t }: { t: (k: string) => string }) {
+function KioskInline({ t }: { t: (k: string) => string }) {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
   const [s, setS] = useState<{ pairCode: string; displayUrl: string } | null>(null);
@@ -631,15 +744,15 @@ function KioskPanel({ t }: { t: (k: string) => string }) {
   const url = s ? s.displayUrl.replace(/\/display\/?$/, '/checkin') : '';
 
   return (
-    <div style={{ ...ui.card, padding: open ? 14 : '10px 14px', marginBottom: 16 }}>
+    <div style={{ position: 'relative' }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}
+        style={{ background: 'none', border: '1px solid #334155', borderRadius: 8, color: '#94a3b8', fontSize: 12.5, cursor: 'pointer', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 7 }}
       >
-        📱 {t('wi.kiosk')}<span style={{ marginLeft: 'auto', color: '#64748b' }}>{open ? '▴' : '▾'}</span>
+        📱 {t('wi.kiosk')}<span style={{ color: '#64748b' }}>{open ? '▴' : '▾'}</span>
       </button>
       {open && (
-        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ ...ui.card, position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 'min(520px, 86vw)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 12, padding: '12px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: 10.5, color: '#94a3b8', letterSpacing: '0.1em', fontWeight: 700 }}>CODE</div>
             <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 4, color: '#c7d2fe' }}>{s?.pairCode ?? '······'}</div>

@@ -17,13 +17,20 @@ interface Appt {
   payments: Pay[];
 }
 interface LoyaltyTxn { id: string; points: number; balanceAfter: number; reason: string; createdAt: string }
+/** A till sale. Walk-ins and retail have no appointment, so they only show here. */
+interface OrderItemRow { id: string; name: string; quantity: number; lineTotalCents: number }
+interface OrderRow {
+  id: string; orderNumber: number; createdAt: string; currency: string;
+  totalCents: number; tipCents: number; appointmentId: string | null; items: OrderItemRow[];
+}
 interface CustomerDetail {
   id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null;
   notes: string | null; birthDate: string | null; createdAt: string;
   loyaltyPoints?: number;
   loyaltyTransactions?: LoyaltyTxn[];
   appointments: Appt[];
-  stats: { bookings: number; completed: number; noShows?: number; totalSpentCents: number; lastVisit: string | null };
+  orders?: OrderRow[];
+  stats: { bookings: number; completed: number; noShows?: number; visits?: number; walkInSales?: number; totalSpentCents: number; lastVisit: string | null };
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -116,6 +123,7 @@ function Inner() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 18 }}>
         <Kpi label={t('cu.kSpent')} value={formatPrice(c.stats.totalSpentCents, currency)} accent="#22c55e" />
         <Kpi label={t('cu.kPoints')} value={`${c.loyaltyPoints ?? 0} ${t('cu.pts')}`} accent="#eab308" />
+        <Kpi label={t('cu.kVisits')} value={String(c.stats.visits ?? c.stats.completed)} accent="#3b82f6" />
         <Kpi label={t('cu.kBookings')} value={String(c.stats.bookings)} accent="#3b82f6" />
         <Kpi label={t('cu.kCompleted')} value={String(c.stats.completed)} accent="#a855f7" />
         <Kpi label={t('cu.kNoShows')} value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : '#64748b'} />
@@ -164,6 +172,31 @@ function Inner() {
           <div style={{ fontSize: 14 }}>{c.notes}</div>
         </div>
       )}
+
+      {/* Till sales: a walk-in never creates a booking, so without this section a
+          regular customer looked like they had never been in. */}
+      <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>{t('cu.salesHistory')}</h2>
+      <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto', marginBottom: 22 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead><tr style={{ background: '#1e293b' }}>
+            <th style={ui.th}>{t('cu.bhWhen')}</th><th style={ui.th}>{t('cu.shOrder')}</th>
+            <th style={ui.th}>{t('cu.shItems')}</th><th style={{ ...ui.th, textAlign: 'right' }}>{t('cu.shTotal')}</th>
+          </tr></thead>
+          <tbody>
+            {(c.orders ?? []).length === 0 && <tr><td style={ui.td} colSpan={4}>{t('cu.noSales')}</td></tr>}
+            {(c.orders ?? []).map((o) => (
+              <tr key={o.id} style={{ borderTop: '1px solid #334155' }}>
+                <td style={ui.td}>{new Date(o.createdAt).toLocaleString('en-US')}</td>
+                <td style={ui.td}>#{o.orderNumber}</td>
+                <td style={ui.td}>
+                  {o.items.length === 0 ? '—' : o.items.map((it) => `${it.name}${it.quantity > 1 ? ` ×${it.quantity}` : ''}`).join(' · ')}
+                </td>
+                <td style={{ ...ui.td, textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatPrice(o.totalCents, o.currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <h2 style={{ fontSize: 16, margin: '0 0 10px' }}>{t('cu.bookingHistory')}</h2>
       <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>

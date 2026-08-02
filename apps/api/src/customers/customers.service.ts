@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -168,21 +169,52 @@ export class CustomersService {
     if (!customer) {
       throw new NotFoundException('Customer not found');
     }
-    // Flatten payments + compute lifetime totals (PAID only = real collected).
+
+    // Till sales for this customer. A walk-in (and any retail sale) never has an
+    // appointment, so counting only appointment payments showed a regular
+    // customer as "$0.00 spent, no visits" — the money was in the salon's
+    // reports but nowhere on their profile.
+    const orders = await this.prisma.order.findMany({
+      where: { tenantId, customerId: id, status: OrderStatus.PAID },
+      select: {
+        id: true, orderNumber: true, createdAt: true, currency: true,
+        totalCents: true, tipCents: true, appointmentId: true,
+        items: { select: { id: true, name: true, quantity: true, lineTotalCents: true, staffMemberId: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    // Lifetime spend = money actually collected, counted once. An order raised
+    // FROM a booking already produced that booking's payment rows, so those
+    // orders are excluded here instead of being added twice.
     const payments = customer.appointments.flatMap((a) => a.payments);
-    const totalSpentCents = payments
-      .filter((p) => p.status === 'PAID')
-      .reduce((s, p) => s + p.amountCents, 0);
+    const apptSpent = payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
+    const orderSpent = orders.filter((o) => !o.appointmentId).reduce((s, o) => s + o.totalCents, 0);
+    const totalSpentCents = apptSpent + orderSpent;
+
     const completed = customer.appointments.filter((a) => a.status === 'COMPLETED').length;
     const noShows = customer.appointments.filter((a) => a.status === 'NO_SHOW').length;
+    // A visit is a completed booking OR a walk-in sale at the till.
+    const walkInSales = orders.filter((o) => !o.appointmentId);
+    const lastApptVisit = customer.appointments[0]?.startTime ?? null;
+    const lastSale = walkInSales[0]?.createdAt ?? null;
+    const lastVisit = lastApptVisit && lastSale
+      ? (lastApptVisit > lastSale ? lastApptVisit : lastSale)
+      : (lastApptVisit ?? lastSale);
+
     return {
       ...customer,
+      orders,
       stats: {
         bookings: customer.appointments.length,
         completed,
         noShows,
+        // Every paid visit, whether it started as a booking or a walk-in.
+        visits: completed + walkInSales.length,
+        walkInSales: walkInSales.length,
         totalSpentCents,
-        lastVisit: customer.appointments[0]?.startTime ?? null,
+        lastVisit,
       },
     };
   }

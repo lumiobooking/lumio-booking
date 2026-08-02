@@ -102,10 +102,13 @@ export default function PosDisplayPage() {
     // that leaving check-in restores exactly what was there before — not a bare
     // fallback welcome with no review QR.
     let lastRegister: DisplayState | null = null;
-    const restore = () => {
+    // `fallback` comes from whoever released the screen (the walk-in board sends
+    // the salon's real welcome + review QR), so a display that has never seen the
+    // register still lands on the proper home screen instead of a bare Welcome.
+    const restore = (fallback?: Partial<DisplayState>) => {
       mode = 'mirror';
       lastSig = '';
-      setS(lastRegister ?? EMPTY);
+      setS(lastRegister ?? { ...EMPTY, ...(fallback ?? {}) });
       // Ask whichever register is open to replay its live state on top.
       ch.postMessage({ type: 'request' });
     };
@@ -113,7 +116,7 @@ export default function PosDisplayPage() {
       const d = e.data;
       // The register just opened, or reception closed the check-in — either way
       // the screen goes back to what the register was showing.
-      if (d?.type === 'claim' || d?.type === 'checkinRelease') { if (mode === 'checkin') restore(); return; }
+      if (d?.type === 'claim' || d?.type === 'checkinRelease') { if (mode === 'checkin') restore(d.fallback); return; }
       if (!d || d.type !== 'state' || !d.state) return;
       // Ignore identical re-pushes (the register heartbeats the same paid state).
       // Re-rendering on every heartbeat is what made the Tip button occasionally
@@ -658,6 +661,14 @@ const menuBtn: CSSProperties = {
  * Everything the customer touches is posted straight back to reception, which
  * owns the session and does the saving — this screen never calls the API.
  */
+const CHECKIN_CSS = `
+  .lumio-xscroll{scrollbar-width:none;-ms-overflow-style:none}
+  .lumio-xscroll::-webkit-scrollbar{display:none}
+  .lumio-yscroll::-webkit-scrollbar{width:10px}
+  .lumio-yscroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:5px}
+  .lumio-yscroll::-webkit-scrollbar-track{background:transparent}
+`;
+
 function CheckInScreen({ st, salonName, logo, send }: {
   st: CheckIn; salonName?: string; logo?: string;
   send: (type: string, payload?: unknown) => void;
@@ -732,12 +743,12 @@ function CheckInScreen({ st, salonName, logo, send }: {
   });
 
   return (
-    <div style={{ ...page, padding: 0, display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+    <div style={{ ...page, padding: 0, display: 'flex', flexDirection: 'column' }}>
+      <style>{CHECKIN_CSS}</style>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: 'clamp(12px, 2.4vw, 18px) clamp(14px, 2.6vw, 28px)',
-        borderBottom: '1px solid #e2e8f0', flexShrink: 0,
-        position: 'sticky', top: 0, background: '#fff', zIndex: 5,
+        borderBottom: '1px solid #e2e8f0', flexShrink: 0, background: '#fff',
       }}>
         {logo
           // eslint-disable-next-line @next/next/no-img-element
@@ -749,7 +760,11 @@ function CheckInScreen({ st, salonName, logo, send }: {
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: 'clamp(16px, 2.6vw, 22px) clamp(14px, 2.6vw, 28px)' }}>
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        padding: 'clamp(16px, 2.6vw, 22px) clamp(14px, 2.6vw, 28px)',
+      }} className="lumio-yscroll">
         <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a', marginBottom: 16 }}>Your details</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 13, marginBottom: 26 }}>
           <label><span style={lbl}>First name <span style={{ color: '#ef4444' }}>*</span></span>
@@ -788,7 +803,7 @@ function CheckInScreen({ st, salonName, logo, send }: {
           </div>
         )}
         {cats.length > 0 && (
-          <div style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 12 }}>
+          <div className="lumio-xscroll" style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 10 }}>
             <button onClick={() => setCat(null)} style={chip(cat === null)}>All</button>
             {cats.map((c) => <button key={c.id} onClick={() => setCat(c.id)} style={chip(cat === c.id)}>{c.name}</button>)}
           </div>
@@ -825,11 +840,10 @@ function CheckInScreen({ st, salonName, logo, send }: {
       </div>
 
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flexShrink: 0,
         padding: 'clamp(12px, 2.4vw, 16px) clamp(14px, 2.6vw, 28px)',
         paddingBottom: 'max(clamp(12px, 2.4vw, 16px), env(safe-area-inset-bottom))',
         borderTop: '1px solid #e2e8f0', background: '#f8fafc',
-        position: 'sticky', bottom: 0, zIndex: 5,
       }}>
         <span style={{ fontSize: 16.5, color: '#475569' }}>
           {picked.length > 0

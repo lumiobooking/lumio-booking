@@ -64,6 +64,11 @@ function Inner() {
   const [currency, setCurrency] = useState('USD');
   const [salonName, setSalonName] = useState('');
   const [salonLogo, setSalonLogo] = useState('');
+  // Everything the customer display needs to paint its normal welcome screen,
+  // so this page can hand it back complete — including the Google review QR —
+  // even when the register isn't open in another tab.
+  const [salonWelcome, setSalonWelcome] = useState('');
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -72,13 +77,22 @@ function Inner() {
       const [b, svc, settings] = await Promise.all([
         apiFetch<Board>('/walkins/board', { token }),
         apiFetch<Service[]>('/services', { token }).catch(() => []),
-        apiFetch<{ booking?: { currency?: string }; company?: { name?: string }; branding?: { logoUrl?: string } }>('/settings', { token })
-          .catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string }; branding?: { logoUrl?: string } })),
+        apiFetch<{ booking?: { currency?: string }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; welcomeImageUrl?: string } }>('/settings', { token })
+          .catch(() => ({} as { booking?: { currency?: string }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; welcomeImageUrl?: string } })),
       ]);
       setBoard(b); setServices(svc);
       if (settings?.booking?.currency) setCurrency(settings.booking.currency);
       if (settings?.company?.name) setSalonName(settings.company.name);
       if (settings?.branding?.logoUrl) setSalonLogo(settings.branding.logoUrl);
+      if (settings?.branding?.welcomeImageUrl) setSalonWelcome(settings.branding.welcomeImageUrl);
+      const rvSlug = settings?.company?.slug;
+      if (rvSlug) {
+        try {
+          const rv = await apiFetch<{ enabled?: boolean; hasGoogle?: boolean }>(`/public/review/${encodeURIComponent(rvSlug)}/salon`, { token });
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          setReviewUrl(rv?.enabled && rv?.hasGoogle ? `${origin}/review/${rvSlug}/salon` : null);
+        } catch { /* the review invite is optional */ }
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -97,6 +111,10 @@ function Inner() {
   const checkinUrlRef = useRef('');
   const qrTextRef = useRef({ title: '', hint: '' });
   const thanksNameRef = useRef<string | null>(null);
+  const salonNameRef = useRef('');
+  const salonLogoRef = useRef('');
+  const salonWelcomeRef = useRef('');
+  const reviewUrlRef = useRef<string | null>(null);
   // True while this page is the one driving the customer screen, so it only
   // hands the screen back when it actually had it.
   const ownsScreenRef = useRef(false);
@@ -115,7 +133,23 @@ function Inner() {
     // Handing the screen back must NOT push a stripped-down idle state — that
     // wiped the salon's welcome image and the Google review QR. Tell the display
     // to restore the register's own view instead.
-    if (mode === 'idle') { chRef.current?.postMessage({ type: 'checkinRelease' }); return; }
+    if (mode === 'idle') {
+      chRef.current?.postMessage({
+        type: 'checkinRelease',
+        // What to show if no register is open to replay its own state: the real
+        // welcome screen, with the salon's image and the review QR — not the
+        // bare fallback the display uses when it knows nothing.
+        fallback: {
+          status: 'idle', currency: 'USD', lines: [],
+          subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0, dueCents: 0,
+          salonName: salonNameRef.current || undefined,
+          salonLogo: salonLogoRef.current || undefined,
+          salonWelcome: salonWelcomeRef.current || undefined,
+          reviewUrl: reviewUrlRef.current || undefined,
+        },
+      });
+      return;
+    }
     const { form: f, pickedIds: p } = liveRef.current;
     chRef.current?.postMessage({
       type: 'state',
@@ -181,6 +215,10 @@ function Inner() {
 
   // Mirror every desk keystroke onto the customer screen while the form is open.
   useEffect(() => { thanksNameRef.current = thanksName; }, [thanksName]);
+  useEffect(() => {
+    salonNameRef.current = salonName; salonLogoRef.current = salonLogo;
+    salonWelcomeRef.current = salonWelcome; reviewUrlRef.current = reviewUrl;
+  }, [salonName, salonLogo, salonWelcome, reviewUrl]);
 
   useEffect(() => {
     if (thanksName) { ownsScreenRef.current = true; pushToScreen('thanks'); }

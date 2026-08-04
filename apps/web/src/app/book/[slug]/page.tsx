@@ -1372,6 +1372,10 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                       {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3 }}>POPULAR</span>}
                       {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800 }}>-{disc}%</span>}
                     </span>
+                    {/* The salon's own words about the service. Two clamped
+                        lines: enough to say what's included ("massage, hot
+                        towel and polish"), never enough to bury the price. */}
+                    {s.description?.trim() ? <span style={rowDesc}>{s.description.trim()}</span> : null}
                     <span style={rowMeta}>
                       {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span>{' '}</>}
                       {disc > 0 && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
@@ -2356,6 +2360,12 @@ const rowCard: React.CSSProperties = {
 };
 const rowTitle: React.CSSProperties = { display: 'block', fontSize: 14.5, fontWeight: 800, color: INK, letterSpacing: 0.2, lineHeight: 1.35 };
 const rowMeta: React.CSSProperties = { display: 'block', fontSize: 12.5, color: '#7d8ba4', marginTop: 5 };
+// Service description: quiet, two lines max, then an ellipsis. It must read as
+// supporting text — lighter than the name, calmer than the price.
+const rowDesc: React.CSSProperties = {
+  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+  overflow: 'hidden', fontSize: 12.5, color: '#8b99b3', lineHeight: 1.45, marginTop: 3,
+};
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #dbe2ee', background: '#fff', color: INK, fontSize: 14 };
 const ctaBtn: React.CSSProperties = {
   width: '100%', padding: '15px 18px', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer',

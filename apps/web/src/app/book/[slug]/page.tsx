@@ -120,6 +120,8 @@ interface ServiceAvail {
   eligibleStaffIds: string[];
   staffBusy: Record<string, { start: string; end: string }[]>;
   noStaff?: boolean;
+  /** Salon has techs, but none lists this service — bookable via "Any" only. */
+  unstaffed?: boolean;
 }
 interface Availability {
   eligibleStaffIds: string[];   // union across services (for the specific-tech path)
@@ -1548,7 +1550,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
     // may be different people (specialist salons). A service with no team of its own is
     // treated as free (the shop assigns it afterwards).
     return avail.perService.every((ps) =>
-      ps.noStaff || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
+      // noStaff: brand-new salon, nobody on file. unstaffed: nobody LISTS this
+      // service — the desk assigns it by hand, so it must not block the visit.
+      ps.noStaff || ps.unstaffed || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
     );
   }, [avail, staffId]);
 
@@ -1619,15 +1623,14 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
         </div>
       )}
 
-      {avail && !avail.noStaff && avail.perService.some((ps) => !ps.noStaff && ps.eligibleStaffIds.length === 0) ? (
-        <div style={{ padding: '22px 16px', textAlign: 'center', borderRadius: 14, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
-          <div style={{ fontSize: 26, marginBottom: 6 }}>🛠️</div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>This service isn&apos;t linked to a technician yet.</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>
-            Please pick another service{salon?.contactPhone ? <> or call <b>{salon.contactPhone}</b></> : ''} — the shop can book you by phone.
-          </div>
+      {/* A service nobody lists no longer blocks the day — the booking goes in
+          and the front desk assigns someone. A quiet note keeps it honest. */}
+      {avail && !avail.noStaff && avail.perService.some((ps) => ps.unstaffed) && (
+        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 12.5, fontWeight: 600 }}>
+          🛠️ Part of your visit isn&apos;t linked to a technician yet — the salon will assign the right person after you book.
         </div>
-      ) : groups.length === 0 || !anyFree ? (
+      )}
+      {groups.length === 0 || !anyFree ? (
         <div style={{ padding: '26px 0', textAlign: 'center', color: '#94a3b8' }}>
           <div style={{ fontSize: 30, marginBottom: 6 }}>😔</div>
           <div style={{ fontSize: 14 }}>No times left on this day. Try the next one.</div>

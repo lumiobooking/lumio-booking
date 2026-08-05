@@ -359,7 +359,7 @@ function StaffInner() {
                   </div>
                 </MHead>
                 <MRow label={t('st.colContact')}>{m.email || '—'}{m.phone ? ' · ' + m.phone : ''}</MRow>
-                <MRow label={t('st.colSkills')}>{m.staffServices.length === 0 ? '—' : m.staffServices.map((ss) => serviceName(ss.serviceId)).join(', ')}</MRow>
+                <MRow label={t('st.colSkills')}><SkillsCell m={m} total={services.length} serviceName={serviceName} t={t} /></MRow>
                 <MRow label={t('st.colLogin')}>
                   {m.user ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -438,9 +438,7 @@ function StaffInner() {
                     {m.phone ? <div>{m.phone}</div> : null}
                   </td>
                   <td style={{ ...ui.td, color: '#cbd5e1', fontSize: 13 }}>
-                    {m.staffServices.length === 0
-                      ? '—'
-                      : m.staffServices.map((ss) => serviceName(ss.serviceId)).join(', ')}
+                    <SkillsCell m={m} total={services.length} serviceName={serviceName} t={t} />
                   </td>
                   <td style={ui.td}>
                     {m.user ? (
@@ -975,7 +973,7 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
             <span style={{ color: '#64748b', textTransform: 'none', letterSpacing: 0 }}>{list.filter((sv) => has(sv.id)).length}/{list.length}</span>
             {list.length > 0 && (
               <button type="button" onClick={() => set(listAllOn ? ids.filter((id) => !listIds.includes(id)) : [...new Set([...ids, ...listIds])])} style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
-                {listAllOn ? t('st.skNone') : t('st.skAll')}
+                {listAllOn ? t('st.covNone') : t('st.covAll')}
               </button>
             )}
           </div>
@@ -1023,6 +1021,56 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The skills column used to print sixty comma-separated names — four teams of
+ * that and the table was unreadable. What the owner actually needs at a glance
+ * is COVERAGE: does this tech appear on the booking page, and for how much of
+ * the menu? One pill answers that; clicking it reveals the full list.
+ */
+function SkillsCell({ m, total, serviceName, t }: {
+  m: { staffServices: { serviceId: string }[]; takesAppointments?: boolean };
+  total: number;
+  serviceName: (id: string) => string;
+  t: (k: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const n = m.staffServices.length;
+  if (m.takesAppointments === false) return <span style={{ color: '#64748b' }}>—</span>;
+  if (n === 0) {
+    // The one state that costs bookings — loud on purpose.
+    return (
+      <span style={{ display: 'inline-block', background: 'rgba(239,68,68,0.12)', border: '1px solid #7f1d1d', color: '#fca5a5', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>
+        ⚠ {t('st.covNone')}
+      </span>
+    );
+  }
+  const all = total > 0 && n >= total;
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          background: all ? 'rgba(34,197,94,0.12)' : '#1e293b',
+          border: `1px solid ${all ? '#166534' : '#334155'}`,
+          color: all ? '#86efac' : '#cbd5e1',
+          borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+        }}
+      >
+        {all ? t('st.covAll') : `${n} / ${total} ${t('st.covOf')}`} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7, maxWidth: 560 }}>
+          {m.staffServices.map((ss) => (
+            <span key={ss.serviceId} style={{ background: '#0f172a', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 7px', fontSize: 11.5 }}>
+              {serviceName(ss.serviceId)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

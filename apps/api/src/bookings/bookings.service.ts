@@ -1261,6 +1261,12 @@ export class BookingsService {
         eligibleStaffIds: [],
         staffBusy: {} as Record<string, { start: string; end: string }[]>,
         noStaff: allStaff.length === 0,
+        // The salon HAS technicians but none of them lists this service. The
+        // menu still sells it, so "Any tech" stays bookable (the booking lands
+        // PENDING and the front desk assigns by hand) — only a specific-tech
+        // pick is refused. Blocking the customer entirely would turn a config
+        // gap into lost revenue.
+        unstaffed: allStaff.length > 0,
       };
     }
 

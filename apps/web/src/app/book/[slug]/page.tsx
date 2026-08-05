@@ -113,6 +113,8 @@ interface Staff {
   id: string; firstName: string; lastName: string | null; avatarUrl: string | null;
   /** Services this tech is linked to (their skills). Empty/absent = not restricted. */
   staffServices?: { serviceId: string }[];
+  /** Days this tech works (0=Sun..6=Sat). Empty/absent = no schedule configured. */
+  workingHours?: { dayOfWeek: number }[];
 }
 interface ServiceAvail {
   eligibleStaffIds: string[];
@@ -1414,26 +1416,29 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
   serviceIds: string[]; services: Service[];
 }) {
   // Skills are read PER TECHNICIAN, same rule as the server: a tech who
-  // registered a skill list only appears for services on it; a tech with no
-  // list configured appears for everything. A tech must clear EVERY picked
-  // service — no fallback that quietly re-opens the whole team.
+  // registered a skill list only takes services on it; a tech with no list
+  // configured takes anything.
   const canDo = (t: Staff) => {
     const skills = t.staffServices ?? [];
-    if (skills.length === 0) return true; // never configured -> unrestricted
+    if (skills.length === 0) return true;
     return serviceIds.every((sid) => skills.some((l) => l.serviceId === sid));
   };
-  const pool = staff.filter(canDo);
-  const hidden = staff.length - pool.length;
+  // The whole team stays VISIBLE. Hiding people made salons think staff had
+  // vanished; a dimmed row with a reason explains itself.
+  const eligible = staff.filter(canDo);
   const names = services.filter((sv) => serviceIds.includes(sv.id)).map((sv) => sv.name).join(', ');
-  const rows = [{ id: '', firstName: 'Any', lastName: 'nail tech', avatarUrl: null } as Staff, ...pool];
+  const rows = [{ id: '', firstName: 'Any', lastName: 'nail tech', avatarUrl: null } as Staff, ...staff];
+
+  const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const daysHint = (t: Staff) => {
+    const days = [...new Set((t.workingHours ?? []).map((h) => h.dayOfWeek))].sort();
+    if (days.length === 0 || days.length === 7) return '';
+    return days.map((d) => DAY[d]).join(' · ');
+  };
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      {hidden > 0 && pool.length > 0 && (
-        <div style={{ fontSize: 12.5, color: '#7d8ba4', background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px' }}>
-          Showing technicians who do {names || 'your services'}.
-        </div>
-      )}
-      {pool.length === 0 && staff.length > 0 && (
+      {eligible.length === 0 && staff.length > 0 && (
         <div style={{ fontSize: 12.5, color: '#7d8ba4', background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px' }}>
           No technician lists {names || 'this service'} yet — pick “Any” and the salon will assign the right person.
         </div>
@@ -1441,18 +1446,31 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
       {rows.map((s) => {
         const label = `${s.firstName} ${s.lastName ?? ''}`.trim();
         const on = staffId === s.id;
+        const ok = !s.id || canDo(s);
+        const hint = s.id ? daysHint(s) : '';
         return (
-          <button key={s.id || 'any'} type="button" className="lumio-row" onClick={() => onPick(s.id)}
-            style={{ ...rowCard, padding: '15px 16px', borderColor: on ? accent : '#e9edf4', background: on ? tint(accent, 0.06) : '#fff',
+          <button key={s.id || 'any'} type="button" className="lumio-row"
+            onClick={ok ? () => onPick(s.id) : undefined}
+            disabled={!ok}
+            aria-disabled={!ok}
+            style={{ ...rowCard, padding: '15px 16px',
+              borderColor: on ? accent : '#e9edf4',
+              background: on ? tint(accent, 0.06) : '#fff',
+              // Dimmed, not gone: the customer sees the full team and WHY this
+              // person can't take the job.
+              opacity: ok ? 1 : 0.45,
+              cursor: ok ? 'pointer' : 'not-allowed',
               boxShadow: on ? `0 10px 26px -16px ${tint(accent, 0.9)}, 0 0 0 3px ${tint(accent, 0.12)}` : rowCard.boxShadow }}>
             <Avatar name={label} url={s.avatarUrl} size={46} accent={accent} />
-            <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12 }}>
+            <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12, minWidth: 0 }}>
               {s.id ? label : 'Any nail tech'}
               {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>First one free at your time</span>}
+              {s.id && !ok && <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#b0532f', marginTop: 2 }}>Doesn&rsquo;t offer {names || 'this service'}</span>}
+              {s.id && ok && hint && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>Works {hint}</span>}
             </span>
             {on
               ? <span style={{ width: 30, height: 30, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, flexShrink: 0 }}>✓</span>
-              : <span style={{ padding: '8px 18px', borderRadius: 999, border: `1px solid ${accent}`, color: accent, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>Select</span>}
+              : <span style={{ padding: '8px 18px', borderRadius: 999, border: `1px solid ${ok ? accent : '#e2e8f2'}`, color: ok ? accent : '#b6bfcd', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{ok ? 'Select' : '—'}</span>}
           </button>
         );
       })}

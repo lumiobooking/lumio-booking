@@ -1349,6 +1349,10 @@ export class BookingsService {
         bookingPriority: true,
         rewardPoints: true,
         staffServices: { select: { serviceId: true } },
+        // Which days this tech works — the booking page shows it as a hint
+        // ("Sat only") next to the name so customers understand availability
+        // before they even reach the time step.
+        workingHours: { where: { isActive: true }, select: { dayOfWeek: true } },
       },
     });
 

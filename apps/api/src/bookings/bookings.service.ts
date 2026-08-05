@@ -34,7 +34,7 @@ import { TrashService } from '../maintenance/trash.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
-import { addMinutes, parseStartTime, BLOCKING_STATUSES } from './booking.util';
+import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc } from './booking.util';
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -1225,22 +1225,25 @@ export class BookingsService {
   }
 
   async publicAvailability(tenantId: string, serviceId: string, dateStr: string) {
-    // Skills are an OPTIONAL restriction. If at least one technician is explicitly
-    // linked to this service, only those are eligible; if NONE are linked (service
-    // left unconfigured), every active technician can perform it — otherwise an
-    // unconfigured service would block all bookings.
-    const linkedCount = await this.prisma.staffMember.count({
-      where: { tenantId, isActive: true, takesAppointments: true, staffServices: { some: { serviceId } } },
-    });
-    const eligible = await this.prisma.staffMember.findMany({
-      where: {
-        tenantId,
-        isActive: true,
-        takesAppointments: true,
-        ...(linkedCount > 0 ? { staffServices: { some: { serviceId } } } : {}),
+    // Skills are read PER TECHNICIAN: a tech who registered a skill list only
+    // performs what is on it; a tech with no list configured performs anything.
+    // (The old rule was per service — "nobody linked to this service, so anyone
+    // can do it" — which let a tech with 12 registered skills be booked for a
+    // 13th they never claimed.)
+    const allStaff = await this.prisma.staffMember.findMany({
+      where: { tenantId, isActive: true, takesAppointments: true },
+      select: {
+        id: true,
+        staffServices: { select: { serviceId: true } },
+        workingHours: {
+          where: { isActive: true },
+          select: { dayOfWeek: true, startTime: true, endTime: true },
+        },
       },
-      select: { id: true },
     });
+    const eligible = allStaff.filter(
+      (st) => st.staffServices.length === 0 || st.staffServices.some((l) => l.serviceId === serviceId),
+    );
     const ids = eligible.map((s) => s.id);
     if (ids.length === 0) {
       // Two very different situations, and they used to look identical to the booking
@@ -1254,13 +1257,10 @@ export class BookingsService {
       //  · The salon HAS technicians, but none of them is linked to this service.
       //    That is a setup mistake; the form says so instead of pretending the day
       //    is full.
-      const anyStaff = await this.prisma.staffMember.count({
-        where: { tenantId, isActive: true, takesAppointments: true },
-      });
       return {
         eligibleStaffIds: [],
         staffBusy: {} as Record<string, { start: string; end: string }[]>,
-        noStaff: anyStaff === 0,
+        noStaff: allStaff.length === 0,
       };
     }
 
@@ -1288,6 +1288,44 @@ export class BookingsService {
         staffBusy[a.assignedStaffId].push({ start: a.startTime.toISOString(), end: a.endTime.toISOString() });
       }
     }
+
+    // Per-technician shifts, expressed as BUSY blocks outside the shift. The
+    // salon's own timezone anchors the day: a Saturday-only tech must block
+    // Monday in Chicago even when the customer is browsing from Vietnam.
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone || 'UTC';
+    const dayStartUtc = wallTimeToUtc(dateStr, '00:00', tz);
+    const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 3_600_000);
+    const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+    for (const st of eligible) {
+      const hours = st.workingHours ?? [];
+      if (hours.length === 0) continue; // unconfigured -> follows salon hours only
+      const today = hours.filter((h) => h.dayOfWeek === dayOfWeek);
+      if (today.length === 0) {
+        // Has a schedule, but not on this day: the whole day is off.
+        staffBusy[st.id].push({ start: dayStartUtc.toISOString(), end: dayEndUtc.toISOString() });
+        continue;
+      }
+      // Block everything before the first shift, between shifts, after the last.
+      const spans = today
+        .map((h) => ({ s: wallTimeToUtc(dateStr, h.startTime, tz), e: wallTimeToUtc(dateStr, h.endTime, tz) }))
+        .filter((x) => x.e.getTime() > x.s.getTime())
+        .sort((a, b) => a.s.getTime() - b.s.getTime());
+      if (spans.length === 0) {
+        staffBusy[st.id].push({ start: dayStartUtc.toISOString(), end: dayEndUtc.toISOString() });
+        continue;
+      }
+      let cursor = dayStartUtc;
+      for (const sp of spans) {
+        if (sp.s.getTime() > cursor.getTime()) {
+          staffBusy[st.id].push({ start: cursor.toISOString(), end: sp.s.toISOString() });
+        }
+        if (sp.e.getTime() > cursor.getTime()) cursor = sp.e;
+      }
+      if (cursor.getTime() < dayEndUtc.getTime()) {
+        staffBusy[st.id].push({ start: cursor.toISOString(), end: dayEndUtc.toISOString() });
+      }
+    }
+
     return { eligibleStaffIds: ids, staffBusy };
   }
 

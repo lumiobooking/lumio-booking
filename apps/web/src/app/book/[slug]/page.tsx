@@ -109,7 +109,11 @@ interface Salon {
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
-interface Staff { id: string; firstName: string; lastName: string | null; avatarUrl: string | null }
+interface Staff {
+  id: string; firstName: string; lastName: string | null; avatarUrl: string | null;
+  /** Services this tech is linked to (their skills). Empty/absent = not restricted. */
+  staffServices?: { serviceId: string }[];
+}
 interface ServiceAvail {
   eligibleStaffIds: string[];
   staffBusy: Record<string, { start: string; end: string }[]>;
@@ -801,6 +805,7 @@ export default function PublicBookingPage() {
               {step === 2 && (
                 <TechPicker
                   staff={staff} staffId={staffId} accent={accent}
+                  serviceIds={pickedServiceIds} services={services}
                   onPick={(id) => { setStaffId(id); setSlot(null); setStep(3); }}
                 />
               )}
@@ -1404,10 +1409,35 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
 // ---------------------------------------------------------------------------
 // Step 2 · Technician
 // ---------------------------------------------------------------------------
-function TechPicker({ staff, staffId, onPick, accent }: { staff: Staff[]; staffId: string; onPick: (id: string) => void; accent: string }) {
-  const rows = [{ id: '', firstName: 'Any', lastName: 'nail tech', avatarUrl: null } as Staff, ...staff];
+function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
+  staff: Staff[]; staffId: string; onPick: (id: string) => void; accent: string;
+  serviceIds: string[]; services: Service[];
+}) {
+  // Skills are read PER TECHNICIAN, same rule as the server: a tech who
+  // registered a skill list only appears for services on it; a tech with no
+  // list configured appears for everything. A tech must clear EVERY picked
+  // service — no fallback that quietly re-opens the whole team.
+  const canDo = (t: Staff) => {
+    const skills = t.staffServices ?? [];
+    if (skills.length === 0) return true; // never configured -> unrestricted
+    return serviceIds.every((sid) => skills.some((l) => l.serviceId === sid));
+  };
+  const pool = staff.filter(canDo);
+  const hidden = staff.length - pool.length;
+  const names = services.filter((sv) => serviceIds.includes(sv.id)).map((sv) => sv.name).join(', ');
+  const rows = [{ id: '', firstName: 'Any', lastName: 'nail tech', avatarUrl: null } as Staff, ...pool];
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      {hidden > 0 && pool.length > 0 && (
+        <div style={{ fontSize: 12.5, color: '#7d8ba4', background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px' }}>
+          Showing technicians who do {names || 'your services'}.
+        </div>
+      )}
+      {pool.length === 0 && staff.length > 0 && (
+        <div style={{ fontSize: 12.5, color: '#7d8ba4', background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px' }}>
+          No technician lists {names || 'this service'} yet — pick “Any” and the salon will assign the right person.
+        </div>
+      )}
       {rows.map((s) => {
         const label = `${s.firstName} ${s.lastName ?? ''}`.trim();
         const on = staffId === s.id;
@@ -1474,8 +1504,14 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
   const isFree = useCallback((s: Slot) => {
     if (!avail) return true;
     if (avail.noStaff) return true;                 // no team on file — shop assigns later
-    // A specific tech was chosen → that one person must be free for the whole block.
-    if (staffId) return !overlaps(s, avail.staffBusy[staffId] ?? []);
+    // A specific tech was chosen → that one person must be free for the whole
+    // block. A tech who is NOT in the eligible pool (can't do a picked service)
+    // gets no slots at all — before this check, an unknown id fell through to
+    // an empty busy list and the whole day looked open.
+    if (staffId) {
+      if (!avail.eligibleStaffIds.includes(staffId)) return false;
+      return !overlaps(s, avail.staffBusy[staffId] ?? []);
+    }
     // "Any tech": bookable when EACH service has at least one eligible tech free — they
     // may be different people (specialist salons). A service with no team of its own is
     // treated as free (the shop assigns it afterwards).

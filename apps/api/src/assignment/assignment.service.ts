@@ -81,23 +81,21 @@ export class AssignmentService {
     const rules = await this.loadRules(tenantId);
     const exclude = new Set(excludeStaffIds);
 
-    // Candidate pool: active staff who can perform the service. Skills are an
-    // optional restriction — if no technician is explicitly linked to this
-    // service, every active technician is treated as able to perform it (mirrors
-    // the public availability rule so an unconfigured service still gets assigned).
-    const linkedCount = await this.prisma.staffMember.count({
-      where: { tenantId, isActive: true, takesAppointments: true, staffServices: { some: { serviceId: appt.serviceId } } },
-    });
-    const staff = await this.prisma.staffMember.findMany({
+    // Candidate pool: active staff who can perform the service. Skills are read
+    // PER TECHNICIAN (mirrors public availability): a tech with a registered
+    // skill list only takes those services; a tech with no list takes anything.
+    const staffAll = await this.prisma.staffMember.findMany({
       where: {
         tenantId,
         isActive: true,
         takesAppointments: true,
-        ...(linkedCount > 0 ? { staffServices: { some: { serviceId: appt.serviceId } } } : {}),
         id: exclude.size ? { notIn: [...exclude] } : undefined,
       },
-      include: { workingHours: true },
+      include: { workingHours: true, staffServices: { select: { serviceId: true } } },
     });
+    const staff = staffAll.filter(
+      (st) => st.staffServices.length === 0 || st.staffServices.some((l) => l.serviceId === appt.serviceId),
+    );
 
     const durationMinutes = Math.round(
       (appt.endTime.getTime() - appt.startTime.getTime()) / 60_000,

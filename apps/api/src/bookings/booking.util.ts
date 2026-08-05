@@ -37,3 +37,24 @@ export function parseStartTime(value: string): Date {
 export function deviceSource(ua?: string | null): 'mobile' | 'web' {
   return ua && /Mobi|Android|iPhone|iPad|iPod|Windows Phone|BlackBerry|Opera Mini|IEMobile/i.test(ua) ? 'mobile' : 'web';
 }
+
+/**
+ * A wall-clock time in a given IANA timezone as a UTC instant.
+ * "2026-07-30" + "16:00" in America/Chicago -> 2026-07-30T21:00:00Z.
+ * DST-safe: the offset is derived for that specific date, not assumed.
+ */
+export function wallTimeToUtc(dateStr: string, hm: string, tz: string): Date {
+  const [h, m] = hm.split(':').map((x) => parseInt(x, 10));
+  const guess = new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}:00Z`);
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(guess);
+    const num = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+    const asUtc = Date.UTC(num('year'), num('month') - 1, num('day'), num('hour') % 24, num('minute'), num('second'));
+    return new Date(guess.getTime() - (asUtc - guess.getTime()));
+  } catch {
+    return guess; // unknown timezone -> treat the wall clock as UTC
+  }
+}

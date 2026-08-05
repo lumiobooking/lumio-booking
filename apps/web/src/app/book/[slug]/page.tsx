@@ -1418,15 +1418,26 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
   // Skills are read PER TECHNICIAN, same rule as the server: a tech who
   // registered a skill list only takes services on it; a tech with no list
   // configured takes anything.
-  const canDo = (t: Staff) => {
+  const svcName = (sid: string) => (services.find((sv) => sv.id === sid)?.name ?? '').trim();
+  /** The picked services THIS tech does not offer (empty = can take the visit). */
+  const missingFor = (t: Staff): string[] => {
     const skills = t.staffServices ?? [];
-    if (skills.length === 0) return true;
-    return serviceIds.every((sid) => skills.some((l) => l.serviceId === sid));
+    if (skills.length === 0) return []; // never configured -> unrestricted
+    return serviceIds.filter((sid) => !skills.some((l) => l.serviceId === sid)).map(svcName).filter(Boolean);
   };
+  const canDo = (t: Staff) => missingFor(t).length === 0;
   // The whole team stays VISIBLE. Hiding people made salons think staff had
   // vanished; a dimmed row with a reason explains itself.
   const eligible = staff.filter(canDo);
-  const names = services.filter((sv) => serviceIds.includes(sv.id)).map((sv) => sv.name).join(', ');
+  // When nobody clears the whole visit, say WHY precisely: a service no tech
+  // lists at all is a setup gap; services that several techs cover are not the
+  // problem and must not be blamed in the banner.
+  const nobodyLists = serviceIds
+    .filter((sid) => !staff.some((t) => {
+      const sk = t.staffServices ?? [];
+      return sk.length === 0 || sk.some((l) => l.serviceId === sid);
+    }))
+    .map(svcName).filter(Boolean);
   const rows = [{ id: '', firstName: 'Any', lastName: 'nail tech', avatarUrl: null } as Staff, ...staff];
 
   const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1440,13 +1451,16 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
     <div style={{ display: 'grid', gap: 12 }}>
       {eligible.length === 0 && staff.length > 0 && (
         <div style={{ fontSize: 12.5, color: '#7d8ba4', background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px' }}>
-          No technician lists {names || 'this service'} yet — pick “Any” and the salon will assign the right person.
+          {nobodyLists.length > 0
+            ? <>No technician lists <b>{nobodyLists.join(', ')}</b> yet — pick “Any” and the salon will assign the right person.</>
+            : <>No single technician does all of your services — pick “Any” and the salon will pair you with the right techs for each one.</>}
         </div>
       )}
       {rows.map((s) => {
         const label = `${s.firstName} ${s.lastName ?? ''}`.trim();
         const on = staffId === s.id;
-        const ok = !s.id || canDo(s);
+        const missing = s.id ? missingFor(s) : [];
+        const ok = !s.id || missing.length === 0;
         const hint = s.id ? daysHint(s) : '';
         return (
           <button key={s.id || 'any'} type="button" className="lumio-row"
@@ -1465,7 +1479,7 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
             <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12, minWidth: 0 }}>
               {s.id ? label : 'Any nail tech'}
               {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>First one free at your time</span>}
-              {s.id && !ok && <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#b0532f', marginTop: 2 }}>Doesn&rsquo;t offer {names || 'this service'}</span>}
+              {s.id && !ok && <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#b0532f', marginTop: 2 }}>Doesn&rsquo;t offer {missing.join(', ') || 'this service'}</span>}
               {s.id && ok && hint && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>Works {hint}</span>}
             </span>
             {on

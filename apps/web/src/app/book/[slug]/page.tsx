@@ -981,7 +981,11 @@ export default function PublicBookingPage() {
                         </button>
                       );
                     })}
-                    {extraGuests.length < MAX_GUESTS - 1 && (
+                    {/* Cart and group are mutually exclusive (a cart books several
+                        times, a group shares ONE time) — so once the cart holds a
+                        visit this entry point disappears, same as "Add another
+                        visit" disappears for groups. */}
+                    {visitCart.length === 0 && extraGuests.length < MAX_GUESTS - 1 && (
                       <button type="button"
                         onClick={() => { setExtraGuests((gs) => [...gs, { name: '', serviceIds: [] }]); setActiveGuest(extraGuests.length + 1); setStaffId(''); setSlot(null); }}
                         style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700,

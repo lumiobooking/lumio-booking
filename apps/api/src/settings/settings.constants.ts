@@ -393,6 +393,11 @@ export interface BookingRules {
   payLaterEnabled: boolean;
   businessHours: DayHours[]; // length 7, indexed by JS getDay()
   daysOff: string[]; // ISO dates "YYYY-MM-DD" the salon is closed
+  // Group bookings when the party is larger than the technicians who do the
+  // chosen services: 'strict' = no time offered (Fresha-style), 'flexible' =
+  // bookable as an arrival time, the salon serves the group in turns
+  // (Vagaro-style). Strict by default — the salon opts INTO flexibility.
+  groupPolicy: 'strict' | 'flexible';
 }
 
 const open9to6: DayHours = { closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 };
@@ -410,6 +415,7 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
   defaultPaymentMethod: 'onsite',
   onlinePaymentEnabled: true,
   payLaterEnabled: true,
+  groupPolicy: 'strict',
   // Sun closed by default, Mon–Sat open 09:00–18:00.
   businessHours: [
     { closed: true, openMinutes: 9 * 60, closeMinutes: 18 * 60 },

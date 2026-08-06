@@ -1525,6 +1525,8 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.ru.minLead': { en: 'Min hours before booking', vi: 'Số giờ tối thiểu trước khi đặt' },
   'se.ru.chooseStaff': { en: 'Let customers choose their technician', vi: 'Cho khách tự chọn thợ' },
   'se.ru.assignment': { en: 'Staff assignment', vi: 'Giao việc cho thợ' },
+  'se.ru.group': { en: 'Group bookings', vi: 'Đặt lịch nhóm' },
+  'se.ru.groupFlex': { en: 'Flexible mode — accept groups larger than the team (serve in turns)', vi: 'Chế độ linh động — nhận nhóm đông hơn số thợ (phục vụ theo lượt)' },
   'se.ru.assignWhen': { en: "When a customer doesn't pick a technician:", vi: 'Khi khách không chọn thợ:' },
   'se.ru.noneTitle': { en: 'No assignment', vi: 'Không giao tự động' },
   'se.ru.noneDesc': { en: 'Leave the booking unassigned — the salon assigns a technician manually.', vi: 'Để lịch chưa giao — tiệm tự gán thợ bằng tay.' },

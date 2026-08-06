@@ -77,12 +77,13 @@ interface BookingRules {
   symbolPosition: 'before' | 'after'; priceDecimals: number; defaultPaymentMethod: 'online' | 'onsite';
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
   businessHours: DayHours[]; daysOff: string[];
+  groupPolicy?: 'strict' | 'flexible'; // salon's choice: refuse or serve-in-turns when the party outnumbers the team
 }
 const OPEN: DayHours = { closed: false, openMinutes: 540, closeMinutes: 1080 };
 const DEFAULT_RULES: BookingRules = {
   slotStepMinutes: 30, minLeadHours: 1, maxAdvanceDays: 60,
   allowCustomerChooseStaff: true, currency: 'USD', currencySymbol: '', symbolPosition: 'before',
-  priceDecimals: 2, defaultPaymentMethod: 'onsite', onlinePaymentEnabled: true, payLaterEnabled: true,
+  priceDecimals: 2, defaultPaymentMethod: 'onsite', onlinePaymentEnabled: true, payLaterEnabled: true, groupPolicy: 'strict',
   businessHours: [{ closed: true, openMinutes: 540, closeMinutes: 1080 }, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN],
   daysOff: [],
 };
@@ -1873,12 +1874,13 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
         return false;
       };
       if (assign(0, new Set())) return true;
-      // Turns mode. A 2-tech salon does not turn away a party of 4 — it seats
-      // them in waves. When one-tech-per-guest is structurally impossible, the
-      // slot stays bookable as the group's ARRIVAL time: each guest's services
-      // just need someone eligible free (the same tech may serve several
-      // guests in turns; nobody's calendar is locked — the desk assigns).
-      if (groupShortage) return need.every((opts) => opts.length > 0);
+      // Turns mode — only if the SALON opted into it (Settings → Rules).
+      // A 2-tech salon that wants a party of 4 seats them in waves: the slot
+      // stays bookable as the group's ARRIVAL time, each guest's services just
+      // need someone eligible free (the same tech may serve several guests in
+      // turns; nobody's calendar is locked — the desk assigns). Strict salons
+      // simply do not offer the time.
+      if (groupShortage && rules.groupPolicy === 'flexible') return need.every((opts) => opts.length > 0);
       return false;
     }
     // A specific tech was chosen → that one person must be free for the whole
@@ -1899,7 +1901,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       // service — the desk assigns it by hand, so it must not block the visit.
       ps.noStaff || ps.unstaffed || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
     );
-  }, [avail, staffId, cartBusy, groupNeeds, groupShortage]);
+  }, [avail, staffId, cartBusy, groupNeeds, groupShortage, rules.groupPolicy]);
 
   const groups: { label: string; items: Slot[] }[] = useMemo(() => {
     const g = { Morning: [] as Slot[], Afternoon: [] as Slot[], Evening: [] as Slot[] };
@@ -1977,17 +1979,29 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       )}
       {/* More guests than technicians for these services: bookable, in waves.
           Said BEFORE the times so nobody expects four chairs at once. */}
-      {groupNeeds.length > 1 && groupShortage && (
+      {groupNeeds.length > 1 && groupShortage && rules.groupPolicy === 'flexible' && (
         <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
           👥 Your group is bigger than the number of technicians who do these services — the salon will serve you in turns, so some guests may wait a little between starts. The times below are your group&apos;s arrival time.
         </div>
       )}
       {groups.length === 0 || !anyFree ? (
+        groupNeeds.length > 1 && groupShortage && rules.groupPolicy !== 'flexible' ? (
+          /* Strict salon: the staffing maths can never seat this group at once,
+             so no date will help — say the real reason, not "try tomorrow". */
+          <div style={{ padding: '22px 0', textAlign: 'center' }}>
+            <div style={{ fontSize: 30, marginBottom: 8 }}>👥</div>
+            <div style={{ textAlign: 'left', fontSize: 13.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '12px 16px', lineHeight: 1.65 }}>
+              A group of <b>{groupNeeds.length}</b> needs <b>{groupNeeds.length} different technicians</b> free at the same time — more than currently offer the services you picked, so no day will show times. Try different services, book one person at a time, or call the salon to arrange your group.
+            </div>
+            {waitlist}
+          </div>
+        ) : (
         <div style={{ padding: '26px 0', textAlign: 'center', color: '#94a3b8' }}>
           <div style={{ fontSize: 30, marginBottom: 6 }}>😔</div>
           <div style={{ fontSize: 14 }}>No times left on this day. Try the next one.</div>
           {waitlist}
         </div>
+        )
       ) : (
         <>
           {groups.map((g) => (

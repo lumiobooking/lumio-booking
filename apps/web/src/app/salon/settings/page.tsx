@@ -12,7 +12,7 @@ import { TimezonePicker } from '../../../components/TimezonePicker';
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
   slotStepMinutes: number; minLeadHours: number; maxAdvanceDays: number;
-  allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; currency: string;
+  allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; groupPolicy?: 'strict' | 'flexible'; currency: string;
   currencySymbol: string; symbolPosition: 'before' | 'after'; priceDecimals: number; defaultPaymentMethod: 'online' | 'onsite';
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
   businessHours: DayHours[]; daysOff: string[];
@@ -350,6 +350,20 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
             : (lang === 'vi'
                 ? 'ĐANG TẮT — lịch mới để trống thợ (“Chưa xếp thợ”) cho tiệm tự xếp bằng tay.'
                 : 'OFF — new bookings stay unassigned (“Unassigned”) for you to assign manually.')}
+        </p>
+      </div>
+
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.ru.group')}</div>
+      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid #334155', borderRadius: 10, background: '#0f172a' }}>
+        <Toggle on={f.groupPolicy === 'flexible'} onChange={(v) => setF({ ...f, groupPolicy: v ? 'flexible' : 'strict' })} label={t('se.ru.groupFlex')} />
+        <p style={{ color: '#64748b', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
+          {f.groupPolicy === 'flexible'
+            ? (lang === 'vi'
+                ? 'LINH ĐỘNG — nhóm đông hơn số thợ vẫn đặt được: khách được báo trước là tiệm phục vụ theo lượt, tiệm tự xếp thợ. Giữ doanh thu nhóm đông.'
+                : 'FLEXIBLE — a party larger than your team can still book: customers are told upfront the salon serves them in turns, and you arrange the rotation. Keeps big-group revenue.')
+            : (lang === 'vi'
+                ? 'CHUẨN — chỉ mở giờ khi đủ mỗi khách một thợ rảnh đúng kỹ năng. Nhóm đông hơn số thợ sẽ được mời gọi tiệm hoặc vào danh sách chờ.'
+                : 'STRICT — times open only when every guest can have their own qualified technician free. Bigger parties are asked to call or join the waitlist.')}
         </p>
       </div>
 

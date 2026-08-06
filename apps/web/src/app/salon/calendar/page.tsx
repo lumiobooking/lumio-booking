@@ -12,7 +12,13 @@ import { useIsMobile } from '../../../lib/responsive';
 import { StaffDayView } from './StaffDayView';
 import { TableDayView } from './TableDayView';
 
-interface Addon { id: string; name: string; priceCents: number; kind?: string }
+interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
+/** Pill/label text: primary service plus a +N badge for the extra lines. */
+function svcLabel(b: Booking): string {
+  const n = (b.addons ?? []).filter((a) => a.kind === 'service').length;
+  return b.service?.name ? `${b.service.name}${n > 0 ? ` +${n}` : ''}` : '';
+}
+
 interface Booking {
   id: string;
   status: string;
@@ -223,7 +229,7 @@ function Inner() {
       const updated = await apiFetch<Booking>(`/bookings/${id}/${path}`, { method: 'POST', token, body });
       // Status changes and visit edits keep the drawer open showing the new
       // state; the one-shot actions (arrive/complete/cancel) close it as before.
-      if ((path === 'status' || path === 'lines') && updated && typeof updated === 'object') setSelected(updated);
+      if ((path === 'status' || path === 'lines' || path === 'line-staff') && updated && typeof updated === 'object') setSelected(updated);
       else setSelected(null);
       await load();
     } catch (err) {
@@ -373,7 +379,7 @@ function Inner() {
                         onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
                         <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{fmtT(b.startTime)}</span>
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{b.service?.name ? ' · ' + b.service.name : ''}</span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{svcLabel(b) ? ' · ' + svcLabel(b) : ''}</span>
                         <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
                       </div>
                     );
@@ -425,13 +431,13 @@ function Inner() {
                       const dim = m.key === 'Cancelled' || m.key === 'NoShow';
                       const strike = m.key === 'Cancelled' ? 'line-through' : 'none';
                       return (
-                        <div key={b.id} className="cal-ev" title={`${t('cal.st' + m.key)} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
+                        <div key={b.id} className="cal-ev" title={`${t('cal.st' + m.key)} · ${svcLabel(b)} · ${name(b.customer)}`}
                           onClick={() => setSelected(b)}
                           onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                           style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5, background: `${m.color}1f`, borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.55 : 1, overflow: 'hidden' }}>
                           {(() => { const sm = sourceMeta(b.source); return sm ? <span style={{ flexShrink: 0, fontSize: 10 }} title={t(sm.key)}>{sm.icon}</span> : null; })()}
                           <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
-                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#dbe2ea', textDecoration: strike }}>{name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}</span>
+                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#dbe2ea', textDecoration: strike }}>{name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}</span>
                         </div>
                       );
                     })}
@@ -459,7 +465,7 @@ function Inner() {
             <div onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
             <div style={{ position: 'fixed', top, left, zIndex: 61, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, minWidth: 190, boxShadow: '0 14px 34px rgba(0,0,0,0.55)', padding: 4 }}>
               <div style={{ padding: '7px 12px 6px', fontSize: 11.5, color: '#94a3b8', borderBottom: '1px solid #273449', marginBottom: 3, maxWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {fmtT(b.startTime)} · {name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}
+                {fmtT(b.startTime)} · {name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}
               </div>
               <CtxItem label={`👁 ${lang === 'vi' ? 'Xem chi tiết' : 'View details'}`} onClick={() => { setSelected(b); close(); }} />
               {canArrive && <CtxItem label={`🙋 ${t('cal.arrive')}`} onClick={() => { close(); action(b.id, 'arrive'); }} />}
@@ -602,7 +608,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
               const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
               const isNext = nextB?.id === b.id;
               return (
-                <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${b.service?.name ?? ''}`}
+                <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${svcLabel(b)}`}
                   style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 4px)`, width: `calc(${w}% - 8px)`,
                     background: dim ? '#161f30' : `linear-gradient(180deg, ${m.color}26, ${m.color}12)`,
                     border: `1px solid ${m.color}55`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
@@ -617,7 +623,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                        <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
+                        <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
                         <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
@@ -634,7 +640,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                         <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                      {h > 50 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
+                      {h > 50 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
                     </>
                   )}
                 </div>
@@ -722,7 +728,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       </div>
                       <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{b.service?.name ?? '—'}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
+                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
                         <OriginChip b={b} t={t} />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
@@ -811,12 +817,7 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
             {paidCents > 0 ? `✓ ${formatPrice(paidCents, b.currency)}` : t('cal.unpaid')}
           </span>
         </div>
-        {b.addons && b.addons.some((a) => a.kind === 'service') && (
-          <DetailRow label={t('cal.dAlsoBooked')} value={b.addons.filter((a) => a.kind === 'service').map((a) => a.name).join(', ')} />
-        )}
-        {b.addons && b.addons.some((a) => a.kind !== 'service') && (
-          <DetailRow label={t('cal.dAddons')} value={b.addons.filter((a) => a.kind !== 'service').map((a) => a.name).join(', ')} />
-        )}
+        <ServiceLines b={b} onAction={onAction} editable={active} />
 
         {/* Status is editable in BOTH directions and at ANY status: pressing
             Complete by mistake used to leave the front desk with no way back. */}
@@ -1000,6 +1001,81 @@ function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: s
         </select>
         <button disabled={!staffId} onClick={() => staffId && onAction(b.id, 'assign', { staffId })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.change', lang)}</button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Every service on the visit with ITS OWN technician. The primary keeps the
+ * calendar slot (change it via "Change staff" above); each extra line gets a
+ * picker that writes straight onto the line item — the same field auto-assign
+ * fills and the POS checkout pays commission from. Empty = the main tech
+ * carries that service too.
+ */
+function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void; editable: boolean }) {
+  const { token } = useAuth();
+  const { lang } = useLang();
+  const [staff, setStaff] = useState<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>('/staff', { token })
+      .then((list) => setStaff(list.filter((x) => x.isActive)))
+      .catch(() => undefined);
+  }, [token]);
+
+  const lines = (b.addons ?? []).filter((a) => a.kind === 'service');
+  const extras = (b.addons ?? []).filter((a) => a.kind !== 'service');
+  if (lines.length === 0 && extras.length === 0) return null;
+
+  const nameOf = (id?: string) => {
+    const st = staff.find((x) => x.id === id);
+    return st ? `${st.firstName} ${st.lastName ?? ''}`.trim() : null;
+  };
+  const primaryTech = b.assignedStaff
+    ? `${b.assignedStaff.firstName} ${b.assignedStaff.lastName ?? ''}`.trim()
+    : tr('cal.unassigned', lang);
+
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #1f2937', borderRadius: 10, padding: 10, margin: '8px 0 4px' }}>
+      <div style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600, marginBottom: 8 }}>
+        {tr('cal.dServices', lang)} ({lines.length + 1})
+      </div>
+
+      {/* primary service — its tech is the appointment's tech */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5 }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {b.service?.name ?? '—'}
+          <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: '#818cf8', border: '1px solid #3730a3', borderRadius: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
+            {tr('cal.lineMain', lang)}
+          </span>
+        </span>
+        <span style={{ color: b.assignedStaff ? '#e2e8f0' : '#f59e0b', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
+      </div>
+
+      {/* extra service lines — each with its own tech picker */}
+      {lines.map((line) => (
+        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5, borderTop: '1px solid #1f2937' }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</span>
+          {editable ? (
+            <select
+              value={line.staffMemberId ?? ''}
+              onChange={(e) => onAction(b.id, 'line-staff', { serviceId: line.id, staffId: e.target.value || null })}
+              style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0 }}
+            >
+              <option value="">{tr('cal.lineWithMain', lang)}</option>
+              {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
+            </select>
+          ) : (
+            <span style={{ color: '#e2e8f0', whiteSpace: 'nowrap' }}>👤 {nameOf(line.staffMemberId) ?? primaryTech}</span>
+          )}
+        </div>
+      ))}
+
+      {extras.length > 0 && (
+        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+          {tr('cal.dAddons', lang)}: {extras.map((a) => a.name).join(', ')}
+        </div>
+      )}
     </div>
   );
 }

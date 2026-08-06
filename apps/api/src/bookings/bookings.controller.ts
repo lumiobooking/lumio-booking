@@ -17,6 +17,7 @@ import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { AssignTableDto } from './dto/assign-table.dto';
 import { RejectBookingDto } from './dto/reject-booking.dto';
 import { SetStatusDto } from './dto/set-status.dto';
+import { LineStaffDto } from './dto/line-staff.dto';
 import { EditLinesDto } from './dto/edit-lines.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -101,6 +102,16 @@ export class BookingsController {
   @HttpCode(200)
   processTimeouts(@CurrentUser() user: AuthenticatedUser) {
     return this.bookings.processTimeouts(user);
+  }
+
+  // One service line, one technician — for multi-service visits where no single
+  // tech can (or should) do everything.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Post(':id/line-staff')
+  @HttpCode(200)
+  lineStaff(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: LineStaffDto) {
+    return this.bookings.setLineStaff(user, id, dto);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

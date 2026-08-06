@@ -1965,13 +1965,63 @@ export class BookingsService {
   async autoAssign(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     await this.getById(user, id); // tenant ownership / 404
-    return this.reassign(tenantId, id, user.userId);
+    const res = await this.reassign(tenantId, id, user.userId);
+    // Multi-service visits: give every extra line its own eligible tech too.
+    // The public booking flow already does this; the front-desk button used to
+    // stop at the primary, leaving the other services technically unowned.
+    await this.assignExtraServiceLines(tenantId, id).catch(() => undefined);
+    return res;
   }
 
   /**
    * Auto-assign for the public booking flow (no acting user). Runs the engine
    * (fair round-robin + skill/availability/history rules) for a tenant booking.
    */
+  /**
+   * Front desk picks the technician of ONE service line by hand. Needed when
+   * the auto pick is wrong or the salon runs manual assignment: a visit of
+   * "Colour + Nail Design" where Lisa only does colour MUST be splittable —
+   * one tech per service — or the desk ends up lying to the floor.
+   *
+   * The primary service's tech stays on /assign (it owns the calendar slot);
+   * this writes staffMemberId into the extra line inside the line-item
+   * snapshot — the same field the auto engine and the POS checkout read, so
+   * commission lands on the right tech with no extra plumbing.
+   */
+  async setLineStaff(user: AuthenticatedUser, id: string, dto: { serviceId: string; staffId?: string | null }) {
+    const tenantId = this.tenantId(user);
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id, tenantId },
+      select: { id: true, addons: true },
+    });
+    if (!appt) throw new NotFoundException('Booking not found');
+
+    const lines = Array.isArray(appt.addons) ? [...(appt.addons as unknown as Array<Record<string, unknown>>)] : [];
+    const line = lines.find((l) => l && l.kind === 'service' && String(l.id) === dto.serviceId);
+    if (!line) throw new NotFoundException('This service line is not on the booking.');
+
+    if (dto.staffId) {
+      await this.assertStaffActive(tenantId, dto.staffId);
+      line.staffMemberId = dto.staffId;
+    } else {
+      delete line.staffMemberId;
+    }
+
+    await this.prisma.appointment.updateMany({
+      where: { id, tenantId },
+      data: { addons: lines as unknown as Prisma.InputJsonValue },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'booking.line_staff',
+      resourceType: 'appointment',
+      resourceId: id,
+      metadata: { serviceId: dto.serviceId, staffId: dto.staffId ?? null },
+    });
+    return this.getById(user, id);
+  }
+
   async autoAssignForTenant(tenantId: string, bookingId: string) {
     // 1) Assign the PRIMARY service's technician (fair rotation, skill + availability).
     const res = await this.reassign(tenantId, bookingId, null);

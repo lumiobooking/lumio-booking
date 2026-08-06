@@ -39,7 +39,7 @@ interface Booking {
   service: { id: string; name: string } | null;
   // Extra services booked in the same visit are stored as line items on the
   // appointment (kind: 'service'); add-ons live in the same array without a kind.
-  addons?: { id?: string; name?: string; kind?: string }[] | null;
+  addons?: { id?: string; name?: string; kind?: string; staffMemberId?: string }[] | null;
   assignedStaff: NamedRef | null;
 }
 interface Payment {
@@ -242,7 +242,7 @@ function BookingsInner() {
                 </MHead>
                 <MRow label={t('bk.colWhen')}>{fmtWhen(b.startTime, salonTz)}</MRow>
                 <MRow label={t('bk.colService')}><ServiceCell b={b} /></MRow>
-                <MRow label={t('bk.colStaff')}>{staffName(b.assignedStaff)}</MRow>
+                <MRow label={t('bk.colStaff')}><StaffCell b={b} staff={staff} /></MRow>
                 <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(b.id)} /></MRow>
                 <MActions>
                   <BookingActions
@@ -292,7 +292,7 @@ function BookingsInner() {
                       : staffName(b.customer)}
                   </td>
                   <td style={ui.td}><ServiceCell b={b} /></td>
-                  <td style={ui.td}>{staffName(b.assignedStaff)}</td>
+                  <td style={ui.td}><StaffCell b={b} staff={staff} /></td>
                   <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
                     <span
                       style={{
@@ -715,6 +715,31 @@ function serviceNames(b: Booking): string[] {
  * A visit can hold several services. Showing only the first one made staff
  * think the extras had been lost, so the rest are listed underneath.
  */
+/**
+ * Staff column: the visit's main tech plus every different tech assigned to a
+ * service line. One name used to hide the fact that three techs work this
+ * visit — the desk plans turns from this column.
+ */
+function StaffCell({ b, staff }: { b: Booking; staff: Staff[] }) {
+  const primary = b.assignedStaff ? `${b.assignedStaff.firstName} ${b.assignedStaff.lastName ?? ''}`.trim() : '—';
+  const others = [...new Set(
+    (b.addons ?? [])
+      .filter((a) => a?.kind === 'service' && a.staffMemberId && a.staffMemberId !== b.assignedStaff?.id)
+      .map((a) => {
+        const st = staff.find((x) => x.id === a.staffMemberId);
+        return st ? `${st.firstName} ${st.lastName ?? ''}`.trim() : '';
+      })
+      .filter(Boolean),
+  )];
+  if (others.length === 0) return <>{primary}</>;
+  return (
+    <span title={[primary, ...others].join(', ')}>
+      {primary}
+      <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>+ {others.join(' · ')}</span>
+    </span>
+  );
+}
+
 function ServiceCell({ b }: { b: Booking }) {
   const names = serviceNames(b);
   if (names.length === 0) return <>—</>;

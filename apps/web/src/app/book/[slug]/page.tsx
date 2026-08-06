@@ -1798,10 +1798,10 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
   const firstOpen = useMemo(() => {
     for (let i = 0; i <= rules.maxAdvanceDays; i++) {
       const d = new Date(today.getTime() + i * 86400000);
-      if (!isClosedDay(d, rules) && generateSlots(d, Math.max(durationMinutes, 15), rules).length > 0) return d;
+      if (!isClosedDay(d, rules) && generateSlots(d, Math.max(durationMinutes, 15), rules, salon?.timezone).length > 0) return d;
     }
     return today;
-  }, [today, rules, durationMinutes]);
+  }, [today, rules, durationMinutes, salon?.timezone]);
 
   const [stripStart, setStripStart] = useState<Date>(firstOpen);
   useEffect(() => { setStripStart(firstOpen); }, [firstOpen]);
@@ -1816,8 +1816,8 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
   };
 
   const slots = useMemo(
-    () => (selectedDate ? generateSlots(selectedDate, Math.max(durationMinutes, 15), rules) : []),
-    [selectedDate, durationMinutes, rules],
+    () => (selectedDate ? generateSlots(selectedDate, Math.max(durationMinutes, 15), rules, salon?.timezone) : []),
+    [selectedDate, durationMinutes, rules, salon?.timezone],
   );
 
   // Structural check for groups, busy times IGNORED: can the salon's current
@@ -1855,7 +1855,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       // (structural shortage is reported separately below — see groupShortage)
       const freeFor = (tech: string, mins: number) => {
         const end = new Date(s.start.getTime() + mins * 60000);
-        return !overlaps({ start: s.start, end }, avail.staffBusy[tech] ?? []);
+        return !overlapsTz({ start: s.start, end }, avail.staffBusy[tech] ?? [], salon?.timezone);
       };
       const options = groupNeeds.map((g) =>
         (g.elig === 'ANY' ? allTechs : g.elig).filter((tech) => freeFor(tech, g.durationMin)),
@@ -1891,7 +1891,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       if (!avail.eligibleStaffIds.includes(staffId)) return false;
       // Visits already in the cart are not on the server yet — block the same
       // tech from being picked twice for overlapping times in this session.
-      return !overlaps(s, avail.staffBusy[staffId] ?? []) && !overlaps(s, cartBusy);
+      // Server busy blocks are UTC instants (tz-anchored); the cart's own
+      // pending visits are wall-time like the slot itself — compare each in kind.
+      return !overlapsTz(s, avail.staffBusy[staffId] ?? [], salon?.timezone) && !overlaps(s, cartBusy);
     }
     // "Any tech": bookable when EACH service has at least one eligible tech free — they
     // may be different people (specialist salons). A service with no team of its own is
@@ -1899,9 +1901,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
     return avail.perService.every((ps) =>
       // noStaff: brand-new salon, nobody on file. unstaffed: nobody LISTS this
       // service — the desk assigns it by hand, so it must not block the visit.
-      ps.noStaff || ps.unstaffed || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
+      ps.noStaff || ps.unstaffed || ps.eligibleStaffIds.some((id) => !overlapsTz(s, ps.staffBusy[id] ?? [], salon?.timezone)),
     );
-  }, [avail, staffId, cartBusy, groupNeeds, groupShortage, rules.groupPolicy]);
+  }, [avail, staffId, cartBusy, groupNeeds, groupShortage, rules.groupPolicy, salon?.timezone]);
 
   const groups: { label: string; items: Slot[] }[] = useMemo(() => {
     const g = { Morning: [] as Slot[], Afternoon: [] as Slot[], Evening: [] as Slot[] };
@@ -2769,7 +2771,7 @@ function isClosedDay(date: Date, rules: BookingRules): boolean {
   const h = rules.businessHours[date.getDay()];
   return !h || h.closed;
 }
-function generateSlots(date: Date, durationMin: number, rules: BookingRules): Slot[] {
+function generateSlots(date: Date, durationMin: number, rules: BookingRules, tz?: string | null): Slot[] {
   const out: Slot[] = [];
   if (isClosedDay(date, rules)) return out;
   const h = rules.businessHours[date.getDay()];
@@ -2780,7 +2782,9 @@ function generateSlots(date: Date, durationMin: number, rules: BookingRules): Sl
   for (const w of windows) {
     for (let mins = w.open; mins + durationMin <= w.close; mins += step) {
       const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(mins / 60), mins % 60);
-      if (start.getTime() < earliest) continue;
+      // "Too soon to book" must be judged at the SALON's clock, not the viewer's.
+      const instant = tz ? Date.parse(wallTimeToISO(start, tz)) : start.getTime();
+      if (instant < earliest) continue;
       out.push({ start, end: new Date(start.getTime() + durationMin * 60_000) });
     }
   }
@@ -2788,6 +2792,19 @@ function generateSlots(date: Date, durationMin: number, rules: BookingRules): Sl
 }
 function overlaps(slot: Slot, intervals: { start: string; end: string }[]): boolean {
   const s = slot.start.getTime(), e = slot.end.getTime();
+  return intervals.some((iv) => Date.parse(iv.start) < e && s < Date.parse(iv.end));
+}
+/**
+ * Same check against SERVER intervals (true UTC instants). The slot grid is
+ * built with the viewer's clock but its digits mean SALON wall time, so the
+ * slot must be re-anchored to the salon's timezone before comparing — exactly
+ * how submit already stores it. Without this, a viewer in another timezone
+ * sees the technician's shift shifted by the timezone gap.
+ */
+function overlapsTz(slot: Slot, intervals: { start: string; end: string }[], tz?: string | null): boolean {
+  if (!tz) return overlaps(slot, intervals);
+  const s = Date.parse(wallTimeToISO(slot.start, tz));
+  const e = s + (slot.end.getTime() - slot.start.getTime());
   return intervals.some((iv) => Date.parse(iv.start) < e && s < Date.parse(iv.end));
 }
 

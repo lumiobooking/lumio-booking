@@ -1819,6 +1819,28 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
     [selectedDate, durationMinutes, rules],
   );
 
+  // Structural check for groups, busy times IGNORED: can the salon's current
+  // skill lists seat this many people at once at all? When they can't, every
+  // single day is empty and the empty state must explain the real reason.
+  const groupShortage = useMemo(() => {
+    if (groupNeeds.length <= 1 || !avail || avail.noStaff) return false;
+    const allTechs = avail.eligibleStaffIds;
+    const need = groupNeeds
+      .filter((g) => g.elig !== 'ANY' || allTechs.length > 0)
+      .map((g) => (g.elig === 'ANY' ? allTechs : g.elig));
+    const assign = (i: number, used: Set<string>): boolean => {
+      if (i >= need.length) return true;
+      for (const tech of need[i]) {
+        if (used.has(tech)) continue;
+        used.add(tech);
+        if (assign(i + 1, used)) return true;
+        used.delete(tech);
+      }
+      return false;
+    };
+    return !assign(0, new Set());
+  }, [groupNeeds, avail]);
+
   // A slot is bookable when the chosen tech is free — or, with "Any", when at
   // least one technician who can do every picked service is free.
   const isFree = useCallback((s: Slot) => {
@@ -1829,6 +1851,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
     // technicians free at once. Guests are few (≤4), so try every assignment.
     if (groupNeeds.length > 1) {
       const allTechs = avail.eligibleStaffIds;
+      // (structural shortage is reported separately below — see groupShortage)
       const freeFor = (tech: string, mins: number) => {
         const end = new Date(s.start.getTime() + mins * 60000);
         return !overlaps({ start: s.start, end }, avail.staffBusy[tech] ?? []);
@@ -1849,7 +1872,14 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
         }
         return false;
       };
-      return assign(0, new Set());
+      if (assign(0, new Set())) return true;
+      // Turns mode. A 2-tech salon does not turn away a party of 4 — it seats
+      // them in waves. When one-tech-per-guest is structurally impossible, the
+      // slot stays bookable as the group's ARRIVAL time: each guest's services
+      // just need someone eligible free (the same tech may serve several
+      // guests in turns; nobody's calendar is locked — the desk assigns).
+      if (groupShortage) return need.every((opts) => opts.length > 0);
+      return false;
     }
     // A specific tech was chosen → that one person must be free for the whole
     // block. A tech who is NOT in the eligible pool (can't do a picked service)
@@ -1869,7 +1899,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       // service — the desk assigns it by hand, so it must not block the visit.
       ps.noStaff || ps.unstaffed || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
     );
-  }, [avail, staffId, cartBusy, groupNeeds]);
+  }, [avail, staffId, cartBusy, groupNeeds, groupShortage]);
 
   const groups: { label: string; items: Slot[] }[] = useMemo(() => {
     const g = { Morning: [] as Slot[], Afternoon: [] as Slot[], Evening: [] as Slot[] };
@@ -1943,6 +1973,13 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       {avail && !avail.noStaff && avail.perService.some((ps) => ps.unstaffed) && (
         <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 12.5, fontWeight: 600 }}>
           🛠️ Part of your visit isn&apos;t linked to a technician yet — the salon will assign the right person after you book.
+        </div>
+      )}
+      {/* More guests than technicians for these services: bookable, in waves.
+          Said BEFORE the times so nobody expects four chairs at once. */}
+      {groupNeeds.length > 1 && groupShortage && (
+        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
+          👥 Your group is bigger than the number of technicians who do these services — the salon will serve you in turns, so some guests may wait a little between starts. The times below are your group&apos;s arrival time.
         </div>
       )}
       {groups.length === 0 || !anyFree ? (

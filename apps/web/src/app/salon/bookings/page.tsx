@@ -387,15 +387,19 @@ function BookingActions({ b, staff, t, checkoutHref, onAction, onDelete }: {
         <InlineMove current={b.startTime} t={t} onMove={(iso) => { onAction('reschedule', { startTime: iso }); setPanel('none'); }} onClose={() => setPanel('none')} />
       )}
       {panel === 'staff' && (
-        <select
-          autoFocus
-          defaultValue=""
-          onChange={(e) => { if (e.target.value) { onAction('assign', { staffId: e.target.value }); setPanel('none'); } }}
-          style={{ ...ui.input, padding: '6px 8px', fontSize: 13, minWidth: 170 }}
-        >
-          <option value="">{pending ? t('bk.assign') : t('bk.changeStaff')}</option>
-          {live.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
-        </select>
+        (b.addons ?? []).some((a) => a?.kind === 'service') ? (
+          <AssignLines b={b} live={live} t={t} onAction={onAction} onClose={() => setPanel('none')} />
+        ) : (
+          <select
+            autoFocus
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) { onAction('assign', { staffId: e.target.value }); setPanel('none'); } }}
+            style={{ ...ui.input, padding: '6px 8px', fontSize: 13, minWidth: 170 }}
+          >
+            <option value="">{pending ? t('bk.assign') : t('bk.changeStaff')}</option>
+            {live.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
+          </select>
+        )
       )}
 
       {menu && (
@@ -414,6 +418,58 @@ function BookingActions({ b, staff, t, checkoutHref, onAction, onDelete }: {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Per-service staffing, opened from the 👤 icon on multi-service visits.
+ * Primary row re-assigns the visit's main tech (overlap-checked server-side);
+ * every other service line gets its own tech. Changes save on pick and the
+ * panel stays open so both rows can be set in one go.
+ */
+function AssignLines({ b, live, t, onAction, onClose }: {
+  b: Booking;
+  live: Staff[];
+  t: (k: string) => string;
+  onAction: (path: string, body?: Record<string, unknown>) => void;
+  onClose: () => void;
+}) {
+  // Older rows can miss ids on their snapshot lines; those can't be targeted.
+  const lines = (b.addons ?? []).filter((a) => a?.kind === 'service' && a.id);
+  const selStyle: React.CSSProperties = { ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 140, flexShrink: 0 };
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #223047', borderRadius: 10, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 250 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {b.service?.name ?? '—'}
+          <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#818cf8', border: '1px solid #3730a3', borderRadius: 6, padding: '0 4px' }}>{t('cal.lineMain')}</span>
+        </span>
+        <select
+          value={b.assignedStaff?.id ?? ''}
+          onChange={(e) => { if (e.target.value) onAction('assign', { staffId: e.target.value }); }}
+          style={{ ...selStyle, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: '#7c5c22' }) }}
+        >
+          <option value="" disabled>{t('cal.linePick')}</option>
+          {live.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
+        </select>
+      </div>
+      {lines.map((line) => (
+        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, borderTop: '1px solid #1e293b', paddingTop: 6 }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</span>
+          <select
+            value={line.staffMemberId ?? ''}
+            onChange={(e) => onAction('line-staff', { serviceId: line.id, staffId: e.target.value || null })}
+            style={selStyle}
+          >
+            <option value="">{t('cal.lineWithMain')}</option>
+            {live.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
+          </select>
+        </div>
+      ))}
+      <button onClick={onClose} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', color: '#818cf8', fontSize: 12.5, cursor: 'pointer', padding: '2px 4px', fontWeight: 700 }}>
+        ✓ {t('bk.done')}
+      </button>
     </div>
   );
 }

@@ -229,7 +229,7 @@ function Inner() {
       const updated = await apiFetch<Booking>(`/bookings/${id}/${path}`, { method: 'POST', token, body });
       // Status changes and visit edits keep the drawer open showing the new
       // state; the one-shot actions (arrive/complete/cancel) close it as before.
-      if ((path === 'status' || path === 'lines' || path === 'line-staff') && updated && typeof updated === 'object') setSelected(updated);
+      if ((path === 'status' || path === 'lines' || path === 'line-staff' || path === 'assign') && updated && typeof updated === 'object') setSelected(updated);
       else setSelected(null);
       await load();
     } catch (err) {
@@ -778,7 +778,6 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
   const end = new Date(b.endTime);
   const duration = Math.round((end.getTime() - start.getTime()) / 60000);
   const fullName = b.customer ? `${b.customer.firstName} ${b.customer.lastName ?? ''}`.trim() : '—';
-  const tech = b.assignedStaff ? `${b.assignedStaff.firstName} ${b.assignedStaff.lastName ?? ''}`.trim() : t('cal.unassigned');
   const canArrive = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'].includes(b.status);
   const active = canArrive || b.status === 'ARRIVED';
   const paidCents = (b.payments ?? []).filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
@@ -805,7 +804,6 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dDate')} value={start.toLocaleDateString(locale, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', ...(tz ? { timeZone: tz } : {}) })} />
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
-        <DetailRow label={t('cal.dTechnician')} value={tech} />
         {active && <QuickEdit b={b} onAction={onAction} />}
         {(() => { const sm = sourceMeta(b.source); return sm ? <DetailRow label={t('cal.dSource')} value={`${sm.icon} ${t(sm.key)}`} /> : null; })()}
         {(() => { const dm = deviceMeta(b.device); return dm ? <DetailRow label={t('cal.dDevice')} value={`${dm.icon} ${t(dm.key)}`} /> : null; })()}
@@ -973,33 +971,19 @@ const chipBtn: React.CSSProperties = {
 // date/time (duration kept, conflicts re-checked server-side) or hand it to a
 // different technician — one click each, no extra screens.
 function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
-  const { token } = useAuth();
   const { lang } = useLang();
-  const [staff, setStaff] = useState<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>([]);
-  const [staffId, setStaffId] = useState('');
   const [when, setWhen] = useState(() => {
     const d = new Date(b.startTime);
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
-  useEffect(() => {
-    if (!token) return;
-    apiFetch<{ id: string; firstName: string; lastName: string | null; isActive: boolean }[]>('/staff', { token })
-      .then((list) => setStaff(list.filter((x) => x.isActive)))
-      .catch(() => undefined);
-  }, [token]);
+  // The staff picker that used to sit here moved into ServiceLines below:
+  // one place answers "who does what", for one service or five.
   return (
     <div style={{ background: '#0f172a', border: '1px solid #1f2937', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...ui.input, padding: '6px 8px', flex: 1, minWidth: 0 }} />
         <button onClick={() => onAction(b.id, 'reschedule', { startTime: new Date(when).toISOString() })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
-      </div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <select value={staffId} onChange={(e) => setStaffId(e.target.value)} style={{ ...ui.input, padding: '6px 8px', flex: 1, minWidth: 0 }}>
-          <option value="">{tr('bk.changeStaff', lang)}</option>
-          {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
-        </select>
-        <button disabled={!staffId} onClick={() => staffId && onAction(b.id, 'assign', { staffId })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.change', lang)}</button>
       </div>
     </div>
   );
@@ -1025,7 +1009,6 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
 
   const lines = (b.addons ?? []).filter((a) => a.kind === 'service');
   const extras = (b.addons ?? []).filter((a) => a.kind !== 'service');
-  if (lines.length === 0 && extras.length === 0) return null;
 
   const nameOf = (id?: string) => {
     const st = staff.find((x) => x.id === id);
@@ -1041,7 +1024,8 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
         {tr('cal.dServices', lang)} ({lines.length + 1})
       </div>
 
-      {/* primary service — its tech is the appointment's tech */}
+      {/* primary service — changing it re-assigns the visit's main tech
+          (overlap-checked server-side, keeps CONFIRMED/ARRIVED status). */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {b.service?.name ?? '—'}
@@ -1049,7 +1033,18 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
             {tr('cal.lineMain', lang)}
           </span>
         </span>
-        <span style={{ color: b.assignedStaff ? '#e2e8f0' : '#f59e0b', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
+        {editable ? (
+          <select
+            value={b.assignedStaff?.id ?? ''}
+            onChange={(e) => { if (e.target.value) onAction(b.id, 'assign', { staffId: e.target.value }); }}
+            style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: '#7c5c22' }) }}
+          >
+            <option value="" disabled>{tr('cal.linePick', lang)}</option>
+            {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
+          </select>
+        ) : (
+          <span style={{ color: b.assignedStaff ? '#e2e8f0' : '#f59e0b', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
+        )}
       </div>
 
       {/* extra service lines — each with its own tech picker */}

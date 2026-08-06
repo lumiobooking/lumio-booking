@@ -1073,6 +1073,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'cal.dServices': { en: 'Services & techs', vi: 'Dịch vụ & thợ' },
   'cal.lineMain': { en: 'main', vi: 'chính' },
   'cal.lineWithMain': { en: 'With main tech', vi: 'Cùng thợ chính' },
+  'cal.linePick': { en: '— Pick tech', vi: '— Chọn thợ' },
   'cal.customer': { en: 'Customer', vi: 'Khách' },
   'cal.dName': { en: 'Name', vi: 'Tên' },
   'cal.dPhone': { en: 'Phone', vi: 'SĐT' },

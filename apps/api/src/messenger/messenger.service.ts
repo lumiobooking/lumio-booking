@@ -171,6 +171,7 @@ export class MessengerService {
         `https://graph.facebook.com/v21.0/${chosen.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions&access_token=${encodeURIComponent(chosen.access_token)}`,
         { method: 'POST' },
       ).catch(() => undefined);
+      await this.setupMessengerProfile(chosen.access_token, cur?.greeting ?? null);
       await this.audit(tenantId, 'messenger.connected');
       return back(`fb=connected&page=${encodeURIComponent(chosen.name || '')}`);
     } catch (e) {
@@ -245,6 +246,7 @@ export class MessengerService {
       update: data,
       create: { tenantId, ...data },
     });
+    if (data.enabled && pageToken) await this.setupMessengerProfile(pageToken, data.greeting);
     return this.get(user);
   }
 
@@ -462,13 +464,51 @@ export class MessengerService {
       const entryId = entry.id || ''; // Page id (Messenger) or IG account id (Instagram)
       for (const ev of entry.messaging || []) {
         const senderId = ev.sender?.id;
+        if (!senderId) continue;
+        // "Get Started" tap: the customer opened the chat but hasn't typed yet.
+        // This is the salon's ONE chance to speak first — greet immediately.
+        if (ev.postback?.payload && !ev.message) {
+          await this.handleGetStarted(entryId, senderId).catch((e) =>
+            this.logger.warn(`greeting failed: ${String(e).slice(0, 160)}`),
+          );
+          continue;
+        }
         const text = ev.message?.text;
-        if (!senderId || !text || ev.message?.is_echo) continue;
+        if (!text || ev.message?.is_echo) continue;
         await this.handleMessage(entryId, senderId, text, ev.timestamp).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
       }
     }
+  }
+
+  /**
+   * Customer tapped "Get Started". Send the salon's configured greeting (the
+   * field on the Messenger settings page — until now it was saved but never
+   * spoken). Recorded into the thread history so the AI knows the hello already
+   * happened and goes straight to booking instead of greeting twice.
+   */
+  private async handleGetStarted(entryId: string, senderId: string): Promise<void> {
+    const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
+    if (!conn || !conn.enabled || !conn.pageToken) return;
+    const thread = await this.prisma.messengerThread.upsert({
+      where: { pageId_senderId: { pageId: conn.pageId, senderId } },
+      update: {},
+      create: { tenantId: conn.tenantId, pageId: conn.pageId, senderId, lastText: '👋 (opened chat)' },
+    });
+    if (thread.handoff) return;
+    let greeting = (conn.greeting || '').trim();
+    if (!greeting) {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: conn.tenantId }, select: { name: true } });
+      greeting = `Hi! 👋 Welcome to ${tenant?.name || 'our salon'}. I can book your appointment right here — which service would you like?`;
+    }
+    await this.sendText(conn.pageToken, senderId, greeting);
+    const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+    const next = [...history, { role: 'assistant', content: greeting, at: new Date().toISOString() }].slice(-MAX_TURNS);
+    await this.prisma.messengerThread.update({
+      where: { id: thread.id },
+      data: { history: next as unknown as Prisma.InputJsonValue },
+    });
   }
 
   private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number): Promise<void> {
@@ -519,13 +559,21 @@ export class MessengerService {
     const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-    const system = `You are the warm, friendly booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger. Write like a real, personable human receptionist — natural, caring and easy-going, never robotic or scripted.
-Always reply in the SAME language the customer uses. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally and react like a friendly person would ("Dạ được ạ!", "Great choice!", "Of course!").
-Keep messages short and easy to read on a phone (usually 1-2 sentences, at most 3). A light, tasteful emoji here and there is lovely, but do not overuse them. Be genuinely helpful and warm — never pushy or salesy.
-Goal: help them book an appointment.
-To book you MUST collect: their name, their phone number, which service, and a specific date & time. Ask for whatever is missing, one or two things at a time.
-You MAY also ask for their email so the salon can send an email confirmation — this is OPTIONAL; if they skip or decline, book anyway without it.
-Use the get_services tool to tell them what's available and to get service ids. When you have name + phone + service + a specific date/time, call create_booking (include their email if they gave one). After it succeeds, confirm the details warmly and let them know a confirmation is on its way.
+    const system = `You are the booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
+Always reply in the SAME language the customer uses. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally ("Dạ được ạ!", "Great choice!").
+KEEP IT SIMPLE — these rules beat everything else:
+- 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.
+- Ask for exactly ONE thing per message. Never stack questions.
+- Never re-ask anything already answered in this conversation.
+- When they don't know what they want, suggest 2-3 popular services — not the whole menu. Share the full list only if they ask.
+- No jargon, no policies, no long explanations unless they ask.
+- Off-topic question? Answer in one friendly line, then gently return to the booking.
+If the conversation is just starting and the customer hasn't said what they need, greet briefly and ask which service they'd like (if a greeting was already sent, don't greet again — go straight to helping).
+To book you need ONLY: name, phone number, service, and a specific date & time. Collect the missing piece one question at a time — nothing more.
+Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
+Right before booking, recap in ONE short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?").
+Use the get_services tool for what's available and the service ids. When you have name + phone + service + a specific date/time, call create_booking (include email only if given). After it succeeds, confirm warmly in one line and say a confirmation is on the way.
+If they ask about an EXISTING appointment (time, changes, cancelling), do not guess or state details from memory — say a staff member will check and follow up shortly.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
 As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
 The salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.
@@ -562,10 +610,13 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       },
     ];
 
-    const messages: { role: string; content: unknown }[] = [
-      ...history.map((h) => ({ role: h.role, content: h.content })),
-      { role: 'user', content: userText },
-    ];
+    const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
+    if (hist.length && hist[0].role === 'assistant') {
+      // The thread opened with OUR greeting (Get Started). The API needs a
+      // user turn first, so pin a stage direction in front.
+      hist.unshift({ role: 'user', content: '(The customer just opened the chat.)' });
+    }
+    const messages: { role: string; content: unknown }[] = [...hist, { role: 'user', content: userText }];
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -713,6 +764,28 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
   }
 
   // ---- Facebook Send API ---------------------------------------------------
+  /**
+   * Publish the page's Messenger Profile: the intro-screen greeting (visible
+   * before any message is sent) and the Get Started button (whose tap is our
+   * cue to speak first). Re-run on every settings save — Meta stores it
+   * page-side, so it must be pushed, not just kept in our DB. Best-effort.
+   */
+  private async setupMessengerProfile(pageToken: string, greeting: string | null): Promise<void> {
+    // The intro screen allows 160 chars and a first-name placeholder.
+    const intro = (greeting || '').trim().slice(0, 160)
+      || 'Hi {{user_first_name}}! 👋 Tap Get Started and I\'ll book your nail appointment in a few quick messages.';
+    await fetch(`https://graph.facebook.com/v21.0/me/messenger_profile?access_token=${encodeURIComponent(pageToken)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        get_started: { payload: 'GET_STARTED' },
+        greeting: [{ locale: 'default', text: intro }],
+      }),
+    }).then(async (r) => {
+      if (!r.ok) this.logger.warn(`messenger_profile ${r.status}: ${(await r.text().catch(() => '')).slice(0, 120)}`);
+    }).catch(() => undefined);
+  }
+
   private async sendText(pageToken: string, recipientId: string, text: string): Promise<void> {
     try {
       await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
@@ -729,5 +802,6 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
 interface MessagingEvent {
   sender?: { id?: string };
   message?: { text?: string; is_echo?: boolean };
+  postback?: { payload?: string; title?: string }; // "Get Started" tap and menu buttons
   timestamp?: number; // ms epoch set by Meta on the webhook event
 }

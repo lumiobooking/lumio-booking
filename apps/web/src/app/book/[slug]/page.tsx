@@ -134,6 +134,8 @@ interface Availability {
    *  — not necessarily the same person. The front desk assigns the right tech to each
    *  service line at check-in (the POS/walk-in board already supports per-line techs). */
   perService: ServiceAvail[];
+  /** Same entries keyed by serviceId — used by the group matching. */
+  perServiceById?: Record<string, ServiceAvail>;
 }
 type Slot = { start: Date; end: Date };
 type Step = 1 | 2 | 3 | 4 | 5; // 1 services · 2 tech · 3 time · 4 confirm · 5 done
@@ -305,6 +307,14 @@ export default function PublicBookingPage() {
     staffId: string; slot: Slot; totalCents: number; label: string;
   }
   const [visitCart, setVisitCart] = useState<CartVisit[]>([]);
+  // Group booking: friends who come along. The booker keeps the existing
+  // selection states; each extra guest carries only a name and their services.
+  // Everyone shares ONE time slot — that is what "coming together" means.
+  interface ExtraGuest { name: string; serviceIds: string[] }
+  const [extraGuests, setExtraGuests] = useState<ExtraGuest[]>([]);
+  const [activeGuest, setActiveGuest] = useState(0); // 0 = the booker
+  const isGroup = extraGuests.length > 0;
+  const MAX_GUESTS = 4; // booker + 3 — parallel-capacity maths stays sane
   // What actually got created, for the confirmation screen.
   const [bookedVisits, setBookedVisits] = useState<string[]>([]);
 
@@ -419,7 +429,8 @@ export default function PublicBookingPage() {
   useEffect(() => {
     if (!selectedDate || !serviceId) { setAvail(null); return; }
     const d = ymd(selectedDate);
-    const ids = [serviceId, ...extraServiceIds.filter((x) => x !== serviceId)];
+    const guestServiceIds = extraGuests.flatMap((g) => g.serviceIds);
+    const ids = [...new Set([serviceId, ...extraServiceIds.filter((x) => x !== serviceId), ...guestServiceIds])];
     Promise.all(ids.map((sid) =>
       fetch(`${base}/availability?serviceId=${encodeURIComponent(sid)}&date=${d}`).then((r) => r.json()).catch(() => null),
     )).then((results) => {
@@ -433,14 +444,22 @@ export default function PublicBookingPage() {
         for (const id of r.eligibleStaffIds) unionIds.add(id);
         for (const [id, arr] of Object.entries(r.staffBusy)) (staffBusy[id] ||= []).push(...arr);
       }
+      const byId: Record<string, ServiceAvail> = {};
+      valid.forEach((r, i) => { if (ids[i]) byId[ids[i]] = r; });
       setAvail({
         eligibleStaffIds: [...unionIds],
         staffBusy,
         noStaff: valid.every((r) => r.noStaff),
-        perService: valid,
+        // The booker's own services drive the single-visit logic…
+        perService: ids
+          .map((sid, i) => ({ sid, r: valid[i] }))
+          .filter((x) => x.r && (x.sid === serviceId || extraServiceIds.includes(x.sid)))
+          .map((x) => x.r),
+        // …while the by-id map serves the group matching.
+        perServiceById: byId,
       });
     }).catch(() => setAvail(null));
-  }, [base, selectedDate, serviceId, extraServiceIds]);
+  }, [base, selectedDate, serviceId, extraServiceIds, extraGuests]);
 
   // ---- Online deposit (hosted provider modal) ----
   // Only runs when the salon has connected a real online provider AND a deposit
@@ -566,7 +585,8 @@ export default function PublicBookingPage() {
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
           customerBirthDate: form.birthDate || undefined,
-          partySize: parseInt(form.partySize, 10) || 1,
+          partySize: isGroup ? extraGuests.length + 1 : (parseInt(form.partySize, 10) || 1),
+          ...(isGroup ? { notes: `Group booking (${extraGuests.length + 1} people)` } : {}),
           smsConsent,
           referralCode: (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') : null) || undefined,
           // Campaign attribution: capture UTM from THIS page's URL. For plugin
@@ -591,14 +611,52 @@ export default function PublicBookingPage() {
               attrCapturedAt: g('lumio_at') || new Date().toISOString(),
             };
           })(),
-          paymentType: visitCart.length > 0 ? 'PAY_LATER' : paymentType,
+          paymentType: (visitCart.length > 0 || isGroup) ? 'PAY_LATER' : paymentType,
         }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) { setError((body && body.message) || `Booking failed (${res.status})`); return; }
       setResult({ paymentStatus: body?.payment?.status ?? null });
       const when = `${slot.start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
-      setBookedVisits([...done, `${when} · ${allLines.map((l) => l.name).join(', ')}`]);
+      const booked = [...done, `${when} · ${allLines.map((l) => l.name).join(', ')}${isGroup ? ` — ${form.firstName || 'You'}` : ''}`];
+
+      // Group guests: one appointment each, SAME start time. Only a name is
+      // sent (no phone/email), so the CRM never merges a friend into the
+      // booker's record and contact velocity limits don't trip.
+      for (let gi = 0; gi < extraGuests.length; gi++) {
+        const g = extraGuests[gi];
+        const gName = g.name.trim() || `Guest ${gi + 2}`;
+        try {
+          const gr = await fetch(`${base}/bookings`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              serviceId: g.serviceIds[0],
+              serviceIds: g.serviceIds,
+              preferredStaffId: undefined,
+              startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
+              customerFirstName: gName,
+              partySize: extraGuests.length + 1,
+              notes: `Group booking with ${form.firstName || 'the main guest'} (${extraGuests.length + 1} people)`,
+              smsConsent: false,
+              paymentType: 'PAY_LATER',
+            }),
+          });
+          const gb = await gr.json().catch(() => null);
+          if (!gr.ok) {
+            setError(`${gName}'s booking could not be created: ${(gb && gb.message) || gr.status}. Your own booking IS confirmed — please call the salon to add them.`);
+          } else {
+            const names = g.serviceIds.map((sid) => services.find((sv) => sv.id === sid)?.name).filter(Boolean).join(', ');
+            booked.push(`${when} · ${names} — ${gName}`);
+            if (gb?.booking?.id) {
+              fireConversion({ id: String(gb.booking.id), valueCents: typeof gb?.booking?.priceCents === 'number' ? gb.booking.priceCents : 0, currency: rules.currency, slug, items: [] });
+            }
+          }
+        } catch {
+          setError(`Network error while adding ${gName}. Your own booking IS confirmed — please call the salon to add them.`);
+        }
+      }
+
+      setBookedVisits(booked);
       setVisitCart([]);
       if (body?.booking?.id) {
         fireConversion({
@@ -647,6 +705,7 @@ export default function PublicBookingPage() {
     setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' });
     setPaymentType('PAY_LATER'); setResult(null); setError(null);
     setVisitCart([]); setBookedVisits([]);
+    setExtraGuests([]); setActiveGuest(0);
   }
 
   // Embedded: bring the widget back into view when the step changes.
@@ -710,24 +769,41 @@ export default function PublicBookingPage() {
   if (salon && salon.businessType === 'RESTAURANT') return <RestaurantReserve slug={slug} salon={salon} />;
 
   const canContinue =
-    step === 1 ? pickedServiceIds.length > 0 :
+    step === 1 ? (pickedServiceIds.length > 0 && extraGuests.every((g) => g.serviceIds.length > 0)) :
     step === 2 ? true :
     step === 3 ? !!slot :
     step === 4 ? infoOk && !submitting : false;
 
+  // What the customer will actually pay across EVERYTHING being booked today —
+  // every visit in the cart plus the one on screen, or every guest in a group.
+  // Without this the panel says "$33.30" while the salon will charge for three
+  // visits. Guest services use catalog prices (any extra discount the salon
+  // applies can only make the real bill smaller, never bigger).
+  const cartCents = visitCart.reduce((s, v) => s + v.totalCents, 0);
+  const guestCents = extraGuests.reduce(
+    (s, g) => s + g.serviceIds.reduce((x, sid) => x + (services.find((sv) => sv.id === sid)?.priceCents ?? 0), 0),
+    0,
+  );
+  const grand =
+    visitCart.length > 0 ? { count: visitCart.length + 1, cents: cartCents + totalCents, kind: 'visits' as const } :
+    isGroup ? { count: extraGuests.length + 1, cents: guestCents + totalCents, kind: 'guests' as const } :
+    null;
+
   const ctaLabel =
-    step === 4 ? (submitting ? 'Booking…' : visitCart.length > 0 ? `Book ${visitCart.length + 1} visits` : 'Book') :
+    step === 4 ? (submitting ? 'Booking…' : isGroup ? `Book for ${extraGuests.length + 1}` : visitCart.length > 0 ? `Book ${visitCart.length + 1} visits` : 'Book') :
     step === 1 ? (pickedServiceIds.length > 0 ? 'Book for Me' : 'Select a service') : 'Continue';
 
   const goNext = () => {
-    if (step === 1 && pickedServiceIds.length) setStep(chooseStaff ? 2 : 3);
+    // A group shares one time slot, so a single named tech makes no sense —
+    // the tech step is skipped and every seat is assigned by the salon.
+    if (step === 1 && pickedServiceIds.length) setStep(isGroup ? 3 : (chooseStaff ? 2 : 3));
     else if (step === 2) setStep(3);
     else if (step === 3 && slot) setStep(4);
     else if (step === 4) submit();
   };
   const goBack = () => {
     if (step === 2) setStep(1);
-    else if (step === 3) setStep(chooseStaff ? 2 : 1);
+    else if (step === 3) setStep(isGroup ? 1 : (chooseStaff ? 2 : 1));
     else if (step === 4) setStep(3);
   };
 
@@ -753,7 +829,7 @@ export default function PublicBookingPage() {
       fill={!isMobile && !embedded}
       salon={salon} lines={allLines} fmt={fmt} totalCents={totalCents} fullCents={fullCents}
       anyDiscount={anyDiscount} totalDuration={totalDuration} employee={employee} slot={slot} selectedDate={selectedDate}
-      onRemove={removeLine} canContinue={canContinue} ctaLabel={ctaLabel} onContinue={goNext} step={step} accent={accent}
+      onRemove={removeLine} canContinue={canContinue} ctaLabel={ctaLabel} onContinue={goNext} step={step} accent={accent} grand={grand}
     />
   );
 
@@ -884,12 +960,58 @@ export default function PublicBookingPage() {
                       wonder what they had missed. What the visitor actually needs at this
                       point is a single fact — "is there room soon?" — so we state it. */}
                   <SoonestBar rules={rules} services={services} accent={accent} />
+
+                  {/* Group tabs. They only exist once the booker adds a friend —
+                      the solo flow never shows them. Every guest picks their own
+                      services; the whole party shares one time slot. */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '2px 0 12px' }}>
+                    {isGroup && [{ name: 'You', serviceIds: pickedServiceIds }, ...extraGuests].map((g, i) => {
+                      const on = activeGuest === i;
+                      return (
+                        <button key={i} type="button" onClick={() => setActiveGuest(i)}
+                          style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                            border: `1.6px solid ${on ? accent : '#e9edf4'}`,
+                            background: on ? tint(accent, 0.07) : '#fff', color: on ? accent : '#7d8ba4' }}>
+                          {i === 0 ? '👤 You' : `👥 ${extraGuests[i - 1].name || `Guest ${i + 1}`}`}
+                          <span style={{ marginLeft: 6, fontWeight: 500 }}>· {g.serviceIds.length || 0}</span>
+                          {i > 0 && on && (
+                            <span onClick={(e) => { e.stopPropagation(); setExtraGuests((gs) => gs.filter((_, k) => k !== i - 1)); setActiveGuest(0); setSlot(null); }}
+                              style={{ marginLeft: 8, color: '#94a3b8' }}>✕</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {extraGuests.length < MAX_GUESTS - 1 && (
+                      <button type="button"
+                        onClick={() => { setExtraGuests((gs) => [...gs, { name: '', serviceIds: [] }]); setActiveGuest(extraGuests.length + 1); setStaffId(''); setSlot(null); }}
+                        style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                          border: `1.6px dashed ${tint(accent, 0.6)}`, background: tint(accent, 0.03), color: accent }}>
+                        ＋ {isGroup ? 'Add guest' : 'Bringing friends?'}
+                      </button>
+                    )}
+                  </div>
+                  {isGroup && activeGuest > 0 && (
+                    <input
+                      value={extraGuests[activeGuest - 1]?.name ?? ''}
+                      onChange={(e) => setExtraGuests((gs) => gs.map((g, k) => k === activeGuest - 1 ? { ...g, name: e.target.value } : g))}
+                      placeholder={`Guest ${activeGuest + 1} name (optional)`}
+                      style={{ ...inputStyle, marginBottom: 12, maxWidth: 320 }}
+                    />
+                  )}
+
                   <ServicePicker
-                    services={services} categories={categories} selectedIds={pickedServiceIds}
-                    onToggle={toggleService} fmt={fmt} accent={accent} cardFee={salon?.cardFee}
+                    services={services} categories={categories}
+                    selectedIds={activeGuest === 0 ? pickedServiceIds : (extraGuests[activeGuest - 1]?.serviceIds ?? [])}
+                    onToggle={activeGuest === 0 ? toggleService : (id) => {
+                      setExtraGuests((gs) => gs.map((g, k) => k === activeGuest - 1
+                        ? { ...g, serviceIds: g.serviceIds.includes(id) ? g.serviceIds.filter((x) => x !== id) : [...g.serviceIds, id] }
+                        : g));
+                      setSlot(null);
+                    }}
+                    fmt={fmt} accent={accent} cardFee={salon?.cardFee}
                     subscribe={subscribe} pinning={pinning} stickyTop={fullscreen ? 58 : 64}
                   />
-                  {serviceAddons.length > 0 && (
+                  {activeGuest === 0 && serviceAddons.length > 0 && (
                     <div style={{ marginTop: 22 }}>
                       <SectionLabel accent={accent}>Add-ons for {service?.name}</SectionLabel>
                       <div style={{ display: 'grid', gap: 10, alignContent: 'start', alignItems: 'start', gridAutoRows: 'min-content' }}>
@@ -928,6 +1050,22 @@ export default function PublicBookingPage() {
                   cartBusy={visitCart
                     .filter((v) => staffId && v.staffId === staffId)
                     .map((v) => ({ start: v.slot.start.toISOString(), end: v.slot.end.toISOString() }))}
+                  groupNeeds={isGroup ? [
+                    { serviceIds: pickedServiceIds, extraMin: addonLines.reduce((sum, l) => sum + 0, 0) },
+                    ...extraGuests.map((g) => ({ serviceIds: g.serviceIds, extraMin: 0 })),
+                  ].map((gg) => {
+                    const svcOf = (sid: string) => services.find((sv) => sv.id === sid);
+                    const durationMin = gg.serviceIds.reduce((sum, sid) => sum + (svcOf(sid)?.durationMinutes ?? 0), 0) || 30;
+                    // Intersect the pools of every service this person picked;
+                    // services nobody lists don't constrain (desk assigns them).
+                    let elig: 'ANY' | string[] = 'ANY';
+                    for (const sid of gg.serviceIds) {
+                      const ps = avail?.perServiceById?.[sid];
+                      if (!ps || ps.noStaff || ps.unstaffed) continue;
+                      elig = elig === 'ANY' ? [...ps.eligibleStaffIds] : elig.filter((id) => ps.eligibleStaffIds.includes(id));
+                    }
+                    return { elig, durationMin };
+                  }) : []}
                   onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                   onPickSlot={setSlot}
                   waitlist={<WaitlistCta base={base} preferredDate={selectedDate} serviceId={serviceId || undefined} fmtAccent={accent} />}
@@ -943,16 +1081,17 @@ export default function PublicBookingPage() {
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
                 />
                 {/* The escape hatch for "I also want another day/time" — offered
-                    AFTER a visit is fully specified, never asked up front. */}
-                <button type="button" onClick={addAnotherVisit}
+                    AFTER a visit is fully specified, never asked up front. Groups
+                    book one shared time, so the two modes don't combine. */}
+                {!isGroup && <button type="button" onClick={addAnotherVisit}
                   style={{ width: '100%', marginTop: 10, padding: '13px 16px', borderRadius: 999, cursor: 'pointer',
                     border: `1.6px dashed ${tint(accent, 0.65)}`, background: tint(accent, 0.04),
                     color: accent, fontWeight: 700, fontSize: 13.5 }}>
                   ＋ Add another visit (different day or time)
-                </button>
+                </button>}
                 {visitCart.length > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#8fa0bb', textAlign: 'center' }}>
-                    Booking {visitCart.length + 1} visits · paid at the salon
+                  <div style={{ marginTop: 8, fontSize: 12.5, color: '#8fa0bb', textAlign: 'center' }}>
+                    Booking {visitCart.length + 1} visits · total <b style={{ color: INK }}>{fmt(cartCents + totalCents)}</b> · paid at the salon
                   </div>
                 )}
                 </>
@@ -978,7 +1117,8 @@ export default function PublicBookingPage() {
             hidden below a tall cart / the fold. Hosted desktop keeps its sticky cart. */}
         {(isMobile || embedded) && step < 5 && (
           <MobileBar
-            embedded={!asPage} count={cartLines.length} totalCents={totalCents} fmt={fmt}
+            embedded={!asPage} count={cartLines.length} totalCents={grand ? grand.cents : totalCents} fmt={fmt}
+            grandLabel={grand ? (grand.kind === 'visits' ? `${grand.count} visits` : `group of ${grand.count}`) : undefined}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
           />
         )}
@@ -1025,10 +1165,12 @@ function AnimatedMoney({ cents, fmt, style }: { cents: number; fmt: (c: number) 
   return <span style={style}>{fmt(disp)}</span>;
 }
 
-function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill }: {
+function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
   totalDuration: number; employee: Staff | null; slot: Slot | null; selectedDate: Date | null;
   onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string; fill?: boolean;
+  /** Multi-visit cart or group booking: the number the customer pays in total. */
+  grand?: { count: number; cents: number; kind: 'visits' | 'guests' } | null;
 }) {
   // On a desktop screen we show a small QR of this very page, so a visitor who found
   // the salon on their laptop can scan and finish on their phone (where they'll get the
@@ -1081,12 +1223,20 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
 
       <div style={{ padding: '12px 16px 16px', borderTop: '1px solid #eef1f6', flexShrink: 0, background: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontWeight: 800, color: INK, fontSize: 15 }}>Total</span>
+          <span style={{ fontWeight: 800, color: INK, fontSize: 15 }}>{grand ? (grand.kind === 'visits' ? 'This visit' : 'Your services') : 'Total'}</span>
           <span>
             {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', fontSize: 13, marginRight: 8 }}>{fmt(fullCents)}</span>}
             <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 800, color: INK, fontSize: 17 }} />
           </span>
         </div>
+        {grand && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8, padding: '9px 12px', borderRadius: 10, background: tint(accent, 0.08), border: `1.4px solid ${tint(accent, 0.4)}` }}>
+            <span style={{ fontWeight: 800, color: INK, fontSize: 13.5 }}>
+              {grand.kind === 'visits' ? `🧾 Total · ${grand.count} visits` : `👥 Total · group of ${grand.count}`}
+            </span>
+            <AnimatedMoney cents={grand.cents} fmt={fmt} style={{ fontWeight: 800, color: accent, fontSize: 18 }} />
+          </div>
+        )}
         {totalDuration > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: '#94a3b8' }}>
             <span>🕐 Duration</span><span>{fmtDur(totalDuration)}</span>
@@ -1224,9 +1374,11 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
 }
 
 /** Mobile: floating action bar. Always on screen, never behind the content. */
-function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef }: {
+function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, grandLabel }: {
   embedded: boolean; count: number; totalCents: number; fmt: (c: number) => string; durationMinutes: number;
   canContinue: boolean; label: string; onContinue: () => void; accent: string;
+  /** When set, totalCents is the ALL-visits/group figure and this names it ("3 visits"). */
+  grandLabel?: string;
   /** Embed only: keeps the bar floating above the fold while the form is on screen. */
   pinRef?: React.MutableRefObject<HTMLDivElement | null>;
 }) {
@@ -1281,7 +1433,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>
-          {count === 0 ? 'No service yet' : `${count} service${count === 1 ? '' : 's'}`}{durationMinutes > 0 && <> · 🕐 {fmtDur(durationMinutes)}</>}
+          {count === 0 ? 'No service yet' : `${count} service${count === 1 ? '' : 's'}`}{durationMinutes > 0 && <> · 🕐 {fmtDur(durationMinutes)}</>}{grandLabel && <> · <b style={{ color: INK }}>total for {grandLabel}</b></>}
         </div>
         <div style={{ fontSize: 18, fontWeight: 800, color: INK, letterSpacing: -0.3 }}>{fmt(totalCents)}</div>
       </div>
@@ -1624,12 +1776,15 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
 // Times that are taken stay visible but struck through, so the page never
 // looks empty and the visitor can see how busy the day is.
 // ---------------------------------------------------------------------------
-function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, durationMinutes, onPickDate, onPickSlot, waitlist, accent, cartBusy = [] }: {
+function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, durationMinutes, onPickDate, onPickSlot, waitlist, accent, cartBusy = [], groupNeeds = [] }: {
   rules: BookingRules; salon: Salon | null; selectedDate: Date | null; slot: Slot | null; avail: Availability | null;
   staffId: string; durationMinutes: number; onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void;
   waitlist?: React.ReactNode; accent: string;
   /** Times already reserved by earlier visits in this session's cart. */
   cartBusy?: { start: string; end: string }[];
+  /** Group mode: one entry per person — who may serve them and for how long.
+   *  elig === 'ANY' means any tech (unconfigured services). */
+  groupNeeds?: { elig: 'ANY' | string[]; durationMin: number }[];
 }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const maxDate = useMemo(() => new Date(today.getTime() + rules.maxAdvanceDays * 86400000), [today, rules.maxAdvanceDays]);
@@ -1665,6 +1820,33 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
   const isFree = useCallback((s: Slot) => {
     if (!avail) return true;
     if (avail.noStaff) return true;                 // no team on file — shop assigns later
+
+    // Group: every person starts together, so the salon needs enough DIFFERENT
+    // technicians free at once. Guests are few (≤4), so try every assignment.
+    if (groupNeeds.length > 1) {
+      const allTechs = avail.eligibleStaffIds;
+      const freeFor = (tech: string, mins: number) => {
+        const end = new Date(s.start.getTime() + mins * 60000);
+        return !overlaps({ start: s.start, end }, avail.staffBusy[tech] ?? []);
+      };
+      const options = groupNeeds.map((g) =>
+        (g.elig === 'ANY' ? allTechs : g.elig).filter((tech) => freeFor(tech, g.durationMin)),
+      );
+      // A guest whose services nobody lists is seated by the desk — they don't
+      // consume a matched tech here.
+      const need = options.filter((_, i) => groupNeeds[i].elig !== 'ANY' || allTechs.length > 0);
+      const assign = (i: number, used: Set<string>): boolean => {
+        if (i >= need.length) return true;
+        for (const tech of need[i]) {
+          if (used.has(tech)) continue;
+          used.add(tech);
+          if (assign(i + 1, used)) return true;
+          used.delete(tech);
+        }
+        return false;
+      };
+      return assign(0, new Set());
+    }
     // A specific tech was chosen → that one person must be free for the whole
     // block. A tech who is NOT in the eligible pool (can't do a picked service)
     // gets no slots at all — before this check, an unknown id fell through to
@@ -1683,7 +1865,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       // service — the desk assigns it by hand, so it must not block the visit.
       ps.noStaff || ps.unstaffed || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
     );
-  }, [avail, staffId, cartBusy]);
+  }, [avail, staffId, cartBusy, groupNeeds]);
 
   const groups: { label: string; items: Slot[] }[] = useMemo(() => {
     const g = { Morning: [] as Slot[], Afternoon: [] as Slot[], Evening: [] as Slot[] };

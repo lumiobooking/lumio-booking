@@ -1,0 +1,57 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Đặt nhiều khung giờ — giải pháp</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#eef1fb;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1e2a44;padding:26px}
+.row{display:flex;gap:26px;justify-content:center;flex-wrap:wrap;align-items:flex-start}
+.col{width:400px}
+h3{font-size:11px;letter-spacing:.09em;color:#8b99b3;font-weight:800;margin:0 0 10px}
+.frame{background:#fff;border:1.6px solid #e9edf4;border-radius:18px;padding:18px;box-shadow:0 14px 34px -22px rgba(30,42,68,.55)}
+.chipbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.vchip{display:inline-flex;align-items:center;gap:7px;background:#f3f6ff;border:1.6px solid #c7d2fe;color:#3730a3;border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:700}
+.vchip.on{background:#4f46e5;color:#fff;border-color:#4f46e5}
+.vchip .x{opacity:.65}
+.card{border:1.6px solid #e9edf4;border-radius:14px;padding:13px 15px;margin-bottom:10px}
+.tt{font-weight:800;font-size:14px}
+.sub{font-size:12.5px;color:#7d8ba4;margin-top:3px}
+.total{display:flex;justify-content:space-between;font-weight:800;font-size:15px;margin:12px 0}
+.cta{background:linear-gradient(120deg,#6366f1,#4f46e5);color:#fff;border-radius:999px;padding:14px;text-align:center;font-weight:800;font-size:14.5px;box-shadow:0 14px 28px -14px rgba(99,102,241,.8)}
+.ghost{border:1.6px dashed #c7d2fe;color:#4f46e5;border-radius:999px;padding:12px;text-align:center;font-weight:700;font-size:13.5px;margin-top:10px;background:#fafbff}
+.note{font-size:11.5px;color:#8b99b3;margin-top:12px;line-height:1.55}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{flex:1;text-align:center;border:1.6px solid #e9edf4;border-radius:12px;padding:9px 6px;font-size:12.5px;font-weight:700;color:#7d8ba4}
+.tab.on{border-color:#4f46e5;color:#4f46e5;background:#f3f6ff}
+.addtab{flex:0 0 44px;border:1.6px dashed #c7d2fe;border-radius:12px;display:grid;place-items:center;color:#4f46e5;font-weight:800}
+</style></head><body>
+<div class="row">
+
+<div class="col"><h3>GIẢI PHÁP 1 — "GIỎ LỊCH HẸN" (khuyến nghị làm trước)</h3>
+<div class="frame">
+  <div class="chipbar">
+    <span class="vchip on">📅 Th 6, 7/8 · 12:30 · 2 dịch vụ <span class="x">✕</span></span>
+    <span class="vchip">＋ Lịch thứ 2 đang chọn…</span>
+  </div>
+  <div class="card"><div class="tt">✔ Xác nhận lịch hẹn</div>
+    <div class="sub">Khách đi đúng luồng cũ: chọn dịch vụ → thợ → giờ → tới màn Confirm</div></div>
+  <div class="total"><span>Total (1 lịch)</span><span>$80.00</span></div>
+  <div class="cta">Book my visit</div>
+  <div class="ghost">＋ Đặt thêm lịch khác (ngày/giờ khác)</div>
+  <div class="note">Nút phụ xuất hiện <b>ở cuối</b>, sau khi khách xong lịch đầu — không hỏi trước, không bắt nghĩ.
+  Bấm vào: lịch #1 thu thành chip trên đầu trang, luồng quay về bước Dịch vụ cho lịch #2.
+  Bấm Book một lần → tạo tất cả, 1 email xác nhận liệt kê đủ, mỗi lịch có link huỷ/dời riêng.</div>
+</div></div>
+
+<div class="col"><h3>GIẢI PHÁP 2 — "ĐẶT CHO NHÓM" (giai đoạn 2)</h3>
+<div class="frame">
+  <div class="tabs">
+    <span class="tab on">👤 Bạn<br><span style="font-weight:500">2 dịch vụ</span></span>
+    <span class="tab">👩 Khách 2<br><span style="font-weight:500">1 dịch vụ</span></span>
+    <span class="addtab">＋</span>
+  </div>
+  <div class="card"><div class="tt">Mỗi người một tab, chọn dịch vụ riêng</div>
+    <div class="sub">Cả nhóm làm <b>cùng một khung giờ</b> — hệ thống chỉ hiện giờ nào đủ số thợ rảnh cùng lúc</div></div>
+  <div class="total"><span>Total (2 khách)</span><span>$125.00</span></div>
+  <div class="cta">Book for 2</div>
+  <div class="note">Dành cho mẹ–con, nhóm bạn — nhu cầu "nhiều giờ" thực chất thường là "nhiều NGƯỜI".
+  Cần thêm phép tính sức chứa thợ song song ở backend nên để giai đoạn 2.</div>
+</div></div>
+
+</div></body></html>

@@ -297,6 +297,16 @@ export default function PublicBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ paymentStatus: string | null } | null>(null);
+  // The visit cart. A customer who wants two different times books TWO visits:
+  // finish one, press "add another", pick again. Saved visits sit here as chips
+  // until one final Book creates them all. Contact details are shared.
+  interface CartVisit {
+    serviceId: string; extraServiceIds: string[]; addonIds: string[];
+    staffId: string; slot: Slot; totalCents: number; label: string;
+  }
+  const [visitCart, setVisitCart] = useState<CartVisit[]>([]);
+  // What actually got created, for the confirmation screen.
+  const [bookedVisits, setBookedVisits] = useState<string[]>([]);
 
   const rules = salon?.booking ?? DEFAULT_RULES;
   const baseAccent = salon?.branding?.accentColor || '#6366f1';
@@ -503,6 +513,48 @@ export default function PublicBookingPage() {
   async function submit() {
     if (!slot) return;
     setSubmitting(true); setError(null);
+
+    // Multi-visit: create the saved visits first, one by one. Each is its own
+    // appointment (own reminder, own cancel link). If one fails we stop and say
+    // exactly which — the ones already created stand.
+    const done: string[] = [];
+    for (let i = 0; i < visitCart.length; i++) {
+      const v = visitCart[i];
+      try {
+        const r = await fetch(`${base}/bookings`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            serviceId: v.serviceId,
+            serviceIds: [v.serviceId, ...v.extraServiceIds.filter((x) => x !== v.serviceId)],
+            addonIds: v.addonIds, preferredStaffId: v.staffId || undefined,
+            startTime: salon?.timezone ? wallTimeToISO(v.slot.start, salon.timezone) : v.slot.start.toISOString(),
+            customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
+            customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
+            customerBirthDate: form.birthDate || undefined,
+            partySize: parseInt(form.partySize, 10) || 1,
+            smsConsent,
+            paymentType: 'PAY_LATER',
+          }),
+        });
+        const b = await r.json().catch(() => null);
+        if (!r.ok) {
+          setError(`Visit ${i + 1} (${v.label}) could not be booked: ${(b && b.message) || r.status}. ${done.length ? 'Your earlier visits WERE booked.' : ''}`);
+          setVisitCart((c) => c.slice(i)); // keep only the not-yet-created ones
+          setBookedVisits(done); setSubmitting(false);
+          return;
+        }
+        done.push(v.label);
+        if (b?.booking?.id) {
+          fireConversion({ id: String(b.booking.id), valueCents: typeof b?.booking?.priceCents === 'number' ? b.booking.priceCents : v.totalCents, currency: rules.currency, slug, items: [] });
+        }
+      } catch {
+        setError(`Network error while booking visit ${i + 1}. ${done.length ? 'Your earlier visits WERE booked.' : 'Please try again.'}`);
+        setVisitCart((c) => c.slice(i));
+        setBookedVisits(done); setSubmitting(false);
+        return;
+      }
+    }
+
     try {
       const res = await fetch(`${base}/bookings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -539,12 +591,15 @@ export default function PublicBookingPage() {
               attrCapturedAt: g('lumio_at') || new Date().toISOString(),
             };
           })(),
-          paymentType,
+          paymentType: visitCart.length > 0 ? 'PAY_LATER' : paymentType,
         }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) { setError((body && body.message) || `Booking failed (${res.status})`); return; }
       setResult({ paymentStatus: body?.payment?.status ?? null });
+      const when = `${slot.start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
+      setBookedVisits([...done, `${when} · ${allLines.map((l) => l.name).join(', ')}`]);
+      setVisitCart([]);
       if (body?.booking?.id) {
         fireConversion({
           id: String(body.booking.id),
@@ -565,10 +620,33 @@ export default function PublicBookingPage() {
     finally { setSubmitting(false); }
   }
 
+  /** Freeze the on-screen selection into the cart and start a fresh visit. */
+  function addAnotherVisit() {
+    if (!slot) return;
+    const names = allLines.map((l) => l.name).join(', ');
+    const when = `${slot.start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
+    setVisitCart((c) => [...c, {
+      serviceId, extraServiceIds, addonIds, staffId, slot,
+      totalCents, label: `${when} · ${names}`,
+    }]);
+    // Clear only the visit itself — the customer's details carry over.
+    setServiceId(''); setExtraServiceIds([]); setAddonIds([]); setStaffId('');
+    setSlot(null); setAvail(null); setSelectedDate(null); setError(null);
+    setStep(1);
+    // Online deposit flows redirect to a payment page, which can only settle
+    // ONE booking — multi-visit is therefore pay-at-salon.
+    setPaymentType('PAY_LATER');
+  }
+
+  function removeCartVisit(i: number) {
+    setVisitCart((c) => c.filter((_, k) => k !== i));
+  }
+
   function reset() {
     setStep(1); setSelectedDate(null); setServiceId(''); setExtraServiceIds([]); setAddonIds([]); setStaffId(''); setSlot(null);
     setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' });
     setPaymentType('PAY_LATER'); setResult(null); setError(null);
+    setVisitCart([]); setBookedVisits([]);
   }
 
   // Embedded: bring the widget back into view when the step changes.
@@ -638,7 +716,7 @@ export default function PublicBookingPage() {
     step === 4 ? infoOk && !submitting : false;
 
   const ctaLabel =
-    step === 4 ? (submitting ? 'Booking…' : 'Book') :
+    step === 4 ? (submitting ? 'Booking…' : visitCart.length > 0 ? `Book ${visitCart.length + 1} visits` : 'Book') :
     step === 1 ? (pickedServiceIds.length > 0 ? 'Book for Me' : 'Select a service') : 'Continue';
 
   const goNext = () => {
@@ -737,11 +815,27 @@ export default function PublicBookingPage() {
           <div style={{ background: '#fff', borderRadius: embedded ? 12 : '0 0 14px 14px', padding: 32, marginTop: embedded ? 0 : 0 }}>
             <div style={{ textAlign: 'center', maxWidth: 380, margin: '0 auto' }}>
               <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', fontSize: 34, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>✓</div>
-              <h2 style={{ color: '#16a34a', margin: '4px 0' }}>Booking received</h2>
-              <p style={{ color: '#475569', lineHeight: 1.6 }}>
-                Thanks {form.firstName}! Your booking for <strong>{service?.name}</strong>
-                {slot && <> on <strong>{slot.start.toLocaleDateString('en-US')} at {fmtTime(slot.start)}</strong></>} is received.
-              </p>
+              <h2 style={{ color: '#16a34a', margin: '4px 0' }}>{bookedVisits.length > 1 ? `${bookedVisits.length} bookings received` : 'Booking received'}</h2>
+              {bookedVisits.length > 1 ? (
+                <div style={{ textAlign: 'left', margin: '10px 0 6px', border: '1px solid #e9edf4', borderRadius: 12, overflow: 'hidden' }}>
+                  {bookedVisits.map((label, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 13px', borderTop: i ? '1px solid #eef1f6' : 'none', fontSize: 13.5, color: '#334155' }}>
+                      <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: '#475569', lineHeight: 1.6 }}>
+                  Thanks {form.firstName}! Your booking for <strong>{service?.name}</strong>
+                  {slot && <> on <strong>{slot.start.toLocaleDateString('en-US')} at {fmtTime(slot.start)}</strong></>} is received.
+                </p>
+              )}
+              {bookedVisits.length > 1 && (
+                <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6 }}>
+                  Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.
+                </p>
+              )}
               <p style={{ color: '#475569' }}>Payment: <strong>{result?.paymentStatus === 'PAID' ? 'Paid online ✓' : 'Pay at the salon'}</strong></p>
               <button onClick={reset} style={{ ...primaryBtn, marginTop: 8 }}>Book another</button>
             </div>
@@ -755,6 +849,19 @@ export default function PublicBookingPage() {
               padding: isMobile ? '14px 14px 18px' : '18px 24px 24px',
               minWidth: 0, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)',
             }}>
+              {visitCart.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {visitCart.map((v, i) => (
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: tint(accent, 0.07), border: `1.4px solid ${tint(accent, 0.5)}`, color: INK, borderRadius: 999, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, maxWidth: '100%' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📅 {v.label}</span>
+                      <span style={{ color: accent, fontWeight: 800, flexShrink: 0 }}>{fmt(v.totalCents)}</span>
+                      <button type="button" onClick={() => removeCartVisit(i)} aria-label="Remove visit"
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
+                    </span>
+                  ))}
+                  <span style={{ alignSelf: 'center', fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>+ this visit ↓</span>
+                </div>
+              )}
               <Progress step={step} accent={accent} allowStaff={chooseStaff} />
               <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
               {stepHint && <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#8fa0bb', lineHeight: 1.5 }}>{stepHint}</p>}
@@ -818,6 +925,9 @@ export default function PublicBookingPage() {
                 <TimePicker
                   rules={rules} salon={salon} selectedDate={selectedDate} slot={slot} avail={avail}
                   staffId={staffId} durationMinutes={totalDuration} accent={accent}
+                  cartBusy={visitCart
+                    .filter((v) => staffId && v.staffId === staffId)
+                    .map((v) => ({ start: v.slot.start.toISOString(), end: v.slot.end.toISOString() }))}
                   onPickDate={(d) => { setSelectedDate(d); setSlot(null); }}
                   onPickSlot={setSlot}
                   waitlist={<WaitlistCta base={base} preferredDate={selectedDate} serviceId={serviceId || undefined} fmtAccent={accent} />}
@@ -825,12 +935,27 @@ export default function PublicBookingPage() {
               )}
 
               {step === 4 && slot && (
+                <>
                 <ConfirmStep
                   salon={salon} slot={slot} employee={employee} lines={allLines} fmt={fmt} totalCents={totalCents}
                   depositCents={depositCents} cardFee={salon?.cardFee} rules={rules} paymentType={paymentType} setPaymentType={setPaymentType}
                   form={form} setForm={setForm} smsConsent={smsConsent} setSmsConsent={setSmsConsent}
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
                 />
+                {/* The escape hatch for "I also want another day/time" — offered
+                    AFTER a visit is fully specified, never asked up front. */}
+                <button type="button" onClick={addAnotherVisit}
+                  style={{ width: '100%', marginTop: 10, padding: '13px 16px', borderRadius: 999, cursor: 'pointer',
+                    border: `1.6px dashed ${tint(accent, 0.65)}`, background: tint(accent, 0.04),
+                    color: accent, fontWeight: 700, fontSize: 13.5 }}>
+                  ＋ Add another visit (different day or time)
+                </button>
+                {visitCart.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#8fa0bb', textAlign: 'center' }}>
+                    Booking {visitCart.length + 1} visits · paid at the salon
+                  </div>
+                )}
+                </>
               )}
             </div>
 
@@ -1499,10 +1624,12 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
 // Times that are taken stay visible but struck through, so the page never
 // looks empty and the visitor can see how busy the day is.
 // ---------------------------------------------------------------------------
-function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, durationMinutes, onPickDate, onPickSlot, waitlist, accent }: {
+function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, durationMinutes, onPickDate, onPickSlot, waitlist, accent, cartBusy = [] }: {
   rules: BookingRules; salon: Salon | null; selectedDate: Date | null; slot: Slot | null; avail: Availability | null;
   staffId: string; durationMinutes: number; onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void;
   waitlist?: React.ReactNode; accent: string;
+  /** Times already reserved by earlier visits in this session's cart. */
+  cartBusy?: { start: string; end: string }[];
 }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const maxDate = useMemo(() => new Date(today.getTime() + rules.maxAdvanceDays * 86400000), [today, rules.maxAdvanceDays]);
@@ -1544,7 +1671,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
     // an empty busy list and the whole day looked open.
     if (staffId) {
       if (!avail.eligibleStaffIds.includes(staffId)) return false;
-      return !overlaps(s, avail.staffBusy[staffId] ?? []);
+      // Visits already in the cart are not on the server yet — block the same
+      // tech from being picked twice for overlapping times in this session.
+      return !overlaps(s, avail.staffBusy[staffId] ?? []) && !overlaps(s, cartBusy);
     }
     // "Any tech": bookable when EACH service has at least one eligible tech free — they
     // may be different people (specialist salons). A service with no team of its own is
@@ -1554,7 +1683,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       // service — the desk assigns it by hand, so it must not block the visit.
       ps.noStaff || ps.unstaffed || ps.eligibleStaffIds.some((id) => !overlaps(s, ps.staffBusy[id] ?? [])),
     );
-  }, [avail, staffId]);
+  }, [avail, staffId, cartBusy]);
 
   const groups: { label: string; items: Slot[] }[] = useMemo(() => {
     const g = { Morning: [] as Slot[], Afternoon: [] as Slot[], Evening: [] as Slot[] };

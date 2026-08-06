@@ -1,14 +1,18 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { GoogleReviewsService } from './google-reviews.service';
 import { ApproveReplyDto, SetLocationDto, UpdateGbrSettingsDto } from './dto/google-reviews.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
+import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
 /** Salon-admin management for the Google review auto-reply system. All actions
  *  are strictly scoped to the authenticated tenant inside the service. */
 @Roles(UserRole.SALON_ADMIN)
+@UseGuards(FeaturePolicyGuard)
+@RequiresFeature('reviews')
 @Controller('google-reviews')
 export class GoogleReviewsController {
   constructor(private readonly svc: GoogleReviewsService) {}

@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
+import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { MarketingService } from './marketing.service';
@@ -11,6 +13,8 @@ import { MarketingService } from './marketing.service';
  * on any client. Tenant safety is enforced in the service via resolveTenantScope.
  */
 @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
+@UseGuards(FeaturePolicyGuard)
+@RequiresFeature('marketing')
 @Controller('marketing')
 export class MarketingController {
   constructor(private readonly marketing: MarketingService) {}

@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Ip, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
+import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 import { UserRole } from '@prisma/client';
 import { IsInt, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -47,6 +49,8 @@ export class ReviewsController {
 
   // ---- Salon Admin ----
   @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('reviews')
   @Get('reviews/leaderboard')
   leaderboard(@CurrentUser() user: AuthenticatedUser, @Query('month') month?: string) {
     return this.reviews.leaderboard(user, month);
@@ -54,6 +58,8 @@ export class ReviewsController {
 
   /** Reset one technician's point balance to 0. */
   @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('reviews')
   @Post('reviews/staff/:id/reset')
   resetStaff(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.reviews.resetStaffPoints(user, id);
@@ -61,6 +67,8 @@ export class ReviewsController {
 
   /** Wipe ALL review/reward data and zero balances (post-testing cleanup). */
   @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('reviews')
   @Post('reviews/reset-all')
   wipeAll(@CurrentUser() user: AuthenticatedUser) {
     return this.reviews.wipeAll(user);
@@ -68,12 +76,16 @@ export class ReviewsController {
 
   /** Delete review/reward data within a date range. */
   @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('reviews')
   @Post('reviews/cleanup')
   cleanup(@CurrentUser() user: AuthenticatedUser, @Body() dto: { from: string; to: string }) {
     return this.reviews.cleanupRange(user, dto.from, dto.to);
   }
 
   @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('reviews')
   @Get('reviews/feedback')
   feedback(@CurrentUser() user: AuthenticatedUser) {
     return this.reviews.recentFeedback(user);
@@ -81,12 +93,16 @@ export class ReviewsController {
 
   /** Direct-mode audit trail: recent "send to Google" taps + why each counted. */
   @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('reviews')
   @Get('reviews/sends')
   sends(@CurrentUser() user: AuthenticatedUser) {
     return this.reviews.recentSends(user);
   }
 
   @Roles(UserRole.SALON_ADMIN)
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('reviews')
   @Post('reviews/staff/:id/adjust')
   adjust(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { delta: number; reason?: string }) {
     return this.reviews.adjustPoints(user, id, dto.delta, dto.reason ?? '');

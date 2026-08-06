@@ -184,6 +184,9 @@ export default function TenantsPage() {
           <a href="/super-admin/invoices" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Invoices
           </a>
+          <a href="/super-admin/support-accounts" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            🛠 Support staff
+          </a>
           <a href="/super-admin/email" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Email marketing
           </a>

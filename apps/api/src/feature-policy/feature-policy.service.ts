@@ -37,6 +37,13 @@ export class FeaturePolicyService {
 
   /** Salon-side: the resolved policy so the UI can hide platform-managed items. */
   async getForSalon(user: AuthenticatedUser) {
+    // A Lumio SUPPORT session is here to configure the locked screens, so the
+    // menu must not hide them. Purely presentational: the guard above already
+    // lets these sessions write.
+    if (user.supportSession) {
+      const open = Object.fromEntries(FEATURE_DEFS.map((d) => [d.key, 'salon' as const]));
+      return { policy: open, defs: this.defs() };
+    }
     return { policy: await this.resolve(this.tid(user)), defs: this.defs() };
   }
 

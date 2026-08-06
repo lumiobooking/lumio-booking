@@ -21,6 +21,10 @@ export class FeaturePolicyGuard implements CanActivate {
     const user = req.user as AuthenticatedUser | undefined;
     if (!user) return true; // the auth guard handles unauthenticated access
     if (user.role === UserRole.SUPER_ADMIN) return true;
+    // Lumio SUPPORT setup session: platform-managed screens are exactly what
+    // they are here to configure. The token is salon-scoped, so this loosens
+    // WHICH screens — never WHOSE data.
+    if (user.supportSession) return true;
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return true;
     await this.svc.assertSalonManaged(tenantId, key); // throws 403 when platform-managed

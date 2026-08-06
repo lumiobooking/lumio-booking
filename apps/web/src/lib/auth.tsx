@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { apiFetch, setUnauthorizedHandler } from './api';
 
-export type UserRole = 'SUPER_ADMIN' | 'SALON_ADMIN' | 'STAFF';
+export type UserRole = 'SUPER_ADMIN' | 'SALON_ADMIN' | 'STAFF' | 'SUPPORT';
 
 export type StaffRole = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
 
@@ -16,6 +16,9 @@ export interface AuthUser {
   lastName?: string | null;
   staffRole?: StaffRole | null;
   capabilities?: string[]; // feature permissions (absent on older sessions)
+  // Lumio SUPPORT staff working inside one salon on a short-lived session.
+  supportSession?: boolean;
+  tenantName?: string; // shown in the support banner
 }
 
 interface LoginResponse {

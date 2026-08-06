@@ -25,6 +25,8 @@ export default function LoginPage() {
         router.push('/salon');
       } else if (user.role === 'STAFF') {
         router.push('/staff/bookings');
+      } else if (user.role === 'SUPPORT') {
+        router.push('/agency');
       } else {
         router.push('/');
       }

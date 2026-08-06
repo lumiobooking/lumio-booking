@@ -13,6 +13,7 @@ export interface JwtPayload {
   role: UserRole;
   tenantId: string | null;
   staffRole?: StaffRole | null; // STAFF sub-role (optional; absent on older tokens)
+  supportSession?: boolean; // short-lived per-salon session for Lumio SUPPORT staff
   iat?: number; // issued-at (seconds) — used to invalidate tokens after a password change
 }
 
@@ -54,6 +55,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: payload.role,
       tenantId: payload.tenantId ?? null,
       staffRole: payload.staffRole ?? null,
+      supportSession: payload.supportSession === true,
     };
   }
 

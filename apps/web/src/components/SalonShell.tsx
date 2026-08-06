@@ -233,6 +233,26 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     );
   }
 
+  // Lumio SUPPORT session: a thin, always-visible strip so the employee can
+  // never forget WHICH salon they are inside — and one tap takes them home.
+  const supportBanner = user?.supportSession ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#312e81', border: '1px solid #6366f1', color: '#e0e7ff', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
+      <span style={{ fontWeight: 700 }}>🛠 Lumio Support</span>
+      <span style={{ opacity: 0.9 }}>— {tr('shell.supportIn', lang)} <b>{user.tenantName || '…'}</b></span>
+      <button
+        onClick={() => {
+          try {
+            const home = localStorage.getItem('lumio_agency_home');
+            if (home) { localStorage.setItem('lumio_auth', home); localStorage.removeItem('lumio_agency_home'); }
+            else { localStorage.removeItem('lumio_auth'); }
+          } catch { /* ignore */ }
+          window.location.assign('/agency');
+        }}
+        style={{ marginLeft: 'auto', background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+      >{tr('shell.supportLeave', lang)}</button>
+    </div>
+  ) : null;
+
   const renderLink = (item: NavItem, indent: boolean) => {
     const active = pathname === item.href;
     return (
@@ -362,7 +382,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           </>
         )}
 
-        <main style={{ padding: '18px 16px 88px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>
+        <main style={{ padding: '18px 16px 88px', color: '#e2e8f0', minWidth: 0 }}>{supportBanner}{children}</main>
         <MobileTabBar />
       </div>
     );
@@ -392,7 +412,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           </button>
           <NotificationBell />
         </header>
-        <main style={{ padding: '22px 32px 40px', color: '#e2e8f0', minWidth: 0 }}>{children}</main>
+        <main style={{ padding: '22px 32px 40px', color: '#e2e8f0', minWidth: 0 }}>{supportBanner}{children}</main>
       </div>
     </div>
   );

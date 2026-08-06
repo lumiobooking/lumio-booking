@@ -18,6 +18,11 @@ export interface AuthenticatedUser {
   homeTenantId?: string | null;
   // STAFF feature-permission sub-role (null for owners/super-admin = full access).
   staffRole?: StaffRole | null;
+  // True on short-lived tokens minted for Lumio SUPPORT staff working inside ONE
+  // salon. The token's role/tenantId are a normal SALON_ADMIN scope (isolation
+  // unchanged); this flag only unlocks platform-managed setup screens and lets
+  // the UI show the "working as Lumio Support" banner.
+  supportSession?: boolean;
 }
 
 /**

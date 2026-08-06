@@ -1075,6 +1075,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'cal.lineWithMain': { en: 'With main tech', vi: 'Cùng thợ chính' },
   'cal.linePick': { en: '— Pick tech', vi: '— Chọn thợ' },
   'bk.done': { en: 'Done', vi: 'Xong' },
+  'shell.supportIn': { en: 'setting up', vi: 'đang setup tiệm' },
+  'shell.supportLeave': { en: 'Leave salon', vi: 'Rời tiệm' },
   'cal.customer': { en: 'Customer', vi: 'Khách' },
   'cal.dName': { en: 'Name', vi: 'Tên' },
   'cal.dPhone': { en: 'Phone', vi: 'SĐT' },

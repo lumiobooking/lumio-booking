@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, IsIn } from 'class-validator';
 
 export class UpdateMessengerDto {
   @IsOptional() @IsString() @MaxLength(60) pageId?: string;
@@ -10,6 +10,13 @@ export class UpdateMessengerDto {
   // Structured FAQ facts [{ label, value, on }] the salon ticks; loose array
   // validation (nested shape is sanitized in the service).
   @IsOptional() @IsArray() botFacts?: { label: string; value: string; on: boolean }[];
+  // 'booking' (salon appointment bot) or 'sales' (agency sales/CS bot).
+  @IsOptional() @IsIn(['booking', 'sales']) botMode?: 'booking' | 'sales';
+  @IsOptional() @IsString() @MaxLength(200) leadEmail?: string;
+}
+
+export class LeadStatusDto {
+  @IsIn(['NEW', 'CONTACTED', 'WON', 'LOST']) status!: 'NEW' | 'CONTACTED' | 'WON' | 'LOST';
 }
 
 export class RenameThreadDto {

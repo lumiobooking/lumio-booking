@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
-import { HandoffDto, RenameThreadDto, SendTestDto, UpdateMessengerDto } from './dto/messenger.dto';
+import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -49,6 +49,18 @@ export class MessengerController {
   @Post('threads/:id/rename')
   rename(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RenameThreadDto) {
     return this.svc.renameThread(user, id, dto.name);
+  }
+
+  // ---- Sales-mode leads (agency page) ------------------------------------
+
+  @Get('leads')
+  leads(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.listLeads(user);
+  }
+
+  @Post('leads/:id/status')
+  leadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: LeadStatusDto) {
+    return this.svc.setLeadStatus(user, id, dto.status);
   }
 
   @Get('webhook-status')

@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationChannel, UserRole } from '@prisma/client';
 import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
@@ -53,6 +55,7 @@ export class MessengerService {
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
     private readonly settings: SettingsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ---- config --------------------------------------------------------------
@@ -106,6 +109,8 @@ export class MessengerService {
       greeting: c?.greeting ?? '',
       aiInstruction: c?.aiInstruction ?? '',
       botFacts: Array.isArray(c?.botFacts) ? (c!.botFacts as unknown as BotFact[]) : [],
+      botMode: ((c as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' : 'booking'),
+      leadEmail: (c as unknown as { leadEmail?: string | null } | null)?.leadEmail ?? '',
       aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
       verifyToken: this.verifyToken(),
@@ -224,7 +229,7 @@ export class MessengerService {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string; botFacts?: BotFact[] },
+    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -239,6 +244,15 @@ export class MessengerService {
       greeting: typeof dto.greeting === 'string' ? dto.greeting.slice(0, 500) : cur?.greeting ?? null,
       aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur?.aiInstruction ?? null,
       botFacts: (Array.isArray(dto.botFacts) ? dto.botFacts.slice(0, 40) : (cur?.botFacts ?? [])) as unknown as Prisma.InputJsonValue,
+      // The mode is a PLATFORM decision (a mis-flip turns a salon's booking bot
+      // into a software salesman). Only Lumio hands may change it — the UI hides
+      // the switch from salons, and this guard closes the direct-API route too.
+      botMode: (user.supportSession === true || user.role === UserRole.SUPER_ADMIN) && (dto.botMode === 'sales' || dto.botMode === 'booking')
+        ? dto.botMode
+        : ((cur as unknown as { botMode?: string } | null)?.botMode ?? 'booking'),
+      leadEmail: (user.supportSession === true || user.role === UserRole.SUPER_ADMIN) && typeof dto.leadEmail === 'string'
+        ? (dto.leadEmail.trim().slice(0, 200) || null)
+        : ((cur as unknown as { leadEmail?: string | null } | null)?.leadEmail ?? null),
     };
     if (!pageId) throw new BadRequestException('Enter your Facebook Page ID.');
     await this.prisma.messengerConnection.upsert({
@@ -500,7 +514,10 @@ export class MessengerService {
     let greeting = (conn.greeting || '').trim();
     if (!greeting) {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: conn.tenantId }, select: { name: true } });
-      greeting = `Hi! 👋 Welcome to ${tenant?.name || 'our salon'}. I can book your appointment right here — which service would you like?`;
+      const mode = (conn as unknown as { botMode?: string }).botMode === 'sales' ? 'sales' : 'booking';
+      greeting = mode === 'sales'
+        ? `Hi! 👋 I'm the assistant of ${tenant?.name || 'Lumio'} — booking & salon-management software for nail salons. Are you looking for a solution for your salon?`
+        : `Hi! 👋 Welcome to ${tenant?.name || 'our salon'}. I can book your appointment right here — which service would you like?`;
     }
     await this.sendText(conn.pageToken, senderId, greeting);
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
@@ -532,7 +549,12 @@ export class MessengerService {
     let reply: string;
     try {
       const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
-      reply = await this.runAgent(conn.tenantId, instruction, history, text);
+      const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
+      reply = await this.runAgent(conn.tenantId, instruction, history, text, {
+        mode: cx.botMode === 'sales' ? 'sales' : 'booking',
+        leadEmail: cx.leadEmail ?? null,
+        threadId: thread.id,
+      });
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
       reply = 'Thanks for your message! A team member will get back to you shortly. 💕';
@@ -549,7 +571,13 @@ export class MessengerService {
   }
 
   // ---- AI agent (tool use) -------------------------------------------------
-  private async runAgent(tenantId: string, aiInstruction: string, history: Turn[], userText: string): Promise<string> {
+  private async runAgent(
+    tenantId: string,
+    aiInstruction: string,
+    history: Turn[],
+    userText: string,
+    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string } = { mode: 'booking', leadEmail: null },
+  ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return 'Thanks for reaching out! A team member will reply to you shortly. 💕';
 
@@ -559,7 +587,7 @@ export class MessengerService {
     const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-    const system = `You are the booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
+    const bookingSystem = `You are the booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
 Always reply in the SAME language the customer uses. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally ("Dạ được ạ!", "Great choice!").
 KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.
@@ -579,7 +607,7 @@ As a kind final touch AFTER the booking is confirmed, mention the salon loves to
 The salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.
 ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
 
-    const tools = [
+    const bookingTools = [
       { name: 'get_services', description: 'List this salon’s bookable services with their id, name, price and duration.', input_schema: { type: 'object', properties: {}, required: [] } },
       {
         name: 'create_booking',
@@ -610,6 +638,56 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       },
     ];
 
+    // ---- SALES brain: the agency's own page. Same engine, different job —
+    // introduce Lumio to salon owners and hand WARM LEADS to the human team.
+    // Facts discipline is identical to the booking bot: the model may only
+    // state what the owner typed into Bot facts / AI instruction.
+    const salesSystem = `You are the sales & customer-care assistant for "${salonName}" — the team behind Lumio Booking, a booking & salon-management platform for nail salons. You chat on Facebook Messenger with salon owners and people asking about the product.
+Your ONE job: answer simply, connect the product to their salon's pain, and hand a warm lead to the human sales team. Warm and natural — never pushy, never robotic.
+Always reply in the SAME language the customer uses. In Vietnamese: xưng "em", gọi khách "anh/chị", dùng "dạ/ạ".
+KEEP IT SIMPLE — these rules beat everything else:
+- 1-2 short sentences per message (3 max). Ask for exactly ONE thing per message.
+- Never re-ask anything already answered in this conversation.
+- ONLY state prices, features, policies and links that appear in the FACTS below. If something is not covered: say the team will confirm it, and capture the lead. NEVER invent, never negotiate prices, never take payment in chat.
+- Off-topic? One friendly line, then gently back to how Lumio can help their salon.
+FLOW:
+- Start by asking what their salon struggles with (missed calls? no-shows? walk-in chaos?) — or answer their question first if they asked one. If a greeting was already sent, don't greet twice.
+- Match their pain to at most TWO features from the facts. Share the demo link when it helps.
+- When they show interest, ask for their NAME, then their PHONE (one at a time). Once you have both, call save_lead — include salon name, city and what they care about if mentioned.
+- Only say the lead is saved if save_lead returns "SUCCESS". Then confirm warmly: the team will call them soon.
+- If they ask for a human, want to negotiate, or ask beyond the facts: promise a callback and call save_lead with note "wants a human".
+The salon industry never sleeps and neither do you — but you are honest: you are the assistant, the humans call back.
+The current time is ${nowLocal} (timezone ${tz}).
+FACTS — the only things you may state as fact:
+${aiInstruction || '(no facts loaded yet — capture the lead and let the team answer)'}`;
+
+    const salesTools = [
+      {
+        name: 'save_lead',
+        description: "Save a sales lead for the human team. Call once you have the person's name AND phone number. The team is alerted by email immediately.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            phone: { type: 'string' },
+            salonName: { type: 'string', description: 'Their salon, if mentioned.' },
+            city: { type: 'string' },
+            interest: { type: 'string', description: 'What they asked about: plan, POS, multi-location…' },
+            note: { type: 'string', description: 'One-line summary of their situation, or "wants a human".' },
+          },
+          required: ['name', 'phone'],
+        },
+      },
+      {
+        name: 'get_pricing',
+        description: 'Re-read the structured fact sheet (plans, prices, links) to double-check before answering.',
+        input_schema: { type: 'object', properties: {}, required: [] },
+      },
+    ];
+
+    const system = ctx.mode === 'sales' ? salesSystem : bookingSystem;
+    const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
+
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
     if (hist.length && hist[0].role === 'assistant') {
       // The thread opened with OUR greeting (Get Started). The API needs a
@@ -635,7 +713,7 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
         const results: unknown[] = [];
         for (const blk of blocks) {
           if (blk.type !== 'tool_use') continue;
-          const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {});
+          const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, ctx);
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         messages.push({ role: 'user', content: results });
@@ -645,6 +723,114 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       return text || 'Got it! How else can I help you book?';
     }
     return 'Thanks! A team member will follow up with you shortly. 💕';
+  }
+
+  /**
+   * Sales mode: persist the lead and wake the humans. Same phone within 7 days
+   * updates the existing row and does NOT re-email — one hot lead, one alert.
+   */
+  private async saveLead(
+    tenantId: string,
+    input: Record<string, unknown>,
+    ctx?: { leadEmail: string | null; threadId?: string },
+  ): Promise<string> {
+    const name = String(input.name || '').trim().slice(0, 120);
+    const phone = String(input.phone || '').trim().replace(/[^\d+]/g, '');
+    if (!name || phone.replace(/\D/g, '').length < 8) {
+      return 'ERROR: a real name and a valid phone number are required before saving.';
+    }
+    const details = {
+      salonName: String(input.salonName || '').trim().slice(0, 160) || null,
+      city: String(input.city || '').trim().slice(0, 80) || null,
+      interest: String(input.interest || '').trim().slice(0, 200) || null,
+      note: String(input.note || '').trim().slice(0, 500) || null,
+    };
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const existing = await this.prisma.salesLead.findFirst({
+      where: { tenantId, phone, createdAt: { gt: since } },
+      select: { id: true },
+    });
+    if (existing) {
+      await this.prisma.salesLead.update({
+        where: { id: existing.id },
+        data: { name, ...details, ...(ctx?.threadId ? { threadId: ctx.threadId } : {}) },
+      });
+      return 'SUCCESS (recent lead updated — the team already has this person).';
+    }
+    await this.prisma.salesLead.create({
+      data: { tenantId, threadId: ctx?.threadId ?? null, name, phone, ...details },
+    });
+    await this.sendLeadEmail(tenantId, ctx?.leadEmail ?? null, { name, phone, ...details, threadId: ctx?.threadId ?? null })
+      .catch((e) => this.logger.warn(`lead email failed: ${String(e).slice(0, 120)}`));
+    return 'SUCCESS';
+  }
+
+  /** One email to the sales team, with the lead and the last messages for context. */
+  private async sendLeadEmail(
+    tenantId: string,
+    to: string | null,
+    lead: { name: string; phone: string; salonName: string | null; city: string | null; interest: string | null; note: string | null; threadId: string | null },
+  ): Promise<void> {
+    const n = await this.settings.getNotificationSettings(tenantId);
+    const recipient = (to || n.adminEmail || n.senderEmail || '').trim();
+    if (!recipient) return; // nowhere to send — the Leads tab still has it
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+    const senderName = n.senderName || tenant?.name || 'Lumio';
+    const replyTo = n.replyTo || n.senderEmail || undefined;
+    const smtp = n.smtp.user && n.smtp.pass
+      ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
+      : undefined;
+    const brevo = n.brevo.apiKey && n.senderEmail
+      ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo, senderName: n.brevo.senderName || senderName }
+      : undefined;
+    const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+      ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+      : undefined;
+    let transcript = '';
+    if (lead.threadId) {
+      const th = await this.prisma.messengerThread.findFirst({ where: { id: lead.threadId, tenantId }, select: { history: true } });
+      const hist = (Array.isArray(th?.history) ? th!.history : []) as { role: string; content: string }[];
+      transcript = hist.slice(-10).map((h) => `${h.role === 'user' ? '👤' : '🤖'} ${h.content}`).join('\n');
+    }
+    const body = [
+      `Name: ${lead.name}`,
+      `Phone: ${lead.phone}`,
+      lead.salonName ? `Salon: ${lead.salonName}` : '',
+      lead.city ? `City: ${lead.city}` : '',
+      lead.interest ? `Interested in: ${lead.interest}` : '',
+      lead.note ? `Note: ${lead.note}` : '',
+      '',
+      transcript ? `--- Last messages ---\n${transcript}` : '',
+    ].filter(Boolean).join('\n');
+    await this.notifications.send({
+      tenantId,
+      channel: NotificationChannel.EMAIL,
+      recipient,
+      subject: `🔥 New Messenger lead: ${lead.name} — ${lead.phone}`,
+      body,
+      smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo,
+      relatedType: 'sales_lead', relatedId: lead.phone,
+    });
+  }
+
+  // ---- Leads (sales mode) --------------------------------------------------
+
+  async listLeads(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    return this.prisma.salesLead.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
+  async setLeadStatus(user: AuthenticatedUser, id: string, status: string) {
+    const tenantId = this.tenantId(user);
+    const ok = ['NEW', 'CONTACTED', 'WON', 'LOST'].includes(status);
+    if (!ok) throw new BadRequestException('Unknown status');
+    const r = await this.prisma.salesLead.updateMany({ where: { id, tenantId }, data: { status } });
+    if (r.count === 0) throw new NotFoundException('Lead not found');
+    return { id, status };
   }
 
   /** Business hours + contact injected into the agent prompt so it can answer
@@ -690,8 +876,21 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       .join('\n');
   }
 
-  private async runTool(tenantId: string, tz: string, name: string, input: Record<string, unknown>): Promise<string> {
+  private async runTool(
+    tenantId: string,
+    tz: string,
+    name: string,
+    input: Record<string, unknown>,
+    ctx?: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string },
+  ): Promise<string> {
     try {
+      if (name === 'save_lead') {
+        return await this.saveLead(tenantId, input, ctx);
+      }
+      if (name === 'get_pricing') {
+        const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+        return this.factsText(conn?.botFacts) || 'No facts configured yet — do not state any price.';
+      }
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },

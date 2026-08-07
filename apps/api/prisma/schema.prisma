@@ -280,6 +280,7 @@ model Tenant {
   @@index([accountGroupId])
   @@map("tenants")
   trashItems      TrashItem[]
+  salesLeads      SalesLead[]
 }
 
 /// Billing subscription history for a tenant.
@@ -1512,11 +1513,35 @@ model MessengerConnection {
   greeting  String? // optional opening line
   aiInstruction String? // brand-voice / extra guidance for the bot
   botFacts  Json  @default("[]") // structured FAQ facts [{label,value,on}] injected into the bot
+  botMode   String  @default("booking") // 'booking' = salon appointment bot · 'sales' = Lumio agency sales/CS bot
+  leadEmail String? // sales mode: where new-lead alerts are emailed
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("messenger_connections")
+}
+
+// Sales-mode leads captured by the agency's Messenger bot. Plain per-tenant
+// rows: the agency page is an ordinary tenant, so isolation rules apply as-is.
+model SalesLead {
+  id        String  @id @default(uuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  threadId  String? // originating conversation, for the "open thread" link
+  name      String
+  phone     String
+  salonName String?
+  city      String?
+  interest  String? // what they asked about (plan, POS, multi-location…)
+  note      String?
+  status    String  @default("NEW") // NEW | CONTACTED | WON | LOST
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, phone])
+  @@map("sales_leads")
 }
 
 model MessengerThread {

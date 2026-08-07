@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales bot — thiết kế trực quan</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0b1120; color: #e2e8f0; padding: 32px 18px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 26px; margin-bottom: 6px; }
+  .sub { color: #94a3b8; font-size: 14.5px; margin-bottom: 34px; }
+  h2 { font-size: 17px; margin: 42px 0 6px; color: #a5b4fc; letter-spacing: .3px; }
+  .h2sub { color: #64748b; font-size: 13px; margin-bottom: 16px; }
+
+  /* ---------- Sơ đồ vận hành ---------- */
+  .flow { display: flex; flex-direction: column; gap: 0; align-items: center; }
+  .frow { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; width: 100%; }
+  .node { background: #111827; border: 1px solid #334155; border-radius: 14px; padding: 14px 18px; text-align: center; min-width: 190px; }
+  .node b { display: block; font-size: 14px; margin-bottom: 3px; }
+  .node span { font-size: 12px; color: #94a3b8; line-height: 1.5; display: block; }
+  .node.meta { border-color: #2563eb; background: #0f1a33; }
+  .node.hub { border-color: #6366f1; background: #14162e; }
+  .node.nail { border-color: #10b981; background: #0d1f1a; }
+  .node.sale { border-color: #f59e0b; background: #241a08; }
+  .node.out { border-color: #475569; }
+  .arrow { color: #64748b; font-size: 20px; padding: 6px 0; text-align: center; }
+  .split { display: flex; gap: 40px; justify-content: center; width: 100%; flex-wrap: wrap; }
+  .lane { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 280px; }
+  .badge { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; margin-top: 6px; }
+  .bg { background: #052e1e; color: #34d399; border: 1px solid #10b981; }
+  .bo { background: #2a1e05; color: #fbbf24; border: 1px solid #f59e0b; }
+  .note { font-size: 12px; color: #94a3b8; background: #0f172a; border: 1px dashed #334155; border-radius: 10px; padding: 10px 14px; margin-top: 14px; line-height: 1.6; }
+
+  /* ---------- Cài đặt ---------- */
+  .panel { background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 20px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 5px; font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid #334155; border-radius: 10px; overflow: hidden; }
+  .seg div { padding: 9px 18px; font-size: 13px; cursor: default; }
+  .seg .on { background: #6366f1; color: #fff; font-weight: 700; }
+  .seg .off { color: #64748b; }
+  .inp { background: #0f172a; border: 1px solid #334155; border-radius: 9px; padding: 9px 12px; font-size: 13px; color: #e2e8f0; width: 100%; }
+  .factrow { display: grid; grid-template-columns: 180px 1fr; gap: 8px; margin-bottom: 7px; }
+  .factrow .k { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; color: #a5b4fc; font-weight: 600; }
+  .factrow .v { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; color: #cbd5e1; }
+  .tag { font-size: 10px; font-weight: 800; color: #f59e0b; border: 1px solid #7c5c22; padding: 1px 7px; border-radius: 6px; vertical-align: 2px; margin-left: 8px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+
+  /* ---------- Chat ---------- */
+  .phone { background: #fff; border-radius: 26px; padding: 18px 14px 20px; color: #111; max-width: 400px; margin: 0 auto; box-shadow: 0 24px 60px -30px rgba(0,0,0,.7); }
+  .ph-head { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 12px; }
+  .ph-ava { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 14px; }
+  .ph-head b { font-size: 14px; display: block; }
+  .ph-head span { font-size: 11px; color: #16a34a; }
+  .msg { max-width: 82%; padding: 9px 13px; border-radius: 16px; font-size: 13px; line-height: 1.5; margin-bottom: 8px; }
+  .bot { background: #f1f2f6; color: #111; border-bottom-left-radius: 5px; }
+  .usr { background: #6366f1; color: #fff; margin-left: auto; border-bottom-right-radius: 5px; }
+  .sysrow { text-align: center; margin: 10px 0; }
+  .sys { display: inline-block; font-size: 10.5px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px; padding: 3px 12px; font-weight: 700; }
+
+  /* ---------- Leads ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #94a3b8; font-size: 11.5px; letter-spacing: .4px; padding: 8px 10px; border-bottom: 1px solid #334155; }
+  td { padding: 10px; border-bottom: 1px solid #1f2937; }
+  .st { font-size: 10.5px; font-weight: 800; border-radius: 999px; padding: 3px 10px; }
+  .new { background: #2a1e05; color: #fbbf24; border: 1px solid #f59e0b; }
+  .ctd { background: #0f1a33; color: #60a5fa; border: 1px solid #2563eb; }
+  .won { background: #052e1e; color: #34d399; border: 1px solid #10b981; }
+  .mail { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 14px 16px; margin-top: 16px; }
+  .mail b { color: #fbbf24; font-size: 13.5px; }
+  .mail p { font-size: 12.5px; color: #94a3b8; margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🤖 Sales bot cho page Lumio Agency</h1>
+  <div class="sub">Một app Meta đã duyệt · một webhook · hai bộ não — tiệm nail giữ nguyên, page agency có nhân viên tư vấn trực 24/7.</div>
+
+  <h2>① SƠ ĐỒ VẬN HÀNH</h2>
+  <div class="h2sub">Meta không biết gì về "chế độ" — rẽ nhánh xảy ra trong hệ thống của bạn, ở giây tra cứu page.</div>
+  <div class="flow">
+    <div class="frow">
+      <div class="node"><b>💬 Khách nhắn page</b><span>bất kỳ page nào đã connect<br>(19 tiệm nail + page agency)</span></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="frow">
+      <div class="node meta"><b>🟦 App Meta "Lumio Booking"</b><span>ĐÃ DUYỆT · pages_messaging<br>một app dùng chung cho mọi page</span></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="frow">
+      <div class="node hub"><b>⚙️ Webhook Lumio</b><span>nhìn page id → tra kết nối →<br>đọc cờ <b style="display:inline">botMode</b></span></div>
+    </div>
+    <div class="arrow">↓ &nbsp; rẽ nhánh &nbsp; ↓</div>
+    <div class="split">
+      <div class="lane">
+        <div class="node nail"><b>💅 botMode = booking</b><span>19 tiệm nail hiện tại<br>KHÔNG ĐỔI GÌ</span><span class="badge bg">não đặt lịch</span></div>
+        <div class="arrow">↓</div>
+        <div class="node out"><b>Tool: get_services · create_booking</b><span>xem dịch vụ, tạo lịch hẹn vào calendar tiệm</span></div>
+      </div>
+      <div class="lane">
+        <div class="node sale"><b>🏢 botMode = sales</b><span>page Lumio Agency<br>tư vấn sản phẩm, chốt lead</span><span class="badge bo">não bán hàng</span></div>
+        <div class="arrow">↓</div>
+        <div class="node out"><b>Tool: save_lead · get_pricing</b><span>lưu bảng Leads + email báo team sale ngay<br>(chống trùng SĐT trong 7 ngày)</span></div>
+      </div>
+    </div>
+    <div class="note">🔒 Tenant agency là một tenant thường — não sales <b>không đọc được dữ liệu của bất kỳ tiệm nào</b>. Nhân viên sale muốn nhảy vào: mở threads → Take over → bot im lặng nhường người thật.</div>
+  </div>
+
+  <h2>② ĐẦU VÀO CHO AI — nạp ở trang /salon/messenger của tenant "Lumio Agency"</h2>
+  <div class="h2sub">AI không train — nó ĐỌC 3 lớp bạn nạp (sửa là có hiệu lực ngay) + 1 lớp persona nằm trong code, không ai thấy.</div>
+  <div class="panel">
+    <div class="field"><label>Chế độ bot <span class="tag">MỚI</span></label>
+      <div class="seg"><div class="off">💅 Booking (tiệm nail)</div><div class="on">🏢 Sales (page agency)</div></div>
+    </div>
+    <div class="field"><label>Câu chào (Get Started)</label>
+      <div class="inp">Chào anh/chị 👋 Em là trợ lý của Lumio — phần mềm đặt lịch &amp; quản lý tiệm nail. Anh/chị đang tìm giải pháp cho tiệm mình ạ?</div>
+    </div>
+    <div class="field"><label>Bot facts — kho sự thật DUY NHẤT bot được phép nói</label>
+      <div class="factrow"><div class="k">Gói Basic</div><div class="v">$49/tháng — booking online, calendar, nhắc hẹn SMS/email</div></div>
+      <div class="factrow"><div class="k">Gói Pro</div><div class="v">$99/tháng — thêm POS, walk-in turns, Messenger AI, loyalty</div></div>
+      <div class="factrow"><div class="k">Setup</div><div class="v">Team Lumio setup trọn gói trong 48h, không cần biết kỹ thuật</div></div>
+      <div class="factrow"><div class="k">Demo</div><div class="v">lumiobooking.com/lumio-salon — tiệm mẫu dùng thử ngay</div></div>
+      <div class="factrow"><div class="k">Hotline</div><div class="v">(512) 886-8189 — 9am–6pm CT</div></div>
+    </div>
+    <div class="field"><label>AI instruction — giọng điệu &amp; luật riêng</label>
+      <div class="inp">Luôn xưng "em". Không thương lượng giá qua chat. Ưu tiên mời xem demo trước khi báo giá. Khách hỏi kỹ thuật sâu → hẹn team gọi lại.</div>
+    </div>
+    <div class="field"><label>Email nhận lead <span class="tag">MỚI</span></label>
+      <div class="inp">sales@lumioagency.com</div>
+    </div>
+  </div>
+
+  <h2>③ HỘI THOẠI MẪU — khách là chủ tiệm nail đang tìm phần mềm</h2>
+  <div class="h2sub">Đúng luật đã tinh chỉnh: 1–2 câu, một câu hỏi mỗi tin, chỉ nói điều có trong facts, chốt lead tự nhiên.</div>
+  <div class="phone">
+    <div class="ph-head"><div class="ph-ava">L</div><div><b>Lumio Agency</b><span>● Trả lời trong vài giây</span></div></div>
+    <div class="msg bot">Chào chị 👋 Em là trợ lý của Lumio — phần mềm đặt lịch &amp; quản lý tiệm nail. Chị đang tìm giải pháp cho tiệm mình ạ?</div>
+    <div class="msg usr">Tiệm chị hay bị khách gọi đặt lịch mà không ai nghe máy, mất khách hoài</div>
+    <div class="msg bot">Dạ đúng nỗi đau Lumio giải quyết ạ: khách tự đặt trên web 24/7, có cả AI trả lời Messenger và hotline thay chị. Tiệm chị khoảng mấy thợ ạ?</div>
+    <div class="msg usr">4 thợ. giá sao em</div>
+    <div class="msg bot">Dạ gói Pro $99/tháng là đủ cho 4 thợ: booking online, POS, chia turn, AI Messenger. Chị xem tiệm mẫu chạy thật ở lumiobooking.com/lumio-salon nhé ạ 💅</div>
+    <div class="msg usr">ok để chị coi. có gì tư vấn thêm cho chị</div>
+    <div class="msg bot">Dạ! Chị cho em xin tên và số điện thoại, team em gọi tư vấn miễn phí trong hôm nay luôn ạ 😊</div>
+    <div class="msg usr">Chị Vy 0912345678</div>
+    <div class="sysrow"><span class="sys">⚙️ save_lead → bảng Leads + email sales@lumioagency.com</span></div>
+    <div class="msg bot">Dạ em ghi nhận rồi ạ — team Lumio sẽ gọi chị Vy trong hôm nay. Cảm ơn chị nhiều! 🌸</div>
+  </div>
+
+  <h2>④ TEAM SALE LÀM VIỆC — tab Leads mới trong trang Messenger</h2>
+  <div class="h2sub">Bot trực đêm, sale vào ca chỉ việc gọi danh sách nóng. Không lead nào rơi rớt.</div>
+  <div class="panel">
+    <table>
+      <tr><th>KHÁCH</th><th>SĐT</th><th>TIỆM</th><th>QUAN TÂM</th><th>TRẠNG THÁI</th><th></th></tr>
+      <tr><td><b>Chị Vy</b></td><td>0912 345 678</td><td>4 thợ</td><td>Gói Pro · mất khách vì không nghe máy</td><td><span class="st new">MỚI</span></td><td>💬 Mở hội thoại</td></tr>
+      <tr><td><b>Anna Tran</b></td><td>+1 512 ···</td><td>Anna Nails — Austin</td><td>Hỏi POS + loyalty</td><td><span class="st ctd">ĐÃ GỌI</span></td><td>💬 Mở hội thoại</td></tr>
+      <tr><td><b>Kim Le</b></td><td>+1 714 ···</td><td>Kim's Spa — 2 chi nhánh</td><td>Multi-location</td><td><span class="st won">CHỐT ✓</span></td><td>💬 Mở hội thoại</td></tr>
+    </table>
+    <div class="mail">
+      <b>📧 Email tự động khi có lead</b>
+      <p><b style="color:#e2e8f0">Tiêu đề:</b> 🔥 Lead mới từ Messenger: Chị Vy — 0912 345 678<br>
+      <b style="color:#e2e8f0">Nội dung:</b> Tiệm 4 thợ, đau vì lỡ cuộc gọi đặt lịch, quan tâm gói Pro. Kèm 10 tin nhắn gần nhất + link mở hội thoại. Cùng SĐT trong 7 ngày → không gửi trùng.</p>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:34px">⚡ <b>Điều kiện tốc độ số 1:</b> service <b>lumio-api</b> trên Render phải luôn-thức (gói always-on). Gói ngủ-khi-rảnh = tin nhắn đầu chờ máy dậy 30–60 giây — đó chính là cái "trễ" bạn tưởng do Meta.</div>
+</div>
+</body>
+</html>

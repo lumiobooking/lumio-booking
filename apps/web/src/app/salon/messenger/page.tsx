@@ -14,6 +14,11 @@ interface BotFact { label: string; value: string; on: boolean }
 interface MConf {
   connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
+  botMode: 'booking' | 'sales'; leadEmail: string;
+}
+interface SalesLead {
+  id: string; threadId: string | null; name: string; phone: string; salonName: string | null; city: string | null;
+  interest: string | null; note: string | null; status: string; createdAt: string;
 }
 interface MThread { id: string; senderId: string; senderName?: string | null; lastText: string | null; handoff: boolean; updatedAt: string }
 interface FactRow extends BotFact { custom: boolean }
@@ -73,6 +78,15 @@ const DICT: Record<string, { vi: string; en: string }> = {
   copied: { vi: '✓', en: '✓' },
   webhookHint: { vi: 'Trong Meta App → Messenger → Webhooks: dán 2 giá trị trên, đăng ký sự kiện messages & messaging_postbacks, rồi Subscribe Page.', en: 'In Meta App → Messenger → Webhooks: paste these two, subscribe to messages & messaging_postbacks, then Subscribe the Page.' },
   behaviorTitle: { vi: 'Cách bot trả lời', en: 'Bot behaviour' },
+  modeLabel: { vi: 'Chế độ bot', en: 'Bot mode' },
+  modeBooking: { vi: '💅 Booking (tiệm nail)', en: '💅 Booking (salon)' },
+  modeSales: { vi: '🏢 Sales (page agency)', en: '🏢 Sales (agency page)' },
+  modeHint: { vi: 'Booking: đặt lịch cho tiệm. Sales: tư vấn sản phẩm Lumio + chốt lead cho team — chỉ dùng cho page của agency.', en: 'Booking: takes appointments for a salon. Sales: pitches Lumio + captures leads for the team — for the agency page only.' },
+  leadEmail: { vi: 'Email nhận lead (chế độ Sales)', en: 'Lead alert email (Sales mode)' },
+  leadEmailPh: { vi: 'vd: sales@lumioagency.com — trống = email admin của tiệm', en: 'e.g. sales@lumioagency.com — blank = salon admin email' },
+  leadsTitle: { vi: 'Leads từ Messenger', en: 'Messenger leads' },
+  noLeads: { vi: 'Chưa có lead nào — bot sẽ ghi lại khi khách để lại tên + SĐT.', en: 'No leads yet — the bot records one when a customer leaves name + phone.' },
+  ldNew: { vi: 'MỚI', en: 'NEW' }, ldCtd: { vi: 'ĐÃ GỌI', en: 'CONTACTED' }, ldWon: { vi: 'CHỐT ✓', en: 'WON' }, ldLost: { vi: 'BỎ', en: 'LOST' },
   greeting: { vi: 'Lời chào (tùy chọn)', en: 'Greeting (optional)' },
   greetingPh: { vi: 'vd: Chào bạn! Bạn muốn đặt dịch vụ gì hôm nay ạ?', en: 'e.g. Hi! What would you like to book today?' },
   infoTitle: { vi: '🏢 Thông tin doanh nghiệp', en: '🏢 Business information' },
@@ -136,12 +150,17 @@ export default function MessengerPage() {
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  // Bot mode is a LUMIO decision, not a salon one: a mis-flip would turn a
+  // salon's booking bot into a software salesman. Only the Support session
+  // (and the platform owner) sees the switch; salons get the mode we set.
+  const canPickMode = Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN';
   const { lang } = useLang();
   const t = (k: string) => DICT[k]?.[lang as Lang] ?? k;
 
   const [c, setC] = useState<MConf | null>(null);
   const [threads, setThreads] = useState<MThread[]>([]);
+  const [leads, setLeads] = useState<SalesLead[]>([]);
   const [pageToken, setPageToken] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -236,13 +255,15 @@ function Inner() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const [conf, th, whs, act] = await Promise.all([
+      const [conf, th, whs, act, lds] = await Promise.all([
         apiFetch<MConf>('/messenger', { token }),
         apiFetch<MThread[]>('/messenger/threads', { token }).catch(() => [] as MThread[]),
         apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => ({ connected: false } as WebhookStatus)),
         apiFetch<ActivityRes>('/messenger/activity', { token }).catch(() => ({ page: '', pageId: '', events: [] } as ActivityRes)),
+        apiFetch<SalesLead[]>('/messenger/leads', { token }).catch(() => [] as SalesLead[]),
       ]);
       setC(conf); setThreads(th); setWh(whs); setActivity(act.events || []); setActivityPage(act.page || '');
+      setLeads(lds);
       setSendTo((prev) => prev || th[0]?.id || '');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
@@ -270,7 +291,7 @@ function Inner() {
     setSaving(true); setError(null); setSaved(false);
     try {
       const next = await apiFetch<MConf>('/messenger/settings', { method: 'POST', token, body: {
-        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, aiInstruction: c.aiInstruction, ...patch,
+        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, aiInstruction: c.aiInstruction, botMode: c.botMode, leadEmail: c.leadEmail, ...patch,
       } });
       setC(next); setPageToken(''); setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch (e) { setError(e instanceof Error ? e.message : 'Save failed'); }
@@ -559,6 +580,31 @@ function Inner() {
         <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>
           {t('behaviorTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: c.aiEnabled ? '#22c55e' : '#f59e0b' }}>· {c.aiEnabled ? t('aiOn') : t('aiOff')}</span>
         </div>
+        {canPickMode && (
+          <>
+            <label style={ui.label}>{t('modeLabel')}</label>
+            <div style={{ display: 'inline-flex', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
+              {(['booking', 'sales'] as const).map((m) => (
+                <button key={m}
+                  onClick={() => { setC({ ...c, botMode: m }); save({ botMode: m }); }}
+                  style={{ padding: '8px 16px', fontSize: 13, border: 'none', cursor: 'pointer',
+                    background: c.botMode === m ? '#6366f1' : 'transparent',
+                    color: c.botMode === m ? '#fff' : '#64748b', fontWeight: c.botMode === m ? 700 : 500 }}>
+                  {m === 'booking' ? t('modeBooking') : t('modeSales')}
+                </button>
+              ))}
+            </div>
+            <p style={{ color: '#64748b', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('modeHint')}</p>
+            {c.botMode === 'sales' && (
+              <>
+                <label style={ui.label}>{t('leadEmail')}</label>
+                <input value={c.leadEmail} placeholder={t('leadEmailPh')}
+                  onChange={(e) => setC({ ...c, leadEmail: e.target.value })} onBlur={() => save({})}
+                  style={{ ...ui.input, marginBottom: 12 }} />
+              </>
+            )}
+          </>
+        )}
         <label style={ui.label}>{t('greeting')}</label>
         <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
         <label style={ui.label}>{t('extraNotes')}</label>
@@ -638,6 +684,48 @@ function Inner() {
             </>
           );
         })()}
+      </div>
+      )}
+
+      {/* Sales-mode leads: the bot's handover list for the human team. */}
+      {c.connected && c.botMode === 'sales' && (
+      <div style={{ ...ui.card, marginTop: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
+        {leads.length === 0 ? (
+          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noLeads')}</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr>
+                {['👤', '📞', '💅', '💬', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', color: '#94a3b8', fontSize: 11, padding: '6px 8px', borderBottom: '1px solid #334155' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {leads.map((l) => (
+                  <tr key={l.id} style={{ borderBottom: '1px solid #1f2937' }}>
+                    <td style={{ padding: '9px 8px', fontWeight: 700, color: '#e2e8f0' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
+                    <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{l.phone}</td>
+                    <td style={{ padding: '9px 8px', color: '#94a3b8', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: '#64748b' }}>{l.note}</span> : null}</td>
+                    <td style={{ padding: '9px 8px', color: '#64748b', fontSize: 11.5, whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleDateString('en-US')}</td>
+                    <td style={{ padding: '9px 8px' }}>
+                      <select value={l.status}
+                        onChange={async (e) => {
+                          const status = e.target.value;
+                          setLeads((ls) => ls.map((x) => x.id === l.id ? { ...x, status } : x));
+                          try { await apiFetch(`/messenger/leads/${l.id}/status`, { method: 'POST', token, body: { status } }); } catch { /* next refresh corrects */ }
+                        }}
+                        style={{ ...ui.input, padding: '5px 8px', fontSize: 12, width: 120 }}>
+                        <option value="NEW">{t('ldNew')}</option>
+                        <option value="CONTACTED">{t('ldCtd')}</option>
+                        <option value="WON">{t('ldWon')}</option>
+                        <option value="LOST">{t('ldLost')}</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       )}
     </section>

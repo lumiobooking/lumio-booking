@@ -11,7 +11,7 @@ Vy
 agency marketing & công nghệ tại Mỹ cho tiệm nail, spa, nhà hàng — social, Google Maps, website và hệ thống đặt lịch + AI chăm khách 24/7
 
 ## 3. Câu chào (ô "Greeting")
-Chào anh/chị! Em là Vy bên Lumio Agency — bên em làm marketing, website và hệ thống đặt lịch + AI. Anh/chị đang kinh doanh mảng nào ạ?
+Chào anh/chị! Em là Trang bên Lumio Agency 👋 Bên em làm marketing, website cho tiệm nail, spa, nhà hàng — và hệ thống đặt lịch + AI + POS bên em đang cho các tiệm dùng MIỄN PHÍ. Tiệm mình đang cần thêm khách hay đang vướng khâu nào ạ?
 
 ## 4. Câu kết thúc (ô "Câu kết thúc / cảm ơn")
 Cảm ơn anh/chị đã ghé Lumio, cần gì cứ nhắn em — bên em trực 24/7 ạ!
@@ -20,19 +20,20 @@ Cảm ơn anh/chị đã ghé Lumio, cần gì cứ nhắn em — bên em trực
 
 | Nhãn | Nội dung |
 |---|---|
-| Gói Social Care $45/th | Đăng đều FB, IG, TikTok, Shorts, Yelp — tiệm luôn 'sống' trên mạng. Đăng ~2 ngày/lần theo mẫu ngành chỉnh riêng. Bước khởi đầu trong hệ sinh thái Lumio, nâng cấp lúc nào cũng được. Chưa gồm Maps SEO/ads/báo cáo |
-| Gói Boost $179/th | Khách Google là thấy tiệm chuẩn, đủ thông tin, muốn ghé. Tối ưu Google Business Profile + social đa kênh + link-in-bio + báo cáo tháng. Ghép được hệ Booking + AI của Lumio khi tiệm sẵn sàng. Setup $50, tối thiểu 3 tháng |
-| Gói Growth Map $279/th | Lên nhóm đầu Google Maps khu vực — nguồn khách gọi thẳng nhiều nhất. Maps SEO chuyên sâu + chiến lược review + đo visibility/calls/directions từng tháng. Ghép hệ booking Lumio: sau buổi làm tự mời khách review — Maps lên hạng nhanh hơn. Tối thiểu 3 tháng, không cam kết vị trí |
-| Gói Scale $379/th | Tự động hóa hoàn toàn: khách nhắn/gọi → AI chốt → lịch tự vào hệ thống. Maps + social + website + booking đồng bộ một mối; AI Messenger + AI tổng đài trực 24/7, tự nhắc hẹn, tự mời review Google. Tặng website pro khi cam kết 6 tháng. Duy trì $109/năm từ năm 2 |
+| Hệ Booking + AI + POS: MIỄN PHÍ | Vũ khí lớn nhất của Lumio: hệ thống đặt lịch 24/7 + POS tính tiền + chia turn thợ + tích điểm + nhắc hẹn SMS/email + AI trực page — thứ nơi khác bán thành 3–4 phần mềm riêng, Lumio đang cho các tiệm dùng MIỄN PHÍ. Đăng ký gói marketing nào cũng có. Nhắc tới điều này SỚM trong hội thoại |
+| Gói Social Care $45/th | Đăng đều FB, IG, TikTok, Shorts, Yelp — tiệm luôn 'sống' trên mạng. Đăng ~2 ngày/lần theo mẫu ngành chỉnh riêng. Vẫn được dùng hệ Booking + AI + POS miễn phí. Chưa gồm Maps SEO/ads/báo cáo |
+| Gói Boost $179/th | Khách Google là thấy tiệm chuẩn, đủ thông tin, muốn ghé. Tối ưu Google Business Profile + social đa kênh + link-in-bio + báo cáo tháng. Kèm hệ Booking + AI + POS đang miễn phí. Setup $50, tối thiểu 3 tháng |
+| Gói Growth Map $279/th | Lên nhóm đầu Google Maps khu vực — nguồn khách gọi thẳng nhiều nhất. Maps SEO chuyên sâu + chiến lược review + đo visibility/calls/directions từng tháng. Kèm hệ Booking + AI + POS miễn phí — sau buổi làm tự mời khách review, Maps lên hạng nhanh hơn. Tối thiểu 3 tháng, không cam kết vị trí |
+| Gói Scale $379/th | Tự động hóa hoàn toàn: khách nhắn/gọi → AI chốt → lịch tự vào hệ thống. Maps + social + website + booking đồng bộ một mối; AI Messenger + AI tổng đài trực 24/7, tự nhắc hẹn, tự mời review Google; hệ Booking + POS miễn phí nằm sẵn trong bộ máy. Tặng website pro khi cam kết 6 tháng. Duy trì $109/năm từ năm 2 |
 | Ưu đãi thời hạn | Trả 6 tháng giảm 5%, trả 12 tháng giảm 10% |
-| Website Essential $399 | Website riêng của tiệm — nơi khách từ ads/social về chốt lịch. Trả một lần: 1–3 trang chuẩn mobile, CTA Call/SMS/Messenger/Booking, form về email + Maps, SEO on-page. Bàn giao 7–14 ngày. Add-on Booking $39/th |
-| Website Growth $599 | Website 5–8 trang + local SEO 'near me' — đo được từng cuộc gọi, từng booking. Trả một lần, tracking Call/Booking/Form, báo cáo tháng, tặng setup Booking (duy trì $39/th). 10–21 ngày |
+| Website Essential $399 | Website riêng của tiệm — nơi khách từ ads/social về chốt lịch. Trả một lần: 1–3 trang chuẩn mobile, CTA Call/SMS/Messenger/Booking, form về email + Maps, SEO on-page. Bàn giao 7–14 ngày. Kèm hệ thống Booking (hiện miễn phí) |
+| Website Growth $599 | Website 5–8 trang + local SEO 'near me' — đo được từng cuộc gọi, từng booking. Trả một lần, tracking Call/Booking/Form, báo cáo tháng, tặng setup hệ thống Booking (hiện miễn phí). 10–21 ngày |
 | Chọn gói nào? | $45 Social Care: tiệm cần có mặt đều trên mạng — mức khởi đầu. $179 Boost: bắt đầu kéo khách từ Google — hồ sơ chuẩn, khách tìm là thấy. $279 Growth Map: muốn nhiều khách GỌI THẲNG từ Maps — đánh top khu vực + chiến lược review. $379 Scale: muốn tự động hóa hoàn toàn — AI chốt khách, lịch tự vào hệ thống, khỏi ghép 3–4 nhà cung cấp |
 | Quy trình tự động khép kín | Điều agency khác không làm được: khách thấy tiệm trên Maps/social/ads → nhắn Messenger hoặc gọi hotline → AI trả lời trong vài giây, tư vấn và CHỐT LỊCH thẳng vào hệ thống booking → tự nhắc hẹn SMS/email → làm xong tự mời review Google → khách lâu không quay lại được nhắc. Toàn bộ tự chạy 24/7, không cần nhân viên trực — chủ tiệm chỉ nhìn lịch và làm khách |
-| Miễn phí & quà tặng | Audit miễn phí trong 24–48h, không ràng buộc — cứ gửi link Maps là có bản đánh giá. Demo thử như khách thật: lumiobooking.com/lumio-salon. Gói Scale cam kết 6 tháng: TẶNG website pro. Website Growth: TẶNG setup hệ thống Booking. Trả 6 tháng giảm 5%, 12 tháng giảm 10% |
+| Miễn phí & quà tặng | LỚN NHẤT: hệ thống Booking + AI + POS đang MIỄN PHÍ — đặt lịch 24/7, POS, chia turn, tích điểm, nhắc hẹn, thứ nơi khác phải mua 3–4 phần mềm riêng. Audit miễn phí trong 24–48h, không ràng buộc. Demo thử như khách thật: lumiobooking.com/lumio-salon. Gói Scale cam kết 6 tháng: TẶNG website pro. Website Growth: TẶNG setup Booking. Trả 6 tháng giảm 5%, 12 tháng giảm 10% |
 | AI Messenger trực page | Trả lời tin nhắn trong vài giây, 24/7 — kể cả lúc tiệm đông hay nửa đêm — và tự chốt lịch vào hệ thống luôn. Nhân viên vào nhắn là AI tự nhường, không giẫm chân. Bịt lỗ: khách nhắn không ai trả lời là khách đi tiệm khác |
 | AI tổng đài (hotline) | Tiệm bận không bắt máy → AI nghe, trả lời giờ mở cửa/giá/dịch vụ và ghi lịch. Bịt lỗ: mỗi cuộc gọi nhỡ là một khách rơi vào tay tiệm bên cạnh |
-| Booking 24/7 + POS | Khách tự đặt lịch trên web bất cứ lúc nào, không cần gọi; POS tính tiền, chia turn thợ công bằng, tích điểm khách quen |
+| Booking 24/7 + POS | Khách tự đặt lịch trên web bất cứ lúc nào, không cần gọi; POS tính tiền, chia turn thợ công bằng, tích điểm khách quen. Hiện đang MIỄN PHÍ cho các tiệm |
 | AI nhắc hẹn & giữ khách | SMS/email nhắc trước hẹn — khách quên hẹn ít hẳn; tự nhắc khách lâu chưa quay lại. Bịt lỗ: doanh thu lặp lại bị bỏ quên |
 | So với agency thường | Agency thường dừng ở đăng bài + chạy ads, báo cáo bằng lượt thích. Lumio có thứ họ không có: hệ booking + AI chính chủ — AI tổng đài nghe máy khi tiệm bận, AI Messenger trực page 24/7 chốt lịch thẳng vào hệ thống, tự nhắc hẹn + mời khách review Google sau buổi làm. Marketing kéo khách tới, AI giữ không lọt một khách nào; báo cáo bằng cuộc gọi, chỉ đường, booking thật |
 | Audit miễn phí | Chỉ cần link Google Maps (hoặc tên tiệm nếu không có link) + TÊN và SĐT cá nhân của khách — số trên Maps/social là số tiệm, khó gặp trực tiếp, phải xin số riêng. Link tự nói lên tên tiệm, đừng hỏi lại. Team kiểm tra → gửi bản đánh giá + gói phù hợp trong 24–48h. Miễn phí, không ràng buộc |

@@ -45,7 +45,7 @@ Bot có công cụ `quote_price` tính giá phía server, KHỚP TUYỆT ĐỐI 
 - Tỷ giá cố định: USD = 1 ($) · CAD = 1.40 (C$) · AUD = 1.43 (A$).
 - Gói theo tháng: USD = giá_tháng × số_tháng × hệ_số (1 th ×1.00 · 6 th ×0.95 · 12 th ×0.90); gói 1 lần giữ nguyên.
 - Quy đổi tính trên số USD CHƯA làm tròn, rồi làm tròn về số nguyên (0.5 lên) cho cả 3 tiền tệ.
-- Bot bị buộc: nói bất kỳ giá nào phải gọi tool và trả đủ USD $ · CAD C$ · AUD A$ — không bao giờ chỉ USD; biết khách ở nước nào thì nêu tiền tệ đó trước.
+- Bot bị buộc: nói bất kỳ giá nào phải gọi tool lấy số chính xác, rồi CHỈ báo 1 tiền tệ theo thị trường của khách (Canada → C$, Úc → A$, còn lại/mặc định → USD $), lồng vào câu tự nhiên — không liệt kê cả 3 trừ khi khách muốn so sánh; khách nói rõ mình ở đâu thì đổi sang tiền tệ đó. Cấm markdown (dấu **) vì Messenger không hiển thị.
 - Đã kiểm chứng 14/14 ví dụ: $45→C$63/A$64 · $179→C$251/A$256 · $279→C$391/A$399 · $149→C$209/A$213 · Growth 12 th $3,013/C$4,218/A$4,309 · 6 th $1,590/C$2,226/A$2,274.
 
 ## 7. Email nhận lead (ô "Email nhận lead")

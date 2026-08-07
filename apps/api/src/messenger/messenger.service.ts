@@ -1576,7 +1576,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const imgFor = async (label: string): Promise<string | undefined> => {
           const slug = slugFor(label);
           if (!slug) return undefined;
-          const url = `${webBase}/cards/${slug}.png`;
+          // Meta caches card images BY URL — after a redesign it keeps serving
+          // the stale cached copy forever. Bump CARD_IMG_VERSION whenever the
+          // PNGs change: a new query string = a new URL = a fresh fetch.
+          const CARD_IMG_VERSION = '2';
+          const url = `${webBase}/cards/${slug}.png?v=${CARD_IMG_VERSION}`;
           if (!this.cardImgOk.has(url)) {
             const ok = await fetch(url, { method: 'HEAD' }).then((r) => r.ok).catch(() => false);
             this.cardImgOk.set(url, ok);

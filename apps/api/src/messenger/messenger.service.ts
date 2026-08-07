@@ -1097,7 +1097,7 @@ KEEP IT SIMPLE — these rules beat everything else:
 FLOW:
 - Start by asking what their business struggles with — or answer their question first if they asked one. If a greeting was already sent, don't greet twice.
 - Match their pain to at most TWO services/features from the facts. Share the demo link when it helps.
-- Asked about pricing or the packages in general (or comparing them): call send_price_cards — never type the whole list as text. After it succeeds, send ONE short line asking which one fits their goal.
+- Asked about pricing or the packages in general (or comparing them): call send_price_cards IMMEDIATELY — never type the whole list as text, never ask permission first, and never say words like "visual cards" or "carousel" (just send, then speak normally). After it succeeds, send ONE short line asking which one fits their goal.
 - Asked about ONE specific package: answer in text, 3 short lines max.
 - PRICES: before stating ANY price, call quote_price and quote ONLY the currency of the customer's market — Canada → C$, Australia → A$, otherwise USD $. Read their market from anything they said (city, country, "bên Canada/Úc", currency mention); if unknown, use USD. One currency per reply, woven into a natural sentence — never list several currencies unless they ask to compare, never do currency math in your head. If they later reveal a different market, requote in that currency.
 - When they show interest, ask for their NAME, then their PHONE (one at a time). Once you have both, call save_lead — include salon name, city and what they care about if mentioned.
@@ -1532,9 +1532,22 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           cat === 'marketing' ? /^gói/i.test(f.label) : cat === 'website' ? /^website/i.test(f.label) : /^(gói|website)/i.test(f.label),
         );
         if (!rows.length) return 'ERROR: no package facts configured — answer briefly in text.';
+        // Card subtitles are ~80 chars in Messenger. A hard slice chops words
+        // mid-syllable ("duyệt nội dung, bá") and looks broken — prefer the
+        // first full sentence when it fits, otherwise cut at a word boundary
+        // and show an ellipsis on purpose.
+        const cardLine = (v: string): string => {
+          const text = v.trim();
+          if (text.length <= 80) return text;
+          const dot = text.indexOf('. ');
+          if (dot > 15 && dot < 79) return text.slice(0, dot + 1);
+          const cut = text.slice(0, 79);
+          const sp = cut.lastIndexOf(' ');
+          return (sp > 40 ? cut.slice(0, sp) : cut).replace(/[,;:–—-]$/, '') + '…';
+        };
         const cards = rows.slice(0, 10).map((f) => ({
           title: f.label.slice(0, 80),
-          subtitle: f.value.slice(0, 80),
+          subtitle: cardLine(f.value),
           buttons: [{ type: 'postback', title: 'Tư vấn gói này', payload: `ASK_PKG:${f.label.slice(0, 80)}` }],
         }));
         await this.sendCards(ctx.pageToken, ctx.senderId, cards);

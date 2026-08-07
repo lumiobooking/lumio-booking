@@ -239,8 +239,12 @@ function Inner() {
         invalid_state: { vi: 'Phiên kết nối hết hạn — bấm Connect và làm lại trong một mạch.', en: 'The connect session expired — press Connect and finish in one go.' },
         no_page_token: { vi: 'Meta không cấp token cho page — thử lại và cấp đủ quyền được hỏi.', en: 'Meta did not issue a page token — retry and grant all requested permissions.' },
         exception: { vi: 'Lỗi không xác định phía máy chủ — thử lại; nếu vẫn lỗi, xem log lumio-api trên Render.', en: 'Unexpected server error — retry; if it persists, check the lumio-api logs on Render.' },
+        perm_declined: { vi: 'Quyền "xem danh sách page" đang bị TỪ CHỐI từ lần trước. Bấm Connect lại — hộp thoại sẽ hỏi lại quyền này, hãy giữ nguyên tất cả các quyền được bật.', en: 'The "list your Pages" permission was DECLINED earlier. Press Connect again — the dialog will re-ask it; keep every permission ON.' },
       };
-      const friendly = NAMED[code]?.[lang as Lang];
+      const metaMsg = code.startsWith('accounts_error:') ? code.slice('accounts_error:'.length) : null;
+      const friendly = metaMsg
+        ? (lang === 'vi' ? `Meta báo: "${metaMsg}"` : `Meta says: "${metaMsg}"`)
+        : NAMED[code]?.[lang as Lang];
       setFbResult({ ok: false, text: `${DICT.fbErrorMsg[lang as Lang]}${code ? `: ${code}` : ''}${friendly ? ` — ${friendly}` : ''}` });
     }
     window.history.replaceState(null, '', window.location.pathname);
@@ -400,9 +404,23 @@ function Inner() {
 
   return (
     <section style={{ maxWidth: 820 }}>
+      {c && !c.connected && (
+        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '12px 16px', marginBottom: 14, fontSize: 13, lineHeight: 1.7, color: '#cbd5e1' }}>
+          <b style={{ color: '#e2e8f0' }}>{lang === 'vi' ? '4 bước kết nối — chỉ cần nhớ một điều: PHẢI TICK PAGE' : '4 steps — the one thing to remember: TICK THE PAGE'}</b>
+          <div>1️⃣ {lang === 'vi' ? 'Bấm nút xanh Connect with Facebook.' : 'Press the blue Connect with Facebook button.'}</div>
+          <div>2️⃣ {lang === 'vi' ? <>Trong cửa sổ Meta: <b style={{ color: '#fbbf24' }}>tick chọn page</b> — góc phải phải hiện &quot;1 Asset Selected&quot; (0 là sai).</> : <>In the Meta window: <b style={{ color: '#fbbf24' }}>tick the page</b> — the corner must read &quot;1 Asset Selected&quot; (0 means wrong).</>}</div>
+          <div>3️⃣ {lang === 'vi' ? 'Continue → giữ nguyên mọi quyền được bật → Save.' : 'Continue → keep every permission ON → Save.'}</div>
+          <div>4️⃣ {lang === 'vi' ? 'Quay về đây: banner xanh = xong; nhiều page thì bấm “Dùng page này” cho đúng page.' : 'Back here: green banner = done; if several pages, press “Use this page” on the right one.'}</div>
+        </div>
+      )}
       {fbResult && (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: fbResult.ok ? '#052e1e' : '#7f1d1d', color: fbResult.ok ? '#bbf7d0' : '#fecaca', border: `1px solid ${fbResult.ok ? '#10b981' : '#ef4444'}`, borderRadius: 10, padding: '11px 14px', fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
           <span style={{ flex: 1 }}>{fbResult.ok ? '✅ ' : '⚠️ '}{fbResult.text}</span>
+          {!fbResult.ok && (
+            <button onClick={connectFacebook} style={{ background: '#fff', border: 'none', color: '#7f1d1d', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {lang === 'vi' ? '↻ Connect lại' : '↻ Retry connect'}
+            </button>
+          )}
           <button onClick={() => setFbResult(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
         </div>
       )}

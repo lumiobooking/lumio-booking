@@ -145,6 +145,9 @@ export class MessengerService {
     const params = new URLSearchParams({
       client_id: this.appId(), redirect_uri: this.oauthRedirect(), response_type: 'code',
       state: this.signState(tenantId), scope,
+      // If a permission was declined in an earlier run, plain OAuth silently
+      // skips it forever — rerequest puts it back on the dialog.
+      auth_type: 'rerequest',
     });
     return { url: `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}` };
   }
@@ -166,9 +169,24 @@ export class MessengerService {
       const pagesRes = await fetch(
         `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
       );
-      const pagesData = (await pagesRes.json()) as { data?: { id: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[] };
+      const pagesData = (await pagesRes.json()) as { data?: { id: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[]; error?: { message?: string } };
+      if (pagesData.error) {
+        // Meta told us exactly what is wrong — passing that through beats a
+        // guessed "no pages" every time.
+        this.logger.warn(`fb oauth /me/accounts error for ${tenantId}: ${pagesData.error.message || 'unknown'}`);
+        return back(`fb=error&msg=${encodeURIComponent(`accounts_error:${(pagesData.error.message || 'unknown').slice(0, 140)}`)}`);
+      }
       const pages = pagesData.data || [];
-      if (!pages.length) return back('fb=error&msg=no_pages');
+      if (!pages.length) {
+        // Empty can mean two different mistakes. Ask Meta which one.
+        try {
+          const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(tok.access_token)}`);
+          const perms = (await permRes.json()) as { data?: { permission: string; status: string }[] };
+          const showList = perms.data?.find((pp) => pp.permission === 'pages_show_list');
+          if (showList && showList.status !== 'granted') return back('fb=error&msg=perm_declined');
+        } catch { /* fall through to the generic hint */ }
+        return back('fb=error&msg=no_pages');
+      }
       const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
       // Reconnect: keep the already-bound page. One page in the grant: obvious.
       // SEVERAL pages and none is ours: an agency account manages many clients'

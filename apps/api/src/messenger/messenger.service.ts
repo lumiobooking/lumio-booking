@@ -249,13 +249,28 @@ export class MessengerService {
         return finish('fb=error&msg=no_pages');
       }
       const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-      // Reconnect: keep the already-bound page. One page in the grant: obvious.
-      // SEVERAL pages and none is ours: an agency account manages many clients'
-      // pages (and Meta re-sends every previously granted one) — auto-taking
-      // pages[0] would bind a random client. Park them and let the staff pick.
-      let chosen = pages.find((p) => p.id === cur?.pageId) || null;
-      if (!chosen && pages.length === 1) chosen = pages[0];
-      trace.push(chosen ? `chosen: ${chosen.id} (${chosen.name || '?'})` : `multi-page: ${pages.length} candidates → staff picks`);
+      // What in the grant is NEW to this tenant? A page we already hold must
+      // never short-circuit the flow (that bug ate "add a second page" alive):
+      //  · exactly ONE new page → connect it straight away
+      //  · SEVERAL new pages   → park them, the staff picks (agency accounts
+      //    manage many clients' pages — auto-taking one binds a random client)
+      //  · NOTHING new         → pure reconnect: refresh tokens on the pages
+      //    we already hold and report success.
+      const held = new Set((await this.prisma.messengerPage.findMany({ where: { tenantId }, select: { pageId: true } })).map((pp) => pp.pageId));
+      if (cur?.pageId) held.add(cur.pageId);
+      const freshOnes = pages.filter((p) => !held.has(p.id));
+      trace.push(`held: ${held.size} · new in grant: ${freshOnes.length}`);
+      let chosen = pages.length === 1 ? pages[0] : freshOnes.length === 1 ? freshOnes[0] : null;
+      if (!chosen && freshOnes.length === 0) {
+        for (const p of pages) {
+          if (held.has(p.id) && p.access_token) {
+            await this.completeConnect(tenantId, { id: p.id, name: p.name || '', access_token: p.access_token, igId: p.instagram_business_account?.id || null }, cur?.greeting ?? null);
+          }
+        }
+        trace.push('reconnect: tokens refreshed on held pages');
+        return finish(`fb=connected&page=${encodeURIComponent(pages.map((p) => p.name || p.id).join(', '))}`);
+      }
+      trace.push(chosen ? `chosen: ${chosen.id} (${chosen.name || '?'})` : `multi-page: ${freshOnes.length} new candidates → staff picks`);
       if (!chosen) {
         await this.settings.setMessengerOauthStash(
           tenantId,

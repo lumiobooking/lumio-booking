@@ -503,7 +503,15 @@ export class MessengerService implements OnModuleInit {
       update: data,
       create: { tenantId, ...data },
     });
-    if (data.enabled && pageToken) await this.setupMessengerProfile(pageToken, data.greeting);
+    if (data.enabled) {
+      // Push the new greeting to EVERY connected page of this tenant — the
+      // pre-chat intro screen otherwise keeps showing whatever was set at
+      // connect time (a stale greeting the salon thinks they replaced).
+      const pages = await this.prisma.messengerPage.findMany({ where: { tenantId }, select: { pageToken: true } }).catch(() => []);
+      const tokens = new Set(pages.map((pg) => pg.pageToken).filter(Boolean));
+      if (pageToken) tokens.add(pageToken);
+      for (const tk of tokens) await this.setupMessengerProfile(tk, data.greeting);
+    }
     return this.get(user);
   }
 
@@ -1093,7 +1101,7 @@ KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 max). Ask for exactly ONE thing per message.
 - Never re-ask anything already answered in this conversation.
 - ONLY state prices, features, policies and links that appear in the FACTS below. If something is not covered: say the team will confirm it, and capture the lead. NEVER invent, never negotiate prices, never take payment in chat.
-- Off-topic? One friendly line, then gently back to how Lumio can help their salon.
+- Off-topic? One friendly line, then gently back to how Lumio can help their business.
 FLOW:
 - Start by asking what their business struggles with — or answer their question first if they asked one. If a greeting was already sent, don't greet twice.
 - Match their pain to at most TWO services/features from the facts. Share the demo link when it helps.
@@ -1635,8 +1643,24 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * page-side, so it must be pushed, not just kept in our DB. Best-effort.
    */
   private async setupMessengerProfile(pageToken: string, greeting: string | null): Promise<void> {
-    // The intro screen allows 160 chars and a first-name placeholder.
-    const intro = (greeting || '').trim().slice(0, 160)
+    // The intro screen allows 160 chars. A hard slice chops mid-sentence and
+    // looks broken on the very first thing a customer reads — greedily take
+    // WHOLE sentences while they fit, fall back to a word-boundary cut.
+    const full = (greeting || '').trim();
+    let intro = '';
+    if (full) {
+      for (const sen of full.split(/(?<=[.!?…ạ!?])\s+/)) {
+        const next = intro ? `${intro} ${sen}` : sen;
+        if (next.length > 160) break;
+        intro = next;
+      }
+      if (!intro) {
+        const cut = full.slice(0, 159);
+        const sp = cut.lastIndexOf(' ');
+        intro = (sp > 60 ? cut.slice(0, sp) : cut) + '…';
+      }
+    }
+    intro = intro
       || 'Hi {{user_first_name}}! 👋 Tap Get Started and I\'ll book your nail appointment in a few quick messages.';
     await fetch(`https://graph.facebook.com/v21.0/me/messenger_profile?access_token=${encodeURIComponent(pageToken)}`, {
       method: 'POST',

@@ -101,7 +101,7 @@ export class MessengerService {
     const c = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
     const threads = await this.prisma.messengerThread.count({ where: { tenantId } });
     return {
-      connected: Boolean(c?.pageId && c?.pageToken),
+      connected: Boolean((c?.pageId && c?.pageToken) || (await this.prisma.messengerPage.count({ where: { tenantId } })) > 0),
       pageId: c?.pageId ?? '',
       pageName: c?.pageName ?? '',
       igId: c?.igId ?? '',
@@ -119,6 +119,12 @@ export class MessengerService {
       verifyToken: this.verifyToken(),
       fbConfigured: Boolean(this.appId() && this.appSecret()),
       threads,
+      // Every page speaking with this tenant's brain.
+      pages: await this.prisma.messengerPage.findMany({
+        where: { tenantId },
+        select: { pageId: true, pageName: true, igId: true, enabled: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
       // Step-by-step record of the LAST connect attempt — Support-only, so a
       // failed OAuth can be diagnosed from a screenshot.
       connectTrace: (user.supportSession === true || user.role === UserRole.SUPER_ADMIN)
@@ -276,23 +282,38 @@ export class MessengerService {
     greeting: string | null,
   ): Promise<'ok' | 'page_in_use' | 'no_page_token'> {
     if (!page.access_token) return 'no_page_token';
-    // One page belongs to ONE tenant. A clash used to blow up as a unique-key
-    // "exception" nobody could read — name the real problem instead.
-    const clash = await this.prisma.messengerConnection.findUnique({ where: { pageId: page.id }, select: { tenantId: true } });
-    if (clash && clash.tenantId !== tenantId) {
+    // One page belongs to ONE tenant — checked against BOTH the new page table
+    // and the legacy columns, named instead of exploding as a unique-key error.
+    const clashPg = await this.prisma.messengerPage.findUnique({ where: { pageId: page.id }, select: { tenantId: true } });
+    const clashLegacy = await this.prisma.messengerConnection.findUnique({ where: { pageId: page.id }, select: { tenantId: true } });
+    if ((clashPg && clashPg.tenantId !== tenantId) || (clashLegacy && clashLegacy.tenantId !== tenantId)) {
       this.logger.warn(`fb oauth: page ${page.id} already bound to another tenant (wanted ${tenantId})`);
       return 'page_in_use';
     }
     let igId = page.igId;
     if (igId) {
-      const igClash = await this.prisma.messengerConnection.findUnique({ where: { igId }, select: { tenantId: true } });
-      if (igClash && igClash.tenantId !== tenantId) igId = null; // keep FB, skip the shared IG
+      const igPg = await this.prisma.messengerPage.findUnique({ where: { igId }, select: { tenantId: true } });
+      const igLegacy = await this.prisma.messengerConnection.findUnique({ where: { igId }, select: { tenantId: true } });
+      if ((igPg && igPg.tenantId !== tenantId) || (igLegacy && igLegacy.tenantId !== tenantId)) igId = null; // keep FB, skip the shared IG
     }
-    await this.prisma.messengerConnection.upsert({
-      where: { tenantId },
-      update: { pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
+    // The page joins the tenant's page list (one brain, many mouths)…
+    await this.prisma.messengerPage.upsert({
+      where: { pageId: page.id },
+      update: { tenantId, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
       create: { tenantId, pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
     });
+    // …and the brain row exists with the FIRST page mirrored into the legacy
+    // columns, so every pre-multi-page code path keeps working.
+    const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true } });
+    if (!cur || !cur.pageId) {
+      await this.prisma.messengerConnection.upsert({
+        where: { tenantId },
+        update: { pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
+        create: { tenantId, pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
+      });
+    } else {
+      await this.prisma.messengerConnection.updateMany({ where: { tenantId }, data: { enabled: true } });
+    }
     // Subscribe the Page to our app's webhook so messages start flowing.
     await fetch(
       `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions&access_token=${encodeURIComponent(page.access_token)}`,
@@ -324,7 +345,8 @@ export class MessengerService {
     );
     if (res === 'page_in_use') throw new BadRequestException('This Page is already connected to another salon in the system. Disconnect it there first.');
     if (res === 'no_page_token') throw new BadRequestException('Meta did not issue a token for this Page — reconnect and grant all permissions.');
-    await this.settings.clearMessengerOauthStash(tenantId);
+    // The stash stays (15-min expiry): an agency connects several pages in a
+    // row, one "Use this page" tap each.
     return this.get(user);
   }
 
@@ -359,12 +381,39 @@ export class MessengerService {
 
   /** Fully disconnect the salon's Page: unsubscribe our app from its webhook
    *  (best-effort) and delete the stored connection so no token remains. */
-  async disconnect(user: AuthenticatedUser): Promise<{ connected: false }> {
+  async disconnect(user: AuthenticatedUser, pageId?: string): Promise<{ connected: boolean }> {
     const tenantId = this.tenantId(user);
+    if (pageId) {
+      // Detach ONE page; the brain and the other pages stay.
+      const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId, pageId } });
+      if (pg) {
+        await fetch(`${GRAPH}/${pg.pageId}/subscribed_apps?access_token=${encodeURIComponent(pg.pageToken)}`, { method: 'DELETE' }).catch(() => undefined);
+        await this.prisma.messengerPage.deleteMany({ where: { tenantId, pageId } });
+      }
+      // If the legacy mirror pointed at this page, repoint it to a survivor.
+      const c0 = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+      if (c0?.pageId === pageId) {
+        const next = await this.prisma.messengerPage.findFirst({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
+        await this.prisma.messengerConnection.updateMany({
+          where: { tenantId },
+          data: next
+            ? { pageId: next.pageId, igId: next.igId, pageToken: next.pageToken, pageName: next.pageName }
+            : { pageId: '', igId: null, pageToken: '', pageName: null },
+        });
+      }
+      await this.audit(tenantId, 'messenger.page_disconnected');
+      const left = await this.prisma.messengerPage.count({ where: { tenantId } });
+      return { connected: left > 0 };
+    }
     const c = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
     if (c?.pageId && c?.pageToken) {
       await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageToken)}`, { method: 'DELETE' }).catch(() => undefined);
     }
+    const pages = await this.prisma.messengerPage.findMany({ where: { tenantId } });
+    for (const pg of pages) {
+      await fetch(`${GRAPH}/${pg.pageId}/subscribed_apps?access_token=${encodeURIComponent(pg.pageToken)}`, { method: 'DELETE' }).catch(() => undefined);
+    }
+    await this.prisma.messengerPage.deleteMany({ where: { tenantId } });
     await this.prisma.messengerConnection.deleteMany({ where: { tenantId } });
     await this.audit(tenantId, 'messenger.disconnected');
     return { connected: false };
@@ -493,7 +542,9 @@ export class MessengerService {
       : await this.prisma.messengerThread.findFirst({ where: { tenantId }, orderBy: { updatedAt: 'desc' } });
     if (!thread) throw new NotFoundException('No conversation yet — the customer must message the Page first (24h messaging window).');
 
-    const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(conn.pageToken)}`, {
+    const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId, pageId: thread.pageId } });
+    const sendToken = pg?.pageToken || conn.pageToken;
+    const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(sendToken)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ recipient: { id: thread.senderId }, messaging_type: 'RESPONSE', message: { text: body.slice(0, 1900) } }),
@@ -664,12 +715,14 @@ export class MessengerService {
    * happened and goes straight to booking instead of greeting twice.
    */
   private async handleGetStarted(entryId: string, senderId: string): Promise<void> {
-    const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
-    if (!conn || !conn.enabled || !conn.pageToken) return;
+    const page = await this.pageByEntry(entryId);
+    if (!page || !page.enabled) return;
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: page.tenantId } });
+    if (!conn || !conn.enabled) return;
     const thread = await this.prisma.messengerThread.upsert({
-      where: { pageId_senderId: { pageId: conn.pageId, senderId } },
+      where: { pageId_senderId: { pageId: page.pageId, senderId } },
       update: {},
-      create: { tenantId: conn.tenantId, pageId: conn.pageId, senderId, lastText: '👋 (opened chat)' },
+      create: { tenantId: page.tenantId, pageId: page.pageId, senderId, lastText: '👋 (opened chat)' },
     });
     if (thread.handoff) return;
     let greeting = (conn.greeting || '').trim();
@@ -682,7 +735,7 @@ export class MessengerService {
         ? `Hi! 👋 ${who} ${tenant?.name || 'Lumio'}${cp.bizIntro ? ` — ${cp.bizIntro}` : ''}. How can we help your business today?`
         : `Hi! 👋 ${who} ${tenant?.name || 'our salon'}. I can book your appointment right here — which service would you like?`;
     }
-    await this.sendText(conn.pageToken, senderId, greeting);
+    await this.sendText(page.pageToken, senderId, greeting);
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
     const next = [...history, { role: 'assistant', content: greeting, at: new Date().toISOString() }].slice(-MAX_TURNS);
     await this.prisma.messengerThread.update({
@@ -691,29 +744,45 @@ export class MessengerService {
     });
   }
 
+  /**
+   * Resolve an incoming entry id (Facebook page id or IG account id) to the
+   * page row + its tenant. New pages live in messenger_pages; connections made
+   * before the multi-page era fall back to the legacy columns.
+   */
+  private async pageByEntry(entryId: string): Promise<{ tenantId: string; pageId: string; pageToken: string; enabled: boolean } | null> {
+    const pg = await this.prisma.messengerPage.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
+    if (pg) return { tenantId: pg.tenantId, pageId: pg.pageId, pageToken: pg.pageToken, enabled: pg.enabled };
+    const legacy = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
+    if (legacy?.pageId && legacy.pageToken) return { tenantId: legacy.tenantId, pageId: legacy.pageId, pageToken: legacy.pageToken, enabled: legacy.enabled };
+    return null;
+  }
+
   /** A human answered from the Page inbox — the bot steps aside on that thread. */
   private async pauseForHuman(entryId: string, customerId: string): Promise<void> {
-    const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] }, select: { pageId: true } });
-    if (!conn) return;
+    const page = await this.pageByEntry(entryId);
+    if (!page) return;
     await this.prisma.messengerThread.updateMany({
-      where: { pageId: conn.pageId, senderId: customerId },
+      where: { pageId: page.pageId, senderId: customerId },
       data: { handoff: true, handoffAt: new Date() } as never,
     });
   }
 
   private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number): Promise<void> {
-    // Route by Facebook Page id OR the linked Instagram account id.
-    const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
-    if (!conn || !conn.enabled || !conn.pageToken) return;
-    const pageId = conn.pageId;
+    // Route by Facebook Page id OR the linked Instagram account id: any of the
+    // tenant's pages leads to the SAME brain — one brain, many mouths.
+    const page = await this.pageByEntry(entryId);
+    if (!page || !page.enabled) return;
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: page.tenantId } });
+    if (!conn || !conn.enabled) return;
+    const pageId = page.pageId;
     const thread = await this.prisma.messengerThread.upsert({
       where: { pageId_senderId: { pageId, senderId } },
       update: { lastText: text.slice(0, 300) },
-      create: { tenantId: conn.tenantId, pageId, senderId, lastText: text.slice(0, 300) },
+      create: { tenantId: page.tenantId, pageId, senderId, lastText: text.slice(0, 300) },
     });
     // Best-effort: resolve the customer's display name once (User Profile API).
     if (!thread.senderName) {
-      const name = await this.fetchSenderName(conn.pageToken, senderId);
+      const name = await this.fetchSenderName(page.pageToken, senderId);
       if (name) await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { senderName: name } }).catch(() => undefined);
     }
     if (thread.handoff) {
@@ -731,7 +800,7 @@ export class MessengerService {
       await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { handoff: false, handoffAt: null } as never });
     }
 
-    await this.replyAndRecord(conn, thread.id, senderId, text, eventTs);
+    await this.replyAndRecord({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs);
   }
 
   /** Human considered "in the chat" for this long after their last message. */
@@ -757,9 +826,12 @@ export class MessengerService {
         const at = (th as unknown as { handoffAt?: Date | null }).handoffAt;
         if (at && new Date(at).getTime() > stampAtSchedule) return; // human DID reply — stand down
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: th.tenantId } });
-        if (!conn || !conn.enabled || !conn.pageToken) return;
+        if (!conn || !conn.enabled) return;
+        const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: th.pageId } }).catch(() => null);
+        const token = pg?.pageToken || conn.pageToken;
+        if (!token) return;
         await this.prisma.messengerThread.update({ where: { id: threadId }, data: { handoff: false, handoffAt: null } as never }).catch(() => undefined);
-        await this.replyAndRecord(conn, threadId, th.senderId, text, eventTs);
+        await this.replyAndRecord({ ...conn, pageToken: token }, threadId, th.senderId, text, eventTs);
       })().catch((e) => this.logger.warn(`grace reply failed: ${String(e).slice(0, 120)}`));
     }, MessengerService.GRACE_MS);
     timer.unref?.();
@@ -822,7 +894,7 @@ export class MessengerService {
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
     const bookingSystem = `You are the booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
-Always reply in the SAME language the customer uses. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally ("Dạ được ạ!", "Great choice!").
+Always reply in the SAME language the customer uses. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally.
 KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.
 - Ask for exactly ONE thing per message. Never stack questions.
@@ -933,7 +1005,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // offers a call, which keeps trust AND platform rules intact.
     const personaRule = `\nPERSONA: ${ctx.agentName ? `Your name is ${ctx.agentName}. Introduce yourself by name, like any team member would — never call yourself an assistant, AI or bot. ` : ''}Never volunteer that this chat is automated. If someone asks point-blank whether you are a bot, do not lie and do not argue: say the ${ctx.mode === 'sales' ? 'team' : 'salon team'} is right behind this chat and offer a quick call back${ctx.mode === 'sales' ? ' (capture the lead)' : ''}.`;
 
-    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + closingRule;
+    // Vietnamese small talk is understated — the tell-tale AI openers must go.
+    const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real Vietnamese chat acknowledges quietly — "Dạ", "Dạ được ạ", "Oke anh/chị" — then gets straight to the point. No hype words, no cheering.`;
+
+    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + closingRule;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
@@ -1079,13 +1154,15 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     }
     if (dto.source === 'page') {
       const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-      if (!conn?.pageToken || !conn.pageId) throw new BadRequestException('Connect the Facebook Page first.');
+      const firstPg = await this.prisma.messengerPage.findFirst({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
+      const src = (conn?.pageToken && conn.pageId) ? { pageId: conn.pageId, pageToken: conn.pageToken } : firstPg ? { pageId: firstPg.pageId, pageToken: firstPg.pageToken } : null;
+      if (!src) throw new BadRequestException('Connect the Facebook Page first.');
       const info = (await fetch(
-        `https://graph.facebook.com/v21.0/${conn.pageId}?fields=name,about,description,category,website,phone,emails,single_line_address,hours&access_token=${encodeURIComponent(conn.pageToken)}`,
+        `https://graph.facebook.com/v21.0/${src.pageId}?fields=name,about,description,category,website,phone,emails,single_line_address,hours&access_token=${encodeURIComponent(src.pageToken)}`,
       ).then((r) => r.json())) as Record<string, unknown> & { error?: { message?: string } };
       if (info.error) throw new BadRequestException(`Meta: ${info.error.message || 'could not read the page'}`);
       const feed = (await fetch(
-        `https://graph.facebook.com/v21.0/${conn.pageId}/feed?limit=10&fields=message&access_token=${encodeURIComponent(conn.pageToken)}`,
+        `https://graph.facebook.com/v21.0/${src.pageId}/feed?limit=10&fields=message&access_token=${encodeURIComponent(src.pageToken)}`,
       ).then((r) => r.json()).catch(() => null)) as { data?: { message?: string }[] } | null;
       const posts = (feed?.data || []).map((pp) => pp.message).filter(Boolean).slice(0, 10);
       raw = JSON.stringify({ pageInfo: info, recentPosts: posts }).slice(0, 20000);

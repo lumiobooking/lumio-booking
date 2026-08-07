@@ -45,8 +45,8 @@ export class MessengerController {
   }
 
   @Post('disconnect')
-  disconnect(@CurrentUser() user: AuthenticatedUser) {
-    return this.svc.disconnect(user);
+  disconnect(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pageId?: string }) {
+    return this.svc.disconnect(user, dto?.pageId ? String(dto.pageId) : undefined);
   }
 
   @Get('threads')

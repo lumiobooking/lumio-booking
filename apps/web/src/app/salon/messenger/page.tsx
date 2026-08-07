@@ -15,6 +15,7 @@ interface MConf {
   connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
   botMode: 'booking' | 'sales'; leadEmail: string; closing: string; agentName: string; bizIntro: string;
+  pages: { pageId: string; pageName: string | null; igId: string | null; enabled: boolean; createdAt: string }[];
   connectTrace?: { at: string; steps: string[] } | null;
 }
 interface SalesLead {
@@ -293,8 +294,8 @@ function Inner() {
     setPicking(id);
     try {
       const conf = await apiFetch<MConf>('/messenger/oauth/choose', { method: 'POST', token, body: { pageId: id } });
-      setC(conf); setPickList(null);
-      setFbResult({ ok: true, text: `${DICT.fbConnectedMsg[lang as Lang]} — ${conf.pageName || ''} ${DICT.fbSubscribedMsg[lang as Lang]}` });
+      setC(conf); // list stays open — an agency connects several pages in a row
+      setFbResult({ ok: true, text: `${DICT.fbConnectedMsg[lang as Lang]} — ${conf.pages?.length ?? 1} page ${DICT.fbSubscribedMsg[lang as Lang]}` });
     } catch (e) {
       setFbResult({ ok: false, text: e instanceof Error ? e.message : 'Could not connect this page' });
     } finally { setPicking(null); }
@@ -310,6 +311,14 @@ function Inner() {
       setError(e instanceof Error ? e.message : 'Failed to start Facebook connect');
       setConnecting(false);
     }
+  }
+
+  async function disconnectPage(pageId: string) {
+    if (!token) return;
+    if (!window.confirm(lang === 'vi' ? 'Ngắt page này khỏi tiệm? Các page khác và nội dung bot giữ nguyên.' : 'Detach this page? Other pages and the bot content stay.')) return;
+    setError(null);
+    try { await apiFetch('/messenger/disconnect', { method: 'POST', token, body: { pageId } }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Disconnect failed'); }
   }
 
   async function disconnectFacebook() {
@@ -490,10 +499,14 @@ function Inner() {
                     <div style={{ fontWeight: 700, fontSize: 13.5, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.name}</div>
                     <div style={{ fontSize: 11, color: '#64748b' }}>{pg.id}</div>
                   </div>
+                  {c.pages?.some((x) => x.pageId === pg.id) ? (
+                    <span style={{ color: '#34d399', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ {lang === 'vi' ? 'Đã nối' : 'Connected'}</span>
+                  ) : (
                   <button onClick={() => choosePage(pg.id)} disabled={!!picking}
                     style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: picking && picking !== pg.id ? 0.5 : 1 }}>
                     {picking === pg.id ? '…' : (lang === 'vi' ? 'Dùng page này' : 'Use this page')}
                   </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -521,7 +534,7 @@ function Inner() {
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={connectFacebook} disabled={connecting} style={fbBtn}>
                 <span style={{ fontSize: 16, fontWeight: 800 }}>f</span>
-                {connecting ? t('connecting') : (c.connected ? t('reconnectFb') : t('connectFb'))}
+                {connecting ? t('connecting') : (c.connected ? (lang === 'vi' ? '＋ Thêm page / kết nối lại' : '＋ Add page / reconnect') : t('connectFb'))}
               </button>
               {c.connected && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
@@ -590,6 +603,28 @@ function Inner() {
             {wh?.verifiedAt && <div style={{ color: '#64748b', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString('en-US')}</div>}
           </div>
           {!wh?.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
+          {(c.pages?.length ?? 0) > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>
+                {lang === 'vi' ? `Các page đang dùng chung bot này (${c.pages.length})` : `Pages sharing this bot (${c.pages.length})`}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {c.pages.map((pg) => (
+                  <div key={pg.pageId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: pg.enabled ? '#22c55e' : '#64748b', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.pageName || pg.pageId}</div>
+                      <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>{pg.pageId}{pg.igId ? ` · IG ${pg.igId}` : ''}</div>
+                    </div>
+                    <button onClick={() => disconnectPage(pg.pageId)}
+                      style={{ background: 'transparent', border: '1px solid #7f1d1d', color: '#f87171', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {lang === 'vi' ? 'Ngắt page' : 'Detach'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

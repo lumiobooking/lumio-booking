@@ -281,6 +281,7 @@ model Tenant {
   @@map("tenants")
   trashItems      TrashItem[]
   salesLeads      SalesLead[]
+  messengerPages  MessengerPage[]
 }
 
 /// Billing subscription history for a tenant.
@@ -1545,6 +1546,25 @@ model SalesLead {
   @@index([tenantId, status])
   @@index([tenantId, phone])
   @@map("sales_leads")
+}
+
+// One tenant, MANY Facebook pages ("one brain, many mouths"): the brain —
+// facts, persona, mode — lives on MessengerConnection; each page the tenant
+// connects gets a row here. pageId stays globally unique: one page, one tenant.
+model MessengerPage {
+  id        String  @id @default(uuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pageId    String  @unique
+  igId      String? @unique
+  pageToken String
+  pageName  String?
+  enabled   Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("messenger_pages")
 }
 
 model MessengerThread {

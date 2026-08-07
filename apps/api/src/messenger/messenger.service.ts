@@ -1693,15 +1693,23 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     }
     intro = intro
       || 'Hi {{user_first_name}}! 👋 Tap Get Started and I\'ll book your nail appointment in a few quick messages.';
-    await fetch(`https://graph.facebook.com/v21.0/me/messenger_profile?access_token=${encodeURIComponent(pageToken)}`, {
+    const profileUrl = `https://graph.facebook.com/v21.0/me/messenger_profile?access_token=${encodeURIComponent(pageToken)}`;
+    await fetch(profileUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        get_started: { payload: 'GET_STARTED' },
-        greeting: [{ locale: 'default', text: intro }],
-      }),
+      body: JSON.stringify({ greeting: [{ locale: 'default', text: intro }] }),
     }).then(async (r) => {
       if (!r.ok) this.logger.warn(`messenger_profile ${r.status}: ${(await r.text().catch(() => '')).slice(0, 120)}`);
+    }).catch(() => undefined);
+    // NO "Get Started" button: it is one extra tap between a curious customer
+    // and the conversation. Without it the composer shows immediately under
+    // the greeting text — they just type, and the AI answers in seconds.
+    // (Meta sends no event on merely opening the chat, so a bot can never
+    // truly speak first; the intro-screen greeting is that first word.)
+    await fetch(profileUrl, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fields: ['get_started'] }),
     }).catch(() => undefined);
   }
 

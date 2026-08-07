@@ -234,7 +234,7 @@ function Inner() {
     } else {
       const code = decodeURIComponent(p.get('msg') || '');
       const NAMED: Record<string, { vi: string; en: string }> = {
-        no_pages: { vi: 'Facebook không trả về page nào — ở bước chọn, hãy chọn ĐÚNG doanh nghiệp sở hữu page rồi tick page đó.', en: 'Facebook returned no Pages — in the dialog, pick the business that OWNS the page, then tick the page.' },
+        no_pages: { vi: 'Bạn chưa tick page nào trong hộp thoại (0 Assets Selected). Bấm Connect lại và TICK đúng page trước khi Continue. Đã tick mà vẫn lỗi = profile Facebook đang đăng nhập không quản lý page đó.', en: 'No page was ticked in the dialog (0 Assets Selected). Press Connect again and TICK the page before Continue. If you did tick one, the logged-in Facebook profile does not manage that page.' },
         page_in_use: { vi: 'Page này đang được kết nối cho một tiệm khác trong hệ thống. Ngắt kết nối ở tiệm đó trước, hoặc chọn page khác.', en: 'This Page is already connected to another salon in the system. Disconnect it there first, or pick a different Page.' },
         invalid_state: { vi: 'Phiên kết nối hết hạn — bấm Connect và làm lại trong một mạch.', en: 'The connect session expired — press Connect and finish in one go.' },
         no_page_token: { vi: 'Meta không cấp token cho page — thử lại và cấp đủ quyền được hỏi.', en: 'Meta did not issue a page token — retry and grant all requested permissions.' },

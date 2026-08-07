@@ -131,8 +131,15 @@ export class MessengerService {
     // added to the app, so we only request them once the owner has added those
     // permissions in Meta and flipped FB_ENABLE_INSTAGRAM=1.
     const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
+    // business_management drags an extra "choose your business" step into the
+    // dialog and buries personal (non-BM) pages behind it. The bot only needs
+    // page-level scopes — pages the user manages (in a BM or not) all appear in
+    // the plain page picker. Re-enable via env only if a business API is ever
+    // actually needed.
+    const bizOn = process.env.FB_REQUEST_BUSINESS_SCOPE === '1' || process.env.FB_REQUEST_BUSINESS_SCOPE === 'true';
     const scope = [
-      'pages_show_list', 'pages_messaging', 'pages_manage_metadata', 'business_management',
+      'pages_show_list', 'pages_messaging', 'pages_manage_metadata',
+      ...(bizOn ? ['business_management'] : []),
       ...(igOn ? ['instagram_basic', 'instagram_manage_messages'] : []),
     ].join(',');
     const params = new URLSearchParams({

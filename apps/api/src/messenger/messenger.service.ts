@@ -423,7 +423,7 @@ export class MessengerService {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Thread not found');
-    await this.prisma.messengerThread.update({ where: { id: row.id }, data: { handoff } });
+    await this.prisma.messengerThread.update({ where: { id: row.id }, data: { handoff, handoffAt: handoff ? new Date() : null } as never });
     return { ok: true };
   }
 
@@ -516,6 +516,12 @@ export class MessengerService {
       where: { id: thread.id },
       data: { history: next as unknown as Prisma.InputJsonValue, lastText: thread.lastText ?? null },
     });
+    // A human just spoke in this thread — the bot yields immediately (and
+    // re-engages per the 15-min/5-min yield rules), so replies never collide.
+    await this.prisma.messengerThread.updateMany({
+      where: { id: thread.id, tenantId },
+      data: { handoff: true, handoffAt: new Date() } as never,
+    }).catch(() => undefined);
     await this.audit(tenantId, 'messenger.manual_send');
     return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso };
   }
@@ -634,7 +640,16 @@ export class MessengerService {
           continue;
         }
         const text = ev.message?.text;
-        if (!text || ev.message?.is_echo) continue;
+        // Echo of an outbound message. Ours carry the LUMIO_BOT tag; an echo
+        // WITHOUT it means a human typed in the Page inbox — the bot yields
+        // that conversation instantly (auto take-over; bot re-engages per the 15-min/5-min yield rules).
+        if (ev.message?.is_echo) {
+          if (ev.message?.metadata !== 'LUMIO_BOT' && ev.recipient?.id) {
+            await this.pauseForHuman(entryId, ev.recipient.id).catch(() => undefined);
+          }
+          continue;
+        }
+        if (!text) continue;
         await this.handleMessage(entryId, senderId, text, ev.timestamp).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
@@ -676,6 +691,16 @@ export class MessengerService {
     });
   }
 
+  /** A human answered from the Page inbox — the bot steps aside on that thread. */
+  private async pauseForHuman(entryId: string, customerId: string): Promise<void> {
+    const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] }, select: { pageId: true } });
+    if (!conn) return;
+    await this.prisma.messengerThread.updateMany({
+      where: { pageId: conn.pageId, senderId: customerId },
+      data: { handoff: true, handoffAt: new Date() } as never,
+    });
+  }
+
   private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number): Promise<void> {
     // Route by Facebook Page id OR the linked Instagram account id.
     const conn = await this.prisma.messengerConnection.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
@@ -691,9 +716,67 @@ export class MessengerService {
       const name = await this.fetchSenderName(conn.pageToken, senderId);
       if (name) await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { senderName: name } }).catch(() => undefined);
     }
-    if (thread.handoff) return; // a human is handling this conversation
+    if (thread.handoff) {
+      // Two-tier yielding. The human owns the chat only while they are ACTIVE
+      // (typed something in the last 15 minutes). Active → this new customer
+      // message gets a 5-minute grace: if no human reply lands in time, the
+      // bot answers it. Idle 15+ minutes → the bot takes the thread back NOW.
+      // Net effect: a customer never waits more than 5 minutes, ever.
+      const at = (thread as unknown as { handoffAt?: Date | null }).handoffAt;
+      const activeAgo = at ? Date.now() - new Date(at).getTime() : Number.POSITIVE_INFINITY;
+      if (activeAgo < MessengerService.HUMAN_ACTIVE_MS) {
+        this.scheduleGraceReply(thread.id, text, eventTs, at ? new Date(at).getTime() : 0);
+        return;
+      }
+      await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { handoff: false, handoffAt: null } as never });
+    }
 
-    const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+    await this.replyAndRecord(conn, thread.id, senderId, text, eventTs);
+  }
+
+  /** Human considered "in the chat" for this long after their last message. */
+  private static readonly HUMAN_ACTIVE_MS = 15 * 60 * 1000;
+  /** How long an active human gets to answer a fresh customer message. */
+  private static readonly GRACE_MS = 5 * 60 * 1000;
+  private readonly graceTimers = new Map<string, NodeJS.Timeout>();
+
+  /**
+   * The human is mid-conversation: hold the bot for GRACE_MS. If the human
+   * answers meanwhile (their echo re-stamps handoffAt), the timer sees the
+   * newer stamp and stands down. A newer customer message replaces the timer,
+   * so the bot answers the LATEST message once, not every queued one.
+   */
+  private scheduleGraceReply(threadId: string, text: string, eventTs: number | undefined, stampAtSchedule: number): void {
+    const prev = this.graceTimers.get(threadId);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(() => {
+      this.graceTimers.delete(threadId);
+      void (async () => {
+        const th = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
+        if (!th || !th.handoff) return; // released meanwhile — the normal flow has it
+        const at = (th as unknown as { handoffAt?: Date | null }).handoffAt;
+        if (at && new Date(at).getTime() > stampAtSchedule) return; // human DID reply — stand down
+        const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: th.tenantId } });
+        if (!conn || !conn.enabled || !conn.pageToken) return;
+        await this.prisma.messengerThread.update({ where: { id: threadId }, data: { handoff: false, handoffAt: null } as never }).catch(() => undefined);
+        await this.replyAndRecord(conn, threadId, th.senderId, text, eventTs);
+      })().catch((e) => this.logger.warn(`grace reply failed: ${String(e).slice(0, 120)}`));
+    }, MessengerService.GRACE_MS);
+    timer.unref?.();
+    this.graceTimers.set(threadId, timer);
+  }
+
+  /** Build the reply with the right brain and persist the exchange. */
+  private async replyAndRecord(
+    conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
+    threadId: string,
+    senderId: string,
+    text: string,
+    eventTs?: number,
+  ): Promise<void> {
+    const fresh = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
+    if (!fresh) return;
+    const history = (Array.isArray(fresh.history) ? fresh.history : []) as Turn[];
     let reply: string;
     try {
       const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
@@ -701,7 +784,7 @@ export class MessengerService {
       reply = await this.runAgent(conn.tenantId, instruction, history, text, {
         mode: cx.botMode === 'sales' ? 'sales' : 'booking',
         leadEmail: cx.leadEmail ?? null,
-        threadId: thread.id,
+        threadId,
         closing: (conn as unknown as { closing?: string | null }).closing ?? null,
         agentName: (conn as unknown as { agentName?: string | null }).agentName ?? null,
         bizIntro: (conn as unknown as { bizIntro?: string | null }).bizIntro ?? null,
@@ -716,7 +799,7 @@ export class MessengerService {
     const outAt = new Date().toISOString();
     const nextHistory = [...history, { role: 'user', content: text, at: inAt }, { role: 'assistant', content: reply, at: outAt }].slice(-MAX_TURNS);
     await this.prisma.messengerThread.update({
-      where: { id: thread.id },
+      where: { id: threadId },
       data: { history: nextHistory as unknown as Prisma.InputJsonValue },
     });
   }
@@ -1276,7 +1359,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text: text.slice(0, 1900) } }),
+        // metadata comes back on the echo — it is how the webhook tells OUR
+        // messages from a human typing in the Page inbox.
+        body: JSON.stringify({ recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text: text.slice(0, 1900), metadata: 'LUMIO_BOT' } }),
       });
     } catch (e) {
       this.logger.warn(`Send API failed: ${String(e).slice(0, 120)}`);
@@ -1286,7 +1371,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
 interface MessagingEvent {
   sender?: { id?: string };
-  message?: { text?: string; is_echo?: boolean };
+  recipient?: { id?: string };
+  message?: { text?: string; is_echo?: boolean; metadata?: string };
   postback?: { payload?: string; title?: string }; // "Get Started" tap and menu buttons
   timestamp?: number; // ms epoch set by Meta on the webhook event
 }

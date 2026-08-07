@@ -1364,7 +1364,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     tz: string,
     name: string,
     input: Record<string, unknown>,
-    ctx?: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string },
+    ctx?: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string },
   ): Promise<string> {
     try {
       if (name === 'save_lead') {

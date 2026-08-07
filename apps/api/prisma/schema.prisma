@@ -1511,6 +1511,9 @@ model MessengerConnection {
   pageName  String? // cached Facebook Page name (captured at connect via pages_show_list)
   enabled   Boolean @default(false)
   greeting  String? // optional opening line
+  closing   String? // optional goodbye/thank-you spirit the bot adapts when a chat wraps up
+  agentName String? // persona: the bot introduces itself with this human name (never "assistant")
+  bizIntro  String? // one-line business description the bot uses when introducing the company
   aiInstruction String? // brand-voice / extra guidance for the bot
   botFacts  Json  @default("[]") // structured FAQ facts [{label,value,on}] injected into the bot
   botMode   String  @default("booking") // 'booking' = salon appointment bot · 'sales' = Lumio agency sales/CS bot

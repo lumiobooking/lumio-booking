@@ -14,7 +14,7 @@ interface BotFact { label: string; value: string; on: boolean }
 interface MConf {
   connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
-  botMode: 'booking' | 'sales'; leadEmail: string;
+  botMode: 'booking' | 'sales'; leadEmail: string; closing: string; agentName: string; bizIntro: string;
   connectTrace?: { at: string; steps: string[] } | null;
 }
 interface SalesLead {
@@ -172,6 +172,12 @@ function Inner() {
   const [showManual, setShowManual] = useState(false);
   const [copied, setCopied] = useState('');
   const [facts, setFacts] = useState<FactRow[]>([]);
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState<'website' | 'page' | null>(null);
+  const [importErr, setImportErr] = useState<string | null>(null);
+  const [proposed, setProposed] = useState<(BotFact & { pick: boolean })[] | null>(null);
+  const [pasteText, setPasteText] = useState('');
+  const [suggest, setSuggest] = useState<{ greeting: string | null; closing: string | null; instruction: string | null } | null>(null);
   const [factsInit, setFactsInit] = useState(false);
   const [infoOpen, setInfoOpen] = useState(true);     // fold the business-info checklist
   const [convoSearch, setConvoSearch] = useState(''); // filter the conversations list
@@ -212,6 +218,37 @@ function Inner() {
   const setFact = (i: number, patch: Partial<FactRow>) => setFacts((fs) => fs.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
   const addFact = () => setFacts((fs) => [...fs, { label: '', value: '', on: true, custom: true }]);
   const removeFact = (i: number) => setFacts((fs) => fs.filter((_, idx) => idx !== i));
+
+  // Read the website / fanpage, let the AI propose fact rows, human approves.
+  async function importFacts(source: 'website' | 'page' | 'paste') {
+    if (!token || importing) return;
+    setImporting(source as 'website' | 'page'); setImportErr(null); setProposed(null); setSuggest(null);
+    try {
+      const r = await apiFetch<{ facts: BotFact[]; greeting?: string | null; closing?: string | null; instruction?: string | null }>('/messenger/import-facts', {
+        method: 'POST', token,
+        body: { source, url: source === 'website' ? importUrl.trim() : undefined, text: source === 'paste' ? pasteText.trim() : undefined },
+      });
+      setProposed(r.facts.map((f) => ({ ...f, pick: true })));
+      if (r.greeting || r.closing || r.instruction) setSuggest({ greeting: r.greeting ?? null, closing: r.closing ?? null, instruction: r.instruction ?? null });
+    } catch (e) { setImportErr(e instanceof Error ? e.message : 'Import failed'); }
+    finally { setImporting(null); }
+  }
+
+  function mergeProposed() {
+    if (!proposed) return;
+    const chosen = proposed.filter((f) => f.pick);
+    setFacts((fs) => {
+      const next = [...fs];
+      for (const f of chosen) {
+        const i = next.findIndex((x) => x.label.trim().toLowerCase() === f.label.trim().toLowerCase());
+        if (i >= 0) next[i] = { ...next[i], value: f.value, on: true };
+        else next.push({ label: f.label, value: f.value, on: true, custom: true });
+      }
+      return next;
+    });
+    setProposed(null);
+    setNotice(lang === 'vi' ? `Đã thêm ${chosen.length} mục — kiểm tra rồi bấm Lưu ở khung thông tin bên dưới.` : `Added ${chosen.length} row(s) — review then press Save in the info card below.`);
+  }
 
   // Read the ?fb=connected|error the OAuth callback redirected back with.
   // Kept in its OWN state so the initial load() (which resets `error`) can
@@ -327,7 +364,7 @@ function Inner() {
     setSaving(true); setError(null); setSaved(false);
     try {
       const next = await apiFetch<MConf>('/messenger/settings', { method: 'POST', token, body: {
-        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, aiInstruction: c.aiInstruction, botMode: c.botMode, leadEmail: c.leadEmail, ...patch,
+        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, closing: c.closing, agentName: c.agentName, bizIntro: c.bizIntro, aiInstruction: c.aiInstruction, botMode: c.botMode, leadEmail: c.leadEmail, ...patch,
       } });
       setC(next); setPageToken(''); setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch (e) { setError(e instanceof Error ? e.message : 'Save failed'); }
@@ -699,10 +736,123 @@ function Inner() {
             )}
           </>
         )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 12 }}>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Tên nhân viên (bot xưng tên này)' : 'Staff name (the bot goes by it)'}</label>
+            <input value={c.agentName} placeholder={lang === 'vi' ? 'vd: Vy' : 'e.g. Amy'}
+              onChange={(e) => setC({ ...c, agentName: e.target.value })} onBlur={() => save({})} style={ui.input} />
+          </div>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Giới thiệu doanh nghiệp (1 câu bot dùng khi tự giới thiệu)' : 'Business intro (one line the bot uses)'}</label>
+            <input value={c.bizIntro}
+              placeholder={lang === 'vi' ? 'vd: agency marketing trọn gói — website, quảng cáo, chatbot AI, phần mềm đặt lịch cho salon, spa, nhà hàng' : 'e.g. full-service marketing agency — websites, ads, AI chat, booking software'}
+              onChange={(e) => setC({ ...c, bizIntro: e.target.value })} onBlur={() => save({})} style={ui.input} />
+          </div>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
+          {lang === 'vi'
+            ? 'Đặt tên là bot nói chuyện như một nhân viên thật, không tự nhận là trợ lý. Nếu khách hỏi thẳng "bot hả?", bot không nói dối — nó khéo léo mời gọi lại ngay và ghi lead.'
+            : 'With a name set, the bot speaks as a real team member and never calls itself an assistant. Asked point-blank "is this a bot?", it won\u2019t lie — it gracefully offers an instant call back and logs the lead.'}
+        </p>
         <label style={ui.label}>{t('greeting')}</label>
         <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
+        <label style={ui.label}>{lang === 'vi' ? 'Câu kết thúc / cảm ơn (tùy chọn)' : 'Goodbye / thank-you line (optional)'}</label>
+        <textarea value={c.closing} rows={2}
+          placeholder={lang === 'vi' ? 'vd: Cảm ơn anh/chị đã tin tưởng Lumio — chúc một ngày thật đẹp ạ! 🌸' : 'e.g. Thank you for trusting Lumio — have a lovely day! 🌸'}
+          onChange={(e) => setC({ ...c, closing: e.target.value })} onBlur={() => save({})}
+          style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
+          {lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.'}
+        </p>
         <label style={ui.label}>{t('extraNotes')}</label>
         <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+      </div>
+
+      {/* Knowledge import: website / fanpage → proposed facts → human approves */}
+      <div style={{ ...ui.card, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
+          📥 {lang === 'vi' ? 'Nạp kiến thức tự động' : 'Auto-import knowledge'}
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.55 }}>
+          {lang === 'vi'
+            ? 'Đọc website hoặc fanpage, AI chưng cất thành các dòng thông tin — bạn duyệt rồi mới lưu. Bot chỉ nói những gì đã được duyệt.'
+            : 'Reads your website or fanpage and distills it into fact rows — you approve before saving. The bot only speaks approved facts.'}
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="https://lumioagency.com"
+            style={{ ...ui.input, flex: 1, minWidth: 220 }} />
+          <button onClick={() => importFacts('website')} disabled={!!importing || !importUrl.trim()}
+            style={{ ...ui.primaryBtn, opacity: importing || !importUrl.trim() ? 0.6 : 1 }}>
+            {importing === 'website' ? '…' : (lang === 'vi' ? '🌐 Đọc website' : '🌐 Read website')}
+          </button>
+          <button onClick={() => importFacts('page')} disabled={!!importing || !c.connected}
+            title={c.connected ? '' : (lang === 'vi' ? 'Kết nối page trước' : 'Connect the page first')}
+            style={{ ...ui.primaryBtn, background: '#1877f2', opacity: importing || !c.connected ? 0.6 : 1 }}>
+            {importing === 'page' ? '…' : (lang === 'vi' ? '📘 Đọc từ Fanpage' : '📘 Read from Fanpage')}
+          </button>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <label style={ui.label}>{lang === 'vi' ? '✍️ Hoặc dán nội dung bạn muốn bot truyền tải (khuyến mãi, bảng giá, cách chào khách…)' : '✍️ Or paste anything the bot should carry (promos, price list, how to greet…)'}</label>
+          <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={4}
+            placeholder={lang === 'vi' ? 'Dán tự do — hệ thống tự nhận ra đâu là thông tin, đâu là giọng điệu, đâu là câu chào/câu cảm ơn.' : 'Paste freely — the system sorts out facts, tone, hello and thank-you lines by itself.'}
+            style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+          <button onClick={() => importFacts('paste')} disabled={!!importing || pasteText.trim().length < 20}
+            style={{ ...ui.primaryBtn, marginTop: 8, opacity: importing || pasteText.trim().length < 20 ? 0.6 : 1 }}>
+            {lang === 'vi' ? '✨ Phân loại tự động' : '✨ Sort it out'}
+          </button>
+        </div>
+        {importErr && <div style={{ color: '#f87171', fontSize: 13, marginTop: 10 }}>{importErr}</div>}
+        {suggest && (
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {([['greeting', lang === 'vi' ? 'Câu chào' : 'Greeting'], ['closing', lang === 'vi' ? 'Câu kết thúc' : 'Goodbye'], ['instruction', lang === 'vi' ? 'Giọng điệu / luật' : 'Tone / rules']] as const).map(([k, title]) => {
+              const v = suggest[k];
+              if (!v) return null;
+              return (
+                <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a5b4fc', marginBottom: 3 }}>{title}</div>
+                    <div style={{ fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.5 }}>{v}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (k === 'greeting') { setC({ ...c, greeting: v }); save({ greeting: v }); }
+                      else if (k === 'closing') { setC({ ...c, closing: v }); save({ closing: v }); }
+                      else { const nv = c.aiInstruction ? `${c.aiInstruction}\n${v}` : v; setC({ ...c, aiInstruction: nv }); save({ aiInstruction: nv }); }
+                      setSuggest((sg) => sg ? { ...sg, [k]: null } : sg);
+                    }}
+                    style={{ ...ui.primaryBtn, padding: '6px 14px', fontSize: 12.5, flexShrink: 0 }}>
+                    {lang === 'vi' ? 'Dùng' : 'Use'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {proposed && (
+          <div style={{ marginTop: 14, border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc', marginBottom: 8 }}>
+              {lang === 'vi' ? `AI đề xuất ${proposed.length} mục — bỏ tick mục nào sai rồi bấm thêm:` : `AI proposes ${proposed.length} row(s) — untick anything wrong, then add:`}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+              {proposed.map((f, i) => (
+                <label key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: '#cbd5e1', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={f.pick}
+                    onChange={(e) => setProposed((ps) => ps ? ps.map((x, k) => k === i ? { ...x, pick: e.target.checked } : x) : ps)}
+                    style={{ marginTop: 2 }} />
+                  <span><b style={{ color: '#e2e8f0' }}>{f.label}:</b> {f.value}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={mergeProposed} disabled={!proposed.some((f) => f.pick)} style={{ ...ui.primaryBtn, opacity: proposed.some((f) => f.pick) ? 1 : 0.5 }}>
+                {lang === 'vi' ? `➕ Thêm ${proposed.filter((f) => f.pick).length} mục vào Bot facts` : `➕ Add ${proposed.filter((f) => f.pick).length} row(s) to Bot facts`}
+              </button>
+              <button onClick={() => setProposed(null)} style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
+                {lang === 'vi' ? 'Bỏ qua' : 'Discard'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Salon info — tick + fill so the bot answers common questions */}

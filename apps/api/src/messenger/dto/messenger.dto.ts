@@ -6,6 +6,9 @@ export class UpdateMessengerDto {
   @IsOptional() @IsString() @MaxLength(400) pageToken?: string;
   @IsOptional() @IsBoolean() enabled?: boolean;
   @IsOptional() @IsString() @MaxLength(500) greeting?: string;
+  @IsOptional() @IsString() @MaxLength(500) closing?: string;
+  @IsOptional() @IsString() @MaxLength(80) agentName?: string;
+  @IsOptional() @IsString() @MaxLength(300) bizIntro?: string;
   @IsOptional() @IsString() @MaxLength(2000) aiInstruction?: string;
   // Structured FAQ facts [{ label, value, on }] the salon ticks; loose array
   // validation (nested shape is sanitized in the service).

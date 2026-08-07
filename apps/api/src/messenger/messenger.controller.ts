@@ -64,6 +64,14 @@ export class MessengerController {
     return this.svc.renameThread(user, id, dto.name);
   }
 
+  /** Read the salon's website or connected Page and propose Bot-facts rows. */
+  @Post('import-facts')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  importFacts(@CurrentUser() user: AuthenticatedUser, @Body() dto: { source?: string; url?: string; text?: string }) {
+    return this.svc.importFacts(user, dto || {});
+  }
+
   // ---- Sales-mode leads (agency page) ------------------------------------
 
   @Get('leads')

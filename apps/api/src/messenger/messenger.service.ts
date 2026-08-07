@@ -107,6 +107,9 @@ export class MessengerService {
       igId: c?.igId ?? '',
       enabled: c?.enabled ?? false,
       greeting: c?.greeting ?? '',
+      closing: (c as unknown as { closing?: string | null } | null)?.closing ?? '',
+      agentName: (c as unknown as { agentName?: string | null } | null)?.agentName ?? '',
+      bizIntro: (c as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? '',
       aiInstruction: c?.aiInstruction ?? '',
       botFacts: Array.isArray(c?.botFacts) ? (c!.botFacts as unknown as BotFact[]) : [],
       botMode: ((c as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' : 'booking'),
@@ -142,11 +145,15 @@ export class MessengerService {
     // the plain page picker. Re-enable via env only if a business API is ever
     // actually needed.
     const bizOn = process.env.FB_REQUEST_BUSINESS_SCOPE === '1' || process.env.FB_REQUEST_BUSINESS_SCOPE === 'true';
+    // pages_read_engagement lets us READ the ticked page (name + page access
+    // token) — without it Meta answers "#100 Object does not exist". BUT if the
+    // permission has not been added to the app in the Meta dashboard yet,
+    // requesting it kills the WHOLE dialog with "Invalid Scopes" — so it can be
+    // switched off with FB_SCOPE_READ_ENGAGEMENT=0 until the dashboard is set.
+    const readEng = process.env.FB_SCOPE_READ_ENGAGEMENT !== '0';
     const scope = [
-      // The standard four for a Messenger bot. pages_read_engagement is what
-      // lets us READ the ticked page (name + page access token) — without it
-      // Meta answers "#100 Object does not exist" and the connect dies.
-      'pages_show_list', 'pages_messaging', 'pages_manage_metadata', 'pages_read_engagement',
+      'pages_show_list', 'pages_messaging', 'pages_manage_metadata',
+      ...(readEng ? ['pages_read_engagement'] : []),
       ...(bizOn ? ['business_management'] : []),
       ...(igOn ? ['instagram_basic', 'instagram_manage_messages'] : []),
     ].join(',');
@@ -365,7 +372,7 @@ export class MessengerService {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string },
+    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; closing?: string; agentName?: string; bizIntro?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -378,6 +385,9 @@ export class MessengerService {
       pageToken,
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur?.enabled ?? false,
       greeting: typeof dto.greeting === 'string' ? dto.greeting.slice(0, 500) : cur?.greeting ?? null,
+      closing: typeof dto.closing === 'string' ? (dto.closing.trim().slice(0, 500) || null) : ((cur as unknown as { closing?: string | null } | null)?.closing ?? null),
+      agentName: typeof dto.agentName === 'string' ? (dto.agentName.trim().slice(0, 80) || null) : ((cur as unknown as { agentName?: string | null } | null)?.agentName ?? null),
+      bizIntro: typeof dto.bizIntro === 'string' ? (dto.bizIntro.trim().slice(0, 300) || null) : ((cur as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? null),
       aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur?.aiInstruction ?? null,
       botFacts: (Array.isArray(dto.botFacts) ? dto.botFacts.slice(0, 40) : (cur?.botFacts ?? [])) as unknown as Prisma.InputJsonValue,
       // The mode is a PLATFORM decision (a mis-flip turns a salon's booking bot
@@ -650,10 +660,12 @@ export class MessengerService {
     let greeting = (conn.greeting || '').trim();
     if (!greeting) {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: conn.tenantId }, select: { name: true } });
-      const mode = (conn as unknown as { botMode?: string }).botMode === 'sales' ? 'sales' : 'booking';
+      const cp = conn as unknown as { botMode?: string; agentName?: string | null; bizIntro?: string | null };
+      const mode = cp.botMode === 'sales' ? 'sales' : 'booking';
+      const who = cp.agentName ? `I'm ${cp.agentName} from` : 'Welcome to';
       greeting = mode === 'sales'
-        ? `Hi! 👋 I'm the assistant of ${tenant?.name || 'Lumio'} — booking & salon-management software for nail salons. Are you looking for a solution for your salon?`
-        : `Hi! 👋 Welcome to ${tenant?.name || 'our salon'}. I can book your appointment right here — which service would you like?`;
+        ? `Hi! 👋 ${who} ${tenant?.name || 'Lumio'}${cp.bizIntro ? ` — ${cp.bizIntro}` : ''}. How can we help your business today?`
+        : `Hi! 👋 ${who} ${tenant?.name || 'our salon'}. I can book your appointment right here — which service would you like?`;
     }
     await this.sendText(conn.pageToken, senderId, greeting);
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
@@ -690,6 +702,9 @@ export class MessengerService {
         mode: cx.botMode === 'sales' ? 'sales' : 'booking',
         leadEmail: cx.leadEmail ?? null,
         threadId: thread.id,
+        closing: (conn as unknown as { closing?: string | null }).closing ?? null,
+        agentName: (conn as unknown as { agentName?: string | null }).agentName ?? null,
+        bizIntro: (conn as unknown as { bizIntro?: string | null }).bizIntro ?? null,
       });
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
@@ -712,7 +727,7 @@ export class MessengerService {
     aiInstruction: string,
     history: Turn[],
     userText: string,
-    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string } = { mode: 'booking', leadEmail: null },
+    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return 'Thanks for reaching out! A team member will reply to you shortly. 💕';
@@ -778,8 +793,10 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
     // introduce Lumio to salon owners and hand WARM LEADS to the human team.
     // Facts discipline is identical to the booking bot: the model may only
     // state what the owner typed into Bot facts / AI instruction.
-    const salesSystem = `You are the sales & customer-care assistant for "${salonName}" — the team behind Lumio Booking, a booking & salon-management platform for nail salons. You chat on Facebook Messenger with salon owners and people asking about the product.
-Your ONE job: answer simply, connect the product to their salon's pain, and hand a warm lead to the human sales team. Warm and natural — never pushy, never robotic.
+    const bizIntro = ctx.bizIntro
+      || 'a marketing & technology agency for local businesses — booking software, AI chat, websites and advertising';
+    const salesSystem = `You are a sales & customer-care team member of "${salonName}" — ${bizIntro}. You chat on Facebook Messenger with business owners and people asking about the services.
+Your ONE job: answer simply, connect the right service to their business's pain, and hand a warm lead to the sales team. Warm and natural — never pushy, never robotic.
 Always reply in the SAME language the customer uses. In Vietnamese: xưng "em", gọi khách "anh/chị", dùng "dạ/ạ".
 KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 max). Ask for exactly ONE thing per message.
@@ -787,12 +804,11 @@ KEEP IT SIMPLE — these rules beat everything else:
 - ONLY state prices, features, policies and links that appear in the FACTS below. If something is not covered: say the team will confirm it, and capture the lead. NEVER invent, never negotiate prices, never take payment in chat.
 - Off-topic? One friendly line, then gently back to how Lumio can help their salon.
 FLOW:
-- Start by asking what their salon struggles with (missed calls? no-shows? walk-in chaos?) — or answer their question first if they asked one. If a greeting was already sent, don't greet twice.
-- Match their pain to at most TWO features from the facts. Share the demo link when it helps.
+- Start by asking what their business struggles with — or answer their question first if they asked one. If a greeting was already sent, don't greet twice.
+- Match their pain to at most TWO services/features from the facts. Share the demo link when it helps.
 - When they show interest, ask for their NAME, then their PHONE (one at a time). Once you have both, call save_lead — include salon name, city and what they care about if mentioned.
 - Only say the lead is saved if save_lead returns "SUCCESS". Then confirm warmly: the team will call them soon.
 - If they ask for a human, want to negotiate, or ask beyond the facts: promise a callback and call save_lead with note "wants a human".
-The salon industry never sleeps and neither do you — but you are honest: you are the assistant, the humans call back.
 The current time is ${nowLocal} (timezone ${tz}).
 FACTS — the only things you may state as fact:
 ${aiInstruction || '(no facts loaded yet — capture the lead and let the team answer)'}`;
@@ -806,7 +822,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           properties: {
             name: { type: 'string' },
             phone: { type: 'string' },
-            salonName: { type: 'string', description: 'Their salon, if mentioned.' },
+            salonName: { type: 'string', description: 'Their business name, if mentioned.' },
             city: { type: 'string' },
             interest: { type: 'string', description: 'What they asked about: plan, POS, multi-location…' },
             note: { type: 'string', description: 'One-line summary of their situation, or "wants a human".' },
@@ -821,7 +837,20 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       },
     ];
 
-    const system = ctx.mode === 'sales' ? salesSystem : bookingSystem;
+    // The goodbye matters as much as the hello: when the chat wraps up (they
+    // thank you, say bye, or everything is done), close warmly — the owner can
+    // set the spirit of that goodbye, the bot adapts it per language/moment.
+    const closingRule = ctx.closing
+      ? `\nCLOSING: when the conversation wraps up (thanks, goodbye, or all done), end with ONE warm goodbye in the customer's language, in the spirit of: "${ctx.closing}" — adapt it naturally, never paste it robotically, never add a sales push.`
+      : `\nCLOSING: when the conversation wraps up (thanks, goodbye, or all done), end with ONE warm goodbye in the customer's language — thank them and wish them well. No sales push in the goodbye.`;
+
+    // Persona: the owner wants a named colleague, not "the assistant". The bot
+    // introduces itself by name and never volunteers being automated; asked
+    // point-blank, it does NOT lie — it pivots to "the team is right here" and
+    // offers a call, which keeps trust AND platform rules intact.
+    const personaRule = `\nPERSONA: ${ctx.agentName ? `Your name is ${ctx.agentName}. Introduce yourself by name, like any team member would — never call yourself an assistant, AI or bot. ` : ''}Never volunteer that this chat is automated. If someone asks point-blank whether you are a bot, do not lie and do not argue: say the ${ctx.mode === 'sales' ? 'team' : 'salon team'} is right behind this chat and offer a quick call back${ctx.mode === 'sales' ? ' (capture the lead)' : ''}.`;
+
+    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + closingRule;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
@@ -947,6 +976,127 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo,
       relatedType: 'sales_lead', relatedId: lead.phone,
     });
+  }
+
+  // ---- Knowledge import (website / fanpage → Bot facts) --------------------
+
+  /**
+   * Read the salon's website or its connected Facebook Page and distill the
+   * text into Bot-facts rows. IMPORT, not live browsing: the AI proposes rows,
+   * a human reviews and saves — the bot still only ever speaks from saved
+   * facts, so speed and truthfulness stay under control.
+   */
+  async importFacts(user: AuthenticatedUser, dto: { source?: string; url?: string }) {
+    const tenantId = this.tenantId(user);
+    let raw = '';
+    if (dto.source === 'paste') {
+      raw = String((dto as { text?: string }).text || '').trim().slice(0, 20000);
+      if (raw.length < 20) throw new BadRequestException('Paste a bit more content first.');
+      return this.classifyContent(raw);
+    }
+    if (dto.source === 'page') {
+      const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+      if (!conn?.pageToken || !conn.pageId) throw new BadRequestException('Connect the Facebook Page first.');
+      const info = (await fetch(
+        `https://graph.facebook.com/v21.0/${conn.pageId}?fields=name,about,description,category,website,phone,emails,single_line_address,hours&access_token=${encodeURIComponent(conn.pageToken)}`,
+      ).then((r) => r.json())) as Record<string, unknown> & { error?: { message?: string } };
+      if (info.error) throw new BadRequestException(`Meta: ${info.error.message || 'could not read the page'}`);
+      const feed = (await fetch(
+        `https://graph.facebook.com/v21.0/${conn.pageId}/feed?limit=10&fields=message&access_token=${encodeURIComponent(conn.pageToken)}`,
+      ).then((r) => r.json()).catch(() => null)) as { data?: { message?: string }[] } | null;
+      const posts = (feed?.data || []).map((pp) => pp.message).filter(Boolean).slice(0, 10);
+      raw = JSON.stringify({ pageInfo: info, recentPosts: posts }).slice(0, 20000);
+    } else {
+      const url = String(dto.url || '').trim();
+      if (!/^https?:\/\//i.test(url)) throw new BadRequestException('Enter a full address starting with https://');
+      const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+      // No internal addresses: this fetch runs from OUR server.
+      if (!host || /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':')) {
+        throw new BadRequestException('That address cannot be read.');
+      }
+      const res = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'LumioBot/1.0 (+https://lumiobooking.com)' } }).catch(() => null);
+      if (!res || !res.ok) throw new BadRequestException(`Could not load that page${res ? ` (${res.status})` : ''}.`);
+      const html = (await res.text()).slice(0, 400000);
+      raw = html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&[a-z#0-9]+;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 20000);
+    }
+    if (raw.length < 40) throw new BadRequestException('Nothing readable was found at that source.');
+    return { facts: await this.distillFacts(raw) };
+  }
+
+  /**
+   * Freeform paste: the owner dumps whatever they want the bot to carry —
+   * promos, price lists, tone notes, a favourite greeting — and the AI sorts
+   * it into the right slots. Facts stay verbatim; style goes to instruction;
+   * hello/goodbye lines are offered for the greeting/closing fields.
+   */
+  private async classifyContent(raw: string): Promise<{ facts: BotFact[]; greeting: string | null; closing: string | null; instruction: string | null }> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) throw new BadRequestException('AI is not configured on the server.');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 1800,
+        system: 'You organize a business owner\'s pasted notes for their chat assistant. Reply with ONLY a JSON object: {"facts": [{"label": string, "value": string}], "greeting": string|null, "closing": string|null, "instruction": string|null}. Rules: facts = up to 15 rows of information customers may be told — VERBATIM-faithful (prices, hours, links, names exactly as written; skip anything unclear; never invent). greeting = only if the notes suggest how to WELCOME customers: one warm line, <=200 chars, in the notes\' language. closing = only if they suggest how to THANK or say goodbye: one warm line, <=200 chars. instruction = only if the notes contain tone/style/selling rules: condensed imperative notes <=400 chars. Use null when a slot has nothing.',
+        messages: [{ role: 'user', content: raw }],
+      }),
+    });
+    if (!res.ok) throw new BadRequestException('The AI reader is busy — try again in a minute.');
+    const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+    const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join(' ');
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new BadRequestException('Could not organize that content — try pasting plainer text.');
+    try {
+      const obj = JSON.parse(m[0]) as { facts?: { label?: unknown; value?: unknown }[]; greeting?: unknown; closing?: unknown; instruction?: unknown };
+      const facts = (obj.facts || [])
+        .filter((f) => typeof f?.label === 'string' && typeof f?.value === 'string' && (f.label as string).trim() && (f.value as string).trim())
+        .slice(0, 15)
+        .map((f) => ({ label: (f.label as string).trim().slice(0, 40), value: (f.value as string).trim().slice(0, 300), on: true }));
+      const str = (v: unknown, cap: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, cap) : null);
+      return { facts, greeting: str(obj.greeting, 300), closing: str(obj.closing, 300), instruction: str(obj.instruction, 600) };
+    } catch {
+      throw new BadRequestException('Could not organize that content — try pasting plainer text.');
+    }
+  }
+
+  /** Turn raw business text into candidate fact rows. Faithful or nothing. */
+  private async distillFacts(raw: string): Promise<BotFact[]> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) throw new BadRequestException('AI is not configured on the server.');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
+        system: 'You turn raw business text into a compact fact sheet for a chat assistant. Reply with ONLY a JSON array of {"label": string, "value": string} — no prose. Up to 15 facts. Facts must be VERBATIM-faithful: prices, hours, addresses, links and names exactly as written in the source — never guess, never embellish, skip anything unclear. Prefer: what the business does/sells, plans & prices, key services, address, phone, links, hours, policies. label ≤ 30 chars, value ≤ 200 chars, in the same language as the source.',
+        messages: [{ role: 'user', content: raw }],
+      }),
+    });
+    if (!res.ok) throw new BadRequestException('The AI reader is busy — try again in a minute.');
+    const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+    const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join(' ');
+    const m = text.match(/\[[\s\S]*\]/);
+    if (!m) throw new BadRequestException('Could not extract facts from that source.');
+    try {
+      const arr = JSON.parse(m[0]) as { label?: unknown; value?: unknown }[];
+      const facts = arr
+        .filter((f) => typeof f?.label === 'string' && typeof f?.value === 'string' && (f.label as string).trim() && (f.value as string).trim())
+        .slice(0, 15)
+        .map((f) => ({ label: (f.label as string).trim().slice(0, 40), value: (f.value as string).trim().slice(0, 300), on: true }));
+      if (!facts.length) throw new Error('empty');
+      return facts;
+    } catch {
+      throw new BadRequestException('Could not extract facts from that source.');
+    }
   }
 
   // ---- Leads (sales mode) --------------------------------------------------

@@ -15,6 +15,7 @@ interface MConf {
   connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
   botMode: 'booking' | 'sales'; leadEmail: string;
+  connectTrace?: { at: string; steps: string[] } | null;
 }
 interface SalesLead {
   id: string; threadId: string | null; name: string; phone: string; salonName: string | null; city: string | null;
@@ -422,6 +423,16 @@ function Inner() {
             </button>
           )}
           <button onClick={() => setFbResult(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+      {c?.connectTrace && fbResult && !fbResult.ok && (
+        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>
+            🔬 {lang === 'vi' ? 'Chi tiết kỹ thuật lần kết nối gần nhất' : 'Last connect attempt — technical trace'} · {new Date(c.connectTrace.at).toLocaleString('en-US')}
+          </div>
+          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {c.connectTrace.steps.join('\n')}
+          </div>
         </div>
       )}
       {pickList && (

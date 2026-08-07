@@ -310,6 +310,18 @@ export class SettingsService {
     await this.writeKey(tenantId, 'messenger_oauth_stash', {});
   }
 
+  /** Last Facebook-connect attempt, step by step — shown to Support in the UI
+   *  so a failed OAuth can be diagnosed from a screenshot, no log digging. */
+  async setMessengerConnectTrace(tenantId: string, steps: string[]): Promise<void> {
+    await this.writeKey(tenantId, 'messenger_connect_trace', { at: new Date().toISOString(), steps: steps.slice(0, 40) });
+  }
+
+  async getMessengerConnectTrace(tenantId: string): Promise<{ at: string; steps: string[] } | null> {
+    const raw = await this.readKey<{ at?: string; steps?: string[] }>(tenantId, 'messenger_connect_trace', {});
+    if (!raw?.at || !Array.isArray(raw.steps)) return null;
+    return { at: raw.at, steps: raw.steps };
+  }
+
   brandingFrom(branding: unknown): Branding {
     return { ...DEFAULT_BRANDING, ...((branding as Partial<Branding>) ?? {}) };
   }

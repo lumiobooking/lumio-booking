@@ -116,6 +116,11 @@ export class MessengerService {
       verifyToken: this.verifyToken(),
       fbConfigured: Boolean(this.appId() && this.appSecret()),
       threads,
+      // Step-by-step record of the LAST connect attempt — Support-only, so a
+      // failed OAuth can be diagnosed from a screenshot.
+      connectTrace: (user.supportSession === true || user.role === UserRole.SUPER_ADMIN)
+        ? await this.settings.getMessengerConnectTrace(tenantId)
+        : null,
     };
   }
 
@@ -160,12 +165,17 @@ export class MessengerService {
     if (error) return back(`fb=error&msg=${encodeURIComponent(error)}`);
     const tenantId = this.verifyState(state);
     if (!tenantId || !code) return back('fb=error&msg=invalid_state');
+    // Every step lands in this trace; it is saved on EVERY exit and shown to
+    // the Support session in the UI — a failed connect diagnoses itself.
+    const trace: string[] = [`start ${new Date().toISOString()}`];
+    const finish = async (q: string) => { await this.settings.setMessengerConnectTrace(tenantId, trace).catch(() => undefined); return back(q); };
     try {
       const tokRes = await fetch(
         `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${this.appId()}&client_secret=${this.appSecret()}&redirect_uri=${encodeURIComponent(this.oauthRedirect())}&code=${encodeURIComponent(code)}`,
       );
       const tok = (await tokRes.json()) as { access_token?: string; error?: { message?: string } };
-      if (!tok.access_token) return back(`fb=error&msg=${encodeURIComponent(tok.error?.message || 'no_token')}`);
+      if (!tok.access_token) { trace.push(`token: FAILED — ${tok.error?.message || 'no_token'}`); return finish(`fb=error&msg=${encodeURIComponent(tok.error?.message || 'no_token')}`); }
+      trace.push('token: ok');
       const pagesRes = await fetch(
         `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
       );
@@ -174,9 +184,11 @@ export class MessengerService {
         // Meta told us exactly what is wrong — passing that through beats a
         // guessed "no pages" every time.
         this.logger.warn(`fb oauth /me/accounts error for ${tenantId}: ${pagesData.error.message || 'unknown'}`);
-        return back(`fb=error&msg=${encodeURIComponent(`accounts_error:${(pagesData.error.message || 'unknown').slice(0, 140)}`)}`);
+        trace.push(`accounts: ERROR — ${pagesData.error.message || 'unknown'}`);
+        return finish(`fb=error&msg=${encodeURIComponent(`accounts_error:${(pagesData.error.message || 'unknown').slice(0, 140)}`)}`);
       }
       let pages = pagesData.data || [];
+      trace.push(`accounts: ${pages.length} page(s)`);
       if (!pages.length) {
         // Known Meta quirk: /me/accounts often OMITS pages the user manages
         // through a Business Portfolio (exactly how an agency holds client
@@ -192,18 +204,21 @@ export class MessengerService {
             || gs.find((g) => g.scope === 'pages_messaging')?.target_ids
             || [];
           this.logger.log(`fb oauth fallback for ${tenantId}: /me/accounts empty, granular pages = ${ids.length}`);
+          trace.push(`granular scopes: ${ids.length} page id(s) ${ids.length ? '[' + ids.slice(0, 5).join(', ') + ']' : ''}`);
           const fetched: typeof pages = [];
           for (const id of ids.slice(0, 25)) {
             const pr = await fetch(
               `https://graph.facebook.com/v21.0/${id}?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
             );
             const pd = (await pr.json()) as { id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string }; error?: { message?: string } };
-            if (pd.error) { this.logger.warn(`fb oauth fallback page ${id}: ${pd.error.message || 'error'}`); continue; }
-            if (pd.id && pd.access_token) fetched.push({ id: pd.id, name: pd.name, access_token: pd.access_token, instagram_business_account: pd.instagram_business_account });
+            if (pd.error) { this.logger.warn(`fb oauth fallback page ${id}: ${pd.error.message || 'error'}`); trace.push(`page ${id}: ERROR — ${pd.error.message || 'error'}`); continue; }
+            if (pd.id && pd.access_token) { trace.push(`page ${id} (${pd.name || '?'}): token ok`); fetched.push({ id: pd.id, name: pd.name, access_token: pd.access_token, instagram_business_account: pd.instagram_business_account }); }
+            else trace.push(`page ${id}: no access_token in response`);
           }
           pages = fetched;
         } catch (e) {
           this.logger.warn(`fb oauth granular fallback failed: ${String(e).slice(0, 120)}`);
+          trace.push(`granular fallback: THREW — ${String(e).slice(0, 120)}`);
         }
       }
       if (!pages.length) {
@@ -212,9 +227,10 @@ export class MessengerService {
           const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(tok.access_token)}`);
           const perms = (await permRes.json()) as { data?: { permission: string; status: string }[] };
           const showList = perms.data?.find((pp) => pp.permission === 'pages_show_list');
-          if (showList && showList.status !== 'granted') return back('fb=error&msg=perm_declined');
+          trace.push(`permissions: ${(perms.data || []).map((pp) => `${pp.permission}=${pp.status}`).join(', ') || 'none returned'}`);
+          if (showList && showList.status !== 'granted') return finish('fb=error&msg=perm_declined');
         } catch { /* fall through to the generic hint */ }
-        return back('fb=error&msg=no_pages');
+        return finish('fb=error&msg=no_pages');
       }
       const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
       // Reconnect: keep the already-bound page. One page in the grant: obvious.
@@ -223,19 +239,22 @@ export class MessengerService {
       // pages[0] would bind a random client. Park them and let the staff pick.
       let chosen = pages.find((p) => p.id === cur?.pageId) || null;
       if (!chosen && pages.length === 1) chosen = pages[0];
+      trace.push(chosen ? `chosen: ${chosen.id} (${chosen.name || '?'})` : `multi-page: ${pages.length} candidates → staff picks`);
       if (!chosen) {
         await this.settings.setMessengerOauthStash(
           tenantId,
           pages.map((p) => ({ id: p.id, name: p.name || '', access_token: p.access_token || '', igId: p.instagram_business_account?.id || null })),
         );
-        return back('fb=pick');
+        return finish('fb=pick');
       }
       const res = await this.completeConnect(tenantId, { id: chosen.id, name: chosen.name || '', access_token: chosen.access_token || '', igId: chosen.instagram_business_account?.id || null }, cur?.greeting ?? null);
-      if (res !== 'ok') return back(`fb=error&msg=${res}`);
-      return back(`fb=connected&page=${encodeURIComponent(chosen.name || '')}`);
+      trace.push(`connect: ${res}`);
+      if (res !== 'ok') return finish(`fb=error&msg=${res}`);
+      return finish(`fb=connected&page=${encodeURIComponent(chosen.name || '')}`);
     } catch (e) {
       this.logger.warn(`fb oauth failed for tenant ${tenantId}: ${String(e).slice(0, 200)}`);
-      return back('fb=error&msg=exception');
+      trace.push(`EXCEPTION: ${String(e).slice(0, 160)}`);
+      return finish('fb=error&msg=exception');
     }
   }
 

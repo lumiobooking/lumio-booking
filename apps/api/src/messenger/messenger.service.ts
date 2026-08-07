@@ -1022,6 +1022,7 @@ FLOW:
 - Match their pain to at most TWO services/features from the facts. Share the demo link when it helps.
 - Asked about pricing or the packages in general (or comparing them): call send_price_cards — never type the whole list as text. After it succeeds, send ONE short line asking which one fits their goal.
 - Asked about ONE specific package: answer in text, 3 short lines max.
+- PRICES: before stating ANY price, call quote_price and present the three currencies from its result — USD $, CAD C$, AUD A$ (lead with the customer's currency when you know their country). Never do currency math in your head; never reply with USD alone.
 - When they show interest, ask for their NAME, then their PHONE (one at a time). Once you have both, call save_lead — include salon name, city and what they care about if mentioned.
 - Only say the lead is saved if save_lead returns "SUCCESS". Then confirm warmly: the team will call them soon.
 - If they ask for a human, want to negotiate, or ask beyond the facts: promise a callback and call save_lead with note "wants a human".
@@ -1050,6 +1051,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         name: 'get_pricing',
         description: 'Re-read the structured fact sheet (plans, prices, links) to double-check before answering.',
         input_schema: { type: 'object', properties: {}, required: [] },
+      },
+      {
+        name: 'quote_price',
+        description: 'Compute the EXACT price in USD, CAD and AUD (fixed rates, website-matched rounding). Call this EVERY time you are about to state a price — never convert currencies yourself, never quote USD alone.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            amountUsd: { type: 'number', description: 'Base USD amount: the MONTHLY price for subscriptions, or the one-time price.' },
+            billing: { type: 'string', enum: ['once', 'monthly'] },
+            months: { type: 'integer', description: 'Monthly billing only: total months. 6 → 5% off, 12 → 10% off, others → no discount.' },
+          },
+          required: ['amountUsd', 'billing'],
+        },
       },
       {
         name: 'send_price_cards',
@@ -1406,6 +1420,26 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'get_pricing') {
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
         return this.factsText(conn?.botFacts) || 'No facts configured yet — do not state any price.';
+      }
+      if (name === 'quote_price') {
+        // Website-matched maths. Fixed rates, half-up rounding to WHOLE units,
+        // conversions computed from the UNROUNDED USD total — exactly how the
+        // site does it, so chat and website can never disagree.
+        const amount = Number(input.amountUsd);
+        if (!Number.isFinite(amount) || amount <= 0) return 'ERROR: amountUsd must be a positive number.';
+        const billing = input.billing === 'monthly' ? 'monthly' : 'once';
+        const months = billing === 'monthly' ? Math.max(1, Math.round(Number(input.months) || 1)) : 1;
+        const factor = billing === 'monthly' ? (months === 12 ? 0.90 : months === 6 ? 0.95 : 1.0) : 1.0;
+        const usdRaw = amount * months * factor;
+        const half = (x: number) => Math.floor(x + 0.5);
+        const fmt = (n: number) => n.toLocaleString('en-US');
+        const usd = half(usdRaw);
+        const cad = half(usdRaw * 1.40);
+        const aud = half(usdRaw * 1.43);
+        const term = billing === 'monthly'
+          ? ` — ${months} month(s)${factor === 0.9 ? ', 10% off applied' : factor === 0.95 ? ', 5% off applied' : ''}`
+          : ' — one-time';
+        return `EXACT (matches the website): USD $${fmt(usd)} · CAD C$${fmt(cad)} · AUD A$${fmt(aud)}${term}. Quote these numbers verbatim — do not re-round or re-convert.`;
       }
       if (name === 'send_price_cards') {
         if (!ctx?.pageToken || !ctx?.senderId) return 'ERROR: cards unavailable in this context — answer in short text instead.';

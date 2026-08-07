@@ -176,9 +176,38 @@ export class MessengerService {
         this.logger.warn(`fb oauth /me/accounts error for ${tenantId}: ${pagesData.error.message || 'unknown'}`);
         return back(`fb=error&msg=${encodeURIComponent(`accounts_error:${(pagesData.error.message || 'unknown').slice(0, 140)}`)}`);
       }
-      const pages = pagesData.data || [];
+      let pages = pagesData.data || [];
       if (!pages.length) {
-        // Empty can mean two different mistakes. Ask Meta which one.
+        // Known Meta quirk: /me/accounts often OMITS pages the user manages
+        // through a Business Portfolio (exactly how an agency holds client
+        // pages). The token itself still records which pages were ticked —
+        // granular_scopes names them — so fetch those pages directly.
+        try {
+          const dbgRes = await fetch(
+            `https://graph.facebook.com/v21.0/debug_token?input_token=${encodeURIComponent(tok.access_token)}&access_token=${encodeURIComponent(`${this.appId()}|${this.appSecret()}`)}`,
+          );
+          const dbg = (await dbgRes.json()) as { data?: { granular_scopes?: { scope: string; target_ids?: string[] }[] } };
+          const gs = dbg.data?.granular_scopes || [];
+          const ids = gs.find((g) => g.scope === 'pages_show_list')?.target_ids
+            || gs.find((g) => g.scope === 'pages_messaging')?.target_ids
+            || [];
+          this.logger.log(`fb oauth fallback for ${tenantId}: /me/accounts empty, granular pages = ${ids.length}`);
+          const fetched: typeof pages = [];
+          for (const id of ids.slice(0, 25)) {
+            const pr = await fetch(
+              `https://graph.facebook.com/v21.0/${id}?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
+            );
+            const pd = (await pr.json()) as { id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string }; error?: { message?: string } };
+            if (pd.error) { this.logger.warn(`fb oauth fallback page ${id}: ${pd.error.message || 'error'}`); continue; }
+            if (pd.id && pd.access_token) fetched.push({ id: pd.id, name: pd.name, access_token: pd.access_token, instagram_business_account: pd.instagram_business_account });
+          }
+          pages = fetched;
+        } catch (e) {
+          this.logger.warn(`fb oauth granular fallback failed: ${String(e).slice(0, 120)}`);
+        }
+      }
+      if (!pages.length) {
+        // Still empty: tell apart "nothing ticked" from "permission declined".
         try {
           const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(tok.access_token)}`);
           const perms = (await permRes.json()) as { data?: { permission: string; status: string }[] };

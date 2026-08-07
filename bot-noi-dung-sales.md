@@ -32,7 +32,7 @@ Cảm ơn anh/chị đã ghé Lumio, cần gì cứ nhắn em — bên em trực
 | Booking 24/7 + POS | Khách tự đặt lịch trên web bất cứ lúc nào, không cần gọi; POS tính tiền, chia turn thợ công bằng, tích điểm khách quen |
 | AI nhắc hẹn & giữ khách | SMS/email nhắc trước hẹn — khách quên hẹn ít hẳn; tự nhắc khách lâu chưa quay lại. Bịt lỗ: doanh thu lặp lại bị bỏ quên |
 | So với agency thường | Agency thông thường dừng ở đăng bài + chạy ads, báo cáo bằng lượt thích. Lumio khép kín cả phễu: kéo khách về đúng website/booking của tiệm → AI chốt khách 24/7 → nhắc khách quay lại — báo cáo bằng số cuộc gọi, chỉ đường, booking thật |
-| Audit miễn phí | Chỉ cần link Google Maps (hoặc tên tiệm nếu không có link) + SĐT — link tự nói lên tên tiệm, đừng hỏi lại. Team kiểm tra Maps, review, social, website → gửi bản đánh giá + gói phù hợp trong 24–48h. Miễn phí, không ràng buộc |
+| Audit miễn phí | Chỉ cần link Google Maps (hoặc tên tiệm nếu không có link) + TÊN và SĐT cá nhân của khách — số trên Maps/social là số tiệm, khó gặp trực tiếp, phải xin số riêng. Link tự nói lên tên tiệm, đừng hỏi lại. Team kiểm tra → gửi bản đánh giá + gói phù hợp trong 24–48h. Miễn phí, không ràng buộc |
 | Khách nhận được gì | Không bỏ lỡ khách ngoài giờ, thêm cuộc gọi & chỉ đường từ Maps, khách cũ quay lại đều hơn, số liệu minh bạch hàng tháng |
 | Uy tín | Đội ngũ tại Mỹ chuyên ngành nail/spa/nhà hàng, đang vận hành hệ thống booking cho nhiều tiệm; thanh toán an toàn, phạm vi công việc rõ ràng, không hứa hẹn phi thực tế |
 | Hỗ trợ | Hotline (512) 886-8189 — trực 24/7 |

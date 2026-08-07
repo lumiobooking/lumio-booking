@@ -1099,7 +1099,7 @@ FLOW:
 - Match their pain to at most TWO services/features from the facts. Share the demo link when it helps.
 - Asked about pricing or the packages in general (or comparing them): call send_price_cards — never type the whole list as text. After it succeeds, send ONE short line asking which one fits their goal.
 - Asked about ONE specific package: answer in text, 3 short lines max.
-- PRICES: before stating ANY price, call quote_price and present the three currencies from its result — USD $, CAD C$, AUD A$ (lead with the customer's currency when you know their country). Never do currency math in your head; never reply with USD alone.
+- PRICES: before stating ANY price, call quote_price and quote ONLY the currency of the customer's market — Canada → C$, Australia → A$, otherwise USD $. Read their market from anything they said (city, country, "bên Canada/Úc", currency mention); if unknown, use USD. One currency per reply, woven into a natural sentence — never list several currencies unless they ask to compare, never do currency math in your head. If they later reveal a different market, requote in that currency.
 - When they show interest, ask for their NAME, then their PHONE (one at a time). Once you have both, call save_lead — include salon name, city and what they care about if mentioned.
 - Only say the lead is saved if save_lead returns "SUCCESS". Then confirm warmly: the team will call them soon.
 - If they ask for a human, want to negotiate, or ask beyond the facts: promise a callback and call save_lead with note "wants a human".
@@ -1131,7 +1131,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       },
       {
         name: 'quote_price',
-        description: 'Compute the EXACT price in USD, CAD and AUD (fixed rates, website-matched rounding). Call this EVERY time you are about to state a price — never convert currencies yourself, never quote USD alone.',
+        description: 'Compute the EXACT price in USD, CAD and AUD (fixed rates, website-matched rounding). Call this EVERY time you are about to state a price, then quote ONLY the currency of the customer\'s market (USD if unknown) — never convert currencies yourself.',
         input_schema: {
           type: 'object',
           properties: {
@@ -1169,7 +1169,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // Vietnamese small talk is understated — the tell-tale AI openers must go.
     const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Dạ tốt lắm", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real Vietnamese chat acknowledges quietly — "Dạ vâng ạ", "Dạ", "Dạ được ạ", "Oke anh/chị" — then gets straight to the point. No hype words, no cheering.`;
 
-    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + closingRule;
+    const formatRule = `\nFORMAT: Messenger shows PLAIN TEXT only — markdown is never rendered. Absolutely no **asterisks**, no # headers, no tables. Write prices and options inside natural sentences, not robotic bullet lists; if you must enumerate, short lines with "-" are the maximum.`;
+
+    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + closingRule;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
@@ -1516,7 +1518,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const term = billing === 'monthly'
           ? ` — ${months} month(s)${factor === 0.9 ? ', 10% off applied' : factor === 0.95 ? ', 5% off applied' : ''}`
           : ' — one-time';
-        return `EXACT (matches the website): USD $${fmt(usd)} · CAD C$${fmt(cad)} · AUD A$${fmt(aud)}${term}. Quote these numbers verbatim — do not re-round or re-convert.`;
+        return `EXACT (matches the website): USD $${fmt(usd)} | CAD C$${fmt(cad)} | AUD A$${fmt(aud)}${term}. Pick ONLY the currency matching the customer's market (USD if unknown) and quote it verbatim in a natural sentence — no re-rounding, no listing all three unless they asked to compare.`;
       }
       if (name === 'send_price_cards') {
         if (!ctx?.pageToken || !ctx?.senderId) return 'ERROR: cards unavailable in this context — answer in short text instead.';

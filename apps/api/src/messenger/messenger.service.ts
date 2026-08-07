@@ -143,7 +143,10 @@ export class MessengerService {
     // actually needed.
     const bizOn = process.env.FB_REQUEST_BUSINESS_SCOPE === '1' || process.env.FB_REQUEST_BUSINESS_SCOPE === 'true';
     const scope = [
-      'pages_show_list', 'pages_messaging', 'pages_manage_metadata',
+      // The standard four for a Messenger bot. pages_read_engagement is what
+      // lets us READ the ticked page (name + page access token) — without it
+      // Meta answers "#100 Object does not exist" and the connect dies.
+      'pages_show_list', 'pages_messaging', 'pages_manage_metadata', 'pages_read_engagement',
       ...(bizOn ? ['business_management'] : []),
       ...(igOn ? ['instagram_basic', 'instagram_manage_messages'] : []),
     ].join(',');

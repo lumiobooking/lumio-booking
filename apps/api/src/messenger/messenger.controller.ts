@@ -24,6 +24,19 @@ export class MessengerController {
     return this.svc.oauthUrl(user);
   }
 
+  /** Multi-page OAuth: the parked page list to pick from (names only). */
+  @Get('oauth/candidates')
+  candidates(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.oauthCandidates(user);
+  }
+
+  @Post('oauth/choose')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  choose(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pageId?: string }) {
+    return this.svc.oauthChoose(user, String(dto?.pageId || ''));
+  }
+
   @Post('settings')
   @UseGuards(FeaturePolicyGuard)
   @RequiresFeature('messengerAi')

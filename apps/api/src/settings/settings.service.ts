@@ -292,6 +292,24 @@ export class SettingsService {
     return { ...merged, onlinePaymentEnabled, businessHours: normalizeHours(merged.businessHours), daysOff: merged.daysOff ?? [] };
   }
 
+  // ---- Messenger OAuth stash (multi-page pick) ---------------------------
+  // An agency Facebook account manages MANY clients' pages, so one OAuth can
+  // return a pile of pages. The candidates wait here (15 min) while the staff
+  // picks ONE in the UI. Page tokens never leave the server.
+  async setMessengerOauthStash(tenantId: string, pages: unknown[]): Promise<void> {
+    await this.writeKey(tenantId, 'messenger_oauth_stash', { at: new Date().toISOString(), pages });
+  }
+
+  async getMessengerOauthStash(tenantId: string): Promise<{ id: string; name?: string; access_token?: string; igId?: string | null }[]> {
+    const raw = await this.readKey<{ at?: string; pages?: unknown[] }>(tenantId, 'messenger_oauth_stash', {});
+    if (!raw?.at || Date.now() - Date.parse(raw.at) > 15 * 60 * 1000) return [];
+    return (raw.pages || []) as { id: string; name?: string; access_token?: string; igId?: string | null }[];
+  }
+
+  async clearMessengerOauthStash(tenantId: string): Promise<void> {
+    await this.writeKey(tenantId, 'messenger_oauth_stash', {});
+  }
+
   brandingFrom(branding: unknown): Branding {
     return { ...DEFAULT_BRANDING, ...((branding as Partial<Branding>) ?? {}) };
   }

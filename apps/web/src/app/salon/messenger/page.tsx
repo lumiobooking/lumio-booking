@@ -213,19 +213,50 @@ function Inner() {
   const removeFact = (i: number) => setFacts((fs) => fs.filter((_, idx) => idx !== i));
 
   // Read the ?fb=connected|error the OAuth callback redirected back with.
+  // Kept in its OWN state so the initial load() (which resets `error`) can
+  // never swallow it — a failed connect must stay on screen until dismissed.
+  const [fbResult, setFbResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pickList, setPickList] = useState<{ id: string; name: string }[] | null>(null);
+  const [picking, setPicking] = useState<string | null>(null);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const fb = p.get('fb');
     if (!fb) return;
+    if (fb === 'pick') {
+      // Several pages were granted (agency account) — the staff picks one.
+      if (token) apiFetch<{ id: string; name: string }[]>('/messenger/oauth/candidates', { token }).then(setPickList).catch(() => setPickList([]));
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
     if (fb === 'connected') {
       const page = p.get('page');
-      setNotice(`${DICT.fbConnectedMsg[lang as Lang]}${page ? ` — ${page}` : ''}\n${DICT.fbSubscribedMsg[lang as Lang]}`);
+      setFbResult({ ok: true, text: `${DICT.fbConnectedMsg[lang as Lang]}${page ? ` — ${page}` : ''} ${DICT.fbSubscribedMsg[lang as Lang]}` });
     } else {
-      const msg = p.get('msg');
-      setError(`${DICT.fbErrorMsg[lang as Lang]}${msg ? `: ${decodeURIComponent(msg)}` : ''}`);
+      const code = decodeURIComponent(p.get('msg') || '');
+      const NAMED: Record<string, { vi: string; en: string }> = {
+        no_pages: { vi: 'Facebook không trả về page nào — ở bước chọn, hãy chọn ĐÚNG doanh nghiệp sở hữu page rồi tick page đó.', en: 'Facebook returned no Pages — in the dialog, pick the business that OWNS the page, then tick the page.' },
+        page_in_use: { vi: 'Page này đang được kết nối cho một tiệm khác trong hệ thống. Ngắt kết nối ở tiệm đó trước, hoặc chọn page khác.', en: 'This Page is already connected to another salon in the system. Disconnect it there first, or pick a different Page.' },
+        invalid_state: { vi: 'Phiên kết nối hết hạn — bấm Connect và làm lại trong một mạch.', en: 'The connect session expired — press Connect and finish in one go.' },
+        no_page_token: { vi: 'Meta không cấp token cho page — thử lại và cấp đủ quyền được hỏi.', en: 'Meta did not issue a page token — retry and grant all requested permissions.' },
+        exception: { vi: 'Lỗi không xác định phía máy chủ — thử lại; nếu vẫn lỗi, xem log lumio-api trên Render.', en: 'Unexpected server error — retry; if it persists, check the lumio-api logs on Render.' },
+      };
+      const friendly = NAMED[code]?.[lang as Lang];
+      setFbResult({ ok: false, text: `${DICT.fbErrorMsg[lang as Lang]}${code ? `: ${code}` : ''}${friendly ? ` — ${friendly}` : ''}` });
     }
     window.history.replaceState(null, '', window.location.pathname);
-  }, [lang]);
+  }, [lang, token]);
+
+  async function choosePage(id: string) {
+    if (!token || picking) return;
+    setPicking(id);
+    try {
+      const conf = await apiFetch<MConf>('/messenger/oauth/choose', { method: 'POST', token, body: { pageId: id } });
+      setC(conf); setPickList(null);
+      setFbResult({ ok: true, text: `${DICT.fbConnectedMsg[lang as Lang]} — ${conf.pageName || ''} ${DICT.fbSubscribedMsg[lang as Lang]}` });
+    } catch (e) {
+      setFbResult({ ok: false, text: e instanceof Error ? e.message : 'Could not connect this page' });
+    } finally { setPicking(null); }
+  }
 
   async function connectFacebook() {
     if (!token) return;
@@ -369,6 +400,40 @@ function Inner() {
 
   return (
     <section style={{ maxWidth: 820 }}>
+      {fbResult && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: fbResult.ok ? '#052e1e' : '#7f1d1d', color: fbResult.ok ? '#bbf7d0' : '#fecaca', border: `1px solid ${fbResult.ok ? '#10b981' : '#ef4444'}`, borderRadius: 10, padding: '11px 14px', fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
+          <span style={{ flex: 1 }}>{fbResult.ok ? '✅ ' : '⚠️ '}{fbResult.text}</span>
+          <button onClick={() => setFbResult(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+      {pickList && (
+        <div style={{ ...ui.card, marginBottom: 16, border: '1px solid #6366f1' }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
+            {lang === 'vi' ? '📄 Facebook cấp nhiều page — chọn ĐÚNG page của tiệm này' : '📄 Facebook granted several Pages — pick THIS salon\'s page'}
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>
+            {lang === 'vi' ? 'Tài khoản của bạn quản lý nhiều page khách. Chỉ page được chọn mới gắn vào tiệm đang setup — các page khác không bị ảnh hưởng.' : 'Your account manages many client pages. Only the page you pick is bound to the salon being set up — the rest are untouched.'}
+          </p>
+          {pickList.length === 0 ? (
+            <p style={{ color: '#f59e0b', fontSize: 13 }}>{lang === 'vi' ? 'Danh sách đã hết hạn — bấm Connect làm lại.' : 'The list expired — press Connect and run the flow again.'}</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {pickList.map((pg) => (
+                <div key={pg.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.name}</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>{pg.id}</div>
+                  </div>
+                  <button onClick={() => choosePage(pg.id)} disabled={!!picking}
+                    style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: picking && picking !== pg.id ? 0.5 : 1 }}>
+                    {picking === pg.id ? '…' : (lang === 'vi' ? 'Dùng page này' : 'Use this page')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('title')}</h1>
       <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}

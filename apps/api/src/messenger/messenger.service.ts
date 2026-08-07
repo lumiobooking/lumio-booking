@@ -163,26 +163,86 @@ export class MessengerService {
       const pages = pagesData.data || [];
       if (!pages.length) return back('fb=error&msg=no_pages');
       const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-      const chosen = pages.find((p) => p.id === cur?.pageId) || pages[0];
-      if (!chosen.access_token) return back('fb=error&msg=no_page_token');
-      const igId = chosen.instagram_business_account?.id || null;
-      await this.prisma.messengerConnection.upsert({
-        where: { tenantId },
-        update: { pageId: chosen.id, igId, pageToken: chosen.access_token, pageName: chosen.name || null, enabled: true },
-        create: { tenantId, pageId: chosen.id, igId, pageToken: chosen.access_token, pageName: chosen.name || null, enabled: true },
-      });
-      // Subscribe the Page to our app's webhook so messages start flowing.
-      await fetch(
-        `https://graph.facebook.com/v21.0/${chosen.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions&access_token=${encodeURIComponent(chosen.access_token)}`,
-        { method: 'POST' },
-      ).catch(() => undefined);
-      await this.setupMessengerProfile(chosen.access_token, cur?.greeting ?? null);
-      await this.audit(tenantId, 'messenger.connected');
+      // Reconnect: keep the already-bound page. One page in the grant: obvious.
+      // SEVERAL pages and none is ours: an agency account manages many clients'
+      // pages (and Meta re-sends every previously granted one) — auto-taking
+      // pages[0] would bind a random client. Park them and let the staff pick.
+      let chosen = pages.find((p) => p.id === cur?.pageId) || null;
+      if (!chosen && pages.length === 1) chosen = pages[0];
+      if (!chosen) {
+        await this.settings.setMessengerOauthStash(
+          tenantId,
+          pages.map((p) => ({ id: p.id, name: p.name || '', access_token: p.access_token || '', igId: p.instagram_business_account?.id || null })),
+        );
+        return back('fb=pick');
+      }
+      const res = await this.completeConnect(tenantId, { id: chosen.id, name: chosen.name || '', access_token: chosen.access_token || '', igId: chosen.instagram_business_account?.id || null }, cur?.greeting ?? null);
+      if (res !== 'ok') return back(`fb=error&msg=${res}`);
       return back(`fb=connected&page=${encodeURIComponent(chosen.name || '')}`);
     } catch (e) {
-      this.logger.warn(`fb oauth failed: ${String(e).slice(0, 160)}`);
+      this.logger.warn(`fb oauth failed for tenant ${tenantId}: ${String(e).slice(0, 200)}`);
       return back('fb=error&msg=exception');
     }
+  }
+
+  /** Bind ONE page to the tenant: clash checks, token save, webhook subscribe,
+   *  Get Started profile. Shared by the auto path and the manual page pick. */
+  private async completeConnect(
+    tenantId: string,
+    page: { id: string; name: string; access_token: string; igId: string | null },
+    greeting: string | null,
+  ): Promise<'ok' | 'page_in_use' | 'no_page_token'> {
+    if (!page.access_token) return 'no_page_token';
+    // One page belongs to ONE tenant. A clash used to blow up as a unique-key
+    // "exception" nobody could read — name the real problem instead.
+    const clash = await this.prisma.messengerConnection.findUnique({ where: { pageId: page.id }, select: { tenantId: true } });
+    if (clash && clash.tenantId !== tenantId) {
+      this.logger.warn(`fb oauth: page ${page.id} already bound to another tenant (wanted ${tenantId})`);
+      return 'page_in_use';
+    }
+    let igId = page.igId;
+    if (igId) {
+      const igClash = await this.prisma.messengerConnection.findUnique({ where: { igId }, select: { tenantId: true } });
+      if (igClash && igClash.tenantId !== tenantId) igId = null; // keep FB, skip the shared IG
+    }
+    await this.prisma.messengerConnection.upsert({
+      where: { tenantId },
+      update: { pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
+      create: { tenantId, pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
+    });
+    // Subscribe the Page to our app's webhook so messages start flowing.
+    await fetch(
+      `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions&access_token=${encodeURIComponent(page.access_token)}`,
+      { method: 'POST' },
+    ).catch(() => undefined);
+    await this.setupMessengerProfile(page.access_token, greeting);
+    await this.audit(tenantId, 'messenger.connected');
+    return 'ok';
+  }
+
+  /** The parked pages from a multi-page OAuth — names only, tokens stay server-side. */
+  async oauthCandidates(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const pages = await this.settings.getMessengerOauthStash(tenantId);
+    return pages.map((p) => ({ id: p.id, name: p.name || p.id }));
+  }
+
+  /** Staff picked a page — finish the connection with the parked token. */
+  async oauthChoose(user: AuthenticatedUser, pageId: string) {
+    const tenantId = this.tenantId(user);
+    const pages = await this.settings.getMessengerOauthStash(tenantId);
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) throw new BadRequestException('That page is no longer available — press Connect and run the flow again.');
+    const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { greeting: true } });
+    const res = await this.completeConnect(
+      tenantId,
+      { id: page.id, name: page.name || '', access_token: page.access_token || '', igId: page.igId ?? null },
+      cur?.greeting ?? null,
+    );
+    if (res === 'page_in_use') throw new BadRequestException('This Page is already connected to another salon in the system. Disconnect it there first.');
+    if (res === 'no_page_token') throw new BadRequestException('Meta did not issue a token for this Page — reconnect and grant all permissions.');
+    await this.settings.clearMessengerOauthStash(tenantId);
+    return this.get(user);
   }
 
   private async audit(tenantId: string, action: string): Promise<void> {

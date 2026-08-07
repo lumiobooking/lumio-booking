@@ -1,0 +1,2 @@
+ALTER TABLE "messenger_connections" ADD COLUMN IF NOT EXISTS "humanActiveMins" INTEGER NOT NULL DEFAULT 15;
+ALTER TABLE "messenger_connections" ADD COLUMN IF NOT EXISTS "graceMins" INTEGER NOT NULL DEFAULT 5;

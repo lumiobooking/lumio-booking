@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,7 +48,35 @@ const MAX_TURNS = 12; // history cap
 const MAX_TOOL_LOOPS = 5;
 
 @Injectable()
-export class MessengerService {
+export class MessengerService implements OnModuleInit {
+  /**
+   * Existing pages were subscribed WITHOUT message_echoes (the field that
+   * carries human replies from the Page inbox), so the bot could not yield.
+   * One quiet sweep after boot re-subscribes every connected page with the
+   * full set. Idempotent and best-effort — a failed page just stays as-is.
+   */
+  onModuleInit(): void {
+    const t = setTimeout(() => {
+      void this.resubscribeAllPages().catch((e) => this.logger.warn(`echo resubscribe sweep failed: ${String(e).slice(0, 120)}`));
+    }, 90 * 1000); // well after boot
+    t.unref?.();
+  }
+
+  private async resubscribeAllPages(): Promise<void> {
+    const FIELDS = 'messages,messaging_postbacks,message_reactions,message_echoes';
+    const seen = new Set<string>();
+    const subscribe = async (pageId: string, token: string) => {
+      if (!pageId || !token || seen.has(pageId)) return;
+      seen.add(pageId);
+      await fetch(`${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${FIELDS}&access_token=${encodeURIComponent(token)}`, { method: 'POST' }).catch(() => undefined);
+    };
+    const pages = await this.prisma.messengerPage.findMany({ select: { pageId: true, pageToken: true } }).catch(() => []);
+    for (const pg of pages) await subscribe(pg.pageId, pg.pageToken);
+    const legacy = await this.prisma.messengerConnection.findMany({ where: { enabled: true }, select: { pageId: true, pageToken: true } }).catch(() => []);
+    for (const c of legacy) await subscribe(c.pageId, c.pageToken);
+    this.logger.log(`Echo resubscribe sweep done: ${seen.size} page(s).`);
+  }
+
   private readonly logger = new Logger('Messenger');
 
   constructor(
@@ -110,6 +138,8 @@ export class MessengerService {
       closing: (c as unknown as { closing?: string | null } | null)?.closing ?? '',
       agentName: (c as unknown as { agentName?: string | null } | null)?.agentName ?? '',
       bizIntro: (c as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? '',
+      humanActiveMins: (c as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15,
+      graceMins: (c as unknown as { graceMins?: number } | null)?.graceMins ?? 5,
       aiInstruction: c?.aiInstruction ?? '',
       botFacts: Array.isArray(c?.botFacts) ? (c!.botFacts as unknown as BotFact[]) : [],
       botMode: ((c as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' : 'booking'),
@@ -331,7 +361,7 @@ export class MessengerService {
     }
     // Subscribe the Page to our app's webhook so messages start flowing.
     await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions&access_token=${encodeURIComponent(page.access_token)}`,
+      `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes&access_token=${encodeURIComponent(page.access_token)}`,
       { method: 'POST' },
     ).catch(() => undefined);
     await this.setupMessengerProfile(page.access_token, greeting);
@@ -436,7 +466,7 @@ export class MessengerService {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; closing?: string; agentName?: string; bizIntro?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string },
+    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; closing?: string; agentName?: string; bizIntro?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string; humanActiveMins?: number; graceMins?: number },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -452,6 +482,8 @@ export class MessengerService {
       closing: typeof dto.closing === 'string' ? (dto.closing.trim().slice(0, 500) || null) : ((cur as unknown as { closing?: string | null } | null)?.closing ?? null),
       agentName: typeof dto.agentName === 'string' ? (dto.agentName.trim().slice(0, 80) || null) : ((cur as unknown as { agentName?: string | null } | null)?.agentName ?? null),
       bizIntro: typeof dto.bizIntro === 'string' ? (dto.bizIntro.trim().slice(0, 300) || null) : ((cur as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? null),
+      humanActiveMins: Number.isInteger(dto.humanActiveMins) ? Math.min(720, Math.max(1, dto.humanActiveMins as number)) : ((cur as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15),
+      graceMins: Number.isInteger(dto.graceMins) ? Math.min(60, Math.max(0, dto.graceMins as number)) : ((cur as unknown as { graceMins?: number } | null)?.graceMins ?? 5),
       aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur?.aiInstruction ?? null,
       botFacts: (Array.isArray(dto.botFacts) ? dto.botFacts.slice(0, 40) : (cur?.botFacts ?? [])) as unknown as Prisma.InputJsonValue,
       // The mode is a PLATFORM decision (a mis-flip turns a salon's booking bot
@@ -817,8 +849,11 @@ export class MessengerService {
       // Net effect: a customer never waits more than 5 minutes, ever.
       const at = (thread as unknown as { handoffAt?: Date | null }).handoffAt;
       const activeAgo = at ? Date.now() - new Date(at).getTime() : Number.POSITIVE_INFINITY;
-      if (activeAgo < MessengerService.HUMAN_ACTIVE_MS) {
-        this.scheduleGraceReply(thread.id, text, eventTs, at ? new Date(at).getTime() : 0);
+      const tune = conn as unknown as { humanActiveMins?: number; graceMins?: number };
+      const activeMs = Math.max(1, tune.humanActiveMins ?? 15) * 60_000;
+      const graceMs = Math.max(0, tune.graceMins ?? 5) * 60_000;
+      if (activeAgo < activeMs && graceMs > 0) {
+        this.scheduleGraceReply(thread.id, text, eventTs, at ? new Date(at).getTime() : 0, graceMs);
         return;
       }
       await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { handoff: false, handoffAt: null } as never });
@@ -827,10 +862,8 @@ export class MessengerService {
     await this.replyAndRecord({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs);
   }
 
-  /** Human considered "in the chat" for this long after their last message. */
-  private static readonly HUMAN_ACTIVE_MS = 15 * 60 * 1000;
-  /** How long an active human gets to answer a fresh customer message. */
-  private static readonly GRACE_MS = 5 * 60 * 1000;
+  // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
+  // the connection); 15 and 5 minutes are just the defaults.
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
 
   /**
@@ -839,7 +872,7 @@ export class MessengerService {
    * newer stamp and stands down. A newer customer message replaces the timer,
    * so the bot answers the LATEST message once, not every queued one.
    */
-  private scheduleGraceReply(threadId: string, text: string, eventTs: number | undefined, stampAtSchedule: number): void {
+  private scheduleGraceReply(threadId: string, text: string, eventTs: number | undefined, stampAtSchedule: number, graceMs: number): void {
     const prev = this.graceTimers.get(threadId);
     if (prev) clearTimeout(prev);
     const timer = setTimeout(() => {
@@ -857,7 +890,7 @@ export class MessengerService {
         await this.prisma.messengerThread.update({ where: { id: threadId }, data: { handoff: false, handoffAt: null } as never }).catch(() => undefined);
         await this.replyAndRecord({ ...conn, pageToken: token }, threadId, th.senderId, text, eventTs);
       })().catch((e) => this.logger.warn(`grace reply failed: ${String(e).slice(0, 120)}`));
-    }, MessengerService.GRACE_MS);
+    }, graceMs);
     timer.unref?.();
     this.graceTimers.set(threadId, timer);
   }

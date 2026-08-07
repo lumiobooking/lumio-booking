@@ -16,6 +16,7 @@ interface MConf {
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
   botMode: 'booking' | 'sales'; leadEmail: string; closing: string; agentName: string; bizIntro: string;
   pages: { pageId: string; pageName: string | null; igId: string | null; enabled: boolean; createdAt: string }[];
+  humanActiveMins: number; graceMins: number;
   connectTrace?: { at: string; steps: string[] } | null;
 }
 interface SalesLead {
@@ -373,7 +374,7 @@ function Inner() {
     setSaving(true); setError(null); setSaved(false);
     try {
       const next = await apiFetch<MConf>('/messenger/settings', { method: 'POST', token, body: {
-        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, closing: c.closing, agentName: c.agentName, bizIntro: c.bizIntro, aiInstruction: c.aiInstruction, botMode: c.botMode, leadEmail: c.leadEmail, ...patch,
+        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, closing: c.closing, agentName: c.agentName, bizIntro: c.bizIntro, aiInstruction: c.aiInstruction, botMode: c.botMode, leadEmail: c.leadEmail, humanActiveMins: c.humanActiveMins, graceMins: c.graceMins, ...patch,
       } });
       setC(next); setPageToken(''); setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch (e) { setError(e instanceof Error ? e.message : 'Save failed'); }
@@ -788,6 +789,25 @@ function Inner() {
           {lang === 'vi'
             ? 'Đặt tên là bot nói chuyện như một nhân viên thật, không tự nhận là trợ lý. Nếu khách hỏi thẳng "bot hả?", bot không nói dối — nó khéo léo mời gọi lại ngay và ghi lead.'
             : 'With a name set, the bot speaks as a real team member and never calls itself an assistant. Asked point-blank "is this a bot?", it won\u2019t lie — it gracefully offers an instant call back and logs the lead.'}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12, maxWidth: 460 }}>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Nhân viên "đang trực" trong (phút)' : 'Staff counts as active for (min)'}</label>
+            <input type="number" min={1} max={720} value={c.humanActiveMins}
+              onChange={(e) => setC({ ...c, humanActiveMins: Math.min(720, Math.max(1, Number(e.target.value) || 15)) })}
+              onBlur={() => save({})} style={ui.input} />
+          </div>
+          <div>
+            <label style={ui.label}>{lang === 'vi' ? 'Bot nhường người thật (phút)' : 'Bot yields to a human for (min)'}</label>
+            <input type="number" min={0} max={60} value={c.graceMins}
+              onChange={(e) => setC({ ...c, graceMins: Math.min(60, Math.max(0, Number(e.target.value) || 0)) })}
+              onBlur={() => save({})} style={ui.input} />
+          </div>
+        </div>
+        <p style={{ color: '#64748b', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
+          {lang === 'vi'
+            ? 'Nhân viên vừa nhắn trong X phút thì mỗi tin mới của khách được nhường Y phút cho người thật; hết Y phút bot trả lời. Nhân viên im quá X phút thì bot trực lại ngay. Y = 0 nghĩa là bot không chờ.'
+            : 'If staff messaged within X minutes, each new customer message waits Y minutes for a human; then the bot answers. Staff idle past X minutes → bot resumes instantly. Y = 0 means the bot never waits.'}
         </p>
         <label style={ui.label}>{t('greeting')}</label>
         <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />

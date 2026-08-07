@@ -1514,6 +1514,8 @@ model MessengerConnection {
   greeting  String? // optional opening line
   closing   String? // optional goodbye/thank-you spirit the bot adapts when a chat wraps up
   agentName String? // persona: the bot introduces itself with this human name (never "assistant")
+  humanActiveMins Int @default(15) // staff counts as "in the chat" this long after their last message
+  graceMins       Int @default(5)  // how long an active staffer gets to answer before the bot steps in
   bizIntro  String? // one-line business description the bot uses when introducing the company
   aiInstruction String? // brand-voice / extra guidance for the bot
   botFacts  Json  @default("[]") // structured FAQ facts [{label,value,on}] injected into the bot

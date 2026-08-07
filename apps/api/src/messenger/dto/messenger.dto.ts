@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, IsIn } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, IsIn, IsInt, Min } from 'class-validator';
 
 export class UpdateMessengerDto {
   @IsOptional() @IsString() @MaxLength(60) pageId?: string;
@@ -9,6 +9,10 @@ export class UpdateMessengerDto {
   @IsOptional() @IsString() @MaxLength(500) closing?: string;
   @IsOptional() @IsString() @MaxLength(80) agentName?: string;
   @IsOptional() @IsString() @MaxLength(300) bizIntro?: string;
+  // Yield tuning: how long a human "owns" the chat, and the grace the bot
+  // gives them per new customer message. grace 0 = bot never waits.
+  @IsOptional() @IsInt() @Min(1) @Max(720) humanActiveMins?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(60) graceMins?: number;
   @IsOptional() @IsString() @MaxLength(2000) aiInstruction?: string;
   // Structured FAQ facts [{ label, value, on }] the salon ticks; loose array
   // validation (nested shape is sanitized in the service).

@@ -1101,6 +1101,8 @@ FLOW:
 - Asked about ONE specific package: answer in text, 3 short lines max.
 - PRICES: before stating ANY price, call quote_price and quote ONLY the currency of the customer's market — Canada → C$, Australia → A$, otherwise USD $. Read their market from anything they said (city, country, "bên Canada/Úc", currency mention); if unknown, use USD. One currency per reply, woven into a natural sentence — never list several currencies unless they ask to compare, never do currency math in your head. If they later reveal a different market, requote in that currency.
 - When they show interest, ask for their NAME, then their PHONE (one at a time). Once you have both, call save_lead — include salon name, city and what they care about if mentioned.
+- NEVER ask for anything already given or already inside something they shared. A Google Maps / website / Facebook link they sent IS their business identity: pass the link as salonName in save_lead and do NOT ask for the salon name or city afterwards — the team opens the link. Every redundant question makes you feel like a form, not a person.
+- LINKS: you cannot open links. Never say you viewed/checked one — say you've received it and the team will look at it. Receiving a Maps link + a phone number is a COMPLETE audit request.
 - Only say the lead is saved if save_lead returns "SUCCESS". Then confirm warmly: the team will call them soon.
 - If they ask for a human, want to negotiate, or ask beyond the facts: promise a callback and call save_lead with note "wants a human".
 The current time is ${nowLocal} (timezone ${tz}).
@@ -1116,7 +1118,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           properties: {
             name: { type: 'string' },
             phone: { type: 'string' },
-            salonName: { type: 'string', description: 'Their business name, if mentioned.' },
+            salonName: { type: 'string', description: 'Their business name — or the Google Maps/website link they shared, verbatim. A link counts fully; never ask for the name when you have a link.' },
             city: { type: 'string' },
             interest: { type: 'string', description: 'What they asked about: plan, POS, multi-location…' },
             note: { type: 'string', description: 'One-line summary of their situation, or "wants a human".' },

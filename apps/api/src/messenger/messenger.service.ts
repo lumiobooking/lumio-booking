@@ -58,6 +58,7 @@ export class MessengerService implements OnModuleInit {
   onModuleInit(): void {
     const t = setTimeout(() => {
       void this.resubscribeAllPages().catch((e) => this.logger.warn(`echo resubscribe sweep failed: ${String(e).slice(0, 120)}`));
+      void this.ensureAppSubscription().catch((e) => this.logger.warn(`app subscription sweep failed: ${String(e).slice(0, 120)}`));
     }, 90 * 1000); // well after boot
     t.unref?.();
   }
@@ -624,6 +625,66 @@ export class MessengerService implements OnModuleInit {
     return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso };
   }
 
+  /**
+   * Meta only delivers a webhook field when BOTH levels subscribe to it: the
+   * APP-level subscription (App Dashboard) and the page-level subscribed_apps.
+   * Pages are handled by resubscribeAllPages(); this repairs the APP level —
+   * message_echoes was never ticked in the dashboard, so human replies from
+   * the Page inbox were invisible and the bot kept talking over staff.
+   * Reads the existing subscription (its exact callback_url), unions the
+   * fields and re-POSTs with our verify token. Meta re-verifies the callback
+   * via GET, which our webhook answers. Cached 10 minutes.
+   */
+  private appSubCache: { at: number; fields: string[]; echoOk: boolean } | null = null;
+  private async ensureAppSubscription(force = false): Promise<{ fields: string[]; echoOk: boolean }> {
+    if (!force && this.appSubCache && Date.now() - this.appSubCache.at < 10 * 60_000) {
+      return { fields: this.appSubCache.fields, echoOk: this.appSubCache.echoOk };
+    }
+    const out = { fields: [] as string[], echoOk: false };
+    try {
+      const id = this.appId();
+      const secret = this.appSecret();
+      if (!id || !secret) return out;
+      const token = `${id}|${secret}`;
+      const res = await fetch(`${GRAPH}/${id}/subscriptions?access_token=${encodeURIComponent(token)}`);
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { object?: string; callback_url?: string; fields?: ({ name?: string } | string)[] }[];
+      };
+      const sub = (json.data || []).find((d) => d.object === 'page');
+      const names = (sub?.fields || [])
+        .map((f) => (typeof f === 'string' ? f : f?.name || ''))
+        .filter(Boolean);
+      out.fields = names;
+      const need = ['messages', 'messaging_postbacks', 'message_echoes'];
+      const missing = need.filter((n) => !names.includes(n));
+      if (!missing.length) {
+        out.echoOk = true;
+      } else if (sub?.callback_url) {
+        const fields = Array.from(new Set([...names, ...need, 'message_reactions'])).join(',');
+        const body = new URLSearchParams({
+          object: 'page',
+          callback_url: sub.callback_url,
+          fields,
+          verify_token: this.verifyToken(),
+          access_token: token,
+        });
+        const fix = await fetch(`${GRAPH}/${id}/subscriptions`, { method: 'POST', body });
+        const fixJson = (await fix.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
+        if (fixJson.success) {
+          out.fields = fields.split(',');
+          out.echoOk = true;
+          this.logger.log(`app webhook subscription repaired: added ${missing.join(', ')}`);
+        } else {
+          this.logger.warn(`app webhook repair refused: ${String(fixJson.error?.message || 'unknown').slice(0, 160)}`);
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`app subscription check failed: ${String(e).slice(0, 120)}`);
+    }
+    this.appSubCache = { at: Date.now(), ...out };
+    return out;
+  }
+
   /** Verify the connected Page is subscribed to our app's webhook (the
    *  pages_manage_metadata use case) and return the Page name + subscribed fields.
    *  This reads GET /{page-id}/subscribed_apps straight from the Graph API so the
@@ -651,12 +712,15 @@ export class MessengerService implements OnModuleInit {
     } catch (e) {
       this.logger.warn(`webhook status check failed: ${String(e).slice(0, 120)}`);
     }
+    const appSub = await this.ensureAppSubscription(true);
     return {
       connected: true as const,
       pageId: c.pageId,
       pageName,
       subscribed,
       fields,
+      appFields: appSub.fields,
+      echoOk: appSub.echoOk && fields.includes('message_echoes'),
       verifiedAt: new Date().toISOString(),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
     };
@@ -923,6 +987,19 @@ export class MessengerService implements OnModuleInit {
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
       reply = 'Thanks for your message! A team member will get back to you shortly. 💕';
+    }
+    // A human may have taken over WHILE we were generating (their echo flips
+    // handoff on this thread). Sending now would talk over them — drop the
+    // reply, keep only the customer's turn so context survives.
+    const guard = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { handoff: true } }).catch(() => null);
+    if (guard?.handoff) {
+      const inAtDrop = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+      const histDrop = [...history, { role: 'user', content: text, at: inAtDrop }].slice(-MAX_TURNS);
+      await this.prisma.messengerThread.update({
+        where: { id: threadId },
+        data: { history: histDrop as unknown as Prisma.InputJsonValue },
+      }).catch(() => undefined);
+      return;
     }
     await this.sendText(conn.pageToken, senderId, reply);
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.

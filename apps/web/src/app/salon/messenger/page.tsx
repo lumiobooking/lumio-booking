@@ -25,7 +25,7 @@ interface SalesLead {
 }
 interface MThread { id: string; senderId: string; senderName?: string | null; lastText: string | null; handoff: boolean; updatedAt: string }
 interface FactRow extends BotFact { custom: boolean }
-interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; verifiedAt?: string; webhookUrl?: string }
+interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string }
 interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean }
 interface ActivityRes { page: string; pageId: string; events: ActivityEv[] }
 
@@ -602,6 +602,13 @@ function Inner() {
               {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
             </div>
             {wh?.verifiedAt && <div style={{ color: '#64748b', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString('en-US')}</div>}
+            {typeof wh?.echoOk === 'boolean' && (
+              <div style={{ color: wh.echoOk ? '#34d399' : '#f59e0b', marginTop: 6 }}>
+                {wh.echoOk
+                  ? (lang === 'vi' ? '\u2713 Nh\u1eadn di\u1ec7n tin nh\u00e2n vi\u00ean (message_echoes): ho\u1ea1t \u0111\u1ed9ng \u2014 bot t\u1ef1 nh\u01b0\u1eddng khi ng\u01b0\u1eddi th\u1eadt tr\u1ea3 l\u1eddi' : '\u2713 Staff-reply detection (message_echoes): active \u2014 the bot yields when a human answers')
+                  : (lang === 'vi' ? '\u26a0 Nh\u1eadn di\u1ec7n tin nh\u00e2n vi\u00ean (message_echoes): CH\u01afA b\u1eadt \u2014 h\u1ec7 th\u1ed1ng \u0111ang t\u1ef1 s\u1eeda, b\u1ea5m l\u00e0m m\u1edbi trang sau 1 ph\u00fat; n\u1ebfu v\u1eabn c\u1ea3nh b\u00e1o, ki\u1ec3m tra Meta App \u2192 Messenger \u2192 Webhooks' : '\u26a0 Staff-reply detection (message_echoes): NOT enabled \u2014 auto-repair is running, refresh in a minute; if it persists check Meta App \u2192 Messenger \u2192 Webhooks')}
+              </div>
+            )}
           </div>
           {!wh?.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
           {(c.pages?.length ?? 0) > 0 && (

@@ -11,7 +11,7 @@ Vy
 agency marketing & công nghệ tại Mỹ cho tiệm nail, spa, nhà hàng — social, Google Maps, website và hệ thống đặt lịch + AI chăm khách 24/7
 
 ## 3. Câu chào (ô "Greeting")
-Chào anh/chị! Em là Trang bên Lumio Agency 👋 Bên em làm marketing, website cho tiệm nail, spa, nhà hàng — và hệ thống đặt lịch + AI + POS bên em đang cho các tiệm dùng MIỄN PHÍ. Tiệm mình đang cần thêm khách hay đang vướng khâu nào ạ?
+Chào anh/chị! Em là Trang bên Lumio Agency 👋 Bên em đang có 2 thứ MIỄN PHÍ cho các tiệm: hệ thống đặt lịch + AI + POS, và bản audit chấm điểm tiệm trên Google trong 24–48h. Tiệm mình đang kinh doanh mảng nào để em tư vấn đúng ạ?
 
 ## 4. Câu kết thúc (ô "Câu kết thúc / cảm ơn")
 Cảm ơn anh/chị đã ghé Lumio, cần gì cứ nhắn em — bên em trực 24/7 ạ!
@@ -35,7 +35,7 @@ Cảm ơn anh/chị đã ghé Lumio, cần gì cứ nhắn em — bên em trực
 | AI tổng đài (hotline) | Tiệm bận không bắt máy → AI nghe, trả lời giờ mở cửa/giá/dịch vụ và ghi lịch. Bịt lỗ: mỗi cuộc gọi nhỡ là một khách rơi vào tay tiệm bên cạnh |
 | Booking 24/7 + POS | Khách tự đặt lịch trên web bất cứ lúc nào, không cần gọi; POS tính tiền, chia turn thợ công bằng, tích điểm khách quen. Hiện đang MIỄN PHÍ cho các tiệm |
 | AI nhắc hẹn & giữ khách | SMS/email nhắc trước hẹn — khách quên hẹn ít hẳn; tự nhắc khách lâu chưa quay lại. Bịt lỗ: doanh thu lặp lại bị bỏ quên |
-| So với agency thường | Agency thường dừng ở đăng bài + chạy ads, báo cáo bằng lượt thích. Lumio có thứ họ không có: hệ booking + AI chính chủ — AI tổng đài nghe máy khi tiệm bận, AI Messenger trực page 24/7 chốt lịch thẳng vào hệ thống, tự nhắc hẹn + mời khách review Google sau buổi làm. Marketing kéo khách tới, AI giữ không lọt một khách nào; báo cáo bằng cuộc gọi, chỉ đường, booking thật |
+| Vì sao hơn đối thủ | Agency thường: đăng bài + chạy ads rồi dừng — không có hệ thống nhận khách, tin nhắn buổi tối và cuộc gọi lúc đông khách rơi hết, báo cáo bằng lượt thích. Phần mềm đặt lịch thông thường: có lịch nhưng không kéo khách mới, không có AI trả lời tin nhắn/điện thoại, vẫn thu phí tháng. Thuê người trực page/điện thoại: chỉ làm theo giờ, chi phí cao. Lumio gộp cả ba thành một mối: marketing kéo khách tới + AI Messenger & AI tổng đài trực 24/7 chốt lịch thẳng vào hệ thống + booking/POS vận hành tiệm — phần hệ thống đang MIỄN PHÍ, báo cáo bằng cuộc gọi/booking thật |
 | Audit miễn phí | Chỉ cần link Google Maps (hoặc tên tiệm nếu không có link) + TÊN và SĐT cá nhân của khách — số trên Maps/social là số tiệm, khó gặp trực tiếp, phải xin số riêng. Link tự nói lên tên tiệm, đừng hỏi lại. Team kiểm tra → gửi bản đánh giá + gói phù hợp trong 24–48h. Miễn phí, không ràng buộc |
 | Khách nhận được gì | Không bỏ lỡ khách ngoài giờ, thêm cuộc gọi & chỉ đường từ Maps, khách cũ quay lại đều hơn, số liệu minh bạch hàng tháng |
 | Uy tín | Đội ngũ tại Mỹ chuyên ngành nail/spa/nhà hàng, đang vận hành hệ thống booking cho nhiều tiệm; thanh toán an toàn, phạm vi công việc rõ ràng, không hứa hẹn phi thực tế |

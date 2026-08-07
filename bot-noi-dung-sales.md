@@ -20,17 +20,20 @@ Cảm ơn anh/chị đã ghé Lumio, cần gì cứ nhắn em — bên em trực
 
 | Nhãn | Nội dung |
 |---|---|
-| Gói Social Care $45/th | Chăm sóc FB, IG, TikTok, Shorts, Yelp; đăng đều ~2 ngày/lần theo mẫu ngành chỉnh riêng cho tiệm. Chưa gồm Maps SEO/ads/báo cáo |
-| Gói Boost $179/th | Social đa kênh + tối ưu Google Business Profile, link-in-bio, duyệt nội dung, báo cáo tháng. Setup $50, tối thiểu 3 tháng |
-| Gói Growth Map $279/th | Phần chính của Boost + Google Maps SEO chuyên sâu, chiến lược review, theo dõi visibility/calls/directions. Tối thiểu 3 tháng, không cam kết vị trí |
-| Gói Scale $379/th | Đồng bộ Maps + social + website, tặng website pro khi cam kết 6 tháng, theo dõi calls/directions/booking. Duy trì $109/năm từ năm 2 |
+| Gói Social Care $45/th | Tiệm hiện diện đều trên FB, IG, TikTok, Shorts, Yelp — không im hơi trên mạng. Đăng ~2 ngày/lần theo mẫu ngành chỉnh riêng. Chưa gồm Maps SEO/ads/báo cáo |
+| Gói Boost $179/th | Khách Google là thấy tiệm chuẩn, đủ thông tin, muốn ghé: tối ưu Google Business Profile + social đa kênh + link-in-bio + báo cáo tháng. Setup $50, tối thiểu 3 tháng |
+| Gói Growth Map $279/th | Đưa tiệm lên nhóm đầu Maps khu vực — nguồn khách gọi thẳng nhiều nhất: Maps SEO chuyên sâu + chiến lược review + đo visibility/calls/directions từng tháng. Tối thiểu 3 tháng, không cam kết vị trí |
+| Gói Scale $379/th | Trọn hệ sinh thái khép kín: Maps + social + website + booking đồng bộ một mối, tặng website pro khi cam kết 6 tháng, đo calls/directions/booking. Duy trì $109/năm từ năm 2 |
 | Ưu đãi thời hạn | Trả 6 tháng giảm 5%, trả 12 tháng giảm 10% |
-| Website Essential $399 | Trả một lần: 1–3 trang chuẩn mobile, CTA Call/SMS/Messenger/Booking, form về email + Maps, SEO on-page. Bàn giao 7–14 ngày. Add-on Booking $39/th |
+| Website Essential $399 | Trả một lần — website là tài sản của tiệm, khách từ ads/social về đây chốt: 1–3 trang chuẩn mobile, CTA Call/SMS/Messenger/Booking, form về email + Maps, SEO on-page. Bàn giao 7–14 ngày. Add-on Booking $39/th |
 | Website Growth $599 | Trả một lần: 5–8 trang, local SEO nâng cao (near me), tracking Call/Booking/Form, báo cáo tháng, tặng setup Booking (duy trì $39/th). 10–21 ngày |
-| Lumio Booking & AI | Khách tự đặt lịch 24/7 trên web; AI trả lời Messenger và hotline khi tiệm bận; POS, chia turn thợ, tích điểm, nhắc hẹn SMS/email, nhắc khách quay lại |
-| Khác biệt của Lumio | Một hệ sinh thái duy nhất: marketing kéo khách về đúng website/booking của tiệm, AI trực 24/7 không bỏ lỡ tin nhắn/cuộc gọi, số liệu calls/booking đo được rõ ràng |
+| AI Messenger trực page | Trả lời tin nhắn trong vài giây, 24/7 — kể cả lúc tiệm đông hay nửa đêm — và tự chốt lịch vào hệ thống luôn. Nhân viên vào nhắn là AI tự nhường, không giẫm chân. Bịt lỗ: khách nhắn không ai trả lời là khách đi tiệm khác |
+| AI tổng đài (hotline) | Tiệm bận không bắt máy → AI nghe, trả lời giờ mở cửa/giá/dịch vụ và ghi lịch. Bịt lỗ: mỗi cuộc gọi nhỡ là một khách rơi vào tay tiệm bên cạnh |
+| Booking 24/7 + POS | Khách tự đặt lịch trên web bất cứ lúc nào, không cần gọi; POS tính tiền, chia turn thợ công bằng, tích điểm khách quen |
+| AI nhắc hẹn & giữ khách | SMS/email nhắc trước hẹn — khách quên hẹn ít hẳn; tự nhắc khách lâu chưa quay lại. Bịt lỗ: doanh thu lặp lại bị bỏ quên |
+| So với agency thường | Agency thông thường dừng ở đăng bài + chạy ads, báo cáo bằng lượt thích. Lumio khép kín cả phễu: kéo khách về đúng website/booking của tiệm → AI chốt khách 24/7 → nhắc khách quay lại — báo cáo bằng số cuộc gọi, chỉ đường, booking thật |
 | Audit miễn phí | Gửi Tên tiệm + SĐT + link Google Maps → team kiểm tra Maps, review, social, website → gửi bản đánh giá + gói phù hợp trong 24–48h. Miễn phí, không ràng buộc |
-| Khách nhận được gì | Thêm khách gọi & đặt lịch từ Maps + social, website chốt khách, không lỡ tin nhắn ngoài giờ, báo cáo minh bạch hàng tháng |
+| Khách nhận được gì | Không bỏ lỡ khách ngoài giờ, thêm cuộc gọi & chỉ đường từ Maps, khách cũ quay lại đều hơn, số liệu minh bạch hàng tháng |
 | Uy tín | Đội ngũ tại Mỹ chuyên ngành nail/spa/nhà hàng, đang vận hành hệ thống booking cho nhiều tiệm; thanh toán an toàn, phạm vi công việc rõ ràng, không hứa hẹn phi thực tế |
 | Hỗ trợ | Hotline (512) 886-8189 — trực 24/7 |
 | Demo | lumiobooking.com/lumio-salon — vào thử như khách thật |

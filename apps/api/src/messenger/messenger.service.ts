@@ -700,6 +700,15 @@ export class MessengerService {
         // "Get Started" tap: the customer opened the chat but hasn't typed yet.
         // This is the salon's ONE chance to speak first — greet immediately.
         if (ev.postback?.payload && !ev.message) {
+          const payload = ev.postback.payload;
+          if (payload.startsWith('ASK_PKG:')) {
+            // A package-card button tap = the customer saying "tell me about X".
+            const pkg = payload.slice('ASK_PKG:'.length);
+            await this.handleMessage(entryId, senderId, `Tôi muốn tư vấn ${pkg}`, ev.timestamp).catch((e) =>
+              this.logger.warn(`pkg postback failed: ${String(e).slice(0, 160)}`),
+            );
+            continue;
+          }
           await this.handleGetStarted(entryId, senderId).catch((e) =>
             this.logger.warn(`greeting failed: ${String(e).slice(0, 160)}`),
           );
@@ -875,6 +884,8 @@ export class MessengerService {
         closing: (conn as unknown as { closing?: string | null }).closing ?? null,
         agentName: (conn as unknown as { agentName?: string | null }).agentName ?? null,
         bizIntro: (conn as unknown as { bizIntro?: string | null }).bizIntro ?? null,
+        senderId,
+        pageToken: conn.pageToken,
       });
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
@@ -897,7 +908,7 @@ export class MessengerService {
     aiInstruction: string,
     history: Turn[],
     userText: string,
-    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null } = { mode: 'booking', leadEmail: null },
+    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return 'Thanks for reaching out! A team member will reply to you shortly. 💕';
@@ -976,6 +987,8 @@ KEEP IT SIMPLE — these rules beat everything else:
 FLOW:
 - Start by asking what their business struggles with — or answer their question first if they asked one. If a greeting was already sent, don't greet twice.
 - Match their pain to at most TWO services/features from the facts. Share the demo link when it helps.
+- Asked about pricing or the packages in general (or comparing them): call send_price_cards — never type the whole list as text. After it succeeds, send ONE short line asking which one fits their goal.
+- Asked about ONE specific package: answer in text, 3 short lines max.
 - When they show interest, ask for their NAME, then their PHONE (one at a time). Once you have both, call save_lead — include salon name, city and what they care about if mentioned.
 - Only say the lead is saved if save_lead returns "SUCCESS". Then confirm warmly: the team will call them soon.
 - If they ask for a human, want to negotiate, or ask beyond the facts: promise a callback and call save_lead with note "wants a human".
@@ -1005,6 +1018,15 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         description: 'Re-read the structured fact sheet (plans, prices, links) to double-check before answering.',
         input_schema: { type: 'object', properties: {}, required: [] },
       },
+      {
+        name: 'send_price_cards',
+        description: 'Send the packages as swipeable visual cards (native Messenger carousel) — ALWAYS use this instead of typing a list when the customer asks about pricing or packages in general. After SUCCESS, follow with ONE short line asking which fits.',
+        input_schema: {
+          type: 'object',
+          properties: { category: { type: 'string', enum: ['marketing', 'website', 'all'], description: 'Which set of packages to show.' } },
+          required: ['category'],
+        },
+      },
     ];
 
     // The goodbye matters as much as the hello: when the chat wraps up (they
@@ -1021,7 +1043,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const personaRule = `\nPERSONA: ${ctx.agentName ? `Your name is ${ctx.agentName}. Introduce yourself by name, like any team member would — never call yourself an assistant, AI or bot. ` : ''}Never volunteer that this chat is automated. If someone asks point-blank whether you are a bot, do not lie and do not argue: say the ${ctx.mode === 'sales' ? 'team' : 'salon team'} is right behind this chat and offer a quick call back${ctx.mode === 'sales' ? ' (capture the lead)' : ''}.`;
 
     // Vietnamese small talk is understated — the tell-tale AI openers must go.
-    const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real Vietnamese chat acknowledges quietly — "Dạ", "Dạ được ạ", "Oke anh/chị" — then gets straight to the point. No hype words, no cheering.`;
+    const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Dạ tốt lắm", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real Vietnamese chat acknowledges quietly — "Dạ vâng ạ", "Dạ", "Dạ được ạ", "Oke anh/chị" — then gets straight to the point. No hype words, no cheering.`;
 
     const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + closingRule;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
@@ -1352,6 +1374,23 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
         return this.factsText(conn?.botFacts) || 'No facts configured yet — do not state any price.';
       }
+      if (name === 'send_price_cards') {
+        if (!ctx?.pageToken || !ctx?.senderId) return 'ERROR: cards unavailable in this context — answer in short text instead.';
+        const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+        const facts = (Array.isArray(conn?.botFacts) ? (conn!.botFacts as unknown as BotFact[]) : []).filter((f) => f && f.on);
+        const cat = String(input.category || 'all');
+        const rows = facts.filter((f) =>
+          cat === 'marketing' ? /^gói/i.test(f.label) : cat === 'website' ? /^website/i.test(f.label) : /^(gói|website)/i.test(f.label),
+        );
+        if (!rows.length) return 'ERROR: no package facts configured — answer briefly in text.';
+        const cards = rows.slice(0, 10).map((f) => ({
+          title: f.label.slice(0, 80),
+          subtitle: f.value.slice(0, 80),
+          buttons: [{ type: 'postback', title: 'Tư vấn gói này', payload: `ASK_PKG:${f.label.slice(0, 80)}` }],
+        }));
+        await this.sendCards(ctx.pageToken, ctx.senderId, cards);
+        return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;
+      }
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
@@ -1444,6 +1483,31 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     }).then(async (r) => {
       if (!r.ok) this.logger.warn(`messenger_profile ${r.status}: ${(await r.text().catch(() => '')).slice(0, 120)}`);
     }).catch(() => undefined);
+  }
+
+  /** Native Messenger carousel: one card per package — the polished look a
+   *  text wall can never match. Tagged like sendText so the echo is ours. */
+  private async sendCards(
+    pageToken: string,
+    recipientId: string,
+    cards: { title: string; subtitle: string; buttons: unknown[] }[],
+  ): Promise<void> {
+    try {
+      await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          recipient: { id: recipientId },
+          messaging_type: 'RESPONSE',
+          message: {
+            metadata: 'LUMIO_BOT',
+            attachment: { type: 'template', payload: { template_type: 'generic', image_aspect_ratio: 'horizontal', elements: cards.slice(0, 10) } },
+          },
+        }),
+      });
+    } catch (e) {
+      this.logger.warn(`Send cards failed: ${String(e).slice(0, 120)}`);
+    }
   }
 
   private async sendText(pageToken: string, recipientId: string, text: string): Promise<void> {

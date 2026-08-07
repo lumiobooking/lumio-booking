@@ -937,6 +937,8 @@ export class MessengerService implements OnModuleInit {
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
   // the connection); 15 and 5 minutes are just the defaults.
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
+  /** package-card image availability cache (static files on the web app) */
+  private readonly cardImgOk = new Map<string, boolean>();
 
   /**
    * The human is mid-conversation: hold the bot for GRACE_MS. If the human
@@ -1556,11 +1558,40 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           const sp = cut.lastIndexOf(' ');
           return (sp > 40 ? cut.slice(0, sp) : cut).replace(/[,;:–—-]$/, '') + '…';
         };
-        const cards = rows.slice(0, 10).map((f) => ({
-          title: f.label.slice(0, 80),
-          subtitle: cardLine(f.value),
-          buttons: [{ type: 'postback', title: 'Tư vấn gói này', payload: `ASK_PKG:${f.label.slice(0, 80)}` }],
-        }));
+        // Each known package gets a designed 1200x628 image hosted on the web
+        // app (public/cards/*.png) — the visual difference between "a text
+        // list" and "a brochure". HEAD-checked once and cached; a missing
+        // image just falls back to the plain text card.
+        const webBase = (process.env.WEB_BASE_URL || 'https://lumiobooking.com').replace(/\/$/, '');
+        const slugFor = (label: string): string | null => {
+          const l = label.toLowerCase();
+          if (l.includes('social care')) return 'social-care';
+          if (l.includes('website growth')) return 'web-growth';
+          if (l.includes('essential')) return 'web-essential';
+          if (l.includes('growth map')) return 'growth-map';
+          if (l.includes('boost')) return 'boost';
+          if (l.includes('scale')) return 'scale';
+          return null;
+        };
+        const imgFor = async (label: string): Promise<string | undefined> => {
+          const slug = slugFor(label);
+          if (!slug) return undefined;
+          const url = `${webBase}/cards/${slug}.png`;
+          if (!this.cardImgOk.has(url)) {
+            const ok = await fetch(url, { method: 'HEAD' }).then((r) => r.ok).catch(() => false);
+            this.cardImgOk.set(url, ok);
+          }
+          return this.cardImgOk.get(url) ? url : undefined;
+        };
+        const cards: { title: string; subtitle: string; image_url?: string; buttons: unknown[] }[] = [];
+        for (const f of rows.slice(0, 10)) {
+          cards.push({
+            title: f.label.slice(0, 80),
+            subtitle: cardLine(f.value),
+            image_url: await imgFor(f.label),
+            buttons: [{ type: 'postback', title: 'Tư vấn gói này', payload: `ASK_PKG:${f.label.slice(0, 80)}` }],
+          });
+        }
         await this.sendCards(ctx.pageToken, ctx.senderId, cards);
         return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;
       }
@@ -1679,7 +1710,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   private async sendCards(
     pageToken: string,
     recipientId: string,
-    cards: { title: string; subtitle: string; buttons: unknown[] }[],
+    cards: { title: string; subtitle: string; image_url?: string; buttons: unknown[] }[],
   ): Promise<void> {
     try {
       await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {

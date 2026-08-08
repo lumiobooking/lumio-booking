@@ -257,7 +257,8 @@ function Inner() {
   // Kept in its OWN state so the initial load() (which resets `error`) can
   // never swallow it — a failed connect must stay on screen until dismissed.
   const [fbResult, setFbResult] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pickList, setPickList] = useState<{ id: string; name: string }[] | null>(null);
+  const [pickList, setPickList] = useState<{ id: string; name: string; taken?: 'this' | 'other' | null; takenBy?: string | null }[] | null>(null);
+  const [pickSearch, setPickSearch] = useState('');
   const [picking, setPicking] = useState<string | null>(null);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -265,7 +266,7 @@ function Inner() {
     if (!fb) return;
     if (fb === 'pick') {
       // Several pages were granted (agency account) — the staff picks one.
-      if (token) apiFetch<{ id: string; name: string }[]>('/messenger/oauth/candidates', { token }).then(setPickList).catch(() => setPickList([]));
+      if (token) apiFetch<{ id: string; name: string; taken?: 'this' | 'other' | null; takenBy?: string | null }[]>('/messenger/oauth/candidates', { token }).then(setPickList).catch(() => setPickList([]));
       window.history.replaceState(null, '', window.location.pathname);
       return;
     }
@@ -495,14 +496,32 @@ function Inner() {
             <p style={{ color: '#f59e0b', fontSize: 13 }}>{lang === 'vi' ? 'Danh sách đã hết hạn — bấm Connect làm lại.' : 'The list expired — press Connect and run the flow again.'}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {pickList.map((pg) => (
+              {pickList.length > 6 && (
+                <input
+                  value={pickSearch}
+                  onChange={(e) => setPickSearch(e.target.value)}
+                  placeholder={lang === 'vi' ? `🔎 Tìm trong ${pickList.length} page — gõ tên tiệm hoặc Page ID` : `🔎 Search ${pickList.length} pages — name or Page ID`}
+                  style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px', color: '#e2e8f0', fontSize: 13, marginBottom: 2 }}
+                />
+              )}
+              {pickList
+                .filter((pg) => {
+                  const q = pickSearch.trim().toLowerCase();
+                  return !q || pg.name.toLowerCase().includes(q) || pg.id.includes(q);
+                })
+                .slice(0, 40)
+                .map((pg) => (
                 <div key={pg.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13.5, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.name}</div>
                     <div style={{ fontSize: 11, color: '#64748b' }}>{pg.id}</div>
                   </div>
-                  {c.pages?.some((x) => x.pageId === pg.id) ? (
+                  {pg.taken === 'this' || c.pages?.some((x) => x.pageId === pg.id) ? (
                     <span style={{ color: '#34d399', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ {lang === 'vi' ? 'Đã nối' : 'Connected'}</span>
+                  ) : pg.taken === 'other' ? (
+                    <span title={pg.takenBy || ''} style={{ color: '#f59e0b', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      🔒 {lang === 'vi' ? 'Đang dùng ở' : 'In use by'} {pg.takenBy || (lang === 'vi' ? 'tiệm khác' : 'another salon')}
+                    </span>
                   ) : (
                   <button onClick={() => choosePage(pg.id)} disabled={!!picking}
                     style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: picking && picking !== pg.id ? 0.5 : 1 }}>

@@ -411,7 +411,29 @@ export class MessengerService implements OnModuleInit {
   async oauthCandidates(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const pages = await this.settings.getMessengerOauthStash(tenantId);
-    return pages.map((p) => ({ id: p.id, name: p.name || p.id }));
+    // At agency scale the grant can hold a hundred client pages. Tell the
+    // picker which ones are already spoken for, so staff never taps a page
+    // that belongs to another salon and hits the page_in_use error.
+    const ids = pages.map((p) => p.id);
+    const bound = await this.prisma.messengerPage.findMany({ where: { pageId: { in: ids } }, select: { pageId: true, tenantId: true } }).catch(() => []);
+    const legacy = await this.prisma.messengerConnection.findMany({ where: { pageId: { in: ids } }, select: { pageId: true, tenantId: true } }).catch(() => []);
+    const owner = new Map<string, string>();
+    for (const row of [...bound, ...legacy]) if (row.pageId && !owner.has(row.pageId)) owner.set(row.pageId, row.tenantId);
+    // Names of the other salons — shown so staff can see WHERE a page went.
+    const otherIds = Array.from(new Set(Array.from(owner.values()).filter((t) => t !== tenantId)));
+    const others = otherIds.length
+      ? await this.prisma.tenant.findMany({ where: { id: { in: otherIds } }, select: { id: true, name: true } }).catch(() => [])
+      : [];
+    const nameOf = new Map(others.map((t) => [t.id, t.name]));
+    return pages.map((p) => {
+      const own = owner.get(p.id);
+      return {
+        id: p.id,
+        name: p.name || p.id,
+        taken: own ? (own === tenantId ? ('this' as const) : ('other' as const)) : null,
+        takenBy: own && own !== tenantId ? nameOf.get(own) || null : null,
+      };
+    });
   }
 
   /** Staff picked a page — finish the connection with the parked token. */

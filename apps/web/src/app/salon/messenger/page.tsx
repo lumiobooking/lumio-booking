@@ -127,7 +127,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   notSubscribed: { vi: 'Page chưa subscribe app — bấm \u201cKết nối lại Facebook\u201d.', en: 'Page not subscribed yet \u2014 click \u201cReconnect Facebook\u201d.' },
   webhookAdvancedTitle: { vi: 'Webhook (cấu hình thủ công \u2014 nâng cao)', en: 'Webhook (manual setup \u2014 advanced)' },
   webhookAutoNote: { vi: 'Hệ thống tự động subscribe Page vào webhook khi bạn bấm \u201cKết nối với Facebook\u201d. Phần dưới chỉ dùng khi tự cấu hình trong Meta App.', en: 'The app subscribes your Page to the webhook automatically when you click \u201cConnect with Facebook\u201d. The fields below are only for manual configuration in your own Meta App.' },
-  keepTicked: { vi: '\u26a0\ufe0f Khi k\u1ebft n\u1ed1i th\u00eam page m\u1edbi: trong h\u1ed9p tho\u1ea1i Facebook h\u00e3y GI\u1eee NGUY\u00caN t\u1ea5t c\u1ea3 page \u0111\u00e3 k\u1ebft n\u1ed1i tr\u01b0\u1edbc \u0111\u00f3 (\u0111\u1eebng b\u1ecf tick). B\u1ecf tick page n\u00e0o l\u00e0 Meta ng\u1eaft quy\u1ec1n page \u0111\u00f3 tr\u00ean to\u00e0n h\u1ec7 th\u1ed1ng \u2014 shop \u0111ang ch\u1ea1y s\u1ebd m\u1ea5t k\u1ebft n\u1ed1i.', en: '\u26a0\ufe0f When connecting another page: KEEP every previously connected page ticked in the Facebook dialog. Unticking a page makes Meta revoke it platform-wide \u2014 a live shop loses its connection.' },
+  keepTicked: { vi: '\ud83d\udca1 M\u1eb9o \u2014 khi k\u1ebft n\u1ed1i th\u00eam page m\u1edbi: trong h\u1ed9p tho\u1ea1i Facebook h\u00e3y GI\u1eee NGUY\u00caN t\u1ea5t c\u1ea3 page \u0111\u00e3 k\u1ebft n\u1ed1i tr\u01b0\u1edbc \u0111\u00f3 (\u0111\u1eebng b\u1ecf tick). B\u1ecf tick page n\u00e0o l\u00e0 Meta ng\u1eaft quy\u1ec1n page \u0111\u00f3 tr\u00ean to\u00e0n h\u1ec7 th\u1ed1ng \u2014 shop \u0111ang ch\u1ea1y s\u1ebd m\u1ea5t k\u1ebft n\u1ed1i.', en: '\ud83d\udca1 Tip \u2014 when connecting another page: KEEP every previously connected page ticked in the Facebook dialog. Unticking a page makes Meta revoke it platform-wide \u2014 a live shop loses its connection.' },
   sendTestTitle: { vi: 'Gửi tin nhắn thử', en: 'Send a test message' },
   sendTestHint: { vi: 'Chọn một cuộc trò chuyện gần đây và gửi tin nhắn từ ứng dụng. Tin được gửi tới khách trong Messenger qua Page.', en: 'Pick a recent conversation and send a message from the app. It is delivered to the customer in Messenger through the Page.' },
   recipient: { vi: 'Người nhận', en: 'Recipient' },
@@ -553,7 +553,7 @@ function Inner() {
           <div style={{ marginBottom: 4 }}>
             <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>{t('oneClickHint')}</p>
             {c.connected && (
-              <p style={{ color: '#f59e0b', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 8, padding: '8px 12px' }}>{t('keepTicked')}</p>
+              <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 12px', lineHeight: 1.5, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px' }}>{t('keepTicked')}</p>
             )}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={connectFacebook} disabled={connecting} style={fbBtn}>

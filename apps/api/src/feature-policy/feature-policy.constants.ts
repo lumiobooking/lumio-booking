@@ -26,7 +26,7 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: 'voiceAi', label: 'AI Hotline (phone bot)', hrefs: ['/salon/voice'], default: 'platform' },
   { key: 'messengerAi', label: 'Messenger bot', hrefs: ['/salon/messenger'], default: 'platform' },
   { key: 'reviews', label: 'Reviews & rewards (anti-fraud)', hrefs: ['/salon/reviews', '/salon/reviews-replies'], default: 'platform' },
-  { key: 'marketing', label: 'Marketing & campaigns', hrefs: ['/salon/marketing'], default: 'platform' },
+  { key: 'marketing', label: 'Marketing & campaigns', hrefs: ['/salon/marketing', '/salon/marketing/monthly'], default: 'platform' },
   // Nav-hide only (no API block): the basic Connections page shares this API
   // to issue the WordPress license key.
   { key: 'integrations', label: 'Integrations & API keys', hrefs: ['/salon/integrations'], default: 'platform' },

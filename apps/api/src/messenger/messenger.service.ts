@@ -280,6 +280,13 @@ export class MessengerService implements OnModuleInit {
         return finish('fb=error&msg=no_pages');
       }
       const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
+      // Meta's classic footgun: re-running OAuth re-issues page tokens, and any
+      // page the user left ticked gets a FRESH token while its old one may die.
+      // Heal every page in this grant that ANY tenant already holds — refresh
+      // its stored token and re-subscribe the webhook. Without this, connecting
+      // shop B silently broke shop A.
+      const healed = await this.healKnownPages(pages);
+      if (healed) trace.push(`heal: refreshed ${healed} known page(s) from this grant`);
       // What in the grant is NEW to this tenant? A page we already hold must
       // never short-circuit the flow (that bug ate "add a second page" alive):
       //  · exactly ONE new page → connect it straight away
@@ -318,6 +325,36 @@ export class MessengerService implements OnModuleInit {
       trace.push(`EXCEPTION: ${String(e).slice(0, 160)}`);
       return finish('fb=error&msg=exception');
     }
+  }
+
+  /** Refresh token + webhook subscription for every page in an OAuth grant
+   *  that the platform already knows (any tenant). Page identity is global —
+   *  a token belongs to the page — so this crosses tenants SAFELY: it never
+   *  reads or moves tenant data, it only keeps existing links alive. */
+  private async healKnownPages(pages: { id: string; name?: string; access_token?: string }[]): Promise<number> {
+    let healed = 0;
+    for (const p of pages) {
+      if (!p.id || !p.access_token) continue;
+      const known = await this.prisma.messengerPage.findUnique({ where: { pageId: p.id } }).catch(() => null);
+      if (known) {
+        await this.prisma.messengerPage.update({
+          where: { pageId: p.id },
+          data: { pageToken: p.access_token, pageName: p.name || known.pageName },
+        }).catch(() => undefined);
+      }
+      const legacy = await this.prisma.messengerConnection.findFirst({ where: { pageId: p.id } }).catch(() => null);
+      if (legacy) {
+        await this.prisma.messengerConnection.update({
+          where: { tenantId: legacy.tenantId },
+          data: { pageToken: p.access_token },
+        }).catch(() => undefined);
+      }
+      if (known || legacy) {
+        await fetch(`${GRAPH}/${p.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes&access_token=${encodeURIComponent(p.access_token)}`, { method: 'POST' }).catch(() => undefined);
+        healed += 1;
+      }
+    }
+    return healed;
   }
 
   /** Bind ONE page to the tenant: clash checks, token save, webhook subscribe,

@@ -476,7 +476,7 @@ function Inner() {
         <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '12px 16px', marginBottom: 14, fontSize: 13, lineHeight: 1.7, color: '#cbd5e1' }}>
           <b style={{ color: '#e2e8f0' }}>{lang === 'vi' ? '4 bước kết nối — chỉ cần nhớ một điều: PHẢI TICK PAGE' : '4 steps — the one thing to remember: TICK THE PAGE'}</b>
           <div>1️⃣ {lang === 'vi' ? 'Bấm nút xanh Connect with Facebook.' : 'Press the blue Connect with Facebook button.'}</div>
-          <div>2️⃣ {lang === 'vi' ? <>Trong cửa sổ Meta chọn <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (và Businesses) — khỏi tick từng cái, page khách mới sau này tự có.</> : <>In the Meta window pick <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (and Businesses) — no per-item ticking, new client pages are included automatically.</>}</div>
+          <div>2️⃣ {lang === 'vi' ? <>Cửa sổ Meta hiện ra: chọn <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (và làm tương tự ở bước Businesses) — nhanh nhất, khỏi tick từng cái.</> : <>In the Meta window pick <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (same on the Businesses step) — fastest, no per-item ticking.</>}</div>
           <div>3️⃣ {lang === 'vi' ? 'Continue → giữ nguyên mọi quyền được bật → Save.' : 'Continue → keep every permission ON → Save.'}</div>
           <div>4️⃣ {lang === 'vi' ? 'Quay về đây: banner xanh = xong; nhiều page thì bấm “Dùng page này” cho đúng page.' : 'Back here: green banner = done; if several pages, press “Use this page” on the right one.'}</div>
         </div>

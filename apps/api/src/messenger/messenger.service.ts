@@ -1686,20 +1686,35 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    */
   private async systemKnowledge(tenantId: string, phone: string | null, email: string | null): Promise<string> {
     const out: string[] = [];
-    const [services, staff, giftCards] = await Promise.all([
-      this.prisma.service.findMany({
+    // Plain try/catch instead of `.catch(() => [])` inside Promise.all: that
+    // pattern makes TypeScript collapse the row type to `never` and the build
+    // fails (learned the hard way).
+    type SvcRow = {
+      name: string; priceCents: number; durationMinutes: number; discountPercent: number;
+      currency: string; description: string | null; category: { name: string } | null;
+    };
+    type StaffRow = { firstName: string; lastName: string | null };
+    let services: SvcRow[] = [];
+    let staff: StaffRow[] = [];
+    let giftCards = 0;
+    try {
+      services = await this.prisma.service.findMany({
         where: { tenantId, isActive: true },
         select: { name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, description: true, category: { select: { name: true } } },
         orderBy: [{ discountPercent: 'desc' }, { name: 'asc' }],
         take: 60,
-      }).catch(() => []),
-      this.prisma.staffMember.findMany({
+      });
+    } catch { /* menu is best-effort */ }
+    try {
+      staff = await this.prisma.staffMember.findMany({
         where: { tenantId, isActive: true },
         select: { firstName: true, lastName: true },
         orderBy: { firstName: 'asc' }, take: 40,
-      }).catch(() => []),
-      this.prisma.giftCard.count({ where: { tenantId } }).catch(() => 0),
-    ]);
+      });
+    } catch { /* team is best-effort */ }
+    try {
+      giftCards = await this.prisma.giftCard.count({ where: { tenantId } });
+    } catch { /* gift cards are best-effort */ }
     if (services.length) {
       const sym = (cur: string) => (cur === 'USD' ? '$' : cur === 'CAD' ? 'C$' : cur === 'AUD' ? 'A$' : '');
       const money = (c: number, cur: string) => `${sym(cur)}${(c / 100).toFixed(c % 100 ? 2 : 0)}`;

@@ -127,7 +127,6 @@ const DICT: Record<string, { vi: string; en: string }> = {
   notSubscribed: { vi: 'Page chưa subscribe app — bấm \u201cKết nối lại Facebook\u201d.', en: 'Page not subscribed yet \u2014 click \u201cReconnect Facebook\u201d.' },
   webhookAdvancedTitle: { vi: 'Webhook (cấu hình thủ công \u2014 nâng cao)', en: 'Webhook (manual setup \u2014 advanced)' },
   webhookAutoNote: { vi: 'Hệ thống tự động subscribe Page vào webhook khi bạn bấm \u201cKết nối với Facebook\u201d. Phần dưới chỉ dùng khi tự cấu hình trong Meta App.', en: 'The app subscribes your Page to the webhook automatically when you click \u201cConnect with Facebook\u201d. The fields below are only for manual configuration in your own Meta App.' },
-  keepTicked: { vi: '\ud83d\udca1 M\u1eb9o \u2014 khi k\u1ebft n\u1ed1i th\u00eam page m\u1edbi: trong h\u1ed9p tho\u1ea1i Facebook h\u00e3y GI\u1eee NGUY\u00caN t\u1ea5t c\u1ea3 page \u0111\u00e3 k\u1ebft n\u1ed1i tr\u01b0\u1edbc \u0111\u00f3 (\u0111\u1eebng b\u1ecf tick). B\u1ecf tick page n\u00e0o l\u00e0 Meta ng\u1eaft quy\u1ec1n page \u0111\u00f3 tr\u00ean to\u00e0n h\u1ec7 th\u1ed1ng \u2014 shop \u0111ang ch\u1ea1y s\u1ebd m\u1ea5t k\u1ebft n\u1ed1i.', en: '\ud83d\udca1 Tip \u2014 when connecting another page: KEEP every previously connected page ticked in the Facebook dialog. Unticking a page makes Meta revoke it platform-wide \u2014 a live shop loses its connection.' },
   sendTestTitle: { vi: 'Gửi tin nhắn thử', en: 'Send a test message' },
   sendTestHint: { vi: 'Chọn một cuộc trò chuyện gần đây và gửi tin nhắn từ ứng dụng. Tin được gửi tới khách trong Messenger qua Page.', en: 'Pick a recent conversation and send a message from the app. It is delivered to the customer in Messenger through the Page.' },
   recipient: { vi: 'Người nhận', en: 'Recipient' },
@@ -458,7 +457,7 @@ function Inner() {
         <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '12px 16px', marginBottom: 14, fontSize: 13, lineHeight: 1.7, color: '#cbd5e1' }}>
           <b style={{ color: '#e2e8f0' }}>{lang === 'vi' ? '4 bước kết nối — chỉ cần nhớ một điều: PHẢI TICK PAGE' : '4 steps — the one thing to remember: TICK THE PAGE'}</b>
           <div>1️⃣ {lang === 'vi' ? 'Bấm nút xanh Connect with Facebook.' : 'Press the blue Connect with Facebook button.'}</div>
-          <div>2️⃣ {lang === 'vi' ? <>Trong cửa sổ Meta: <b style={{ color: '#fbbf24' }}>tick chọn page</b> — góc phải phải hiện &quot;1 Asset Selected&quot; (0 là sai).</> : <>In the Meta window: <b style={{ color: '#fbbf24' }}>tick the page</b> — the corner must read &quot;1 Asset Selected&quot; (0 means wrong).</>}</div>
+          <div>2️⃣ {lang === 'vi' ? <>Trong cửa sổ Meta chọn <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (và Businesses) — khỏi tick từng cái, page khách mới sau này tự có.</> : <>In the Meta window pick <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (and Businesses) — no per-item ticking, new client pages are included automatically.</>}</div>
           <div>3️⃣ {lang === 'vi' ? 'Continue → giữ nguyên mọi quyền được bật → Save.' : 'Continue → keep every permission ON → Save.'}</div>
           <div>4️⃣ {lang === 'vi' ? 'Quay về đây: banner xanh = xong; nhiều page thì bấm “Dùng page này” cho đúng page.' : 'Back here: green banner = done; if several pages, press “Use this page” on the right one.'}</div>
         </div>
@@ -552,9 +551,6 @@ function Inner() {
         {c.fbConfigured && (
           <div style={{ marginBottom: 4 }}>
             <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>{t('oneClickHint')}</p>
-            {c.connected && (
-              <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 12px', lineHeight: 1.5, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px' }}>{t('keepTicked')}</p>
-            )}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={connectFacebook} disabled={connecting} style={fbBtn}>
                 <span style={{ fontSize: 16, fontWeight: 800 }}>f</span>

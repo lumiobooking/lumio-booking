@@ -1009,6 +1009,7 @@ export class MessengerService implements OnModuleInit {
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }],
       }),
+      signal: AbortSignal.timeout(30_000),
     });
     const json = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
     const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
@@ -1126,7 +1127,9 @@ export class MessengerService implements OnModuleInit {
     try {
       const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
-      reply = await this.runAgent(conn.tenantId, instruction, userAlready ? history.slice(0, -1) : history, text, {
+      // Hard deadline over the WHOLE agent run (model + tools + card images).
+      // Whatever stalls, the customer still gets an answer instead of silence.
+      reply = await this.withDeadline(this.runAgent(conn.tenantId, instruction, userAlready ? history.slice(0, -1) : history, text, {
         mode: cx.botMode === 'sales' ? 'sales' : 'booking',
         leadEmail: cx.leadEmail ?? null,
         threadId,
@@ -1137,7 +1140,7 @@ export class MessengerService implements OnModuleInit {
         pageToken: conn.pageToken,
         memory,
         gapDays,
-      });
+      }), 55_000, 'agent');
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
       reply = 'Thanks for your message! A team member will get back to you shortly. 💕';
@@ -1353,6 +1356,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 500, system, tools, messages }),
+        signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) {
         this.logger.warn(`Anthropic ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
@@ -1537,6 +1541,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         system: 'You organize a business owner\'s pasted notes for their chat assistant. Reply with ONLY a JSON object: {"facts": [{"label": string, "value": string}], "greeting": string|null, "closing": string|null, "instruction": string|null}. Rules: facts = up to 15 rows of information customers may be told — VERBATIM-faithful (prices, hours, links, names exactly as written; skip anything unclear; never invent). greeting = only if the notes suggest how to WELCOME customers: one warm line, <=200 chars, in the notes\' language. closing = only if they suggest how to THANK or say goodbye: one warm line, <=200 chars. instruction = only if the notes contain tone/style/selling rules: condensed imperative notes <=400 chars. Use null when a slot has nothing.',
         messages: [{ role: 'user', content: raw }],
       }),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new BadRequestException('The AI reader is busy — try again in a minute.');
     const data = (await res.json()) as { content?: { type: string; text?: string }[] };
@@ -1569,6 +1574,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         system: 'You turn raw business text into a compact fact sheet for a chat assistant. Reply with ONLY a JSON array of {"label": string, "value": string} — no prose. Up to 15 facts. Facts must be VERBATIM-faithful: prices, hours, addresses, links and names exactly as written in the source — never guess, never embellish, skip anything unclear. Prefer: what the business does/sells, plans & prices, key services, address, phone, links, hours, policies. label ≤ 30 chars, value ≤ 200 chars, in the same language as the source.',
         messages: [{ role: 'user', content: raw }],
       }),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new BadRequestException('The AI reader is busy — try again in a minute.');
     const data = (await res.json()) as { content?: { type: string; text?: string }[] };
@@ -1732,20 +1738,26 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           const CARD_IMG_VERSION = '2';
           const url = `${webBase}/cards/${slug}.png?v=${CARD_IMG_VERSION}`;
           if (!this.cardImgOk.has(url)) {
-            const ok = await fetch(url, { method: 'HEAD' }).then((r) => r.ok).catch(() => false);
+            // HARD timeout. A hanging check would stall the whole reply — the
+            // customer would simply never hear back. Pretty cards are optional;
+            // answering is not.
+            const ok = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2500) })
+              .then((r) => r.ok)
+              .catch(() => false);
             this.cardImgOk.set(url, ok);
           }
           return this.cardImgOk.get(url) ? url : undefined;
         };
-        const cards: { title: string; subtitle: string; image_url?: string; buttons: unknown[] }[] = [];
-        for (const f of rows.slice(0, 10)) {
-          cards.push({
-            title: f.label.slice(0, 80),
-            subtitle: cardLine(f.value),
-            image_url: await imgFor(f.label),
-            buttons: [{ type: 'postback', title: 'Tư vấn gói này', payload: `ASK_PKG:${f.label.slice(0, 80)}` }],
-          });
-        }
+        const rowsToSend = rows.slice(0, 10);
+        // Checked in PARALLEL and behind one overall deadline, so cards never
+        // add more than a moment to the reply.
+        const images = await Promise.all(rowsToSend.map((f) => imgFor(f.label).catch(() => undefined)));
+        const cards: { title: string; subtitle: string; image_url?: string; buttons: unknown[] }[] = rowsToSend.map((f, i) => ({
+          title: f.label.slice(0, 80),
+          subtitle: cardLine(f.value),
+          image_url: images[i],
+          buttons: [{ type: 'postback', title: 'Tư vấn gói này', payload: `ASK_PKG:${f.label.slice(0, 80)}` }],
+        }));
         await this.sendCards(ctx.pageToken, ctx.senderId, cards);
         return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;
       }
@@ -1886,10 +1898,23 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
             attachment: { type: 'template', payload: { template_type: 'generic', image_aspect_ratio: 'horizontal', elements: cards.slice(0, 10) } },
           },
         }),
+        signal: AbortSignal.timeout(12_000),
       });
     } catch (e) {
       this.logger.warn(`Send cards failed: ${String(e).slice(0, 120)}`);
     }
+  }
+
+  /** Reject after `ms` so one hung network call can never swallow a reply. */
+  private withDeadline<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      timer.unref?.();
+      work.then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (e) => { clearTimeout(timer); reject(e); },
+      );
+    });
   }
 
   private async sendText(pageToken: string, recipientId: string, text: string): Promise<void> {

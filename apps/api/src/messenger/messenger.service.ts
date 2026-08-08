@@ -1616,6 +1616,79 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
   /** Business hours + contact injected into the agent prompt so it can answer
    *  "when are you open?" and never book outside opening times. */
+  /**
+   * Write the salon's opening line FOR them. Salons stare at an empty greeting
+   * box and end up with nothing (or a generic line that sounds like every other
+   * shop). This reads what the salon already filled in — services, live
+   * discounts, hours, address — plus any keywords they typed, and proposes
+   * three ready-to-use greetings. Nothing is saved until they pick one.
+   */
+  async suggestGreeting(user: AuthenticatedUser, dto: { keywords?: string; lang?: string }): Promise<{ options: string[] }> {
+    const tenantId = this.tenantId(user);
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) throw new BadRequestException('AI is not configured on the server.');
+    const [tenant, conn, services] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true, contactPhone: true, timezone: true } }),
+      this.prisma.messengerConnection.findUnique({ where: { tenantId } }),
+      this.prisma.service.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: [{ discountPercent: 'desc' }, { priceCents: 'desc' }],
+        take: 10,
+        select: { name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true },
+      }),
+    ]);
+    const money = (cents: number, cur: string) => `${cur === 'USD' ? '$' : ''}${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
+    const svcLines = services.map((sv) =>
+      `- ${sv.name} · ${money(sv.priceCents, sv.currency)} · ${sv.durationMinutes}'${sv.discountPercent > 0 ? ` · ĐANG GIẢM ${sv.discountPercent}%` : ''}`,
+    );
+    const promos = services.filter((sv) => sv.discountPercent > 0);
+    const info = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, null);
+    const cp = conn as unknown as { agentName?: string | null; bizIntro?: string | null; botMode?: string } | null;
+    const vi = (dto.lang || 'vi') === 'vi';
+    const prompt = [
+      vi
+        ? 'Bạn viết CÂU CHÀO ĐẦU TIÊN cho khung chat Messenger của một doanh nghiệp. Đây là dòng khách đọc trước khi gõ tin đầu tiên.'
+        : 'Write the FIRST greeting for a business\'s Messenger chat — the line a customer reads before typing anything.',
+      '',
+      `TÊN: ${tenant?.name || ''}`,
+      `LOẠI HÌNH: ${tenant?.businessType || 'salon'}`,
+      cp?.agentName ? `TÊN NHÂN VIÊN TRỰC (xưng tên này): ${cp.agentName}` : '',
+      cp?.bizIntro ? `GIỚI THIỆU: ${cp.bizIntro}` : '',
+      svcLines.length ? `DỊCH VỤ THỰC TẾ:\n${svcLines.join('\n')}` : '',
+      promos.length ? `ƯU ĐÃI ĐANG CHẠY (nêu 1 cái cụ thể nếu hợp lý): ${promos.map((p) => `${p.name} giảm ${p.discountPercent}%`).join(', ')}` : 'KHÔNG có ưu đãi đang chạy — đừng bịa khuyến mãi.',
+      info ? `THÔNG TIN KHÁC:\n${info}` : '',
+      dto.keywords?.trim() ? `Ý CHÍNH CHỦ TIỆM MUỐN TRUYỀN TẢI (bám sát): ${dto.keywords.trim().slice(0, 500)}` : '',
+      '',
+      vi
+        ? 'YÊU CẦU: viết 3 phương án khác nhau, tiếng Việt tự nhiên như người thật nhắn (xưng em, gọi khách anh/chị, có "dạ/ạ"). Mỗi phương án: 2 câu, TỔNG dưới 160 ký tự để vừa màn hình chào của Messenger, kết bằng ĐÚNG MỘT câu hỏi mở. Nêu 1 điểm cụ thể của tiệm (ưu đãi thật, dịch vụ nổi bật, hoặc giờ mở cửa) — không nói chung chung. Tối đa 1 emoji. Không markdown, không dấu **. Không bịa thông tin ngoài dữ liệu trên.'
+        : 'REQUIREMENTS: 3 different options, natural English. Each: 2 sentences, UNDER 160 characters total, ending in exactly ONE open question. Mention one concrete thing about this business (a real discount, a signature service, or the hours). Max 1 emoji, no markdown, invent nothing.',
+      vi ? 'Trả về JSON: {"options":["...","...","..."]} — không thêm lời dẫn.' : 'Return JSON: {"options":["...","...","..."]} — no preamble.',
+    ].filter(Boolean).join('\n');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 700,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const json = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    let options: string[] = [];
+    try {
+      const parsed = JSON.parse(match ? match[0] : text) as { options?: unknown };
+      options = Array.isArray(parsed.options) ? parsed.options.filter((o): o is string => typeof o === 'string') : [];
+    } catch {
+      options = text.split('\n').map((l) => l.replace(/^[\d).\-\s"]+/, '').replace(/"$/, '').trim()).filter((l) => l.length > 20);
+    }
+    if (!options.length) throw new BadRequestException('AI could not draft a greeting — try again or write it yourself.');
+    await this.audit(tenantId, 'messenger.suggest_greeting');
+    return { options: options.slice(0, 3).map((o) => o.slice(0, 400)) };
+  }
+
   private async salonInfoBlock(tenantId: string, phone: string | null, email: string | null): Promise<string> {
     const lines: string[] = [];
     try {

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
-import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, UpdateMessengerDto } from './dto/messenger.dto';
+import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -70,6 +70,13 @@ export class MessengerController {
   @RequiresFeature('messengerAi')
   importFacts(@CurrentUser() user: AuthenticatedUser, @Body() dto: { source?: string; url?: string; text?: string }) {
     return this.svc.importFacts(user, dto || {});
+  }
+
+  @Post('suggest-greeting')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  suggestGreeting(@CurrentUser() user: AuthenticatedUser, @Body() dto: SuggestGreetingDto) {
+    return this.svc.suggestGreeting(user, dto || {});
   }
 
   // ---- Sales-mode leads (agency page) ------------------------------------

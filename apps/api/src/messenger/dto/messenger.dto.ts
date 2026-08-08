@@ -38,3 +38,8 @@ export class SendTestDto {
 export class HandoffDto {
   @IsOptional() @IsBoolean() handoff?: boolean;
 }
+
+export class SuggestGreetingDto {
+  @IsOptional() @IsString() @MaxLength(500) keywords?: string;
+  @IsOptional() @IsIn(['vi', 'en']) lang?: string;
+}

@@ -259,6 +259,26 @@ function Inner() {
   const [pickList, setPickList] = useState<{ id: string; name: string; taken?: 'this' | 'other' | null; takenBy?: string | null }[] | null>(null);
   const [pickSearch, setPickSearch] = useState('');
   const [picking, setPicking] = useState<string | null>(null);
+  const [greetOpen, setGreetOpen] = useState(false);
+  const [greetKeywords, setGreetKeywords] = useState('');
+  const [greetBusy, setGreetBusy] = useState(false);
+  const [greetOptions, setGreetOptions] = useState<string[] | null>(null);
+  const [greetErr, setGreetErr] = useState('');
+
+  const suggestGreeting = async () => {
+    if (!token) return;
+    setGreetBusy(true); setGreetErr(''); setGreetOptions(null);
+    try {
+      const r = await apiFetch<{ options: string[] }>('/messenger/suggest-greeting', {
+        token, method: 'POST', body: { keywords: greetKeywords.trim() || undefined, lang },
+      });
+      setGreetOptions(r.options || []);
+    } catch (e) {
+      setGreetErr(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setGreetBusy(false);
+    }
+  };
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const fb = p.get('fb');
@@ -835,8 +855,47 @@ function Inner() {
             ? 'Nhân viên vừa nhắn trong X phút thì mỗi tin mới của khách được nhường Y phút cho người thật; hết Y phút bot trả lời. Nhân viên im quá X phút thì bot trực lại ngay. Y = 0 nghĩa là bot không chờ.'
             : 'If staff messaged within X minutes, each new customer message waits Y minutes for a human; then the bot answers. Staff idle past X minutes → bot resumes instantly. Y = 0 means the bot never waits.'}
         </p>
-        <label style={ui.label}>{t('greeting')}</label>
-        <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <label style={ui.label}>{t('greeting')}</label>
+          <button type="button" onClick={() => setGreetOpen((v) => !v)}
+            style={{ background: 'transparent', border: '1px solid #6366f1', color: '#a5b4fc', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 6 }}>
+            {lang === 'vi' ? '✨ Nhờ AI viết giúp' : '✨ Let AI write it'}
+          </button>
+        </div>
+        <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: greetOpen ? 8 : 12 }} />
+        {greetOpen && (
+          <div style={{ background: '#0f172a', border: '1px solid #312e81', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 8px', lineHeight: 1.5 }}>
+              {lang === 'vi'
+                ? 'AI đọc dịch vụ, ưu đãi đang chạy, giờ làm và địa chỉ của tiệm để viết. Gõ thêm ý bạn muốn nhấn mạnh (không bắt buộc).'
+                : 'AI reads your services, live discounts, hours and address. Add anything you want emphasised (optional).'}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input value={greetKeywords} onChange={(e) => setGreetKeywords(e.target.value)}
+                placeholder={lang === 'vi' ? 'vd: nhấn mạnh bột dip, đang giảm 20% cho khách mới' : 'e.g. highlight dip powder, 20% off for new clients'}
+                style={{ ...ui.input, flex: 1, minWidth: 220, marginBottom: 0 }} />
+              <button type="button" onClick={suggestGreeting} disabled={greetBusy}
+                style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 12.5, fontWeight: 700, cursor: greetBusy ? 'wait' : 'pointer', opacity: greetBusy ? 0.6 : 1 }}>
+                {greetBusy ? (lang === 'vi' ? 'Đang viết…' : 'Writing…') : (lang === 'vi' ? 'Gợi ý 3 câu' : 'Draft 3')}
+              </button>
+            </div>
+            {greetErr && <p style={{ color: '#f87171', fontSize: 12, margin: '8px 0 0' }}>{greetErr}</p>}
+            {greetOptions && greetOptions.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                {greetOptions.map((op, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: '9px 11px' }}>
+                    <div style={{ flex: 1, color: '#e2e8f0', fontSize: 13, lineHeight: 1.55 }}>{op}</div>
+                    <button type="button"
+                      onClick={() => { setC({ ...c, greeting: op }); save({ greeting: op }); setGreetOpen(false); setGreetOptions(null); }}
+                      style={{ background: '#22c55e', border: 'none', color: '#052e16', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {lang === 'vi' ? 'Dùng' : 'Use'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <label style={ui.label}>{lang === 'vi' ? 'Câu kết thúc / cảm ơn (tùy chọn)' : 'Goodbye / thank-you line (optional)'}</label>
         <textarea value={c.closing} rows={2}
           placeholder={lang === 'vi' ? 'vd: Cảm ơn anh/chị đã tin tưởng Lumio — chúc một ngày thật đẹp ạ! 🌸' : 'e.g. Thank you for trusting Lumio — have a lovely day! 🌸'}

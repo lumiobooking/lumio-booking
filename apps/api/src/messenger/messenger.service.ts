@@ -39,7 +39,7 @@ function wallToUtcISO(local: string, tz: string): string {
   }
 }
 
-type Turn = { role: 'user' | 'assistant'; content: string };
+type Turn = { role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean };
 export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
@@ -824,7 +824,7 @@ export class MessengerService implements OnModuleInit {
         // that conversation instantly (auto take-over; bot re-engages per the 15-min/5-min yield rules).
         if (ev.message?.is_echo) {
           if (ev.message?.metadata !== 'LUMIO_BOT' && ev.recipient?.id) {
-            await this.pauseForHuman(entryId, ev.recipient.id).catch(() => undefined);
+            await this.pauseForHuman(entryId, ev.recipient.id, ev.message?.text).catch(() => undefined);
           }
           continue;
         }
@@ -885,14 +885,80 @@ export class MessengerService implements OnModuleInit {
     return null;
   }
 
-  /** A human answered from the Page inbox — the bot steps aside on that thread. */
-  private async pauseForHuman(entryId: string, customerId: string): Promise<void> {
+  /** A human answered from the Page inbox — the bot steps aside on that thread,
+   *  and the human's words go into the SAME history the bot reads. Without this
+   *  the bot is blind to everything staff discussed: when the customer returns
+   *  weeks later it would greet them like a stranger — the #1 trust killer. */
+  private async pauseForHuman(entryId: string, customerId: string, text?: string): Promise<void> {
     const page = await this.pageByEntry(entryId);
     if (!page) return;
-    await this.prisma.messengerThread.updateMany({
-      where: { pageId: page.pageId, senderId: customerId },
+    const thread = await this.prisma.messengerThread.findFirst({ where: { pageId: page.pageId, senderId: customerId } });
+    if (!thread) return;
+    const body = (text || '').trim();
+    if (body) {
+      const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      const last = hist[hist.length - 1];
+      // sendManual already stored this exact message — its echo must not duplicate it
+      if (!(last && last.role === 'assistant' && last.content.slice(0, 1000) === body.slice(0, 1000))) {
+        await this.appendTurns(thread.id, hist, this.threadSummary(thread), [
+          { role: 'assistant', content: body.slice(0, 1000), manual: true, at: new Date().toISOString() },
+        ]);
+      }
+    }
+    await this.prisma.messengerThread.update({
+      where: { id: thread.id },
       data: { handoff: true, handoffAt: new Date() } as never,
+    }).catch(() => undefined);
+  }
+
+  private threadSummary(t: unknown): string | null {
+    return (t as { summary?: string | null }).summary ?? null;
+  }
+
+  /**
+   * Append turns to a thread's short-term history. Anything that falls off the
+   * 12-turn window is NOT thrown away: it is distilled (async, best-effort)
+   * into the thread's long-term CUSTOMER MEMORY, so a customer returning after
+   * months still meets a bot that remembers them.
+   */
+  private async appendTurns(threadId: string, history: Turn[], summary: string | null, turns: Turn[]): Promise<void> {
+    const full = [...history, ...turns];
+    const next = full.slice(-MAX_TURNS);
+    const dropped = full.slice(0, full.length - next.length);
+    await this.prisma.messengerThread.update({
+      where: { id: threadId },
+      data: { history: next as unknown as Prisma.InputJsonValue },
+    }).catch(() => undefined);
+    if (dropped.length) {
+      void this.distillThreadSummary(threadId, summary, dropped).catch((e) =>
+        this.logger.warn(`memory distill failed: ${String(e).slice(0, 120)}`),
+      );
+    }
+  }
+
+  /** Merge soon-to-be-forgotten turns into the permanent customer profile. */
+  private async distillThreadSummary(threadId: string, prev: string | null, dropped: Turn[]): Promise<void> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) return;
+    const lines = dropped.map((t) => `${t.role === 'user' ? 'KHACH' : 'SHOP'}: ${String(t.content).slice(0, 300)}`).join('\n');
+    const prompt = `Bạn giữ HỒ SƠ KHÁCH của một hội thoại Messenger dài hạn. Hồ sơ hiện tại:\n${prev || '(trống)'}\n\nCác tin nhắn cũ sắp bị xóa khỏi bộ nhớ ngắn hạn:\n${lines}\n\nViết lại hồ sơ MỚI: gộp cũ + mới, tối đa 120 từ, dạng gạch đầu dòng ngắn — tên khách, SĐT, ngành/tên tiệm, thành phố, gói/dịch vụ đã bàn, thông tin khách đã cung cấp, việc còn dang dở, thái độ/ý định. CHỈ ghi điều đã xuất hiện trong hội thoại, không suy diễn. Trả về đúng nội dung hồ sơ, không lời dẫn.`;
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
+    const json = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
+    if (text) {
+      await this.prisma.messengerThread.update({
+        where: { id: threadId },
+        data: { summary: text.slice(0, 2000) } as never,
+      }).catch(() => undefined);
+    }
   }
 
   private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number): Promise<void> {
@@ -914,6 +980,14 @@ export class MessengerService implements OnModuleInit {
       if (name) await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { senderName: name } }).catch(() => undefined);
     }
     if (thread.handoff) {
+      // The customer's message goes into history NOW — if a human handles it,
+      // the bot must still remember this exchange when it re-engages later.
+      const histNow = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      const lastNow = histNow[histNow.length - 1];
+      if (!(lastNow && lastNow.role === 'user' && lastNow.content === text)) {
+        const inIso = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(thread.id, histNow, this.threadSummary(thread), [{ role: 'user', content: text, at: inIso }]);
+      }
       // Two-tier yielding. The human owns the chat only while they are ACTIVE
       // (typed something in the last 15 minutes). Active → this new customer
       // message gets a 5-minute grace: if no human reply lands in time, the
@@ -980,11 +1054,20 @@ export class MessengerService implements OnModuleInit {
     const fresh = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
     if (!fresh) return;
     const history = (Array.isArray(fresh.history) ? fresh.history : []) as Turn[];
+    // The customer turn may already be in history (recorded on arrival during a
+    // human-handled stretch) — never store it twice.
+    const lastTurn = history[history.length - 1];
+    const userAlready = Boolean(lastTurn && lastTurn.role === 'user' && lastTurn.content === text);
+    // Long-term memory + how long they were away (returning-customer handling).
+    const memory = this.threadSummary(fresh);
+    const prevTurn = userAlready ? history[history.length - 2] : lastTurn;
+    const prevAtMs = prevTurn?.at ? new Date(prevTurn.at).getTime() : 0;
+    const gapDays = prevAtMs ? Math.floor((Date.now() - prevAtMs) / 86_400_000) : 0;
     let reply: string;
     try {
       const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
-      reply = await this.runAgent(conn.tenantId, instruction, history, text, {
+      reply = await this.runAgent(conn.tenantId, instruction, userAlready ? history.slice(0, -1) : history, text, {
         mode: cx.botMode === 'sales' ? 'sales' : 'booking',
         leadEmail: cx.leadEmail ?? null,
         threadId,
@@ -993,6 +1076,8 @@ export class MessengerService implements OnModuleInit {
         bizIntro: (conn as unknown as { bizIntro?: string | null }).bizIntro ?? null,
         senderId,
         pageToken: conn.pageToken,
+        memory,
+        gapDays,
       });
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
@@ -1003,23 +1088,20 @@ export class MessengerService implements OnModuleInit {
     // reply, keep only the customer's turn so context survives.
     const guard = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { handoff: true } }).catch(() => null);
     if (guard?.handoff) {
-      const inAtDrop = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
-      const histDrop = [...history, { role: 'user', content: text, at: inAtDrop }].slice(-MAX_TURNS);
-      await this.prisma.messengerThread.update({
-        where: { id: threadId },
-        data: { history: histDrop as unknown as Prisma.InputJsonValue },
-      }).catch(() => undefined);
+      if (!userAlready) {
+        const inAtDrop = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDrop }]);
+      }
       return;
     }
     await this.sendText(conn.pageToken, senderId, reply);
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
     const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
     const outAt = new Date().toISOString();
-    const nextHistory = [...history, { role: 'user', content: text, at: inAt }, { role: 'assistant', content: reply, at: outAt }].slice(-MAX_TURNS);
-    await this.prisma.messengerThread.update({
-      where: { id: threadId },
-      data: { history: nextHistory as unknown as Prisma.InputJsonValue },
-    });
+    const newTurns: Turn[] = userAlready
+      ? [{ role: 'assistant', content: reply, at: outAt }]
+      : [{ role: 'user', content: text, at: inAt }, { role: 'assistant', content: reply, at: outAt }];
+    await this.appendTurns(threadId, history, memory, newTurns);
   }
 
   // ---- AI agent (tool use) -------------------------------------------------
@@ -1028,7 +1110,7 @@ export class MessengerService implements OnModuleInit {
     aiInstruction: string,
     history: Turn[],
     userText: string,
-    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string } = { mode: 'booking', leadEmail: null },
+    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return 'Thanks for reaching out! A team member will reply to you shortly. 💕';
@@ -1187,7 +1269,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
     const formatRule = `\nFORMAT: Messenger shows PLAIN TEXT only — markdown is never rendered. Absolutely no **asterisks**, no # headers, no tables. Write prices and options inside natural sentences, not robotic bullet lists; if you must enumerate, short lines with "-" are the maximum.`;
 
-    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + closingRule;
+    // Long-term memory: what we know about THIS customer from chats that may be
+    // months old — plus, when they return after days away, an explicit order to
+    // pick up the thread instead of greeting them like a stranger.
+    const memoryBlock = ctx.memory
+      ? `\nCUSTOMER MEMORY — facts about THIS customer from earlier conversations (may be days or months old; TRUST it, never re-ask what it already answers):\n${ctx.memory}`
+      : '';
+    const gapNote = (ctx.gapDays ?? 0) >= 1
+      ? `\nRETURNING CUSTOMER: they last spoke ${ctx.gapDays} day(s) ago and just came back. Do NOT restart with a stranger's greeting, do NOT redo discovery, do NOT re-explain at length. Acknowledge them like someone you know, use the memory and the history above, and answer their new message directly — SHORT.`
+      : '';
+    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + closingRule + memoryBlock + gapNote;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));

@@ -1582,6 +1582,7 @@ model MessengerThread {
   lastText String? // last customer message (admin preview)
   handoff  Boolean @default(false) // a human took over → bot stays quiet
   handoffAt DateTime? // last human activity — bot yields 15 min, gives each new message a 5-min grace
+  summary  String? // long-term customer memory — distilled from turns that fell off the history window
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

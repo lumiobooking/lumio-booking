@@ -40,6 +40,7 @@ function wallToUtcISO(local: string, tz: string): string {
 }
 
 type Turn = { role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean };
+type Channel = 'messenger' | 'instagram';
 export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
@@ -158,7 +159,7 @@ export class MessengerService implements OnModuleInit {
       // Every page speaking with this tenant's brain.
       pages: await this.prisma.messengerPage.findMany({
         where: { tenantId },
-        select: { pageId: true, pageName: true, igId: true, enabled: true, createdAt: true },
+        select: { pageId: true, pageName: true, igId: true, igUsername: true, enabled: true, createdAt: true },
         orderBy: { createdAt: 'asc' },
       }),
       // Step-by-step record of the LAST connect attempt — Support-only, so a
@@ -334,6 +335,20 @@ export class MessengerService implements OnModuleInit {
     }
   }
 
+  /** Read the Instagram handle of a linked professional account. This is the
+   *  ONLY thing we use instagram_basic for: showing the owner (and an App Review
+   *  reviewer) WHICH Instagram account is connected, as "@username" instead of a
+   *  bare numeric id. No media, insights or follower data is read. */
+  private async fetchIgUsername(igId: string, pageToken: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${GRAPH}/${igId}?fields=username&access_token=${encodeURIComponent(pageToken)}`, { signal: AbortSignal.timeout(8000) });
+      const json = (await res.json().catch(() => ({}))) as { username?: string };
+      return json.username || null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Refresh token + webhook subscription for every page in an OAuth grant
    *  that the platform already knows (any tenant). Page identity is global —
    *  a token belongs to the page — so this crosses tenants SAFELY: it never
@@ -356,9 +371,11 @@ export class MessengerService implements OnModuleInit {
           const clashLegacy = await this.prisma.messengerConnection.findFirst({ where: { igId: fresh, NOT: { tenantId: known.tenantId } }, select: { tenantId: true } }).catch(() => null);
           if (!clash && !clashLegacy) igId = fresh;
         }
+        const knownUser = (known as unknown as { igUsername?: string | null }).igUsername ?? null;
+        const igUsername = igId ? (knownUser || await this.fetchIgUsername(igId, p.access_token)) : null;
         await this.prisma.messengerPage.update({
           where: { pageId: p.id },
-          data: { pageToken: p.access_token, pageName: p.name || known.pageName, igId },
+          data: { pageToken: p.access_token, pageName: p.name || known.pageName, igId, igUsername } as never,
         }).catch(() => undefined);
         if (igId && igId !== (known.igId ?? null)) {
           await this.prisma.messengerConnection.updateMany({ where: { tenantId: known.tenantId, pageId: p.id }, data: { igId } }).catch(() => undefined);
@@ -402,10 +419,11 @@ export class MessengerService implements OnModuleInit {
       if ((igPg && igPg.tenantId !== tenantId) || (igLegacy && igLegacy.tenantId !== tenantId)) igId = null; // keep FB, skip the shared IG
     }
     // The page joins the tenant's page list (one brain, many mouths)…
+    const igUsername = igId ? await this.fetchIgUsername(igId, page.access_token) : null;
     await this.prisma.messengerPage.upsert({
       where: { pageId: page.id },
-      update: { tenantId, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
-      create: { tenantId, pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
+      update: { tenantId, igId, igUsername, pageToken: page.access_token, pageName: page.name || null, enabled: true } as never,
+      create: { tenantId, pageId: page.id, igId, igUsername, pageToken: page.access_token, pageName: page.name || null, enabled: true } as never,
     });
     // …and the brain row exists with the FIRST page mirrored into the legacy
     // columns, so every pre-multi-page code path keeps working.
@@ -600,7 +618,7 @@ export class MessengerService implements OnModuleInit {
     const tenantId = this.tenantId(user);
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 50,
-      select: { id: true, senderId: true, senderName: true, lastText: true, handoff: true, updatedAt: true },
+      select: { id: true, senderId: true, senderName: true, lastText: true, handoff: true, updatedAt: true, channel: true },
     });
     return rows;
   }
@@ -711,7 +729,8 @@ export class MessengerService implements OnModuleInit {
       data: { handoff: true, handoffAt: new Date() } as never,
     }).catch(() => undefined);
     await this.audit(tenantId, 'messenger.manual_send');
-    return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso };
+    const ch = ((thread as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger';
+    return { ok: true as const, messageId: out.message_id || null, recipientId: thread.senderId, at: sentAtIso, channel: ch };
   }
 
   /**
@@ -859,13 +878,16 @@ export class MessengerService implements OnModuleInit {
     }
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 20,
-      select: { id: true, senderId: true, senderName: true, history: true, updatedAt: true },
+      select: { id: true, senderId: true, senderName: true, history: true, updatedAt: true, channel: true },
     });
-    type Ev = { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean };
+    type Ev = { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean; channel: string };
     const events: Ev[] = [];
     for (const r of rows) {
       const hist = (Array.isArray(r.history) ? r.history : []) as (Turn & { manual?: boolean; failed?: boolean; at?: string })[];
-      const who = r.senderName || `PSID …${String(r.senderId).slice(-6)}`;
+      const ch = ((r as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger';
+      // Instagram senders are identified by an Instagram-scoped id (IGSID), not a
+      // page-scoped id — label it correctly so the log is unambiguous.
+      const who = r.senderName || `${ch === 'instagram' ? 'IGSID' : 'PSID'} …${String(r.senderId).slice(-6)}`;
       for (const turn of hist) {
         const isIn = turn.role === 'user';
         events.push({
@@ -876,6 +898,7 @@ export class MessengerService implements OnModuleInit {
           status: isIn ? 'Received' : (turn.failed ? 'Failed' : 'Sent'),
           at: turn.at || r.updatedAt.toISOString(),
           manual: Boolean(turn.manual),
+          channel: ch,
         });
       }
     }
@@ -892,6 +915,10 @@ export class MessengerService implements OnModuleInit {
   /** Meta POSTs message events here. We ack immediately and process async. */
   async handleWebhook(body: unknown): Promise<void> {
     const b = body as { object?: string; entry?: { id?: string; messaging?: MessagingEvent[] }[] };
+    // Instagram Direct and Messenger arrive on the SAME webhook; the object tells
+    // them apart. We keep the channel on the conversation so the dashboard (and
+    // an App Review reviewer) can see which surface each message came from.
+    const channel: Channel = b?.object === 'instagram' ? 'instagram' : 'messenger';
     // "page" = Facebook Messenger, "instagram" = Instagram DMs (same event shape).
     if ((b?.object !== 'page' && b?.object !== 'instagram') || !Array.isArray(b.entry)) return;
     for (const entry of b.entry) {
@@ -906,7 +933,7 @@ export class MessengerService implements OnModuleInit {
           if (payload.startsWith('ASK_PKG:')) {
             // A package-card button tap = the customer saying "tell me about X".
             const pkg = payload.slice('ASK_PKG:'.length);
-            await this.handleMessage(entryId, senderId, `Tôi muốn tư vấn ${pkg}`, ev.timestamp).catch((e) =>
+            await this.handleMessage(entryId, senderId, `Tôi muốn tư vấn ${pkg}`, ev.timestamp, channel).catch((e) =>
               this.logger.warn(`pkg postback failed: ${String(e).slice(0, 160)}`),
             );
             continue;
@@ -927,7 +954,7 @@ export class MessengerService implements OnModuleInit {
           continue;
         }
         if (!text) continue;
-        await this.handleMessage(entryId, senderId, text, ev.timestamp).catch((e) =>
+        await this.handleMessage(entryId, senderId, text, ev.timestamp, channel).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
       }
@@ -1060,7 +1087,7 @@ export class MessengerService implements OnModuleInit {
     }
   }
 
-  private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number): Promise<void> {
+  private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger'): Promise<void> {
     // Route by Facebook Page id OR the linked Instagram account id: any of the
     // tenant's pages leads to the SAME brain — one brain, many mouths.
     const page = await this.pageByEntry(entryId);
@@ -1070,8 +1097,8 @@ export class MessengerService implements OnModuleInit {
     const pageId = page.pageId;
     const thread = await this.prisma.messengerThread.upsert({
       where: { pageId_senderId: { pageId, senderId } },
-      update: { lastText: text.slice(0, 300) },
-      create: { tenantId: page.tenantId, pageId, senderId, lastText: text.slice(0, 300) },
+      update: { lastText: text.slice(0, 300), channel } as never,
+      create: { tenantId: page.tenantId, pageId, senderId, lastText: text.slice(0, 300), channel } as never,
     });
     // Best-effort: resolve the customer's display name once (User Profile API).
     if (!thread.senderName) {

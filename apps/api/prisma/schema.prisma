@@ -1561,6 +1561,9 @@ model MessengerPage {
   igId      String? @unique
   pageToken String
   pageName  String?
+  // Instagram handle of the linked professional account — read with
+  // instagram_basic so the dashboard can show "@username" instead of a raw id.
+  igUsername String?
   enabled   Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1583,6 +1586,9 @@ model MessengerThread {
   handoff  Boolean @default(false) // a human took over → bot stays quiet
   handoffAt DateTime? // last human activity — bot yields 15 min, gives each new message a 5-min grace
   summary  String? // long-term customer memory — distilled from turns that fell off the history window
+  // Which surface this conversation arrived on: Facebook Messenger or Instagram
+  // Direct. Shown as a badge in the dashboard and in the activity log.
+  channel  String  @default("messenger")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

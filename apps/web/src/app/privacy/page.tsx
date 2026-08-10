@@ -44,6 +44,28 @@ export default function PrivacyPage() {
           visited; and improve the service. We do not sell your personal information.
         </p>
 
+        <h2 style={h2}>Facebook Messenger &amp; Instagram messaging</h2>
+        <p style={p}>
+          A salon may connect its own Facebook Page or Instagram professional account so that messages sent to that
+          Page or account are answered by Lumio Booking on the salon&apos;s behalf. When a salon connects its Page we
+          receive, from Meta, the Page name and Page ID, the linked Instagram account ID, and a Page access token used
+          to receive and send messages. When a customer messages the Page or account, we receive the message content,
+          the customer&apos;s page-scoped ID, their public display name and the message timestamp. This information is
+          used only to answer that conversation, to create or update the appointment the customer asks for, and to show
+          the conversation to the salon in its own dashboard. We never read post insights, reactions, comments,
+          ratings or advertising data; we do not use messaging data for advertising, profiling or resale; and one
+          salon can never see another salon&apos;s conversations. A salon can disconnect its Page at any time from the
+          dashboard, which immediately revokes the stored token and stops all message processing.
+        </p>
+
+        <h2 style={h2}>Automated replies (AI)</h2>
+        <p style={p}>
+          Replies are generated automatically. To do this, the text of the conversation and the salon&apos;s own
+          business information (services, prices, opening hours) are sent to our AI provider, Anthropic, acting as our
+          processor solely to generate the reply. Anthropic does not use this content to train its models. A salon
+          employee can take over any conversation at any time, and a customer can ask to speak to a person.
+        </p>
+
         <h2 style={h2}>Sharing</h2>
         <p style={p}>
           Your information is shared only with the salon you booked with and the service providers that operate the
@@ -55,7 +77,11 @@ export default function PrivacyPage() {
         <h2 style={h2}>Data retention &amp; security</h2>
         <p style={p}>
           We retain your information for as long as needed to provide the service and meet legal obligations, and we use
-          reasonable administrative and technical safeguards to protect it.
+          reasonable administrative and technical safeguards to protect it. Data is stored on secure cloud
+          infrastructure in the United States, encrypted in transit (TLS) and at rest, and access by our staff is
+          role-restricted and logged. Messaging conversations are kept only as long as the salon keeps its Page
+          connected; disconnecting the Page or deleting the salon account removes them. You may request deletion of
+          your data at any time — see our <a href="/data-deletion" style={{ color: '#6366f1' }}>data deletion</a> page.
         </p>
 
         <h2 style={h2}>Your choices</h2>

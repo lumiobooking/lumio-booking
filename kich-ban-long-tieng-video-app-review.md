@@ -17,6 +17,8 @@ Nguyên tắc: **thao tác trước một nhịp, rồi mới đọc**. Đừng 
 
 > Nói sai một câu thì **dừng 2 giây rồi đọc lại câu đó**, cứ quay tiếp — Meta chấp nhận, miễn là thao tác không bị cắt.
 
+> **Riêng phần Instagram**: ở giai đoạn chưa duyệt, Meta chỉ chuyển tin nhắn Instagram đến từ tài khoản có vai trò trong app. Dùng tài khoản tester `nguyenviet14546` để quay — hoàn toàn hợp lệ, và trong Reviewer instructions đã có câu giải thích trước cho người review.
+
 ---
 
 ## KỊCH BẢN
@@ -166,7 +168,42 @@ then books the appointment.
 
 ---
 
-### Cảnh 10 — Kết quả trong hệ thống (3:05 – 3:25)
+### Cảnh 9b — Instagram Direct (3:05 – 3:35) ⚠️ BẮT BUỘC cho 2 quyền Instagram
+
+**Thao tác**: mở Instagram (tài khoản tester `nguyenviet14546`) → nhắn DM tới `@lumio_bk`:
+
+```
+Do you do gel manicures and how much?
+```
+
+Đợi bot trả lời **ngay trên màn hình** rồi mới đọc lời thoại.
+
+```
+The same assistant also answers Instagram Direct.
+Here I send a message to the salon's Instagram account,
+and the assistant replies using the same services and prices.
+We use instagram basic only to read the account handle shown in the dashboard,
+and instagram manage messages to receive and answer these direct messages.
+```
+
+*Nghĩa: Trợ lý này cũng trả lời Instagram Direct. Tôi nhắn tới tài khoản Instagram của tiệm và trợ lý trả lời bằng đúng dịch vụ và giá. Chúng tôi dùng instagram_basic chỉ để đọc tên tài khoản hiển thị trong dashboard, và instagram_manage_messages để nhận và trả lời tin nhắn.*
+
+---
+
+### Cảnh 9c — Nhật ký phân biệt hai kênh (3:35 – 3:50)
+
+**Thao tác**: về dashboard → khung **Activity log** → trỏ vào cột **Channel**, cho thấy rõ hai dòng `Instagram · Incoming` và `Instagram · Outgoing · Sent`, bên cạnh các dòng `Messenger`.
+
+```
+The dashboard logs every message with its channel,
+so the salon can see Instagram and Messenger side by side.
+```
+
+*Nghĩa: Dashboard ghi lại mọi tin nhắn kèm kênh, để tiệm thấy Instagram và Messenger cạnh nhau.*
+
+---
+
+### Cảnh 10 — Kết quả trong hệ thống (3:50 – 4:10)
 
 **Thao tác**: về dashboard → **Calendar** (chỉ vào lịch hẹn vừa tạo) → **Messenger bot → Conversations** (chỉ vào hội thoại vừa rồi).
 

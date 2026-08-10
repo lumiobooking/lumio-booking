@@ -49,7 +49,11 @@ interface Salon {
   name: string; slug: string; timezone: string; address?: string | null; contactPhone?: string | null;
   areas?: string[]; branding?: { accentColor?: string; logoUrl?: string; logoScale?: number };
   deposit?: Deposit; rating?: { value: number; count: number } | null;
-  booking?: { businessHours?: DayHoursPublic[] };
+  booking?: {
+    businessHours?: DayHoursPublic[];
+    currency?: string; currencySymbol?: string;
+    symbolPosition?: 'before' | 'after'; priceDecimals?: number;
+  };
 }
 interface Svc { id: string; durationMinutes: number }
 interface Avail { tableCount: number; durationMinutes: number; busy: { start: string; end: string }[] }
@@ -73,6 +77,9 @@ const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
 export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon }) {
   const base = `${API_URL}/public/salons/${encodeURIComponent(slug)}`;
   const accent = salon.branding?.accentColor || '#dc2626';
+  // Menu prices follow the restaurant's own currency settings (a Montréal
+  // restaurant shows CAD, a Paris one shows €) instead of a hard-coded "$".
+  const dishPrice = useMemo(() => makeDishPrice(salon.booking), [salon.booking]);
   const tz = salon.timezone || 'UTC';
   const isMobile = useIsMobile(820);
   const embedded = useEmbedded();
@@ -395,7 +402,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
         </a>
       </div>
 
-      {showMenu && <MenuSheet base={base} accent={accent} menu={menu} onClose={() => setShowMenu(false)} />}
+      {showMenu && <MenuSheet base={base} accent={accent} menu={menu} onClose={() => setShowMenu(false)} dishPrice={dishPrice} />}
     </Shell>
   );
 }
@@ -516,10 +523,18 @@ function MobileBar({ accent, party, timeLine, canContinue, label, onContinue, em
   return createPortal(bar, document.body);
 }
 
-/** Menu price: keep the salon's .5/.9 endings, drop trailing zeros ($21.5, $6.9, $13). */
-function dishPrice(cents: number): string {
-  const v = (cents / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-  return `$${v}`;
+const MENU_SYMBOLS: Record<string, string> = { USD: '$', CAD: '$', AUD: '$', SGD: 'S$', EUR: '€', GBP: '£', VND: '₫', JPY: '¥' };
+/** Menu price in the restaurant's OWN currency (symbol, side and decimals come
+ *  from its booking settings), keeping .5/.9 endings and dropping trailing
+ *  zeros: $21.5 · 6,90 € · 20 $ for Québec when the symbol is set to trail. */
+function makeDishPrice(b: Salon['booking']): (cents: number) => string {
+  const sym = b?.currencySymbol || MENU_SYMBOLS[b?.currency || 'USD'] || `${b?.currency || ''} `;
+  const after = b?.symbolPosition === 'after';
+  const dec = typeof b?.priceDecimals === 'number' ? b.priceDecimals : 2;
+  return (cents: number) => {
+    const v = (cents / 100).toFixed(dec).replace(/0+$/, '').replace(/[.,]$/, '');
+    return after ? `${v} ${sym}` : `${sym}${v}`;
+  };
 }
 function menuTags(d: Dish): string[] {
   const hay = `${d.name} ${d.description || ''}`.toLowerCase();
@@ -534,7 +549,7 @@ const TAG_COLORS: Record<string, [string, string]> = {
   Vegan: ['#065f46', '#d1fae5'], Veg: ['#065f46', '#d1fae5'], GF: ['#1e3a8a', '#dbeafe'], Spicy: ['#9a1c1c', '#fee2e2'],
 };
 
-function DishRow({ d, accent }: { d: Dish; accent: string }) {
+function DishRow({ d, accent, dishPrice }: { d: Dish; accent: string; dishPrice: (cents: number) => string }) {
   const img = !!d.imageUrl && (d.imageUrl.startsWith('http') || d.imageUrl.startsWith('data:') || d.imageUrl.startsWith('/'));
   const tags = menuTags(d);
   return (
@@ -558,7 +573,7 @@ function DishRow({ d, accent }: { d: Dish; accent: string }) {
   );
 }
 
-function MenuSheet({ base, accent, menu, onClose }: { base: string; accent: string; menu: Dish[] | null; onClose: () => void }) {
+function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; accent: string; menu: Dish[] | null; onClose: () => void; dishPrice: (cents: number) => string }) {
   const grouped = useMemo(() => menu ? Object.entries(menu.reduce((acc: Record<string, Dish[]>, d) => { const k = d.category || 'Other'; (acc[k] ||= []).push(d); return acc; }, {})) : [], [menu]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
@@ -592,7 +607,7 @@ function MenuSheet({ base, accent, menu, onClose }: { base: string; accent: stri
                   <span style={{ fontSize: 13, fontWeight: 800, color: INK, textTransform: 'uppercase', letterSpacing: 0.5 }}>{cat}</span>
                   <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{dishes.length}</span>
                 </div>
-                {dishes.map((d) => <DishRow key={d.name} d={d} accent={accent} />)}
+                {dishes.map((d) => <DishRow key={d.name} d={d} accent={accent} dishPrice={dishPrice} />)}
               </div>
             ))}
         </div>

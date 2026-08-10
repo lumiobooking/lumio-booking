@@ -139,6 +139,10 @@ const DICT: Record<string, { vi: string; en: string }> = {
   statusActive: { vi: 'Active', en: 'Active' },
   statusInactive: { vi: 'Chưa subscribe', en: 'Inactive' },
   statusChecking: { vi: 'Đang kiểm tra…', en: 'Checking…' },
+  whPolling: {
+    vi: 'Đang xác nhận đăng ký webhook với Meta — mất vài giây, không cần tải lại trang.',
+    en: 'Confirming the webhook subscription with Meta — this takes a few seconds, no need to reload.',
+  },
   whUnknown: {
     vi: 'Chưa kiểm tra được trạng thái webhook (server đang khởi động lại). Hệ thống tự thử lại — đây không phải là mất kết nối.',
     en: 'Could not verify the webhook status yet (the server is waking up). Retrying automatically — this does not mean the Page was disconnected.',
@@ -207,6 +211,7 @@ function Inner() {
   const [wh, setWh] = useState<WebhookStatus | null>(null);       // live webhook subscription status
   const [whFail, setWhFail] = useState(false);                    // status check itself failed (≠ "not subscribed")
   const [whTries, setWhTries] = useState(0);                      // cold-start retries
+  const [whBusy, setWhBusy] = useState(false);                    // polling right after a connect
   const [activity, setActivity] = useState<ActivityEv[]>([]);     // in/out message log
   const [activityPage, setActivityPage] = useState('');           // Page the log is tied to
   const [sentAt, setSentAt] = useState<string | null>(null);      // timestamp of the last manual send
@@ -302,6 +307,26 @@ function Inner() {
       setGreetBusy(false);
     }
   };
+  // Meta needs a moment to register subscribed_apps after a connect, so the
+  // first read right afterwards often still says "not subscribed". Poll until
+  // it flips instead of making the salon reload the page by hand.
+  const pollWebhook = useCallback(async (attempts = 6) => {
+    if (!token) return;
+    setWhBusy(true);
+    try {
+      for (let i = 0; i < attempts; i++) {
+        const whs = await apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => null);
+        if (whs) {
+          setWh(whs); setWhFail(false); setWhTries(0);
+          if (whs.subscribed) return;
+        } else {
+          setWhFail(true);
+        }
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500 + i * 1000));
+      }
+    } finally { setWhBusy(false); }
+  }, [token]);
+
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const fb = p.get('fb');
@@ -315,6 +340,7 @@ function Inner() {
     if (fb === 'connected') {
       const page = p.get('page');
       setFbResult({ ok: true, text: `${DICT.fbConnectedMsg[lang as Lang]}${page ? ` — ${page}` : ''} ${DICT.fbSubscribedMsg[lang as Lang]}` });
+      void pollWebhook();
     } else {
       const code = decodeURIComponent(p.get('msg') || '');
       const NAMED: Record<string, { vi: string; en: string }> = {
@@ -332,7 +358,7 @@ function Inner() {
       setFbResult({ ok: false, text: `${DICT.fbErrorMsg[lang as Lang]}${code ? `: ${code}` : ''}${friendly ? ` — ${friendly}` : ''}` });
     }
     window.history.replaceState(null, '', window.location.pathname);
-  }, [lang, token]);
+  }, [lang, token, pollWebhook]);
 
   async function choosePage(id: string) {
     if (!token || picking) return;
@@ -341,6 +367,7 @@ function Inner() {
       const conf = await apiFetch<MConf>('/messenger/oauth/choose', { method: 'POST', token, body: { pageId: id } });
       setC(conf); // list stays open — an agency connects several pages in a row
       setFbResult({ ok: true, text: `${DICT.fbConnectedMsg[lang as Lang]} — ${conf.pages?.length ?? 1} page ${DICT.fbSubscribedMsg[lang as Lang]}` });
+      void pollWebhook(); // flip the panel to Active without a page reload
     } catch (e) {
       setFbResult({ ok: false, text: e instanceof Error ? e.message : 'Could not connect this page' });
     } finally { setPicking(null); }
@@ -674,9 +701,9 @@ function Inner() {
             <Field label={t('connStatus')} value={t('connected')} good />
             <Field
               label={t('webhookSub')}
-              value={wh?.subscribed ? t('statusActive') : (!wh || whFail) ? t('statusChecking') : t('statusInactive')}
+              value={wh?.subscribed ? t('statusActive') : (!wh || whFail || whBusy) ? t('statusChecking') : t('statusInactive')}
               good={!!wh?.subscribed}
-              warn={!!wh && !whFail && !wh.subscribed}
+              warn={!!wh && !whFail && !whBusy && !wh.subscribed}
             />
           </div>
           {(() => {
@@ -720,9 +747,11 @@ function Inner() {
               </div>
             )}
           </div>
-          {(!wh || (whFail && !wh.subscribed))
-            ? <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('whUnknown')}</p>
-            : !wh.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
+          {whBusy && !wh?.subscribed
+            ? <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('whPolling')}</p>
+            : (!wh || (whFail && !wh.subscribed))
+              ? <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('whUnknown')}</p>
+              : !wh.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
           {(c.pages?.length ?? 0) > 0 && (
             <div style={{ marginTop: 14 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>

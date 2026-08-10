@@ -292,6 +292,8 @@ export class MessengerService implements OnModuleInit {
       // shop B silently broke shop A.
       const healed = await this.healKnownPages(pages);
       if (healed) trace.push(`heal: refreshed ${healed} known page(s) from this grant`);
+      const withIg = pages.filter((p) => p.instagram_business_account?.id).length;
+      trace.push(`instagram: ${withIg} of ${pages.length} page(s) have a linked IG account`);
       // What in the grant is NEW to this tenant? A page we already hold must
       // never short-circuit the flow (that bug ate "add a second page" alive):
       //  · exactly ONE new page → connect it straight away
@@ -336,16 +338,31 @@ export class MessengerService implements OnModuleInit {
    *  that the platform already knows (any tenant). Page identity is global —
    *  a token belongs to the page — so this crosses tenants SAFELY: it never
    *  reads or moves tenant data, it only keeps existing links alive. */
-  private async healKnownPages(pages: { id: string; name?: string; access_token?: string }[]): Promise<number> {
+  private async healKnownPages(
+    pages: { id: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[],
+  ): Promise<number> {
     let healed = 0;
     for (const p of pages) {
       if (!p.id || !p.access_token) continue;
       const known = await this.prisma.messengerPage.findUnique({ where: { pageId: p.id } }).catch(() => null);
       if (known) {
+        // Capture the linked Instagram account the FIRST time Meta reveals it
+        // (it only appears once instagram_basic is granted). Guard: an IG
+        // account already bound to a different tenant is never stolen.
+        let igId: string | null = known.igId ?? null;
+        const fresh = p.instagram_business_account?.id || null;
+        if (fresh && fresh !== igId) {
+          const clash = await this.prisma.messengerPage.findFirst({ where: { igId: fresh, NOT: { pageId: p.id } }, select: { tenantId: true } }).catch(() => null);
+          const clashLegacy = await this.prisma.messengerConnection.findFirst({ where: { igId: fresh, NOT: { tenantId: known.tenantId } }, select: { tenantId: true } }).catch(() => null);
+          if (!clash && !clashLegacy) igId = fresh;
+        }
         await this.prisma.messengerPage.update({
           where: { pageId: p.id },
-          data: { pageToken: p.access_token, pageName: p.name || known.pageName },
+          data: { pageToken: p.access_token, pageName: p.name || known.pageName, igId },
         }).catch(() => undefined);
+        if (igId && igId !== (known.igId ?? null)) {
+          await this.prisma.messengerConnection.updateMany({ where: { tenantId: known.tenantId, pageId: p.id }, data: { igId } }).catch(() => undefined);
+        }
       }
       const legacy = await this.prisma.messengerConnection.findFirst({ where: { pageId: p.id } }).catch(() => null);
       if (legacy) {

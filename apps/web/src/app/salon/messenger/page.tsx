@@ -138,6 +138,11 @@ const DICT: Record<string, { vi: string; en: string }> = {
   webhookSub: { vi: 'Webhook subscription', en: 'Webhook subscription' },
   statusActive: { vi: 'Active', en: 'Active' },
   statusInactive: { vi: 'Chưa subscribe', en: 'Inactive' },
+  statusChecking: { vi: 'Đang kiểm tra…', en: 'Checking…' },
+  whUnknown: {
+    vi: 'Chưa kiểm tra được trạng thái webhook (server đang khởi động lại). Hệ thống tự thử lại — đây không phải là mất kết nối.',
+    en: 'Could not verify the webhook status yet (the server is waking up). Retrying automatically — this does not mean the Page was disconnected.',
+  },
   subscribedEvents: { vi: 'Sự kiện đã đăng ký', en: 'Subscribed events' },
   lastVerified: { vi: 'Kiểm tra lần cuối', en: 'Last verified' },
   notSubscribed: { vi: 'Page chưa subscribe app — bấm \u201cKết nối lại Facebook\u201d.', en: 'Page not subscribed yet \u2014 click \u201cReconnect Facebook\u201d.' },
@@ -200,6 +205,8 @@ function Inner() {
   const [infoOpen, setInfoOpen] = useState(true);     // fold the business-info checklist
   const [convoSearch, setConvoSearch] = useState(''); // filter the conversations list
   const [wh, setWh] = useState<WebhookStatus | null>(null);       // live webhook subscription status
+  const [whFail, setWhFail] = useState(false);                    // status check itself failed (≠ "not subscribed")
+  const [whTries, setWhTries] = useState(0);                      // cold-start retries
   const [activity, setActivity] = useState<ActivityEv[]>([]);     // in/out message log
   const [activityPage, setActivityPage] = useState('');           // Page the log is tied to
   const [sentAt, setSentAt] = useState<string | null>(null);      // timestamp of the last manual send
@@ -378,17 +385,33 @@ function Inner() {
       const [conf, th, whs, act, lds] = await Promise.all([
         apiFetch<MConf>('/messenger', { token }),
         apiFetch<MThread[]>('/messenger/threads', { token }).catch(() => [] as MThread[]),
-        apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => ({ connected: false } as WebhookStatus)),
+        // null = the check itself failed (cold start / timeout). That is NOT the
+        // same as "the Page is not subscribed" — rendering them the same way
+        // made the dashboard cry wolf, so keep the two states apart.
+        apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => null),
         apiFetch<ActivityRes>('/messenger/activity', { token }).catch(() => ({ page: '', pageId: '', events: [] } as ActivityRes)),
         apiFetch<SalesLead[]>('/messenger/leads', { token }).catch(() => [] as SalesLead[]),
       ]);
-      setC(conf); setThreads(th); setWh(whs); setActivity(act.events || []); setActivityPage(act.page || '');
+      setC(conf); setThreads(th); setActivity(act.events || []); setActivityPage(act.page || '');
+      if (whs) { setWh(whs); setWhFail(false); setWhTries(0); } else { setWhFail(true); }
       setLeads(lds);
       setSendTo((prev) => prev || th[0]?.id || '');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+
+  // The API sleeps on idle, so the very first status check after a cold start can
+  // time out. Retry quietly a few times instead of leaving a scary "Inactive" on
+  // screen — this panel is what a Meta reviewer looks at.
+  useEffect(() => {
+    if (!token || !whFail || whTries >= 3) return;
+    const id = setTimeout(async () => {
+      const whs = await apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => null);
+      if (whs) { setWh(whs); setWhFail(false); setWhTries(0); } else { setWhTries((n) => n + 1); }
+    }, 4000 + whTries * 4000);
+    return () => clearTimeout(id);
+  }, [token, whFail, whTries]);
 
   // Lightweight auto-refresh: keeps Activity/threads current without reloading
   // the page (reviewer sees new webhook events appear on their own).
@@ -649,7 +672,12 @@ function Inner() {
             <Field label={t('pageName')} value={wh?.pageName || c.pageName || '—'} />
             <Field label={t('pageIdLabel')} value={wh?.pageId || c.pageId || '—'} mono />
             <Field label={t('connStatus')} value={t('connected')} good />
-            <Field label={t('webhookSub')} value={wh?.subscribed ? t('statusActive') : t('statusInactive')} good={!!wh?.subscribed} warn={!wh?.subscribed} />
+            <Field
+              label={t('webhookSub')}
+              value={wh?.subscribed ? t('statusActive') : (!wh || whFail) ? t('statusChecking') : t('statusInactive')}
+              good={!!wh?.subscribed}
+              warn={!!wh && !whFail && !wh.subscribed}
+            />
           </div>
           {(() => {
             // Instagram identity, read with instagram_basic. Showing the handle
@@ -692,7 +720,9 @@ function Inner() {
               </div>
             )}
           </div>
-          {!wh?.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
+          {(!wh || (whFail && !wh.subscribed))
+            ? <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('whUnknown')}</p>
+            : !wh.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
           {(c.pages?.length ?? 0) > 0 && (
             <div style={{ marginTop: 14 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>

@@ -773,7 +773,7 @@ export class MessengerService implements OnModuleInit {
       const secret = this.appSecret();
       if (!id || !secret) { out.error = 'FB_APP_ID/FB_APP_SECRET not set'; return out; }
       const token = `${id}|${secret}`;
-      const res = await fetch(`${GRAPH}/${id}/subscriptions?access_token=${encodeURIComponent(token)}`);
+      const res = await fetch(`${GRAPH}/${id}/subscriptions?access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(8000) });
       const json = (await res.json().catch(() => ({}))) as {
         data?: { object?: string; callback_url?: string; fields?: ({ name?: string } | string)[] }[];
       };
@@ -800,7 +800,7 @@ export class MessengerService implements OnModuleInit {
           verify_token: this.verifyToken(),
           access_token: token,
         });
-        const fix = await fetch(`${GRAPH}/${id}/subscriptions`, { method: 'POST', body });
+        const fix = await fetch(`${GRAPH}/${id}/subscriptions`, { method: 'POST', body, signal: AbortSignal.timeout(8000) });
         const fixJson = (await fix.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
         if (fixJson.success) {
           out.fields = fields.split(',');
@@ -846,11 +846,11 @@ export class MessengerService implements OnModuleInit {
       // Page name is captured at connect (pages_show_list). Only hit the Graph
       // node as a fallback — a direct name read can require pages_read_engagement.
       if (!pageName) {
-        const nameRes = await fetch(`${GRAPH}/${c.pageId}?fields=name&access_token=${encodeURIComponent(c.pageToken)}`);
+        const nameRes = await fetch(`${GRAPH}/${c.pageId}?fields=name&access_token=${encodeURIComponent(c.pageToken)}`, { signal: AbortSignal.timeout(8000) });
         const nameJson = (await nameRes.json().catch(() => ({}))) as { name?: string };
         pageName = nameJson.name || '';
       }
-      const subRes = await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageToken)}`);
+      const subRes = await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageToken)}`, { signal: AbortSignal.timeout(8000) });
       const subJson = (await subRes.json().catch(() => ({}))) as { data?: { subscribed_fields?: string[] }[] };
       const app = (subJson.data || [])[0];
       subscribed = Boolean(app);

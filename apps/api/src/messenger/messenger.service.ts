@@ -1307,14 +1307,16 @@ KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.
 - Ask for exactly ONE thing per message. Never stack questions.
 - Never re-ask anything already answered in this conversation.
+- Never read a detail back to be confirmed. If they just typed a name, a phone number or a time, accept it and move on to the next missing piece. "Just to confirm, is 512-555-1234 your number?" is exactly what NOT to do.
+- If a detail they give now differs from one you already had, the NEW one silently wins. Never ask the customer to choose between two versions of their own phone number, name or time.
 - When they don't know what they want, suggest 2-3 popular services — not the whole menu. Share the full list only if they ask.
 - No jargon, no policies, no long explanations unless they ask.
 - Off-topic question? Answer in one friendly line, then gently return to the booking.
 If the conversation is just starting and the customer hasn't said what they need, greet briefly and ask which service they'd like (if a greeting was already sent, don't greet again — go straight to helping).
 To book you need ONLY: name, phone number, service, and a specific date & time. Collect the missing piece one question at a time — nothing more.
 Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
-Right before booking, recap in ONE short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?").
-Use the get_services tool for what's available and the service ids. When you have name + phone + service + a specific date/time, call create_booking (include email only if given). After it succeeds, confirm warmly in one line and say a confirmation is on the way.
+Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
+Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking, passing serviceId AND serviceName copied exactly from get_services (include email only if given). After it succeeds, confirm warmly in one line and say a confirmation is on the way.
 If they ask about an EXISTING appointment (time, changes, cancelling), do not guess or state details from memory — say a staff member will check and follow up shortly.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
 As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
@@ -1325,17 +1327,18 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       { name: 'get_services', description: 'List this salon’s bookable services with their id, name, price and duration.', input_schema: { type: 'object', properties: {}, required: [] } },
       {
         name: 'create_booking',
-        description: 'Create the appointment. Only call once you have the customer name, phone, a chosen service id, and a specific local date & time.',
+        description: 'Create the appointment. Only call once you have the customer name, phone, a chosen service, and a specific local date & time.',
         input_schema: {
           type: 'object',
           properties: {
             customerFirstName: { type: 'string' },
             customerPhone: { type: 'string' },
-            serviceId: { type: 'string' },
+            serviceId: { type: 'string', description: 'The id copied EXACTLY from get_services.' },
+            serviceName: { type: 'string', description: 'The service name exactly as it appears in get_services. Always send this together with serviceId — it is used to recover if the id was mistyped.' },
             localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00' },
             customerEmail: { type: 'string', description: 'Optional. The customer email for an email confirmation; omit entirely if they did not give one.' },
           },
-          required: ['customerFirstName', 'customerPhone', 'serviceId', 'localDateTime'],
+          required: ['customerFirstName', 'customerPhone', 'serviceId', 'serviceName', 'localDateTime'],
         },
       },
       {
@@ -1453,7 +1456,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // months old — plus, when they return after days away, an explicit order to
     // pick up the thread instead of greeting them like a stranger.
     const memoryBlock = ctx.memory
-      ? `\nCUSTOMER MEMORY — facts about THIS customer from earlier conversations (may be days or months old; TRUST it, never re-ask what it already answers):\n${ctx.memory}`
+      ? `\nCUSTOMER MEMORY — facts about THIS customer from earlier conversations (may be days or months old; TRUST it, never re-ask what it already answers). It is OLD, so this conversation always outranks it: if the customer gives a phone number, name, service or time that differs from the memory, use the NEW one without comment and never ask them which is right:\n${ctx.memory}`
       : '';
     const gapNote = (ctx.gapDays ?? 0) >= 1
       ? `\nRETURNING CUSTOMER: they last spoke ${ctx.gapDays} day(s) ago and just came back. Do NOT restart with a stranger's greeting, do NOT redo discovery, do NOT re-explain at length. Acknowledge them like someone you know, use the memory and the history above, and answer their new message directly — SHORT.`
@@ -2010,7 +2013,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
           select: { id: true, name: true, priceCents: true, durationMinutes: true, discountPercent: true },
-          orderBy: { name: 'asc' }, take: 40,
+          orderBy: { name: 'asc' }, take: 250,
         });
         if (!services.length) return 'No services are configured.';
         return JSON.stringify(services.map((sv) => {
@@ -2027,10 +2030,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'create_booking') {
         const firstName = String(input.customerFirstName || '').trim();
         const phone = String(input.customerPhone || '').trim();
-        const serviceId = String(input.serviceId || '').trim();
         const local = String(input.localDateTime || '').trim();
         const email = String(input.customerEmail || '').trim();
-        if (!firstName || !phone || !serviceId || !local) return 'Missing required info; ask the customer for what is missing.';
+        const rawId = String(input.serviceId || '').trim();
+        const rawName = String(input.serviceName || '').trim();
+        if (!firstName || !phone || (!rawId && !rawName) || !local) return 'Missing required info; ask the customer for what is missing.';
+        // A 36-character uuid copied by hand is the single most fragile part of
+        // this call: one wrong character used to surface to the customer as
+        // "that service isn't available", which is both false and unrecoverable.
+        // Resolve by name as well, and only give up if neither matches.
+        const serviceId = await this.resolveServiceId(tenantId, rawId, rawName);
+        if (!serviceId) {
+          return `ERROR — no service matches id "${rawId}" or name "${rawName}". Call get_services again and use a name from that list EXACTLY. Do NOT tell the customer the service is unavailable — the salon may well offer it under a slightly different name.`;
+        }
         const startTime = wallToUtcISO(local, tz);
         const dto = {
           serviceId, startTime, customerFirstName: firstName, customerPhone: phone,
@@ -2063,6 +2075,34 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       this.logger.warn(`bot tool ${name} FAILED: ${msg}`);
       return `ERROR — the "${name}" call failed: ${msg}. Do NOT tell the customer it succeeded. Apologize, explain briefly, and offer another time or ask for corrected details.`;
     }
+  }
+
+  /**
+   * Map whatever the model produced onto a real service id: exact id, then
+   * exact name, then a contains-match either way (case- and space-insensitive).
+   * Returns null only when the salon genuinely has nothing resembling it.
+   */
+  private async resolveServiceId(tenantId: string, id: string, name: string): Promise<string | null> {
+    const rows = await this.prisma.service.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (id && rows.some((r) => r.id === id)) return id;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const want = norm(name);
+    if (!want) return null;
+    const exact = rows.find((r) => norm(r.name) === want);
+    if (exact) return exact.id;
+    // Among loose matches take the closest in length. "manicure" must not land
+    // on "Shellac French Manicure" and quietly bill the customer twice the price.
+    const partial = rows
+      .filter((r) => norm(r.name).includes(want) || want.includes(norm(r.name)))
+      .sort((a, b) => Math.abs(norm(a.name).length - want.length) - Math.abs(norm(b.name).length - want.length))[0];
+    if (partial) {
+      this.logger.log(`service id recovered by name: "${name}" -> ${partial.name}`);
+      return partial.id;
+    }
+    return null;
   }
 
   /** Best-effort profile lookup (User Profile API): the customer's display name.

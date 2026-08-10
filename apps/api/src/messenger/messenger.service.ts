@@ -59,6 +59,11 @@ export class MessengerService implements OnModuleInit {
     const t = setTimeout(() => {
       void this.resubscribeAllPages().catch((e) => this.logger.warn(`echo resubscribe sweep failed: ${String(e).slice(0, 120)}`));
       void this.ensureAppSubscription().catch((e) => this.logger.warn(`app subscription sweep failed: ${String(e).slice(0, 120)}`));
+      // Instagram DMs ride the SAME webhook but need their own app-level
+      // subscription object — only attempted when Instagram is switched on.
+      if (process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true') {
+        void this.ensureAppSubscription(true, 'instagram').catch((e) => this.logger.warn(`ig subscription sweep failed: ${String(e).slice(0, 120)}`));
+      }
     }, 90 * 1000); // well after boot
     t.unref?.();
   }
@@ -703,8 +708,8 @@ export class MessengerService implements OnModuleInit {
    * via GET, which our webhook answers. Cached 10 minutes.
    */
   private appSubCache: { at: number; fields: string[]; echoOk: boolean } | null = null;
-  private async ensureAppSubscription(force = false): Promise<{ fields: string[]; echoOk: boolean }> {
-    if (!force && this.appSubCache && Date.now() - this.appSubCache.at < 10 * 60_000) {
+  private async ensureAppSubscription(force = false, object: 'page' | 'instagram' = 'page'): Promise<{ fields: string[]; echoOk: boolean }> {
+    if (object === 'page' && !force && this.appSubCache && Date.now() - this.appSubCache.at < 10 * 60_000) {
       return { fields: this.appSubCache.fields, echoOk: this.appSubCache.echoOk };
     }
     const out = { fields: [] as string[], echoOk: false };
@@ -717,7 +722,7 @@ export class MessengerService implements OnModuleInit {
       const json = (await res.json().catch(() => ({}))) as {
         data?: { object?: string; callback_url?: string; fields?: ({ name?: string } | string)[] }[];
       };
-      const sub = (json.data || []).find((d) => d.object === 'page');
+      const sub = (json.data || []).find((d) => d.object === object);
       const names = (sub?.fields || [])
         .map((f) => (typeof f === 'string' ? f : f?.name || ''))
         .filter(Boolean);
@@ -726,11 +731,16 @@ export class MessengerService implements OnModuleInit {
       const missing = need.filter((n) => !names.includes(n));
       if (!missing.length) {
         out.echoOk = true;
-      } else if (sub?.callback_url) {
+      } else if (sub?.callback_url || object === 'instagram') {
+        // Instagram may have NO subscription yet — reuse the page callback URL,
+        // which is the same webhook endpoint.
+        const callback = sub?.callback_url
+          || (await this.pageCallbackUrl(token, id))
+          || `${this.apiBase()}/api/messenger/webhook`;
         const fields = Array.from(new Set([...names, ...need, 'message_reactions'])).join(',');
         const body = new URLSearchParams({
-          object: 'page',
-          callback_url: sub.callback_url,
+          object,
+          callback_url: callback,
           fields,
           verify_token: this.verifyToken(),
           access_token: token,
@@ -740,7 +750,7 @@ export class MessengerService implements OnModuleInit {
         if (fixJson.success) {
           out.fields = fields.split(',');
           out.echoOk = true;
-          this.logger.log(`app webhook subscription repaired: added ${missing.join(', ')}`);
+          this.logger.log(`app webhook subscription (${object}) repaired: added ${missing.join(', ')}`);
         } else {
           this.logger.warn(`app webhook repair refused: ${String(fixJson.error?.message || 'unknown').slice(0, 160)}`);
         }
@@ -748,8 +758,20 @@ export class MessengerService implements OnModuleInit {
     } catch (e) {
       this.logger.warn(`app subscription check failed: ${String(e).slice(0, 120)}`);
     }
-    this.appSubCache = { at: Date.now(), ...out };
+    if (object === 'page') this.appSubCache = { at: Date.now(), ...out };
     return out;
+  }
+
+  /** Read the callback URL Meta already has for this app (any object), so an
+   *  Instagram subscription reuses the exact verified endpoint. */
+  private async pageCallbackUrl(appToken: string, appId: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${GRAPH}/${appId}/subscriptions?access_token=${encodeURIComponent(appToken)}`);
+      const json = (await res.json().catch(() => ({}))) as { data?: { callback_url?: string }[] };
+      return (json.data || []).map((d) => d.callback_url).find(Boolean) || null;
+    } catch {
+      return null;
+    }
   }
 
   /** Verify the connected Page is subscribed to our app's webhook (the

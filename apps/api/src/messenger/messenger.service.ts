@@ -723,6 +723,7 @@ export class MessengerService implements OnModuleInit {
       body: JSON.stringify({ recipient: { id: thread.senderId }, messaging_type: 'RESPONSE', message: { text: body.slice(0, 1900) } }),
     });
     const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
+    this.rememberSentMid(out.message_id);
     if (!res.ok || out.error) {
       // Keep an auditable "Failed" row in the activity log, then surface the error.
       const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
@@ -988,7 +989,8 @@ export class MessengerService implements OnModuleInit {
         // WITHOUT it means a human typed in the Page inbox — the bot yields
         // that conversation instantly (auto take-over; bot re-engages per the 15-min/5-min yield rules).
         if (ev.message?.is_echo) {
-          if (ev.message?.metadata !== 'LUMIO_BOT' && ev.recipient?.id) {
+          const ours = ev.message?.metadata === 'LUMIO_BOT' || (ev.message?.mid ? this.sentMids.has(ev.message.mid) : false);
+          if (!ours && ev.recipient?.id) {
             await this.pauseForHuman(entryId, ev.recipient.id, ev.message?.text).catch(() => undefined);
           }
           continue;
@@ -1177,6 +1179,16 @@ export class MessengerService implements OnModuleInit {
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
   // the connection); 15 and 5 minutes are just the defaults.
   private readonly graceTimers = new Map<string, NodeJS.Timeout>();
+  /** Message ids WE sent. Instagram echoes drop the metadata tag, so the tag
+   *  alone cannot tell our own message from a human's — the id can. Kept ~10
+   *  minutes, which is far longer than an echo takes to arrive. */
+  private readonly sentMids = new Map<string, number>();
+  private rememberSentMid(mid?: string | null): void {
+    if (!mid) return;
+    const cutoff = Date.now() - 10 * 60_000;
+    for (const [k, at] of this.sentMids) if (at < cutoff) this.sentMids.delete(k);
+    this.sentMids.set(mid, Date.now());
+  }
   /** package-card image availability cache (static files on the web app) */
   private readonly cardImgOk = new Map<string, boolean>();
 
@@ -2129,7 +2141,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     cards: { title: string; subtitle: string; image_url?: string; buttons: unknown[] }[],
   ): Promise<void> {
     try {
-      await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
+      const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -2142,6 +2154,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         }),
         signal: AbortSignal.timeout(12_000),
       });
+      const outCards = (await res.json().catch(() => ({}))) as { message_id?: string };
+      this.rememberSentMid(outCards.message_id);
     } catch (e) {
       this.logger.warn(`Send cards failed: ${String(e).slice(0, 120)}`);
     }
@@ -2161,13 +2175,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
   private async sendText(pageToken: string, recipientId: string, text: string): Promise<void> {
     try {
-      await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
+      // metadata comes back on the Messenger echo; Instagram drops it, so we
+      // also remember the message id the Send API returns.
+      const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        // metadata comes back on the echo — it is how the webhook tells OUR
-        // messages from a human typing in the Page inbox.
         body: JSON.stringify({ recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text: text.slice(0, 1900), metadata: 'LUMIO_BOT' } }),
+        signal: AbortSignal.timeout(12_000),
       });
+      const out = (await res.json().catch(() => ({}))) as { message_id?: string };
+      this.rememberSentMid(out.message_id);
     } catch (e) {
       this.logger.warn(`Send API failed: ${String(e).slice(0, 120)}`);
     }
@@ -2177,7 +2194,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 interface MessagingEvent {
   sender?: { id?: string };
   recipient?: { id?: string };
-  message?: { text?: string; is_echo?: boolean; metadata?: string };
+  message?: { text?: string; is_echo?: boolean; metadata?: string; mid?: string };
   postback?: { payload?: string; title?: string }; // "Get Started" tap and menu buttons
   timestamp?: number; // ms epoch set by Meta on the webhook event
 }

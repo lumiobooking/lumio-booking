@@ -762,15 +762,15 @@ export class MessengerService implements OnModuleInit {
    * via GET, which our webhook answers. Cached 10 minutes.
    */
   private appSubCache: { at: number; fields: string[]; echoOk: boolean } | null = null;
-  private async ensureAppSubscription(force = false, object: 'page' | 'instagram' = 'page'): Promise<{ fields: string[]; echoOk: boolean }> {
+  private async ensureAppSubscription(force = false, object: 'page' | 'instagram' = 'page'): Promise<{ fields: string[]; echoOk: boolean; error?: string }> {
     if (object === 'page' && !force && this.appSubCache && Date.now() - this.appSubCache.at < 10 * 60_000) {
       return { fields: this.appSubCache.fields, echoOk: this.appSubCache.echoOk };
     }
-    const out = { fields: [] as string[], echoOk: false };
+    const out: { fields: string[]; echoOk: boolean; error?: string } = { fields: [], echoOk: false };
     try {
       const id = this.appId();
       const secret = this.appSecret();
-      if (!id || !secret) return out;
+      if (!id || !secret) { out.error = 'FB_APP_ID/FB_APP_SECRET not set'; return out; }
       const token = `${id}|${secret}`;
       const res = await fetch(`${GRAPH}/${id}/subscriptions?access_token=${encodeURIComponent(token)}`);
       const json = (await res.json().catch(() => ({}))) as {
@@ -806,13 +806,15 @@ export class MessengerService implements OnModuleInit {
           out.echoOk = true;
           this.logger.log(`app webhook subscription (${object}) repaired: added ${missing.join(', ')}`);
         } else {
-          this.logger.warn(`app webhook repair refused: ${String(fixJson.error?.message || 'unknown').slice(0, 160)}`);
+          out.error = String(fixJson.error?.message || 'Meta refused without a message').slice(0, 300);
+          this.logger.warn(`app webhook repair refused (${object}): ${out.error}`);
         }
       }
     } catch (e) {
-      this.logger.warn(`app subscription check failed: ${String(e).slice(0, 120)}`);
+      out.error = String(e).slice(0, 300);
+      this.logger.warn(`app subscription check failed: ${out.error}`);
     }
-    if (object === 'page') this.appSubCache = { at: Date.now(), ...out };
+    if (object === 'page') this.appSubCache = { at: Date.now(), fields: out.fields, echoOk: out.echoOk };
     return out;
   }
 
@@ -856,8 +858,28 @@ export class MessengerService implements OnModuleInit {
       this.logger.warn(`webhook status check failed: ${String(e).slice(0, 120)}`);
     }
     const appSub = await this.ensureAppSubscription(true);
+    // Instagram diagnostics — surfaced so a blocked DM pipeline can be read
+    // from the dashboard instead of guessed at.
+    const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
+    let ig: { enabled: boolean; igId: string | null; appObject: string[]; appError?: string; accountSub?: string } | undefined;
+    if (igOn) {
+      const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId }, select: { igId: true, pageToken: true } }).catch(() => null);
+      const igSub = await this.ensureAppSubscription(true, 'instagram');
+      let accountSub = 'no Instagram account linked';
+      if (pg?.igId && pg.pageToken) {
+        try {
+          const r = await fetch(`${GRAPH}/${pg.igId}/subscribed_apps?access_token=${encodeURIComponent(pg.pageToken)}`, { signal: AbortSignal.timeout(8000) });
+          const j = (await r.json().catch(() => ({}))) as { data?: { subscribed_fields?: string[] }[]; error?: { message?: string } };
+          accountSub = j.error?.message ? `ERROR: ${j.error.message}` : (j.data?.length ? `subscribed: ${(j.data[0]?.subscribed_fields || []).join(', ') || '(no fields)'}` : 'NOT subscribed');
+        } catch (e) {
+          accountSub = `ERROR: ${String(e).slice(0, 120)}`;
+        }
+      }
+      ig = { enabled: true, igId: pg?.igId ?? null, appObject: igSub.fields, appError: igSub.error, accountSub };
+    }
     return {
       connected: true as const,
+      instagram: ig,
       pageId: c.pageId,
       pageName,
       subscribed,

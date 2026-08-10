@@ -15,7 +15,7 @@ interface MConf {
   connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
   botMode: 'booking' | 'sales'; leadEmail: string; closing: string; agentName: string; bizIntro: string;
-  pages: { pageId: string; pageName: string | null; igId: string | null; enabled: boolean; createdAt: string }[];
+  pages: { pageId: string; pageName: string | null; igId: string | null; igUsername?: string | null; enabled: boolean; createdAt: string }[];
   humanActiveMins: number; graceMins: number;
   connectTrace?: { at: string; steps: string[] } | null;
 }
@@ -23,14 +23,31 @@ interface SalesLead {
   id: string; threadId: string | null; name: string; phone: string; salonName: string | null; city: string | null;
   interest: string | null; note: string | null; status: string; createdAt: string;
 }
-interface MThread { id: string; senderId: string; senderName?: string | null; lastText: string | null; handoff: boolean; updatedAt: string }
+interface MThread { id: string; senderId: string; senderName?: string | null; lastText: string | null; handoff: boolean; updatedAt: string; channel?: string }
 interface FactRow extends BotFact { custom: boolean }
 interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string }
-interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean }
+interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean; channel?: string }
 interface ActivityRes { page: string; pageId: string; events: ActivityEv[] }
 
 // Common things customers ask a nail salon. label = sent to the bot (English);
 // vi/en = what the salon admin sees; ph = example hint.
+/** Channel badge — a reviewer must be able to tell Instagram Direct from
+ *  Facebook Messenger at a glance. */
+function ChannelBadge({ channel }: { channel?: string }) {
+  const ig = channel === 'instagram';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+      padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+      background: ig ? 'rgba(219,39,119,0.16)' : 'rgba(59,130,246,0.16)',
+      color: ig ? '#f9a8d4' : '#93c5fd',
+      border: `1px solid ${ig ? 'rgba(219,39,119,0.45)' : 'rgba(59,130,246,0.45)'}`,
+    }}>
+      {ig ? '◎ Instagram' : '✉ Messenger'}
+    </span>
+  );
+}
+
 const FACT_DEFS: { label: string; vi: string; en: string; phVi: string; phEn: string }[] = [
   { label: 'Parking', vi: 'Chỗ đậu xe', en: 'Parking', phVi: 'vd: bãi miễn phí trước tiệm', phEn: 'e.g. free lot in front' },
   { label: 'Languages spoken', vi: 'Ngôn ngữ nhân viên', en: 'Languages spoken', phVi: 'vd: tiếng Việt & tiếng Anh', phEn: 'e.g. Vietnamese & English' },
@@ -634,6 +651,33 @@ function Inner() {
             <Field label={t('connStatus')} value={t('connected')} good />
             <Field label={t('webhookSub')} value={wh?.subscribed ? t('statusActive') : t('statusInactive')} good={!!wh?.subscribed} warn={!wh?.subscribed} />
           </div>
+          {(() => {
+            // Instagram identity, read with instagram_basic. Showing the handle
+            // (not just a numeric id) is what proves the permission is used.
+            const igPage = (c.pages || []).find((p) => p.igId);
+            const igId = igPage?.igId || c.igId || '';
+            if (!igId) return null;
+            return (
+              <div style={{ marginTop: 12, background: '#0f172a', border: '1px solid #831843', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                  <ChannelBadge channel="instagram" />
+                  <span style={{ color: '#94a3b8', fontSize: 12.5 }}>
+                    {lang === 'vi' ? 'Tài khoản Instagram đã kết nối' : 'Connected Instagram account'}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                  <Field label="Instagram" value={igPage?.igUsername ? `@${igPage.igUsername}` : (lang === 'vi' ? '(đang lấy tên tài khoản…)' : '(fetching handle…)')} />
+                  <Field label="IG ID" value={igId} mono />
+                  <Field label={t('connStatus')} value={t('connected')} good />
+                </div>
+                <div style={{ color: '#64748b', fontSize: 11.5, marginTop: 6 }}>
+                  {lang === 'vi'
+                    ? 'Bot trả lời tin nhắn Instagram Direct bằng chính bộ não này — cùng dịch vụ, giá và cơ chế nhường quyền cho nhân viên.'
+                    : 'The assistant answers Instagram Direct with this same brain — same services, prices and staff hand-over rules.'}
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ marginTop: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', fontSize: 12.5 }}>
             <div style={{ color: '#94a3b8', marginBottom: 4 }}>{t('subscribedEvents')}</div>
             <div style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
@@ -660,7 +704,9 @@ function Inner() {
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: pg.enabled ? '#22c55e' : '#64748b', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.pageName || pg.pageId}</div>
-                      <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>{pg.pageId}{pg.igId ? ` · IG ${pg.igId}` : ''}</div>
+                      <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+                        {pg.pageId}{pg.igId ? ` · IG ${pg.igUsername ? '@' + pg.igUsername + ' ' : ''}${pg.igId}` : ''}
+                      </div>
                     </div>
                     <button onClick={() => disconnectPage(pg.pageId)}
                       style={{ background: 'transparent', border: '1px solid #7f1d1d', color: '#f87171', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -691,14 +737,24 @@ function Inner() {
             <label style={ui.label}>{t('recipient')}</label>
             <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 4 }}>
               {threads.map((th) => (
-                <option key={th.id} value={th.id}>{th.senderName || `PSID …${th.senderId.slice(-6)}`}</option>
+                <option key={th.id} value={th.id}>
+                  {(th.channel === 'instagram' ? 'Instagram · ' : 'Messenger · ') + (th.senderName || `${th.channel === 'instagram' ? 'IGSID' : 'PSID'} …${th.senderId.slice(-6)}`)}
+                </option>
               ))}
             </select>
             {(() => {
               const cur = threads.find((x) => x.id === sendTo) || threads[0];
-              return cur?.lastText
-                ? <div style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px' }}>Last message: {cur.lastText.slice(0, 90)}</div>
-                : <div style={{ marginBottom: 10 }} />;
+              if (!cur) return <div style={{ marginBottom: 10 }} />;
+              const ig = cur.channel === 'instagram';
+              return (
+                <div style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <ChannelBadge channel={cur.channel} />
+                  <span>{lang === 'vi'
+                    ? (ig ? 'Gửi qua Instagram Direct (Instagram-scoped ID)' : 'Gửi qua Facebook Messenger (page-scoped ID)')
+                    : (ig ? 'Delivered via Instagram Direct (Instagram-scoped ID)' : 'Delivered via Facebook Messenger (page-scoped ID)')}</span>
+                  {cur.lastText && <span style={{ opacity: 0.8 }}>· {cur.lastText.slice(0, 70)}</span>}
+                </div>
+              );
             })()}
             <label style={ui.label}>{t('messageLabel')}</label>
             <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
@@ -744,13 +800,14 @@ function Inner() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
-                  <th style={thc}>{t('colTime')}</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
+                  <th style={thc}>{t('colTime')}</th><th style={thc}>Channel</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
                 </tr>
               </thead>
               <tbody>
                 {shownActivity.map((ev, i) => (
                   <tr key={i} style={{ borderTop: '1px solid #1e293b', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
                     <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
                     <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
                     <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
@@ -1050,6 +1107,7 @@ function Inner() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: shown.length > 6 ? 4 : 0 }}>
                   {shown.map((th) => (
                     <div key={th.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <ChannelBadge channel={th.channel} />
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {th.senderName && <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}

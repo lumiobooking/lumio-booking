@@ -339,6 +339,22 @@ export class MessengerService implements OnModuleInit {
    *  ONLY thing we use instagram_basic for: showing the owner (and an App Review
    *  reviewer) WHICH Instagram account is connected, as "@username" instead of a
    *  bare numeric id. No media, insights or follower data is read. */
+  /** Instagram Direct needs the IG ACCOUNT itself subscribed to the app, not
+   *  just the Page. Without this Meta accepts the connection but never delivers
+   *  a single DM webhook. Idempotent and best-effort. */
+  private async subscribeIgAccount(igId: string, pageToken: string): Promise<void> {
+    try {
+      const res = await fetch(
+        `${GRAPH}/${igId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes&access_token=${encodeURIComponent(pageToken)}`,
+        { method: 'POST', signal: AbortSignal.timeout(8000) },
+      );
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
+      if (!json.success) this.logger.warn(`ig subscribe ${igId}: ${String(json.error?.message || 'no success flag').slice(0, 140)}`);
+    } catch (e) {
+      this.logger.warn(`ig subscribe failed: ${String(e).slice(0, 120)}`);
+    }
+  }
+
   private async fetchIgUsername(igId: string, pageToken: string): Promise<string | null> {
     try {
       const res = await fetch(`${GRAPH}/${igId}?fields=username&access_token=${encodeURIComponent(pageToken)}`, { signal: AbortSignal.timeout(8000) });
@@ -373,6 +389,7 @@ export class MessengerService implements OnModuleInit {
         }
         const knownUser = (known as unknown as { igUsername?: string | null }).igUsername ?? null;
         const igUsername = igId ? (knownUser || await this.fetchIgUsername(igId, p.access_token)) : null;
+        if (igId) await this.subscribeIgAccount(igId, p.access_token);
         await this.prisma.messengerPage.update({
           where: { pageId: p.id },
           data: { pageToken: p.access_token, pageName: p.name || known.pageName, igId, igUsername } as never,
@@ -420,6 +437,7 @@ export class MessengerService implements OnModuleInit {
     }
     // The page joins the tenant's page list (one brain, many mouths)…
     const igUsername = igId ? await this.fetchIgUsername(igId, page.access_token) : null;
+    if (igId) await this.subscribeIgAccount(igId, page.access_token);
     await this.prisma.messengerPage.upsert({
       where: { pageId: page.id },
       update: { tenantId, igId, igUsername, pageToken: page.access_token, pageName: page.name || null, enabled: true } as never,

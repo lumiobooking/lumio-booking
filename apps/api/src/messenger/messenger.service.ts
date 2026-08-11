@@ -862,12 +862,24 @@ export class MessengerService implements OnModuleInit {
     // Instagram diagnostics — surfaced so a blocked DM pipeline can be read
     // from the dashboard instead of guessed at.
     const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
-    let ig: { enabled: boolean; igId: string | null; appObject: string[]; appError?: string; accountSub?: string } | undefined;
+    let ig: { enabled: boolean; igId: string | null; appObject: string[]; appError?: string; accountSub?: string; igUsername?: string | null } | undefined;
     if (igOn) {
       const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId }, select: { igId: true, pageToken: true } }).catch(() => null);
       const igSub = await this.ensureAppSubscription(true, 'instagram');
       let accountSub = 'no Instagram account linked';
+      let igUsername: string | null = null;
       if (pg?.igId && pg.pageToken) {
+        // Re-read the handle every time this panel is opened rather than trusting
+        // the copy saved at connect time: a salon that renames its Instagram
+        // account would otherwise see the old @handle here forever, and the
+        // owner uses exactly this line to confirm the right account is linked.
+        igUsername = await this.fetchIgUsername(pg.igId, pg.pageToken);
+        if (igUsername) {
+          await this.prisma.messengerPage.updateMany({
+            where: { tenantId, igId: pg.igId },
+            data: { igUsername } as never,
+          }).catch(() => undefined);
+        }
         try {
           const r = await fetch(`${GRAPH}/${pg.igId}/subscribed_apps?access_token=${encodeURIComponent(pg.pageToken)}`, { signal: AbortSignal.timeout(8000) });
           const j = (await r.json().catch(() => ({}))) as { data?: { subscribed_fields?: string[] }[]; error?: { message?: string } };
@@ -876,7 +888,7 @@ export class MessengerService implements OnModuleInit {
           accountSub = `ERROR: ${String(e).slice(0, 120)}`;
         }
       }
-      ig = { enabled: true, igId: pg?.igId ?? null, appObject: igSub.fields, appError: igSub.error, accountSub };
+      ig = { enabled: true, igId: pg?.igId ?? null, igUsername, appObject: igSub.fields, appError: igSub.error, accountSub };
     }
     return {
       connected: true as const,

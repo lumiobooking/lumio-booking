@@ -1,0 +1,119 @@
+1
+00:00:01,000 --> 00:00:11,500
+Lumio Booking - a booking and messaging platform
+for nail salons, spas and restaurants.
+
+2
+00:00:12,000 --> 00:00:27,000
+Signing in to the salon dashboard with the test
+account provided in this submission.
+
+3
+00:00:28,000 --> 00:00:41,000
+The dashboard of a demo nail salon, with its own
+services, staff and opening hours.
+
+4
+00:00:42,000 --> 00:00:54,000
+Marketing and AI, then Messenger bot. This is where
+a salon connects its OWN Facebook Page.
+
+5
+00:00:55,000 --> 00:01:11,000
+Facebook Login for Business. The owner chooses which
+Pages, Businesses and Instagram accounts to grant.
+
+6
+00:01:12,000 --> 00:01:32,000
+We read only the Page name and ID with
+pages_read_engagement and pages_show_list.
+
+7
+00:01:33,000 --> 00:01:54,000
+No posts, insights, comments or ratings are read.
+Now from the customer's side, on a real phone.
+
+8
+00:01:55,000 --> 00:02:35,000
+The assistant answers using the salon's REAL services
+and prices - gel manicure, 22 dollars 50.
+
+9
+00:02:36,000 --> 00:03:15,000
+Opening hours come from the salon's own settings:
+open at 9 AM tomorrow.
+
+10
+00:03:16,000 --> 00:03:55,000
+The customer books a Luxury Manicure for tomorrow at
+2 PM. The assistant asks for a name and a phone number.
+
+11
+00:03:56,000 --> 00:04:35,000
+Booking confirmed, with a link to view or reschedule.
+All of it inside Messenger.
+
+12
+00:04:36,000 --> 00:04:58,000
+The assistant then asks, optionally, for a birthday
+so the salon can send a treat.
+
+13
+00:04:59,000 --> 00:05:44,000
+The appointment now appears in the salon's calendar:
+2:00 PM, Anna, Luxury Manicure.
+
+14
+00:05:45,000 --> 00:06:10,000
+INSTAGRAM DIRECT. The customer opens the salon's
+Instagram account, at lumio_bk, and sends a message.
+
+15
+00:06:11,000 --> 00:06:50,000
+instagram_manage_messages receives this direct
+message and sends the reply.
+
+16
+00:06:51,000 --> 00:07:45,000
+Prices on Instagram come from the same service list:
+Shellac Manicure 35 dollars, Nail Design 22 dollars 50.
+
+17
+00:07:46,000 --> 00:08:25,000
+The customer books a Bio Gel New Set for tomorrow at
+3 PM, then gives a name and a phone number.
+
+18
+00:08:26,000 --> 00:09:04,000
+Confirmed on Instagram Direct. The calendar now holds
+TWO appointments, booked from two different channels.
+
+19
+00:09:05,000 --> 00:09:35,000
+Back in the dashboard, a staff member can take over
+any conversation and reply by hand.
+
+20
+00:09:36,000 --> 00:10:18,000
+The reply is sent to the Instagram thread and arrives
+on the customer's phone straight away.
+
+21
+00:10:19,000 --> 00:10:40,000
+The activity log records every message with its
+channel - Instagram and Messenger side by side.
+
+22
+00:10:41,000 --> 00:10:58,000
+Each row shows the direction and the delivery status:
+Received for incoming, Sent for outgoing.
+
+23
+00:10:59,000 --> 00:11:08,000
+The manual reply just sent from the dashboard
+appears here as Sent.
+
+24
+00:11:09,000 --> 00:11:19,000
+Two bookings, two channels, one inbox - all from the
+salon's own connected accounts. Thank you for reviewing.

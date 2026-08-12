@@ -41,3 +41,12 @@ tmp/
 
 # Built WordPress plugin package (generated)
 lumio-booking-*.zip
+
+# Video exports and CapCut output folders (kept on disk, never in git —
+# GitHub hard-rejects any file over 100 MB and a push of one clip can
+# outweigh the entire source tree).
+*.mp4
+*.mov
+*.mkv
+*.avi
+0811*/

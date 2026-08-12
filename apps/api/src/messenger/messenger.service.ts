@@ -1001,8 +1001,22 @@ export class MessengerService implements OnModuleInit {
         // WITHOUT it means a human typed in the Page inbox — the bot yields
         // that conversation instantly (auto take-over; bot re-engages per the 15-min/5-min yield rules).
         if (ev.message?.is_echo) {
-          const ours = ev.message?.metadata === 'LUMIO_BOT' || (ev.message?.mid ? this.sentMids.has(ev.message.mid) : false);
-          if (!ours && ev.recipient?.id) {
+          const appId = ev.message.app_id != null ? String(ev.message.app_id) : '';
+          const ours = ev.message?.metadata === 'LUMIO_BOT'
+            || (ev.message?.mid ? this.sentMids.has(ev.message.mid) : false)
+            || (appId !== '' && appId === this.appId());
+          // An echo with NO app_id was typed by a person in the Page inbox —
+          // that is a real take-over and the bot must yield. An echo WITH a
+          // foreign app_id came from another app: in practice Meta's own
+          // Business Suite automations (Instant reply, welcome message, FAQ).
+          // Those used to look identical to a human here, so one automated
+          // greeting silenced the bot for the rest of the conversation and the
+          // customer was never answered again. Staff still have the manual
+          // "Take over" button, so erring toward staying alive is the safer bet.
+          const fromAnotherApp = !ours && appId !== '';
+          if (fromAnotherApp) {
+            this.logger.log(`echo from app ${appId} (not us) — treating as automation, bot stays active: "${String(ev.message?.text || '').slice(0, 60)}"`);
+          } else if (!ours && ev.recipient?.id) {
             await this.pauseForHuman(entryId, ev.recipient.id, ev.message?.text).catch(() => undefined);
           }
           continue;
@@ -2260,7 +2274,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 interface MessagingEvent {
   sender?: { id?: string };
   recipient?: { id?: string };
-  message?: { text?: string; is_echo?: boolean; metadata?: string; mid?: string };
+  // app_id is present only when the echoed message was sent BY AN APP (us, or
+  // Meta's own automation tools). A person typing in the Page inbox produces
+  // an echo with no app_id — that is how the two are told apart.
+  message?: { text?: string; is_echo?: boolean; metadata?: string; mid?: string; app_id?: string | number };
   postback?: { payload?: string; title?: string }; // "Get Started" tap and menu buttons
   timestamp?: number; // ms epoch set by Meta on the webhook event
 }

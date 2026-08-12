@@ -252,6 +252,7 @@ function BookingsInner() {
                   <BookingActions
                     b={b} staff={staff} t={t}
                     checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
+                    groupSize={b.groupId ? bookings.filter((x) => x.groupId === b.groupId).length : 1}
                     onAction={(path, body) => action(b.id, path, body)}
                     onDelete={() => removeBooking(b.id)}
                   />
@@ -321,6 +322,7 @@ function BookingsInner() {
                     <BookingActions
                       b={b} staff={staff} t={t}
                       checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
+                      groupSize={b.groupId ? bookings.filter((x) => x.groupId === b.groupId).length : 1}
                       onAction={(path, body) => action(b.id, path, body)}
                       onDelete={() => removeBooking(b.id)}
                     />
@@ -343,11 +345,12 @@ function BookingsInner() {
  * controls sit next to it as quiet icons, and everything destructive hides in a
  * ⋯ menu so nobody cancels a booking by mis-tapping.
  */
-function BookingActions({ b, staff, t, checkoutHref, onAction, onDelete }: {
+function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDelete }: {
   b: Booking;
   staff: Staff[];
   t: (k: string) => string;
   checkoutHref: string;
+  groupSize: number;
   onAction: (path: string, body?: Record<string, unknown>) => void;
   onDelete: () => void;
 }) {
@@ -371,8 +374,17 @@ function BookingActions({ b, staff, t, checkoutHref, onAction, onDelete }: {
             {t('bk.autoAssign')}
           </button>
         ) : active ? (
-          <a href={checkoutHref} title={t('bk.checkoutHint')} style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}>
-            {t('bk.checkout')}
+          // A party that booked together almost always walks to the desk
+          // together, so the main button settles all of them. Paying one
+          // person on their own is still there, one menu down.
+          <a
+            href={groupSize > 1 && b.groupId
+              ? `/salon/pos?appointmentId=${b.id}&groupId=${encodeURIComponent(b.groupId)}&customerId=${b.customer?.id ?? ''}`
+              : checkoutHref}
+            title={t('bk.checkoutHint')}
+            style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}
+          >
+            {groupSize > 1 ? t('bk.checkoutGroup').replace('{n}', String(groupSize)) : t('bk.checkout')}
           </a>
         ) : null}
 
@@ -411,6 +423,16 @@ function BookingActions({ b, staff, t, checkoutHref, onAction, onDelete }: {
         <>
           <div onClick={() => setMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
           <div style={{ position: 'absolute', top: 36, left: 0, zIndex: 41, minWidth: 190, background: '#0f172a', border: '1px solid #223047', borderRadius: 10, boxShadow: '0 14px 40px rgba(0,0,0,.5)', padding: 5 }}>
+            {active && groupSize > 1 && (
+              <>
+                <MenuItem
+                  label={`🧾 ${t('bk.checkoutSolo')}`}
+                  color="#a5b4fc"
+                  onClick={() => { setMenu(false); window.location.href = checkoutHref; }}
+                />
+                <div style={{ height: 1, background: '#1e293b', margin: '4px 6px' }} />
+              </>
+            )}
             {active && (
               <>
                 <MenuItem label={`✅ ${t('bk.complete')}`} color="#22c55e" onClick={() => { setMenu(false); onAction('complete'); }} />

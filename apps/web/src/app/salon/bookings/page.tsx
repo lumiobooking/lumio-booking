@@ -717,81 +717,6 @@ function CreateBookingForm({
       </div>
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {partyN > 1 && (
-          <div>
-            <span style={ui.label}>{t('bk.perPersonHint')}</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {people.map((p, i) => {
-                const label = i === 0
-                  ? (form.customerFirstName.trim() || t('bk.you'))
-                  : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`);
-                const n = p.serviceIds.length;
-                const on = i === who;
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setWho(i)}
-                    style={{
-                      border: `1px solid ${on ? '#6366f1' : n === 0 ? '#78350f' : '#334155'}`,
-                      background: on ? '#312e81' : '#0f172a',
-                      color: on ? '#e0e7ff' : n === 0 ? '#fbbf24' : '#cbd5e1',
-                      borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                    }}
-                  >
-                    {label} · {n === 0 ? t('bk.noSvcYet') : t('bk.svcCount').replace('{n}', String(n))}
-                  </button>
-                );
-              })}
-            </div>
-            {who > 0 && (
-              <input
-                style={{ ...ui.input, marginTop: 8 }}
-                value={people[who]?.name ?? ''}
-                onChange={(e) => setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, name: e.target.value } : p)))}
-                placeholder={t('bk.guestName')}
-              />
-            )}
-          </div>
-        )}
-        <div>
-          <span style={ui.label}>
-            {t('bk.fService')}
-            {serviceIds.length > 0 && (
-              <span style={{ color: '#94a3b8', fontWeight: 400 }}> · {serviceIds.length} {t('bk.servicesPicked')} · {t('bk.totalDuration')} {totalMinutes} min</span>
-            )}
-          </span>
-          {/* Picked services stay visible as chips while staff searches for the next one. */}
-          {serviceIds.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {serviceIds.map((id) => {
-                const s = services.find((x) => x.id === id);
-                if (!s) return null;
-                return (
-                  <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1e3a8a', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
-                    {s.name}
-                    <button type="button" onClick={() => toggleSvc(id)} style={{ background: 'none', border: 'none', color: '#93c5fd', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          <input
-            value={svcQ}
-            onChange={(e) => setSvcQ(e.target.value)}
-            placeholder={t('bk.searchService')}
-            style={{ ...ui.input, marginBottom: 8 }}
-          />
-          <div style={{ border: '1px solid #334155', borderRadius: 8, background: '#0f172a', maxHeight: 168, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 2 }}>
-            {svcShown.length === 0 && <span style={{ color: '#94a3b8', fontSize: 13, padding: '6px 8px' }}>{t('bk.noSvcMatch')}</span>}
-            {svcShown.map((s) => (
-              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: serviceIds.includes(s.id) ? '#1e293b' : 'transparent', fontSize: 13, color: serviceIds.includes(s.id) ? '#e2e8f0' : '#cbd5e1' }}>
-                <input type="checkbox" checked={serviceIds.includes(s.id)} onChange={() => toggleSvc(s.id)} style={{ flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name} ({s.durationMinutes} min)</span>
-              </label>
-            ))}
-          </div>
-        </div>
         <FormSection title={t('bk.secWhen')}>
           <div style={fieldGrid}>
             <label>
@@ -832,11 +757,11 @@ function CreateBookingForm({
           {freeStaff !== null && (
             <div
               style={{
-                marginTop: 10, fontSize: 12.5, lineHeight: 1.5,
-                color: staffShort ? '#fbbf24' : '#64748b',
-                background: staffShort ? '#2a1c06' : 'transparent',
-                border: staffShort ? '1px solid #78350f' : 'none',
-                borderRadius: 8, padding: staffShort ? '8px 10px' : 0,
+                marginTop: 10, fontSize: 12.5, lineHeight: 1.5, display: 'inline-flex', alignItems: 'center', gap: 6,
+                color: staffShort ? '#fbbf24' : '#94a3b8',
+                background: staffShort ? '#2a1c06' : '#0f172a',
+                border: `1px solid ${staffShort ? '#78350f' : '#334155'}`,
+                borderRadius: 999, padding: '6px 12px',
               }}
             >
               {staffShort
@@ -877,6 +802,88 @@ function CreateBookingForm({
             </label>
           </div>
         </FormSection>
+        <FormSection title={partyN > 1 ? t('bk.secWhatGroup') : t('bk.secWhat')}>
+        {partyN > 1 && (
+          <div style={{ border: '1px solid #334155', borderRadius: 10, background: '#0f172a', padding: 12, marginBottom: 14 }}>
+            <span style={{ ...ui.label, display: 'block', marginBottom: 8 }}>{t('bk.perPersonHint')}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {people.map((p, i) => {
+                const label = i === 0
+                  ? (form.customerFirstName.trim() || t('bk.you'))
+                  : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`);
+                const n = p.serviceIds.length;
+                const on = i === who;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setWho(i)}
+                    style={{
+                      border: `1px solid ${on ? '#6366f1' : n === 0 ? '#78350f' : '#334155'}`,
+                      background: on ? '#312e81' : '#0f172a',
+                      color: on ? '#e0e7ff' : n === 0 ? '#fbbf24' : '#cbd5e1',
+                      borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    {label} · {n === 0 ? t('bk.noSvcYet') : t('bk.svcCount').replace('{n}', String(n))}
+                  </button>
+                );
+              })}
+            </div>
+            {who > 0 && (
+              <label style={{ display: 'block', marginTop: 10, maxWidth: 320 }}>
+                <FieldLabel raw={t('bk.guestName')} optionalWord={t('bk.optional')} />
+                <input
+                  style={ui.input}
+                  value={people[who]?.name ?? ''}
+                  onChange={(e) => setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, name: e.target.value } : p)))}
+                  placeholder="Mai"
+                />
+              </label>
+            )}
+          </div>
+        )}
+        <div>
+          <span style={ui.label}>
+            {partyN > 1
+              ? (who === 0 ? (form.customerFirstName.trim() || t('bk.you')) : (people[who]?.name?.trim() || `${t('bk.guestLabel')} ${who + 1}`))
+              : t('bk.fService')}
+            {serviceIds.length > 0 && (
+              <span style={{ color: '#94a3b8', fontWeight: 400 }}> · {totalMinutes} min{endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}</span>
+            )}
+          </span>
+          {/* Picked services stay visible as chips while staff searches for the next one. */}
+          {serviceIds.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {serviceIds.map((id) => {
+                const s = services.find((x) => x.id === id);
+                if (!s) return null;
+                return (
+                  <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1e3a8a', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                    {s.name}
+                    <button type="button" onClick={() => toggleSvc(id)} style={{ background: 'none', border: 'none', color: '#93c5fd', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <input
+            value={svcQ}
+            onChange={(e) => setSvcQ(e.target.value)}
+            placeholder={t('bk.searchService')}
+            style={{ ...ui.input, marginBottom: 8 }}
+          />
+          <div style={{ border: '1px solid #334155', borderRadius: 8, background: '#0f172a', maxHeight: 210, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+            {svcShown.length === 0 && <span style={{ color: '#94a3b8', fontSize: 13, padding: '6px 8px' }}>{t('bk.noSvcMatch')}</span>}
+            {svcShown.map((s) => (
+              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: serviceIds.includes(s.id) ? '#1e293b' : 'transparent', fontSize: 13, color: serviceIds.includes(s.id) ? '#e2e8f0' : '#cbd5e1' }}>
+                <input type="checkbox" checked={serviceIds.includes(s.id)} onChange={() => toggleSvc(s.id)} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name} ({s.durationMinutes} min)</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        </FormSection>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '13px 20px', borderTop: '1px solid #334155', background: '#0f172a' }}>
@@ -885,10 +892,10 @@ function CreateBookingForm({
           : <span style={{ color: '#64748b', fontSize: 12.5, flex: 1, minWidth: 160 }}>{t('bk.custFirstName')} + {t('bk.dateTime').toLowerCase()} {lang === 'vi' ? 'là bắt buộc' : 'are required'}</span>}
         <button
           type="submit"
-          disabled={submitting || serviceIds.length === 0}
-          style={{ ...ui.primaryBtn, padding: '10px 22px', fontSize: 14, opacity: (submitting || serviceIds.length === 0) ? 0.5 : 1, cursor: (submitting || serviceIds.length === 0) ? 'not-allowed' : 'pointer' }}
+          disabled={submitting || people.some((p) => p.serviceIds.length === 0)}
+          style={{ ...ui.primaryBtn, padding: '10px 22px', fontSize: 14, opacity: (submitting || people.some((p) => p.serviceIds.length === 0)) ? 0.5 : 1, cursor: (submitting || people.some((p) => p.serviceIds.length === 0)) ? 'not-allowed' : 'pointer' }}
         >
-          {submitting ? t('bk.creating') : `+ ${t('bk.createBooking')}`}
+          {submitting ? t('bk.creating') : `+ ${t('bk.createBooking')}${partyN > 1 ? ` (${partyN})` : ''}`}
         </button>
       </div>
     </form>

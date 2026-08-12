@@ -404,6 +404,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
     en: 'Only {free} staff free at that time — you are booking {n} people. You can still create it.',
     vi: 'Giờ đó chỉ còn {free} thợ trống — bạn đang đặt {n} người. Vẫn tạo được nếu tiệm xoay được.',
   },
+  'bk.secWhat': { en: 'Services', vi: 'Dịch vụ' },
+  'bk.secWhatGroup': { en: 'Services — one list per person', vi: 'Dịch vụ — chọn riêng cho từng người' },
   'bk.you': { en: 'Booker', vi: 'Người đặt' },
   'bk.perPersonHint': { en: 'Pick services for each person — tap a name first', vi: 'Chọn dịch vụ cho từng người — bấm vào tên trước' },
   'bk.noSvcYet': { en: 'no service', vi: 'chưa chọn' },

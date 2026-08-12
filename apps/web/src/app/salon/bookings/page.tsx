@@ -373,18 +373,26 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
           <button onClick={() => onAction('auto-assign')} title={t('bk.autoAssignHint')} style={{ ...actBtnFilled('#22c55e') }}>
             {t('bk.autoAssign')}
           </button>
-        ) : active ? (
+        ) : null}
+        {/* A party can be settled at any point in its life. While the rows are
+            still pending the primary button is Auto-assign, so the group bill
+            would have been invisible exactly when a walk-in group is standing
+            at the desk — it sits beside it instead. */}
+        {active && groupSize > 1 && b.groupId && (
+          <a
+            href={`/salon/pos?appointmentId=${b.id}&groupId=${encodeURIComponent(b.groupId)}&customerId=${b.customer?.id ?? ''}`}
+            title={t('bk.payGroup')}
+            style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}
+          >
+            {t('bk.checkoutGroup').replace('{n}', String(groupSize))}
+          </a>
+        )}
+        {!pending && active && groupSize <= 1 ? (
           // A party that booked together almost always walks to the desk
           // together, so the main button settles all of them. Paying one
           // person on their own is still there, one menu down.
-          <a
-            href={groupSize > 1 && b.groupId
-              ? `/salon/pos?appointmentId=${b.id}&groupId=${encodeURIComponent(b.groupId)}&customerId=${b.customer?.id ?? ''}`
-              : checkoutHref}
-            title={t('bk.checkoutHint')}
-            style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}
-          >
-            {groupSize > 1 ? t('bk.checkoutGroup').replace('{n}', String(groupSize)) : t('bk.checkout')}
+          <a href={checkoutHref} title={t('bk.checkoutHint')} style={{ ...actBtnFilled('#6366f1'), textDecoration: 'none' }}>
+            {t('bk.checkout')}
           </a>
         ) : null}
 

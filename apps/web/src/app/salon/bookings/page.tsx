@@ -185,7 +185,26 @@ function BookingsInner() {
     (b) => b.startTime,
   );
   const unconfirmedCount = bookings.filter(isUnconfirmed).length;
-  const pg = usePaged(visible, 20);
+
+  // One MAIN row per party (the booker), the rest folded underneath. Four
+  // sibling rows at the same minute read as four bills; folding them restores
+  // the truth: one order, expandable into each person's line.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (gid: string) =>
+    setOpenGroups((prev) => { const n = new Set(prev); if (n.has(gid)) n.delete(gid); else n.add(gid); return n; });
+  const displayRows: Booking[] = [];
+  {
+    const seen = new Set<string>();
+    for (const b of visible) {
+      if (!b.groupId) { displayRows.push(b); continue; }
+      if (seen.has(b.groupId)) continue;
+      seen.add(b.groupId);
+      const grp = bookings.filter((x) => x.groupId === b.groupId);
+      // The booker carries the contact details; guests were created without.
+      displayRows.push(grp.find((x) => x.customer?.phone) ?? b);
+    }
+  }
+  const pg = usePaged(displayRows, 20);
   const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
   return (
@@ -236,29 +255,67 @@ function BookingsInner() {
         <>
           <MList>
             {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('bk.noBookings')}</p>}
-            {pg.paged.map((b) => (
-              <MCard key={b.id}>
-                <MHead right={<span style={{ color: STATUS_COLORS[b.status] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[b.status] ?? '#94a3b8'}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{b.status}</span>}>
-                  {b.customer?.id
-                    ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(b.customer)}</a>
-                    : staffName(b.customer)}
-                  <GroupChip b={b} all={bookings} label={t('bk.groupChip')} payLabel={t('bk.payGroup')} />
-                </MHead>
-                <MRow label={t('bk.colWhen')}>{fmtWhen(b.startTime, salonTz)}</MRow>
-                <MRow label={t('bk.colService')}><ServiceCell b={b} /></MRow>
-                <MRow label={t('bk.colStaff')}><StaffCell b={b} staff={staff} /></MRow>
-                <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(b.id)} /></MRow>
-                <MActions>
-                  <BookingActions
-                    b={b} staff={staff} t={t}
-                    checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
-                    groupSize={b.groupId ? bookings.filter((x) => x.groupId === b.groupId).length : 1}
-                    onAction={(path, body) => action(b.id, path, body)}
-                    onDelete={() => removeBooking(b.id)}
-                  />
-                </MActions>
-              </MCard>
-            ))}
+            {pg.paged.flatMap((b) => {
+              const gid = b.groupId ?? '';
+              const grp = gid ? bookings.filter((x) => x.groupId === gid) : [];
+              const open = !!gid && openGroups.has(gid);
+              const members = grp.filter((x) => x.id !== b.id);
+              const pill = (st: string) => (
+                <span style={{ color: STATUS_COLORS[st] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[st] ?? '#94a3b8'}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{st}</span>
+              );
+              const cards = [
+                <MCard key={b.id}>
+                  <MHead right={pill(b.status)}>
+                    {b.customer?.id
+                      ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(b.customer)}</a>
+                      : staffName(b.customer)}
+                    {gid && grp.length > 1 ? <GroupChip n={grp.length} open={open} onToggle={() => toggleGroup(gid)} label={t('bk.groupChip')} /> : null}
+                  </MHead>
+                  <MRow label={t('bk.colWhen')}>{fmtWhen(b.startTime, salonTz)}</MRow>
+                  <MRow label={t('bk.colService')}><ServiceCell b={b} /></MRow>
+                  <MRow label={t('bk.colStaff')}><StaffCell b={b} staff={staff} /></MRow>
+                  <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(b.id)} /></MRow>
+                  <MActions>
+                    <BookingActions
+                      b={b} staff={staff} t={t}
+                      checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
+                      groupSize={grp.length || 1}
+                      onAction={(path, body) => action(b.id, path, body)}
+                      onDelete={() => removeBooking(b.id)}
+                    />
+                  </MActions>
+                </MCard>,
+              ];
+              if (open) {
+                for (const m of members) {
+                  cards.push(
+                    <div key={m.id} style={{ marginLeft: 14, borderLeft: '2px solid #312e81', paddingLeft: 8 }}>
+                      <MCard>
+                        <MHead right={pill(m.status)}>
+                          <span style={{ color: '#64748b' }}>↳ </span>
+                          {m.customer?.id
+                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(m.customer)}</a>
+                            : staffName(m.customer)}
+                        </MHead>
+                        <MRow label={t('bk.colService')}><ServiceCell b={m} /></MRow>
+                        <MRow label={t('bk.colStaff')}><StaffCell b={m} staff={staff} /></MRow>
+                        <MRow label={t('bk.colPayment')}><PaymentCell payment={paymentByBooking.get(m.id)} /></MRow>
+                        <MActions>
+                          <BookingActions
+                            b={m} staff={staff} t={t}
+                            checkoutHref={`/salon/pos?appointmentId=${m.id}&serviceId=${m.service?.id ?? ''}&staffId=${m.assignedStaff?.id ?? ''}&customerId=${m.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(m.customer))}`}
+                            groupSize={1}
+                            onAction={(path, body) => action(m.id, path, body)}
+                            onDelete={() => removeBooking(m.id)}
+                          />
+                        </MActions>
+                      </MCard>
+                    </div>,
+                  );
+                }
+              }
+              return cards;
+            })}
           </MList>
           <Pager paged={pg} />
         </>
@@ -287,48 +344,73 @@ function BookingsInner() {
                   </td>
                 </tr>
               )}
-              {pg.paged.map((b) => (
-                <tr key={b.id} style={{ borderTop: '1px solid #334155', background: bulk.has(b.id) ? '#1e1b4b' : undefined }}>
-                  <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(b.id)} onChange={() => bulk.toggle(b.id)} /></td>
-                  <td style={ui.td}>{fmtWhen(b.startTime, salonTz)}</td>
-                  <td style={ui.td}>
-                    {b.customer?.id
-                      ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
-                      : staffName(b.customer)}
-                    <GroupChip b={b} all={bookings} label={t('bk.groupChip')} payLabel={t('bk.payGroup')} />
-                  </td>
-                  <td style={ui.td}><ServiceCell b={b} /></td>
-                  <td style={ui.td}><StaffCell b={b} staff={staff} /></td>
-                  <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        whiteSpace: 'nowrap',
-                        color: STATUS_COLORS[b.status] ?? '#94a3b8',
-                        border: `1px solid ${STATUS_COLORS[b.status] ?? '#94a3b8'}`,
-                        borderRadius: 999,
-                        padding: '3px 10px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {b.status}
-                    </span>
-                  </td>
-                  <td style={ui.td}>
-                    <PaymentCell payment={paymentByBooking.get(b.id)} />
-                  </td>
-                  <td style={ui.td}>
-                    <BookingActions
-                      b={b} staff={staff} t={t}
-                      checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
-                      groupSize={b.groupId ? bookings.filter((x) => x.groupId === b.groupId).length : 1}
-                      onAction={(path, body) => action(b.id, path, body)}
-                      onDelete={() => removeBooking(b.id)}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {pg.paged.flatMap((b) => {
+                const gid = b.groupId ?? '';
+                const grp = gid ? bookings.filter((x) => x.groupId === gid) : [];
+                const open = !!gid && openGroups.has(gid);
+                const members = grp.filter((x) => x.id !== b.id);
+                const pill = (st: string) => (
+                  <span style={{ display: 'inline-block', whiteSpace: 'nowrap', color: STATUS_COLORS[st] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[st] ?? '#94a3b8'}`, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{st}</span>
+                );
+                const rows = [
+                  <tr key={b.id} style={{ borderTop: '1px solid #334155', background: bulk.has(b.id) ? '#1e1b4b' : undefined }}>
+                    <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(b.id)} onChange={() => bulk.toggle(b.id)} /></td>
+                    <td style={ui.td}>{fmtWhen(b.startTime, salonTz)}</td>
+                    <td style={ui.td}>
+                      {b.customer?.id
+                        ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
+                        : staffName(b.customer)}
+                      {gid && grp.length > 1 ? <GroupChip n={grp.length} open={open} onToggle={() => toggleGroup(gid)} label={t('bk.groupChip')} /> : null}
+                    </td>
+                    <td style={ui.td}><ServiceCell b={b} /></td>
+                    <td style={ui.td}><StaffCell b={b} staff={staff} /></td>
+                    <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>{pill(b.status)}</td>
+                    <td style={ui.td}>
+                      <PaymentCell payment={paymentByBooking.get(b.id)} />
+                    </td>
+                    <td style={ui.td}>
+                      <BookingActions
+                        b={b} staff={staff} t={t}
+                        checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
+                        groupSize={grp.length || 1}
+                        onAction={(path, body) => action(b.id, path, body)}
+                        onDelete={() => removeBooking(b.id)}
+                      />
+                    </td>
+                  </tr>,
+                ];
+                if (open) {
+                  for (const m of members) {
+                    rows.push(
+                      <tr key={m.id} style={{ borderTop: '1px dashed #26324a', background: bulk.has(m.id) ? '#1e1b4b' : '#0d1526' }}>
+                        <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
+                        <td style={{ ...ui.td, color: '#475569' }}>↳</td>
+                        <td style={ui.td}>
+                          {m.customer?.id
+                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(m.customer)}</a>
+                            : staffName(m.customer)}
+                        </td>
+                        <td style={ui.td}><ServiceCell b={m} /></td>
+                        <td style={ui.td}><StaffCell b={m} staff={staff} /></td>
+                        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>{pill(m.status)}</td>
+                        <td style={ui.td}>
+                          <PaymentCell payment={paymentByBooking.get(m.id)} />
+                        </td>
+                        <td style={ui.td}>
+                          <BookingActions
+                            b={m} staff={staff} t={t}
+                            checkoutHref={`/salon/pos?appointmentId=${m.id}&serviceId=${m.service?.id ?? ''}&staffId=${m.assignedStaff?.id ?? ''}&customerId=${m.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(m.customer))}`}
+                            groupSize={1}
+                            onAction={(path, body) => action(m.id, path, body)}
+                            onDelete={() => removeBooking(m.id)}
+                          />
+                        </td>
+                      </tr>,
+                    );
+                  }
+                }
+                return rows;
+              })}
             </tbody>
           </table>
           <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
@@ -966,24 +1048,18 @@ const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '
 // Five customer fields; birthday is the narrowest so it gets a smaller floor.
 const custGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 };
 
-/** Marks a row that was booked together with others, and how many came.
- *  Reading four separate rows at 2:00 PM never told staff whether that was one
- *  table of four or four unrelated walk-ins. */
-function GroupChip({ b, all, label, payLabel }: { b: Booking; all: Booking[]; label: string; payLabel: string }) {
-  if (!b.groupId) return null;
-  const n = all.filter((x) => x.groupId === b.groupId).length;
-  if (n < 2) return null;
-  // Clicking it opens the till with the WHOLE party on one ticket. Staff found
-  // the group in this list anyway; making the badge the door means they never
-  // have to hunt down the other three rows to settle them.
+/** The party's toggle: one main row stands for the group, this chip fans the
+ *  members out underneath it (and folds them away again). */
+function GroupChip({ n, open, onToggle, label }: { n: number; open: boolean; onToggle: () => void; label: string }) {
   return (
-    <a
-      href={`/salon/pos?appointmentId=${b.id}&groupId=${encodeURIComponent(b.groupId)}&customerId=${b.customer?.id ?? ''}`}
-      title={`${label.replace('{n}', String(n))} — ${payLabel}`}
-      style={{ marginLeft: 6, display: 'inline-block', background: '#312e81', color: '#c7d2fe', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textDecoration: 'none' }}
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
+      title={label.replace('{n}', String(n))}
+      style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 4, background: open ? '#3730a3' : '#312e81', color: '#c7d2fe', border: '1px solid #4338ca', borderRadius: 999, padding: '1px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer' }}
     >
-      👥 {n}
-    </a>
+      👥 {n} <span style={{ fontSize: 9 }}>{open ? '▼' : '▶'}</span>
+    </button>
   );
 }
 

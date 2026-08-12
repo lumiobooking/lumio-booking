@@ -368,7 +368,7 @@ function BookingsInner() {
                     <td style={ui.td}>
                       <PaymentCell payment={paymentByBooking.get(b.id)} />
                     </td>
-                    <td style={ui.td}>
+                    <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
                       <BookingActions
                         b={b} staff={staff} t={t}
                         checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
@@ -383,9 +383,10 @@ function BookingsInner() {
                   for (const m of members) {
                     rows.push(
                       <tr key={m.id} style={{ borderTop: '1px dashed #26324a', background: bulk.has(m.id) ? '#1e1b4b' : '#0d1526' }}>
-                        <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
-                        <td style={{ ...ui.td, color: '#475569' }}>↳</td>
+                        <td style={{ ...ui.td, width: 34, boxShadow: 'inset 3px 0 0 #4338ca' }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
+                        <td style={ui.td}></td>
                         <td style={ui.td}>
+                          <span style={{ color: '#6366f1', marginRight: 6 }}>↳</span>
                           {m.customer?.id
                             ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(m.customer)}</a>
                             : staffName(m.customer)}
@@ -396,7 +397,7 @@ function BookingsInner() {
                         <td style={ui.td}>
                           <PaymentCell payment={paymentByBooking.get(m.id)} />
                         </td>
-                        <td style={ui.td}>
+                        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
                           <BookingActions
                             b={m} staff={staff} t={t}
                             checkoutHref={`/salon/pos?appointmentId=${m.id}&serviceId=${m.service?.id ?? ''}&staffId=${m.assignedStaff?.id ?? ''}&customerId=${m.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(m.customer))}`}
@@ -449,7 +450,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
 
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }}>
         {/* Next step in the visit */}
         {pending ? (
           <button onClick={() => onAction('auto-assign')} title={t('bk.autoAssignHint')} style={{ ...actBtnFilled('#22c55e') }}>

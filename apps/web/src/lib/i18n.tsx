@@ -412,7 +412,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'bk.svcCount': { en: '{n} service(s)', vi: '{n} dịch vụ' },
   'bk.guestName': { en: 'Name (optional)', vi: 'Tên (tuỳ chọn)' },
   'bk.missingSvc': { en: 'These people have no service yet: {who}', vi: 'Những người này chưa chọn dịch vụ: {who}' },
-  'bk.checkoutGroup': { en: 'Checkout group ({n})', vi: 'Tính cả nhóm ({n})' },
+  'bk.checkoutGroup': { en: '💳 Group bill ({n})', vi: '💳 Gộp bill ({n})' },
   'bk.checkoutSolo': { en: 'Checkout this person only', vi: 'Chỉ tính riêng người này' },
   'bk.payGroup': { en: 'One bill for the group', vi: 'Gộp 1 hoá đơn cả nhóm' },
   'bk.groupChip': { en: 'Group of {n}', vi: 'Nhóm {n} người' },

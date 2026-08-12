@@ -525,8 +525,15 @@ function CreateBookingForm({
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [serviceIds, setServiceIds] = useState<string[]>([]);
+  // One row per person in the party; index 0 is the booker. Friends coming
+  // together rarely want the same thing — one takes gel, one takes a pedicure —
+  // so each person carries their own service list and their own name.
+  const [people, setPeople] = useState<{ name: string; serviceIds: string[] }[]>([{ name: '', serviceIds: [] }]);
+  const [who, setWho] = useState(0); // whose services the picker below is editing
   const [svcQ, setSvcQ] = useState(''); // type-to-filter: many salons have 50+ services
+  const serviceIds = people[who]?.serviceIds ?? [];
+  const setServiceIds = (fn: (ids: string[]) => string[]) =>
+    setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, serviceIds: fn(p.serviceIds) } : p)));
   const [form, setForm] = useState({
     startLocal: '',
     staffId: '',
@@ -560,16 +567,36 @@ function CreateBookingForm({
 
   const partyN = Math.max(1, Math.min(10, parseInt(form.partySize, 10) || 1));
 
+  // Grow or shrink the party to match the People box. A new guest starts with
+  // the booker's services because that is the common case on a phone call;
+  // staff then change only the one who wants something else.
+  useEffect(() => {
+    setPeople((ps) => {
+      if (ps.length === partyN) return ps;
+      if (ps.length > partyN) return ps.slice(0, partyN);
+      const seed = ps[0]?.serviceIds ?? [];
+      return [...ps, ...Array.from({ length: partyN - ps.length }, () => ({ name: '', serviceIds: [...seed] }))];
+    });
+    setWho((i) => Math.min(i, partyN - 1));
+  }, [partyN]);
+
   // How many technicians are actually free for this slot. A group of four
   // arriving to a shop with two free chairs is the failure that costs a salon
   // the whole table, so the number is put in front of staff BEFORE they
   // promise the time — as a warning, never as a block: the owner is allowed to
   // squeeze a group in and rearrange.
   const freeStaff = (() => {
-    if (!form.startLocal || totalMinutes <= 0) return null;
+    // The party holds its chairs until the SLOWEST member is done, so the
+    // window to test is the longest service list in the group, not the one
+    // whose tab happens to be open.
+    const longest = Math.max(
+      0,
+      ...people.map((p) => p.serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0)),
+    );
+    if (!form.startLocal || longest <= 0) return null;
     const start = new Date(form.startLocal);
     if (Number.isNaN(start.getTime())) return null;
-    const end = new Date(start.getTime() + totalMinutes * 60_000);
+    const end = new Date(start.getTime() + longest * 60_000);
     const DEAD = new Set(['CANCELLED', 'COMPLETED', 'NO_SHOW']);
     const busy = new Set(
       bookings
@@ -586,6 +613,13 @@ function CreateBookingForm({
     e.preventDefault();
     setError(null);
     if (serviceIds.length === 0) { setError(t('bk.pickAtLeastOne')); return; }
+    // A guest with no service would silently be booked on the booker's, which
+    // is how a pedicure turns into a gel set at the till.
+    const empty = people
+      .map((p, i) => ({ i, p }))
+      .filter(({ p }) => p.serviceIds.length === 0)
+      .map(({ p, i }) => (i === 0 ? (form.customerFirstName.trim() || t('bk.you')) : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`)));
+    if (empty.length > 0) { setError(t('bk.missingSvc').replace('{who}', empty.join(', '))); return; }
     setSubmitting(true);
     const startTime = new Date(form.startLocal).toISOString();
     const groupNote = partyN > 1 ? `${t('bk.groupNote')} (${partyN})` : undefined;
@@ -601,8 +635,8 @@ function CreateBookingForm({
         body: {
           // First pick = primary service; the rest ride along as service lines
           // (same visit, durations added up server-side).
-          serviceId: serviceIds[0],
-          serviceIds,
+          serviceId: people[0].serviceIds[0],
+          serviceIds: people[0].serviceIds,
           // datetime-local is local time; convert to a UTC ISO string.
           startTime,
           staffId: form.staffId || undefined,
@@ -625,22 +659,23 @@ function CreateBookingForm({
       // Left unassigned on purpose so turn rotation picks the technicians.
       const failed: string[] = [];
       for (let i = 2; i <= partyN; i++) {
+        const g = people[i - 1];
         try {
           await apiFetch('/bookings', {
             method: 'POST',
             token,
             body: {
-              serviceId: serviceIds[0],
-              serviceIds,
+              serviceId: g.serviceIds[0],
+              serviceIds: g.serviceIds,
               startTime,
-              customerFirstName: `${t('bk.guestLabel')} ${i}`,
+              customerFirstName: g.name.trim() || `${t('bk.guestLabel')} ${i}`,
               partySize: partyN,
               groupId,
               notes: `${groupNote} — ${form.customerFirstName || ''}`.trim(),
             },
           });
         } catch {
-          failed.push(`${t('bk.guestLabel')} ${i}`);
+          failed.push(g.name.trim() || `${t('bk.guestLabel')} ${i}`);
         }
       }
       if (failed.length) {
@@ -682,6 +717,43 @@ function CreateBookingForm({
       </div>
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {partyN > 1 && (
+          <div>
+            <span style={ui.label}>{t('bk.perPersonHint')}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {people.map((p, i) => {
+                const label = i === 0
+                  ? (form.customerFirstName.trim() || t('bk.you'))
+                  : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`);
+                const n = p.serviceIds.length;
+                const on = i === who;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setWho(i)}
+                    style={{
+                      border: `1px solid ${on ? '#6366f1' : n === 0 ? '#78350f' : '#334155'}`,
+                      background: on ? '#312e81' : '#0f172a',
+                      color: on ? '#e0e7ff' : n === 0 ? '#fbbf24' : '#cbd5e1',
+                      borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    {label} · {n === 0 ? t('bk.noSvcYet') : t('bk.svcCount').replace('{n}', String(n))}
+                  </button>
+                );
+              })}
+            </div>
+            {who > 0 && (
+              <input
+                style={{ ...ui.input, marginTop: 8 }}
+                value={people[who]?.name ?? ''}
+                onChange={(e) => setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, name: e.target.value } : p)))}
+                placeholder={t('bk.guestName')}
+              />
+            )}
+          </div>
+        )}
         <div>
           <span style={ui.label}>
             {t('bk.fService')}

@@ -36,6 +36,9 @@ interface Line {
   quantity: number;
   tipCents: number;
   staffMemberId: string;
+  // On a group ticket, whose appointment this line came from — so the till can
+  // write each person's total back to their own booking.
+  apptId?: string;
 }
 
 let uidSeq = 1;
@@ -95,6 +98,8 @@ function Register() {
   const wide = !isMobile && (uiPref ? uiPref === 'v2' : pilot);
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
+  // Settling a whole party on one bill: every appointment in the group.
+  const [groupApptIds, setGroupApptIds] = useState<string[]>([]);
   const [walkInId] = useState<string | null>(() => params.get('walkInId'));
   // Attached CRM customer: pre-filled from a booking/walk-in checkout, or picked
   // on the register via the customer box. Drives loyalty earn + redeem.
@@ -386,6 +391,51 @@ function Register() {
       // front desk just presses Pay. No re-adding services, no re-picking techs.
       if (appointmentId) {
         try {
+          // Group ticket: pull every member of the party and lay their lines out
+          // one person after another, each prefixed with the name, so the
+          // cashier reads a bill and not a jumble of forty services.
+          const gid = params.get('groupId');
+          if (gid) {
+            const all = await apiFetch<Array<{
+              id: string; groupId?: string | null; priceCents?: number;
+              customer: { firstName?: string; lastName?: string | null } | null;
+              service: { id: string; name: string } | null;
+              assignedStaff: { id: string } | null;
+              addons?: Array<{ id?: string; name?: string; priceCents?: number; kind?: string; staffMemberId?: string }>;
+            }>>('/bookings', { token });
+            const party = all.filter((x) => x.groupId === gid);
+            if (alive && party.length > 1) {
+              const lines: Line[] = [];
+              for (const m of party) {
+                const whoName = `${m.customer?.firstName ?? ''} ${m.customer?.lastName ?? ''}`.trim();
+                const addonsTotal = (m.addons ?? []).reduce((sum, it) => sum + (it.priceCents ?? 0), 0);
+                const primary = Math.max(0, (m.priceCents ?? 0) - addonsTotal);
+                if (m.service) {
+                  lines.push({
+                    uid: `u${uidSeq++}`, kind: 'SERVICE', refId: m.service.id,
+                    name: whoName ? `${whoName} · ${m.service.name}` : m.service.name,
+                    origUnitPriceCents: primary, unitPriceCents: primary, discountPercent: 0,
+                    quantity: 1, tipCents: 0, staffMemberId: m.assignedStaff?.id ?? '', apptId: m.id,
+                  });
+                }
+                for (const it of m.addons ?? []) {
+                  lines.push({
+                    uid: `u${uidSeq++}`, kind: 'SERVICE', refId: it.id ?? '', isAddon: it.kind !== 'service',
+                    name: whoName ? `${whoName} · ${it.name ?? ''}` : (it.name ?? ''),
+                    origUnitPriceCents: it.priceCents ?? 0, unitPriceCents: it.priceCents ?? 0,
+                    discountPercent: 0, quantity: 1, tipCents: 0,
+                    staffMemberId: it.staffMemberId ?? '', apptId: m.id,
+                  });
+                }
+              }
+              if (lines.length > 0) {
+                setGroupApptIds(party.map((m) => m.id));
+                setCart((c) => (c.length === 0 ? lines : c));
+                setPrefilled(true);
+                return;
+              }
+            }
+          }
           const appt = await apiFetch<{
             priceCents?: number;
             service: { id: string; name: string } | null;
@@ -871,6 +921,7 @@ function Register() {
     const payload = {
       clientRef,
       appointmentId: appointmentId || undefined,
+      appointmentIds: groupApptIds.length > 1 ? groupApptIds : undefined,
       walkInId: walkInId || undefined,
       customerId: customerId || undefined,
       discountCents: money.discount,
@@ -892,6 +943,7 @@ function Register() {
           quantity: l.quantity,
           tipCents: l.tipCents,
           staffMemberId: l.staffMemberId || undefined,
+          appointmentId: l.apptId || undefined,
         };
       }),
       tenders: tenderList,

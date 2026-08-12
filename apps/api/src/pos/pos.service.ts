@@ -159,6 +159,9 @@ export class PosService {
         tipCents: it.tipCents ?? 0,
         lineTotalCents: lineTotal,
         staffMemberId: it.staffMemberId ?? null,
+        // Whose appointment this line belongs to on a group ticket. Not stored
+        // on the order row — it only has to survive until the write-back below.
+        appointmentId: it.appointmentId ?? null,
       };
     });
 
@@ -222,13 +225,21 @@ export class PosService {
       });
       const orderNumber = (last?.orderNumber ?? 0) + 1;
 
+      // Every appointment this ticket closes. A solo checkout is just the one;
+      // a party paying together lists all of them, and the first stays in
+      // appointmentId so reports written before groups existed keep working.
+      const apptIds = [...new Set([
+        ...(dto.appointmentId ? [dto.appointmentId] : []),
+        ...(dto.appointmentIds ?? []),
+      ].filter(Boolean))];
       const created = await tx.order.create({
         data: {
           tenantId,
           orderNumber,
           status: paid ? OrderStatus.PAID : OrderStatus.OPEN,
           customerId: dto.customerId ?? null,
-          appointmentId: dto.appointmentId ?? null,
+          appointmentId: dto.appointmentId ?? apptIds[0] ?? null,
+          appointmentIds: apptIds,
           walkInId: dto.walkInId ?? null,
           source: orderSource,
           createdByUserId: user.userId,
@@ -249,7 +260,8 @@ export class PosService {
 
       // Line items + tenders via createMany (carries the scalar tenantId/orderId).
       await tx.orderItem.createMany({
-        data: lines.map((l) => ({ ...l, tenantId, orderId: created.id })),
+        // appointmentId is a checkout-time hint, not a column on the row.
+        data: lines.map(({ appointmentId: _owner, ...l }) => ({ ...l, tenantId, orderId: created.id })),
       });
       if (paid && (dto.tenders ?? []).length > 0) {
         await tx.orderPayment.createMany({
@@ -311,9 +323,14 @@ export class PosService {
         // finish time; now the two agree. The first service line stays the
         // primary (it is what serviceId points at); the rest become stored
         // lines, exactly as the booking form records them.
-        if (dto.appointmentId) {
+        // A party settling on one ticket closes EVERY appointment on it, and
+        // each person's own lines are written back to their own appointment.
+        // Piling the group's total onto the first one would leave the others
+        // pending, show three people as zero revenue, and count them twice the
+        // day someone marked them done by hand.
+        for (const targetApptId of apptIds) {
           const appt = await tx.appointment.findFirst({
-            where: { id: dto.appointmentId, tenantId },
+            where: { id: targetApptId, tenantId },
             select: { serviceId: true, startTime: true, endTime: true },
           });
           const apptData: Prisma.AppointmentUpdateManyMutationInput = {
@@ -321,7 +338,12 @@ export class PosService {
             completedAt: new Date(),
           };
           if (appt) {
-            const svcLines = lines.filter((l) => l.kind === OrderItemKind.SERVICE);
+            // Lines tagged for this person; when nothing is tagged (a normal
+            // single checkout) the whole ticket belongs to them.
+            const mine = apptIds.length > 1
+              ? lines.filter((l) => l.appointmentId === targetApptId)
+              : lines;
+            const svcLines = mine.filter((l) => l.kind === OrderItemKind.SERVICE);
             if (svcLines.length > 0) {
               // Durations come from the catalogue; a product line adds no time.
               const ids = [...new Set(svcLines.map((l) => l.serviceId).filter((x): x is string => !!x))];
@@ -350,7 +372,7 @@ export class PosService {
               apptData.endTime = new Date(appt.startTime.getTime() + minutes * 60000);
             }
           }
-          await tx.appointment.updateMany({ where: { id: dto.appointmentId, tenantId }, data: apptData });
+          await tx.appointment.updateMany({ where: { id: targetApptId, tenantId }, data: apptData });
         }
         // Checking out a walk-in marks it Done (front desk doesn't need a second step).
         if (dto.walkInId) {
@@ -537,7 +559,7 @@ export class PosService {
     const orders = await this.prisma.order.findMany({
       where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: from, lte: to } },
       select: {
-        id: true, items: true, appointmentId: true, changeCents: true, giftCardAppliedCents: true,
+        id: true, items: true, appointmentId: true, appointmentIds: true, changeCents: true, giftCardAppliedCents: true,
         tenders: { select: { method: true, amountCents: true } },
       },
     });
@@ -588,7 +610,7 @@ export class PosService {
     // and the assigned tech's commission (tips only come from POS). Skip any
     // booking already paid via a POS order so nothing is double-counted.
     const posPaidApptIds = new Set(
-      orders.map((o) => o.appointmentId).filter((x): x is string => !!x),
+      orders.flatMap((o) => [o.appointmentId, ...(o.appointmentIds ?? [])]).filter((x): x is string => !!x),
     );
     const completedAppts = await this.prisma.appointment.findMany({
       where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: from, lte: to } },

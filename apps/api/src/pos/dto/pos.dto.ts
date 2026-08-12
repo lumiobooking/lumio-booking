@@ -52,6 +52,10 @@ export class OrderItemDto {
   @IsOptional() @IsInt() @Min(0) discountCents?: number;
   @IsOptional() @IsInt() @Min(0) tipCents?: number;
   @IsOptional() @IsString() staffMemberId?: string;
+  // Which appointment this line belongs to, when one ticket settles a whole
+  // party. Used only during checkout, to write each person's price back onto
+  // their OWN appointment instead of piling the group's total onto one.
+  @IsOptional() @IsString() appointmentId?: string;
 }
 
 export class TenderDto {
@@ -62,6 +66,9 @@ export class TenderDto {
 export class CreateOrderDto {
   @IsOptional() @IsString() customerId?: string;
   @IsOptional() @IsString() appointmentId?: string;
+  // Every appointment settled by this one ticket (a group paying together).
+  // The primary stays in appointmentId so existing reporting keeps working.
+  @IsOptional() @IsArray() @IsString({ each: true }) appointmentIds?: string[];
   // When checking out a walk-in, its id — the walk-in is marked Done on payment.
   @IsOptional() @IsString() walkInId?: string;
   @IsOptional() @IsInt() @Min(0) discountCents?: number;

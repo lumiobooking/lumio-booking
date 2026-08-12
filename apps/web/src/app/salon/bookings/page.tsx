@@ -242,7 +242,7 @@ function BookingsInner() {
                   {b.customer?.id
                     ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(b.customer)}</a>
                     : staffName(b.customer)}
-                  <GroupChip b={b} all={bookings} label={t('bk.groupChip')} />
+                  <GroupChip b={b} all={bookings} label={t('bk.groupChip')} payLabel={t('bk.payGroup')} />
                 </MHead>
                 <MRow label={t('bk.colWhen')}>{fmtWhen(b.startTime, salonTz)}</MRow>
                 <MRow label={t('bk.colService')}><ServiceCell b={b} /></MRow>
@@ -294,7 +294,7 @@ function BookingsInner() {
                     {b.customer?.id
                       ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
                       : staffName(b.customer)}
-                    <GroupChip b={b} all={bookings} label={t('bk.groupChip')} />
+                    <GroupChip b={b} all={bookings} label={t('bk.groupChip')} payLabel={t('bk.payGroup')} />
                   </td>
                   <td style={ui.td}><ServiceCell b={b} /></td>
                   <td style={ui.td}><StaffCell b={b} staff={staff} /></td>
@@ -939,17 +939,21 @@ const custGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'r
 /** Marks a row that was booked together with others, and how many came.
  *  Reading four separate rows at 2:00 PM never told staff whether that was one
  *  table of four or four unrelated walk-ins. */
-function GroupChip({ b, all, label }: { b: Booking; all: Booking[]; label: string }) {
+function GroupChip({ b, all, label, payLabel }: { b: Booking; all: Booking[]; label: string; payLabel: string }) {
   if (!b.groupId) return null;
   const n = all.filter((x) => x.groupId === b.groupId).length;
   if (n < 2) return null;
+  // Clicking it opens the till with the WHOLE party on one ticket. Staff found
+  // the group in this list anyway; making the badge the door means they never
+  // have to hunt down the other three rows to settle them.
   return (
-    <span
-      title={label.replace('{n}', String(n))}
-      style={{ marginLeft: 6, display: 'inline-block', background: '#312e81', color: '#c7d2fe', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}
+    <a
+      href={`/salon/pos?appointmentId=${b.id}&groupId=${encodeURIComponent(b.groupId)}&customerId=${b.customer?.id ?? ''}`}
+      title={`${label.replace('{n}', String(n))} — ${payLabel}`}
+      style={{ marginLeft: 6, display: 'inline-block', background: '#312e81', color: '#c7d2fe', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textDecoration: 'none' }}
     >
       👥 {n}
-    </span>
+    </a>
   );
 }
 

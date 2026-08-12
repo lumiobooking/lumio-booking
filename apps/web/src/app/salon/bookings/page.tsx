@@ -220,6 +220,7 @@ function BookingsInner() {
           token={token!}
           services={services}
           staff={staff.filter((s) => s.isActive)}
+          bookings={bookings}
           onCreated={async () => {
             setShowForm(false);
             await load();
@@ -509,11 +510,13 @@ function CreateBookingForm({
   token,
   services,
   staff,
+  bookings,
   onCreated,
 }: {
   token: string;
   services: Service[];
   staff: Staff[];
+  bookings: Booking[];
   onCreated: () => void;
 }) {
   const { lang } = useLang();
@@ -523,6 +526,7 @@ function CreateBookingForm({
   const [form, setForm] = useState({
     startLocal: '',
     staffId: '',
+    partySize: '1',
     customerFirstName: '',
     customerLastName: '',
     customerBirthDate: '',
@@ -550,11 +554,37 @@ function CreateBookingForm({
     ? services.filter((s) => s.name.toLowerCase().includes(svcQ.trim().toLowerCase()))
     : services;
 
+  const partyN = Math.max(1, Math.min(10, parseInt(form.partySize, 10) || 1));
+
+  // How many technicians are actually free for this slot. A group of four
+  // arriving to a shop with two free chairs is the failure that costs a salon
+  // the whole table, so the number is put in front of staff BEFORE they
+  // promise the time — as a warning, never as a block: the owner is allowed to
+  // squeeze a group in and rearrange.
+  const freeStaff = (() => {
+    if (!form.startLocal || totalMinutes <= 0) return null;
+    const start = new Date(form.startLocal);
+    if (Number.isNaN(start.getTime())) return null;
+    const end = new Date(start.getTime() + totalMinutes * 60_000);
+    const DEAD = new Set(['CANCELLED', 'COMPLETED', 'NO_SHOW']);
+    const busy = new Set(
+      bookings
+        .filter((b) => !DEAD.has(b.status) && b.assignedStaff?.id)
+        .filter((b) => new Date(b.startTime) < end && new Date(b.endTime) > start)
+        .map((b) => b.assignedStaff!.id),
+    );
+    const active = staff.filter((s) => s.isActive);
+    return { free: active.filter((s) => !busy.has(s.id)).length, total: active.length };
+  })();
+  const staffShort = freeStaff !== null && partyN > freeStaff.free;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (serviceIds.length === 0) { setError(t('bk.pickAtLeastOne')); return; }
     setSubmitting(true);
+    const startTime = new Date(form.startLocal).toISOString();
+    const groupNote = partyN > 1 ? `${t('bk.groupNote')} (${partyN})` : undefined;
     try {
       await apiFetch('/bookings', {
         method: 'POST',
@@ -565,7 +595,7 @@ function CreateBookingForm({
           serviceId: serviceIds[0],
           serviceIds,
           // datetime-local is local time; convert to a UTC ISO string.
-          startTime: new Date(form.startLocal).toISOString(),
+          startTime,
           staffId: form.staffId || undefined,
           customerFirstName: form.customerFirstName,
           customerLastName: form.customerLastName || undefined,
@@ -573,8 +603,45 @@ function CreateBookingForm({
           customerBirthDate: form.customerBirthDate || undefined,
           customerEmail: form.customerEmail || undefined,
           customerPhone: form.customerPhone || undefined,
+          partySize: partyN,
+          notes: groupNote,
         },
       });
+
+      // Everyone else in the party: same time, same services, no contact
+      // details. Their names are unknown on a phone call and their numbers are
+      // not the booker's, so sending the booker's phone again would merge four
+      // strangers into one customer record. Staff rename them on arrival.
+      // Left unassigned on purpose so turn rotation picks the technicians.
+      const failed: string[] = [];
+      for (let i = 2; i <= partyN; i++) {
+        try {
+          await apiFetch('/bookings', {
+            method: 'POST',
+            token,
+            body: {
+              serviceId: serviceIds[0],
+              serviceIds,
+              startTime,
+              customerFirstName: `${t('bk.guestLabel')} ${i}`,
+              partySize: partyN,
+              notes: `${groupNote} — ${form.customerFirstName || ''}`.trim(),
+            },
+          });
+        } catch {
+          failed.push(`${t('bk.guestLabel')} ${i}`);
+        }
+      }
+      if (failed.length) {
+        // The booker IS booked; say so plainly rather than showing a bare
+        // failure that makes staff redo the whole form.
+        setError(
+          t('bk.groupPartial')
+            .replace('{ok}', String(partyN - failed.length))
+            .replace('{n}', String(partyN))
+            .replace('{who}', failed.join(', ')),
+        );
+      }
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
@@ -655,6 +722,17 @@ function CreateBookingForm({
               />
             </label>
             <label>
+              <FieldLabel raw={t('bk.partySize')} optionalWord={t('bk.optional')} hint={`👥 ${t('bk.partyHint')}`} />
+              <input
+                style={ui.input}
+                type="number"
+                min={1}
+                max={10}
+                value={form.partySize}
+                onChange={(e) => up('partySize', e.target.value)}
+              />
+            </label>
+            <label>
               <FieldLabel raw={t('bk.assignStaff')} optionalWord={t('bk.optional')} />
               <select style={ui.input} value={form.staffId} onChange={(e) => up('staffId', e.target.value)}>
                 <option value="">{t('bk.leaveUnassigned')}</option>
@@ -666,6 +744,23 @@ function CreateBookingForm({
               </select>
             </label>
           </div>
+          {/* Capacity, shown the moment a time is picked. Amber when the party
+              outgrows the free chairs — a warning, never a block. */}
+          {freeStaff !== null && (
+            <div
+              style={{
+                marginTop: 10, fontSize: 12.5, lineHeight: 1.5,
+                color: staffShort ? '#fbbf24' : '#64748b',
+                background: staffShort ? '#2a1c06' : 'transparent',
+                border: staffShort ? '1px solid #78350f' : 'none',
+                borderRadius: 8, padding: staffShort ? '8px 10px' : 0,
+              }}
+            >
+              {staffShort
+                ? `⚠️ ${t('bk.staffShort').replace('{free}', String(freeStaff.free)).replace('{n}', String(partyN))}`
+                : `${freeStaff.free}/${freeStaff.total} ${t('bk.staffFree')}`}
+            </div>
+          )}
         </FormSection>
 
         <FormSection title={t('bk.secWho')}>

@@ -30,6 +30,9 @@ interface Booking {
   source?: string | null;
   device?: string | null;
   partySize?: number;
+  // Shared by everyone booked together, so four rows at 2 PM can be drawn as
+  // one table instead of four strangers who happen to collide.
+  groupId?: string | null;
   addons?: Addon[];
   payments?: { status: string; amountCents: number }[];
   customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
@@ -479,7 +482,7 @@ function Inner() {
       })()}
 
       {selected && (
-        <BookingDetail booking={selected} tz={tz} onClose={() => setSelected(null)} onAction={action} />
+        <BookingDetail booking={selected} all={bookings} tz={tz} onClose={() => setSelected(null)} onAction={action} />
       )}
     </section>
   );
@@ -623,7 +626,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                        <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
+                        <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
                         <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
@@ -728,7 +731,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       </div>
                       <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
+                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
                         <OriginChip b={b} t={t} />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
@@ -768,8 +771,8 @@ function segBtn(active: boolean): React.CSSProperties {
   return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#94a3b8' };
 }
 
-function BookingDetail({ booking: b, tz, onClose, onAction }: {
-  booking: Booking; tz?: string; onClose: () => void; onAction: (id: string, path: string, body?: unknown) => void;
+function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
+  booking: Booking; all: Booking[]; tz?: string; onClose: () => void; onAction: (id: string, path: string, body?: unknown) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -809,6 +812,23 @@ function BookingDetail({ booking: b, tz, onClose, onAction }: {
         {(() => { const dm = deviceMeta(b.device); return dm ? <DetailRow label={t('cal.dDevice')} value={`${dm.icon} ${t(dm.key)}`} /> : null; })()}
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
         {b.partySize != null && b.partySize > 1 && <DetailRow label={t('cal.dParty')} value={String(b.partySize)} />}
+        {(() => {
+          // Everyone booked in the same party. Names beat a bare count: staff
+          // seat the table by name, and it makes clear WHICH of the day's rows
+          // belong together.
+          if (!b.groupId) return null;
+          const mates = all.filter((x) => x.groupId === b.groupId && x.id !== b.id);
+          if (mates.length === 0) return null;
+          const names = mates
+            .map((m) => `${m.customer?.firstName ?? ''} ${m.customer?.lastName ?? ''}`.trim() || '—')
+            .join(', ');
+          return (
+            <DetailRow
+              label={t('cal.dGroup')}
+              value={`${t('cal.dGroupWith').replace('{n}', String(mates.length + 1))} · ${names}`}
+            />
+          );
+        })()}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
           <span style={{ color: '#94a3b8' }}>{t('cal.dPaid')}</span>
           <span style={{ textAlign: 'right', fontWeight: 600, color: paidCents > 0 ? '#22c55e' : '#f59e0b' }}>

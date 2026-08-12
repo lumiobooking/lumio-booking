@@ -1126,6 +1126,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'cal.srcWalkin': { en: 'Walk-in', vi: 'Khách vãng lai' },
   'cal.srcWeb': { en: 'Computer (web)', vi: 'Máy tính (web)' },
   'cal.srcMobile': { en: 'Phone (web)', vi: 'Điện thoại (web)' },
+  'cal.dGroup': { en: 'Booked together', vi: 'Đặt chung nhóm' },
+  'cal.dGroupWith': { en: '{n} people, same booking', vi: '{n} người, cùng một lượt đặt' },
   'cal.dParty': { en: 'People', vi: 'Số người' },
   'cal.viewTables': { en: 'Tables', vi: 'Bàn' },
   'cal.reservations': { en: 'reservations', vi: 'lượt đặt' },

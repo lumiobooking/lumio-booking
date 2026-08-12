@@ -528,7 +528,23 @@ const DAYS: { dow: number; label: string }[] = [
   { dow: 0, label: 'Sun' },
 ];
 
-interface DayRow { dow: number; enabled: boolean; start: string; end: string }
+interface DayWin { start: string; end: string }
+interface DayRow { dow: number; enabled: boolean; windows: DayWin[] }
+
+/** The same pill switch the Business-hours screen uses, so the two screens
+ *  read as one system instead of two generations of UI. */
+function HourToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      aria-pressed={on}
+      style={{ width: 40, height: 22, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: on ? '#6366f1' : '#334155', transition: 'background .15s ease', flexShrink: 0 }}
+    >
+      <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s ease' }} />
+    </button>
+  );
+}
 
 function StaffEditPanel({
   token,
@@ -561,8 +577,11 @@ function StaffEditPanel({
   const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
   const [hours, setHours] = useState<DayRow[]>(
     DAYS.map((d) => {
-      const wh = member.workingHours.find((h) => h.dayOfWeek === d.dow && h.isActive);
-      return { dow: d.dow, enabled: !!wh, start: wh?.startTime ?? '09:00', end: wh?.endTime ?? '18:00' };
+      const wins = member.workingHours
+        .filter((h) => h.dayOfWeek === d.dow && h.isActive)
+        .map((h) => ({ start: h.startTime, end: h.endTime }))
+        .sort((x, y) => x.start.localeCompare(y.start));
+      return { dow: d.dow, enabled: wins.length > 0, windows: wins.length ? wins : [{ start: '09:00', end: '18:00' }] };
     }),
   );
   const [saving, setSaving] = useState(false);
@@ -577,6 +596,24 @@ function StaffEditPanel({
     setHours((prev) => prev.map((d) => (d.dow === dow ? { ...d, ...patch } : d)));
     setSaved(false);
   }
+  function setWin(dow: number, i: number, patch: Partial<DayWin>) {
+    setHours((prev) => prev.map((d) => (d.dow === dow ? { ...d, windows: d.windows.map((w, j) => (j === i ? { ...w, ...patch } : w)) } : d)));
+    setSaved(false);
+  }
+  function addWin(dow: number) {
+    setHours((prev) => prev.map((d) => {
+      if (d.dow !== dow) return d;
+      // A split shift resumes after a break — seed the new window from the end
+      // of the previous one so staff edit two digits instead of four.
+      const last = d.windows[d.windows.length - 1];
+      return { ...d, windows: [...d.windows, { start: last?.end ?? '16:30', end: '20:30' }] };
+    }));
+    setSaved(false);
+  }
+  function rmWin(dow: number, i: number) {
+    setHours((prev) => prev.map((d) => (d.dow === dow ? { ...d, windows: d.windows.filter((_, j) => j !== i) } : d)));
+    setSaved(false);
+  }
 
   async function save() {
     if (!form.firstName.trim()) { setError(t('st.firstNameRequired')); return; }
@@ -585,7 +622,9 @@ function StaffEditPanel({
     try {
       const workingHours = hours
         .filter((d) => d.enabled)
-        .map((d) => ({ dayOfWeek: d.dow, startTime: d.start, endTime: d.end }));
+        .flatMap((d) => d.windows
+          .filter((w) => w.start && w.end && w.start < w.end)
+          .map((w) => ({ dayOfWeek: d.dow, startTime: w.start, endTime: w.end })));
       await apiFetch(`/staff/${member.id}`, {
         method: 'PATCH',
         token,
@@ -676,19 +715,29 @@ function StaffEditPanel({
           {hours.map((d) => {
             const label = DAY_LABEL[lang][d.dow] ?? '';
             return (
-              <div key={d.dow} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, width: 64 }}>
-                  <input type="checkbox" checked={d.enabled} onChange={(e) => updDay(d.dow, { enabled: e.target.checked })} />
-                  <span style={{ fontSize: 14 }}>{label}</span>
-                </label>
+              <div key={d.dow} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', borderBottom: '1px solid #1e293b' }}>
+                <span style={{ width: 40, fontSize: 13.5, color: '#cbd5e1', paddingTop: 5 }}>{label}</span>
+                <div style={{ paddingTop: 3 }}>
+                  <HourToggle on={d.enabled} onChange={(v) => updDay(d.dow, { enabled: v })} />
+                </div>
                 {d.enabled ? (
-                  <>
-                    <input type="time" style={{ ...ui.input, width: 120 }} value={d.start} onChange={(e) => updDay(d.dow, { start: e.target.value })} />
-                    <span style={{ color: '#64748b' }}>–</span>
-                    <input type="time" style={{ ...ui.input, width: 120 }} value={d.end} onChange={(e) => updDay(d.dow, { end: e.target.value })} />
-                  </>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {d.windows.map((w, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="time" style={{ ...ui.input, width: 118 }} value={w.start} onChange={(e) => setWin(d.dow, i, { start: e.target.value })} />
+                        <span style={{ color: '#64748b' }}>–</span>
+                        <input type="time" style={{ ...ui.input, width: 118 }} value={w.end} onChange={(e) => setWin(d.dow, i, { end: e.target.value })} />
+                        {d.windows.length > 1 && (
+                          <button type="button" onClick={() => rmWin(d.dow, i)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
+                        )}
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => addWin(d.dow)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #334155', borderRadius: 8, color: '#a5b4fc', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}>
+                      {t('st.addHours')}
+                    </button>
+                  </div>
                 ) : (
-                  <span style={{ color: '#64748b', fontSize: 13 }}>{t('st.off')}</span>
+                  <span style={{ color: '#64748b', fontSize: 13, paddingTop: 5 }}>{t('st.off')}</span>
                 )}
               </div>
             );

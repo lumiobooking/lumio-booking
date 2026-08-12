@@ -727,6 +727,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'st.noServicesCreate': { en: 'No services yet — create services first to assign skills.', vi: 'Chưa có dịch vụ — tạo dịch vụ trước để gán kỹ năng.' },
   'st.workingHours': { en: 'Working hours (when this technician can be auto-assigned)', vi: 'Giờ làm việc (khi thợ này có thể được giao tự động)' },
   'st.off': { en: 'Off', vi: 'Nghỉ' },
+  'st.addHours': { en: '+ Add hours', vi: '+ Thêm khung giờ' },
   'st.hoursSet': { en: 'The technician is only auto-assigned inside these hours.', vi: 'Thợ chỉ được giao tự động trong các giờ này.' },
   'st.hoursUnset': { en: 'No hours set → available during the salon’s open hours (default).', vi: 'Chưa đặt giờ → rảnh trong giờ mở cửa của tiệm (mặc định).' },
   'st.saving': { en: 'Saving…', vi: 'Đang lưu…' },

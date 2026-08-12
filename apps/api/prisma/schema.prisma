@@ -1108,6 +1108,12 @@ model Appointment {
   attrCapturedAt DateTime?
   // Number of people in this booking (group bookings); 1 = solo.
   partySize  Int     @default(1)
+  // Friends or family booked together share one groupId, so the calendar can
+  // draw them as a single block and the till can settle the whole table at
+  // once. partySize alone could never do that: it says HOW MANY came, never
+  // WHICH rows came together, so two unrelated pairs at 2 PM were
+  // indistinguishable from one group of four.
+  groupId    String?
 
   // Snapshot of the add-ons the customer selected, e.g.
   // [{ "id": "...", "name": "Nail art", "priceCents": 1500, "durationMinutes": 15 }]
@@ -1147,6 +1153,7 @@ model Appointment {
   @@index([tenantId, status])
   @@index([tenantId, assignedStaffId, startTime])
   @@index([tenantId, startTime])
+  @@index([tenantId, groupId])
   @@map("appointments")
 }
 

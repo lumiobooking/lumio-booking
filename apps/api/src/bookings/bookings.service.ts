@@ -474,6 +474,7 @@ export class BookingsService {
           attrReferrer: dto.attrReferrer?.slice(0, 900) || null,
           attrCapturedAt: (() => { const d = dto.attrCapturedAt ? new Date(dto.attrCapturedAt) : null; return d && !isNaN(d.getTime()) ? d : null; })(),
           partySize: dto.partySize ?? 1,
+          groupId: dto.groupId?.trim() || null,
           assignedAt: dto.staffId ? new Date() : null,
           responseDeadline: dto.staffId ? addMinutes(new Date(), 30) : null,
         },

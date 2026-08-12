@@ -404,6 +404,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
     en: 'Only {free} staff free at that time — you are booking {n} people. You can still create it.',
     vi: 'Giờ đó chỉ còn {free} thợ trống — bạn đang đặt {n} người. Vẫn tạo được nếu tiệm xoay được.',
   },
+  'bk.groupChip': { en: 'Group of {n}', vi: 'Nhóm {n} người' },
   'bk.groupPartial': { en: 'Booked {ok} of {n}. Failed: {who}', vi: 'Đã đặt {ok}/{n} người. Lỗi: {who}' },
   'bk.custFirstName': { en: 'Customer first name', vi: 'Tên khách' },
   'bk.custLastName': { en: 'Last name (optional)', vi: 'Họ (tuỳ chọn)' },

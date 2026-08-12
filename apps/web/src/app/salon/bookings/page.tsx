@@ -41,6 +41,8 @@ interface Booking {
   // appointment (kind: 'service'); add-ons live in the same array without a kind.
   addons?: { id?: string; name?: string; kind?: string; staffMemberId?: string }[] | null;
   assignedStaff: NamedRef | null;
+  // Shared by everyone booked together; null for a solo visit.
+  groupId?: string | null;
 }
 interface Payment {
   id: string;
@@ -240,6 +242,7 @@ function BookingsInner() {
                   {b.customer?.id
                     ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(b.customer)}</a>
                     : staffName(b.customer)}
+                  <GroupChip b={b} all={bookings} label={t('bk.groupChip')} />
                 </MHead>
                 <MRow label={t('bk.colWhen')}>{fmtWhen(b.startTime, salonTz)}</MRow>
                 <MRow label={t('bk.colService')}><ServiceCell b={b} /></MRow>
@@ -291,6 +294,7 @@ function BookingsInner() {
                     {b.customer?.id
                       ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
                       : staffName(b.customer)}
+                    <GroupChip b={b} all={bookings} label={t('bk.groupChip')} />
                   </td>
                   <td style={ui.td}><ServiceCell b={b} /></td>
                   <td style={ui.td}><StaffCell b={b} staff={staff} /></td>
@@ -585,6 +589,11 @@ function CreateBookingForm({
     setSubmitting(true);
     const startTime = new Date(form.startLocal).toISOString();
     const groupNote = partyN > 1 ? `${t('bk.groupNote')} (${partyN})` : undefined;
+    // One id shared by the whole party. The note is for humans; this is what
+    // the calendar and the till read.
+    const groupId = partyN > 1
+      ? (globalThis.crypto?.randomUUID?.() ?? `grp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`)
+      : undefined;
     try {
       await apiFetch('/bookings', {
         method: 'POST',
@@ -604,6 +613,7 @@ function CreateBookingForm({
           customerEmail: form.customerEmail || undefined,
           customerPhone: form.customerPhone || undefined,
           partySize: partyN,
+          groupId,
           notes: groupNote,
         },
       });
@@ -625,6 +635,7 @@ function CreateBookingForm({
               startTime,
               customerFirstName: `${t('bk.guestLabel')} ${i}`,
               partySize: partyN,
+              groupId,
               notes: `${groupNote} — ${form.customerFirstName || ''}`.trim(),
             },
           });
@@ -845,6 +856,23 @@ function FieldLabel({ raw, required, optionalWord, hint }: { raw: string; requir
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 };
 // Five customer fields; birthday is the narrowest so it gets a smaller floor.
 const custGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 };
+
+/** Marks a row that was booked together with others, and how many came.
+ *  Reading four separate rows at 2:00 PM never told staff whether that was one
+ *  table of four or four unrelated walk-ins. */
+function GroupChip({ b, all, label }: { b: Booking; all: Booking[]; label: string }) {
+  if (!b.groupId) return null;
+  const n = all.filter((x) => x.groupId === b.groupId).length;
+  if (n < 2) return null;
+  return (
+    <span
+      title={label.replace('{n}', String(n))}
+      style={{ marginLeft: 6, display: 'inline-block', background: '#312e81', color: '#c7d2fe', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}
+    >
+      👥 {n}
+    </span>
+  );
+}
 
 /** A booking time as the salon reads it on its own wall clock. */
 function fmtWhen(iso: string, tz: string): string {

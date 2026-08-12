@@ -1422,6 +1422,13 @@ FLOW — four steps, do not add a fifth:
 - What a listing or a link NEVER gives you is their personal contact: the number on a shop listing is the front desk and rarely reaches the owner. So the phone is almost always the one thing genuinely still missing — ask for their name and the number that reaches THEM directly ("số nào gặp trực tiếp anh/chị ạ"), and never lift a phone number out of a link or listing.
 - LINKS: you cannot open links. Never say you viewed or checked one — say you have received it and the team will look at it.
 - COMPLETE audit request = shop identity (link OR name OR address) + their name + their direct phone. Once you hold those three, call save_lead and stop collecting.
+- WHY THE NUMBER — you have two real reasons, and they are about THEM, not about your paperwork. Use one, in one short sentence, and never say "team cần số để ghi hệ thống" or anything else that sounds like filling in a form:
+  (a) the audit is made for THEIR shop specifically and sent back to them — "để em gửi đúng bản audit của tiệm mình về cho anh/chị";
+  (b) the area check — Lumio takes only one shop inside about a 10-mile radius, so before anything the team must check whether their area is still open, and the number is how they hear the answer: "bên em không nhận hai tiệm cùng khu vực, nên em cần gửi thông tin để team kiểm tra bán kính quanh tiệm mình rồi báo lại anh/chị ạ".
+  Reason (b) is the stronger one — it says places are limited without pressuring anyone, and it is true.
+- IF THEY PUSH BACK on the phone ("cứ nhắn tin đi", "mình không tiện nghe điện thoại"): agree with them first, do not argue. Say you will note that they prefer messages — "dạ em ghi chú là trao đổi qua tin nhắn ạ" — and then ask ONCE more for the number as the thing that ties the audit and the area check to their shop, not as a demand to call them.
+- NEVER imply they are withholding or being untruthful. Do not say "số điện thoại thực", "số thật", or repeat the same demand in a firmer tone. That reads as suspicion and loses the lead.
+- Ask for the phone at most TWICE in the whole conversation. If they still decline, stop asking, call save_lead with whatever you do have and note "khách chỉ muốn trao đổi qua tin nhắn, chưa cho số", and tell them warmly the team will reply right here in the chat. A named lead with a shop and a live thread is worth far more than a customer you pestered into leaving.
 - Only say the lead is saved if save_lead returns "SUCCESS". Then ONE warm closing line: the team checks the area and calls back shortly. Do not start a new topic afterwards; if they keep chatting, answer briefly and remind them the team will call.
 - If they ask for a human, want to negotiate, ask for a custom quote, or ask anything beyond the facts: promise a callback and call save_lead with note "wants a human". This is the correct answer far more often than a long explanation.
 The current time is ${nowLocal} (timezone ${tz}).
@@ -1431,7 +1438,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const salesTools = [
       {
         name: 'save_lead',
-        description: "Save a sales lead for the human team. Call once you have the person's name AND phone number. The team is alerted by email immediately.",
+        description: "Save a sales lead for the human team; they are alerted by email immediately. Call it as soon as you have the person's name and phone. If they have refused twice to give a number, call it anyway with the name and an empty phone — a named lead in a live thread still reaches the team.",
         input_schema: {
           type: 'object',
           properties: {
@@ -1440,9 +1447,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
             salonName: { type: 'string', description: 'Whatever identifies their shop, verbatim: the business name, the street address, the Maps/website link, or several of those together. Any one of them is enough — never ask for another form of the same thing.' },
             city: { type: 'string', description: 'Only if they said it. Do not ask for it when the address they gave already contains it.' },
             interest: { type: 'string', description: 'What they asked about: plan, POS, multi-location…' },
-            note: { type: 'string', description: 'One-line summary of their situation, or "wants a human".' },
+            note: { type: 'string', description: 'One-line summary of their situation, or "wants a human", or "khách chỉ muốn trao đổi qua tin nhắn, chưa cho số" when they declined to give a phone.' },
           },
-          required: ['name', 'phone'],
+          required: ['name'],
         },
       },
       {
@@ -1552,10 +1559,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     ctx?: { leadEmail: string | null; threadId?: string },
   ): Promise<string> {
     const name = String(input.name || '').trim().slice(0, 120);
-    const phone = String(input.phone || '').trim().replace(/[^\d+]/g, '');
-    if (!name || phone.replace(/\D/g, '').length < 8) {
-      return 'ERROR: a real name and a valid phone number are required before saving.';
+    const rawPhone = String(input.phone || '').trim().replace(/[^\d+]/g, '');
+    const hasPhone = rawPhone.replace(/\D/g, '').length >= 8;
+    if (!name) {
+      return 'ERROR: a name is required before saving.';
     }
+    // A lead who refuses to hand over a number is still a lead: we know their
+    // shop and we are standing in a live thread with them. Rejecting the save
+    // used to push the bot straight back into asking for the phone again,
+    // which is exactly the badgering we tell it not to do.
+    const phone = hasPhone ? rawPhone : '';
     const details = {
       salonName: String(input.salonName || '').trim().slice(0, 160) || null,
       city: String(input.city || '').trim().slice(0, 80) || null,
@@ -1563,10 +1576,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       note: String(input.note || '').trim().slice(0, 500) || null,
     };
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-    const existing = await this.prisma.salesLead.findFirst({
-      where: { tenantId, phone, createdAt: { gt: since } },
-      select: { id: true },
-    });
+    // Dedupe on the phone when we have one; otherwise on the thread, so a
+    // number-less lead does not multiply every time the person writes again.
+    const existing = hasPhone
+      ? await this.prisma.salesLead.findFirst({
+          where: { tenantId, phone, createdAt: { gt: since } },
+          select: { id: true },
+        })
+      : ctx?.threadId
+        ? await this.prisma.salesLead.findFirst({
+            where: { tenantId, threadId: ctx.threadId, createdAt: { gt: since } },
+            select: { id: true },
+          })
+        : null;
     if (existing) {
       await this.prisma.salesLead.update({
         where: { id: existing.id },
@@ -1577,9 +1599,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     await this.prisma.salesLead.create({
       data: { tenantId, threadId: ctx?.threadId ?? null, name, phone, ...details },
     });
-    await this.sendLeadEmail(tenantId, ctx?.leadEmail ?? null, { name, phone, ...details, threadId: ctx?.threadId ?? null })
+    await this.sendLeadEmail(tenantId, ctx?.leadEmail ?? null, { name, phone: phone || '(chưa cho số — trả lời trong Messenger)', ...details, threadId: ctx?.threadId ?? null })
       .catch((e) => this.logger.warn(`lead email failed: ${String(e).slice(0, 120)}`));
-    return 'SUCCESS';
+    return hasPhone
+      ? 'SUCCESS'
+      : 'SUCCESS (saved without a phone). Tell them warmly that the team will reply right here in this chat. Do NOT ask for the number again.';
   }
 
   /** One email to the sales team, with the lead and the last messages for context. */

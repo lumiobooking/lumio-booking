@@ -1005,18 +1005,18 @@ export class MessengerService implements OnModuleInit {
           const ours = ev.message?.metadata === 'LUMIO_BOT'
             || (ev.message?.mid ? this.sentMids.has(ev.message.mid) : false)
             || (appId !== '' && appId === this.appId());
-          // An echo with NO app_id was typed by a person in the Page inbox —
-          // that is a real take-over and the bot must yield. An echo WITH a
-          // foreign app_id came from another app: in practice Meta's own
-          // Business Suite automations (Instant reply, welcome message, FAQ).
-          // Those used to look identical to a human here, so one automated
-          // greeting silenced the bot for the rest of the conversation and the
-          // customer was never answered again. Staff still have the manual
-          // "Take over" button, so erring toward staying alive is the safer bet.
-          const fromAnotherApp = !ours && appId !== '';
-          if (fromAnotherApp) {
-            this.logger.log(`echo from app ${appId} (not us) — treating as automation, bot stays active: "${String(ev.message?.text || '').slice(0, 60)}"`);
-          } else if (!ours && ev.recipient?.id) {
+          // ANY reply from the Page that is not ours means somebody else is
+          // handling this chat, so the bot stands down. app_id is logged, not
+          // trusted: staff answering from Business Suite or the Messenger app
+          // send echoes that carry an app_id too, so exempting those made the
+          // bot talk straight over the support team.
+          // Nothing is lost by yielding too eagerly — an automation that trips
+          // this releases itself through the yield rules below (grace of a few
+          // minutes, and a full release once the human has been idle), so the
+          // customer waits minutes at worst. Talking over a colleague mid
+          // sentence, by contrast, cannot be undone in front of the customer.
+          if (!ours && ev.recipient?.id) {
+            if (appId) this.logger.log(`echo from app ${appId} (not us) — yielding: "${String(ev.message?.text || '').slice(0, 60)}"`);
             await this.pauseForHuman(entryId, ev.recipient.id, ev.message?.text).catch(() => undefined);
           }
           continue;

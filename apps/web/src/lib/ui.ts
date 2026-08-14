@@ -53,6 +53,38 @@ export const ui = {
   label: { display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 } as CSSProperties,
 };
 
-export function formatPrice(cents: number, currency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100);
+/**
+ * Money is stored in a currency's SMALLEST unit. For USD/CAD that is cents, so
+ * 12345 → $123.45. For currencies with no sub-unit — the đồng, the yen, the won
+ * — the smallest unit IS the currency, so 250000 must render as ₫250,000 and
+ * NOT be divided at all. Dividing anyway showed a 250.000 ₫ gel set to the
+ * customer as 2.500 ₫: a hundredth of the price, on the page they book from.
+ *
+ * How many decimals a currency has comes from Intl itself rather than a list we
+ * would have to maintain. USD and CAD resolve to 2 and still divide by 100, so
+ * every existing US/CA salon renders byte-for-byte what it rendered before.
+ */
+/** Intl throws on a blank or malformed code, and a page must never white-screen
+ *  over a missing currency setting. */
+const safeFormatter = (currency: string): Intl.NumberFormat => {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency });
+  } catch {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  }
+};
+
+const minorUnitDigits = (currency: string): number =>
+  safeFormatter(currency).resolvedOptions().maximumFractionDigits ?? 2;
+
+export function formatPrice(minorUnits: number, currency = 'USD'): string {
+  const nf = safeFormatter(currency);
+  const digits = nf.resolvedOptions().maximumFractionDigits ?? 2;
+  return nf.format(digits === 0 ? minorUnits : minorUnits / 10 ** digits);
+}
+
+/** True when the currency has no sub-unit, so inputs are whole units and no
+ *  "cents" box should ever be shown. */
+export function isZeroDecimalCurrency(currency = 'USD'): boolean {
+  return minorUnitDigits(currency) === 0;
 }

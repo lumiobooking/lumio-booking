@@ -21,6 +21,10 @@ export interface EmailMessage {
 export interface SmsMessage {
   to: string;
   body: string;
+  /** Country calling code to assume when `to` is written in local form, e.g.
+   *  '84' for a Vietnamese salon. Omitted → '1', which is what every US and
+   *  Canadian salon has always used. */
+  defaultDialCode?: string;
 }
 
 export interface EmailProvider {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { dialCodeForTimezone } from '../common/phone';
 import { NotificationChannel, NotificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -122,6 +123,17 @@ export class NotificationsService {
     return this.email;
   }
 
+  /** Country calling code for a tenant, read from its timezone. Failures fall
+   *  back to '1', i.e. exactly the behaviour before this existed. */
+  private async dialCodeForTenant(tenantId: string): Promise<string> {
+    try {
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+      return dialCodeForTimezone(t?.timezone);
+    } catch {
+      return '1';
+    }
+  }
+
   async send(input: SendNotificationInput) {
     let status: NotificationStatus = NotificationStatus.PENDING;
     let error: string | null = null;
@@ -185,7 +197,15 @@ export class NotificationsService {
               body: input.body,
               html: input.html,
             })
-          : await smsProvider.sendSms({ to: input.recipient, body: input.body });
+          : await smsProvider.sendSms({
+              to: input.recipient,
+              body: input.body,
+              // A local number means different things in different countries.
+              // The salon's timezone is the only country signal a tenant
+              // carries, and it is enough to tell Ho Chi Minh City from
+              // Los Angeles. US/CA tenants resolve to '1' — unchanged.
+              defaultDialCode: await this.dialCodeForTenant(input.tenantId),
+            });
       status = result.success ? NotificationStatus.SENT : NotificationStatus.FAILED;
       error = result.error ?? null;
     } catch (err) {

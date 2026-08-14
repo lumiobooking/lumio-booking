@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { toE164 } from '../../common/phone';
 import { SendResult, SmsMessage, SmsProvider } from './notification-provider.interface';
 
 export interface TwilioConfig {
@@ -27,7 +28,7 @@ export class TwilioSmsProvider implements SmsProvider {
   constructor(private readonly config: TwilioConfig) {}
 
   async sendSms(message: SmsMessage): Promise<SendResult> {
-    const to = toE164(message.to);
+    const to = toE164(message.to, message.defaultDialCode);
     if (!to) return { success: false, error: `Invalid phone number: "${message.to}"` };
 
     const params = new URLSearchParams();
@@ -68,13 +69,3 @@ export class TwilioSmsProvider implements SmsProvider {
  * numbers like "(201) 555-0123"; assume US/Canada (+1) for 10-digit input.
  * Returns null when the number is implausible (caller records it as FAILED).
  */
-export function toE164(raw: string): string | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  if (/^\+\d{8,15}$/.test(trimmed)) return trimmed; // already E.164
-  const digits = trimmed.replace(/\D/g, '');
-  if (digits.length === 10) return `+1${digits}`; // US/CA local
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`; // 1XXXXXXXXXX
-  if (digits.length >= 8 && digits.length <= 15) return `+${digits}`; // intl, already with country code
-  return null;
-}

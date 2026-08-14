@@ -2,7 +2,17 @@
 
 **Vì sao cần dán tay:** giá là dữ liệu của tiệm, không phải của code. Bot chỉ được nói những con số nằm trong mục **Facts** ở dashboard. Hiện Facts của Lumio Agency **chỉ có các gói marketing**, nên khi khách hỏi giá AI Messenger, bot không có lựa chọn nào khác ngoài việc nói $179 — con số đúng với thứ nó biết, và sai với thứ khách hỏi.
 
-**Vào đâu:** Dashboard → Messenger → mục **Facts** (danh sách bật/tắt từng dòng).
+## Đường đi chính xác trong dashboard
+
+Trong giao diện **không có chỗ nào tên là "Facts"** — tôi ghi sai ở bản trước. Tên hiển thị thật là:
+
+> **Messenger** (menu trái) → thẻ **🏢 Thông tin doanh nghiệp** → bấm **Mở rộng ▸**
+
+Bên trong là danh sách từng dòng, mỗi dòng có: **ô tick bật/tắt** · **tên mục** · **nội dung**.
+
+Các dòng có sẵn (Chỗ đậu xe, Ngôn ngữ nhân viên, Chuyên môn…) không sửa tên được. Muốn thêm dòng mới thì bấm nút **+ Thêm mục** ở dưới cùng — dòng mới cho phép **tự gõ tên mục**, đó là loại dòng bạn cần.
+
+Xong hết thì bấm **Lưu thông tin**. Chưa bấm nút này là chưa lưu.
 
 **Quan trọng — nhãn phải bắt đầu bằng "Phần mềm".** Bot phân ba bảng giá bằng chữ đầu của nhãn: `Phần mềm …` là sản phẩm bán lẻ, `Gói …` là dịch vụ marketing, `Website …` là làm web. Đặt sai chữ đầu thì thẻ giá gửi cho khách sẽ lẫn lộn hai bảng.
 
@@ -25,6 +35,17 @@ Thêm một dòng nữa để bot không nói mâu thuẫn giữa hai bảng gi�
 | `Phần mềm và gói marketing` | `Đây là hai sản phẩm riêng. Tiệm có thể mua phần mềm riêng theo tháng ($29/$69/$149), hoặc lấy gói marketing và được tặng kèm phần mềm theo từng mức. Khách hỏi giá một tính năng của phần mềm (AI Messenger, đặt lịch online, POS, nhắc hẹn) thì nêu giá phần mềm trước, rồi mới nói thêm về gói marketing.` |
 
 ---
+
+## Việc quan trọng nhất: tìm và sửa dòng đang nói sai
+
+Bot đang nói *"AI Messenger không có giá riêng, được tặng kèm từ gói Boost $179"*. Câu đó đến từ **một dòng đang bật** trong 🏢 Thông tin doanh nghiệp.
+
+Mở rộng thẻ đó ra, đọc **nội dung** từng dòng, tìm dòng nào chứa ý *"không bán riêng"* / *"không có giá riêng"* / *"chỉ tặng kèm theo gói"*. Có hai cách xử lý:
+
+- **Bỏ tick** dòng đó — nhanh nhất, bot thôi nói câu này ngay
+- Hoặc **sửa nội dung** thành: `AI Messenger có trong gói Phần mềm Pro $69/tháng. Ngoài ra, các gói Marketing từ Boost $179 trở lên đã bao gồm sẵn phần mềm nên không phải trả riêng.`
+
+Không tìm thấy dòng nào như vậy thì nó đến từ code — bản sửa đã có trong commit `03d79fe`, chỉ cần deploy.
 
 ## Còn phải kiểm lại: các dòng marketing đang có
 

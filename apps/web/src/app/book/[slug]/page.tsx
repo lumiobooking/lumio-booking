@@ -21,7 +21,7 @@ import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
 import { uiLocale } from '../../../lib/datetime';
-import { bookLangForCountry, setBookLang, bt } from '../../../lib/i18n-book';
+import { bookLangForCountry, setBookLang, bt, btf, bookLocale } from '../../../lib/i18n-book';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';        // ink for text (headings, rows)
@@ -101,7 +101,7 @@ function fmtMoney(minorUnits: number, r: BookingRules): string {
   const s = r.currencySymbol || SYMBOLS[r.currency] || r.currency + ' ';
   const dec = r.priceDecimals ?? 2;
   const n = dec === 0
-    ? Math.round(minorUnits).toLocaleString(uiLocale())
+    ? Math.round(minorUnits).toLocaleString(bookLocale())
     : (minorUnits / 10 ** dec).toFixed(dec);
   return r.symbolPosition === 'after' ? `${n}${s}` : `${s}${n}`;
 }
@@ -635,7 +635,7 @@ export default function PublicBookingPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) { setError((body && body.message) || `Booking failed (${res.status})`); return; }
       setResult({ paymentStatus: body?.payment?.status ?? null });
-      const when = `${slot.start.toLocaleDateString(uiLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
+      const when = `${slot.start.toLocaleDateString(bookLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
       const booked = [...done, `${when} · ${allLines.map((l) => l.name).join(', ')}${isGroup ? ` — ${form.firstName || 'You'}` : ''}`];
 
       // Group guests: one appointment each, SAME start time. Only a name is
@@ -700,7 +700,7 @@ export default function PublicBookingPage() {
   function addAnotherVisit() {
     if (!slot) return;
     const names = allLines.map((l) => l.name).join(', ');
-    const when = `${slot.start.toLocaleDateString(uiLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
+    const when = `${slot.start.toLocaleDateString(bookLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
     setVisitCart((c) => [...c, {
       serviceId, extraServiceIds, addonIds, staffId, slot,
       totalCents, label: `${when} · ${names}`,
@@ -827,13 +827,13 @@ export default function PublicBookingPage() {
 
   const stepTitle =
     step === 1 ? bt("Services") :
-    step === 2 ? 'Choose your nail tech' :
-    step === 3 ? 'Select time' :
-    step === 4 ? 'Confirm booking' : '';
+    step === 2 ? bt('Choose your nail tech') :
+    step === 3 ? bt('Select time') :
+    step === 4 ? bt('Confirm booking') : '';
 
   const stepHint =
-    step === 1 ? 'Tap ＋ to add a service. You can pick more than one.' :
-    step === 2 ? 'Go with the person you know, or let us give you the first one free.' :
+    step === 1 ? bt('Tap ＋ to add a service. You can pick more than one.') :
+    step === 2 ? bt('Go with the person you know, or let us give you the first one free.') :
     step === 3 ? `Every time below is really free${totalDuration ? ` for ${fmtDur(totalDuration)}` : ''}${employee ? ` with ${employee.firstName}` : ''}.` :
     '';
 
@@ -882,7 +882,7 @@ export default function PublicBookingPage() {
             {step === 1 && (
               <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 0 3px rgba(74,222,128,.25)' }} className="lumio-dot" />
-                Book online · confirmed in seconds
+                {bt('Book online · confirmed in seconds')}
               </div>
             )}
           </div>
@@ -922,7 +922,7 @@ export default function PublicBookingPage() {
               ) : (
                 <p style={{ color: '#475569', lineHeight: 1.6 }}>
                   Thanks {form.firstName}! Your booking for <strong>{service?.name}</strong>
-                  {slot && <> on <strong>{slot.start.toLocaleDateString(uiLocale())} at {fmtTime(slot.start)}</strong></>} is received.
+                  {slot && <> on <strong>{slot.start.toLocaleDateString(bookLocale())} at {fmtTime(slot.start)}</strong></>} is received.
                 </p>
               )}
               {bookedVisits.length > 1 && (
@@ -1271,7 +1271,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         )}
         {slot && selectedDate && (
           <div style={{ marginTop: 12, background: tint(accent, 0.08), borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
-            <div>📅 <b>{selectedDate.toLocaleDateString(uiLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
+            <div>📅 <b>{selectedDate.toLocaleDateString(bookLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
             <div>🕐 {fmtTime(slot.start)}{totalDuration > 0 ? ` – ${fmtTime(slot.end)} (${fmtDur(totalDuration)})` : ''}</div>
           </div>
         )}
@@ -1305,7 +1305,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
     for (let i = 0; i <= Math.min(rules.maxAdvanceDays, 21); i++) {
       const d = new Date(today.getTime() + i * 86400000);
       const first = generateSlots(d, shortest, rules)[0];
-      if (first) return `${i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString(uiLocale(), { weekday: 'long' })} at ${fmtTime(first.start)}`;
+      if (first) return btf('{when} at {time}', { when: i === 0 ? bt('today') : i === 1 ? bt('tomorrow') : bt(WEEKDAY_NAMES[d.getDay()]), time: fmtTime(first.start) });
     }
     return null;
   }, [rules, services]);
@@ -1330,11 +1330,11 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
           {soon && (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#166534', fontSize: 12.5, fontWeight: 800, marginBottom: 12 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
-              Next opening {soon}
+              {btf('Next opening {when}', { when: soon })}
             </div>
           )}
           <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
-            {[['🗓️', 'Pick your service, tech and time'], ['⚡', 'Instant confirmation by text'], ['💳', 'Pay online or at the shop']].map(([i, t]) => (
+            {[['🗓️', bt('Pick your service, tech and time')], ['⚡', bt('Instant confirmation by text')], ['💳', bt('Pay online or at the shop')]].map(([i, t]) => (
               <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13.5, color: INK, fontWeight: 600 }}>
                 <span style={{ width: 30, height: 30, borderRadius: 9, background: tint(accent, 0.10), display: 'grid', placeItems: 'center', fontSize: 14, flexShrink: 0 }}>{i}</span>
                 {t}
@@ -1487,7 +1487,7 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
       const d = new Date(today.getTime() + i * 86400000);
       const first = generateSlots(d, shortest, rules)[0];
       if (first) {
-        const when = i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString(uiLocale(), { weekday: 'long' });
+        const when = i === 0 ? bt('today') : i === 1 ? bt('tomorrow') : bt(WEEKDAY_NAMES[d.getDay()]);
         const h = rules.businessHours[d.getDay()];
         const close = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h.closeMinutes / 60), h.closeMinutes % 60);
         return { when, time: fmtTime(first.start), close: fmtTime(close), sameDay: i === 0 };
@@ -1507,16 +1507,16 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
         <>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid #dcfce7', color: '#166534', fontSize: 12.5, fontWeight: 800, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
-            Next opening {info.when} at {info.time}
+            {btf('Next opening {when} at {time}', { when: info.when, time: info.time })}
           </span>
           {info.sameDay && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid #e9edf4', color: '#5b6b85', fontSize: 12.5, fontWeight: 700 }}>
-              🕐 Open until {info.close}
+              🕐 {btf('Open until {time}', { time: info.close })}
             </span>
           )}
         </>
       ) : (
-        <span style={{ fontSize: 12.5, color: '#5b6b85', fontWeight: 700 }}>Pick a service — we&apos;ll show you every free time.</span>
+        <span style={{ fontSize: 12.5, color: '#5b6b85', fontWeight: 700 }}>{bt('Pick a service — we’ll show you every free time.')}</span>
       )}
       <span style={{ marginLeft: 'auto', fontSize: 12, color: '#8fa0bb' }}>{bt("Choose the time after your service \u2728")}</span>
     </div>
@@ -1943,7 +1943,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       {/* month + jump-to-date */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontWeight: 800, color: INK, fontSize: 15 }}>
-          {selectedDate && <span style={{ color: accent, marginRight: 8 }}>📅 {selectedDate.toLocaleDateString(uiLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
+          {selectedDate && <span style={{ color: accent, marginRight: 8 }}>📅 {selectedDate.toLocaleDateString(bookLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
           <span style={{ color: '#64748b', fontWeight: 600 }}>{MONTH_NAMES[stripStart.getMonth()]} {stripStart.getFullYear()}</span>
         </div>
         <label style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid #e6eaf2', display: 'grid', placeItems: 'center', cursor: 'pointer', color: INK }}>
@@ -2075,7 +2075,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 
       <Card title="APPOINTMENT">
         <InfoRow icon="🏪" label="Location" value={salon?.name ?? ''} sub={salon?.address ?? undefined} />
-        <InfoRow icon="📅" label="Date" value={slot.start.toLocaleDateString(uiLocale())} />
+        <InfoRow icon="📅" label="Date" value={slot.start.toLocaleDateString(bookLocale())} />
         <InfoRow icon="🕐" label="Time" value={slot.end.getTime() > slot.start.getTime() ? `${fmtTime(slot.start)} – ${fmtTime(slot.end)}` : fmtTime(slot.start)} />
         <InfoRow icon="👤" label="Technician" value={employee ? `${employee.firstName} ${employee.lastName ?? ''}`.trim() : 'Any available'} last />
       </Card>
@@ -2381,12 +2381,12 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
             <button onClick={() => { setOpen(false); setErr(null); }} aria-label="Close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1, cursor: 'pointer' }}>×</button>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <input placeholder="Your name" value={f.customerName} onChange={(e) => setF({ ...f, customerName: e.target.value })} style={inputStyle} />
-            <input placeholder="Phone" value={f.phone} inputMode="tel" onChange={(e) => setF({ ...f, phone: e.target.value })} style={inputStyle} />
-            <input placeholder="Email (optional)" value={f.email} type="email" onChange={(e) => setF({ ...f, email: e.target.value })} style={inputStyle} />
+            <input placeholder={bt("Your name")} value={f.customerName} onChange={(e) => setF({ ...f, customerName: e.target.value })} style={inputStyle} />
+            <input placeholder={bt("Phone")} value={f.phone} inputMode="tel" onChange={(e) => setF({ ...f, phone: e.target.value })} style={inputStyle} />
+            <input placeholder={bt("Email (optional)")} value={f.email} type="email" onChange={(e) => setF({ ...f, email: e.target.value })} style={inputStyle} />
           </div>
           {err && <p style={{ color: '#dc2626', fontSize: 13, margin: '8px 0 0' }}>{err}</p>}
-          <button onClick={submit} disabled={busy} style={{ ...ctaBtn, marginTop: 10 }}>{busy ? 'Joining…' : 'Join waitlist'}</button>
+          <button onClick={submit} disabled={busy} style={{ ...ctaBtn, marginTop: 10 }}>{busy ? bt('Joining…') : bt('Join waitlist')}</button>
         </div>
       )}
     </div>
@@ -2403,12 +2403,12 @@ function ProgramBanner({ fv, gr }: {
   const ord = (n: number) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
   const fvRules = fv?.enabled ? (fv.rules?.length ? fv.rules : (fv.percent > 0 ? [{ visit: 1, percent: fv.percent }] : [])) : [];
   if (fvRules.length) {
-    const tiers = fvRules.map((r) => `${ord(r.visit)} visit: ${r.percent}% off`).join(' · ');
-    lines.push(`🎁 ${fv!.message || 'Visit rewards'} — ${tiers} (applied automatically)`);
+    const tiers = fvRules.map((r) => btf('{n} visit: {percent}% off', { n: ord(r.visit), percent: r.percent })).join(' · ');
+    lines.push(`🎁 ${fv!.message || bt('Visit rewards')} — ${tiers} ${bt('(applied automatically)')}`);
   }
   if (gr?.enabled && gr.tiers.length > 0) {
-    const tiers = gr.tiers.map((t) => `${t.minSize}+ people: ${t.percent}% off`).join(' · ');
-    lines.push(`👯 ${gr.message || 'Bring your friends and save!'} — ${tiers}`);
+    const tiers = gr.tiers.map((t) => btf('{size}+ people: {percent}% off', { size: t.minSize, percent: t.percent })).join(' · ');
+    lines.push(`👯 ${gr.message || bt('Bring your friends and save!')} — ${tiers}`);
   }
   if (lines.length === 0) return null;
   return (
@@ -2424,18 +2424,18 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
   const wdOn = !!(wd?.enabled && wd.rules?.length);
   const ddOn = !!(dd?.enabled && dd.rules?.length);
   if (!wdOn && !ddOn) return null;
-  const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'select services') : 'everything');
+  const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? bt('select services')) : bt('everything'));
   const wdSorted = wdOn ? [...wd!.rules].sort((a, b) => a.day - b.day || b.percent - a.percent) : [];
   const ddSorted = ddOn ? [...dd!.rules].filter((r) => r.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
-  const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }); } catch { return s; } };
+  const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString(bookLocale(), { month: 'short', day: 'numeric' }); } catch { return s; } };
   const fmtRange = (r: DateRule) => (r.endDate && r.endDate !== r.startDate ? `${fmtOne(r.startDate)}–${fmtOne(r.endDate)}` : fmtOne(r.startDate));
   const chip: React.CSSProperties = { background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 700 };
   return (
     <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7' }}>
-      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 14.5 }}>💸 {(wdOn && wd!.message) || 'Save on select days!'}</div>
+      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 14.5 }}>💸 {(wdOn && wd!.message) || bt('Save on select days!')}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{WEEKDAY_NAMES[r.day]}: −{r.percent}% off {catName(r.categoryId)}</span>)}
-        {ddSorted.map((r, i) => <span key={`d${i}`} style={chip}>{r.label ? `${r.label} · ` : ''}{fmtRange(r)}: −{r.percent}% off {catName(r.categoryId)}</span>)}
+        {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{btf('{day}: −{percent}% off {what}', { day: bt(WEEKDAY_NAMES[r.day]), percent: r.percent, what: catName(r.categoryId) })}</span>)}
+        {ddSorted.map((r, i) => <span key={`d${i}`} style={chip}>{r.label ? `${r.label} · ` : ''}{btf('{when}: −{percent}% off {what}', { when: fmtRange(r), percent: r.percent, what: catName(r.categoryId) })}</span>)}
       </div>
     </div>
   );
@@ -2764,11 +2764,13 @@ function Center({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'grid', placeItems: 'center', minHeight: 240, color: '#475569', padding: 24 }}>{children}</div>;
 }
 
-function fmtTime(d: Date) { return d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit', hour12: true }); }
+// No hour12 flag: the locale decides. American English still reads 05:30 PM,
+// Vietnamese reads 17:30 rather than the borrowed "05:30 CH".
+function fmtTime(d: Date) { return d.toLocaleTimeString(bookLocale(), { hour: '2-digit', minute: '2-digit' }); }
 function fmtDur(min: number) {
-  if (min <= 0) return '0min';
+  if (min <= 0) return bt('0min');
   const h = Math.floor(min / 60), m = min % 60;
-  return `${h ? `${h}h ` : ''}${m ? `${m}min` : ''}`.trim();
+  return `${h ? `${btf('{h}h', { h })} ` : ''}${m ? btf('{m}min', { m }) : ''}`.trim();
 }
 function isValidPhone(v: string): boolean {
   const s = v.trim();

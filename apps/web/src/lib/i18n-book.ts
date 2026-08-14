@@ -88,6 +88,59 @@ const VI: Record<string, string> = {
   'Pay online': 'Trả online',
   'Pay at the shop': 'Trả tại tiệm',
 
+  // ---- clock, calendar and duration --------------------------------------
+  // Vietnam reads a 24-hour clock, so "5:30 CH" is wrong twice over: the words
+  // are borrowed and the format is American. The locale below drives both.
+  'today': 'hôm nay',
+  'tomorrow': 'ngày mai',
+  'Sunday': 'Chủ Nhật',
+  'Monday': 'Thứ Hai',
+  'Tuesday': 'Thứ Ba',
+  'Wednesday': 'Thứ Tư',
+  'Thursday': 'Thứ Năm',
+  'Friday': 'Thứ Sáu',
+  'Saturday': 'Thứ Bảy',
+  '{h}h': '{h} giờ',
+  '{m}min': '{m} phút',
+  '0min': '0 phút',
+
+  // ---- the opening line at the top of the page ---------------------------
+  'Next opening {when} at {time}': 'Còn chỗ {when} lúc {time}',
+  'Next opening {when}': 'Còn chỗ {when}',
+  'Open until {time}': 'Mở cửa đến {time}',
+  'Pick a service — we’ll show you every free time.': 'Chọn dịch vụ — tiệm sẽ hiện toàn bộ giờ còn trống.',
+  'Book online · confirmed in seconds': 'Đặt online · xác nhận trong vài giây',
+  'Pick your service, tech and time': 'Chọn dịch vụ, thợ và giờ',
+  'Instant confirmation by text': 'Xác nhận ngay bằng tin nhắn',
+  'Pay online or at the shop': 'Trả online hoặc trả tại tiệm',
+
+  // ---- step headings -----------------------------------------------------
+  'Choose your nail tech': 'Chọn thợ làm cho bạn',
+  'Select time': 'Chọn giờ',
+  'Confirm booking': 'Xác nhận đặt lịch',
+  'Tap ＋ to add a service. You can pick more than one.': 'Bấm ＋ để thêm dịch vụ. Có thể chọn nhiều dịch vụ.',
+  'Go with the person you know, or let us give you the first one free.': 'Chọn thợ quen của bạn, hoặc để tiệm sắp xếp.',
+
+  // ---- discounts ---------------------------------------------------------
+  // Percentages and the shop's own wording stay as the salon typed them; only
+  // the sentence around them is translated.
+  'Save on select days!': 'Ưu đãi theo ngày!',
+  'everything': 'tất cả dịch vụ',
+  'select services': 'một số dịch vụ',
+  '{day}: −{percent}% off {what}': '{day}: giảm {percent}% {what}',
+  '{when}: −{percent}% off {what}': '{when}: giảm {percent}% {what}',
+  'Visit rewards': 'Ưu đãi khách quen',
+  'Bring your friends and save!': 'Rủ bạn bè cùng đi để được giảm giá!',
+  '{n} visit: {percent}% off': 'Lần {n}: giảm {percent}%',
+  '{size}+ people: {percent}% off': 'Từ {size} người: giảm {percent}%',
+  '(applied automatically)': '(tự động áp dụng)',
+
+  // ---- waitlist ----------------------------------------------------------
+  'Your name': 'Họ tên của bạn',
+  'Email (optional)': 'Email (không bắt buộc)',
+  'Joining…': 'Đang gửi…',
+  'Join waitlist': 'Vào danh sách chờ',
+
   // ---- footer ------------------------------------------------------------
   'Privacy': 'Chính sách bảo mật',
   'Messaging Terms': 'Điều khoản nhắn tin',
@@ -110,4 +163,24 @@ export function setBookLang(lang: BookLang): void {
 /** Translate a customer-facing string; unknown keys fall back to the English. */
 export function bt(s: string): string {
   return (TABLES[currentLang] ?? {})[s] ?? s;
+}
+
+/** Translate and fill placeholders: btf('Open until {time}', { time }). */
+export function btf(s: string, vars: Record<string, string | number>): string {
+  return Object.entries(vars).reduce(
+    (out, [k, v]) => out.split(`{${k}}`).join(String(v)),
+    bt(s),
+  );
+}
+
+/**
+ * Locale for dates, times and numbers on the customer page.
+ *
+ * Deliberately NOT uiLocale(): that reads the language the STAFF picked, which
+ * a customer has never set, so every visitor to a Vietnamese shop was being
+ * handed American date order and an AM/PM clock. This follows the same salon
+ * country the wording does, so the whole page agrees with itself.
+ */
+export function bookLocale(): string {
+  return currentLang === 'vi' ? 'vi-VN' : 'en-US';
 }

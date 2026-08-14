@@ -1,6 +1,6 @@
 # Facts cần dán vào bot bán hàng — bảng giá phần mềm
 
-**Vì sao cần dán tay:** giá là dữ liệu của tiệm, không phải của code. Bot chỉ được nói những con số nằm trong mục **Facts** ở dashboard. Hiện Facts của Lumio Agency **chỉ có các gói marketing**, nên khi khách hỏi giá AI Messenger, bot không có lựa chọn nào khác ngoài việc nói $179 — con số đúng với thứ nó biết, và sai với thứ khách hỏi.
+**Vì sao cần dán tay:** giá là dữ liệu của tiệm, không phải của code. Bot chỉ được nói những con số có trong **🏢 Thông tin doanh nghiệp** ở dashboard. Hiện phần đó **chỉ có các gói marketing**, nên khi khách hỏi giá AI Messenger, bot không có lựa chọn nào khác ngoài việc nói $179 — con số đúng với thứ nó biết, và sai với thứ khách hỏi.
 
 ## Đường đi chính xác trong dashboard
 
@@ -36,16 +36,28 @@ Thêm một dòng nữa để bot không nói mâu thuẫn giữa hai bảng gi�
 
 ---
 
-## Việc quan trọng nhất: tìm và sửa dòng đang nói sai
+## Câu "không bán riêng" đến từ ĐÂU — đã xác định
 
-Bot đang nói *"AI Messenger không có giá riêng, được tặng kèm từ gói Boost $179"*. Câu đó đến từ **một dòng đang bật** trong 🏢 Thông tin doanh nghiệp.
+Không có dòng nào như vậy trong 🏢 Thông tin doanh nghiệp. Chủ tiệm kiểm rồi, không thấy. **Câu đó đến từ code, không phải từ dữ liệu của bạn.**
 
-Mở rộng thẻ đó ra, đọc **nội dung** từng dòng, tìm dòng nào chứa ý *"không bán riêng"* / *"không có giá riêng"* / *"chỉ tặng kèm theo gói"*. Có hai cách xử lý:
+Bản đang chạy trên server có một dòng viết cứng trong lời nhắc:
 
-- **Bỏ tick** dòng đó — nhanh nhất, bot thôi nói câu này ngay
-- Hoặc **sửa nội dung** thành: `AI Messenger có trong gói Phần mềm Pro $69/tháng. Ngoài ra, các gói Marketing từ Boost $179 trở lên đã bao gồm sẵn phần mềm nên không phải trả riêng.`
+> *the Booking + AI + POS system free BY TIER (full system free from Growth Map $279 up; Boost $179 includes the free Booking system…)*
 
-Không tìm thấy dòng nào như vậy thì nó đến từ code — bản sửa đã có trong commit `03d79fe`, chỉ cần deploy.
+Dịch ra đúng nghĩa: *"hệ thống Booking + AI + POS được tặng theo từng mức gói; từ Boost $179 trở lên là có"*. Bot đọc câu này rồi diễn đạt lại thành *"không có giá riêng, kèm miễn phí từ gói Boost $179 trở lên"* — **đúng y hệt câu trong ảnh chụp màn hình**. Không phải bot bịa; nó lặp lại đúng thứ được dạy.
+
+Dòng này đã bị **xoá hoàn toàn** trong commit `03d79fe`. Chừng nào chưa deploy thì server vẫn đọc bản cũ và vẫn trả lời như vậy.
+
+**Nên thứ tự đúng là:**
+
+1. **Deploy trước** (`Deploy update`) — bỏ câu sai khỏi lời nhắc
+2. Rồi mới thêm 4 dòng bên dưới vào 🏢 Thông tin doanh nghiệp — để bot có con số $69 mà nói
+
+Làm ngược lại cũng không sao, nhưng thiếu bước 1 thì bot vẫn nói *"không bán riêng"*, còn thiếu bước 2 thì bot chỉ biết trả lời *"để em hỏi team rồi báo lại"* — vì nó không được phép nói con số không có trong dữ liệu.
+
+## Còn một chỗ nữa nên kiểm
+
+Ngay dưới danh sách thông tin có ô **"Ghi chú thêm cho bot (tự do)"**. Đây là ô chữ tự do, cũng được đưa vào phần FACTS. Đọc lại xem trong đó có câu nào nói về giá hoặc về việc tặng kèm không — nếu có thì sửa luôn.
 
 ## Còn phải kiểm lại: các dòng marketing đang có
 

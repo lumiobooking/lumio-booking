@@ -21,6 +21,7 @@ import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
 import { uiLocale } from '../../../lib/datetime';
+import { bookLangForCountry, setBookLang, bt } from '../../../lib/i18n-book';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';        // ink for text (headings, rows)
@@ -117,6 +118,8 @@ interface Salon {
   firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] };
   groupDiscount?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] };
   rating?: { value: number; count: number } | null;
+  /** ISO country of the salon; decides the language this page speaks. */
+  country?: string;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
@@ -265,6 +268,9 @@ export default function PublicBookingPage() {
   const embedded = useEmbedded();
 
   const [salon, setSalon] = useState<Salon | null>(null);
+  // The page speaks the salon's language, not the visitor's. A Vietnamese shop
+  // serves Vietnamese customers on any browser; a US shop keeps its English.
+  setBookLang(bookLangForCountry(salon?.country));
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -802,8 +808,8 @@ export default function PublicBookingPage() {
     null;
 
   const ctaLabel =
-    step === 4 ? (submitting ? 'Booking…' : isGroup ? `Book for ${extraGuests.length + 1}` : visitCart.length > 0 ? `Book ${visitCart.length + 1} visits` : 'Book') :
-    step === 1 ? (pickedServiceIds.length > 0 ? 'Book for Me' : 'Select a service') : 'Continue';
+    step === 4 ? (submitting ? bt("Booking\u2026") : isGroup ? `Book for ${extraGuests.length + 1}` : visitCart.length > 0 ? `Book ${visitCart.length + 1} visits` : bt("Book")) :
+    step === 1 ? (pickedServiceIds.length > 0 ? 'Book for Me' : bt("Select a service")) : bt("Continue");
 
   const goNext = () => {
     // A group shares one time slot, so a single named tech makes no sense —
@@ -820,7 +826,7 @@ export default function PublicBookingPage() {
   };
 
   const stepTitle =
-    step === 1 ? 'Services' :
+    step === 1 ? bt("Services") :
     step === 2 ? 'Choose your nail tech' :
     step === 3 ? 'Select time' :
     step === 4 ? 'Confirm booking' : '';
@@ -924,8 +930,8 @@ export default function PublicBookingPage() {
                   Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.
                 </p>
               )}
-              <p style={{ color: '#475569' }}>Payment: <strong>{result?.paymentStatus === 'PAID' ? 'Paid online ✓' : 'Pay at the salon'}</strong></p>
-              <button onClick={reset} style={{ ...primaryBtn, marginTop: 8 }}>Book another</button>
+              <p style={{ color: '#475569' }}>{bt("Payment: ")}<strong>{result?.paymentStatus === 'PAID' ? 'Paid online ✓' : 'Pay at the salon'}</strong></p>
+              <button onClick={reset} style={{ ...primaryBtn, marginTop: 8 }}>{bt("Book another")}</button>
             </div>
           </div>
         ) : (
@@ -1002,7 +1008,7 @@ export default function PublicBookingPage() {
                         onClick={() => { setExtraGuests((gs) => [...gs, { name: '', serviceIds: [] }]); setActiveGuest(extraGuests.length + 1); setStaffId(''); setSlot(null); }}
                         style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700,
                           border: `1.6px dashed ${tint(accent, 0.6)}`, background: tint(accent, 0.03), color: accent }}>
-                        ＋ {isGroup ? 'Add guest' : 'Bringing friends?'}
+                        ＋ {isGroup ? bt("Add guest") : bt("Bringing friends?")}
                       </button>
                     )}
                   </div>
@@ -1239,7 +1245,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
 
       <div style={{ padding: '12px 16px 16px', borderTop: '1px solid #eef1f6', flexShrink: 0, background: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontWeight: 800, color: INK, fontSize: 15 }}>{grand ? (grand.kind === 'visits' ? 'This visit' : 'Your services') : 'Total'}</span>
+          <span style={{ fontWeight: 800, color: INK, fontSize: 15 }}>{grand ? (grand.kind === 'visits' ? 'This visit' : 'Your services') : bt("Total")}</span>
           <span>
             {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', fontSize: 13, marginRight: 8 }}>{fmt(fullCents)}</span>}
             <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 800, color: INK, fontSize: 17 }} />
@@ -1354,16 +1360,16 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
  *  next and why booking here is safe — the space works for the salon. */
 function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
   const perks: [string, string, string][] = [
-    ['🕐', 'Book any time', 'Open 24/7 online — even when the shop is closed.'],
-    ['✅', 'Instant confirmation', 'You get a text the moment your spot is held.'],
-    ['💇', 'Pick your tech', 'Choose the person you always go to, or let us match you.'],
-    ['💳', 'Pay how you like', 'Online now, or at the shop when you arrive.'],
+    ['🕐', bt("Book any time"), bt("Open 24/7 online \u2014 even when the shop is closed.")],
+    ['✅', bt("Instant confirmation"), bt("You get a text the moment your spot is held.")],
+    ['💇', bt("Pick your tech"), bt("Choose the person you always go to, or let us match you.")],
+    ['💳', bt("Pay how you like"), bt("Online now, or at the shop when you arrive.")],
   ];
   return (
     <div style={{ padding: '16px 2px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
         <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🛍️</div>
-        <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>Pick a service to start</div>
+        <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>{bt("Pick a service to start")}</div>
         <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>
           Tap <b style={{ color: accent }}>＋</b> on any service. You can add more than one.
         </div>
@@ -1512,7 +1518,7 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
       ) : (
         <span style={{ fontSize: 12.5, color: '#5b6b85', fontWeight: 700 }}>Pick a service — we&apos;ll show you every free time.</span>
       )}
-      <span style={{ marginLeft: 'auto', fontSize: 12, color: '#8fa0bb' }}>Choose the time after your service ✨</span>
+      <span style={{ marginLeft: 'auto', fontSize: 12, color: '#8fa0bb' }}>{bt("Choose the time after your service \u2728")}</span>
     </div>
   );
 }
@@ -1695,7 +1701,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                 </button>
               );
             })}
-            {g.items.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13.5, padding: '8px 2px' }}>Nothing found.</div>}
+            {g.items.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13.5, padding: '8px 2px' }}>{bt("Nothing found.")}</div>}
           </div>
         </div>
       ))}
@@ -1747,7 +1753,7 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
       {eligible.length === 0 && staff.length > 0 && (
         <div style={{ fontSize: 12.5, color: '#7d8ba4', background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px' }}>
           {nobodyLists.length > 0
-            ? <>No technician lists <b>{nobodyLists.join(', ')}</b> yet — pick “Any” and the salon will assign the right person.</>
+            ? <>{bt("No technician lists ")}<b>{nobodyLists.join(', ')}</b> yet — pick “Any” and the salon will assign the right person.</>
             : <>No single technician does all of your services — pick “Any” and the salon will pair you with the right techs for each one.</>}
         </div>
       )}
@@ -1773,7 +1779,7 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
             <Avatar name={label} url={s.avatarUrl} size={46} accent={accent} />
             <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12, minWidth: 0 }}>
               {s.id ? label : 'Any nail tech'}
-              {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>First one free at your time</span>}
+              {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>{bt("First one free at your time")}</span>}
               {s.id && !ok && <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#b0532f', marginTop: 2 }}>Doesn&rsquo;t offer {missing.join(', ') || 'this service'}</span>}
               {s.id && ok && hint && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>Works {hint}</span>}
             </span>
@@ -2011,7 +2017,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
         ) : (
         <div style={{ padding: '26px 0', textAlign: 'center', color: '#94a3b8' }}>
           <div style={{ fontSize: 30, marginBottom: 6 }}>😔</div>
-          <div style={{ fontSize: 14 }}>No times left on this day. Try the next one.</div>
+          <div style={{ fontSize: 14 }}>{bt("No times left on this day. Try the next one.")}</div>
           {waitlist}
         </div>
         )
@@ -2088,7 +2094,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 800, color: INK, fontSize: 15 }}>
-          <span>Total</span><span>{fmt(totalCents)}</span>
+          <span>{bt("Total")}</span><span>{fmt(totalCents)}</span>
         </div>
         {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
           <div style={{ fontSize: 12, color: '#7c5c22', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>
@@ -2114,13 +2120,13 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           <Field label="Phone" required>
             <input style={{ ...inputStyle, borderColor: showPhoneError ? '#ef4444' : '#dbe2ee' }} value={form.phone} inputMode="tel" placeholder="e.g. (201) 555-0123"
               onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Enter a valid phone number (8–15 digits).</div>}
+            {showPhoneError && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid phone number (8\u201315 digits).")}</div>}
           </Field>
           <Field label="Email (optional)">
             <input style={{ ...inputStyle, borderColor: showEmailError ? '#ef4444' : '#dbe2ee' }} type="email" value={form.email} placeholder="you@email.com"
               onChange={(e) => setForm({ ...form, email: e.target.value })} />
             {showEmailError
-              ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>Enter a valid email address.</div>
+              ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid email address.")}</div>
               : <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>We&rsquo;ll email your receipt 💌</div>}
           </Field>
           <Field label="People"><input style={inputStyle} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></Field>
@@ -2138,9 +2144,9 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
             <span style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>Also send me special offers &amp; promotions by text <span style={{ color: '#94a3b8' }}>(optional)</span></span>
           </label>
           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 9 }}>
-            <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Privacy</a>
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>{bt("Privacy")}</a>
             <span style={{ margin: '0 6px' }}>·</span>
-            <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Messaging Terms</a>
+            <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>{bt("Messaging Terms")}</a>
           </div>
         </div>
       </Card>
@@ -2371,7 +2377,7 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
       ) : (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 }}>
-            <div style={{ fontWeight: 800, color: INK }}>Join the waitlist</div>
+            <div style={{ fontWeight: 800, color: INK }}>{bt("Join the waitlist")}</div>
             <button onClick={() => { setOpen(false); setErr(null); }} aria-label="Close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1, cursor: 'pointer' }}>×</button>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -2627,8 +2633,8 @@ function usePin(
  *  steps are left, which is the single cheapest way to lift completion rate. */
 function Progress({ step, accent, allowStaff }: { step: Step; accent: string; allowStaff: boolean }) {
   const steps = allowStaff
-    ? ['Services', 'Nail tech', 'Time', 'Confirm']
-    : ['Services', 'Time', 'Confirm'];
+    ? [bt("Services"), bt("Nail tech"), bt("Time"), bt("Confirm")]
+    : [bt("Services"), bt("Time"), bt("Confirm")];
   const idx = allowStaff ? step - 1 : (step === 1 ? 0 : step - 2);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 4px 2px' }}>

@@ -94,7 +94,7 @@ export class PublicSalonController {
       this.settings.getGroupDiscount(tenant.id),
       this.settings.getPosSettings(tenant.id).catch(() => null),
       this.prisma.restaurantTable.findMany({ where: { tenantId: tenant.id, isActive: true, area: { not: null } }, select: { area: true }, distinct: ['area'] }),
-      this.settings.getCompanyExtra(tenant.id).catch(() => ({} as { address?: string })),
+      this.settings.getCompanyExtra(tenant.id).catch(() => ({} as { address?: string; country?: string })),
       this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
       // Was a sequential await after the batch — folded in so it runs in parallel.
       this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '', mode: '' as const })),
@@ -120,6 +120,11 @@ export class PublicSalonController {
       businessType: tenant.businessType,
       contactPhone: tenant.contactPhone,
       address: (extra as { address?: string })?.address || null,
+      // Which language the CUSTOMER should read this page in. It comes from the
+      // salon's country, never from the visitor's browser: a Vietnamese shop
+      // serves Vietnamese customers, and an American shop must keep showing the
+      // English page it shows today whoever happens to open it.
+      country: (extra as { country?: string })?.country || '',
       areas: areaRows.map((a: { area: string | null }) => a.area).filter((x: string | null): x is string => !!x),
       timezone: tenant.timezone,
       branding: brandingPublic,

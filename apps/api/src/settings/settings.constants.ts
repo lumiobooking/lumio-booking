@@ -264,6 +264,20 @@ export interface PosSettings {
   // (cashier confirms receipt — no auto-confirmation).
   transferInstructions: string; // bank name / account / Zelle / Interac email, etc.
   transferQrUrl: string; // optional QR image URL the customer can scan
+  /**
+   * Whether a tip is asked for at all.
+   *
+   * Tipping a nail tech is normal in the United States and Canada and strange
+   * almost everywhere else. In Vietnam the screen asking a customer to add 18%
+   * does not read as generous, it reads as a foreign shop that does not know
+   * the country — so a salon there needs to turn the whole thing off, not
+   * set it to zero.
+   *
+   * Defaults to true, which is what every salon does today. Picking Vietnam in
+   * Settings switches it off; the salon can switch it back on, because a shop
+   * serving tourists may well want it.
+   */
+  tipsEnabled: boolean;
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
@@ -274,6 +288,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   cardSurchargeEnabled: false,
   transferInstructions: '',
   transferQrUrl: '',
+  tipsEnabled: true,
 };
 
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */

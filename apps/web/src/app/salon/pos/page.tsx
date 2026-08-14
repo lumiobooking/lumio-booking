@@ -21,6 +21,7 @@ interface CustomerHit { id: string; firstName: string; lastName?: string | null;
 interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
   taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
+  tipsOn?: boolean;
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
   salonName?: string; salonLogo?: string; salonAccent?: string; salonWelcome?: string;
 }
@@ -115,6 +116,10 @@ function Register() {
   const [taxRate, setTaxRate] = useState(0);
   const [cardSurchargePct, setCardSurchargePct] = useState(0);
   const [cardSurchargeOn, setCardSurchargeOn] = useState(false);
+  // Whether this salon asks for a tip at all. True everywhere it always was;
+  // a salon in a country with no tipping culture turns it off in Settings and
+  // the whole prompt disappears rather than showing a 0% option.
+  const [tipsOn, setTipsOn] = useState(true);
   const [currency, setCurrency] = useState('USD');
   const [salonName, setSalonName] = useState('');
   const [salonLogo, setSalonLogo] = useState('');
@@ -251,6 +256,7 @@ function Register() {
     setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
     setLoyalty(c.loyalty);
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
+    setTipsOn(c.tipsOn !== false);
   };
 
   const load = useCallback(async () => {
@@ -262,7 +268,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
       ]);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
@@ -274,6 +280,7 @@ function Register() {
         cardSurchargeOn: settings.pos?.cardSurchargeEnabled ?? false,
         transferInfo: settings.pos?.transferInstructions ?? '',
         transferQr: settings.pos?.transferQrUrl ?? '',
+        tipsOn: settings.pos?.tipsEnabled !== false,
         currency: settings.booking?.currency ?? 'USD',
         loyalty: settings.loyalty
           ? { enabled: settings.loyalty.enabled, redeemCentsPerPoint: settings.loyalty.redeemCentsPerPoint, minRedeemPoints: settings.loyalty.minRedeemPoints }
@@ -716,11 +723,11 @@ function Register() {
       dueCents: money.due,
       // Tip prompt for the customer screen: tippable only when there's a service
       // line, and the % is computed off the service subtotal.
-      tippable: cart.some((l) => l.kind === 'SERVICE'),
+      tippable: tipsOn && cart.some((l) => l.kind === 'SERVICE'),
       tipBaseCents: cart.filter((l) => l.kind === 'SERVICE').reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
       reviewUrl: reviewUrl ?? undefined,
     },
-  }), [cart, currency, money, cardSurchargePct, staff, salonName, salonLogo, salonAccent, salonWelcome, reviewUrl]);
+  }), [cart, currency, money, cardSurchargePct, staff, salonName, salonLogo, salonAccent, salonWelcome, reviewUrl, tipsOn]);
   const displayChRef = useRef<BroadcastChannel | null>(null);
   const displayPayloadRef = useRef(displayPayload);
   displayPayloadRef.current = displayPayload;
@@ -813,9 +820,9 @@ function Register() {
       subtotalCents: 0, savingsCents: 0, tipCents: 0, taxCents: 0, giftCents: 0,
       dueCents: money.due, paidCents: money.tenderedCents || money.due, changeCents: money.change,
       // Channel 3 — offer a QR tip on the Thank-you screen for the tech(s) on this ticket.
-      tippable: tt.techs.length > 0,
+      tippable: tipsOn && tt.techs.length > 0,
       tipBaseCents: tt.baseCents,
-      tipTechs: tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })),
+      tipTechs: tipsOn ? tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })) : [],
       reviewUrl: reviewUrl ?? undefined,
     };
     displayChRef.current?.postMessage({ type: 'state', state: paidState });
@@ -867,7 +874,12 @@ function Register() {
   };
   // Technicians on this ticket who set up a tip QR/handle — shown at checkout so
   // the customer can scan and tip them directly (money goes straight to the tech).
-  const tipTechs = staff.filter((s) => (s.tipQrUrl || s.tipHandle) && cart.some((l) => l.staffMemberId === s.id));
+  // One gate for every tip surface in the till: the direct-tip panel here, the
+  // prompt on the customer's screen and the QR on the thank-you screen all read
+  // from this, so turning tipping off cannot leave one of them behind.
+  const tipTechs = tipsOn
+    ? staff.filter((s) => (s.tipQrUrl || s.tipHandle) && cart.some((l) => l.staffMemberId === s.id))
+    : [];
 
   async function logDirectTip(staffId: string) {
     const raw = (tipLogInput[staffId] || '').trim();

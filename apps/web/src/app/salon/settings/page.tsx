@@ -37,7 +37,7 @@ interface SettingsData {
     gmail: { clientId: string; senderEmail: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
-  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string };
+  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number };
@@ -214,10 +214,10 @@ function Panel({ title, badge, hint, defaultOpen = false, children }: {
  * and getting any of them wrong is expensive: the wrong timezone books people
  * at the wrong hour, the wrong currency quotes the wrong price.
  */
-const COUNTRY_PRESETS: Record<string, { timezone: string; currency: string; decimals: number; symbol: string; position: 'before' | 'after'; lang: 'en' | 'vi' }> = {
-  US: { timezone: 'America/Los_Angeles', currency: 'USD', decimals: 2, symbol: '$', position: 'before', lang: 'en' },
-  CA: { timezone: 'America/Toronto', currency: 'CAD', decimals: 2, symbol: '$', position: 'before', lang: 'en' },
-  VN: { timezone: 'Asia/Ho_Chi_Minh', currency: 'VND', decimals: 0, symbol: '₫', position: 'after', lang: 'vi' },
+const COUNTRY_PRESETS: Record<string, { timezone: string; currency: string; decimals: number; symbol: string; position: 'before' | 'after'; lang: 'en' | 'vi'; tips: boolean }> = {
+  US: { timezone: 'America/Los_Angeles', currency: 'USD', decimals: 2, symbol: '$', position: 'before', lang: 'en', tips: true },
+  CA: { timezone: 'America/Toronto', currency: 'CAD', decimals: 2, symbol: '$', position: 'before', lang: 'en', tips: true },
+  VN: { timezone: 'Asia/Ho_Chi_Minh', currency: 'VND', decimals: 0, symbol: '₫', position: 'after', lang: 'vi', tips: false },
 };
 
 function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
@@ -240,6 +240,10 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
       { currency: preset.currency, currencySymbol: preset.symbol, symbolPosition: preset.position, priceDecimals: preset.decimals },
       'Currency',
     );
+    // Tipping a nail tech is normal in North America and unusual in Vietnam.
+    // This is a starting point, not a rule: the salon can switch it back on
+    // under Payments, which is where every other till setting lives.
+    onSave('pos', { tipsEnabled: preset.tips }, 'Tips');
     setApplied(true);
   }
 
@@ -560,6 +564,16 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </Panel>
 
       <Panel
+        title={lang === 'vi' ? 'Tiền tip' : 'Tipping'}
+        badge={data.pos?.tipsEnabled === false
+          ? { text: lang === 'vi' ? 'Tắt' : 'Off', color: '#64748b' }
+          : { text: lang === 'vi' ? 'Bật' : 'On', color: '#22c55e' }}
+        hint={lang === 'vi' ? 'Có hỏi khách tiền tip hay không' : 'Whether the customer is asked for a tip'}
+      >
+        <TipsConfig data={data} onSave={onSave} />
+      </Panel>
+
+      <Panel
         title={t('se.pay.loyaltyTitle')}
         badge={data.loyalty?.enabled ? { text: t('se.pay.on'), color: '#eab308' } : { text: t('se.pay.off'), color: '#64748b' }}
         hint={t('se.pay.loyaltyHint')}
@@ -583,6 +597,37 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </button>
       <span style={{ color: '#64748b', fontSize: 12, marginLeft: 12 }}>{t('se.pay.saveHint')}{enabledGw.length ? ` (${enabledGw.length} ${t('se.pay.onWord')})` : ''}.</span>
     </Card>
+  );
+}
+
+/**
+ * Whether the till asks for a tip at all.
+ *
+ * Not a percentage and not a default amount — the question is whether the
+ * question gets asked. A 0% tip prompt in a country that does not tip is still
+ * a foreign shop asking an awkward question, so this removes the prompt from
+ * the customer screen, the thank-you QR and the counter panel together.
+ */
+function TipsConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const { lang } = useLang();
+  const [on, setOn] = useState(data.pos?.tipsEnabled !== false);
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <label style={{ position: 'relative', display: 'inline-block', width: 42, height: 24, flexShrink: 0 }}>
+          <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : '#334155', borderRadius: 24, transition: '.2s' }} />
+          <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
+        </label>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{lang === 'vi' ? 'Hỏi khách tiền tip' : 'Ask the customer for a tip'}</div>
+      </div>
+      <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
+        {lang === 'vi'
+          ? 'Tắt thì màn hình khách, màn hình cảm ơn (mã QR tip) và ô ghi tip ở quầy đều ẩn đi — không phải để 0%, mà là không hỏi. Chọn quốc gia Việt Nam sẽ tự tắt; tiệm phục vụ khách nước ngoài có thể bật lại. Không ảnh hưởng tip đã ghi trước đó.'
+          : 'When off, the customer screen, the thank-you QR and the counter tip box all disappear — not set to 0%, simply not asked. Picking Vietnam turns this off automatically; a salon serving tourists can turn it back on. Tips already recorded are untouched.'}
+      </p>
+      <button style={ui.primaryBtn} onClick={() => onSave('pos', { tipsEnabled: on }, lang === 'vi' ? 'Tiền tip' : 'Tipping')}>{lang === 'vi' ? 'Lưu' : 'Save'}</button>
+    </div>
   );
 }
 

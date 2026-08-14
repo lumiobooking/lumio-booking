@@ -255,6 +255,7 @@ export class SettingsService {
       cardSurchargeEnabled?: boolean;
       transferInstructions?: string;
       transferQrUrl?: string;
+      tipsEnabled?: boolean;
     },
   ) {
     const tenantId = this.tenantId(user);
@@ -273,6 +274,9 @@ export class SettingsService {
       transferInstructions:
         typeof dto.transferInstructions === 'string' ? dto.transferInstructions : cur.transferInstructions,
       transferQrUrl: typeof dto.transferQrUrl === 'string' ? dto.transferQrUrl : cur.transferQrUrl,
+      // A salon that has never seen this setting keeps tipping on, which is
+      // what it has always done.
+      tipsEnabled: typeof dto.tipsEnabled === 'boolean' ? dto.tipsEnabled : (cur.tipsEnabled ?? true),
     };
     await this.writeKey(tenantId, POS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.pos_updated', resourceType: 'tenant', resourceId: tenantId });

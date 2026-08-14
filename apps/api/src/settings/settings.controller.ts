@@ -161,6 +161,7 @@ export class SettingsController {
       cardSurchargeEnabled?: boolean;
       transferInstructions?: string;
       transferQrUrl?: string;
+      tipsEnabled?: boolean;
     },
   ) {
     return this.settings.updatePos(user, dto);

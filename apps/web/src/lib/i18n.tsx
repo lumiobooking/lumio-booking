@@ -1535,6 +1535,10 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
     en: 'Sets how local phone numbers are read, and the money and date format.',
     vi: 'Quyết định cách đọc số điện thoại nội địa, và định dạng tiền, ngày tháng.',
   },
+  'se.co.countryApplied': {
+    en: 'Currency and interface language changed already. Timezone is filled in below — check it and press Save.',
+    vi: 'Tiền tệ và ngôn ngữ giao diện đã đổi ngay. Múi giờ đã điền sẵn bên dưới — kiểm tra rồi bấm Lưu.',
+  },
   'se.co.save': { en: 'Save company', vi: 'Lưu doanh nghiệp' },
   // Hours
   'se.hr.title': { en: 'Business hours', vi: 'Giờ mở cửa' },

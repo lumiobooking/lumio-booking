@@ -532,7 +532,11 @@ function makeDishPrice(b: Salon['booking']): (cents: number) => string {
   const after = b?.symbolPosition === 'after';
   const dec = typeof b?.priceDecimals === 'number' ? b.priceDecimals : 2;
   return (cents: number) => {
-    const v = (cents / 100).toFixed(dec).replace(/0+$/, '').replace(/[.,]$/, '');
+    // Zero-decimal currencies (đồng, yen) are stored in whole units already —
+    // dividing would show a tenth of the menu price.
+    const v = dec === 0
+      ? Math.round(cents).toLocaleString('en-US')
+      : (cents / 10 ** dec).toFixed(dec).replace(/0+$/, '').replace(/[.,]$/, '');
     return after ? `${v} ${sym}` : `${sym}${v}`;
   };
 }

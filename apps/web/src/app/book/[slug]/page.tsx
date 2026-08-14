@@ -88,9 +88,19 @@ const DEFAULT_RULES: BookingRules = {
   daysOff: [],
 };
 const SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', CAD: '$', AUD: '$', VND: '₫', JPY: '¥', SGD: '$' };
-function fmtMoney(cents: number, r: BookingRules): string {
+/**
+ * Amounts arrive in the currency's smallest unit. Dollars have cents so 12345
+ * is $123.45; the đồng has no sub-unit, so 250000 IS 250,000₫ and dividing it
+ * would quote the customer a hundredth of the price on the page they book from.
+ * Zero decimals therefore means no division, and a thousands separator, because
+ * 250000₫ is unreadable without one.
+ */
+function fmtMoney(minorUnits: number, r: BookingRules): string {
   const s = r.currencySymbol || SYMBOLS[r.currency] || r.currency + ' ';
-  const n = (cents / 100).toFixed(r.priceDecimals ?? 2);
+  const dec = r.priceDecimals ?? 2;
+  const n = dec === 0
+    ? Math.round(minorUnits).toLocaleString('en-US')
+    : (minorUnits / 10 ** dec).toFixed(dec);
   return r.symbolPosition === 'after' ? `${n}${s}` : `${s}${n}`;
 }
 

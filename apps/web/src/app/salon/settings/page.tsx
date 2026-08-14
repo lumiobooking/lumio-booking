@@ -208,10 +208,41 @@ function Panel({ title, badge, hint, defaultOpen = false, children }: {
   );
 }
 
+/**
+ * What a country implies. Picking one should carry the settings that always
+ * travel with it rather than leaving the salon to hunt for three more fields —
+ * and getting any of them wrong is expensive: the wrong timezone books people
+ * at the wrong hour, the wrong currency quotes the wrong price.
+ */
+const COUNTRY_PRESETS: Record<string, { timezone: string; currency: string; decimals: number; symbol: string; position: 'before' | 'after'; lang: 'en' | 'vi' }> = {
+  US: { timezone: 'America/Los_Angeles', currency: 'USD', decimals: 2, symbol: '$', position: 'before', lang: 'en' },
+  CA: { timezone: 'America/Toronto', currency: 'CAD', decimals: 2, symbol: '$', position: 'before', lang: 'en' },
+  VN: { timezone: 'Asia/Ho_Chi_Minh', currency: 'VND', decimals: 0, symbol: '₫', position: 'after', lang: 'vi' },
+};
+
 function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
-  const { lang } = useLang();
+  const { lang, setLang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [f, setF] = useState(data.company);
+  const [applied, setApplied] = useState(false);
+
+  // Choosing a country fills in what comes with it, in the form, where the
+  // salon can see it and change it before saving. Nothing is written behind
+  // their back — a silent timezone change would move every existing booking.
+  function pickCountry(code: string) {
+    setF((prev) => ({ ...prev, country: code }));
+    const preset = COUNTRY_PRESETS[code];
+    if (!preset) { setApplied(false); return; }
+    setF((prev) => ({ ...prev, country: code, timezone: preset.timezone }));
+    setLang(preset.lang);
+    onSave(
+      'booking',
+      { currency: preset.currency, currencySymbol: preset.symbol, symbolPosition: preset.position, priceDecimals: preset.decimals },
+      'Currency',
+    );
+    setApplied(true);
+  }
+
   return (
     <Card title={t('se.co.title')} desc={t('se.co.desc')}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, alignItems: 'start' }}>
@@ -225,7 +256,7 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
             and it decides the money and date format. Left blank the salon keeps
             behaving exactly as it did, guessing from the timezone. */}
         <Field label={t('se.co.country')}>
-          <select style={ui.input} value={f.country ?? ''} onChange={(e) => setF({ ...f, country: e.target.value })}>
+          <select style={ui.input} value={f.country ?? ''} onChange={(e) => pickCountry(e.target.value)}>
             <option value="">{t('se.co.countryAuto')}</option>
             <option value="US">🇺🇸 United States (+1)</option>
             <option value="CA">🇨🇦 Canada (+1)</option>
@@ -234,6 +265,9 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
         </Field>
       </div>
       <p style={{ color: '#64748b', fontSize: 11.5, marginTop: 8 }}>{t('se.co.countryHint')}</p>
+      {applied && (
+        <p style={{ color: '#34d399', fontSize: 12, marginTop: 6 }}>✓ {t('se.co.countryApplied')}</p>
+      )}
       <button
         style={{ ...ui.primaryBtn, marginTop: 16 }}
         onClick={() => onSave('company', { name: f.name, contactEmail: f.contactEmail, contactPhone: f.contactPhone, timezone: f.timezone, address: f.address, website: f.website, country: f.country ?? '' }, 'Company')}

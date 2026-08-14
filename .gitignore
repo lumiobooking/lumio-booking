@@ -50,3 +50,4 @@ lumio-booking-*.zip
 *.mkv
 *.avi
 0811*/
+tsconfig.scoped-check.tsbuildinfo

@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../../../lib/responsive';
-import { uiLocale } from '../../../lib/datetime';
+import { bt, btf, bookLocale } from '../../../lib/i18n-book';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';
@@ -63,7 +63,7 @@ interface Dish { name: string; category: string | null; priceCents: number; desc
 function wallTimeToISO(local: Date, timeZone: string): string {
   const y = local.getFullYear(), mo = local.getMonth(), d = local.getDate(), h = local.getHours(), mi = local.getMinutes();
   const naiveUTC = Date.UTC(y, mo, d, h, mi);
-  const dtf = new Intl.DateTimeFormat(uiLocale(), { timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dtf = new Intl.DateTimeFormat(bookLocale(), { timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const parts = dtf.formatToParts(new Date(naiveUTC));
   const g = (t: string) => Number(parts.find((p) => p.type === t)?.value);
   let hh = g('hour'); if (hh === 24) hh = 0;
@@ -81,6 +81,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   // Menu prices follow the restaurant's own currency settings (a Montréal
   // restaurant shows CAD, a Paris one shows €) instead of a hard-coded "$".
   const dishPrice = useMemo(() => makeDishPrice(salon.booking), [salon.booking]);
+  const exactPrice = useMemo(() => makeExactPrice(salon.booking), [salon.booking]);
   const tz = salon.timezone || 'UTC';
   const isMobile = useIsMobile(820);
   const embedded = useEmbedded();
@@ -157,34 +158,41 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   const anyOpen = slots.some((s) => s.open);
   useEffect(() => { if (slot && slots.length && !slots.some((s) => s.hm === slot && s.open)) setSlot(null); }, [slots, slot]);
 
-  const fmtSlot = (hm: string) => { const [h, m] = hm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit' }); };
+  const fmtSlot = (hm: string) => { const [h, m] = hm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(bookLocale(), { hour: 'numeric', minute: '2-digit' }); };
   const dateCards = useMemo(() => Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d; }), []);
-  const prettyDate = () => dateObj.toLocaleDateString(uiLocale(), { weekday: 'long', month: 'long', day: 'numeric' });
+  const prettyDate = () => dateObj.toLocaleDateString(bookLocale(), { weekday: 'long', month: 'long', day: 'numeric' });
   const dep = salon.deposit;
-  const depLabel = dep?.enabled ? (dep.type === 'percent' ? `${dep.percent}% deposit` : `$${(dep.fixedCents / 100).toFixed(2)} deposit`) : null;
+  // The fixed amount used to be printed with a hard "$" and divided by 100 —
+  // both wrong for a currency like đồng. dishPrice already knows the symbol,
+  // its position and how many decimals the currency actually has.
+  const depLabel = dep?.enabled
+    ? (dep.type === 'percent'
+        ? btf('{percent}% deposit', { percent: dep.percent })
+        : btf('{amount} deposit', { amount: exactPrice(dep.fixedCents) }))
+    : null;
   const infoOk = !!form.name.trim() && !!form.phone.trim();
 
   const goto = (n: number) => { setError(null); setStep(n); if (typeof window !== 'undefined') window.scrollTo(0, 0); };
 
   const canContinue = step === 1 ? !!slot : step === 2 ? infoOk : step === 3 ? (agreed && !submitting) : false;
-  const ctaLabel = step === 3 ? (submitting ? 'Reserving…' : 'Confirm Reservation') : step === 1 ? (slot ? 'Continue' : 'Select a time') : 'Continue';
+  const ctaLabel = step === 3 ? (submitting ? bt('Reserving…') : bt('Confirm Reservation')) : step === 1 ? (slot ? bt('Continue') : bt('Select a time')) : bt('Continue');
   const goNext = () => {
-    if (step === 1) { if (!slot) { setError('Please select a time.'); return; } goto(2); }
-    else if (step === 2) { if (!infoOk) { setError('Please enter your name and phone.'); return; } goto(3); }
+    if (step === 1) { if (!slot) { setError(bt('Please select a time.')); return; } goto(2); }
+    else if (step === 2) { if (!infoOk) { setError(bt('Please enter your name and phone.')); return; } goto(3); }
     else if (step === 3) submit();
   };
   const goBack = () => { if (step > 1) goto(step - 1); };
   const toggleReq = (r: string) => setRequests((xs) => xs.includes(r) ? xs.filter((x) => x !== r) : [...xs, r]);
 
-  const stepTitle = step === 1 ? 'Reserve a table' : step === 2 ? 'Your details' : 'Review & confirm';
-  const stepHint = step === 1 ? 'Choose your party size, then a date and time that suits you.'
-    : step === 2 ? 'Tell us who the table is for — and anything that makes the night special.'
-    : 'One last look before we hold your table.';
-  const barTitle = step === 1 ? (salon.name || 'Reserve online') : step === 2 ? 'Your details' : 'Confirm reservation';
+  const stepTitle = step === 1 ? bt('Reserve a table') : step === 2 ? bt('Your details') : bt('Review & confirm');
+  const stepHint = step === 1 ? bt('Choose your party size, then a date and time that suits you.')
+    : step === 2 ? bt('Tell us who the table is for — and anything that makes the night special.')
+    : bt('One last look before we hold your table.');
+  const barTitle = step === 1 ? (salon.name || bt('Reserve online')) : step === 2 ? bt('Your details') : bt('Confirm reservation');
 
   async function submit() {
-    if (!slot || !svcId) { setError('Online reservations are not available yet.'); return; }
-    if (!infoOk) { setError('Please enter your name and phone.'); goto(2); return; }
+    if (!slot || !svcId) { setError(bt('Online reservations are not available yet.')); return; }
+    if (!infoOk) { setError(bt('Please enter your name and phone.')); goto(2); return; }
     setSubmitting(true); setError(null);
     const [Y, M, D] = date.split('-').map(Number); const [h, m] = slot.split(':').map(Number);
     const startISO = wallTimeToISO(new Date(Y, M - 1, D, h, m), tz);
@@ -200,21 +208,24 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
         body: JSON.stringify({ website: hp, serviceId: svcId, startTime: startISO, partySize: party, area: seating !== 'No Preference' ? seating : undefined, customerFirstName: first, customerLastName: rest.join(' ') || undefined, customerPhone: form.phone.trim(), customerEmail: form.email.trim() || undefined, notes: parts.join(' · ') || undefined, paymentType: dep?.enabled ? 'PAY_ONLINE' : 'PAY_LATER' }),
       });
       const b = await res.json().catch(() => null);
-      if (!res.ok) { setError((b && b.message) || `Reservation failed (${res.status})`); return; }
+      if (!res.ok) { setError((b && b.message) || btf('Reservation failed ({code})', { code: res.status })); return; }
       setDone(true); if (typeof window !== 'undefined') window.scrollTo(0, 0);
-    } catch { setError('Network error. Please try again.'); }
+    } catch { setError(bt('Network error. Please try again.')); }
     finally { setSubmitting(false); }
   }
 
   // rows shown in the summary + review
+  // Labels are translated for the eye; the seating, occasion and request VALUES
+  // travel to the kitchen in English, which is what the restaurant's own
+  // notes field and every downstream report already expect.
   const resRows: [string, string][] = [
-    ['Party size', `${party} ${party === 1 ? 'guest' : 'guests'}`],
-    ['Date', slot ? prettyDate() : (step === 1 ? '—' : prettyDate())],
-    ['Time', slot ? fmtSlot(slot) : '—'],
-    ...(seating !== 'No Preference' ? ([['Seating', seating]] as [string, string][]) : []),
-    ...(occasion && occasion !== 'None' ? ([['Occasion', occasion]] as [string, string][]) : []),
-    ...(requests.length ? ([['Requests', requests.join(', ')]] as [string, string][]) : []),
-    ...(infoOk ? ([['Contact', `${form.name} · ${form.phone}`]] as [string, string][]) : []),
+    [bt('Party size'), btf(party === 1 ? '{n} guest' : '{n} guests', { n: party })],
+    [bt('Date'), slot ? prettyDate() : (step === 1 ? '—' : prettyDate())],
+    [bt('Time'), slot ? fmtSlot(slot) : '—'],
+    ...(seating !== 'No Preference' ? ([[bt('Seating'), bt(seating)]] as [string, string][]) : []),
+    ...(occasion && occasion !== 'None' ? ([[bt('Occasion'), bt(occasion)]] as [string, string][]) : []),
+    ...(requests.length ? ([[bt('Requests'), requests.map((r) => bt(r)).join(', ')]] as [string, string][]) : []),
+    ...(infoOk ? ([[bt('Contact'), `${form.name} · ${form.phone}`]] as [string, string][]) : []),
   ];
 
   const summary = (
@@ -231,16 +242,16 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
       <div className="lumio-book" style={{ width: '100%', maxWidth: 560, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
         <div style={{ background: '#fff', borderRadius: 18, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)', padding: 30, textAlign: 'center' }}>
           <div style={{ width: 66, height: 66, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'grid', placeItems: 'center', margin: '0 auto 14px' }} className="lumio-added"><Icon d="M20 6L9 17l-5-5" size={34} /></div>
-          <h2 style={{ fontFamily: DISPLAY, fontSize: 26, margin: '0 0 6px', color: INK }}>Your table is reserved</h2>
-          <p style={{ color: '#64748b', fontSize: 14.5, margin: '0 0 20px' }}>A confirmation text is on its way{form.name ? `, ${form.name.split(' ')[0]}` : ''}.</p>
+          <h2 style={{ fontFamily: DISPLAY, fontSize: 26, margin: '0 0 6px', color: INK }}>{bt('Your table is reserved')}</h2>
+          <p style={{ color: '#64748b', fontSize: 14.5, margin: '0 0 20px' }}>{btf('A confirmation text is on its way{name}.', { name: form.name ? `, ${form.name.split(' ')[0]}` : '' })}</p>
           <div style={{ textAlign: 'left', background: SOFT, border: '1px solid #eef1f6', borderRadius: 14, padding: '16px 18px', maxWidth: 380, margin: '0 auto' }}>
             <div style={{ fontFamily: DISPLAY, fontSize: 19, color: INK, marginBottom: 8 }}>{salon.name}</div>
-            {resRows.filter(([k]) => k !== 'Contact').map(([k, v]) => (
+            {resRows.filter(([k]) => k !== bt('Contact')).map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 14.5 }}><span style={{ color: '#94a3b8' }}>{k}</span><span style={{ color: INK, fontWeight: 700 }}>{v}</span></div>
             ))}
           </div>
-          {depLabel && <p style={{ color: '#b45309', fontSize: 13, marginTop: 14 }}>A {depLabel} may apply to hold your table.</p>}
-          <button onClick={() => { setDone(false); setStep(1); setSlot(null); setAgreed(false); }} style={{ ...primaryBtn, marginTop: 18 }}>Make another reservation</button>
+          {depLabel && <p style={{ color: '#b45309', fontSize: 13, marginTop: 14 }}>{btf('A {deposit} may apply to hold your table.', { deposit: depLabel })}</p>}
+          <button onClick={() => { setDone(false); setStep(1); setSlot(null); setAgreed(false); }} style={{ ...primaryBtn, marginTop: 18 }}>{bt('Make another reservation')}</button>
         </div>
       </div>
     </Shell>
@@ -290,7 +301,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
 
             {step === 1 && (
               <div>
-                <SectionLabel accent={accent}>Party size</SectionLabel>
+                <SectionLabel accent={accent}>{bt('Party size')}</SectionLabel>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 7 }}>
                   {[1, 2, 3, 4, 5, 6].map((n) => <button key={n} className="lumio-row" onClick={() => setParty(n)} style={pill(party === n, accent)}>{n}</button>)}
                   <button className="lumio-row" onClick={() => setParty((p) => (p < 7 ? 7 : p))} style={pill(party >= 7, accent)}>7+</button>
@@ -298,18 +309,18 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                 {party >= 7 && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 8, border: '1px solid #e6eaf2', borderRadius: 12, padding: 6 }}>
                     <button onClick={() => setParty((p) => Math.max(7, p - 1))} style={stepperBtn(accent)}>−</button>
-                    <span style={{ fontWeight: 800, fontSize: 16, color: INK }}>{party} guests</span>
+                    <span style={{ fontWeight: 800, fontSize: 16, color: INK }}>{btf('{n} guests', { n: party })}</span>
                     <button onClick={() => setParty((p) => Math.min(30, p + 1))} style={stepperBtn(accent)}>+</button>
                   </div>
                 )}
 
-                <SectionLabel accent={accent}>Select date</SectionLabel>
+                <SectionLabel accent={accent}>{bt('Select date')}</SectionLabel>
                 <div className="lumio-tabs" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 2 }}>
                   {dateCards.map((d, i) => {
                     const sel = d.getTime() === dateObj.getTime();
                     return <button key={i} className="lumio-row" onClick={() => { setDateObj(d); setSlot(null); }} style={{ flexShrink: 0, width: 64, padding: '9px 0', borderRadius: 12, border: `1px solid ${sel ? accent : '#e6eaf2'}`, background: sel ? tint(accent, 0.08) : '#fff', cursor: 'pointer', textAlign: 'center' }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 800, color: sel ? accent : '#94a3b8' }}>{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString(uiLocale(), { weekday: 'short' })}</div>
-                      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{d.toLocaleDateString(uiLocale(), { month: 'short' })}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 800, color: sel ? accent : '#94a3b8' }}>{i === 0 ? bt('Today') : i === 1 ? bt('Tmrw') : d.toLocaleDateString(bookLocale(), { weekday: 'short' })}</div>
+                      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{d.toLocaleDateString(bookLocale(), { month: 'short' })}</div>
                       <div style={{ fontSize: 18, fontWeight: 800, color: sel ? accent : INK }}>{d.getDate()}</div>
                     </button>;
                   })}
@@ -319,46 +330,46 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                   </label>
                 </div>
 
-                <SectionLabel accent={accent}>Select time</SectionLabel>
-                {dayClosed ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>Closed on {dateObj.toLocaleDateString(uiLocale(), { weekday: 'long' })}. Please pick another date.</div>
-                  : loadingAvail && !avail ? <p style={{ color: '#94a3b8', fontSize: 14 }}>Finding available times…</p>
-                  : !anyOpen ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>No tables for {party} guests on this date. Try another time or date.</div>
+                <SectionLabel accent={accent}>{bt('Select time')}</SectionLabel>
+                {dayClosed ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>{btf('Closed on {day}. Please pick another date.', { day: dateObj.toLocaleDateString(bookLocale(), { weekday: 'long' }) })}</div>
+                  : loadingAvail && !avail ? <p style={{ color: '#94a3b8', fontSize: 14 }}>{bt('Finding available times…')}</p>
+                  : !anyOpen ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>{btf('No tables for {n} guests on this date. Try another time or date.', { n: party })}</div>
                   : groups.map(([label, arr]) => (
                     <div key={label} style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 700, margin: '2px 0 6px' }}>{label}</div>
+                      <div style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 700, margin: '2px 0 6px' }}>{bt(label)}</div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
                         {arr.map((s) => { const on = slot === s.hm; return (
                           <button key={s.hm} disabled={!s.open} className="lumio-slot" onClick={() => setSlot(s.hm)} style={{ ...pill(on, accent), padding: '8px 2px', background: on ? accent : s.open ? '#fff' : '#f4f6fb', color: on ? '#fff' : s.open ? INK : '#c2cbd9', borderColor: on ? accent : '#e6eaf2', cursor: s.open ? 'pointer' : 'not-allowed', textDecoration: s.open ? 'none' : 'line-through' }}>
-                            <div>{fmtSlot(s.hm)}</div>{s.open && s.free <= 2 && <div style={{ fontSize: 9.5, color: on ? '#fff' : accent, fontWeight: 800 }}>Few left</div>}
+                            <div>{fmtSlot(s.hm)}</div>{s.open && s.free <= 2 && <div style={{ fontSize: 9.5, color: on ? '#fff' : accent, fontWeight: 800 }}>{bt('Few left')}</div>}
                           </button>); })}
                       </div>
                     </div>
                   ))}
 
                 {seatingOpts.length > 1 && (<>
-                  <SectionLabel accent={accent}>Seating preference</SectionLabel>
-                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{seatingOpts.map((s) => <button key={s} className="lumio-row" onClick={() => setSeating(s)} style={{ ...pill(seating === s, accent), flex: '1 1 100px' }}>{s}</button>)}</div>
+                  <SectionLabel accent={accent}>{bt('Seating preference')}</SectionLabel>
+                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{seatingOpts.map((s) => <button key={s} className="lumio-row" onClick={() => setSeating(s)} style={{ ...pill(seating === s, accent), flex: '1 1 100px' }}>{bt(s)}</button>)}</div>
                 </>)}
               </div>
             )}
 
             {step === 2 && (
               <div>
-                <SectionLabel accent={accent}>Contact details</SectionLabel>
+                <SectionLabel accent={accent}>{bt('Contact details')}</SectionLabel>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-                  <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Full name *" />
-                  <input style={inputStyle} type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone number *" />
-                  <input style={inputStyle} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email (optional)" />
+                  <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={bt("Full name *")} />
+                  <input style={inputStyle} type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder={bt("Phone number *")} />
+                  <input style={inputStyle} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={bt("Email (optional)")} />
                 </div>
-                <SectionLabel accent={accent}>Special occasion <span style={{ fontWeight: 500, color: '#94a3b8', fontSize: 13 }}>(optional)</span></SectionLabel>
-                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{OCCASIONS.map((o) => <button key={o} className="lumio-row" onClick={() => setOccasion(occasion === o ? '' : o)} style={{ ...pill(occasion === o, accent), flex: '1 1 90px' }}>{o}</button>)}</div>
-                <SectionLabel accent={accent}>Additional requests</SectionLabel>
-                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{REQUESTS.map((r) => <button key={r} className="lumio-row" onClick={() => toggleReq(r)} style={{ ...pill(requests.includes(r), accent), flex: '1 1 120px' }}>{r}</button>)}</div>
-                <textarea value={note} maxLength={250} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Add a note for the restaurant (optional)" style={{ ...inputStyle, marginTop: 12, resize: 'vertical', fontFamily: 'inherit' }} />
+                <SectionLabel accent={accent}>{bt('Special occasion')} <span style={{ fontWeight: 500, color: '#94a3b8', fontSize: 13 }}>{bt('(optional)')}</span></SectionLabel>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{OCCASIONS.map((o) => <button key={o} className="lumio-row" onClick={() => setOccasion(occasion === o ? '' : o)} style={{ ...pill(occasion === o, accent), flex: '1 1 90px' }}>{bt(o)}</button>)}</div>
+                <SectionLabel accent={accent}>{bt('Additional requests')}</SectionLabel>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{REQUESTS.map((r) => <button key={r} className="lumio-row" onClick={() => toggleReq(r)} style={{ ...pill(requests.includes(r), accent), flex: '1 1 120px' }}>{bt(r)}</button>)}</div>
+                <textarea value={note} maxLength={250} onChange={(e) => setNote(e.target.value)} rows={3} placeholder={bt("Add a note for the restaurant (optional)")} style={{ ...inputStyle, marginTop: 12, resize: 'vertical', fontFamily: 'inherit' }} />
                 <div style={{ textAlign: 'right', fontSize: 11, color: '#94a3b8' }}>{note.length}/250</div>
                 <div style={{ display: 'flex', gap: 10, background: tint(accent, 0.07), borderRadius: 12, padding: 13, marginTop: 8 }}>
                   <span style={{ color: accent, flexShrink: 0 }}><Icon d="M12 6v6l4 2|M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /></span>
-                  <div style={{ fontSize: 13, color: '#44506a' }}><b style={{ color: INK }}>Your table is held for 15 minutes.</b> Please arrive on time — call the restaurant if you&rsquo;re running late.</div>
+                  <div style={{ fontSize: 13, color: '#44506a' }}><b style={{ color: INK }}>{bt('Your table is held for 15 minutes.')}</b> {bt('Please arrive on time — call the restaurant if you’re running late.')}</div>
                 </div>
               </div>
             )}
@@ -366,23 +377,23 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
             {step === 3 && (
               <div>
                 <div style={{ border: '1px solid #eef1f6', borderRadius: 14, padding: '6px 16px' }}>
-                  {([['Restaurant', salon.name + (salon.contactPhone ? ' · ' + salon.contactPhone : '')], ...resRows] as [string, string][]).map(([k, v], i) => (
+                  {([[bt('Restaurant'), salon.name + (salon.contactPhone ? ' · ' + salon.contactPhone : '')], ...resRows] as [string, string][]).map(([k, v], i) => (
                     <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '11px 0', fontSize: 14, borderTop: i ? '1px solid #f1f4f9' : 'none' }}><span style={{ color: '#94a3b8', flexShrink: 0 }}>{k}</span><span style={{ color: INK, fontWeight: 700, textAlign: 'right' }}>{v}</span></div>
                   ))}
                 </div>
                 <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 13, marginTop: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>Cancellation policy</div>
-                  <div style={{ fontSize: 12.5, color: '#92400e', marginTop: 2 }}>You can cancel or modify up to 2 hours in advance.{depLabel ? ` A ${depLabel} may be applied to hold your table.` : ''}</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>{bt('Cancellation policy')}</div>
+                  <div style={{ fontSize: 12.5, color: '#92400e', marginTop: 2 }}>{bt('You can cancel or modify up to 2 hours in advance.')}{depLabel ? btf(' A {deposit} may be applied to hold your table.', { deposit: depLabel }) : ''}</div>
                 </div>
                 <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 14, fontSize: 13.5, color: '#44506a', cursor: 'pointer' }}>
                   <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} style={{ marginTop: 2 }} />
-                  <span>I agree to the cancellation policy and terms.</span>
+                  <span>{bt('I agree to the cancellation policy and terms.')}</span>
                 </label>
                 {!isMobile && (
-                  <button onClick={submit} disabled={submitting || !agreed} className="lumio-cta" style={{ ...ctaBtn, marginTop: 16, opacity: submitting || !agreed ? 0.45 : 1, cursor: submitting || !agreed ? 'not-allowed' : 'pointer' }}>{submitting ? 'Reserving…' : 'Confirm Reservation'}</button>
+                  <button onClick={submit} disabled={submitting || !agreed} className="lumio-cta" style={{ ...ctaBtn, marginTop: 16, opacity: submitting || !agreed ? 0.45 : 1, cursor: submitting || !agreed ? 'not-allowed' : 'pointer' }}>{submitting ? bt('Reserving…') : bt('Confirm Reservation')}</button>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 16, borderTop: '1px solid #f1f4f9', paddingTop: 14 }}>
-                  {[['M20 6L9 17l-5-5', 'Instant confirmation'], ['M20.6 13.4 12 22l-9-9V3h10z|M7 7h.01', 'No booking fees'], ['M19 11H5V21H19V11z|M7 11V7a5 5 0 0 1 10 0v4', 'Secure & private'], ['M12 2l3 6.5 7 .6-5.3 4.7 1.6 7L12 17l-6.9 3.8 1.6-7L1.4 9.1l7-.6z', 'Top-rated']].map(([d, t]) => (
+                  {[['M20 6L9 17l-5-5', bt('Instant confirmation')], ['M20.6 13.4 12 22l-9-9V3h10z|M7 7h.01', bt('No booking fees')], ['M19 11H5V21H19V11z|M7 11V7a5 5 0 0 1 10 0v4', bt('Secure & private')], ['M12 2l3 6.5 7 .6-5.3 4.7 1.6 7L12 17l-6.9 3.8 1.6-7L1.4 9.1l7-.6z', bt('Top-rated')]].map(([d, t]) => (
                     <div key={t} style={{ textAlign: 'center', color: '#64748b' }}><div style={{ color: accent }}><Icon d={d} size={18} /></div><div style={{ fontSize: 10.5, marginTop: 3, lineHeight: 1.2 }}>{t}</div></div>
                   ))}
                 </div>
@@ -399,7 +410,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
         {isMobile && <MobileBar accent={accent} party={party} timeLine={slot ? fmtSlot(slot) : null} canContinue={canContinue} label={ctaLabel} onContinue={goNext} embedded={embedded} />}
 
         <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(96px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: '#94a3b8', textDecoration: 'none' }}>
-          Powered by <span style={{ color: accent, fontWeight: 700 }}>Lumio Booking</span>
+          {bt('Powered by')} <span style={{ color: accent, fontWeight: 700 }}>Lumio Booking</span>
         </a>
       </div>
 
@@ -413,7 +424,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
 // ---------------------------------------------------------------------------
 
 function Progress({ step, accent }: { step: number; accent: string }) {
-  const steps = ['Reserve', 'Details', 'Confirm'];
+  const steps = [bt('Reserve'), bt('Details'), bt('Confirm')];
   const idx = step - 1;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 4px 2px' }}>
@@ -438,10 +449,10 @@ function ReservationSummary({ salon, accent, rows, hasSlot, dateLine, timeLine, 
   party: number; depLabel: string | null; canContinue: boolean; ctaLabel: string; onContinue: () => void; onViewMenu: () => void; step: number;
 }) {
   const perks: [string, string][] = [
-    ['🕐', 'Reserve any time — 24/7 online, even when we’re closed.'],
-    ['✅', 'Instant confirmation by text the moment your table is held.'],
-    ['🪑', 'Your table is held for 15 minutes after your time.'],
-    ['🍽️', 'Browse the menu before you arrive.'],
+    ['🕐', bt('Reserve any time — 24/7 online, even when we’re closed.')],
+    ['✅', bt('Instant confirmation by text the moment your table is held.')],
+    ['🪑', bt('Your table is held for 15 minutes after your time.')],
+    ['🍽️', bt('Browse the menu before you arrive.')],
   ];
   return (
     <aside style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: `0 30px 60px -34px rgba(15,42,82,.45), 0 0 0 1px ${tint(accent, 0.10)}`, height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -460,8 +471,8 @@ function ReservationSummary({ salon, accent, rows, hasSlot, dateLine, timeLine, 
           <div style={{ padding: '10px 2px' }}>
             <div style={{ textAlign: 'center', padding: '8px 0 14px' }}>
               <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🍽️</div>
-              <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>Choose your table</div>
-              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>Pick a party size, date and time to hold your table.</div>
+              <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>{bt('Choose your table')}</div>
+              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>{bt('Pick a party size, date and time to hold your table.')}</div>
             </div>
             <div style={{ display: 'grid', gap: 10 }}>
               {perks.map(([icon, text]) => (
@@ -487,11 +498,11 @@ function ReservationSummary({ salon, accent, rows, hasSlot, dateLine, timeLine, 
         {hasSlot && dateLine && (
           <div style={{ marginBottom: 12, background: tint(accent, 0.08), borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
             <div>📅 <b>{dateLine}</b></div>
-            <div>🕐 {timeLine} · {party} {party === 1 ? 'guest' : 'guests'}</div>
+            <div>🕐 {timeLine} · {btf(party === 1 ? '{n} guest' : '{n} guests', { n: party })}</div>
           </div>
         )}
-        {depLabel && <div style={{ fontSize: 12, color: '#b45309', marginBottom: 8 }}>A {depLabel} may apply to hold your table.</div>}
-        <button onClick={onViewMenu} style={{ width: '100%', padding: '10px', borderRadius: 12, border: `1px solid ${tint(accent, 0.30)}`, background: '#fff', color: accent, fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 10 }}>View menu</button>
+        {depLabel && <div style={{ fontSize: 12, color: '#b45309', marginBottom: 8 }}>{btf('A {deposit} may apply to hold your table.', { deposit: depLabel })}</div>}
+        <button onClick={onViewMenu} style={{ width: '100%', padding: '10px', borderRadius: 12, border: `1px solid ${tint(accent, 0.30)}`, background: '#fff', color: accent, fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 10 }}>{bt('View menu')}</button>
         <button onClick={onContinue} disabled={!canContinue} className="lumio-cta" style={{ ...ctaBtn, opacity: canContinue ? 1 : 0.45, cursor: canContinue ? 'pointer' : 'not-allowed' }}>{ctaLabel}</button>
       </div>
     </aside>
@@ -514,8 +525,8 @@ function MobileBar({ accent, party, timeLine, canContinue, label, onContinue, em
     } as React.CSSProperties}>
       <span style={{ width: 42, height: 42, borderRadius: 13, background: tint(accent, 0.10), display: 'grid', placeItems: 'center', fontSize: 18, flexShrink: 0 }}>🍽️</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>{party} {party === 1 ? 'guest' : 'guests'}{timeLine ? ` · 🕐 ${timeLine}` : ''}</div>
-        <div style={{ fontSize: 15, fontWeight: 800, color: INK, letterSpacing: -0.3 }}>{timeLine ? 'Table ready to hold' : 'Pick a time'}</div>
+        <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>{btf(party === 1 ? '{n} guest' : '{n} guests', { n: party })}{timeLine ? ` · 🕐 ${timeLine}` : ''}</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: INK, letterSpacing: -0.3 }}>{timeLine ? bt('Table ready to hold') : bt('Pick a time')}</div>
       </div>
       <button onClick={onContinue} disabled={!canContinue} className="lumio-cta" style={{ ...ctaBtn, width: 'auto', padding: '13px 20px', fontSize: 14.5, whiteSpace: 'nowrap', opacity: canContinue ? 1 : 0.42, cursor: canContinue ? 'pointer' : 'not-allowed' }}>{label} →</button>
     </div>
@@ -536,8 +547,27 @@ function makeDishPrice(b: Salon['booking']): (cents: number) => string {
     // Zero-decimal currencies (đồng, yen) are stored in whole units already —
     // dividing would show a tenth of the menu price.
     const v = dec === 0
-      ? Math.round(cents).toLocaleString(uiLocale())
+      ? Math.round(cents).toLocaleString(bookLocale())
       : (cents / 10 ** dec).toFixed(dec).replace(/0+$/, '').replace(/[.,]$/, '');
+    return after ? `${v} ${sym}` : `${sym}${v}`;
+  };
+}
+
+/** Same currency rules, but every decimal kept.
+ *
+ *  A menu is happy reading "$21.5" — it is a price tag, and the trimmed zero
+ *  is deliberate. A DEPOSIT is money about to leave someone's card, and
+ *  "$20.5" reads like a typo at exactly the moment a customer is deciding
+ *  whether to trust the restaurant. Whole amounts still lose the ".00". */
+function makeExactPrice(b: Salon['booking']): (cents: number) => string {
+  const sym = b?.currencySymbol || MENU_SYMBOLS[b?.currency || 'USD'] || `${b?.currency || ''} `;
+  const after = b?.symbolPosition === 'after';
+  const dec = typeof b?.priceDecimals === 'number' ? b.priceDecimals : 2;
+  return (cents: number) => {
+    const whole = cents % 10 ** dec === 0;
+    const v = dec === 0
+      ? Math.round(cents).toLocaleString(bookLocale())
+      : (cents / 10 ** dec).toFixed(whole ? 0 : dec);
     return after ? `${v} ${sym}` : `${sym}${v}`;
   };
 }
@@ -569,7 +599,7 @@ function DishRow({ d, accent, dishPrice }: { d: Dish; accent: string; dishPrice:
         </div>
         {tags.length > 0 && (
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 5 }}>
-            {tags.map((t) => { const [fg, bg] = TAG_COLORS[t]; return <span key={t} style={{ fontSize: 10, fontWeight: 800, color: fg, background: bg, borderRadius: 5, padding: '1px 6px', letterSpacing: 0.3 }}>{t.toUpperCase()}</span>; })}
+            {tags.map((t) => { const [fg, bg] = TAG_COLORS[t]; return <span key={t} style={{ fontSize: 10, fontWeight: 800, color: fg, background: bg, borderRadius: 5, padding: '1px 6px', letterSpacing: 0.3 }}>{bt(t).toUpperCase()}</span>; })}
           </div>
         )}
         {d.description && <div style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 12.5, color: '#7d8ba4', marginTop: 5, lineHeight: 1.45 }}>{d.description}</div>}
@@ -579,7 +609,7 @@ function DishRow({ d, accent, dishPrice }: { d: Dish; accent: string; dishPrice:
 }
 
 function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; accent: string; menu: Dish[] | null; onClose: () => void; dishPrice: (cents: number) => string }) {
-  const grouped = useMemo(() => menu ? Object.entries(menu.reduce((acc: Record<string, Dish[]>, d) => { const k = d.category || 'Other'; (acc[k] ||= []).push(d); return acc; }, {})) : [], [menu]);
+  const grouped = useMemo(() => menu ? Object.entries(menu.reduce((acc: Record<string, Dish[]>, d) => { const k = d.category || bt('Other'); (acc[k] ||= []).push(d); return acc; }, {})) : [], [menu]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
   const jump = (i: number) => {
@@ -593,8 +623,8 @@ function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; a
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, maxWidth: 620, width: '100%', height: '90vh', maxHeight: 880, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 30px 80px -28px rgba(15,42,82,0.6)' }}>
         <div style={{ padding: '15px 18px 10px', borderBottom: '1px solid #eef1f6', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontFamily: DISPLAY, fontSize: 23, fontWeight: 800, color: INK }}>Menu{menu && menu.length ? <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginLeft: 8 }}>{menu.length} dishes</span> : null}</div>
-            <button onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: '#64748b', fontSize: 19, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            <div style={{ fontFamily: DISPLAY, fontSize: 23, fontWeight: 800, color: INK }}>{bt('Menu')}{menu && menu.length ? <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginLeft: 8 }}>{btf('{n} dishes', { n: menu.length })}</span> : null}</div>
+            <button onClick={onClose} aria-label={bt("Close")} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: '#64748b', fontSize: 19, cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
           {grouped.length > 1 && (
             <div className="lumio-tabs" style={{ display: 'flex', gap: 7, overflowX: 'auto', marginTop: 11, paddingBottom: 2 }}>
@@ -603,8 +633,8 @@ function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; a
           )}
         </div>
         <div ref={scrollRef} className="lumio-scroll" style={{ flex: 1, overflowY: 'auto', padding: '4px 18px 22px' }}>
-          {!menu ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>Loading…</p>
-            : menu.length === 0 ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>Menu coming soon.</p>
+          {!menu ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>{bt('Loading…')}</p>
+            : menu.length === 0 ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>{bt('Menu coming soon.')}</p>
             : grouped.map(([cat, dishes], i) => (
               <div key={cat} data-idx={i} style={{ marginTop: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 6px' }}>

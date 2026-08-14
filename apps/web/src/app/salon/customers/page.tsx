@@ -11,6 +11,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, useDateRange, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Customer {
   id: string;
@@ -197,7 +198,7 @@ function Inner() {
                     : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                 </MRow>
                 <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
-                <MRow label={t('cu.colSince')}>{new Date(c.createdAt).toLocaleDateString('en-US')}</MRow>
+                <MRow label={t('cu.colSince')}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</MRow>
                 <MActions>
                   <button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button>
                 </MActions>
@@ -244,7 +245,7 @@ function Inner() {
                         : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                   </td>
                   <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(c.createdAt).toLocaleDateString('en-US')}</td>
+                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</td>
                   <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button></td>
                 </tr>
               ))}

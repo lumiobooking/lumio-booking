@@ -13,6 +13,7 @@ import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { Preset } from '../lib/emailPresets';
+import { uiLocale } from '../lib/datetime';
 
 export interface Campaign {
   id: string; name: string; subject: string; status: string;
@@ -482,7 +483,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                               {tpl.subject}
                             </span>
                             <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                              {t('Sửa lần cuối', 'Edited')} {new Date(tpl.updatedAt).toLocaleDateString(vi ? 'vi-VN' : 'en-US')}
+                              {t('Sửa lần cuối', 'Edited')} {new Date(tpl.updatedAt).toLocaleDateString(vi ? 'vi-VN' : uiLocale())}
                             </span>
                           </button>
                           <button onClick={() => deleteTemplate(tpl)} title={t('Xoá mẫu', 'Delete')}
@@ -848,7 +849,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                         {c.lastCampaign}
                       </span>
                       <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                        {c.lastSentAt ? new Date(c.lastSentAt).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: 'numeric', month: 'short' }) : t('chưa gửi', 'never')}
+                        {c.lastSentAt ? new Date(c.lastSentAt).toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' }) : t('chưa gửi', 'never')}
                       </span>
                     </span>
                     <span style={{ width: 108, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
@@ -918,7 +919,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <div style={{ ...ui.card, padding: 12, background: '#0f172a' }}>
               <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>{t('Chạy lần cuối', 'Last run')}</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginTop: 6 }}>
-                {auto.lastRunAt ? new Date(auto.lastRunAt).toLocaleString(vi ? 'vi-VN' : 'en-US') : t('chưa chạy', 'never')}
+                {auto.lastRunAt ? new Date(auto.lastRunAt).toLocaleString(vi ? 'vi-VN' : uiLocale()) : t('chưa chạy', 'never')}
               </div>
             </div>
           </div>
@@ -1038,7 +1039,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                       {c.subject}
                     </span>
                     <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 3 }}>
-                      {new Date(c.sentAt ?? c.createdAt).toLocaleString(vi ? 'vi-VN' : 'en-US')}
+                      {new Date(c.sentAt ?? c.createdAt).toLocaleString(vi ? 'vi-VN' : uiLocale())}
                     </span>
                   </span>
                   <span style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>

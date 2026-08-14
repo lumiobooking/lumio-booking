@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, CSSProperties } from 'react';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
+import { uiLocale } from '../lib/datetime';
 
 interface Summary {
   periodStart: string;
@@ -21,7 +22,7 @@ interface Summary {
 }
 
 const money = (c: number, cur = 'USD') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format((c || 0) / 100);
+  new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur }).format((c || 0) / 100);
 
 type Lg = 'en' | 'vi';
 const T = {
@@ -100,7 +101,7 @@ export function UsageCostsPanel() {
 
   const cur = sum.currency || 'USD';
   const month = (() => {
-    try { return new Date(sum.periodStart).toLocaleDateString(g === 'vi' ? 'vi-VN' : 'en-US', { month: 'long', year: 'numeric' }); }
+    try { return new Date(sum.periodStart).toLocaleDateString(g === 'vi' ? 'vi-VN' : uiLocale(), { month: 'long', year: 'numeric' }); }
     catch { return ''; }
   })();
   const daysLeft = Math.max(0, sum.daysInMonth - sum.daysElapsed);

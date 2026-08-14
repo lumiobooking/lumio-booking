@@ -14,6 +14,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { usePaged, Pager } from '../../../components/ListFilter';
+import { uiLocale } from '../../../lib/datetime';
 
 interface GrSettings {
   enabled: boolean; connected: boolean; connectedEmail: string;
@@ -407,7 +408,7 @@ function Inner() {
           </button>
           {saving ? <span style={{ color: '#94a3b8', fontSize: 12 }}>…</span> : saved ? <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span> : null}
           <span style={{ color: '#64748b', fontSize: 12, marginLeft: 'auto' }}>
-            {t('lastSync')}: {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString('en-US') : t('never')}
+            {t('lastSync')}: {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString(uiLocale()) : t('never')}
           </span>
         </div>
         {s.enabled && s.hasLocation && (
@@ -439,7 +440,7 @@ function Inner() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <span style={{ color: r.starRating >= 4 ? '#22c55e' : '#f59e0b', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
                   <span style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
-                  {r.reviewCreatedAt && <span style={{ color: '#64748b', fontSize: 12 }}>{new Date(r.reviewCreatedAt).toLocaleDateString('en-US')}</span>}
+                  {r.reviewCreatedAt && <span style={{ color: '#64748b', fontSize: 12 }}>{new Date(r.reviewCreatedAt).toLocaleDateString(uiLocale())}</span>}
                 </div>
                 {r.comment && <div style={{ color: '#cbd5e1', fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>{r.comment}</div>}
 

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState, CSSProperties } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../lib/auth';
 import { useIsMobile } from '../lib/responsive';
+import { uiLocale } from '../lib/datetime';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f172a';
@@ -17,7 +18,7 @@ interface PublicPlan {
 }
 
 const money = (cents: number, currency = 'USD') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
+  new Intl.NumberFormat(uiLocale(), { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
 
 // Static 3-tier fallback (shown until the DB Plans are created) + the full
 // feature comparison that always renders below the plan cards.

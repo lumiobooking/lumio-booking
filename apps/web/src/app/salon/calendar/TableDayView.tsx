@@ -5,6 +5,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -56,11 +57,11 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
   }, [token]);
   useEffect(() => { loadTables(); }, [loadTables]);
 
-  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const minInTz = (iso: string) => {
     const d = new Date(iso);
     if (!tz) return d.getHours() * 60 + d.getMinutes();
-    const p = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
+    const p = new Intl.DateTimeFormat(uiLocale(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
     return (Number(p.find((x) => x.type === 'hour')?.value ?? 0) % 24) * 60 + Number(p.find((x) => x.type === 'minute')?.value ?? 0);
   };
 

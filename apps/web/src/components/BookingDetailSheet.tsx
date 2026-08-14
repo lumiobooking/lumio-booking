@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
+import { uiLocale } from '../lib/datetime';
 
 const STATUS_COLOR: Record<string, string> = {
   PENDING: '#eab308', ASSIGNED: '#3b82f6', ACCEPTED: '#22c55e', CONFIRMED: '#22c55e',
@@ -62,9 +63,9 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
 
   const fullName = (o?: { firstName: string; lastName: string | null } | null, fb = L('Khách', 'Guest')) =>
     o ? ([o.firstName, o.lastName].filter(Boolean).join(' ').trim() || fb) : fb;
-  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
-  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
-  const money = (cents: number) => { try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100); } catch { return '$' + Math.round(cents / 100); } };
+  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(lang === 'vi' ? 'vi-VN' : uiLocale(), { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const money = (cents: number) => { try { return new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100); } catch { return '$' + Math.round(cents / 100); } };
   const sourceLabel = (s?: string | null) => {
     switch ((s || '').toUpperCase()) {
       case 'ONLINE': case 'PUBLIC': case 'WEB': return L('Khách đặt online', 'Online');

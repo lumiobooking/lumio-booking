@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../../../lib/responsive';
+import { uiLocale } from '../../../lib/datetime';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';
@@ -62,7 +63,7 @@ interface Dish { name: string; category: string | null; priceCents: number; desc
 function wallTimeToISO(local: Date, timeZone: string): string {
   const y = local.getFullYear(), mo = local.getMonth(), d = local.getDate(), h = local.getHours(), mi = local.getMinutes();
   const naiveUTC = Date.UTC(y, mo, d, h, mi);
-  const dtf = new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dtf = new Intl.DateTimeFormat(uiLocale(), { timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const parts = dtf.formatToParts(new Date(naiveUTC));
   const g = (t: string) => Number(parts.find((p) => p.type === t)?.value);
   let hh = g('hour'); if (hh === 24) hh = 0;
@@ -156,9 +157,9 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   const anyOpen = slots.some((s) => s.open);
   useEffect(() => { if (slot && slots.length && !slots.some((s) => s.hm === slot && s.open)) setSlot(null); }, [slots, slot]);
 
-  const fmtSlot = (hm: string) => { const [h, m] = hm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
+  const fmtSlot = (hm: string) => { const [h, m] = hm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit' }); };
   const dateCards = useMemo(() => Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d; }), []);
-  const prettyDate = () => dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const prettyDate = () => dateObj.toLocaleDateString(uiLocale(), { weekday: 'long', month: 'long', day: 'numeric' });
   const dep = salon.deposit;
   const depLabel = dep?.enabled ? (dep.type === 'percent' ? `${dep.percent}% deposit` : `$${(dep.fixedCents / 100).toFixed(2)} deposit`) : null;
   const infoOk = !!form.name.trim() && !!form.phone.trim();
@@ -307,8 +308,8 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                   {dateCards.map((d, i) => {
                     const sel = d.getTime() === dateObj.getTime();
                     return <button key={i} className="lumio-row" onClick={() => { setDateObj(d); setSlot(null); }} style={{ flexShrink: 0, width: 64, padding: '9px 0', borderRadius: 12, border: `1px solid ${sel ? accent : '#e6eaf2'}`, background: sel ? tint(accent, 0.08) : '#fff', cursor: 'pointer', textAlign: 'center' }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 800, color: sel ? accent : '#94a3b8' }}>{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{d.toLocaleDateString('en-US', { month: 'short' })}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 800, color: sel ? accent : '#94a3b8' }}>{i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString(uiLocale(), { weekday: 'short' })}</div>
+                      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{d.toLocaleDateString(uiLocale(), { month: 'short' })}</div>
                       <div style={{ fontSize: 18, fontWeight: 800, color: sel ? accent : INK }}>{d.getDate()}</div>
                     </button>;
                   })}
@@ -319,7 +320,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                 </div>
 
                 <SectionLabel accent={accent}>Select time</SectionLabel>
-                {dayClosed ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>Closed on {dateObj.toLocaleDateString('en-US', { weekday: 'long' })}. Please pick another date.</div>
+                {dayClosed ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>Closed on {dateObj.toLocaleDateString(uiLocale(), { weekday: 'long' })}. Please pick another date.</div>
                   : loadingAvail && !avail ? <p style={{ color: '#94a3b8', fontSize: 14 }}>Finding available times…</p>
                   : !anyOpen ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>No tables for {party} guests on this date. Try another time or date.</div>
                   : groups.map(([label, arr]) => (
@@ -535,7 +536,7 @@ function makeDishPrice(b: Salon['booking']): (cents: number) => string {
     // Zero-decimal currencies (đồng, yen) are stored in whole units already —
     // dividing would show a tenth of the menu price.
     const v = dec === 0
-      ? Math.round(cents).toLocaleString('en-US')
+      ? Math.round(cents).toLocaleString(uiLocale())
       : (cents / 10 ** dec).toFixed(dec).replace(/0+$/, '').replace(/[.,]$/, '');
     return after ? `${v} ${sym}` : `${sym}${v}`;
   };

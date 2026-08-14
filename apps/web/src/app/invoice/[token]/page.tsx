@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, CSSProperties } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '../../../lib/api';
+import { uiLocale } from '../../../lib/datetime';
 
 interface LineItem { label: string; amountCents: number }
 interface Invoice {
@@ -13,8 +14,8 @@ interface Invoice {
   salonName: string | null; canPay: boolean;
 }
 
-const money = (c: number, cur = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format((c || 0) / 100);
-const fmt = (s: string | null) => { if (!s) return '—'; try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return '—'; } };
+const money = (c: number, cur = 'USD') => new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur }).format((c || 0) / 100);
+const fmt = (s: string | null) => { if (!s) return '—'; try { return new Date(s).toLocaleDateString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return '—'; } };
 
 export default function InvoicePage() {
   const params = useParams();

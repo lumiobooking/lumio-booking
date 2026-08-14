@@ -20,6 +20,7 @@ import { useParams } from 'next/navigation';
 import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
+import { uiLocale } from '../../../lib/datetime';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';        // ink for text (headings, rows)
@@ -99,7 +100,7 @@ function fmtMoney(minorUnits: number, r: BookingRules): string {
   const s = r.currencySymbol || SYMBOLS[r.currency] || r.currency + ' ';
   const dec = r.priceDecimals ?? 2;
   const n = dec === 0
-    ? Math.round(minorUnits).toLocaleString('en-US')
+    ? Math.round(minorUnits).toLocaleString(uiLocale())
     : (minorUnits / 10 ** dec).toFixed(dec);
   return r.symbolPosition === 'after' ? `${n}${s}` : `${s}${n}`;
 }
@@ -192,7 +193,7 @@ function svcNetCents(s: Service | null): number { return s ? Math.round((s.price
 function wallTimeToISO(local: Date, timeZone: string): string {
   const y = local.getFullYear(), mo = local.getMonth(), d = local.getDate(), h = local.getHours(), mi = local.getMinutes();
   const naiveUTC = Date.UTC(y, mo, d, h, mi);
-  const dtf = new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dtf = new Intl.DateTimeFormat(uiLocale(), { timeZone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const parts = dtf.formatToParts(new Date(naiveUTC));
   const g = (t: string) => Number(parts.find((p) => p.type === t)?.value);
   let hh = g('hour'); if (hh === 24) hh = 0;
@@ -628,7 +629,7 @@ export default function PublicBookingPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) { setError((body && body.message) || `Booking failed (${res.status})`); return; }
       setResult({ paymentStatus: body?.payment?.status ?? null });
-      const when = `${slot.start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
+      const when = `${slot.start.toLocaleDateString(uiLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
       const booked = [...done, `${when} · ${allLines.map((l) => l.name).join(', ')}${isGroup ? ` — ${form.firstName || 'You'}` : ''}`];
 
       // Group guests: one appointment each, SAME start time. Only a name is
@@ -693,7 +694,7 @@ export default function PublicBookingPage() {
   function addAnotherVisit() {
     if (!slot) return;
     const names = allLines.map((l) => l.name).join(', ');
-    const when = `${slot.start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
+    const when = `${slot.start.toLocaleDateString(uiLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
     setVisitCart((c) => [...c, {
       serviceId, extraServiceIds, addonIds, staffId, slot,
       totalCents, label: `${when} · ${names}`,
@@ -915,7 +916,7 @@ export default function PublicBookingPage() {
               ) : (
                 <p style={{ color: '#475569', lineHeight: 1.6 }}>
                   Thanks {form.firstName}! Your booking for <strong>{service?.name}</strong>
-                  {slot && <> on <strong>{slot.start.toLocaleDateString('en-US')} at {fmtTime(slot.start)}</strong></>} is received.
+                  {slot && <> on <strong>{slot.start.toLocaleDateString(uiLocale())} at {fmtTime(slot.start)}</strong></>} is received.
                 </p>
               )}
               {bookedVisits.length > 1 && (
@@ -1264,7 +1265,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
         )}
         {slot && selectedDate && (
           <div style={{ marginTop: 12, background: tint(accent, 0.08), borderRadius: 10, padding: '10px 12px', fontSize: 13, color: INK, lineHeight: 1.6 }}>
-            <div>📅 <b>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
+            <div>📅 <b>{selectedDate.toLocaleDateString(uiLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</b></div>
             <div>🕐 {fmtTime(slot.start)}{totalDuration > 0 ? ` – ${fmtTime(slot.end)} (${fmtDur(totalDuration)})` : ''}</div>
           </div>
         )}
@@ -1298,7 +1299,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
     for (let i = 0; i <= Math.min(rules.maxAdvanceDays, 21); i++) {
       const d = new Date(today.getTime() + i * 86400000);
       const first = generateSlots(d, shortest, rules)[0];
-      if (first) return `${i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })} at ${fmtTime(first.start)}`;
+      if (first) return `${i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString(uiLocale(), { weekday: 'long' })} at ${fmtTime(first.start)}`;
     }
     return null;
   }, [rules, services]);
@@ -1480,7 +1481,7 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
       const d = new Date(today.getTime() + i * 86400000);
       const first = generateSlots(d, shortest, rules)[0];
       if (first) {
-        const when = i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' });
+        const when = i === 0 ? 'today' : i === 1 ? 'tomorrow' : d.toLocaleDateString(uiLocale(), { weekday: 'long' });
         const h = rules.businessHours[d.getDay()];
         const close = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h.closeMinutes / 60), h.closeMinutes % 60);
         return { when, time: fmtTime(first.start), close: fmtTime(close), sameDay: i === 0 };
@@ -1936,7 +1937,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       {/* month + jump-to-date */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontWeight: 800, color: INK, fontSize: 15 }}>
-          {selectedDate && <span style={{ color: accent, marginRight: 8 }}>📅 {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
+          {selectedDate && <span style={{ color: accent, marginRight: 8 }}>📅 {selectedDate.toLocaleDateString(uiLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
           <span style={{ color: '#64748b', fontWeight: 600 }}>{MONTH_NAMES[stripStart.getMonth()]} {stripStart.getFullYear()}</span>
         </div>
         <label style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid #e6eaf2', display: 'grid', placeItems: 'center', cursor: 'pointer', color: INK }}>
@@ -2068,7 +2069,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 
       <Card title="APPOINTMENT">
         <InfoRow icon="🏪" label="Location" value={salon?.name ?? ''} sub={salon?.address ?? undefined} />
-        <InfoRow icon="📅" label="Date" value={slot.start.toLocaleDateString('en-US')} />
+        <InfoRow icon="📅" label="Date" value={slot.start.toLocaleDateString(uiLocale())} />
         <InfoRow icon="🕐" label="Time" value={slot.end.getTime() > slot.start.getTime() ? `${fmtTime(slot.start)} – ${fmtTime(slot.end)}` : fmtTime(slot.start)} />
         <InfoRow icon="👤" label="Technician" value={employee ? `${employee.firstName} ${employee.lastName ?? ''}`.trim() : 'Any available'} last />
       </Card>
@@ -2420,7 +2421,7 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
   const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? 'select services') : 'everything');
   const wdSorted = wdOn ? [...wd!.rules].sort((a, b) => a.day - b.day || b.percent - a.percent) : [];
   const ddSorted = ddOn ? [...dd!.rules].filter((r) => r.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
-  const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return s; } };
+  const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }); } catch { return s; } };
   const fmtRange = (r: DateRule) => (r.endDate && r.endDate !== r.startDate ? `${fmtOne(r.startDate)}–${fmtOne(r.endDate)}` : fmtOne(r.startDate));
   const chip: React.CSSProperties = { background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 700 };
   return (
@@ -2757,7 +2758,7 @@ function Center({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'grid', placeItems: 'center', minHeight: 240, color: '#475569', padding: 24 }}>{children}</div>;
 }
 
-function fmtTime(d: Date) { return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }); }
+function fmtTime(d: Date) { return d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit', hour12: true }); }
 function fmtDur(min: number) {
   if (min <= 0) return '0min';
   const h = Math.floor(min / 60), m = min % 60;

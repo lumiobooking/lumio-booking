@@ -9,6 +9,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { uiLocale } from '../../../lib/datetime';
 
 interface BotFact { label: string; value: string; on: boolean }
 interface MConf {
@@ -492,7 +493,7 @@ function Inner() {
       const res = await apiFetch<{ ok: boolean; at?: string }>('/messenger/send', { method: 'POST', token, body: { threadId: sendTo || undefined, text: sendMsg.trim() } });
       setSendResult('ok'); setSendMsg('');
       setSentAtIso(res.at || null);
-      setSentAt(res.at ? new Date(res.at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null);
+      setSentAt(res.at ? new Date(res.at).toLocaleString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null);
       await load();
     } catch (e) {
       setSendResult(e instanceof Error ? e.message : 'Send failed');
@@ -562,7 +563,7 @@ function Inner() {
       {c?.connectTrace && fbResult && !fbResult.ok && (
         <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>
-            🔬 {lang === 'vi' ? 'Chi tiết kỹ thuật lần kết nối gần nhất' : 'Last connect attempt — technical trace'} · {new Date(c.connectTrace.at).toLocaleString('en-US')}
+            🔬 {lang === 'vi' ? 'Chi tiết kỹ thuật lần kết nối gần nhất' : 'Last connect attempt — technical trace'} · {new Date(c.connectTrace.at).toLocaleString(uiLocale())}
           </div>
           <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {c.connectTrace.steps.join('\n')}
@@ -738,7 +739,7 @@ function Inner() {
             <div style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
               {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
             </div>
-            {wh?.verifiedAt && <div style={{ color: '#64748b', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString('en-US')}</div>}
+            {wh?.verifiedAt && <div style={{ color: '#64748b', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString(uiLocale())}</div>}
             {typeof wh?.echoOk === 'boolean' && (
               <div style={{ color: wh.echoOk ? '#34d399' : '#f59e0b', marginTop: 6 }}>
                 {wh.echoOk
@@ -865,7 +866,7 @@ function Inner() {
               <tbody>
                 {shownActivity.map((ev, i) => (
                   <tr key={i} style={{ borderTop: '1px solid #1e293b', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
-                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
                     <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
                     <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
@@ -1171,7 +1172,7 @@ function Inner() {
                         <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {th.senderName && <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}
                         </div>
-                        <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(th.updatedAt).toLocaleString('en-US')}{th.handoff ? ` · ⚠️ ${t('handedOff')}` : ''}</div>
+                        <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(th.updatedAt).toLocaleString(uiLocale())}{th.handoff ? ` · ⚠️ ${t('handedOff')}` : ''}</div>
                       </div>
                       <button onClick={() => renameThread(th.id, th.senderName || '')} title="Set customer name" style={{ ...ghost, padding: '6px 10px' }}>✎</button>
                       {th.handoff
@@ -1205,7 +1206,7 @@ function Inner() {
                     <td style={{ padding: '9px 8px', fontWeight: 700, color: '#e2e8f0' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
                     <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{l.phone}</td>
                     <td style={{ padding: '9px 8px', color: '#94a3b8', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: '#64748b' }}>{l.note}</span> : null}</td>
-                    <td style={{ padding: '9px 8px', color: '#64748b', fontSize: 11.5, whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleDateString('en-US')}</td>
+                    <td style={{ padding: '9px 8px', color: '#64748b', fontSize: 11.5, whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleDateString(uiLocale())}</td>
                     <td style={{ padding: '9px 8px' }}>
                       <select value={l.status}
                         onChange={async (e) => {

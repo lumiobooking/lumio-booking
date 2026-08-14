@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef, useState, CSSProperties } from 'react';
+import { uiLocale } from '../../lib/datetime';
 
 type Line = { name: string; qty: number; lineCents: number; staff?: string };
 // Walk-in self check-in shares this screen: reception flips the SAME customer
@@ -61,7 +62,7 @@ const EMPTY: DisplayState = {
 };
 
 function money(cents: number, currency: string) {
-  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format((cents || 0) / 100); }
+  try { return new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: currency || 'USD' }).format((cents || 0) / 100); }
   catch { return `$${((cents || 0) / 100).toFixed(2)}`; }
 }
 

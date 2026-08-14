@@ -16,6 +16,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Tpl {
   enabled: boolean; email: boolean; sms: boolean;
@@ -436,7 +437,7 @@ function HistoryView({ token }: { token: string | null }) {
           {items.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('nt.noMessages')}</td></tr>}
           {items.map((n) => (
             <tr key={n.id} style={{ borderTop: '1px solid #334155' }}>
-              <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString('en-US')}</td>
+              <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString(uiLocale())}</td>
               <td style={ui.td}>{n.channel}</td>
               <td style={{ ...ui.td, color: '#94a3b8' }}>{n.recipient}</td>
               <td style={ui.td}>

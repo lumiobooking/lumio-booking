@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { uiLocale } from '../../../lib/datetime';
 
 interface ApiKey {
   id: string;
@@ -279,7 +280,7 @@ function Inner() {
                     </span>
                   </td>
                   <td style={{ ...ui.td, color: '#94a3b8' }}>
-                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('en-US') : t('in.never')}
+                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString(uiLocale()) : t('in.never')}
                   </td>
                   <td style={ui.td}>
                     {k.status === 'ACTIVE' && (

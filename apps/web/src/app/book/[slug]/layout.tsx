@@ -38,11 +38,19 @@ async function getSeo(slug: string): Promise<Seo | null> {
   }
 }
 
-function money(cents: number, currency: string): string {
+/** Prices in the page's SEO description. Runs on the server, so the locale
+ *  stays fixed; what must not stay fixed is the divide — the đồng has no
+ *  sub-unit, so 250000 is 250,000₫ and dividing would advertise a hundredth of
+ *  the price in search results. */
+function money(minorUnits: number, currency: string): string {
+  const code = currency || 'USD';
   try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 0 }).format(cents / 100);
+    const nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, maximumFractionDigits: 0 });
+    const zeroDecimal = new Intl.NumberFormat('en-US', { style: 'currency', currency: code })
+      .resolvedOptions().maximumFractionDigits === 0;
+    return nf.format(zeroDecimal ? minorUnits : minorUnits / 100);
   } catch {
-    return `$${Math.round(cents / 100)}`;
+    return `$${Math.round(minorUnits / 100)}`;
   }
 }
 

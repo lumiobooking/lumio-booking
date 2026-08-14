@@ -11,6 +11,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { useLang } from '../../../lib/i18n';
+import { uiLocale } from '../../../lib/datetime';
 
 interface CustomHour { day: number; enabled: boolean; start: string; end: string }
 interface VConf {
@@ -241,7 +242,7 @@ function Inner() {
     if (!c?.lumioNumber) return;
     try { navigator.clipboard?.writeText(c.lumioNumber); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ }
   }
-  const fmtWhen = (iso: string) => { try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
+  const fmtWhen = (iso: string) => { try { return new Date(iso).toLocaleString(uiLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
   const outc = (o: string) => OUTCOME[o] || OUTCOME.no_action;
 
   if (loading || !c) {

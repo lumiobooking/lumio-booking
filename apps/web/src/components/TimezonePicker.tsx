@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { uiLocale } from '../lib/datetime';
 
 /** Curated IANA zones (full US coverage + Canada/Mexico + world majors). */
 const GROUPS: { label: string; zones: { tz: string; name: string }[] }[] = [
@@ -57,7 +58,7 @@ const GROUPS: { label: string; zones: { tz: string; name: string }[] }[] = [
 
 function offsetLabel(tz: string): string {
   try {
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+    const parts = new Intl.DateTimeFormat(uiLocale(), { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date());
     return parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
   } catch { return ''; }
 }
@@ -83,7 +84,7 @@ export function TimezonePicker({ value, onChange, selectStyle }: { value: string
   const known = new Set(GROUPS.flatMap((g) => g.zones.map((z) => z.tz)));
   let currentTime = '';
   try {
-    if (value) currentTime = new Date().toLocaleString('en-US', { timeZone: value, weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    if (value) currentTime = new Date().toLocaleString(uiLocale(), { timeZone: value, weekday: 'short', hour: 'numeric', minute: '2-digit' });
   } catch { /* invalid tz */ }
 
   return (

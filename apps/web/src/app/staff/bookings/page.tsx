@@ -10,6 +10,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { uiLocale } from '../../../lib/datetime';
 
 interface NamedRef { firstName?: string; lastName?: string | null }
 interface Booking {
@@ -123,13 +124,13 @@ function Inner() {
   const dayList = byDay.get(ymd(picked)) ?? [];
   const pending = bookings.filter((b) => b.status === 'ASSIGNED').length;
 
-  const monthName = view.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { month: 'long', year: 'numeric' });
+  const monthName = view.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { month: 'long', year: 'numeric' });
   const dayNames = vi ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const shift = (n: number) => setView(new Date(view.getFullYear(), view.getMonth() + n, 1));
   const jumpToday = () => { setView(new Date()); setPicked(new Date()); };
 
   const name = (c: NamedRef | null) => (c ? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() : '—');
-  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: 'numeric', minute: '2-digit' });
+  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString(vi ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' });
 
   const row = (b: Booking, withDate = false) => {
     const colour = STATUS_COLORS[b.status] ?? '#94a3b8';
@@ -143,7 +144,7 @@ function Inner() {
             <span style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>{hhmm(b.startTime)}</span>
             {withDate && (
               <span style={{ fontSize: 12, fontWeight: 700, color: '#a5b4fc', background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '2px 8px' }}>
-                {d.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: 'numeric', month: 'short' })}
+                {d.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' })}
               </span>
             )}
             <span style={{ fontSize: 15, fontWeight: 600, color: '#cbd5e1', minWidth: 0 }}>{b.service?.name ?? 'Service'}</span>
@@ -305,7 +306,7 @@ function Inner() {
       {/* The day the tech tapped */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', textTransform: 'capitalize' }}>
-          {picked.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })}
+          {picked.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
         </span>
         <span style={{ fontSize: 12, color: '#64748b' }}>
           {dayList.length} {vi ? 'lịch hẹn' : dayList.length === 1 ? 'booking' : 'bookings'}
@@ -332,7 +333,7 @@ function Inner() {
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                         border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', textAlign: 'left' }}>
                       <span style={{ fontSize: 12, fontWeight: 800, color: '#a5b4fc', flexShrink: 0 }}>
-                        {d.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: 'numeric', month: 'short' })} · {hhmm(b.startTime)}
+                        {d.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' })} · {hhmm(b.startTime)}
                       </span>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {b.service?.name ?? 'Service'} · {name(b.customer)}

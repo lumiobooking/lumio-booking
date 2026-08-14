@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, Lang } from '../../../lib/i18n';
 import { usePaged, Pager } from '../../../components/ListFilter';
+import { uiLocale } from '../../../lib/datetime';
 
 type BillTab = 'plan' | 'usage' | 'invoices';
 interface InvoiceRow { id: string; number: string; type: string; status: string; totalCents: number; currency: string; periodStart: string | null; periodEnd: string | null; dueDate: string | null; token: string; createdAt: string }
@@ -21,7 +22,7 @@ interface PublicPlan {
   providers: { stripe: boolean; paypal: boolean };
 }
 
-const money = (c: number, cur = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(c / 100);
+const money = (c: number, cur = 'USD') => new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(c / 100);
 
 export default function BillingPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -102,7 +103,7 @@ function Inner() {
   const remainMs = peMs > nowMs ? peMs - nowMs : 0;
   const remainFrac = periodMs > 0 ? Math.min(1, Math.max(0, remainMs / periodMs)) : 0;
   const remainDays = Math.max(0, Math.ceil(remainMs / 86400000));
-  const renewLabel = sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  const renewLabel = sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
   return (
     <section style={{ maxWidth: 760 }}>
@@ -278,9 +279,9 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
   );
 }
 
-const invMoney = (c: number, cur = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format((c || 0) / 100);
+const invMoney = (c: number, cur = 'USD') => new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur }).format((c || 0) / 100);
 function fmtInvDate(s: string): string {
-  try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return ''; }
+  try { return new Date(s).toLocaleDateString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return ''; }
 }
 
 function toggle(active: boolean): React.CSSProperties {
@@ -298,7 +299,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function fmtDate(s: string | null): string {
   if (!s) return '—';
-  try { return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return '—'; }
+  try { return new Date(s).toLocaleDateString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return '—'; }
 }
 
 function statusLabel(s: string, lang: Lang): string {

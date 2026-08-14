@@ -11,6 +11,7 @@ import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, 
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null }
@@ -1080,7 +1081,7 @@ function Register() {
         return s;
       })
       .join('\n');
-    let o = center('RECEIPT') + '\n' + center(`Order #${orderNumber}`) + '\n' + center(new Date().toLocaleString('en-US')) + '\n' + sep + '\n';
+    let o = center('RECEIPT') + '\n' + center(`Order #${orderNumber}`) + '\n' + center(new Date().toLocaleString(uiLocale())) + '\n' + sep + '\n';
     o += items + '\n' + sep + '\n';
     o += row('Subtotal', formatPrice(money.subtotal, currency)) + '\n';
     if (money.discount) o += row('Discount', '-' + formatPrice(money.discount, currency)) + '\n';
@@ -1115,7 +1116,7 @@ function Register() {
       td{padding:2px 0;vertical-align:top}hr{border:none;border-top:1px dashed #999;margin:8px 0}
       .center{text-align:center;font-size:12px;color:#333}</style></head><body>
       <h2>Receipt</h2>
-      <div class="center">Order #${orderNumber} · ${new Date().toLocaleString('en-US')}</div><hr>
+      <div class="center">Order #${orderNumber} · ${new Date().toLocaleString(uiLocale())}</div><hr>
       <table>${rows}</table><hr>
       <table>
         ${line('Subtotal', formatPrice(money.subtotal, currency))}
@@ -1879,7 +1880,7 @@ function Register() {
                   <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px', borderBottom: '1px solid #1e293b' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.label || 'Walk-in'}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatPrice(h.totalCents, currency)} · {new Date(h.createdAt).toLocaleTimeString(lang === 'vi' ? 'vi-VN' : 'en-US', { hour: 'numeric', minute: '2-digit' })}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatPrice(h.totalCents, currency)} · {new Date(h.createdAt).toLocaleTimeString(lang === 'vi' ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' })}</div>
                     </div>
                     <button onClick={() => recall(h)} style={{ ...ui.primaryBtn, padding: '7px 14px' }}>{lang === 'vi' ? 'Mở lại' : 'Recall'}</button>
                     <button onClick={() => deleteHeld(h.id)} aria-label="delete" style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 18, cursor: 'pointer' }}>×</button>

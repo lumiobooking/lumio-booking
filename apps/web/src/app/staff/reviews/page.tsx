@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Mine { staffId: string; slug: string; rewardPoints: number; recent: { id: string; rating: number; comment: string | null; createdAt: string }[] }
 
@@ -62,7 +63,7 @@ function Inner() {
             <div key={r.id} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#f59e0b' }}>{'★'.repeat(r.rating)}<span style={{ color: '#334155' }}>{'★'.repeat(5 - r.rating)}</span></span>
-                <span style={{ color: '#64748b', fontSize: 12 }}>{new Date(r.createdAt).toLocaleDateString('en-US')}</span>
+                <span style={{ color: '#64748b', fontSize: 12 }}>{new Date(r.createdAt).toLocaleDateString(uiLocale())}</span>
               </div>
               {r.comment && <div style={{ fontSize: 14, marginTop: 6, color: '#e2e8f0' }}>“{r.comment}”</div>}
             </div>

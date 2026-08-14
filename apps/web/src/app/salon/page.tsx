@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { ui, formatPrice } from '../../lib/ui';
 import { useLang, tr } from '../../lib/i18n';
 import { useLiveRefresh } from '../../lib/useLiveRefresh';
+import { uiLocale } from '../../lib/datetime';
 
 interface SeriesPoint { date: string; bookings: number; revenueCents: number }
 interface Ranked { name: string; bookings: number; revenueCents: number }
@@ -185,9 +186,9 @@ function Inner() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontSize: 13 }}>{new Date(b.startTime).toLocaleDateString('en-US')}</div>
+                        <div style={{ fontSize: 13 }}>{new Date(b.startTime).toLocaleDateString(uiLocale())}</div>
                         <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                          {new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(b.startTime).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
                     </div>

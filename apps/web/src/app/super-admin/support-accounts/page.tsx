@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Account {
   id: string;
@@ -98,7 +99,7 @@ export default function SupportAccountsPage() {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5 }}>{`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}</div>
                 <div style={{ fontSize: 12.5, color: '#64748b' }}>
-                  {a.email}{a.lastLoginAt ? ` · last login ${new Date(a.lastLoginAt).toLocaleDateString('en-US')}` : ' · never logged in'}
+                  {a.email}{a.lastLoginAt ? ` · last login ${new Date(a.lastLoginAt).toLocaleDateString(uiLocale())}` : ' · never logged in'}
                 </div>
               </div>
               <span style={{ fontSize: 11.5, fontWeight: 700, color: a.isActive ? '#22c55e' : '#ef4444' }}>

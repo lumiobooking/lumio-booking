@@ -11,6 +11,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { uiLocale } from '../../../lib/datetime';
 
 interface NamedRef {
   id: string;
@@ -1068,9 +1069,9 @@ function GroupChip({ n, open, onToggle, label }: { n: number; open: boolean; onT
 function fmtWhen(iso: string, tz: string): string {
   const d = new Date(iso);
   try {
-    return d.toLocaleString('en-US', tz ? { timeZone: tz } : undefined);
+    return d.toLocaleString(uiLocale(), tz ? { timeZone: tz } : undefined);
   } catch {
-    return d.toLocaleString('en-US'); // unknown zone → viewer's clock
+    return d.toLocaleString(uiLocale()); // unknown zone → viewer's clock
   }
 }
 

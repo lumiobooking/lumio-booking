@@ -8,6 +8,7 @@ import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { usePaged, Pager } from '../../../../components/ListFilter';
 import { useLang, tr } from '../../../../lib/i18n';
+import { uiLocale } from '../../../../lib/datetime';
 
 interface Pay { id: string; amountCents: number; currency: string; status: string; type: string; createdAt: string }
 interface Appt {
@@ -253,11 +254,11 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent: s
 /** Dates on the salon's own clock — never the viewer's. */
 function fmtDate(iso: string, tz: string): string {
   const d = new Date(iso);
-  try { return d.toLocaleDateString('en-US', tz ? { timeZone: tz } : undefined); }
-  catch { return d.toLocaleDateString('en-US'); }
+  try { return d.toLocaleDateString(uiLocale(), tz ? { timeZone: tz } : undefined); }
+  catch { return d.toLocaleDateString(uiLocale()); }
 }
 function fmtDateTime(iso: string, tz: string): string {
   const d = new Date(iso);
-  try { return d.toLocaleString('en-US', tz ? { timeZone: tz } : undefined); }
-  catch { return d.toLocaleString('en-US'); }
+  try { return d.toLocaleString(uiLocale(), tz ? { timeZone: tz } : undefined); }
+  catch { return d.toLocaleString(uiLocale()); }
 }

@@ -6,6 +6,7 @@ import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { useLang } from '../../../../lib/i18n';
+import { uiLocale } from '../../../../lib/datetime';
 
 interface SpendRow { id?: string; channel: string; amountCents: number; reach?: number | null; clicks?: number | null; leads?: number | null; }
 interface WorkRow { id: string; category: string; title: string; createdAt: string; }
@@ -275,7 +276,7 @@ function Inner() {
         <button onClick={saveGbpReviews} disabled={busy === 'grev'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'grev' ? '…' : T('Lưu đánh giá Google', 'Save Google reviews')}</button>
         {data?.gbp?.reviews?.syncedAt && data.gbp.reviews.manual !== true && (
           <span style={{ fontSize: 11, color: '#64748b', marginLeft: 10 }}>
-            {T('cập nhật ', 'updated ')}{new Date(data.gbp.reviews.syncedAt).toLocaleString(vi ? 'vi-VN' : 'en-US')}
+            {T('cập nhật ', 'updated ')}{new Date(data.gbp.reviews.syncedAt).toLocaleString(vi ? 'vi-VN' : uiLocale())}
           </span>
         )}
       </div>
@@ -359,7 +360,7 @@ function Inner() {
  * that it actually happened (and what still needs approving) instead of trusting it.
  */
 function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean; T: (v: string, e: string) => string; onOpen: (month: string) => void }) {
-  const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+  const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
   const statusChip = (st: string | null) => {
     const map: Record<string, [string, string]> = {
       review: ['#f59e0b', T('Chờ duyệt', 'In review')],
@@ -562,7 +563,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const socHtml = (data.socialInsights ?? []).map((si) => {
     const isIg = si.platform === 'instagram';
     const nm = isIg ? 'Instagram' : 'Facebook'; const col = isIg ? '#e1306c' : '#1877f2';
-    const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+    const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
     const ar = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span class="t-cap" style="color:${dl.pct >= 0 ? '#059669' : '#dc2626'};font-weight:700"> ${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
     const st = (label: string, val: number | null, dl?: SocialDelta | null) => (val == null ? '' : `<div style="text-align:center;flex:1;min-width:58px"><div class="t-h2" style="font-weight:800">${f(val)}${ar(dl)}</div><div class="t-cap" style="color:#6b7280">${label}</div></div>`);
     const cells = [st(t('Follower', 'Followers'), si.followers, si.vsPrev?.followers), st(t('Follower mới', 'New'), si.newFollowers, si.vsPrev?.newFollowers), st('Reach', si.reach, si.vsPrev?.reach), st(t('Xem', 'Views'), si.views, si.vsPrev?.views), st(t('Tương tác', 'Engagement'), si.engagement, si.vsPrev?.engagement)].filter(Boolean).join('');
@@ -571,8 +572,8 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   }).join('');
   const igPosts = ((data.socialInsights ?? []).find((x) => x.platform === 'instagram')?.posts ?? []).slice(0, 12);
   const postsHtml = igPosts.map((p) => {
-    const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
-    const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
+    const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
     const tl = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : t('Ảnh', 'Photo');
     const thumb = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0" />` : `<div style="width:40px;height:40px;border-radius:6px;background:#f1f4f9;flex-shrink:0"></div>`;
     const cell = (label: string, v: number | null) => (v == null ? '' : `<span style="margin-right:10px"><b>${f(v)}</b> <span style="color:#6b7280">${label}</span></span>`);
@@ -595,7 +596,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const fb = S.find((x) => x.platform === 'facebook');
   const ig = S.find((x) => x.platform === 'instagram');
   const tt = S.find((x) => x.platform === 'tiktok');
-  const fnum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+  const fnum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
   const arS = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span class="t-cap" style="color:${dl.pct >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
   const engR = (x?: SocialInsight) => { if (!x || x.engagement == null) return '—'; const denom = x.reach || x.followers; return denom ? `${Math.round((x.engagement / denom) * 1000) / 10}%` : '—'; };
   const panel = (title: string, inner: string) => `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:14px;padding:15px 17px"><div class="t-h3" style="color:#0B1F3A;text-transform:uppercase;border-left:4px solid #1e3a8a;padding-left:10px;margin-bottom:12px">${title}</div>${inner}</div>`;
@@ -867,7 +868,7 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
               </>}
             </span>
           </div>
-          {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString('en-US') : ''}{c.lastError ? ' · ' + c.lastError : ''}</div>}
+          {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString(uiLocale()) : ''}{c.lastError ? ' · ' + c.lastError : ''}</div>}
           {openP === c.platform && (
             <div style={{ marginTop: 8, background: '#0f172a', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
               <input style={inp} name="lumio-account-id" autoComplete="off" placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID — vd: 17202153832315858041' : c.platform === 'tiktok' ? T('Bỏ trống — TikTok nhận diện qua token', 'Leave blank — TikTok is identified by the token') : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
@@ -896,9 +897,9 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
 
 function PostRowView({ p, T }: { p: PostRow; T: (v: string, e: string) => string }) {
   const img = !!p.thumbnail && p.thumbnail.startsWith('http');
-  const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
   const typeLabel = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : T('Ảnh', 'Photo');
-  const num = (n: number | null) => (n == null ? null : Number(n).toLocaleString('en-US'));
+  const num = (n: number | null) => (n == null ? null : Number(n).toLocaleString(uiLocale()));
   const stat = (label: string, v: number | null) => (v == null ? null : <span key={label} style={{ whiteSpace: 'nowrap' }}><b style={{ color: '#f8fafc' }}>{num(v)}</b> <span style={{ color: '#64748b' }}>{label}</span></span>);
   const stats = [stat(T('thích', 'likes'), p.likes), stat(T('bl', 'cmts'), p.comments), stat('reach', p.reach), stat(T('xem', 'views'), p.views), stat(T('lưu', 'saved'), p.saved), stat('share', p.shares)].filter(Boolean);
   return (
@@ -982,7 +983,7 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
   const isTt = s.platform === 'tiktok';
   const name = isTt ? 'TikTok' : isIg ? 'Instagram' : 'Facebook';
   const color = isTt ? '#25f4ee' : isIg ? '#e1306c' : '#1877f2';
-  const fmt = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+  const fmt = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
   const arrow = (dl?: SocialDelta | null) =>
     dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 10.5, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'}{Math.abs(dl.pct)}%</span> : null;
   const Stat = (label: string, val: number | null, dl?: SocialDelta | null) => (
@@ -1049,7 +1050,7 @@ const VERDICT: Record<string, [string, string, string]> = {
 const CH_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác' };
 
 function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) {
-  const fmt = (n: number | null | undefined) => (n == null ? '\u2014' : Number(n).toLocaleString('en-US'));
+  const fmt = (n: number | null | undefined) => (n == null ? '\u2014' : Number(n).toLocaleString(uiLocale()));
   const arrow = (d?: SocialDelta | null) => (d && d.pct != null ? <span style={{ color: d.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 10.5, fontWeight: 700 }}>{d.pct >= 0 ? '\u25B2' : '\u25BC'}{Math.abs(d.pct)}%</span> : null);
   const Stat = (label: string, val: number | null | undefined, d?: SocialDelta | null) => (
     <div key={label} style={{ textAlign: 'center', flex: 1, minWidth: 80 }}>

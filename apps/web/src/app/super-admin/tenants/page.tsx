@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { TimezonePicker } from '../../../components/TimezonePicker';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Tenant {
   id: string;
@@ -270,7 +271,7 @@ export default function TenantsPage() {
                 </td>
                 <td style={td}>{t._count?.users ?? '-'}</td>
                 <td style={{ ...td, color: '#94a3b8' }}>
-                  {new Date(t.createdAt).toLocaleDateString('en-US')}
+                  {new Date(t.createdAt).toLocaleDateString(uiLocale())}
                 </td>
                 <td style={td}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
@@ -514,7 +515,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           <button onClick={saveAccess} disabled={busy} style={primaryBtn}>Save access</button>
         </div>
         <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>
-          Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString('en-US')}` : 'billing-controlled'} · status {tenant.status}
+          Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString(uiLocale())}` : 'billing-controlled'} · status {tenant.status}
         </p>
       </div>
 

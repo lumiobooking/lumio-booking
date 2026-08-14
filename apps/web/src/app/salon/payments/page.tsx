@@ -11,6 +11,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Payment {
   id: string;
@@ -105,7 +106,7 @@ function Inner() {
                 <MHead right={<span style={{ color: COLORS[p.status] ?? '#94a3b8', fontWeight: 700, fontSize: 13 }}>{p.status}</span>}>
                   {formatPrice(p.amountCents, p.currency)}
                 </MHead>
-                <MRow label={t('pm.colDate')}>{new Date(p.createdAt).toLocaleString('en-US')}</MRow>
+                <MRow label={t('pm.colDate')}>{new Date(p.createdAt).toLocaleString(uiLocale())}</MRow>
                 <MRow label={t('pm.colType')}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</MRow>
                 <MRow label={t('pm.colProvider')}>{p.provider || '—'}</MRow>
                 <MActions>
@@ -139,7 +140,7 @@ function Inner() {
               {pg.paged.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid #334155', background: bulk.has(p.id) ? '#1e1b4b' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString('en-US')}</td>
+                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString(uiLocale())}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
                   <td style={ui.td}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</td>
                   <td style={ui.td}>

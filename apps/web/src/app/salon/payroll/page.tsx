@@ -10,6 +10,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
 import { useState as useTabState } from 'react';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Row {
   staffId: string; name: string; commissionPercent: number; serviceCount: number;
@@ -403,7 +404,7 @@ function RecentList({ recent }: { recent: { name: string; date: string; service:
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, borderBottom: '1px solid #1e293b', paddingBottom: 5 }}>
             <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{x.name}</span>
             <span style={{ color: '#94a3b8' }}>{x.service}</span>
-            <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+            <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(x.date).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' })}</span>
           </div>
         ))}
       </div>

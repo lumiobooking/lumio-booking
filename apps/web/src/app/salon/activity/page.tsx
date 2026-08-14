@@ -9,6 +9,7 @@ import { useLang } from '../../../lib/i18n';
 import { PushEnable } from '../../../components/PushEnable';
 import { BookingDetailSheet } from '../../../components/BookingDetailSheet';
 import { usePaged, Pager } from '../../../components/ListFilter';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
@@ -66,7 +67,7 @@ function Inner() {
   const whenText = (when: string | null) => {
     if (!when) return '';
     const d = new Date(when);
-    return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'short', ...(tz ? { timeZone: tz } : {}) }) + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+    return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : uiLocale(), { weekday: 'short', day: 'numeric', month: 'short', ...(tz ? { timeZone: tz } : {}) }) + ' · ' + d.toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   };
   const dayKey = (at: string) => {
     const d = new Date(at); const now = new Date();
@@ -74,7 +75,7 @@ function Inner() {
     const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     if (dd === start) return L('HÔM NAY', 'TODAY');
     if (dd === start - 86400000) return L('HÔM QUA', 'YESTERDAY');
-    return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', { day: 'numeric', month: 'short' }).toUpperCase();
+    return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' }).toUpperCase();
   };
   const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' ? '' : L('· Thanh toán', '· Paid');
   const reportText = (status: string) => status === 'approved'

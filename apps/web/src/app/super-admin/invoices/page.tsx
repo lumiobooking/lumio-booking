@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { usePaged, Pager } from '../../../components/ListFilter';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Row {
   id: string; number: string; type: 'OVERAGE' | 'RENEWAL'; status: 'OPEN' | 'PAID' | 'VOID';
@@ -12,8 +13,8 @@ interface Row {
   token: string; createdAt: string; salonName: string | null;
 }
 
-const money = (c: number, cur = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format((c || 0) / 100);
-const fmt = (s: string | null) => { if (!s) return '—'; try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return '—'; } };
+const money = (c: number, cur = 'USD') => new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur }).format((c || 0) / 100);
+const fmt = (s: string | null) => { if (!s) return '—'; try { return new Date(s).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }); } catch { return '—'; } };
 
 export default function AdminInvoicesPage() {
   const { token, user, ready } = useAuth();

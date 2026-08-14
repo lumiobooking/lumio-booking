@@ -10,6 +10,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Supply {
   id: string; name: string; unit: string; stockQty: number; lowStockThreshold: number;
@@ -331,7 +332,7 @@ function HistoryPanel({ token, item }: { token: string; item: Supply }) {
                 <span style={{ width: 56, fontWeight: 700, textAlign: 'right', color: m.delta >= 0 ? '#22c55e' : '#f59e0b' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
                 <span style={{ color: '#cbd5e1', minWidth: 120 }}>{t(REASON_KEY[m.reason] ?? 'iv.rAdjust')}</span>
                 <span style={{ color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.note || ''}</span>
-                <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(m.createdAt).toLocaleString('en-US')}</span>
+                <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(m.createdAt).toLocaleString(uiLocale())}</span>
               </div>
             ))}
           </div>

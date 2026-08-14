@@ -11,6 +11,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { StaffDayView } from './StaffDayView';
 import { TableDayView } from './TableDayView';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -74,7 +75,7 @@ function Inner() {
   const { lang } = useLang();
   const isMobile = useIsMobile();
   const t = (k: string) => tr(k, lang);
-  const locale = 'en-US'; // dates always render US month/day/year
+  const locale = uiLocale(); // dates always render US month/day/year
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
@@ -127,7 +128,7 @@ function Inner() {
       .catch(() => undefined);
   }, [token]);
   const fmtT = useCallback(
-    (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }),
+    (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }),
     [tz],
   );
 
@@ -505,11 +506,11 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const minInTz = (iso: string) => {
     const d = new Date(iso);
     if (!tz) return d.getHours() * 60 + d.getMinutes();
-    const p = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
+    const p = new Intl.DateTimeFormat(uiLocale(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
     return (Number(p.find((x) => x.type === 'hour')?.value ?? 0) % 24) * 60 + Number(p.find((x) => x.type === 'minute')?.value ?? 0);
   };
 
@@ -666,11 +667,11 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
-  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const hourInTz = (iso: string) => {
     const d = new Date(iso);
     if (!tz) return d.getHours();
-    const parts = new Intl.DateTimeFormat('en-US', { hour: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
+    const parts = new Intl.DateTimeFormat(uiLocale(), { hour: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
     return Number(parts.find((x) => x.type === 'hour')?.value ?? 0) % 24;
   };
 
@@ -776,7 +777,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const locale = 'en-US'; // dates always render US month/day/year
+  const locale = uiLocale(); // dates always render US month/day/year
   const start = new Date(b.startTime);
   const end = new Date(b.endTime);
   const duration = Math.round((end.getTime() - start.getTime()) / 60000);
@@ -1111,7 +1112,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function fmtTime(d: Date, tz?: string) {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  return d.toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
 }
 
 // Salon-timezone-aware day key (YYYY-MM-DD): a booking lands on the salon's

@@ -7,6 +7,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { uiLocale } from '../../../lib/datetime';
 
 interface Item {
   key: string;
@@ -115,7 +116,7 @@ function Inner() {
                       {(it.detail || it.lastActivity) && (
                         <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
                           {it.detail}
-                          {it.lastActivity && <span> · {T('hoạt động gần nhất', 'last activity')}: {new Date(it.lastActivity).toLocaleString(vi ? 'vi-VN' : 'en-US')}</span>}
+                          {it.lastActivity && <span> · {T('hoạt động gần nhất', 'last activity')}: {new Date(it.lastActivity).toLocaleString(vi ? 'vi-VN' : uiLocale())}</span>}
                         </div>
                       )}
                       {t === 'ok' && <div style={{ fontSize: 12.5, color: '#22c55e', marginTop: 6 }}>✓ {T('Kiểm tra thành công — kết nối đang hoạt động.', 'Test passed — the connection works.')} {testMsg[it.key]}</div>}

@@ -1405,15 +1405,22 @@ PACE — you are running out of time, act like it:
 AREA CHECK — this is true, say it naturally, and it is your best reason to ask where they are:
 Lumio takes only ONE shop inside roughly a 10-mile radius, so we never end up competing against our own client. Whether a given area is still open has to be checked by the team first.
 Therefore: NEVER promise to take them on, never confirm the area is free, never give a start date, never close a deal. Your line is "để em xin thông tin, bên em kiểm tra khu vực rồi gọi lại tư vấn cho anh/chị" — the check is the reason you need their location, and it makes them want to move fast.
+TWO PRODUCT LINES — get this wrong and you lose the lead in one message:
+- There is a PRODUCT sold on its own (the booking software and everything in it), and there is a SERVICE sold as monthly packages (the marketing work). They have separate prices and both are in the FACTS.
+- When someone asks the price of a FEATURE — the AI on Messenger, online booking, the POS, reminders — they are asking about the PRODUCT. Answer with the cheapest plan that actually includes what they named, and answer with THAT number first.
+- Quoting a service package to someone who asked about a feature is the single worst answer you can give. They hear a number several times larger than the real one, decide it is not for them, and stop replying. You will never know you lost them.
+- Only AFTER the honest smaller number may you add, in one line, that the service packages include the software at no extra cost from the tier where that is true. That order matters: small number, then the upgrade. Never the reverse.
+- If you are not certain which line they mean, ask one short question instead of guessing high.
 FLOW — four steps, do not add a fifth:
 1. Answer what they asked, in 1-2 lines, from the FACTS.
 2. Add ONE advantage or free program that fits what they just said.
 3. Ask for their Google Maps link (or shop name + city) so the team can check the area.
 4. Ask their name, then the phone that reaches them directly. Then call save_lead.
-- Asked about pricing or the packages in general: call send_price_cards IMMEDIATELY — never type the whole list as text, never ask permission first, and never say words like "visual cards" or "carousel" (just send, then speak normally). After it succeeds, ONE short line: which one fits their shop — then go to step 3.
+- Asked about pricing or the packages in general: call send_price_cards IMMEDIATELY — never type the whole list as text, never ask permission first, and never say words like "visual cards" or "carousel" (just send, then speak normally). Send the category they actually asked about: 'software' for the booking system or any feature of it, 'marketing' for the monthly service. Sending everything at once buries the answer they wanted. After it succeeds, ONE short line: which one fits their shop — then go to step 3.
 - Asked about ONE specific package: 3 short lines maximum — what it does for THEIR shop, the one thing it includes that the cheaper package does not, and what is free with it. Then step 3. Do not list features.
 - Asked to compare Lumio with other agencies / booking software / hiring staff: TWO lines, by category (a typical agency stops at posting and ads; we carry it through to the appointment in the calendar). Never name or criticise a specific company. Then step 3.
-- FREE things are your strongest hook and your way out of any hesitation: the free audit (24–48h, no strings, for EVERYONE), the Booking + AI + POS system free BY TIER (full system free from Growth Map $279 up; Boost $179 includes the free Booking system; the $45 package includes the free audit only — never promise a free tier the package does not include), and the live demo link. Mention the free audit early; it costs them nothing to say yes to.
+- FREE things are your strongest hook and your way out of any hesitation: the free audit (24–48h, no strings, for EVERYONE), the live demo link, and whatever the FACTS say a package includes at no extra cost. Mention the free audit early; it costs them nothing to say yes to.
+- WHAT IS INCLUDED WITH WHAT comes from the FACTS and nowhere else. Never promise a free tier a package does not include, and never imply the software can only be had by buying a service package — it is also sold on its own.
 - PRICES: before stating ANY price, call quote_price and quote ONLY the currency of the customer's market — Canada → C$, Australia → A$, otherwise USD $. Read their market from anything they said (city, country, "bên Canada/Úc", currency mention); if unknown, use USD. One currency per reply, woven into a natural sentence — never list several currencies unless they ask to compare, never do currency math in your head. If they later reveal a different market, requote in that currency.
 - Once you have a name AND a phone, call save_lead — include the shop name or link, city, and what they care about.
 - BUSINESS IDENTITY — read this before every question you ask. ANY ONE of these is enough to identify their shop and you must treat it as complete: a Google Maps / website / Facebook link, OR the shop name, OR the street address, OR the shop name plus a city. The team can search a name and an address perfectly well; they do not need a link on top.
@@ -1476,7 +1483,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         description: 'Send the packages as swipeable visual cards (native Messenger carousel) — ALWAYS use this instead of typing a list when the customer asks about pricing or packages in general. After SUCCESS, follow with ONE short line asking which fits.',
         input_schema: {
           type: 'object',
-          properties: { category: { type: 'string', enum: ['marketing', 'website', 'all'], description: 'Which set of packages to show.' } },
+          properties: { category: { type: 'string', enum: ['software', 'marketing', 'website', 'all'], description: "Which set to show. Use 'software' when they asked about the booking system or one of its features (the AI on Messenger, online booking, POS, reminders) — that is a different, cheaper product than the marketing packages. Use 'marketing' for the monthly service packages. 'all' only if they genuinely asked to see everything." } },
           required: ['category'],
         },
       },
@@ -2031,8 +2038,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
         const facts = (Array.isArray(conn?.botFacts) ? (conn!.botFacts as unknown as BotFact[]) : []).filter((f) => f && f.on);
         const cat = String(input.category || 'all');
+        // Facts are grouped by how their label STARTS, which is how the owner
+        // keeps three price lists apart in one box. "Phần mềm …" is the product
+        // sold on its own; "Gói …" is the monthly marketing service.
         const rows = facts.filter((f) =>
-          cat === 'marketing' ? /^gói/i.test(f.label) : cat === 'website' ? /^website/i.test(f.label) : /^(gói|website)/i.test(f.label),
+          cat === 'software' ? /^phần mềm/i.test(f.label)
+            : cat === 'marketing' ? /^gói/i.test(f.label)
+              : cat === 'website' ? /^website/i.test(f.label)
+                : /^(phần mềm|gói|website)/i.test(f.label),
         );
         if (!rows.length) return 'ERROR: no package facts configured — answer briefly in text.';
         // Card subtitles are ~80 chars in Messenger. A hard slice chops words
@@ -2061,6 +2074,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           if (l.includes('growth map')) return 'growth-map';
           if (l.includes('boost')) return 'boost';
           if (l.includes('scale')) return 'scale';
+          // Software plans. Matched only under the "Phần mềm" prefix, because
+          // "pro" appears inside plenty of ordinary words. No PNG yet is fine:
+          // a missing image falls back to a plain text card.
+          if (l.startsWith('phần mềm')) {
+            if (l.includes('starter')) return 'plan-starter';
+            if (l.includes('premium')) return 'plan-premium';
+            if (l.includes('pro')) return 'plan-pro';
+          }
           return null;
         };
         const imgFor = async (label: string): Promise<string | undefined> => {

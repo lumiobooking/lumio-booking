@@ -772,6 +772,7 @@ export class SettingsService {
         timezone: tenant.timezone,
         address: extra.address,
         website: extra.website,
+        country: extra.country ?? '',
       },
       booking: await this.getBookingRules(tenantId),
       branding: this.brandingFrom(tenant.branding),
@@ -1011,11 +1012,12 @@ export class SettingsService {
         timezone: dto.timezone,
       },
     });
-    if (dto.address !== undefined || dto.website !== undefined) {
+    if (dto.address !== undefined || dto.website !== undefined || dto.country !== undefined) {
       const current = await this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA);
       await this.writeKey(tenantId, COMPANY_EXTRA_KEY, {
         address: dto.address ?? current.address,
         website: dto.website ?? current.website,
+        country: (dto.country ?? current.country ?? '').trim().toUpperCase(),
       });
     }
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.company_updated', resourceType: 'tenant', resourceId: tenantId });

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { dialCodeForTimezone } from '../common/phone';
+import { dialCodeFor } from '../common/phone';
 import { NotificationChannel, NotificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -127,8 +127,14 @@ export class NotificationsService {
    *  back to '1', i.e. exactly the behaviour before this existed. */
   private async dialCodeForTenant(tenantId: string): Promise<string> {
     try {
-      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
-      return dialCodeForTimezone(t?.timezone);
+      const [t, extra] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.prisma.setting
+          .findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } })
+          .catch(() => null),
+      ]);
+      const country = (extra?.value as { country?: string } | null)?.country ?? '';
+      return dialCodeFor(country, t?.timezone);
     } catch {
       return '1';
     }

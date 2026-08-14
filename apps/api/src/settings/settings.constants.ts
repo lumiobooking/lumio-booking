@@ -427,9 +427,19 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
 export interface CompanyExtra {
   address: string;
   website: string;
+  /**
+   * ISO 3166-1 alpha-2, e.g. 'US', 'CA', 'VN'. Decides how a local phone number
+   * is read, which currency and date order a salon starts from, and whether
+   * tipping is shown at the till.
+   *
+   * Empty means "not stated", and everything then falls back to the timezone —
+   * which is how every salon behaved before this field existed, so nobody has
+   * to go and fill it in.
+   */
+  country: string;
 }
 
-export const DEFAULT_COMPANY_EXTRA: CompanyExtra = { address: '', website: '' };
+export const DEFAULT_COMPANY_EXTRA: CompanyExtra = { address: '', website: '', country: '' };
 
 export interface Branding {
   accentColor: string;

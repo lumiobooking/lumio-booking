@@ -35,11 +35,25 @@ const RULES: Record<string, DialRule> = {
   '84': { code: '84', trunkPrefix: '0', nationalLengths: [9, 10] },
 };
 
-/** Which dial code a salon's numbers should default to, read from its timezone. */
+/** ISO country → calling code, for the countries the product is sold in. */
+const COUNTRY_DIAL: Record<string, string> = { US: '1', CA: '1', VN: '84' };
+
+/** Which dial code a salon's numbers should default to, read from its timezone.
+ *  Used when no country has been stated. */
 export function dialCodeForTimezone(timezone?: string | null): string {
   const tz = String(timezone || '');
   if (tz === 'Asia/Ho_Chi_Minh' || tz === 'Asia/Saigon') return '84';
   return '1'; // every existing salon keeps today's behaviour
+}
+
+/**
+ * The dial code for a salon. An explicitly chosen country wins; otherwise fall
+ * back to the timezone, which is what every salon relied on before the country
+ * setting existed. Neither known → '1', unchanged.
+ */
+export function dialCodeFor(country?: string | null, timezone?: string | null): string {
+  const c = String(country || '').trim().toUpperCase();
+  return COUNTRY_DIAL[c] ?? dialCodeForTimezone(timezone);
 }
 
 /**

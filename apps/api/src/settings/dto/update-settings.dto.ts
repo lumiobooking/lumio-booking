@@ -20,6 +20,8 @@ export class UpdateCompanyDto {
   @IsOptional() @IsString() @MaxLength(60) timezone?: string;
   @IsOptional() @IsString() @MaxLength(255) address?: string;
   @IsOptional() @IsString() @MaxLength(255) website?: string;
+  /** ISO 3166-1 alpha-2 country code, or '' to go back to guessing by timezone. */
+  @IsOptional() @IsString() @MaxLength(2) country?: string;
 }
 
 /**

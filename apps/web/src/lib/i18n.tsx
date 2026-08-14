@@ -1529,6 +1529,12 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.co.phone': { en: 'Contact phone', vi: 'SĐT liên hệ' },
   'se.co.address': { en: 'Address', vi: 'Địa chỉ' },
   'se.co.website': { en: 'Website', vi: 'Website' },
+  'se.co.country': { en: 'Country', vi: 'Quốc gia' },
+  'se.co.countryAuto': { en: 'Detect from timezone', vi: 'Tự nhận theo múi giờ' },
+  'se.co.countryHint': {
+    en: 'Sets how local phone numbers are read, and the money and date format.',
+    vi: 'Quyết định cách đọc số điện thoại nội địa, và định dạng tiền, ngày tháng.',
+  },
   'se.co.save': { en: 'Save company', vi: 'Lưu doanh nghiệp' },
   // Hours
   'se.hr.title': { en: 'Business hours', vi: 'Giờ mở cửa' },

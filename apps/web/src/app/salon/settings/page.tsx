@@ -19,7 +19,7 @@ interface Booking {
 }
 interface GatewayView { enabled: boolean; connected: boolean; apiKey: string }
 interface SettingsData {
-  company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string };
+  company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string; country?: string };
   booking: Booking;
   branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
   rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
@@ -221,10 +221,22 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
         <Field label={t('se.co.phone')}><input style={ui.input} value={f.contactPhone ?? ''} onChange={(e) => setF({ ...f, contactPhone: e.target.value })} /></Field>
         <Field label={t('se.co.address')}><input style={ui.input} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         <Field label={t('se.co.website')}><input style={ui.input} value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} placeholder="https://…" /></Field>
+        {/* Country is what tells 0912 345 678 apart from a ten-digit US number,
+            and it decides the money and date format. Left blank the salon keeps
+            behaving exactly as it did, guessing from the timezone. */}
+        <Field label={t('se.co.country')}>
+          <select style={ui.input} value={f.country ?? ''} onChange={(e) => setF({ ...f, country: e.target.value })}>
+            <option value="">{t('se.co.countryAuto')}</option>
+            <option value="US">🇺🇸 United States (+1)</option>
+            <option value="CA">🇨🇦 Canada (+1)</option>
+            <option value="VN">🇻🇳 Việt Nam (+84)</option>
+          </select>
+        </Field>
       </div>
+      <p style={{ color: '#64748b', fontSize: 11.5, marginTop: 8 }}>{t('se.co.countryHint')}</p>
       <button
         style={{ ...ui.primaryBtn, marginTop: 16 }}
-        onClick={() => onSave('company', { name: f.name, contactEmail: f.contactEmail, contactPhone: f.contactPhone, timezone: f.timezone, address: f.address, website: f.website }, 'Company')}
+        onClick={() => onSave('company', { name: f.name, contactEmail: f.contactEmail, contactPhone: f.contactPhone, timezone: f.timezone, address: f.address, website: f.website, country: f.country ?? '' }, 'Company')}
       >
         {t('se.co.save')}
       </button>

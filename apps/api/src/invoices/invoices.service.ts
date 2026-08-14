@@ -6,11 +6,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StripeService } from '../billing/stripe.service';
 import { PlatformConfigService } from '../billing/platform-config.service';
 import { publicWebBase } from '../common/public-url.util';
+import { formatMoney } from '../common/money';
 
 export interface LineItem { label: string; amountCents: number }
 
-const money = (c: number, cur = 'USD') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format((c || 0) / 100);
+// Was a hard divide by 100. Correct for the dollar, a hundredfold error for a
+// currency with no subunit — and an invoice is the one document that must not
+// be wrong about an amount.
+const money = (c: number, cur = 'USD') => formatMoney(c || 0, cur, 'en-US');
 
 /**
  * Month-end usage-overage invoices and plan-renewal invoices. Each invoice is a

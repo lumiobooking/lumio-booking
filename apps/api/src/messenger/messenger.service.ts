@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { formatMoneyShort, localeForCountry } from '../common/money';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1869,8 +1870,27 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * gift cards are read fresh on every conversation, so the bot is never out
    * of date and the owner never maintains a second copy of the same data.
    */
+  /**
+   * Which locale this salon's prices and times are written in for ITS customers.
+   *
+   * Follows the salon's country, the way the booking page does. Unset answers
+   * en-US, which is what every salon running today already gets.
+   */
+  private async customerLocale(tenantId: string): Promise<string> {
+    try {
+      const [t, extra] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }),
+      ]);
+      return localeForCountry((extra?.value as { country?: string } | null)?.country ?? '', t?.timezone);
+    } catch {
+      return 'en-US';
+    }
+  }
+
   private async systemKnowledge(tenantId: string, phone: string | null, email: string | null): Promise<string> {
     const out: string[] = [];
+    const promptLocale = await this.customerLocale(tenantId);
     // Plain try/catch instead of `.catch(() => [])` inside Promise.all: that
     // pattern makes TypeScript collapse the row type to `never` and the build
     // fails (learned the hard way).
@@ -1901,8 +1921,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       giftCards = await this.prisma.giftCard.count({ where: { tenantId } });
     } catch { /* gift cards are best-effort */ }
     if (services.length) {
-      const sym = (cur: string) => (cur === 'USD' ? '$' : cur === 'CAD' ? 'C$' : cur === 'AUD' ? 'A$' : '');
-      const money = (c: number, cur: string) => `${sym(cur)}${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
+      // Was a three-currency lookup with a blank symbol for anything else and a
+      // hard divide by 100, so a Vietnamese salon's 200,000₫ service reached the
+      // bot as "2000" with no symbol at all — and the bot then said it out loud.
+      const money = (c: number, cur: string) => formatMoneyShort(c, cur, promptLocale);
       out.push('SERVICES (live from the salon\'s own menu — these prices are authoritative):');
       for (const sv of services) {
         const off = sv.discountPercent > 0;
@@ -2076,17 +2098,21 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, durationMinutes: true, discountPercent: true },
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true },
           orderBy: { name: 'asc' }, take: 250,
         });
         if (!services.length) return 'No services are configured.';
+        const toolLocale = await this.customerLocale(tenantId);
         return JSON.stringify(services.map((sv) => {
           const final = Math.round(sv.priceCents * (100 - sv.discountPercent) / 100);
+          // The "$" here was hard-coded, so the bot quoted a Vietnamese price
+          // in dollars AND at a hundredth of its value. Each service carries
+          // its own currency; the salon's country decides how it is written.
           return {
             id: sv.id,
             name: sv.name,
-            price: `$${(final / 100).toFixed(0)}`,
-            ...(sv.discountPercent > 0 ? { wasPrice: `$${(sv.priceCents / 100).toFixed(0)}`, discountPercent: sv.discountPercent } : {}),
+            price: formatMoneyShort(final, sv.currency, toolLocale),
+            ...(sv.discountPercent > 0 ? { wasPrice: formatMoneyShort(sv.priceCents, sv.currency, toolLocale), discountPercent: sv.discountPercent } : {}),
             minutes: sv.durationMinutes,
           };
         }));

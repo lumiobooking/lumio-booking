@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { localeForCountry } from '../common/money';
 import { AppointmentStatus, NotificationChannel, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -48,14 +49,17 @@ function campaignLink(slug: string | null | undefined, key: CampaignKey, o?: Cam
   return `${base}?${q.toString()}`;
 }
 
-function offerVars(o: CampaignOffer | undefined | null): Record<string, string> {
+// The expiry date lands in a marketing text the SALON's customer reads, so it
+// is written in the salon's language. Defaulted to en-US, so any caller that
+// does not say otherwise sends exactly what it sent before.
+function offerVars(o: CampaignOffer | undefined | null, locale = 'en-US'): Record<string, string> {
   const label = offerLabel(o);
   if (!o?.enabled || !label) {
     return { offer: '', offer_code: '', offer_expiry: '', offer_block: '', offer_sms: '', offer_subject: '' };
   }
   const code = (o.code || '').trim().toUpperCase();
   const expiry = o.expiryDays > 0
-    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString(locale, { month: 'long', day: 'numeric' })
     : '';
   const codeLine = code ? ` Show the code ${code} at the salon.` : '';
   const expiryLine = expiry ? ` Valid through ${expiry}.` : '';
@@ -82,12 +86,12 @@ function bodyToHtml(text: string): string {
 }
 
 /** The offer, as a box the eye lands on — code included, ready to read out at the counter. */
-function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string): string {
+function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string, locale = 'en-US'): string {
   const label = offerLabel(o);
   if (!o?.enabled || !label) return '';
   const code = (o.code || '').trim().toUpperCase();
   const expiry = o.expiryDays > 0
-    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString(locale, { month: 'long', day: 'numeric' })
     : '';
   // The headline is the value itself (5% OFF), because that is the only line a
   // skimming reader is guaranteed to see.
@@ -110,7 +114,7 @@ function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string): stri
  * %offer_block% sits, and one clear Book button — instead of the flat wall of
  * plain text these campaigns used to send.
  */
-function campaignBodyHtml(template: string, pct: Record<string, string>, offer: CampaignOffer | undefined, accent: string, bookingLink: string): string {
+function campaignBodyHtml(template: string, pct: Record<string, string>, offer: CampaignOffer | undefined, accent: string, bookingLink: string, locale = 'en-US'): string {
   const MARK = '@@LUMIO_OFFER@@';
   const filled = fillPct(template, { ...pct, offer_block: MARK + '\n\n' });
   const paras = filled
@@ -118,7 +122,7 @@ function campaignBodyHtml(template: string, pct: Record<string, string>, offer: 
     .filter((p) => p.trim())
     .map((p) => `<p style="margin:0 0 14px;color:#374151;font-size:15px;line-height:1.7;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
     .join('');
-  const withOffer = paras.replace(new RegExp(`<p[^>]*>${MARK}</p>`), offerBoxHtml(offer, accent));
+  const withOffer = paras.replace(new RegExp(`<p[^>]*>${MARK}</p>`), offerBoxHtml(offer, accent, locale));
   const cta = bookingLink
     ? `<table style="width:100%;border-collapse:collapse;margin:6px 0 4px;"><tr><td align="center">
         <a href="${escapeHtml(bookingLink)}" style="display:inline-block;background:${escapeHtml(accent)};color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 30px;border-radius:10px;">Book my visit</a>
@@ -261,12 +265,13 @@ export class CampaignsService {
     const n = await this.settings.getNotificationSettings(tenantId);
     const transport = this.buildTransport(n, tenant.name);
     const accent = this.settings.brandingFrom(tenant.branding).accentColor || '#6366f1';
+    const locale = await this.customerLocale(tenantId);
     const pct: Record<string, string> = {
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
       booking_link: campaignLink(tenant.slug, dto.campaign, msg.offer),
       customer_name: 'Test',
-      ...offerVars(msg.offer),
+      ...offerVars(msg.offer, locale),
     };
     const out = { email: 'skipped', sms: 'skipped' };
 
@@ -280,7 +285,7 @@ export class CampaignsService {
           salon: tenant.name,
           accent,
           contact: tenant.contactPhone || tenant.contactEmail || '',
-          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, accent, pct.booking_link),
+          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, accent, pct.booking_link, locale),
         }),
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo,
@@ -343,6 +348,8 @@ export class CampaignsService {
       salon_slug: tenant.slug ?? '',
       // Carried through so the branded email shell uses the salon's own colour.
       accent_color: this.settings.brandingFrom(tenant.branding).accentColor || '#6366f1',
+      // …and the language its customers read, for the dates inside the offer.
+      locale: await this.customerLocale(tenantId),
     };
     // Offer wording differs per campaign, so it is merged in per send below.
     let used = 0;
@@ -459,11 +466,12 @@ export class CampaignsService {
     transport: ReturnType<CampaignsService['buildTransport']>,
     n: Awaited<ReturnType<SettingsService['getNotificationSettings']>>,
   ): Promise<boolean> {
+    const locale = basePct.locale || 'en-US';
     const pct: Record<string, string> = {
       ...basePct,
       customer_name: c.firstName || 'there',
       booking_link: campaignLink(basePct.salon_slug, key, msg.offer),
-      ...offerVars(msg.offer),
+      ...offerVars(msg.offer, locale),
     };
     const related = { relatedType: campaignRelatedType(key), relatedId: c.id };
 
@@ -502,7 +510,7 @@ export class CampaignsService {
           salon: pct.salon_name,
           accent: pct.accent_color || '#6366f1',
           contact: pct.salon_contact,
-          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, pct.accent_color || '#6366f1', pct.booking_link) + refHtml,
+          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, pct.accent_color || '#6366f1', pct.booking_link, locale) + refHtml,
         }),
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo, ...related,
@@ -517,6 +525,22 @@ export class CampaignsService {
   }
 
   /** Build the salon's email transport (Gmail/Brevo/SMTP) from its notification settings. */
+  /**
+   * The language this salon's customers read, from the country it chose.
+   * Unset answers en-US, i.e. what every campaign already sends today.
+   */
+  private async customerLocale(tenantId: string): Promise<string> {
+    try {
+      const [t, extra] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }),
+      ]);
+      return localeForCountry((extra?.value as { country?: string } | null)?.country ?? '', t?.timezone);
+    } catch {
+      return 'en-US';
+    }
+  }
+
   private buildTransport(n: Awaited<ReturnType<SettingsService['getNotificationSettings']>>, salonName: string) {
     const senderName = n.senderName || salonName || 'Our salon';
     const replyTo = n.replyTo || n.senderEmail || undefined;

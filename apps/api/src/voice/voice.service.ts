@@ -6,6 +6,8 @@ import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { toE164 as normalizeE164, dialCodeFor } from '../common/phone';
+import { formatMoneyShort, localeForCountry } from '../common/money';
 
 /** Convert a salon-local wall time ("2026-07-10T14:00") to the correct UTC ISO
  *  instant for the salon's timezone (handles DST). Shared shape with messenger. */
@@ -37,17 +39,21 @@ function xml(s: string): string {
 }
 
 /** Normalise a phone number for matching (keep leading +, digits only). */
-// Normalize a phone to E.164 (US/CA default) so Twilio can text it. Returns ''
-// when the number is too short to be a real, sendable number.
-function toE164(raw: string | null | undefined): string {
-  const t = String(raw || '').trim();
-  if (!t) return '';
-  if (t[0] === '+') { const dd = t.slice(1).replace(/\D/g, ''); return dd.length >= 10 ? '+' + dd : ''; }
-  const digits = t.replace(/\D/g, '');
-  if (digits.length === 10) return '+1' + digits;
-  if (digits.length === 11 && digits[0] === '1') return '+' + digits;
-  if (digits.length >= 11) return '+' + digits;
-  return '';
+/**
+ * Normalize a phone to E.164 so Twilio can text it. Returns '' when the number
+ * cannot be one.
+ *
+ * This used to be a second, private copy of the rule, and it still said "ten
+ * digits means the United States". A Vietnamese mobile is written 0912 345 678
+ * — also ten digits — so the hotline turned it into +10912345678: a
+ * plausible-looking US number that quietly fails to deliver. The salon believes
+ * the callback text went out; the caller never hears anything.
+ *
+ * One rule now, shared with the reminder path. `dial` defaults to '1', so every
+ * call site that does not know the salon behaves exactly as it did.
+ */
+function toE164(raw: string | null | undefined, dial = '1'): string {
+  return normalizeE164(raw, dial) ?? '';
 }
 
 function normNum(v: string | null | undefined): string {
@@ -126,13 +132,32 @@ export class VoiceService {
   /** The salon's own phones we ring before (or instead of) the AI. A number equal
    *  to the Lumio number is dropped — that would forward straight back to us and
    *  loop the call. */
-  private humanNumbers(line: { forwardNumbers: string | null; lumioNumber: string | null }): string[] {
+  private humanNumbers(line: { forwardNumbers: string | null; lumioNumber: string | null }, dial = '1'): string[] {
     const lumio = normNum(line.lumioNumber);
     return String(line.forwardNumbers || '')
       .split(/[,;\n]/)
-      .map((x) => toE164(x))
+      .map((x) => toE164(x, dial))
       .filter((x) => x && normNum(x) !== lumio)
       .slice(0, 5);
+  }
+
+  /**
+   * How this salon's numbers and prices should be read: its dial code and the
+   * locale its own customers are written to. Both follow the country chosen in
+   * Settings, falling back to the timezone, so a salon that has stated nothing
+   * behaves exactly as it always has.
+   */
+  private async localeInfo(tenantId: string): Promise<{ dial: string; locale: string }> {
+    try {
+      const [t, extra] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }),
+      ]);
+      const country = (extra?.value as { country?: string } | null)?.country ?? '';
+      return { dial: dialCodeFor(country, t?.timezone), locale: localeForCountry(country, t?.timezone) };
+    } catch {
+      return { dial: '1', locale: 'en-US' };
+    }
   }
 
   /** Salon-local day (0=Sun) and minutes-since-midnight, DST-safe. */
@@ -253,7 +278,8 @@ export class VoiceService {
       }).catch(() => undefined);
     }
 
-    const humans = this.humanNumbers(line);
+    const { dial } = await this.localeInfo(line.tenantId);
+    const humans = this.humanNumbers(line, dial);
     const mode = String(line.mode || 'ai');
 
     // "forward" = never let the AI speak: ring the humans, then voicemail/notice.
@@ -351,7 +377,8 @@ export class VoiceService {
       // Text whoever the salon nominated (falls back to the admin phone).
       try {
         const n = await this.settings.getNotificationSettings(line.tenantId);
-        const to2 = toE164(line.voicemailSms || n.adminPhone || '');
+        const { dial: vmDial } = await this.localeInfo(line.tenantId);
+        const to2 = toE164(line.voicemailSms || n.adminPhone || '', vmDial);
         if (to2) {
           await this.notifications.send({
             tenantId: line.tenantId,
@@ -592,11 +619,16 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, durationMinutes: true },
-          orderBy: { name: 'asc' }, take: 40,
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true },
+          orderBy: { name: 'asc' }, take: 250,
         });
         if (!services.length) return 'No services are configured.';
-        return JSON.stringify(services.map((s) => ({ id: s.id, name: s.name, price: `$${(s.priceCents / 100).toFixed(0)}`, minutes: s.durationMinutes })));
+        // The "$" was hard-coded and the amount divided by 100, so the phone
+        // assistant read a 200,000₫ service aloud as "two thousand dollars".
+        // The take was also 40, which quietly hid the rest of a long menu —
+        // the same cut that once made the bot say a service did not exist.
+        const { locale: svcLocale } = await this.localeInfo(tenantId);
+        return JSON.stringify(services.map((s) => ({ id: s.id, name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale), minutes: s.durationMinutes })));
       }
       if (name === 'create_booking') {
         const firstName = String(input.customerFirstName || '').trim();
@@ -604,7 +636,8 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         const local = String(input.localDateTime || '').trim();
         // Use a fully-formed spoken number if the caller gave one; otherwise fall
         // back to the verified caller ID. Both normalized to E.164 so Twilio can text it.
-        const phone = toE164(String(input.customerPhone || '')) || toE164(callerPhone);
+        const { dial: bkDial } = await this.localeInfo(tenantId);
+        const phone = toE164(String(input.customerPhone || ''), bkDial) || toE164(callerPhone, bkDial);
         if (!firstName || !serviceId || !local) return 'Missing required info; ask the caller for what is missing.';
         if (!phone) return 'No phone number available; politely ask the caller for a good callback number.';
         const startTime = wallToUtcISO(local, tz);
@@ -707,6 +740,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.voiceLine.findUnique({ where: { tenantId } });
 
+    const { dial } = await this.localeInfo(tenantId);
     const MODES = ['ai', 'ring_first', 'forward'];
     const SCHEDULES = ['always', 'business_hours', 'after_hours', 'custom'];
     const ACTIONS = ['voicemail', 'message', 'hangup'];
@@ -718,7 +752,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
     if (typeof dto.forwardNumbers === 'string') {
       const list = dto.forwardNumbers
         .split(/[,;\n]/)
-        .map((x) => toE164(x))
+        .map((x) => toE164(x, dial))
         .filter((x) => x && normNum(x) !== lumio);
       if (dto.forwardNumbers.trim() && list.length === 0) {
         throw new BadRequestException('None of those phone numbers look valid. Use a full number, e.g. +1 403 555 0123 — and it cannot be your Lumio hotline number.');
@@ -753,7 +787,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
         : (cur?.customHours as Prisma.InputJsonValue | undefined) ?? Prisma.JsonNull,
       noAnswerAction: typeof dto.noAnswerAction === 'string' && ACTIONS.includes(dto.noAnswerAction) ? dto.noAnswerAction : cur?.noAnswerAction ?? 'voicemail',
       awayMessage: typeof dto.awayMessage === 'string' ? dto.awayMessage.slice(0, 500) : cur?.awayMessage ?? null,
-      voicemailSms: typeof dto.voicemailSms === 'string' ? (toE164(dto.voicemailSms) || null) : cur?.voicemailSms ?? null,
+      voicemailSms: typeof dto.voicemailSms === 'string' ? (toE164(dto.voicemailSms, dial) || null) : cur?.voicemailSms ?? null,
     };
     if (data.enabled && !cur?.lumioNumber) {
       throw new BadRequestException('No Lumio phone number is assigned yet. Contact Lumio to provision your AI hotline number.');

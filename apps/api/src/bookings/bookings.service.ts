@@ -8,6 +8,7 @@ import {
 import { createHmac } from 'crypto';
 import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
+import { formatMoney, localeForCountry } from '../common/money';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -150,6 +151,8 @@ export class BookingsService {
       // Recurring weekday rules (matched by salon-local weekday).
       const wd = wdRow?.value as { enabled?: boolean; rules?: Array<{ day: number; categoryId: string | null; percent: number }> } | undefined;
       if (wd?.enabled && Array.isArray(wd.rules)) {
+        // en-US on purpose: this reads the weekday NAME back into an index via
+        // the map below. It is a parser, not something anybody sees.
         const wdName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(start);
         const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
         const weekday = map[wdName] ?? start.getDay();
@@ -532,20 +535,21 @@ export class BookingsService {
     });
 
     const tz = tenant?.timezone || 'America/New_York';
-    const fmtT = (dd: Date) => dd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
-    const fmtD = (dd: Date) => dd.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
+    // The customer reads this, so it is written in the salon's language and
+    // clock. A US salon is unchanged: en-US still prints 5:30 PM.
+    const loc = await this.customerLocale(tenantId, tenant?.timezone);
+    const fmtT = (dd: Date) => dd.toLocaleTimeString(loc, { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    const fmtD = (dd: Date) => dd.toLocaleDateString(loc, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
     const start = appointment.startTime;
     const end = appointment.endTime;
     const durationMin = Math.round((end.getTime() - start.getTime()) / 60_000);
     const addonNames = Array.isArray(appointment.addons)
       ? (appointment.addons as { name?: string }[]).map((a) => a.name).filter(Boolean).join(', ')
       : '';
-    let total: string;
-    try {
-      total = new Intl.NumberFormat('en-US', { style: 'currency', currency: appointment.currency }).format(appointment.priceCents / 100);
-    } catch {
-      total = `${(appointment.priceCents / 100).toFixed(2)} ${appointment.currency}`;
-    }
+    // Was `cents / 100` with a hard en-US: a 200,000₫ service was quoted to the
+    // customer as ₫2,000 — a hundredth of the real price, in the message that
+    // is supposed to confirm what they will pay.
+    const total = formatMoney(appointment.priceCents, appointment.currency, loc);
 
     const d: BookingTemplateData = {
       salon: tenant?.name ?? 'Our salon',
@@ -745,8 +749,9 @@ export class BookingsService {
     const n = await this.settings.getNotificationSettings(tenantId);
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true, contactPhone: true, timezone: true } });
     const tz = tenant?.timezone || 'America/New_York';
-    const fmtT = (dd: Date) => dd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
-    const fmtD = (dd: Date) => dd.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', timeZone: tz });
+    const loc = await this.customerLocale(tenantId, tenant?.timezone);
+    const fmtT = (dd: Date) => dd.toLocaleTimeString(loc, { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    const fmtD = (dd: Date) => dd.toLocaleDateString(loc, { weekday: 'short', month: 'long', day: 'numeric', timeZone: tz });
     const salon = tenant?.name ?? 'Our salon';
     const cust = appt.customer?.firstName ?? 'there';
     const svc = appt.service?.name ?? 'your appointment';
@@ -1075,20 +1080,16 @@ export class BookingsService {
     });
 
     const tz = tenant?.timezone || 'America/New_York';
-    const fmtT = (dd: Date) => dd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
-    const fmtD = (dd: Date) => dd.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
+    const loc = await this.customerLocale(tenantId, tenant?.timezone);
+    const fmtT = (dd: Date) => dd.toLocaleTimeString(loc, { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    const fmtD = (dd: Date) => dd.toLocaleDateString(loc, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
     const start = appt.startTime;
     const end = appt.endTime;
     const durationMin = Math.round((end.getTime() - start.getTime()) / 60_000);
     const addonNames = Array.isArray(appt.addons)
       ? (appt.addons as { name?: string }[]).map((a) => a.name).filter(Boolean).join(', ')
       : '';
-    let total: string;
-    try {
-      total = new Intl.NumberFormat('en-US', { style: 'currency', currency: appt.currency }).format(appt.priceCents / 100);
-    } catch {
-      total = `${(appt.priceCents / 100).toFixed(2)} ${appt.currency}`;
-    }
+    const total = formatMoney(appt.priceCents, appt.currency, loc);
     const salon = tenant?.name ?? 'Our salon';
     const accent = this.settings.brandingFrom(tenant?.branding).accentColor;
     const contact = tenant?.contactEmail ?? tenant?.contactPhone ?? '';
@@ -1579,6 +1580,24 @@ export class BookingsService {
 
   // ---- Customer self-service via signed reminder links (no login) ----------
 
+  /**
+   * Which locale this salon's messages to ITS customers are written in.
+   *
+   * A confirmation text is read by the customer, so it follows the salon's
+   * country, exactly as the booking page does. Anything unset answers en-US,
+   * which is what every salon running today already sends.
+   */
+  private async customerLocale(tenantId: string, timezone?: string | null): Promise<string> {
+    try {
+      const extra = await this.prisma.setting.findFirst({
+        where: { tenantId, key: 'company_extra' }, select: { value: true },
+      });
+      return localeForCountry((extra?.value as { country?: string } | null)?.country ?? '', timezone);
+    } catch {
+      return 'en-US';
+    }
+  }
+
   private apptToken(appointmentId: string): string {
     const payload = Buffer.from(JSON.stringify({ a: appointmentId, exp: Date.now() + 30 * 86400 * 1000 })).toString('base64url');
     const sig = createHmac('sha256', signingSecret()).update(payload).digest('base64url');
@@ -1617,6 +1636,7 @@ export class BookingsService {
     });
     if (!a) throw new NotFoundException('Appointment not found');
     const tz = a.tenant?.timezone || 'America/New_York';
+    const loc = await this.customerLocale(a.tenantId, a.tenant?.timezone);
     // Referral: when the program is on, surface THIS customer's own share link so
     // they can invite friends straight from their appointment page. Purely a
     // bonus — never let it break the page.
@@ -1635,8 +1655,8 @@ export class BookingsService {
       slug: a.tenant?.slug ?? '',
       service: a.service?.name ?? 'your appointment',
       customer: a.customer?.firstName ?? 'there',
-      date: a.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz }),
-      time: a.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }),
+      date: a.startTime.toLocaleDateString(loc, { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz }),
+      time: a.startTime.toLocaleTimeString(loc, { hour: 'numeric', minute: '2-digit', timeZone: tz }),
       status: a.status,
       confirmed: !!a.customerConfirmedAt,
       canAct: BookingsService.ACTIONABLE.includes(a.status),

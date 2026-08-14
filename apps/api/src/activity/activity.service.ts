@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { formatMoneyShort } from '../common/money';
 import { AppointmentStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -88,7 +89,8 @@ export class ActivityService {
       if (!p.paidAt) continue;
       let amt: string;
       try {
-        amt = new Intl.NumberFormat('en-US', { style: 'currency', currency: p.currency || 'USD', maximumFractionDigits: 0 }).format(p.amountCents / 100);
+        // Same hundredfold bug: a 200,000₫ payment showed in the feed as ₫2,000.
+        amt = formatMoneyShort(p.amountCents, p.currency || 'USD', 'en-US');
       } catch {
         amt = '$' + Math.round(p.amountCents / 100);
       }

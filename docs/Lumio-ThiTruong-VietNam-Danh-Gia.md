@@ -1,8 +1,10 @@
 # Đưa Lumio Booking vào thị trường Việt Nam — đánh giá kỹ thuật
 
-Ngày soát: 12/08/2026. Soát trên code đang chạy.
+Ngày soát: 12/08/2026. Cập nhật 14/08/2026. Soát trên code đang chạy.
 
-> **Giới hạn của tài liệu này:** phần **kỹ thuật** dưới đây tôi đã kiểm chứng bằng cách chạy thử trên chính code của bạn — có bằng chứng cụ thể. Phần **thị trường** (Zalo, VietQR, quy định pháp lý) tôi **chưa kiểm chứng được** vì công cụ tra cứu hết hạn mức trong phiên này. Những mục đó tôi ghi rõ là *cần kiểm chứng*, đừng ra quyết định dựa vào chúng cho tới khi tra lại.
+> **Tình trạng:** phần **kỹ thuật** đã kiểm chứng bằng cách chạy thử trên chính code của bạn. Phần **thị trường** (Zalo, VietQR, pháp lý) đã tra nguồn ngày 14/08/2026 — xem mục *ĐÃ KIỂM CHỨNG*. Chỗ nào vẫn chưa chắc thì ghi rõ là chưa chắc.
+>
+> **Giai đoạn 1 đã LÀM XONG** ngày 14/08/2026 (4 commit). Chi tiết ở cuối tài liệu.
 
 ---
 
@@ -102,36 +104,56 @@ Không phải làm lại từ đầu. Các phần này đã đúng kiến trúc:
 
 ---
 
-# CẦN KIỂM CHỨNG trước khi quyết định
+# ĐÃ KIỂM CHỨNG — tra ngày 14/08/2026
 
-Những mục dưới đây tôi **chưa tra được** trong phiên này. Đừng lên kế hoạch dựa vào chúng cho tới khi kiểm chứng lại.
+Phần này trước đây là phỏng đoán. Nay đã tra nguồn. Chỗ nào vẫn chưa chắc, tôi ghi rõ là chưa chắc.
 
-## Kênh nhắn tin
+## Zalo — kết luận quan trọng nhất: OA là của TIỆM, không phải của bạn
 
-Ở Mỹ bạn dùng Messenger + SMS. Ở Việt Nam **Zalo** là kênh doanh nghiệp phổ biến hơn Messenger nhiều — nhưng cần tra rõ:
+Zalo OA xác thực **bắt buộc có Giấy đăng ký kinh doanh Việt Nam**, và tên OA phải trùng tên trên giấy ĐKKD (hoặc nhãn hiệu đã đăng ký với Cục Sở hữu trí tuệ). OA mới có **14 ngày** để nộp hồ sơ xác thực. Zalo duyệt trong **2–3 ngày làm việc**.
 
-- Zalo OA (Official Account) hiện cho gửi tin nhắn giao dịch tới khách thế nào, điều kiện gì
-- Zalo ZNS (dịch vụ gửi thông báo) chi phí và thủ tục đăng ký mẫu tin
-- SMS brandname ở VN: thủ tục, chi phí, có bắt buộc đăng ký mẫu không
+Lumio là công ty Mỹ, nên **bạn không tự đăng ký OA thay khách được**. Nhưng đây không phải rào cản — nó chỉ đường cho kiến trúc:
 
-Đây là hạng mục **lớn nhất về khối lượng công việc** nếu phải làm — tương đương xây lại phần Messenger bot cho một nền tảng mới.
+> **Mỗi tiệm tự đăng ký OA của mình rồi kết nối vào Lumio — y hệt cách họ kết nối Trang Facebook hôm nay.**
 
-## Thanh toán
+Nghĩa là phần Zalo không cần pháp nhân Việt Nam, và nó khớp sẵn với mô hình đa tiệm: mỗi tenant một OA, giống mỗi tenant một Messenger page.
 
-- Chuyển khoản QR (VietQR) — chuẩn hiện hành, cách tạo mã, có cần qua trung gian không
-- MoMo / ZaloPay / VNPay — cái nào cần cho tiệm nail/spa nhỏ
-- Thẻ tín dụng gần như không dùng ở tiệm nail VN → phần phụ phí thẻ nên tắt mặc định
+**Chi phí ZNS (tin nhắn thông báo):** trả theo tin **gửi thành công**, khoảng **200–800đ/tin** tuỳ loại mẫu và thành phần. Nút CTA đầu tiên miễn phí; nút thêm, ảnh, voucher đều cộng tiền — một mẫu đầy đủ có thể lên tới ~1.100đ/tin. Gói OA từ khoảng 10.000đ/tháng.
 
-## Pháp lý
+Để so sánh: một tin nhắc hẹn ~300–500đ, tức khoảng **1,2–2 cent Mỹ** — rẻ hơn SMS Twilio ở Mỹ. Chi phí không phải vấn đề; **công sức tích hợp mới là vấn đề**.
 
-- Quy định bảo vệ dữ liệu cá nhân hiện hành ở VN và yêu cầu về **sự đồng ý** khi gửi tin nhắn quảng cáo
-- Hoá đơn điện tử: tiệm nail/spa quy mô nhỏ có bắt buộc không
-- Có yêu cầu tiết lộ AI khi tổng đài tự động trả lời không (ở Mỹ là có, California/Texas)
+## Thanh toán — VietQR có API, không cần trung gian bắt buộc
 
-## Thói quen người dùng
+VietQR có API chính thức (`api.vietqr.vn`) cho phép tạo mã QR chuyển khoản và **nhận thông báo biến động số dư theo thời gian thực** để tự đối soát. Có sẵn plugin cho WooCommerce, Sapo, Haravan. Ngoài ra có cổng trung gian như SePay nếu không muốn tự nối ngân hàng.
 
-- Khách Việt đặt lịch qua chat nhiều hơn qua form web — nếu đúng, **Zalo bot quan trọng hơn trang đặt lịch**
-- Văn hoá tip: tiệm nail VN thường không tip → nên có công tắc **ẩn toàn bộ phần tip** trong POS (hiện tip nằm ở 7 file giao diện)
+Đây là tin tốt: **Lumio đã có sẵn phần "chuyển khoản + QR" trong POS** (`transferInstructions`, `transferQrUrl`). Bước đầu cho tiệm VN có thể chỉ là **dán mã VietQR tĩnh** vào ô đã có — chạy được ngay, không cần code gì thêm. Tự động đối soát là bước sau, khi có tiệm thật dùng.
+
+**Vẫn chưa chắc:** MoMo/ZaloPay có cần cho tiệm nail nhỏ không. Chưa có dữ liệu, đừng đoán.
+
+## Pháp lý — luật đã ĐỔI, tài liệu cũ của tôi lỗi thời
+
+Đây là chỗ tôi suýt dẫn bạn đi sai.
+
+- **Nghị định 13/2023 đã HẾT HIỆU LỰC từ 01/01/2026.**
+- Thay bằng **Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15**, Quốc hội thông qua 26/06/2025, hiệu lực **01/01/2026**, hướng dẫn bởi **Nghị định 356/2025/NĐ-CP**.
+
+Hai điều ảnh hưởng trực tiếp tới Lumio:
+
+**1. Luật áp dụng NGOÀI lãnh thổ.** Tổ chức nước ngoài xử lý dữ liệu cá nhân của công dân Việt Nam thuộc phạm vi điều chỉnh. Lumio là công ty Mỹ, cơ sở dữ liệu đặt ngoài Việt Nam — **vẫn thuộc diện áp dụng** khi phục vụ tiệm Việt Nam.
+
+**2. Chuyển dữ liệu xuyên biên giới cần hồ sơ đánh giá tác động** (Mẫu số 09 theo Nghị định 356/2025). Dữ liệu khách của tiệm Việt nằm trên Neon ở nước ngoài chính là chuyển xuyên biên giới.
+
+**Về nội địa hoá dữ liệu (Nghị định 53/2022):** yêu cầu lưu trữ dữ liệu tại Việt Nam và đặt chi nhánh/văn phòng đại diện **không tự động áp dụng** — nó phát sinh khi **Bộ Công an ra quyết định yêu cầu** với từng doanh nghiệp cụ thể. Nên đây **chưa phải rào cản để bắt đầu**, nhưng là rủi ro cần biết trước nếu quy mô lớn lên.
+
+**Việc phải làm, không phải việc nên làm:** trước khi nhận tiệm Việt Nam trả tiền, hỏi một luật sư Việt Nam về hồ sơ chuyển dữ liệu xuyên biên giới. Đây là loại việc rẻ nếu làm sớm và đắt nếu làm muộn. Tôi không phải luật sư và phần này không thay được tư vấn pháp lý.
+
+**Chưa tra được:** hoá đơn điện tử cho tiệm nhỏ, và nghĩa vụ tiết lộ AI khi tổng đài tự trả lời ở Việt Nam.
+
+## Thói quen người dùng — vẫn là phỏng đoán
+
+Không tra được bằng chứng đáng tin về việc khách Việt thích đặt qua chat hơn form web. **Đây vẫn là giả định, và nó là giả định đắt nhất trong cả kế hoạch** — vì nếu đúng thì Zalo bot quan trọng hơn trang đặt lịch, còn nếu sai thì làm Zalo trước là phí vài tháng.
+
+Chỉ một tiệm thật dùng ba tháng mới trả lời được câu này.
 
 ---
 
@@ -157,3 +179,39 @@ Sau giai đoạn này, hệ thống chạy được cho một tiệm VN với th
 Đừng làm cả ba giai đoạn rồi mới đi bán. **Làm xong Giai đoạn 1 rồi tìm một tiệm ở Việt Nam dùng miễn phí ba tháng.** Ba tháng đó sẽ cho bạn biết Zalo có thật sự cần thiết không, khách có chịu đặt qua web không, tiệm có cần hoá đơn không — những câu mà bây giờ tôi lẫn bạn đều chỉ đang đoán.
 
 Xây Giai đoạn 3 trước rồi phát hiện tiệm VN không dùng nó là mất vài tháng công.
+
+---
+
+# Giai đoạn 1 — đã hoàn thành 14/08/2026
+
+| Hạng mục | Tình trạng | Ghi chú |
+|---|---|---|
+| Một hàm tiền tệ, biết số thập phân theo loại tiền | Xong | Hai bản: `apps/web/src/lib/ui.ts` cho web, `apps/api/src/common/money.ts` cho máy chủ |
+| Chuẩn hoá số điện thoại theo quốc gia của tiệm | Xong | `apps/api/src/common/phone.ts`, dùng chung cho nhắc hẹn và hotline |
+| Ngày giờ theo quốc gia | Xong | Cả trang khách, trang quản lý, và tin nhắn máy chủ gửi đi |
+| Công tắc ẩn tiền tip | Xong | `PosSettings.tipsEnabled`, chọn VN là tự tắt |
+| Chọn quốc gia trong Cài đặt | Xong | Đổi theo: múi giờ, tiền tệ, ngôn ngữ, tip |
+| Giao diện khách bằng tiếng Việt | Xong | 259 chuỗi, cả trang nail và trang đặt bàn nhà hàng |
+
+**Ba lỗi phát hiện thêm trong lúc làm, không có trong đánh giá ban đầu:**
+
+1. **Máy chủ báo giá sai 100 lần** — dòng `chia 100` kèm dấu `$` bị chép ra ba nơi: tin nhắn xác nhận, bot Messenger, hotline AI. Dịch vụ 200.000₫ được báo cho khách là 2.000₫.
+2. **Hotline có bản chép riêng của quy tắc số điện thoại**, vẫn mặc định +1 — số Việt 10 chữ số thành số Mỹ giả, gửi đi im lặng không tới.
+3. **Danh sách dịch vụ của hotline bị chặn ở 40** — cùng loại lỗi từng làm bot khẳng định một dịch vụ có thật là không tồn tại.
+
+**Việc cần làm ở máy bạn:** chạy `npx prisma generate` rồi `npm test` — bộ test API không chạy được trong môi trường của tôi vì không tải được engine của Prisma.
+
+---
+
+# Bước kế tiếp — đề xuất, không phải kế hoạch
+
+Giai đoạn 1 xong nghĩa là hệ thống **đã chạy được cho một tiệm Việt Nam** với tiền mặt/chuyển khoản và nhắc hẹn qua Messenger. Lời khuyên vẫn không đổi:
+
+**Đừng xây Giai đoạn 2 và 3. Hãy tìm một tiệm ở Việt Nam dùng miễn phí ba tháng.**
+
+Ba tháng đó trả lời được ba câu mà bây giờ cả tôi lẫn bạn đều đang đoán:
+- Khách có chịu đặt qua trang web không, hay chỉ nhắn tin?
+- Zalo có thật sự cần, hay Messenger đủ dùng?
+- Tiệm có cần đối soát chuyển khoản tự động, hay dán mã VietQR tĩnh là xong?
+
+Việc duy nhất nên làm trước khi có tiệm thật: **hỏi luật sư Việt Nam về hồ sơ chuyển dữ liệu cá nhân xuyên biên giới.** Rẻ nếu làm sớm, đắt nếu làm muộn.

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { uiLocale } from './datetime';
 
 // Shared style tokens for the dashboard pages.
 export const ui = {
@@ -66,19 +67,24 @@ export const ui = {
  */
 /** Intl throws on a blank or malformed code, and a page must never white-screen
  *  over a missing currency setting. */
-const safeFormatter = (currency: string): Intl.NumberFormat => {
+const safeFormatter = (currency: string, locale: string): Intl.NumberFormat => {
   try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency });
+    return new Intl.NumberFormat(locale, { style: 'currency', currency });
   } catch {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' });
   }
 };
 
 const minorUnitDigits = (currency: string): number =>
-  safeFormatter(currency).resolvedOptions().maximumFractionDigits ?? 2;
+  safeFormatter(currency, 'en-US').resolvedOptions().maximumFractionDigits ?? 2;
 
 export function formatPrice(minorUnits: number, currency = 'USD'): string {
-  const nf = safeFormatter(currency);
+  // Grouping and symbol placement belong to the locale, not the currency: the
+  // amount was right after the decimals were fixed, but a Vietnamese salon was
+  // still reading "₫200,000" — American separators, symbol on the American
+  // side — where the country writes "200.000 ₫". uiLocale() is the same signal
+  // the dates already follow, so the dashboard agrees with itself.
+  const nf = safeFormatter(currency, uiLocale());
   const digits = nf.resolvedOptions().maximumFractionDigits ?? 2;
   return nf.format(digits === 0 ? minorUnits : minorUnits / 10 ** digits);
 }

@@ -77,12 +77,23 @@ const LEAD_KILLING_PATTERNS: RegExp[] = [
   /(không|chưa)\s*(có|nhận|phục vụ|làm)[^.!?]{0,40}(dịch vụ|ngành|lĩnh vực|mảng)/i,
   /(không|chưa)\s*có\s*dịch\s*vụ/i,
   /(không|chưa)\s*(hỗ trợ|phục vụ)\s*(cho|ngành|quán|tiệm)/i,
+  // "we have no experience with that" — a softer refusal, and just as final.
+  /(chưa|không)\s*có\s*kinh\s*nghiệm/i,
+  /(chưa|không)\s*(từng\s*)?làm\s*(cho|với)\s*(ngành|quán|mô hình|loại)/i,
+  /(chưa|không)\s*(rành|thạo|chuyên)\s*(về|mảng|ngành)/i,
+  /\b(no|little|not much)\s+experience\s+(with|in)\b/i,
   /\bwe\s+(only|just)\s+(serve|do|work with|specialis[sz]e)\b/i,
   /\b(don't|do not|doesn't|does not)\s+(serve|support|work with|cover)\b/i,
   // "no separate price / not sold separately / only bundled"
   /(không|chẳng)\s*(bán|tính)\s*(riêng|lẻ)/i,
   /(không|chẳng)\s*có\s*giá\s*riêng/i,
   /chỉ\s*(có|bán)\s*(kèm|theo\s*gói)/i,
+  // Reproaching the customer for repeating themselves. "Anh hỏi lần thứ 5 rồi"
+  // is the bot blaming a person for its own failure to answer, and it is the
+  // last thing they read before leaving.
+  /(hỏi|nhắn|nói)\s*(lại\s*)?(lần\s*)?(thứ\s*)?\d+\s*(lần\s*)?rồi/i,
+  /(như|giống)\s*(em|tôi)\s*(đã\s*)?(nói|trả lời)\s*(ở\s*)?(trên|lúc nãy|rồi)/i,
+  /\b(as I|like I)\s+(already\s+)?(said|mentioned|explained)\b/i,
   /\b(not sold|isn't sold|is not sold)\s+separately\b/i,
   /\bno\s+separate\s+price\b/i,
   /\bonly\s+(available|included)\s+(with|as part of)\b/i,
@@ -1443,6 +1454,9 @@ KEEP IT SHORT — these rules beat everything else:
 - ONLY state prices, features, policies and links that appear in the FACTS below. NEVER invent, never negotiate, never take payment in chat.
 - Anything needing detail, a custom quote, a timeline, or something NOT in the FACTS: do not improvise and do not keep talking. Say the team will check and call back, then ask for what you still need to reach them.
 - Off-topic? One friendly line, then back to their shop.
+NEVER BLAME THE CUSTOMER — not once, not gently:
+- Never count how many times they have asked, never say "as I already said", never point out that they repeated themselves. If they asked again, YOUR answer did not land. That is your problem to fix, not theirs to be corrected about.
+- Asked the same thing twice: answer it differently — shorter, more concrete, with the number they wanted — and never mention the repetition.
 NEVER TAKE A PRICE AWAY — this outranks the FACTS themselves:
 - You may never tell anyone that something "has no price of its own", "is not sold separately", "is only available with" a bigger package, or any wording that removes a price. You cannot know that, it is usually untrue, and it turns a buying question into a closed door.
 - Even if a FACT is worded that way, it describes ONE way to buy — never the only way. Report what the fact includes; do not repeat its exclusivity.

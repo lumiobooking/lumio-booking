@@ -9,6 +9,7 @@ import { createHmac } from 'crypto';
 import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
+import { toE164, dialCodeFor } from '../common/phone';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -198,7 +199,8 @@ export class BookingsService {
       // a tier fires only on its EXACT visit number (visit 1 = brand-new customer,
       // visit 5 = returning-customer thank-you, etc.).
       const fv = fvRow?.value as { enabled?: boolean; percent?: number; rules?: Array<{ visit?: number; percent?: number }> } | undefined;
-      const phone = (dto.customerPhone || '').trim();
+      const rawPhone = (dto.customerPhone || '').trim();
+      const phone = (await this.normalizedPhone(tenantId, rawPhone)) ?? '';
       const email = (dto.customerEmail || '').trim().toLowerCase();
       if (fv?.enabled && (phone || email)) {
         const rules = Array.isArray(fv.rules) && fv.rules.length
@@ -206,7 +208,9 @@ export class BookingsService {
           : ((fv.percent ?? 0) > 0 ? [{ visit: 1, percent: fv.percent! }] : []);
         if (rules.length) {
           const or: Prisma.CustomerWhereInput[] = [];
+          // Both shapes: rows written before normalisation still hold the raw text.
           if (phone) or.push({ phone });
+          if (rawPhone && rawPhone !== phone) or.push({ phone: rawPhone });
           if (email) or.push({ email });
           const existing = await this.prisma.customer.findFirst({ where: { tenantId, OR: or }, select: { id: true } });
           const visits = existing
@@ -234,6 +238,29 @@ export class BookingsService {
     return Math.min(90, Math.max(0, best));
   }
 
+  /**
+   * The customer's phone in one canonical shape, read with the salon's country.
+   *
+   * Two people are the same person whether they typed "0912 345 678",
+   * "0912345678" or "+84 912 345 678"; a database that stores whichever one
+   * they happened to type will insist they are three. Falls back to the trimmed
+   * input when the number cannot be normalised, so nothing is ever lost.
+   */
+  private async normalizedPhone(tenantId: string, raw?: string | null): Promise<string | null> {
+    const trimmed = String(raw ?? '').trim();
+    if (!trimmed) return null;
+    try {
+      const [t, extra] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }),
+      ]);
+      const country = (extra?.value as { country?: string } | null)?.country ?? '';
+      return toE164(trimmed, dialCodeFor(country, t?.timezone)) ?? trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+
   private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto) {
     // Only ever upgrade consent to true (never silently revoke a prior opt-in
     // just because a returning customer left the box unchecked this time).
@@ -250,6 +277,7 @@ export class BookingsService {
     // so a returning customer is never re-attributed.
     const referredById = await this.referral.resolveReferrerId(tx, tenantId, dto.referralCode);
     const referredBy = referredById ? { referredById } : {};
+    const phone = await this.normalizedPhone(tenantId, dto.customerPhone);
     if (dto.customerEmail) {
       const email = dto.customerEmail.toLowerCase();
       return tx.customer.upsert({
@@ -257,7 +285,7 @@ export class BookingsService {
         update: {
           firstName: dto.customerFirstName,
           lastName: dto.customerLastName ?? null,
-          phone: dto.customerPhone ?? null,
+          phone,
           ...consent,
           ...birthData,
         },
@@ -266,19 +294,45 @@ export class BookingsService {
           email,
           firstName: dto.customerFirstName,
           lastName: dto.customerLastName ?? null,
-          phone: dto.customerPhone ?? null,
+          phone,
           ...consent,
           ...birthData,
           ...referredBy,
         },
       });
     }
+    // No email: the phone IS the identity, and in most of the world it is the
+    // only one a customer gives. Without this every booking made by the same
+    // person created a NEW customer — so their visit count never grew, their
+    // history never gathered, and a first-visit discount fired every time.
+    // Matched on the normalised number and on whatever was stored before
+    // normalisation existed, so returning customers are recognised either way.
+    if (phone) {
+      const raw = String(dto.customerPhone ?? '').trim();
+      const existing = await tx.customer.findFirst({
+        where: { tenantId, OR: raw && raw !== phone ? [{ phone }, { phone: raw }] : [{ phone }] },
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (existing) {
+        return tx.customer.update({
+          where: { id: existing.id },
+          data: {
+            firstName: dto.customerFirstName,
+            lastName: dto.customerLastName ?? null,
+            phone,
+            ...consent,
+            ...birthData,
+          },
+        });
+      }
+    }
     return tx.customer.create({
       data: {
         tenantId,
         firstName: dto.customerFirstName,
         lastName: dto.customerLastName ?? null,
-        phone: dto.customerPhone ?? null,
+        phone,
         ...consent,
         ...birthData,
         ...referredBy,

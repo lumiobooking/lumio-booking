@@ -49,6 +49,51 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 const MAX_TURNS = 12; // history cap
 const MAX_TOOL_LOOPS = 5;
 
+/**
+ * Sentences a SALES bot must never send, and the reason a rule in the prompt
+ * was not enough.
+ *
+ * A prompt is advice. This is a gate. Both failures we saw in production were
+ * the model closing a door nobody asked it to close — telling a karaoke-bar
+ * owner we "only do nail, spa and restaurants", and telling a buyer that the
+ * Messenger AI "has no separate price". Each ended a live conversation
+ * politely, which is the kind of loss that never gets reported: the customer
+ * simply leaves and the owner never learns why.
+ *
+ * Matching is on meaning-bearing fragments in both languages the bot speaks.
+ * A false positive costs one extra model call; a false negative costs a
+ * customer, so the list leans towards catching too much.
+ */
+const LEAD_KILLING_PATTERNS: RegExp[] = [
+  // NOTE ON \b: JavaScript word boundaries are ASCII-only, so \b after "có"
+  // or "vụ" never matches — the last letter carries a diacritic and is not a
+  // word character. Two real phrases slipped through the first version of this
+  // list for exactly that reason. Vietnamese patterns therefore use no
+  // boundaries; English ones still can.
+  // "we only do / specialise in X only"
+  /(chỉ|thôi)\s*(chuyên|làm|phục vụ|nhận)/i,
+  /chuyên[^.!?]{0,60}thôi/i,
+  // "we have no service for / not yet any service for …"
+  /(không|chưa)\s*(có|nhận|phục vụ|làm)[^.!?]{0,40}(dịch vụ|ngành|lĩnh vực|mảng)/i,
+  /(không|chưa)\s*có\s*dịch\s*vụ/i,
+  /(không|chưa)\s*(hỗ trợ|phục vụ)\s*(cho|ngành|quán|tiệm)/i,
+  /\bwe\s+(only|just)\s+(serve|do|work with|specialis[sz]e)\b/i,
+  /\b(don't|do not|doesn't|does not)\s+(serve|support|work with|cover)\b/i,
+  // "no separate price / not sold separately / only bundled"
+  /(không|chẳng)\s*(bán|tính)\s*(riêng|lẻ)/i,
+  /(không|chẳng)\s*có\s*giá\s*riêng/i,
+  /chỉ\s*(có|bán)\s*(kèm|theo\s*gói)/i,
+  /\b(not sold|isn't sold|is not sold)\s+separately\b/i,
+  /\bno\s+separate\s+price\b/i,
+  /\bonly\s+(available|included)\s+(with|as part of)\b/i,
+];
+
+/** True when a sales reply disqualifies the customer instead of capturing them. */
+export function killsTheLead(reply: string): boolean {
+  const t = String(reply || '');
+  return LEAD_KILLING_PATTERNS.some((re) => re.test(t));
+}
+
 @Injectable()
 export class MessengerService implements OnModuleInit {
   /**
@@ -1538,6 +1583,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     }
     const messages: { role: string; content: unknown }[] = [...hist, { role: 'user', content: userText }];
 
+    // One rewrite only: a gate that can loop is a gate that can hang a reply.
+    let retried = false;
+
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -1563,6 +1611,26 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         continue;
       }
       const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+
+      // The gate. Only sales mode: a booking bot saying "we don't do that
+      // service" is correct, a sales bot saying it has just lost a customer.
+      if (ctx.mode === 'sales' && text && killsTheLead(text) && !retried) {
+        retried = true;
+        this.logger.warn(`Sales reply blocked (would disqualify the lead): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({
+          role: 'user',
+          content:
+            'SYSTEM CORRECTION — that reply was blocked before it was sent, because it turns the customer away.\n'
+            + 'You told them something is not offered, not served, or has no price of its own. You do not know that, and it is not yours to decide.\n'
+            + 'Rewrite your reply now:\n'
+            + '1. Do NOT repeat any form of "we only do X", "we have no service for that", "no separate price", or "only available with".\n'
+            + '2. Say warmly that the team handles cases like theirs and will advise them specifically.\n'
+            + '3. Ask for the shop name and the phone number that reaches them, so a person can call.\n'
+            + 'Two short sentences. Same language as the conversation. Send only the new reply.',
+        });
+        continue;
+      }
       return text || 'Got it! How else can I help you book?';
     }
     return 'Thanks! A team member will follow up with you shortly. 💕';

@@ -1398,6 +1398,12 @@ KEEP IT SHORT — these rules beat everything else:
 - ONLY state prices, features, policies and links that appear in the FACTS below. NEVER invent, never negotiate, never take payment in chat.
 - Anything needing detail, a custom quote, a timeline, or something NOT in the FACTS: do not improvise and do not keep talking. Say the team will check and call back, then ask for what you still need to reach them.
 - Off-topic? One friendly line, then back to their shop.
+NEVER TURN ANYONE AWAY — this outranks every other rule here:
+- You do not decide who is a customer. The team does, and they take every trade. Your job is to capture, never to qualify.
+- The trades named anywhere above are EXAMPLES, not a boundary. A list of examples is not a list of exclusions. Never say the business "only does" certain trades, "does not serve" theirs, or "has no service for" what they run — that sentence is false and it ends a live conversation.
+- Someone whose trade you have no facts about is the MOST valuable message you will get today: they came to you anyway. Not knowing is a reason to take their number, never a reason to close.
+- Say the team has done this for shops like theirs and will advise them specifically, then ask for the shop name and the phone. Nothing else.
+- NEVER wish someone well and sign off while they are still unqualified and uncaptured. "Chúc tiệm chị phát triển tốt ạ" to a lead who just told you what they run is losing them politely, and you will never know you did it.
 PACE — you are running out of time, act like it:
 - By your 2nd reply you should be asking for their Google Maps link (or shop name + city).
 - By your 4th reply you should have their name and phone, or be asking for it.
@@ -1493,7 +1499,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // thank you, say bye, or everything is done), close warmly — the owner can
     // set the spirit of that goodbye, the bot adapts it per language/moment.
     const closingRule = ctx.closing
-      ? `\nCLOSING: when the customer wraps up (thanks, goodbye, all done), reply with ONE warm goodbye in the conversation's language and STOP. If a callback, audit or area check is pending, fold it into the goodbye ("Dạ, team sẽ kiểm tra khu vực rồi gọi lại anh/chị sớm ạ") so they leave knowing what happens next. NEVER answer thanks with a re-opener like "How else can I help?" — a goodbye closes, it does not reopen. Spirit of the goodbye: "${ctx.closing}" — adapt it naturally, never paste it robotically, never add a sales push.`
+      ? `\nCLOSING: only when the CUSTOMER wraps up (they thank you, say goodbye, or everything is done) — never as a way to end a conversation yourself, and never with a lead you have not captured. Reply with ONE warm goodbye in the conversation's language and STOP. If a callback, audit or area check is pending, fold it into the goodbye ("Dạ, team sẽ kiểm tra khu vực rồi gọi lại anh/chị sớm ạ") so they leave knowing what happens next. NEVER answer thanks with a re-opener like "How else can I help?" — a goodbye closes, it does not reopen. Spirit of the goodbye: "${ctx.closing}" — adapt it naturally, never paste it robotically, never add a sales push.`
       : `\nCLOSING: when the customer wraps up (thanks, goodbye, all done), reply with ONE warm goodbye in the conversation's language and STOP. If a callback, audit or area check is pending, fold it into the goodbye ("Dạ, team sẽ kiểm tra khu vực rồi gọi lại anh/chị sớm ạ") so they leave knowing what happens next. NEVER answer thanks with a re-opener like "How else can I help?" — a goodbye closes, it does not reopen. No sales push in the goodbye.`;
 
     // Persona: the owner wants a named colleague, not "the assistant". The bot

@@ -90,3 +90,22 @@ Câu trả lời đạt yêu cầu phải:
 3. Không nêu $179 trước $69
 
 Nếu bot vẫn nói $179 trước, nghĩa là Facts chưa lưu hoặc chưa bật (nút bật/tắt từng dòng).
+
+---
+
+## Bot tự từ chối khách khác ngành — đã sửa trong code
+
+Bot trả lời một chủ quán net/billiard/karaoke rằng *"bên em chuyên nail, spa và nhà hàng thôi ạ — chưa có dịch vụ riêng cho quán net/billiard/karaoke"*, rồi chúc may mắn và đóng hội thoại. Đó là mất khách, và mất một cách lịch sự nên sẽ không ai biết.
+
+**Nguồn:** ô **Giới thiệu doanh nghiệp** trong Messenger. Nếu câu đó liệt kê ngành (*"…cho salon, spa, nhà hàng"*), bot đọc thành **danh sách đóng** và tự suy ra ngành nào không có trong đó là không phục vụ.
+
+Đã sửa hai chỗ:
+
+1. **Trong code** — thêm quy tắc đứng trên mọi quy tắc khác: bot **không được quyền quyết định ai là khách**. Ngành nghề nêu ở bất cứ đâu chỉ là **ví dụ, không phải giới hạn**. Không biết về ngành của khách là lý do để **xin số**, không phải để đóng chuyện. Và không được chào tạm biệt khi khách chưa được ghi nhận.
+2. **Gợi ý mẫu trong giao diện** đã bỏ phần liệt kê ngành, kèm dòng nhắc ngay dưới nhãn.
+
+**Việc bạn cần làm:** vào **Messenger → ô Giới thiệu doanh nghiệp**, nếu câu hiện tại có liệt kê ngành thì sửa lại thành câu **không đóng khung**, ví dụ:
+
+`agency marketing trọn gói cho mọi ngành — website, quảng cáo, chatbot AI, phần mềm đặt lịch`
+
+Cũng nên rà lại 🏢 Thông tin doanh nghiệp xem có dòng nào liệt kê ngành theo kiểu giới hạn không.

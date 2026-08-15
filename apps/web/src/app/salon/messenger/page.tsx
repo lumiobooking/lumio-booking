@@ -941,9 +941,9 @@ function Inner() {
               onChange={(e) => setC({ ...c, agentName: e.target.value })} onBlur={() => save({})} style={ui.input} />
           </div>
           <div>
-            <label style={ui.label}>{lang === 'vi' ? 'Giới thiệu doanh nghiệp (1 câu bot dùng khi tự giới thiệu)' : 'Business intro (one line the bot uses)'}</label>
+            <label style={ui.label}>{lang === 'vi' ? 'Giới thiệu doanh nghiệp (1 câu bot dùng khi tự giới thiệu) — đừng liệt kê ngành nghề, bot sẽ hiểu là danh sách đóng và từ chối ngành khác' : 'Business intro (one line the bot uses) — avoid listing trades; the bot reads a list as a limit and turns other trades away'}</label>
             <input value={c.bizIntro}
-              placeholder={lang === 'vi' ? 'vd: agency marketing trọn gói — website, quảng cáo, chatbot AI, phần mềm đặt lịch cho salon, spa, nhà hàng' : 'e.g. full-service marketing agency — websites, ads, AI chat, booking software'}
+              placeholder={lang === 'vi' ? 'vd: agency marketing trọn gói cho mọi ngành — website, quảng cáo, chatbot AI, phần mềm đặt lịch' : 'e.g. full-service marketing agency for any trade — websites, ads, AI chat, booking software'}
               onChange={(e) => setC({ ...c, bizIntro: e.target.value })} onBlur={() => save({})} style={ui.input} />
           </div>
         </div>

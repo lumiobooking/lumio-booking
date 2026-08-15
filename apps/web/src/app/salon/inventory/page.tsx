@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { ui, formatPrice } from '../../../lib/ui';
+import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
@@ -29,6 +29,9 @@ function Inner() {
   const [q, setQ] = useState('');
   const [lowOnly, setLowOnly] = useState(false);
   const [items, setItems] = useState<Supply[]>([]);
+  // Supplies carry no currency of their own, so the salon's own is the only
+  // sensible reading of a typed cost.
+  const [pageCurrency, setPageCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -39,7 +42,14 @@ function Inner() {
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
-    try { setItems(await apiFetch<Supply[]>('/supplies', { token })); }
+    try {
+      const [rows, settings] = await Promise.all([
+        apiFetch<Supply[]>('/supplies', { token }),
+        apiFetch<{ booking?: { currency?: string } }>('/settings', { token }).catch(() => ({} as { booking?: { currency?: string } })),
+      ]);
+      setItems(rows);
+      setPageCurrency(settings.booking?.currency ?? 'USD');
+    }
     catch (err) { setError(err instanceof Error ? err.message : 'Failed to load'); }
     finally { setLoading(false); }
   }, [token]);
@@ -77,7 +87,7 @@ function Inner() {
         </div>
       )}
 
-      {showForm && <SupplyForm token={token!} onDone={async () => { setShowForm(false); await load(); }} />}
+      {showForm && <SupplyForm token={token!} currency={pageCurrency} onDone={async () => { setShowForm(false); await load(); }} />}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, margin: '14px 0 16px' }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('iv.searchPh')} />
@@ -115,8 +125,8 @@ function Inner() {
                     <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                   </MActions>
                 </MCard>
-                {editId === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><SupplyForm token={token!} item={i} onDone={async () => { setEditId(null); await load(); }} /></div>}
-                {moveFor?.id === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><MovePanel token={token!} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} /></div>}
+                {editId === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} /></div>}
+                {moveFor?.id === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><MovePanel token={token!} currency={pageCurrency} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} /></div>}
                 {histFor === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><HistoryPanel token={token!} item={i} /></div>}
               </Fragment>
             ))}
@@ -169,12 +179,12 @@ function Inner() {
                   </tr>
                   {editId === i.id && (
                     <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
-                      <SupplyForm token={token!} item={i} onDone={async () => { setEditId(null); await load(); }} />
+                      <SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} />
                     </td></tr>
                   )}
                   {moveFor?.id === i.id && (
                     <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
-                      <MovePanel token={token!} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} />
+                      <MovePanel token={token!} currency={pageCurrency} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} />
                     </td></tr>
                   )}
                   {histFor === i.id && (
@@ -194,7 +204,7 @@ function Inner() {
   );
 }
 
-function SupplyForm({ token, item, onDone }: { token: string; item?: Supply; onDone: () => void }) {
+function SupplyForm({ token, item, onDone, currency = 'USD' }: { token: string; item?: Supply; onDone: () => void; currency?: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({
@@ -202,7 +212,7 @@ function SupplyForm({ token, item, onDone }: { token: string; item?: Supply; onD
     unit: item?.unit ?? 'unit',
     stockQty: item ? String(item.stockQty) : '0',
     lowStockThreshold: item ? String(item.lowStockThreshold) : '0',
-    cost: item?.costCents != null ? (item.costCents / 100).toString() : '',
+    cost: item?.costCents != null ? fromMinorUnits(item.costCents, currency) : '',
     supplier: item?.supplier ?? '',
   });
   const [error, setError] = useState<string | null>(null);
@@ -217,7 +227,7 @@ function SupplyForm({ token, item, onDone }: { token: string; item?: Supply; onD
         unit: form.unit || 'unit',
         stockQty: parseInt(form.stockQty, 10) || 0,
         lowStockThreshold: parseInt(form.lowStockThreshold, 10) || 0,
-        costCents: form.cost.trim() ? Math.round((parseFloat(form.cost) || 0) * 100) : undefined,
+        costCents: form.cost.trim() ? toMinorUnits(form.cost, currency) : undefined,
         supplier: form.supplier.trim() || undefined,
       };
       if (item) await apiFetch(`/supplies/${item.id}`, { method: 'PATCH', token, body });
@@ -251,7 +261,7 @@ interface Movement { id: string; delta: number; reason: string; note: string | n
 const REASON_KEY: Record<string, string> = { PURCHASE: 'iv.rPurchase', USE: 'iv.rUse', DAMAGE: 'iv.rDamage', RETURN: 'iv.rReturn', ADJUST: 'iv.rAdjust' };
 
 /** Record a documented stock-in (purchase) or stock-out (use/damage/return). */
-function MovePanel({ token, item, dir, onDone, onCancel }: { token: string; item: Supply; dir: 'IN' | 'OUT'; onDone: () => void; onCancel: () => void }) {
+function MovePanel({ token, item, dir, onDone, onCancel, currency = 'USD' }: { token: string; item: Supply; dir: 'IN' | 'OUT'; onDone: () => void; onCancel: () => void ; currency?: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const reasons = dir === 'IN'
@@ -272,7 +282,7 @@ function MovePanel({ token, item, dir, onDone, onCancel }: { token: string; item
     try {
       await apiFetch(`/supplies/${item.id}/move`, {
         method: 'POST', token,
-        body: { delta: dir === 'IN' ? n : -n, reason, note: note.trim() || undefined, unitCostCents: dir === 'IN' && cost ? Math.round(parseFloat(cost) * 100) : undefined },
+        body: { delta: dir === 'IN' ? n : -n, reason, note: note.trim() || undefined, unitCostCents: dir === 'IN' && cost ? toMinorUnits(cost, currency) : undefined },
       });
       onDone();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } finally { setBusy(false); }

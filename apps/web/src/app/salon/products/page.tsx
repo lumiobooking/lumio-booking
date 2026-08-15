@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { ui, formatPrice } from '../../../lib/ui';
+import { ui, formatPrice, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
@@ -38,6 +38,9 @@ function Inner() {
   const [q, setQ] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [taxRate, setTaxRate] = useState('');
+  // Price boxes must follow the salon's currency: đồng has no subunit, so a
+  // typed 200000 is 200000, not 20000000.
+  const [currency, setCurrency] = useState('USD');
   const [footer, setFooter] = useState('');
   const [savedTax, setSavedTax] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -51,11 +54,12 @@ function Inner() {
     try {
       const [p, settings] = await Promise.all([
         apiFetch<Product[]>('/pos/products', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; receiptFooter?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; receiptFooter?: string }; booking?: { currency?: string } }>('/settings', { token }),
       ]);
       setProducts(p);
       setTaxRate(String(settings.pos?.taxRatePercent ?? 0));
       setFooter(settings.pos?.receiptFooter ?? '');
+      setCurrency(settings.booking?.currency ?? 'USD');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load products');
     } finally {
@@ -112,7 +116,7 @@ function Inner() {
         {savedTax && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('pd.saved')}</span>}
       </div>
 
-      {showForm && <ProductForm token={token!} onDone={async () => { setShowForm(false); await load(); }} />}
+      {showForm && <ProductForm token={token!} currency={currency} onDone={async () => { setShowForm(false); await load(); }} />}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('pd.searchPh')} />
@@ -145,7 +149,7 @@ function Inner() {
                     <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
                   </MActions>
                 </MCard>
-                {editId === p.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><ProductForm token={token!} product={p} onDone={async () => { setEditId(null); await load(); }} /></div>}
+                {editId === p.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} /></div>}
               </Fragment>
             ))}
           </MList>
@@ -188,7 +192,7 @@ function Inner() {
                   </tr>
                   {editId === p.id && (
                     <tr><td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
-                      <ProductForm token={token!} product={p} onDone={async () => { setEditId(null); await load(); }} />
+                      <ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} />
                     </td></tr>
                   )}
                 </Fragment>
@@ -203,14 +207,14 @@ function Inner() {
   );
 }
 
-function ProductForm({ token, product, onDone }: { token: string; product?: Product; onDone: () => void }) {
+function ProductForm({ token, product, onDone, currency = 'USD' }: { token: string; product?: Product; onDone: () => void; currency?: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({
     name: product?.name ?? '',
     sku: product?.sku ?? '',
     barcode: product?.barcode ?? '',
-    price: product ? (product.priceCents / 100).toString() : '',
+    price: product ? fromMinorUnits(product.priceCents, product.currency) : '',
     discountPercent: product ? String(product.discountPercent ?? 0) : '0',
     taxable: product?.taxable ?? true,
     trackStock: product?.trackStock ?? false,
@@ -228,7 +232,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
         name: form.name,
         sku: form.sku || undefined,
         barcode: form.barcode || undefined,
-        priceCents: Math.round((parseFloat(form.price) || 0) * 100),
+        priceCents: toMinorUnits(form.price, product?.currency ?? currency),
         discountPercent: Math.max(0, Math.min(90, parseInt(form.discountPercent, 10) || 0)),
         taxable: form.taxable,
         trackStock: form.trackStock,
@@ -249,7 +253,7 @@ function ProductForm({ token, product, onDone }: { token: string; product?: Prod
         <label><span style={ui.label}>{t('pd.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('pd.sku')}</span><input style={ui.input} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></label>
         <label><span style={ui.label}>{t('pd.barcode')}</span><input style={ui.input} value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder={t('pd.barcodePh')} /></label>
-        <label><span style={ui.label}>{t('pd.price')}</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
+        <label><span style={ui.label}>{t('pd.price')}</span><input style={ui.input} type="number" min={0} step={priceInputStep(product?.currency ?? currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('pd.discount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} /></label>
         <label><span style={ui.label}>{t('pd.stockQty')}</span><input style={ui.input} type="number" min={0} value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} disabled={!form.trackStock} /></label>
       </div>

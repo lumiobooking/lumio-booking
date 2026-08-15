@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { ui, formatPrice } from '../../../lib/ui';
+import { ui, formatPrice, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { ImportCsv } from '../../../components/ImportCsv';
 import { compressImageToFit } from '../../../lib/image';
@@ -79,6 +79,9 @@ function Inner() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [items, setItems] = useState<Item[]>([]);
+  // The dishes carry their own currency; a new dish follows the ones already
+  // on the menu. An empty menu falls back to USD, which is what it did before.
+  const pageCurrency = items[0]?.currency ?? 'USD';
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', category: '', price: '', description: '' });
   const [busy, setBusy] = useState(false);
@@ -101,7 +104,7 @@ function Inner() {
         body: {
           name: form.name.trim(),
           category: form.category.trim() || undefined,
-          priceCents: Math.round((parseFloat(form.price) || 0) * 100),
+          priceCents: toMinorUnits(form.price, pageCurrency),
           description: form.description.trim() || undefined,
         },
       });
@@ -148,7 +151,7 @@ function Inner() {
       <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{t('mn.subtitle')}</p>
       {err && <div style={ui.banner}>{err}</div>}
 
-      <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description,image,sort" sample={SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => { const price = parseFloat(c[2]); if (!c[0] || !c[0].trim() || !Number.isFinite(price)) return null; return { name: c[0].trim(), category: c[1] || undefined, priceCents: Math.round(price * 100), description: c[3] || undefined, imageUrl: c[4] || undefined, sortOrder: c[5] ? parseInt(c[5], 10) : undefined }; }} onDone={load} />
+      <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description,image,sort" sample={SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => { const price = parseFloat(c[2]); if (!c[0] || !c[0].trim() || !Number.isFinite(price)) return null; return { name: c[0].trim(), category: c[1] || undefined, priceCents: toMinorUnits(price, pageCurrency), description: c[3] || undefined, imageUrl: c[4] || undefined, sortOrder: c[5] ? parseInt(c[5], 10) : undefined }; }} onDone={load} />
 
       {items.length > 0 && (
         <div style={{ marginTop: -6, marginBottom: 12 }}>
@@ -166,7 +169,7 @@ function Inner() {
           <input style={ui.input} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Phở" list="mn-cats" />
           <datalist id="mn-cats">{Array.from(new Set(items.map((i) => i.category).filter(Boolean))).map((c) => <option key={c} value={c as string} />)}</datalist></label>
         <label style={{ flex: '0 1 90px' }}><span style={ui.label}>{t('mn.price')} ($)</span>
-          <input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="14" /></label>
+          <input style={ui.input} type="number" min={0} step={priceInputStep(pageCurrency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="14" /></label>
         <label style={{ flex: '3 1 200px' }}><span style={ui.label}>{t('mn.desc')}</span>
           <input style={ui.input} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Rare beef pho" /></label>
         <button type="submit" disabled={busy} style={ui.primaryBtn}>{t('mn.add')}</button>
@@ -209,9 +212,9 @@ function Inner() {
                   onBlur={(e) => patch(it.id, { category: e.target.value })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                   <span style={{ color: '#94a3b8' }}>$</span>
-                  <input style={{ ...ui.input, width: 78 }} type="number" min={0} step="0.01" value={(it.priceCents / 100).toString()}
-                    onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, priceCents: Math.round((parseFloat(e.target.value) || 0) * 100) } : x)))}
-                    onBlur={(e) => patch(it.id, { priceCents: Math.round((parseFloat(e.target.value) || 0) * 100) })} />
+                  <input style={{ ...ui.input, width: 78 }} type="number" min={0} step={priceInputStep(it.currency)} value={fromMinorUnits(it.priceCents, it.currency)}
+                    onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, priceCents: toMinorUnits(e.target.value, it.currency) } : x)))}
+                    onBlur={(e) => patch(it.id, { priceCents: toMinorUnits(e.target.value, it.currency) })} />
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#cbd5e1' }}>
                   <input type="checkbox" checked={it.isActive} onChange={(e) => patch(it.id, { isActive: e.target.checked })} />{t('mn.active')}

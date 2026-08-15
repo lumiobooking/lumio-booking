@@ -5,7 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { compressImageToFit } from '../../../lib/image';
-import { ui } from '../../../lib/ui';
+import { ui, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
@@ -94,7 +94,8 @@ function ServicesInner() {
   }, [token]);
 
   const fmt = useCallback((cents: number) => {
-    const v = (cents / 100).toFixed(money.decimals);
+    // A currency with no subunit is stored whole; dividing shows a hundredth.
+    const v = money.decimals === 0 ? String(Math.round(cents)) : (cents / 100).toFixed(money.decimals);
     return money.pos === 'after' ? `${v}${money.symbol}` : `${money.symbol}${v}`;
   }, [money]);
 
@@ -178,7 +179,7 @@ function ServicesInner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {showImport && <ImportPanel token={token!} onDone={async () => { setShowImport(false); await load(); }} />}
+      {showImport && <ImportPanel token={token!} currency={money.code} onDone={async () => { setShowImport(false); await load(); }} />}
 
       <CategoryManager token={token!} categories={categories} onChanged={load} />
 
@@ -319,7 +320,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
       {open && (
         <tr>
           <td colSpan={6} style={{ padding: 0, background: '#0f172a' }}>
-            <AddonsPanel serviceId={s.id} token={token} fmt={fmt} />
+            <AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} />
           </td>
         </tr>
       )}
@@ -360,7 +361,7 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
         </MActions>
       </MCard>
       {editing && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} /></div>}
-      {open && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><AddonsPanel serviceId={s.id} token={token} fmt={fmt} /></div>}
+      {open && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} /></div>}
     </>
   );
 }
@@ -372,7 +373,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
     name: service.name,
     description: service.description ?? '',
     duration: String(service.durationMinutes),
-    price: (service.priceCents / 100).toString(),
+    price: fromMinorUnits(service.priceCents, service.currency),
     discount: String(service.discountPercent ?? 0),
     categoryId: service.categoryId ?? '',
     isFeatured: service.isFeatured ?? false,
@@ -396,7 +397,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           name: form.name,
           description: form.description || undefined,
           durationMinutes: form.duration.trim() === '' ? 30 : Math.max(0, parseInt(form.duration, 10) || 0),
-          priceCents: Math.round(parseFloat(form.price) * 100),
+          priceCents: toMinorUnits(form.price, service.currency),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
@@ -410,7 +411,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           name: updated.name,
           description: updated.description ?? '',
           duration: String(updated.durationMinutes),
-          price: (updated.priceCents / 100).toString(),
+          price: fromMinorUnits(updated.priceCents, updated.currency ?? service.currency),
           discount: String(updated.discountPercent ?? 0),
           categoryId: updated.categoryId ?? '',
           isFeatured: updated.isFeatured ?? false,
@@ -434,7 +435,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         <label><span style={ui.label}>{t('sv.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fDuration')}</span><input style={ui.input} type="number" min={0} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="30" /></label>
-        <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
+        <label><span style={ui.label}>{t('sv.fPrice').replace('{c}', service.currency)}</span><input style={ui.input} type="number" min={0} step={priceInputStep(service.currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('sv.fDiscount')}</span><input style={ui.input} type="number" min={0} max={90} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></label>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10, alignItems: 'end' }}>
@@ -471,7 +472,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
   );
 }
 
-function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: string; fmt: (cents: number) => string }) {
+function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: string; token: string; fmt: (cents: number) => string; currency?: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [addons, setAddons] = useState<Addon[]>([]);
@@ -494,7 +495,7 @@ function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: stri
     try {
       await apiFetch(`/services/${serviceId}/addons`, {
         method: 'POST', token,
-        body: { name: form.name, durationMinutes: parseInt(form.duration, 10) || 0, priceCents: Math.round(parseFloat(form.price) * 100) },
+        body: { name: form.name, durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency) },
       });
       setForm({ name: '', duration: '15', price: '15' });
       await load();
@@ -541,7 +542,7 @@ function AddonsPanel({ serviceId, token, fmt }: { serviceId: string; token: stri
         </div>
         <div style={{ width: 100 }}>
           <span style={ui.label}>{t('sv.priceLabel')}</span>
-          <input style={ui.input} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+          <input style={ui.input} type="number" min={0} step={priceInputStep(currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
         </div>
         <button type="submit" style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{t('sv.add')}</button>
       </form>
@@ -569,7 +570,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           name: form.name,
           description: form.description || undefined,
           durationMinutes: form.durationMinutes.trim() === '' ? 30 : Math.max(0, parseInt(form.durationMinutes, 10) || 0),
-          priceCents: Math.round(parseFloat(form.price) * 100),
+          priceCents: toMinorUnits(form.price, currency),
           discountPercent: Math.min(90, Math.max(0, parseInt(form.discount, 10) || 0)),
           categoryId: form.categoryId || null,
           isFeatured: form.isFeatured,
@@ -1190,7 +1191,7 @@ Full Legs | 45+ | 40`;
 interface ParsedItem { category: string; name: string; priceCents: number; durationMinutes: number; priceFrom: boolean }
 
 /** Parse a pasted menu: "# Category" lines + "Name | price | minutes" rows. */
-function parseMenu(text: string): ParsedItem[] {
+function parseMenu(text: string, currency = 'USD'): ParsedItem[] {
   const items: ParsedItem[] = [];
   let category = '';
   for (const rawLine of text.split('\n')) {
@@ -1204,18 +1205,18 @@ function parseMenu(text: string): ParsedItem[] {
     const priceFrom = priceStr.includes('+');
     const dollars = parseFloat((priceStr.match(/[\d.]+/) || ['0'])[0]) || 0;
     const dur = parseInt((((parts[2] || '').match(/\d+/)) || ['30'])[0], 10) || 30;
-    items.push({ category, name, priceCents: Math.round(dollars * 100), durationMinutes: dur, priceFrom });
+    items.push({ category, name, priceCents: toMinorUnits(dollars, currency), durationMinutes: dur, priceFrom });
   }
   return items;
 }
 
-function ImportPanel({ token, onDone }: { token: string; onDone: () => void }) {
+function ImportPanel({ token, onDone, currency = 'USD' }: { token: string; onDone: () => void; currency?: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const items = parseMenu(text);
+  const items = parseMenu(text, currency);
   const ok = msg?.startsWith('✓');
 
   async function run() {

@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { ui, formatPrice } from '../../../lib/ui';
+import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
@@ -91,7 +91,7 @@ function Inner() {
         </div>
       )}
 
-      {showForm && <IssueForm token={token!} onDone={async (card) => { setShowForm(false); setJustIssued(card); await load(); }} />}
+      {showForm && <IssueForm token={token!} currency={cards[0]?.currency ?? 'USD'} onDone={async (card) => { setShowForm(false); setJustIssued(card); await load(); }} />}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, margin: '16px 0' }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('gc.searchPh')} />
@@ -131,7 +131,7 @@ function Inner() {
   );
 }
 
-function IssueForm({ token, onDone }: { token: string; onDone: (card: GiftCard) => void }) {
+function IssueForm({ token, onDone, currency = 'USD' }: { token: string; onDone: (card: GiftCard) => void; currency?: string }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [form, setForm] = useState({ amount: '', code: '', recipientName: '', recipientContact: '', purchaserName: '', paymentMethod: 'CASH' as 'CASH' | 'CARD' | 'OTHER', note: '', expiresAt: '' });
@@ -141,7 +141,7 @@ function IssueForm({ token, onDone }: { token: string; onDone: (card: GiftCard) 
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const amountCents = Math.round((parseFloat(form.amount) || 0) * 100);
+    const amountCents = toMinorUnits(form.amount, currency);
     if (amountCents <= 0) { setError(t('gc.amountRequired')); return; }
     setSaving(true); setError(null);
     try {

@@ -8,7 +8,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch, ApiError } from '../../../lib/api';
 import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
-import { ui, formatPrice } from '../../../lib/ui';
+import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { uiLocale } from '../../../lib/datetime';
@@ -553,7 +553,7 @@ function Register() {
    * always cost $5.
    */
   function setLinePrice(uid: string, dollars: string) {
-    const cents = Math.max(0, Math.round((parseFloat(dollars) || 0) * 100));
+    const cents = Math.max(0, toMinorUnits(dollars, currency));
     setCart((c) => c.map((l) => {
       if (l.uid !== uid) return l;
       const orig = Math.max(l.origUnitPriceCents, cents);
@@ -693,9 +693,9 @@ function Register() {
     const cardSurcharge = (cardSurchargeOn && !split && payMethod === 'CARD' && cardSurchargePct > 0)
       ? Math.round((cardBase * cardSurchargePct) / 100) : 0;
     const due = dueBase + cardSurcharge;
-    const tenderedCents = Math.round((parseFloat(tendered) || 0) * 100);
+    const tenderedCents = toMinorUnits(tendered, currency);
     // Split mode: sum the parts; any overpay is cash change (someone rounds a cash part up).
-    const splitCents = parts.reduce((sum, p) => sum + Math.round((parseFloat(p.amount) || 0) * 100), 0);
+    const splitCents = parts.reduce((sum, p) => sum + toMinorUnits(p.amount, currency), 0);
     const change = split ? Math.max(0, splitCents - due) : (payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0);
     const splitRemaining = due - splitCents; // >0 = still owed, <0 = change
     return { subtotal, itemSavings, discount, typedDiscount, promoCents, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
@@ -885,7 +885,7 @@ function Register() {
     const raw = (tipLogInput[staffId] || '').trim();
     const dollars = Number(raw);
     if (!raw || !Number.isFinite(dollars) || dollars <= 0) { setError(t('po.tipLogInvalid')); return; }
-    const amountCents = Math.round(dollars * 100);
+    const amountCents = toMinorUnits(dollars, currency);
     setTipBusy(staffId); setError(null);
     try {
       await apiFetch('/pos/tips', { method: 'POST', token, body: { staffMemberId: staffId, amountCents, method: 'DIRECT' } });
@@ -920,7 +920,7 @@ function Register() {
     if (dueCents > 0) {
       if (split) {
         tenderList = parts
-          .map((p) => ({ method: apiOf(p.method), amountCents: Math.round((parseFloat(p.amount) || 0) * 100) }))
+          .map((p) => ({ method: apiOf(p.method), amountCents: toMinorUnits(p.amount, currency) }))
           .filter((tn) => tn.amountCents > 0);
         const sum = tenderList.reduce((a, tn) => a + tn.amountCents, 0);
         if (tenderList.length < 2) { setError(t('po.splitNeedTwo')); return; }
@@ -1067,7 +1067,7 @@ function Register() {
     if (money.giftApplied > 0) lines.push({ label: 'Gift card', cents: money.giftApplied });
     if (split) {
       for (const p of parts) {
-        const c = Math.round((parseFloat(p.amount) || 0) * 100);
+        const c = toMinorUnits(p.amount, currency);
         if (c > 0) lines.push({ label: nameOf(p.method), cents: c });
       }
     } else {
@@ -1433,7 +1433,7 @@ function Register() {
                       <input
                         type="number" min={0} step="0.01" inputMode="decimal"
                         title={t('po.editPriceHint')}
-                        value={(l.unitPriceCents / 100).toString()}
+                        value={fromMinorUnits(l.unitPriceCents, currency)}
                         onChange={(e) => setLinePrice(l.uid, e.target.value)}
                         onFocus={(e) => e.currentTarget.select()}
                         style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? '#22c55e' : '#e2e8f0', fontWeight: 600 }}
@@ -1458,8 +1458,8 @@ function Register() {
                     </select>
                     <input
                       type="number" min={0} step="0.01" placeholder={t('po.tipPh')}
-                      value={l.tipCents ? (l.tipCents / 100).toString() : ''}
-                      onChange={(e) => updateLine(l.uid, { tipCents: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100)) })}
+                      value={l.tipCents ? fromMinorUnits(l.tipCents, currency) : ''}
+                      onChange={(e) => updateLine(l.uid, { tipCents: Math.max(0, toMinorUnits(e.target.value, currency)) })}
                       style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, width: 68, flexShrink: 0 }}
                     />
                   </div>
@@ -1698,7 +1698,7 @@ function Register() {
                   else {
                     setSplit(true);
                     // Seed two parts: the whole due on cash, 0 on card — the cashier edits.
-                    setParts([{ method: 'CASH', amount: (money.due / 100).toFixed(2) }, { method: 'CARD', amount: '' }]);
+                    setParts([{ method: 'CASH', amount: fromMinorUnits(money.due, currency) }, { method: 'CARD', amount: '' }]);
                   }
                 }}
                 style={{ marginLeft: 'auto', background: 'none', border: 'none', color: split ? '#c7d2fe' : '#64748b', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '2px 4px', textDecoration: 'underline', textUnderlineOffset: 3 }}>
@@ -1722,9 +1722,9 @@ function Register() {
                     style={{ ...ui.input, flex: 1, padding: '7px 8px', textAlign: 'right' }} />
                   {/* Fill this part with whatever is still owed */}
                   <button onClick={() => {
-                    const others = parts.reduce((a, x, j) => a + (j === i ? 0 : Math.round((parseFloat(x.amount) || 0) * 100)), 0);
+                    const others = parts.reduce((a, x, j) => a + (j === i ? 0 : toMinorUnits(x.amount, currency)), 0);
                     const rest = Math.max(0, money.due - others);
-                    setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: (rest / 100).toFixed(2) } : x));
+                    setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: fromMinorUnits(rest, currency) } : x));
                   }} style={{ ...chip, whiteSpace: 'nowrap' }}>{t('po.splitRest')}</button>
                   {parts.length > 2 && <button onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} style={{ ...chip, color: '#f87171', borderColor: '#7f1d1d' }}>✕</button>}
                 </div>
@@ -1746,9 +1746,9 @@ function Register() {
           {payMethod === 'CASH' && (
             <>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setTendered((money.due / 100).toFixed(2))} style={chip}>{t('po.exact')}</button>
+                <button onClick={() => setTendered(fromMinorUnits(money.due, currency))} style={chip}>{t('po.exact')}</button>
                 {quickCash(money.due).map((amt) => (
-                  <button key={amt} onClick={() => setTendered((amt / 100).toFixed(2))} style={chip}>{formatPrice(amt, currency)}</button>
+                  <button key={amt} onClick={() => setTendered(fromMinorUnits(amt, currency))} style={chip}>{formatPrice(amt, currency)}</button>
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>

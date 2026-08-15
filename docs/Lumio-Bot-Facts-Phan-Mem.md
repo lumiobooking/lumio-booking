@@ -109,3 +109,29 @@ Bot trả lời một chủ quán net/billiard/karaoke rằng *"bên em chuyên 
 `agency marketing trọn gói cho mọi ngành — website, quảng cáo, chatbot AI, phần mềm đặt lịch`
 
 Cũng nên rà lại 🏢 Thông tin doanh nghiệp xem có dòng nào liệt kê ngành theo kiểu giới hạn không.
+
+---
+
+## Deploy rồi vẫn sai — hai khả năng còn lại
+
+Câu gắn cứng trong code đã bị xoá và đã lên server. Nếu bot vẫn nói *"không tính riêng giá… tặng kèm theo gói marketing từ $179"* thì chỉ còn hai nguồn:
+
+### Khả năng 1 — bạn đang sửa NHẦM TENANT
+
+Đây là khả năng cao nhất, và nó giải thích vì sao bạn không tìm thấy dòng nào.
+
+**Lumio Agency** và **Lumio Salon** là **hai tenant riêng biệt**, mỗi bên có phần Messenger riêng, dữ liệu riêng, không thấy được của nhau. Bot bán hàng chạy trên tenant **Lumio Agency**. Nếu bạn đang đăng nhập vào tenant Lumio Salon rồi mở Messenger, bạn sẽ thấy một danh sách **hoàn toàn khác** — và tất nhiên là không có dòng nào về giá gói marketing.
+
+**Cách kiểm trong 5 giây:** mở Messenger, nhìn tên Page đang kết nối ở thẻ đầu trang. Phải là Page **Lumio Agency**. Nếu là Page khác thì bạn đang ở nhầm tenant — đăng xuất và vào đúng tài khoản Lumio Agency.
+
+### Khả năng 2 — câu đó nằm trong dữ liệu do IMPORT tự sinh
+
+Trong Messenger có tính năng đọc website/fanpage rồi tự sinh ra các dòng thông tin. Nếu trước đây bạn đã dùng nó với trang lumioagency.com, các dòng sinh ra là **chữ của website chứ không phải chữ bạn gõ** — nên đọc lướt sẽ không thấy quen và rất dễ bỏ qua.
+
+Đọc kỹ **toàn bộ** danh sách 🏢 Thông tin doanh nghiệp trên tenant Lumio Agency, kể cả các dòng trông vô hại, và cả ô **Ghi chú thêm cho bot (tự do)** ngay dưới.
+
+### Trong lúc chờ: code đã chặn sẵn
+
+Đã thêm một quy tắc **đứng trên cả dữ liệu**: bot **không được phép nói bất cứ thứ gì "không có giá riêng" / "không bán lẻ" / "chỉ có kèm gói lớn"** — kể cả khi một dòng dữ liệu viết đúng như vậy. Dòng đó được hiểu là *một cách mua*, không phải *cách duy nhất*.
+
+Hỏi giá một tính năng mà dữ liệu không có con số → bot phải nói **team sẽ xác nhận và xin số điện thoại**, tuyệt đối không được lấp chỗ trống bằng câu "chỉ có trong gói lớn".

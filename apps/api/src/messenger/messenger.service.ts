@@ -105,6 +105,25 @@ export function killsTheLead(reply: string): boolean {
   return LEAD_KILLING_PATTERNS.some((re) => re.test(t));
 }
 
+/** Vietnamese has tone marks no other language here uses; one is enough. */
+export function looksVietnamese(text: string): boolean {
+  return /[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/i.test(String(text || ''));
+}
+
+/**
+ * What we say when the model will not stop refusing.
+ *
+ * The gate rewrites once. If the rewrite is also a refusal, we stop asking and
+ * send this instead: it is the same move the prompt describes, and it is the
+ * only reply the owner ever wants when the bot has no answer — hand the person
+ * to a human rather than tell them no.
+ */
+export function safeHandoffReply(conversation: string): string {
+  return looksVietnamese(conversation)
+    ? 'Dạ phần này để team em tư vấn trực tiếp cho đúng với tiệm mình ạ. Anh/chị cho em xin tên tiệm và số điện thoại, team gọi lại tư vấn ngay ạ.'
+    : 'The team will advise you on that directly. May I take your shop name and the best number to reach you?';
+}
+
 @Injectable()
 export class MessengerService implements OnModuleInit {
   /**
@@ -1446,6 +1465,15 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       || 'a marketing & technology agency for local businesses — booking software, AI chat, websites and advertising';
     const salesSystem = `You are a sales & customer-care team member of "${salonName}" — ${bizIntro}. You chat on Facebook Messenger with business owners and people asking about the services.
 Your ONE job: show ONE advantage that fits what they said, then get their shop location + name + phone so a HUMAN can check their area and call them. You are the first two minutes of a sales call, not the whole call. Warm and natural — never pushy, never robotic.
+
+WHEN YOU DO NOT KNOW — there is exactly ONE move, and it is always the same one:
+  Warm line that the team handles this → ask for the shop name and the phone that reaches them → stop.
+  Vietnamese: "Dạ phần này để team em tư vấn trực tiếp cho đúng với tiệm mình ạ. Anh/chị cho em xin tên tiệm và số điện thoại, team gọi lại tư vấn ngay ạ."
+  English: "The team will advise you on that directly. May I take your shop name and the best number to reach you?"
+You never need any other answer for a gap. Not knowing is never a fact about the customer, about their trade, or about what Lumio can do — it is only a fact about what is written in your FACTS, and the customer must never hear it as anything else.
+BANNED — these are not phrasings to use carefully, they must never appear in your reply at all:
+  "không có" / "chưa có" about a service, a trade or a price · "chưa có kinh nghiệm" · "chưa rành" · "không rành" · "chỉ chuyên" / "chuyên … thôi" · "không bán riêng" / "không bán lẻ" / "không có giá riêng" · "không phục vụ" / "không hỗ trợ" · "we don't serve" · "no experience with" · "not sold separately".
+  If one of these is forming in your reply, you have taken the wrong move. Delete it and use the ONE move above.
 Reply in the language the CONVERSATION is held in — judge by the customer's messages as a whole, never the last message alone. Vietnamese customers sprinkle English ("thank you", "ok") without switching language; one English word never flips a Vietnamese conversation into English. In Vietnamese: xưng "em", gọi khách "anh/chị", dùng "dạ/ạ".
 KEEP IT SHORT — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). Ask for exactly ONE thing per message.
@@ -1463,7 +1491,8 @@ NEVER TAKE A PRICE AWAY — this outranks the FACTS themselves:
 - Asked the price of a feature: give the price of the cheapest thing in the FACTS that contains it. If nothing in the FACTS carries a price for it, say the team will confirm the exact figure and ask for their number. That is the answer — never fill the gap by declaring it unavailable on its own.
 - The order is always: the smallest real number first, then any bundle that includes it. A bigger number offered first is heard as the price, and they leave.
 NEVER TURN ANYONE AWAY — this outranks every other rule here:
-- You do not decide who is a customer. The team does, and they take every trade. Your job is to capture, never to qualify.
+- You do not decide who is a customer. The team does, and they take EVERY trade — nail, spa, restaurant, karaoke, billiards, internet cafe, gym, clinic, anything. Your job is to capture, never to qualify.
+- Asked "do you work with X?" the answer is yes, followed by the ONE move: the team will advise them on their kind of shop, and may I take the name and number. Never hedge it, never soften it into a no.
 - The trades named anywhere above are EXAMPLES, not a boundary. A list of examples is not a list of exclusions. Never say the business "only does" certain trades, "does not serve" theirs, or "has no service for" what they run — that sentence is false and it ends a live conversation.
 - Someone whose trade you have no facts about is the MOST valuable message you will get today: they came to you anyway. Not knowing is a reason to take their number, never a reason to close.
 - Say the team has done this for shops like theirs and will advise them specifically, then ask for the shop name and the phone. Nothing else.
@@ -1628,7 +1657,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
       // The gate. Only sales mode: a booking bot saying "we don't do that
       // service" is correct, a sales bot saying it has just lost a customer.
-      if (ctx.mode === 'sales' && text && killsTheLead(text) && !retried) {
+      if (ctx.mode === 'sales' && text && killsTheLead(text)) {
+        // Rewrite once. If the rewrite refuses too, stop negotiating with the
+        // model and send the hand-off ourselves — a refusal must never reach
+        // the customer, however many times the model wants to send one.
+        if (retried) {
+          this.logger.warn(`Sales reply blocked twice; sending hand-off instead: ${text.slice(0, 140)}`);
+          return safeHandoffReply(`${userText} ${text}`);
+        }
         retried = true;
         this.logger.warn(`Sales reply blocked (would disqualify the lead): ${text.slice(0, 140)}`);
         messages.push({ role: 'assistant', content: blocks });

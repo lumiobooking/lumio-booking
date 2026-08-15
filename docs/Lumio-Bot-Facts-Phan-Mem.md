@@ -135,3 +135,21 @@ Trong Messenger có tính năng đọc website/fanpage rồi tự sinh ra các d
 Đã thêm một quy tắc **đứng trên cả dữ liệu**: bot **không được phép nói bất cứ thứ gì "không có giá riêng" / "không bán lẻ" / "chỉ có kèm gói lớn"** — kể cả khi một dòng dữ liệu viết đúng như vậy. Dòng đó được hiểu là *một cách mua*, không phải *cách duy nhất*.
 
 Hỏi giá một tính năng mà dữ liệu không có con số → bot phải nói **team sẽ xác nhận và xin số điện thoại**, tuyệt đối không được lấp chỗ trống bằng câu "chỉ có trong gói lớn".
+
+---
+
+## Số điện thoại theo khu vực — DÁN NGAY, đây là dữ liệu không phải code
+
+Một khách ở **Úc** nhắn *"mình liên hệ không được, tiệm mình ở Úc, bạn có số khác không"*, và bot đưa lại **đúng số Mỹ** `(512) 886-8189` mà họ vừa nói là gọi không được.
+
+Bot chỉ biết **một số duy nhất** — số liên hệ của tenant. Nó không thể biết số Úc nếu không ai nói cho nó. Đây là dữ liệu, và chỗ của nó là **🏢 Thông tin doanh nghiệp**.
+
+**Thêm dòng này:**
+
+| Nhãn | Nội dung |
+|---|---|
+| `Số liên hệ theo khu vực` | `Khách ở Mỹ/Canada: gọi (512) 886-8189. Khách ở Úc: gọi +61 485 857 256. Luôn đưa số đúng theo nơi khách nói họ đang ở. Nếu khách nói gọi số nào không được, đừng đưa lại số đó.` |
+
+Trong code đã thêm quy tắc: **nơi khách ở quyết định số nào được đưa**, và **cấm đưa lại số mà khách vừa nói là không gọi được** — đưa lại đúng số đó đọc lên như không nghe khách nói gì, và đó là số cuối cùng họ thử.
+
+Muốn thêm thị trường khác sau này thì viết thêm vào chính dòng đó, không cần deploy.

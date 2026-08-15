@@ -153,3 +153,25 @@ Bot chỉ biết **một số duy nhất** — số liên hệ của tenant. Nó
 Trong code đã thêm quy tắc: **nơi khách ở quyết định số nào được đưa**, và **cấm đưa lại số mà khách vừa nói là không gọi được** — đưa lại đúng số đó đọc lên như không nghe khách nói gì, và đó là số cuối cùng họ thử.
 
 Muốn thêm thị trường khác sau này thì viết thêm vào chính dòng đó, không cần deploy.
+
+---
+
+## Câu trả lời "Bên bạn có gì đặc biệt" — đã sửa văn phong
+
+Câu cũ dài, kể máy móc: *"khách thấy tiệm trên Maps → nhắn Messenger hoặc gọi → AI em trả lời trong vài giây và chốt lịch thẳng vào hệ thống 24/7, không cần nhân viên trực page…"*
+
+Chủ tiệm không mua đường ống. Họ mua **thêm khách và bớt khách bỏ hẹn**.
+
+Trong code đã đổi quy tắc: trả lời **hai dòng ngắn, nói kết quả trước, máy móc sau** — và cấm dùng chữ như *"chốt lịch thẳng vào hệ thống"*, *"không cần nhân viên trực page"*, *"POS"*. Nếu khách hỏi **làm thế nào** thì mới được giải thích.
+
+Khung câu trả lời mới:
+
+> **Dòng 1 — thế đối lập:** *"Đa số agency dừng ở đăng bài và chạy ads. Bên em xây cả hệ thống: kéo khách MỚI về, và giữ khách CŨ quay lại ạ."*
+>
+> **Dòng 2 — một bằng chứng cụ thể, chọn theo điều khách vừa nói:** *"Khách tìm thấy tiệm trên Google, nhắn tin là có người trả lời ngay, lịch tự vào máy — rồi tin nhắc hẹn và tin mời khách cũ quay lại cũng tự chạy ạ."*
+
+**Nên dán thêm dòng này** để bot có sẵn cách nói của bạn thay vì tự nghĩ:
+
+| Nhãn | Nội dung |
+|---|---|
+| `Điểm khác biệt` | `Đa số agency chỉ đăng bài và chạy quảng cáo rồi dừng ở đó. Lumio xây hệ thống tổng thể: kéo khách MỚI về tiệm (Google Maps, quảng cáo, website), và GIỮ khách cũ quay lại (nhắc hẹn tự động, mời khách lâu chưa ghé, chương trình giới thiệu bạn bè). Nói kết quả cho chủ tiệm — thêm khách, bớt khách quên hẹn — đừng kể kỹ thuật.` |

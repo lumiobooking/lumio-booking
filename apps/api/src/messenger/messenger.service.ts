@@ -97,9 +97,12 @@ const LEAD_KILLING_PATTERNS: RegExp[] = [
   /\bwe\s+(only|just)\s+(serve|do|work with|specialis[sz]e)\b/i,
   /\b(don't|do not|doesn't|does not)\s+(serve|support|work with|cover)\b/i,
   // "no separate price / not sold separately / only bundled"
-  /(không|chẳng)\s*(bán|tính)\s*(riêng|lẻ)/i,
-  /(không|chẳng)\s*có\s*giá\s*riêng/i,
-  /chỉ\s*(có|bán)\s*(kèm|theo\s*gói)/i,
+  // The negation and the verb are not always neighbours: "không ĐƯỢC bán riêng"
+  // slipped past a pattern that expected them adjacent, and one word was enough
+  // to send the whole refusal through. Allow anything short in between.
+  /(không|chưa|chẳng)[^.!?]{0,14}(bán|tính)\s*(riêng|lẻ)/i,
+  /(không|chưa|chẳng)[^.!?]{0,14}giá\s*riêng/i,
+  /chỉ\s*(có|bán|được)?\s*(bán\s*)?(kèm|theo\s*gói|trong\s*gói)/i,
   // Reproaching the customer for repeating themselves. "Anh hỏi lần thứ 5 rồi"
   // is the bot blaming a person for its own failure to answer, and it is the
   // last thing they read before leaving.

@@ -117,6 +117,28 @@ export function killsTheLead(reply: string): boolean {
   return LEAD_KILLING_PATTERNS.some((re) => re.test(t));
 }
 
+/**
+ * Did the customer ask something, and did the reply open with a brochure?
+ *
+ * Asked "does the AI reply on Instagram?" — a yes-or-no question — the bot
+ * opened with "Lumio chuyên hỗ trợ các tiệm Nail & Spa…" and a bulleted list
+ * of services, and never answered. A person who asks a direct question and
+ * receives a catalogue concludes the answer is no, or that nobody is reading.
+ *
+ * The two halves are checked separately: the customer's message has to look
+ * like a question, and the reply has to open by describing the company instead
+ * of answering. Only both together is a miss.
+ */
+const QUESTION_SHAPE = /\?|\b(có|được|chưa)\b[^?]{0,60}\b(không|ko|k)\s*[?.]?\s*$|^(do|does|can|is|are|will|have|has)\b/i;
+const BROCHURE_OPENER = /^(dạ[,\s]*)?(lumio|bên em|công ty em|chúng em|shop em|we|our team)\s*(là|chuyên|hỗ trợ|cung cấp|đang cung cấp|có các|hiện có|is|are|offers?|provides?|specialis|helps?)/i;
+
+export function dodgesTheQuestion(userText: string, reply: string): boolean {
+  const asked = QUESTION_SHAPE.test(String(userText || '').trim());
+  if (!asked) return false;
+  const first = String(reply || '').trim().split(/[.!?\n]/)[0] ?? '';
+  return BROCHURE_OPENER.test(first.trim());
+}
+
 /** Vietnamese has tone marks no other language here uses; one is enough. */
 export function looksVietnamese(text: string): boolean {
   return /[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/i.test(String(text || ''));
@@ -1478,6 +1500,10 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
     const salesSystem = `You are a sales & customer-care team member of "${salonName}" — ${bizIntro}. You chat on Facebook Messenger with business owners and people asking about the services.
 Your ONE job: show ONE advantage that fits what they said, then get their shop location + name + phone so a HUMAN can check their area and call them. You are the first two minutes of a sales call, not the whole call. Warm and natural — never pushy, never robotic.
 
+ANSWER THE QUESTION FIRST — before the pitch, before the company, before anything:
+- The first line of your reply answers what they actually asked, and nothing else. A yes-or-no question gets its answer as the FIRST word: "Dạ có ạ" / "Dạ được ạ". Only then, one short line of the detail that matters, then your next step.
+- Never open a reply to a question with what Lumio is or what Lumio does. They did not ask that. Somebody who asks "AI có trả lời trên Instagram không?" and gets a description of your services reads it as no, or as nobody listening — and both cost you the conversation.
+- Never answer a question with a bulleted list of services. A list is what you send when they asked to see everything; a question gets a sentence.
 WHEN YOU DO NOT KNOW — there is exactly ONE move, and it is always the same one:
   Warm line that the team handles this → ask for the shop name and the phone that reaches them → stop.
   Vietnamese: "Dạ phần này để team em tư vấn trực tiếp cho đúng với tiệm mình ạ. Anh/chị cho em xin tên tiệm và số điện thoại, team gọi lại tư vấn ngay ạ."
@@ -1648,6 +1674,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
     // One rewrite only: a gate that can loop is a gate that can hang a reply.
     let retried = false;
+    let dodgeRetried = false;
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1677,6 +1704,23 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
       // The gate. Only sales mode: a booking bot saying "we don't do that
       // service" is correct, a sales bot saying it has just lost a customer.
+      // Answering something else is not as costly as a refusal, but it is the
+      // same failure of listening, so it goes through the same gate.
+      if (ctx.mode === 'sales' && text && dodgesTheQuestion(userText, text) && !dodgeRetried) {
+        dodgeRetried = true;
+        this.logger.warn(`Sales reply blocked (answered something else): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({
+          role: 'user',
+          content:
+            'SYSTEM CORRECTION — that reply was blocked before it was sent, because it did not answer the question.\n'
+            + 'You opened by describing the company. They asked something specific and are still waiting for the answer.\n'
+            + 'Rewrite now: FIRST line answers their question directly — if it is a yes-or-no question, begin with the answer itself. '
+            + 'THEN at most one short line of relevant detail. Do not describe Lumio, do not list services. '
+            + 'Same language as the conversation. Send only the new reply.',
+        });
+        continue;
+      }
       if (ctx.mode === 'sales' && text && killsTheLead(text)) {
         // Rewrite once. If the rewrite refuses too, stop negotiating with the
         // model and send the hand-off ourselves — a refusal must never reach

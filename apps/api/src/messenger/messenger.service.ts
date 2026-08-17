@@ -142,6 +142,33 @@ export function dodgesTheQuestion(userText: string, reply: string): boolean {
   return BROCHURE_OPENER.test(first.trim());
 }
 
+/**
+ * Did the reply decide the customer's gender without being told?
+ *
+ * Vietnamese cannot address someone without choosing "anh" or "chị", and the
+ * bot picked one: "Tiệm chị ở đâu vậy ạ?" to a person it had never been told
+ * anything about. Guess wrong and you have called a man "chị" in the sentence
+ * where you ask for his phone number — small, and exactly the kind of small
+ * that makes someone decide this is a machine and stop typing.
+ *
+ * "anh/chị" is the form that is never wrong, so it is the default until the
+ * customer's own words settle it. Fires only when the reply commits to one AND
+ * nothing the customer wrote points either way; a false positive costs one
+ * rewrite into a phrase that was always acceptable.
+ */
+// \b is ASCII-only, so \bchị\b never matches — the last letter carries a tone
+// mark and is not a "word character". That bug ate a whole pattern list once
+// already; here the boundaries are written with a Unicode letter class instead.
+const BARE_GENDER = /(^|[^\p{L}])(anh|chị|ông|bà)(?![\p{L}])/iu;
+const GENDER_STATED = /(^|[^\p{L}])(anh|chị|ông|bà|nam|nữ|mr|mrs|ms)(?![\p{L}])/iu;
+/** "anh/chị" is the safe form — remove it before looking for a bare one. */
+const SAFE_PAIR = /anh\s*\/\s*chị|chị\s*\/\s*anh/giu;
+
+export function guessesGender(customerWords: string, reply: string): boolean {
+  if (GENDER_STATED.test(String(customerWords || ''))) return false;
+  return BARE_GENDER.test(String(reply || '').replace(SAFE_PAIR, ' '));
+}
+
 /** Vietnamese has tone marks no other language here uses; one is enough. */
 export function looksVietnamese(text: string): boolean {
   return /[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/i.test(String(text || ''));
@@ -1503,6 +1530,10 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
     const salesSystem = `You are a sales & customer-care team member of "${salonName}" — ${bizIntro}. You chat on Facebook Messenger with business owners and people asking about the services.
 Your ONE job: show ONE advantage that fits what they said, then get their shop location + name + phone so a HUMAN can check their area and call them. You are the first two minutes of a sales call, not the whole call. Warm and natural — never pushy, never robotic.
 
+HOW YOU ADDRESS THEM — you do not know who you are talking to:
+- Vietnamese forces a choice between "anh" and "chị", and you have not been told which. Write "anh/chị" every time until the customer's own words settle it — they call themselves anh or chị, or they say so outright. A name is not evidence; plenty of names go either way.
+- Calling a man "chị" in the sentence where you ask for his phone number is small and it is fatal: he stops reading and starts seeing a machine.
+- Once they have settled it, use the one they used, and keep using it.
 ANSWER THE QUESTION FIRST — before the pitch, before the company, before anything:
 - The first line of your reply answers what they actually asked, and nothing else. A yes-or-no question gets its answer as the FIRST word: "Dạ có ạ" / "Dạ được ạ". Only then, one short line of the detail that matters, then your next step.
 - Never open a reply to a question with what Lumio is or what Lumio does. They did not ask that. Somebody who asks "AI có trả lời trên Instagram không?" and gets a description of your services reads it as no, or as nobody listening — and both cost you the conversation.
@@ -1678,6 +1709,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // One rewrite only: a gate that can loop is a gate that can hang a reply.
     let retried = false;
     let dodgeRetried = false;
+    let genderRetried = false;
+    // Only what the CUSTOMER wrote counts as evidence of who they are — our own
+    // earlier guesses must never become the reason to keep guessing.
+    const customerWords = [...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' ');
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1709,6 +1744,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // service" is correct, a sales bot saying it has just lost a customer.
       // Answering something else is not as costly as a refusal, but it is the
       // same failure of listening, so it goes through the same gate.
+      if (ctx.mode === 'sales' && text && !genderRetried && guessesGender(customerWords, text)) {
+        genderRetried = true;
+        this.logger.warn(`Sales reply blocked (guessed the customer's gender): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({
+          role: 'user',
+          content:
+            'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
+            + 'You addressed the customer as "anh" or "chị". Nothing they have written says which one they are, and getting it wrong is how a conversation ends.\n'
+            + 'Rewrite the same reply using "anh/chị" everywhere you addressed them. Change nothing else. Send only the new reply.',
+        });
+        continue;
+      }
       if (ctx.mode === 'sales' && text && dodgesTheQuestion(userText, text) && !dodgeRetried) {
         dodgeRetried = true;
         this.logger.warn(`Sales reply blocked (answered something else): ${text.slice(0, 140)}`);

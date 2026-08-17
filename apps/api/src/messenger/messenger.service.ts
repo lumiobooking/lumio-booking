@@ -1581,6 +1581,8 @@ AREA CHECK — this is true, say it naturally, and it is your best reason to ask
 Lumio takes only ONE shop inside roughly a 10-mile radius, so we never end up competing against our own client. Whether a given area is still open has to be checked by the team first.
 Therefore: NEVER promise to take them on, never confirm the area is free, never give a start date, never close a deal. Your line is "để em xin thông tin, bên em kiểm tra khu vực rồi gọi lại tư vấn cho anh/chị" — the check is the reason you need their location, and it makes them want to move fast.
 TWO PRODUCT LINES — get this wrong and you lose the lead in one message:
+- Before you state ANY price for the booking software or for a feature inside it, call get_software_plans. It returns Lumio's real plans and what each one contains. Quote the CHEAPEST plan whose features include what they asked about, and quote that price FIRST — the software has its own prices and they are much smaller than the service packages.
+- Naming a marketing package as the way to get a software feature is wrong even when the package does include it: it is the expensive answer to a cheap question. Mention the bundle only after the plan price, and only as a second option.
 - There is a PRODUCT sold on its own (the booking software and everything in it), and there is a SERVICE sold as monthly packages (the marketing work). They have separate prices and both are in the FACTS.
 - When someone asks the price of a FEATURE — the AI on Messenger, online booking, the POS, reminders — they are asking about the PRODUCT. Answer with the cheapest plan that actually includes what they named, and answer with THAT number first.
 - Quoting a service package to someone who asked about a feature is the single worst answer you can give. They hear a number several times larger than the real one, decide it is not for them, and stop replying. You will never know you lost them.
@@ -1656,6 +1658,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           },
           required: ['amountUsd', 'billing'],
         },
+      },
+      {
+        name: 'get_software_plans',
+        description: "The AUTHORITATIVE price list for the booking software itself — Lumio's own plans, read live from the platform. Call this BEFORE answering any question about the price of the booking system or of a feature inside it (the AI on Messenger, online booking, POS, reminders, payroll). Returns each plan's monthly price and what it includes, so you can quote the CHEAPEST plan that actually contains what they asked about. These prices outrank anything in the FACTS: the FACTS describe the monthly marketing SERVICE, this describes the software PRODUCT.",
+        input_schema: { type: 'object', properties: {}, required: [] },
       },
       {
         name: 'send_price_cards',
@@ -2276,6 +2283,30 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           ? ` — ${months} month(s)${factor === 0.9 ? ', 10% off applied' : factor === 0.95 ? ', 5% off applied' : ''}`
           : ' — one-time';
         return `EXACT (matches the website): USD $${fmt(usd)} | CAD C$${fmt(cad)} | AUD A$${fmt(aud)}${term}. Pick ONLY the currency matching the customer's market (USD if unknown) and quote it verbatim in a natural sentence — no re-rounding, no listing all three unless they asked to compare.`;
+      }
+      if (name === 'get_software_plans') {
+        // Lumio's own plans live in the platform, managed once in Super Admin →
+        // Plans. Reading them here is what stops this answer depending on
+        // somebody remembering to retype the price list into a text box — and
+        // it is why the bot can name the cheapest plan containing a feature
+        // instead of reaching for the most expensive thing it happens to know.
+        const plans = await this.prisma.plan.findMany({
+          where: { isActive: true, publicVisible: true },
+          orderBy: { sortOrder: 'asc' },
+          select: { name: true, tagline: true, priceMonthlyCents: true, currency: true, featuresJson: true, highlighted: true },
+        });
+        if (!plans.length) return 'No software plans are configured yet — do not state a software price; take their number so the team can quote it.';
+        const locale = await this.customerLocale(tenantId);
+        return JSON.stringify({
+          note: 'Software plans, sold on their own. Quote the CHEAPEST plan whose features contain what the customer asked about, and quote that price FIRST.',
+          plans: plans.map((pl) => ({
+            plan: pl.name,
+            monthly: formatMoneyShort(pl.priceMonthlyCents, pl.currency || 'USD', locale),
+            forWhom: pl.tagline || undefined,
+            mostPopular: pl.highlighted || undefined,
+            includes: Array.isArray(pl.featuresJson) ? pl.featuresJson : [],
+          })),
+        });
       }
       if (name === 'send_price_cards') {
         if (!ctx?.pageToken || !ctx?.senderId) return 'ERROR: cards unavailable in this context — answer in short text instead.';

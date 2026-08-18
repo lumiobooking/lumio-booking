@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
+import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
@@ -335,7 +336,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const brand = (
     <div style={{ padding: '4px 10px 18px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0' }}>Lumio</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0' }}>Lumio</span>
+          <MarketBadge compact />
+        </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {(['en', 'vi'] as const).map((l) => (
             <button key={l} onClick={() => setLang(l)} aria-label={l === 'en' ? 'English' : 'Tiếng Việt'}

@@ -19,7 +19,7 @@ module.exports = {
       displayName: 'web',
       rootDir: '<rootDir>/apps/web',
       testEnvironment: 'node',
-      testRegex: 'src/lib/.*\\.spec\\.ts$',
+      testRegex: 'src/(lib|components)/.*\\.spec\\.ts$',
       transform: { '^.+\\.(t|j)s$': ['ts-jest', { isolatedModules: true }] },
     },
   ],

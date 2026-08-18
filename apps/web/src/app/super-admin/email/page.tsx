@@ -4,6 +4,7 @@
 // use, but sent on the platform's Brevo account.
 
 import { EmailCampaigns } from '../../../components/EmailCampaigns';
+import MarketBadge from '../../../components/MarketBadge';
 import { useAuth } from '../../../lib/auth';
 import { LUMIO_PRESETS } from '../../../lib/emailPresets';
 
@@ -14,7 +15,7 @@ export default function AdminEmailPage() {
       <div style={{ maxWidth: 1180, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Email marketing</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Email marketing</h1><MarketBadge /></div>
             <p style={{ color: '#94a3b8', margin: 0, fontSize: 14 }}>
               Send a product email to a list of salons. Sent from the platform Brevo account, with a one-click unsubscribe on every message.
             </p>

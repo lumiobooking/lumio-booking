@@ -94,3 +94,50 @@ Ngay ngày đầu tiên có **một tiệm Việt Nam thật** phụ thuộc và
 - **Deploy Mỹ giờ là việc tay.** Đó là cái giá của việc không thể lỡ tay. Nhưng nghĩa là bạn phải **nhớ bấm** — bản sửa lỗi cho Mỹ sẽ nằm im nếu bạn quên.
 - **Người dùng và tiệm ở hai bên hoàn toàn tách biệt.** Tài khoản Super Admin bên Mỹ **không đăng nhập được** vào hệ thống VN. Phải tạo tài khoản riêng.
 - **Không so sánh báo cáo giữa hai bên được** — hai database, không có cái nhìn tổng hợp. Nếu sau này cần, đó là việc phải làm thêm.
+
+---
+
+## "Tôi chọn thị trường ở đâu?" — câu trả lời là: không ở đâu cả
+
+Đây là câu hỏi tự nhiên nhất, và câu trả lời hơi ngược đời: **không có nút chọn thị trường, và đó chính là điều làm nó an toàn.**
+
+Nếu có một công tắc trong Super Admin để đổi qua lại giữa hai thị trường, nghĩa là **một tiến trình đang cầm chìa khoá của cả hai kho dữ liệu**. Chỉ cần một lỗi phân quyền, một câu truy vấn quên lọc, một lần bấm nhầm — và tiệm Việt Nam nhìn thấy dữ liệu tiệm Mỹ. Cái công tắc đó **tự nó là rủi ro** mà cả cách sắp xếp này sinh ra để loại bỏ.
+
+Cách đang làm không có chìa khoá nào để cầm nhầm:
+
+| | Hệ thống Mỹ | Hệ thống Việt Nam |
+|---|---|---|
+| Địa chỉ web | `lumio-web.onrender.com` | `lumio-web-vn.onrender.com` |
+| Máy chủ | `lumio-api` | `lumio-api-vn` |
+| Cơ sở dữ liệu | Neon US | **Neon VN — khác hẳn** |
+| Tài khoản đăng nhập | riêng | **riêng, không dùng chung** |
+
+Tiệm Việt Nam **không có đường nào** để nhìn thấy tiệm Mỹ: khác địa chỉ, khác máy chủ, khác cơ sở dữ liệu, khác tài khoản. Không phải vì code chặn — mà vì **dữ liệu đó không tồn tại trong hệ thống họ đang dùng**.
+
+### Rủi ro còn lại không phải của khách, mà của bạn
+
+Hai bảng điều khiển **trông y hệt nhau**. Hai tab mở cạnh nhau, và một buổi tối sửa giá nhầm hệ thống. Chuyện này **đã xảy ra một lần trong chính dự án này**, chỉ với hai tenant tên gần giống nhau.
+
+Nên tôi làm một thứ **không phải công tắc**:
+
+- **Huy hiệu đỏ 🇻🇳 VIỆT NAM** hiện cạnh chữ Lumio trong bảng điều khiển và trên mọi trang Super Admin của hệ thống VN.
+- **Bảng điều khiển Mỹ không có huy hiệu nào** — cố ý. Thêm nhãn vào hệ thống đang chạy cũng là một thay đổi, mà nó thì phải được để yên.
+- Có test khoá chặt điều đó: đặt `US` hoặc để trống → **không huy hiệu**; đặt `VN` → có.
+
+### Kiểm nhanh bằng máy, không cần nhìn bằng mắt
+
+Mở `/api/health` của một máy chủ, nó trả về:
+
+```
+{ "market": "VN", "db": "3f9a1c47", "commit": "486a1b6" }
+```
+
+`db` là **vân tay của chuỗi kết nối** — không lộ mật khẩu, nhưng đủ trả lời câu hỏi duy nhất quan trọng sau khi dựng hệ thống thứ hai:
+
+> **Hai máy chủ có đang trỏ vào cùng một cơ sở dữ liệu không?**
+
+Hai bên hiện **cùng một `db`** nghĩa là hệ thống Việt Nam đang ghi vào dữ liệu của Mỹ — đúng sai lầm mà toàn bộ cách tách này sinh ra để ngăn. Phải khác nhau.
+
+### Việc duy nhất bạn cần đặt
+
+Trên Render, service `lumio-web-vn`: `NEXT_PUBLIC_MARKET = VN`. Trên `lumio-api-vn`: `MARKET = VN`. Hai service Mỹ **không cần đặt gì**.

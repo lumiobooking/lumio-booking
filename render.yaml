@@ -41,6 +41,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Which market this instance serves. Shown on /api/health next to a
+      # fingerprint of the database, so "am I looking at the right system?"
+      # is a five-second question with a definite answer.
+      - key: MARKET
+        value: US
       # Neon connection string (postgresql://...?sslmode=require). Secret.
       - key: DATABASE_URL
         sync: false
@@ -160,6 +165,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # No NEXT_PUBLIC_MARKET here on purpose: the US dashboard shows no badge,
+      # so nothing about the system that is already running changes.
       # Base URL of the API INCLUDING the /api suffix. Baked in at build time,
       # so set it before the first web build, e.g.
       #   https://lumio-api.onrender.com/api
@@ -217,6 +224,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: MARKET
+        value: VN
       # A DIFFERENT Neon database from the US one. Check this twice.
       - key: DATABASE_URL
         sync: false
@@ -262,6 +271,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Puts a red VIỆT NAM badge in the dashboard so two identical-looking
+      # tabs can never be confused for one another. Baked in at build time.
+      - key: NEXT_PUBLIC_MARKET
+        value: VN
       # Must point at lumio-api-vn, never at the US API.
       - key: NEXT_PUBLIC_API_URL
         sync: false

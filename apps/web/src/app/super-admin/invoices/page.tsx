@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, CSSProperties, ReactNode } from 'react';
+import MarketBadge from '../../../components/MarketBadge';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -61,7 +62,7 @@ export default function AdminInvoicesPage() {
     <main style={{ maxWidth: 980, margin: '0 auto', padding: '32px 24px', color: '#e2e8f0' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 24, margin: 0 }}>Invoices</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Invoices</h1><MarketBadge /></div>
           <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>Month-end overage + plan-renewal invoices. Sent automatically; you can resend or run the sweep manually.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

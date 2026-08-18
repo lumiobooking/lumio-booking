@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
+import MarketBadge from '../../../components/MarketBadge';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -164,7 +165,7 @@ export default function TenantsPage() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 24, margin: 0 }}>Salons (Tenants)</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Salons (Tenants)</h1><MarketBadge /></div>
           <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>
             Super Admin · {user.email}
           </p>

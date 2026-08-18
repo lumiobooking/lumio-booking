@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, FormEvent } from 'react';
+import MarketBadge from '../../../components/MarketBadge';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
@@ -85,7 +86,7 @@ export default function ChainsPage() {
     <main style={{ minHeight: '100vh', background: '#0b1120', color: '#e2e8f0', padding: '28px 24px' }}>
       <div style={{ maxWidth: 860, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h1 style={{ fontSize: 24, margin: 0 }}>Chuỗi / Nhiều chi nhánh</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Chuỗi / Nhiều chi nhánh</h1><MarketBadge /></div>
           <Link href="/super-admin/tenants" style={{ ...ghost, textDecoration: 'none' }}>← Tiệm</Link>
         </div>
         <p style={{ color: '#94a3b8', fontSize: 14, margin: '0 0 18px' }}>

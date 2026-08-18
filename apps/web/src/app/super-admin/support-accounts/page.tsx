@@ -5,6 +5,7 @@
 // access to every salon at once.
 
 import { useCallback, useEffect, useState, FormEvent } from 'react';
+import MarketBadge from '../../../components/MarketBadge';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -72,7 +73,7 @@ export default function SupportAccountsPage() {
     <main style={{ minHeight: '100vh', background: '#0b1120', color: '#e2e8f0', padding: '28px 16px' }}>
       <div style={{ maxWidth: 820, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-          <h1 style={{ fontSize: 22, margin: 0 }}>Support accounts</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 22, margin: 0 }}>Support accounts</h1><MarketBadge /></div>
           <a href="/super-admin/tenants" style={{ marginLeft: 'auto', color: '#818cf8', fontSize: 13.5, textDecoration: 'none' }}>← Tenants</a>
         </div>
         <p style={{ color: '#94a3b8', fontSize: 14, margin: '0 0 18px' }}>

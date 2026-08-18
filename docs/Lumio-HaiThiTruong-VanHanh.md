@@ -84,13 +84,39 @@ Tôi đã thử phá: cố tình gài lại lỗi chia 100 → **2 test đỏ, d
 
 ## Khi nào nâng `lumio-api-vn` lên gói trả phí
 
-Ngay ngày đầu tiên có **một tiệm Việt Nam thật** phụ thuộc vào nó. Gói free ngủ sau 15 phút không ai dùng, và tiệm ngủ nghĩa là **trang đặt lịch của khách quay vòng ba mươi giây** rồi họ bỏ đi.
+Ngay ngày đầu tiên có **một tiệm Việt Nam thật** phụ thuộc vào nó. Gói free ngủ sau **15 phút** không ai dùng, khởi động lại mất **30–60 giây** — trang đặt lịch của khách trắng màn hình nửa phút rồi họ bỏ đi. Giá: **$7/tháng**.
+
+---
+
+## Chi phí — tra ngày 15/08/2026
+
+**Bắt đầu thì không phải trả thêm đồng nào.**
+
+| Hạng mục | Gói free cho phép | Đủ cho giai đoạn thử? |
+|---|---|---|
+| Database Neon thứ hai | **100 project** miễn phí, 0,5 GB mỗi project, 100 CU-hours/tháng | Dư sức |
+| `lumio-api-vn` | web service free, 512 MB RAM | Đủ để chạy thử |
+| `lumio-web-vn` | web service free | Đủ để chạy thử |
+
+Nên hai service VN trong `render.yaml` đặt `plan: free`, và database Neon thứ hai **không tốn phí**.
+
+### Hai chỗ sẽ phát sinh tiền, biết trước để không bị bất ngờ
+
+**1. Service free ngủ sau 15 phút không ai dùng, khởi động lại mất 30–60 giây.**
+Đang thử thì không sao. Nhưng ngày có **một tiệm Việt Nam thật**, khách của họ mở trang đặt lịch và phải chờ nửa phút màn hình trắng — họ bỏ đi. Lúc đó nâng `lumio-api-vn` lên **$7/tháng**. Web có thể để free lâu hơn một chút, nhưng API thì không.
+
+**2. Build minutes — 500 phút/tháng cho cả workspace, và đây là chỗ dễ vượt nhất.**
+Trước có 2 service build, nay có **4**. Cộng thêm bộ test tôi vừa gắn vào trước mỗi lần build. Mỗi lần `Deploy update` giờ chạy build ở hai service VN; deploy Mỹ chạy thêm hai lần nữa.
+
+Nếu tháng nào bạn sửa nhiều, đây là hạn mức chạm trước tiên — trước cả RAM hay dung lượng. Theo dõi ở phần Usage trong Render.
+
+**Tổng kết ngắn:** hôm nay **$0 thêm**. Khi có tiệm VN đầu tiên trả tiền: **$7/tháng**. Nếu build vượt 500 phút thì thêm phần vượt.
 
 ---
 
 ## Nhược điểm phải biết trước
 
-- **Thêm chi phí:** hai service nữa trên Render, một database Neon nữa.
+- **Thêm chi phí về sau:** xem bảng trên — $0 lúc đầu, $7/tháng khi có tiệm thật.
 - **Deploy Mỹ giờ là việc tay.** Đó là cái giá của việc không thể lỡ tay. Nhưng nghĩa là bạn phải **nhớ bấm** — bản sửa lỗi cho Mỹ sẽ nằm im nếu bạn quên.
 - **Người dùng và tiệm ở hai bên hoàn toàn tách biệt.** Tài khoản Super Admin bên Mỹ **không đăng nhập được** vào hệ thống VN. Phải tạo tài khoản riêng.
 - **Không so sánh báo cáo giữa hai bên được** — hai database, không có cái nhìn tổng hợp. Nếu sau này cần, đó là việc phải làm thêm.

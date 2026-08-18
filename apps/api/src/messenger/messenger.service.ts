@@ -143,6 +143,21 @@ export function dodgesTheQuestion(userText: string, reply: string): boolean {
 }
 
 /**
+ * Did the reply tell a customer mid-conversation that the chat just started?
+ *
+ * The stage direction that caused this is fixed at the source, but the sentence
+ * is costly enough to be worth a second lock: somebody who has already sent
+ * their shop, address and email, and is then told "anh/chị vừa mở chat nên em
+ * chưa biết tiệm ở đâu", concludes nobody read any of it.
+ */
+const CLAIMS_FRESH_START = /(vừa|mới)\s*(mở|bắt đầu|vào)\s*(chat|cuộc trò chuyện|tin nhắn)|(chưa|không)\s*biết[^.!?]{0,30}(ở đâu|ngành gì|tên tiệm)|\b(you\s+)?just\s+(opened|started)\s+(the\s+)?(chat|conversation)\b/i;
+
+export function claimsFreshStart(hasPriorContext: boolean, reply: string): boolean {
+  if (!hasPriorContext) return false;
+  return CLAIMS_FRESH_START.test(String(reply || ''));
+}
+
+/**
  * Has the customer said enough for us to know WHICH shop we are talking to?
  *
  * A link, a phone number, or a place named alongside a shop word. Deliberately
@@ -1562,6 +1577,10 @@ HOW YOU ADDRESS THEM — you do not know who you are talking to:
 - Vietnamese forces a choice between "anh" and "chị", and you have not been told which. Write "anh/chị" every time until the customer's own words settle it — they call themselves anh or chị, or they say so outright. A name is not evidence; plenty of names go either way.
 - Calling a man "chị" in the sentence where you ask for his phone number is small and it is fatal: he stops reading and starts seeing a machine.
 - Once they have settled it, use the one they used, and keep using it.
+WHAT THEY ALREADY TOLD YOU IS STILL TRUE:
+- Never say the conversation has just begun, never say you do not know something they have already given, and never ask for it a second time. You may be seeing only the recent part of a long thread; CUSTOMER MEMORY holds the rest and it counts as having been said to you.
+- Before asking for anything, look through the memory and the whole visible history. If it is there in ANY form, use it.
+- Being asked again for a shop name you sent an hour ago reads as nobody having listened, and it undoes whatever trust the earlier answers built.
 FIND OUT WHO YOU ARE TALKING TO BEFORE YOU HAND ANYTHING OVER:
 - Prices, package details, the free audit and any analysis are for a shop you can name. Before any of them, you need their shop name and city — a Maps link, or the name plus where they are. One question, warm, never a form.
 - A real buyer answers that in one line. Nobody who intends to buy is offended at being asked which shop they run.
@@ -1743,10 +1762,26 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
+    // The API needs the first turn to be the customer's. When our greeting is
+    // first we must pin something in front of it — but WHAT we pin is read by
+    // the model as fact, and it used to always say the chat had just opened.
+    //
+    // After twelve turns the window is trimmed, so it very often begins with an
+    // assistant message in a LONG conversation. The model was then told a
+    // months-old thread had just started, and it passed that on: "anh/chị vừa
+    // mở chat nên em chưa biết tiệm ở đâu" — to somebody who had given their
+    // shop, their address and their email. Nothing is more corrosive to trust
+    // than being asked again for what you already handed over.
+    //
+    // So the stage direction now describes what is actually true.
+    const trimmed = history.length >= MAX_TURNS || !!ctx.memory;
     if (hist.length && hist[0].role === 'assistant') {
-      // The thread opened with OUR greeting (Get Started). The API needs a
-      // user turn first, so pin a stage direction in front.
-      hist.unshift({ role: 'user', content: '(The customer just opened the chat.)' });
+      hist.unshift({
+        role: 'user',
+        content: trimmed
+          ? '(Earlier messages are no longer shown. This conversation is ALREADY IN PROGRESS — what the customer told you before is in CUSTOMER MEMORY above. Never say the chat has just started and never ask again for anything you were already given.)'
+          : '(The customer just opened the chat.)',
+      });
     }
     const messages: { role: string; content: unknown }[] = [...hist, { role: 'user', content: userText }];
 
@@ -1755,6 +1790,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let dodgeRetried = false;
     let genderRetried = false;
     let qualifyRetried = false;
+    let freshRetried = false;
     // Only what the CUSTOMER wrote counts as evidence of who they are — our own
     // earlier guesses must never become the reason to keep guessing.
     const customerWords = [...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' ');
@@ -1789,6 +1825,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // service" is correct, a sales bot saying it has just lost a customer.
       // Answering something else is not as costly as a refusal, but it is the
       // same failure of listening, so it goes through the same gate.
+      if (ctx.mode === 'sales' && text && !freshRetried && claimsFreshStart(trimmed || history.length > 2, text)) {
+        freshRetried = true;
+        this.logger.warn(`Sales reply blocked (told a returning customer the chat just began): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({
+          role: 'user',
+          content:
+            'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
+            + 'You told the customer the chat has just started, or that you do not know something. This conversation has history, and they have already told you things — check CUSTOMER MEMORY and the messages above.\n'
+            + 'Rewrite: use what they already gave you, never ask for it again, and never say the chat just began. If something genuinely is missing, ask only for THAT one thing. Same language as the conversation. Send only the new reply.',
+        });
+        continue;
+      }
       if (ctx.mode === 'sales' && text && !qualifyRetried && disclosesBeforeQualifying(customerWords, text)) {
         qualifyRetried = true;
         this.logger.warn(`Sales reply blocked (priced before qualifying): ${text.slice(0, 140)}`);

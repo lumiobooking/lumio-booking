@@ -11,14 +11,29 @@ services:
   - type: web
     name: lumio-api
     runtime: node
+    # DELIBERATELY NOT AUTO-DEPLOYED. A push no longer reaches the salons who
+    # are running their business on this today; it reaches Vietnam, and comes
+    # here when you press Deploy in the Render dashboard, after you have seen it
+    # working there. This is the whole point of the two-market arrangement, and
+    # it is the one line that makes "don't disturb the US system" true rather
+    # than hoped for.
+    autoDeploy: false
     # Starter ($7/mo) so the API never sleeps (no cold start). Keep this in the
     # blueprint so a deploy never silently reverts it to free.
     plan: starter
     rootDir: .
     # install whole workspace -> generate Prisma client -> build -> run migrations
+    # install -> generate Prisma client -> RUN THE GUARD TESTS -> build -> migrate.
+    #
+    # The tests run BEFORE the build on purpose. They lock the behaviour US and
+    # Canadian salons already depend on — money, phone numbers, dates, and the
+    # gates on the sales bot — so a change that quietly alters any of it fails
+    # the deploy instead of reaching a customer. Every case in them is a real
+    # sentence or a real amount from production.
     buildCommand: >-
       npm install --include=dev &&
       npm run db:generate --workspace=apps/api &&
+      npm run test:guards &&
       npm run build --workspace=apps/api &&
       npm run db:migrate:deploy --workspace=apps/api
     startCommand: node apps/api/dist/src/main.js
@@ -129,6 +144,8 @@ services:
   - type: web
     name: lumio-web
     runtime: node
+    # Manual, for the same reason as the API. Deploy the API first, then this.
+    autoDeploy: false
     # Paid (Starter, $7/mo) so a blueprint deploy never silently reverts it to
     # free (which would sleep + cold-start). Pinned here like the API service.
     plan: starter
@@ -136,7 +153,9 @@ services:
     # Raise Node's heap ceiling for `next build` so it doesn't die with
     # "JavaScript heap out of memory" as the app grows (the build machine has
     # headroom even though the runtime instance is small).
-    buildCommand: npm install --include=dev && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
+    # Tests before the build here too: the price boxes a salon types into live
+    # in the web app, and that is the half that was wrong for a whole currency.
+    buildCommand: npm install --include=dev && npm run test:guards && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
     startCommand: cd apps/web && npx next start -p $PORT
     envVars:
       - key: NODE_ENV
@@ -146,3 +165,104 @@ services:
       #   https://lumio-api.onrender.com/api
       - key: NEXT_PUBLIC_API_URL
         sync: false
+
+  # =========================================================================
+  # VIETNAM — a SECOND deployment of the SAME code, with its own database.
+  # =========================================================================
+  #
+  # Why a separate service instead of a flag, and why not a separate branch.
+  #
+  # The US and Canadian salons are running a business on this software today. A
+  # mistake made while building for a new market must not be able to reach them,
+  # and a flag inside one process cannot promise that: a bad migration, a memory
+  # leak or a crash loop takes down whoever shares the process. Separate service
+  # and separate database means the blast radius of anything done for Vietnam
+  # stops at Vietnam.
+  #
+  # But NOT a separate branch. One person maintaining two branches is two
+  # branches drifting apart, and then every fix has to be made twice and
+  # remembered twice. Both services build the SAME commit from `main`. The
+  # isolation is at runtime and in the data, not in the source.
+  #
+  # That also makes Vietnam a proving ground: `autoDeploy: true` here and
+  # `autoDeploy: false` on the US services means every change lands in Vietnam
+  # first and reaches the US only when you press Deploy, after it has been seen
+  # working somewhere real.
+  #
+  # WHAT YOU MUST SET UP ONCE, in the Render dashboard:
+  #   1. A NEW Neon database. Never point this at the US connection string —
+  #      that is the one mistake this whole arrangement exists to prevent.
+  #   2. DATABASE_URL     -> the new Neon string
+  #   3. CORS_ORIGINS     -> https://lumio-web-vn.onrender.com
+  #   4. NEXT_PUBLIC_API_URL on the web service -> https://lumio-api-vn.onrender.com/api
+  #   5. Everything else (Twilio, Stripe, Brevo…) can start empty; a Vietnamese
+  #      salon taking cash and messaging on Messenger needs none of it on day one.
+  - type: web
+    name: lumio-api-vn
+    runtime: node
+    # Free while there are no paying Vietnamese salons. Raise it to starter the
+    # day one of them depends on it — free instances sleep, and a sleeping API
+    # means a customer's booking page spins for thirty seconds.
+    plan: free
+    rootDir: .
+    autoDeploy: true
+    buildCommand: >-
+      npm install --include=dev &&
+      npm run db:generate --workspace=apps/api &&
+      npm run test:guards &&
+      npm run build --workspace=apps/api &&
+      npm run db:migrate:deploy --workspace=apps/api
+    startCommand: node apps/api/dist/src/main.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # A DIFFERENT Neon database from the US one. Check this twice.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 7d
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: BCRYPT_SALT_ROUNDS
+        value: "12"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Left blank on purpose until they are actually needed here.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      # Keep-alive follows Vietnamese opening hours, not New York's.
+      - key: KEEPALIVE_START_HOUR
+        value: "8"
+      - key: KEEPALIVE_END_HOUR
+        value: "22"
+      - key: KEEPALIVE_TZ
+        value: Asia/Ho_Chi_Minh
+
+  - type: web
+    name: lumio-web-vn
+    runtime: node
+    plan: free
+    rootDir: .
+    autoDeploy: true
+    # Tests before the build here too: the price boxes a salon types into live
+    # in the web app, and that is the half that was wrong for a whole currency.
+    buildCommand: npm install --include=dev && npm run test:guards && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
+    startCommand: cd apps/web && npx next start -p $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Must point at lumio-api-vn, never at the US API.
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+

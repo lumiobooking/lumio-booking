@@ -143,6 +143,34 @@ export function dodgesTheQuestion(userText: string, reply: string): boolean {
 }
 
 /**
+ * Has the customer said enough for us to know WHICH shop we are talking to?
+ *
+ * A link, a phone number, or a place named alongside a shop word. Deliberately
+ * narrow: the cost of reading "not yet" is one extra question, and the cost of
+ * reading "yes" too early is a price list handed to someone who has not said
+ * who they are.
+ */
+const IDENTITY_SIGNAL = /(https?:\/\/|maps\.app|goo\.gl|facebook\.com|instagram\.com|\.com|\.vn)|(\+?\d[\d\s().-]{7,})|((tiệm|salon|spa|shop|quán|store|studio|nail)\s+\p{Lu}[\p{L}]+)|(\d+\s+\p{Lu}[\p{L}]+\s+(st|street|ave|avenue|rd|road|blvd|dr|drive|way|ln))/iu;
+
+/** Money in any of the shapes the bot writes it. */
+const STATES_A_PRICE = /([$₫€£]\s?\d|\d+\s?(usd|cad|aud|vnd|đ|k\/tháng)|\d{2,3}\s?\/\s?(tháng|month))/i;
+
+/**
+ * Did the reply hand over prices before finding out who is asking?
+ *
+ * The owner's concern is concrete and not paranoia: people ask to find out
+ * whether Lumio already works with the salon down the road, competitors ask to
+ * collect something to attack them with, and a free audit spent on the shop
+ * next door to an existing client is worse than wasted. None of that is
+ * prevented by refusing anybody — it is prevented by asking who they are
+ * first, which a real buyer answers without hesitating.
+ */
+export function disclosesBeforeQualifying(customerWords: string, reply: string): boolean {
+  if (IDENTITY_SIGNAL.test(String(customerWords || ''))) return false;
+  return STATES_A_PRICE.test(String(reply || ''));
+}
+
+/**
  * Did the reply decide the customer's gender without being told?
  *
  * Vietnamese cannot address someone without choosing "anh" or "chị", and the
@@ -1534,6 +1562,15 @@ HOW YOU ADDRESS THEM — you do not know who you are talking to:
 - Vietnamese forces a choice between "anh" and "chị", and you have not been told which. Write "anh/chị" every time until the customer's own words settle it — they call themselves anh or chị, or they say so outright. A name is not evidence; plenty of names go either way.
 - Calling a man "chị" in the sentence where you ask for his phone number is small and it is fatal: he stops reading and starts seeing a machine.
 - Once they have settled it, use the one they used, and keep using it.
+FIND OUT WHO YOU ARE TALKING TO BEFORE YOU HAND ANYTHING OVER:
+- Prices, package details, the free audit and any analysis are for a shop you can name. Before any of them, you need their shop name and city — a Maps link, or the name plus where they are. One question, warm, never a form.
+- A real buyer answers that in one line. Nobody who intends to buy is offended at being asked which shop they run.
+- Asked for a price before you know them: do not refuse and do not stall. Say it depends on the shop and you will get them the right number, then ask for the shop name and city in the same breath. One sentence, then the question.
+- Never say what a package costs, never quote a plan, never promise the audit, and never analyse their situation until you can name the shop.
+NEVER DISCUSS OTHER CLIENTS — this is where a careless sentence does real damage:
+- Never confirm or deny that Lumio works with any particular salon, street, neighbourhood or city. Not "we already have someone there", not "your area is still open", not a hint either way. People ask precisely to find that out, and some of them are the competitor next door.
+- Never name a client, never say how many clients you have anywhere, never describe another shop's results as if they were nearby.
+- Asked directly whether their area is taken: the honest and safe answer is that the team checks each area case by case and will tell them after they look — which is true, and it is also the reason you need their shop and number.
 ANSWER THE QUESTION FIRST — before the pitch, before the company, before anything:
 - The first line of your reply answers what they actually asked, and nothing else. A yes-or-no question gets its answer as the FIRST word: "Dạ có ạ" / "Dạ được ạ". Only then, one short line of the detail that matters, then your next step.
 - Never open a reply to a question with what Lumio is or what Lumio does. They did not ask that. Somebody who asks "AI có trả lời trên Instagram không?" and gets a description of your services reads it as no, or as nobody listening — and both cost you the conversation.
@@ -1717,6 +1754,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let retried = false;
     let dodgeRetried = false;
     let genderRetried = false;
+    let qualifyRetried = false;
     // Only what the CUSTOMER wrote counts as evidence of who they are — our own
     // earlier guesses must never become the reason to keep guessing.
     const customerWords = [...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' ');
@@ -1751,6 +1789,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // service" is correct, a sales bot saying it has just lost a customer.
       // Answering something else is not as costly as a refusal, but it is the
       // same failure of listening, so it goes through the same gate.
+      if (ctx.mode === 'sales' && text && !qualifyRetried && disclosesBeforeQualifying(customerWords, text)) {
+        qualifyRetried = true;
+        this.logger.warn(`Sales reply blocked (priced before qualifying): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({
+          role: 'user',
+          content:
+            'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
+            + 'You gave a price to somebody who has not told you which shop they run. We do not hand numbers to unidentified people: some are checking whether we already work nearby, some are competitors.\n'
+            + 'Rewrite: do NOT refuse and do NOT mention any amount. Say in one warm sentence that the right package depends on their shop and you will get them the exact figure, then ask for the shop name and city (or a Google Maps link). Two sentences. Same language as the conversation. Send only the new reply.',
+        });
+        continue;
+      }
       if (ctx.mode === 'sales' && text && !genderRetried && guessesGender(customerWords, text)) {
         genderRetried = true;
         this.logger.warn(`Sales reply blocked (guessed the customer's gender): ${text.slice(0, 140)}`);

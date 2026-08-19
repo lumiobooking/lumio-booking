@@ -11,6 +11,11 @@ services:
   - type: web
     name: lumio-api
     runtime: node
+    # Stated explicitly, and it must stay Oregon: this is where the service
+    # already runs. Leaving it out would let a blueprint sync move a live
+    # service to Render's default region, which means new URLs and downtime for
+    # salons who are open right now.
+    region: oregon
     # Watches `production`, NOT `main`.
     #
     # Pushing code reaches Vietnam and stops there, because Vietnam watches
@@ -154,6 +159,7 @@ services:
   - type: web
     name: lumio-web
     runtime: node
+    region: oregon
     # Same branch as the API it talks to, for the same reason.
     branch: production
     autoDeploy: true
@@ -214,6 +220,11 @@ services:
   - type: web
     name: lumio-api-vn
     runtime: node
+    # Singapore, to sit beside the Neon database created in the same region.
+    # A server and its database belong together: every page asks the database
+    # several times and waits for each answer, so splitting the pair across the
+    # Pacific costs more than putting both on the far side of it.
+    region: singapore
     # Watches `main`: every push lands here first, which is what makes Vietnam
     # the place a change is seen working before the US ever receives it.
     branch: main
@@ -271,6 +282,7 @@ services:
   - type: web
     name: lumio-web-vn
     runtime: node
+    region: singapore
     branch: main
     plan: free
     rootDir: .

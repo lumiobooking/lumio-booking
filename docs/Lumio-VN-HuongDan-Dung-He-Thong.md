@@ -70,28 +70,49 @@ Trong Render, menu trái có mục **Blueprints**. Bấm vào.
 | Có một blueprint đang gắn với repo `lumio-booking` | Hai service hiện tại sinh ra từ `render.yaml` | **Đường 1** |
 | Trống, không có blueprint nào | Hai service được tạo bằng tay; file `render.yaml` trong dự án **hiện không có tác dụng gì** | **Đường 2** |
 
-Ảnh bạn gửi cho thấy hai service đang nằm ở **"Ungrouped Services"** — dấu hiệu **có thể** là tạo tay. Nhưng tôi không nhìn được màn hình Blueprints của bạn nên **bạn phải tự kiểm**, đừng đoán.
+**ĐÃ KIỂM (15/08/2026): CÓ Blueprint.** Tên `Lumio Booking`, gắn với `lumiobooking/lumio-booking` nhánh `main`, đang quản `lumio-web` và `lumio-api` (cả hai ở Oregon). Vậy bạn đi **Đường 1** — `render.yaml` thật sự điều khiển.
 
 ---
 
-## ĐƯỜNG 1 — Đã có Blueprint
+## ĐƯỜNG 1 — Đã có Blueprint  ← **đây là trường hợp của bạn**
 
-### B1. Vào Blueprints → chọn blueprint đó → **Sync** (hoặc **Apply changes**)
+### B0-a. TẠO NHÁNH `production` TRƯỚC KHI SYNC — thứ tự này quan trọng
 
-Render đọc lại `render.yaml` và sẽ báo trước những gì nó định làm:
+`render.yaml` bảo hai service Mỹ theo nhánh `production`. **Nhánh đó chưa tồn tại.** Sync trước khi tạo nhánh là bảo Render trỏ hai service đang phục vụ tiệm thật vào một nhánh không có — không nên thử xem chuyện gì xảy ra.
 
-- **Tạo mới:** `lumio-api-vn`, `lumio-web-vn`
-- **Sửa:** `lumio-api` và `lumio-web` → tắt auto-deploy
+Chạy **`deploy-to-us.bat`** một lần. Lần đầu nó chỉ tạo nhánh `production` từ `main`, đẩy lên GitHub, rồi thoát. Không deploy gì cả.
+
+### B0-b. Đẩy code mới nhất lên `main`
+
+Chạy **`Deploy update`**. Blueprint đọc `render.yaml` **từ nhánh `main`**, nên các thay đổi phải nằm trên đó trước khi sync.
+
+### B1. Vào Blueprints → **Manual sync** (nút đen góc phải trên)
+
+Render đọc lại `render.yaml` và báo trước những gì nó định làm:
+
+- **Tạo mới:** `lumio-api-vn`, `lumio-web-vn` (Singapore, gói free)
+- **Sửa `lumio-api` và `lumio-web`:** nhánh `main` → `production`, và thêm bước chạy test vào build
 
 ### B2. Đọc kỹ bảng thay đổi trước khi xác nhận
 
-Điều **phải thấy**: hai service Mỹ chỉ đổi mỗi `autoDeploy`. Điều **không được thấy**: bất kỳ dòng nào nói sẽ **xoá**, **thay** hay **đổi database** của `lumio-api`.
+**Phải thấy** — với hai service Mỹ, chỉ có hai thay đổi: **branch** và **buildCommand**.
 
-Nếu thấy bất cứ dòng nào như vậy → **dừng lại, chụp màn hình gửi tôi**. Đừng bấm tiếp.
+**KHÔNG được thấy** bất kỳ dòng nào nói sẽ:
 
-### B3. Xác nhận. Hai service VN sẽ được tạo và bắt đầu build ngay
+- **xoá** hoặc **tạo lại** `lumio-api` / `lumio-web`
+- đổi **region** của chúng (phải vẫn là **Oregon**)
+- đổi **plan** (phải vẫn là **starter**)
+- đụng tới `DATABASE_URL` hay bất kỳ biến bí mật nào
 
-Build **sẽ thất bại** ở lần đầu vì chưa có `DATABASE_URL`. Đúng như dự kiến — sang B4.
+Thấy bất cứ dòng nào như vậy → **dừng, chụp màn hình gửi tôi.** Đừng bấm tiếp.
+
+> Vì sao tôi liệt kê kỹ vậy: `render.yaml` trước đây **không khai region**, nên một lần sync có thể đã dời service đang chạy sang vùng mặc định của Render — đổi URL và làm gián đoạn tiệm đang mở cửa. Tôi đã khai rõ `region: oregon` cho hai service Mỹ để chuyện đó không xảy ra, nhưng bạn vẫn nên đọc bảng trước khi xác nhận.
+
+### B3. Xác nhận. Hai service VN được tạo và bắt đầu build ngay
+
+Build **sẽ thất bại lần đầu** vì chưa có `DATABASE_URL`. Đúng như dự kiến — sang Phần C.
+
+Hai service Mỹ cũng sẽ build lại một lần (vì đổi nhánh). Bản chúng nhận là **đúng bản đang chạy**, vì `production` vừa tạo từ `main`.
 
 ---
 

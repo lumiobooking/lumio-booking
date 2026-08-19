@@ -1,11 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "D:\Phan mem Lumio\Booking"
-title Lumio - Deploy update to online
+title Lumio - Deploy update (Vietnam)
 
 echo ============================================================
-echo   Lumio Booking - push update to ONLINE
-echo   (Render rebuilds and redeploys automatically on push)
+echo   Lumio Booking - push update
+echo.
+echo   This goes to the VIETNAM system only.
+echo   The US and Canada salons are NOT affected.
+echo.
+echo   When you are happy with it there, run "deploy-to-us.bat"
+echo   to release it to the paying salons.
 echo ============================================================
 echo.
 
@@ -73,8 +78,14 @@ if errorlevel 1 (
 
 echo.
 echo ============================================================
-echo   Done! Your update was pushed.
-echo   Render is now rebuilding ^& redeploying automatically.
-echo   Watch progress: https://dashboard.render.com
+echo   Done. Pushed to the VIETNAM system.
+echo.
+echo   lumio-api-vn and lumio-web-vn are rebuilding now.
+echo   The US salons are still on their previous version.
+echo.
+echo   Check it worked:
+echo     https://lumio-api-vn.onrender.com/api/health
+echo.
+echo   Happy with it? Run deploy-to-us.bat to release to the US.
 echo ============================================================
 pause

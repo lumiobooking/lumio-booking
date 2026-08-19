@@ -20,18 +20,21 @@ Có ba cách tách, tôi chọn cách giữa và nói rõ vì sao bỏ hai cách
 
 ## Bốn service trên Render
 
-| Service | Gói | Tự động deploy | Cơ sở dữ liệu |
-|---|---|---|---|
-| `lumio-api` | starter | **KHÔNG** | Neon US (hiện tại) |
-| `lumio-web` | starter | **KHÔNG** | — |
-| `lumio-api-vn` | free | **CÓ** | **Neon VN (mới, phải tạo)** |
-| `lumio-web-vn` | free | **CÓ** | — |
+| Service | Gói | Theo nhánh | Tự động deploy | Cơ sở dữ liệu |
+|---|---|---|---|---|
+| `lumio-api` | starter | **`production`** | Có | Neon US (hiện tại) |
+| `lumio-web` | starter | **`production`** | Có | — |
+| `lumio-api-vn` | free | **`main`** | Có | **Neon VN (mới, phải tạo)** |
+| `lumio-web-vn` | free | **`main`** | Có | — |
 
-**Điểm quan trọng nhất trong bảng này là hai chữ KHÔNG.**
+**Cột quan trọng nhất là cột nhánh, không phải cột auto-deploy.**
 
-Từ giờ, `Deploy update` **không còn tự đẩy bản mới vào hệ thống Mỹ nữa**. Nó đẩy vào Việt Nam. Muốn Mỹ nhận bản mới thì bạn **vào Render bấm Deploy** — sau khi đã thấy nó chạy được ở Việt Nam.
+Cả bốn service đều bật auto-deploy — **bạn không phải bấm gì trong Render, và cũng không phải bật/tắt cái gì bao giờ.** Thứ ngăn cách hai thị trường là **nhánh code**:
 
-Đây là dòng cấu hình biến câu *"không đụng chạm hệ thống cũ"* từ **mong muốn** thành **sự thật**.
+- Đẩy code → vào `main` → **chỉ Việt Nam nhận**
+- Muốn Mỹ nhận → **gộp `main` vào `production`** → Mỹ nhận
+
+Cửa chặn nằm ở git, không nằm ở một công tắc trong bảng điều khiển. Không ai phải nhớ bấm, và cũng **không ai quên bấm được** — vì việc phát hành là một hành động có tên, có ngày, có commit để chỉ vào khi cần truy.
 
 ---
 
@@ -50,18 +53,30 @@ Twilio, Stripe, Brevo **để trống được**. Một tiệm Việt Nam thu ti
 ## Quy trình từ nay
 
 ```
-sửa code → Deploy update (đẩy lên GitHub)
+sửa code
    ↓
-lumio-api-vn + lumio-web-vn tự build      ← Việt Nam nhận trước
+chạy  deploy.bat  ("Deploy update")        → đẩy vào nhánh main
    ↓
-mở /api/health, xem "commit" đúng chưa
+lumio-api-vn + lumio-web-vn tự build       ← CHỈ Việt Nam nhận
+   ↓
+mở lumio-api-vn.onrender.com/api/health, xem "commit" đúng chưa
    ↓
 dùng thử ở Việt Nam
    ↓
-ổn → vào Render, bấm Deploy trên lumio-api rồi lumio-web   ← Mỹ nhận sau
+ổn → chạy  deploy-to-us.bat                → gộp main vào production
+   ↓
+lumio-api + lumio-web tự build             ← Mỹ nhận
 ```
 
-**Thứ tự khi deploy Mỹ: API trước, web sau.** Web được build kèm sẵn địa chỉ API, nên nếu web lên trước mà API chưa có tính năng mới thì giao diện sẽ gọi vào chỗ chưa tồn tại.
+**Hai script, cố ý tách rời.** Hai việc này có hậu quả rất khác nhau, không nên dùng chung một nút bấm.
+
+`deploy-to-us.bat` sẽ:
+
+1. **Từ chối chạy** nếu còn thay đổi chưa commit — thứ chưa được thử ở Việt Nam thì không được đi cùng chuyến
+2. **In ra đúng danh sách** những thay đổi tiệm Mỹ sắp nhận, kèm số lượng
+3. Hỏi bạn gõ `YES` — hỏi thẳng *"đã thử ở Việt Nam chưa"*
+4. Chỉ gộp kiểu **fast-forward**. Nếu `production` có commit mà `main` không có, nó **dừng và không đổi gì**, thay vì gộp bừa
+5. Nếu không có gì mới thì báo *"Mỹ đã cập nhật rồi"* và thoát
 
 ---
 

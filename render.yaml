@@ -11,13 +11,18 @@ services:
   - type: web
     name: lumio-api
     runtime: node
-    # DELIBERATELY NOT AUTO-DEPLOYED. A push no longer reaches the salons who
-    # are running their business on this today; it reaches Vietnam, and comes
-    # here when you press Deploy in the Render dashboard, after you have seen it
-    # working there. This is the whole point of the two-market arrangement, and
-    # it is the one line that makes "don't disturb the US system" true rather
-    # than hoped for.
-    autoDeploy: false
+    # Watches `production`, NOT `main`.
+    #
+    # Pushing code reaches Vietnam and stops there, because Vietnam watches
+    # `main` and this does not. The US salons receive a change only when
+    # `main` is merged into `production` — a deliberate act, recorded in git,
+    # with a date and a commit you can point at when something goes wrong.
+    #
+    # Auto-deploy stays ON: the gate is the branch, not a switch in a
+    # dashboard. Nobody has to remember to press anything, and nobody can
+    # forget to press it either.
+    branch: production
+    autoDeploy: true
     # Starter ($7/mo) so the API never sleeps (no cold start). Keep this in the
     # blueprint so a deploy never silently reverts it to free.
     plan: starter
@@ -149,8 +154,9 @@ services:
   - type: web
     name: lumio-web
     runtime: node
-    # Manual, for the same reason as the API. Deploy the API first, then this.
-    autoDeploy: false
+    # Same branch as the API it talks to, for the same reason.
+    branch: production
+    autoDeploy: true
     # Paid (Starter, $7/mo) so a blueprint deploy never silently reverts it to
     # free (which would sleep + cold-start). Pinned here like the API service.
     plan: starter
@@ -191,10 +197,11 @@ services:
   # remembered twice. Both services build the SAME commit from `main`. The
   # isolation is at runtime and in the data, not in the source.
   #
-  # That also makes Vietnam a proving ground: `autoDeploy: true` here and
-  # `autoDeploy: false` on the US services means every change lands in Vietnam
-  # first and reaches the US only when you press Deploy, after it has been seen
-  # working somewhere real.
+  # That also makes Vietnam a proving ground, and the mechanism is the BRANCH
+  # rather than a switch: these two watch `main`, the US two watch
+  # `production`. A push lands in Vietnam and goes no further. The US receives
+  # it when `main` is merged into `production` — one command, recorded in git,
+  # so there is always an answer to "which version are the paying salons on?".
   #
   # WHAT YOU MUST SET UP ONCE, in the Render dashboard:
   #   1. A NEW Neon database. Never point this at the US connection string —
@@ -207,6 +214,9 @@ services:
   - type: web
     name: lumio-api-vn
     runtime: node
+    # Watches `main`: every push lands here first, which is what makes Vietnam
+    # the place a change is seen working before the US ever receives it.
+    branch: main
     # Free while there are no paying Vietnamese salons. Raise it to starter the
     # day one of them depends on it — free instances sleep, and a sleeping API
     # means a customer's booking page spins for thirty seconds.
@@ -261,6 +271,7 @@ services:
   - type: web
     name: lumio-web-vn
     runtime: node
+    branch: main
     plan: free
     rootDir: .
     autoDeploy: true

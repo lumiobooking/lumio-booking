@@ -128,15 +128,19 @@ Trường hợp này `render.yaml` chỉ là tài liệu, không điều khiển
 | Start Command | `cd apps/web && npx next start -p $PORT` |
 | Instance Type | **Free** |
 
-### B3. TẮT AUTO-DEPLOY CHO HAI SERVICE MỸ — đừng bỏ qua bước này
+### B3. ĐỔI NHÁNH CHO HAI SERVICE MỸ — đừng bỏ qua bước này
 
 Đây là bước biến *"không đụng chạm hệ thống cũ"* thành sự thật. Ở đường 2, Render **không tự làm giúp**.
 
-Với **`lumio-api`** rồi **`lumio-web`**:
+**Chạy `deploy-to-us.bat` một lần trước** — lần đầu chạy, nó tự tạo nhánh `production` từ `main` rồi thoát. Sau đó nhánh mới tồn tại để chọn trong Render.
 
-**Settings** → mục **Build & Deploy** → **Auto-Deploy** → chuyển sang **No** → **Save**
+Rồi với **`lumio-api`** và **`lumio-web`**:
 
-Từ lúc này, đẩy code lên GitHub **không còn tự động chạm vào hệ thống Mỹ**. Muốn Mỹ nhận bản mới thì vào service đó bấm **Manual Deploy → Deploy latest commit**.
+**Settings** → mục **Build & Deploy** → **Branch** → đổi từ `main` sang **`production`** → **Save**
+
+**Auto-Deploy để nguyên Yes.** Bạn không tắt gì cả.
+
+Từ lúc này, đẩy code lên GitHub vào `main` **chỉ tới Việt Nam**. Mỹ chỉ nhận khi bạn chạy `deploy-to-us.bat` để gộp `main` vào `production`.
 
 ---
 
@@ -219,7 +223,9 @@ Phải thấy **huy hiệu đỏ 🇻🇳 VIỆT NAM** cạnh chữ Lumio. Khôn
 
 ## D4. Hệ thống Mỹ không bị đụng gì
 
-Mở `https://lumio-api.onrender.com/api/health` → giá trị `commit` **phải vẫn là bản cũ**, chưa nhảy sang bản mới. Đó là bằng chứng auto-deploy đã tắt và hệ thống Mỹ đang được để yên.
+Mở `https://lumio-api.onrender.com/api/health` → giá trị `commit` **phải vẫn là bản cũ**, khác với `commit` của hệ thống VN. Đó là bằng chứng hai bên đang chạy hai nhánh khác nhau và hệ thống Mỹ đang được để yên.
+
+Hai giá trị `commit` giống nhau ngay sau khi bạn đẩy code nghĩa là service Mỹ **vẫn đang theo nhánh `main`** — quay lại bước B3 đổi sang `production`.
 
 ---
 

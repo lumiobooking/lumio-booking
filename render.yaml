@@ -40,10 +40,19 @@ services:
     # gates on the sales bot — so a change that quietly alters any of it fails
     # the deploy instead of reaching a customer. Every case in them is a real
     # sentence or a real amount from production.
+    #
+    # --if-present is not decoration. A blueprint reads render.yaml from `main`,
+    # but each service builds the commit on ITS OWN branch, so the build command
+    # can be newer than the code it runs. The first sync after this file gained
+    # the test step proved it: the US services build `production`, which then
+    # predated the script, and both deploys died on "Missing script:
+    # test:guards" — a safety net jamming the machine it was added to protect.
+    # With --if-present an older commit skips the step; a commit that HAS the
+    # script still runs it, and a failing test still stops the deploy.
     buildCommand: >-
       npm install --include=dev &&
       npm run db:generate --workspace=apps/api &&
-      npm run test:guards &&
+      npm run test:guards --if-present &&
       npm run build --workspace=apps/api &&
       npm run db:migrate:deploy --workspace=apps/api
     startCommand: node apps/api/dist/src/main.js
@@ -172,7 +181,7 @@ services:
     # headroom even though the runtime instance is small).
     # Tests before the build here too: the price boxes a salon types into live
     # in the web app, and that is the half that was wrong for a whole currency.
-    buildCommand: npm install --include=dev && npm run test:guards && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
+    buildCommand: npm install --include=dev && npm run test:guards --if-present && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
     startCommand: cd apps/web && npx next start -p $PORT
     envVars:
       - key: NODE_ENV
@@ -237,7 +246,7 @@ services:
     buildCommand: >-
       npm install --include=dev &&
       npm run db:generate --workspace=apps/api &&
-      npm run test:guards &&
+      npm run test:guards --if-present &&
       npm run build --workspace=apps/api &&
       npm run db:migrate:deploy --workspace=apps/api
     startCommand: node apps/api/dist/src/main.js
@@ -289,7 +298,7 @@ services:
     autoDeploy: true
     # Tests before the build here too: the price boxes a salon types into live
     # in the web app, and that is the half that was wrong for a whole currency.
-    buildCommand: npm install --include=dev && npm run test:guards && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
+    buildCommand: npm install --include=dev && npm run test:guards --if-present && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
     startCommand: cd apps/web && npx next start -p $PORT
     envVars:
       - key: NODE_ENV

@@ -275,3 +275,46 @@ Cách tạo tài khoản đầu tiên tuỳ vào cơ chế khởi tạo của ph
 # Nếu có gì đó sai
 
 Chụp màn hình gửi tôi, kèm **nội dung log build** ở Render (tab **Logs** của service). Đừng chụp màn hình có chứa `DATABASE_URL` hay bất kỳ khoá bí mật nào — che phần đó trước khi gửi.
+
+---
+
+# PHỤ LỤC — Ba lỗi build lần sync đầu tiên (19/08/2026) và cách xử lý
+
+Sync xong thì cả ba service báo build failed. Hai lỗi đầu **là lỗi của tôi**, lỗi thứ ba là **đúng như dự kiến**.
+
+## Lỗi 1 & 2 — `lumio-api`, `lumio-web`: `Missing script: "test:guards"`
+
+**Nguyên nhân:** Blueprint đọc `render.yaml` từ nhánh **`main`**, nhưng mỗi service build **commit trên nhánh của chính nó**. Hai service Mỹ đã đổi sang nhánh `production`, mà `production` lúc đó đang ở commit `15c92fb` — commit **cũ hơn** lúc tôi thêm script `test:guards` vào `package.json` (`486a1b6`).
+
+Nên: lệnh build mới + code cũ = gọi một script chưa tồn tại.
+
+Nói cách khác, **cái lưới an toàn tôi thêm vào để bảo vệ hệ thống Mỹ lại chính là thứ làm hỏng deploy của nó.** Đây là lỗi thiết kế của tôi, không phải bạn làm sai bước nào.
+
+**Đã sửa:** đổi thành `npm run test:guards --if-present` ở cả bốn service. Đã kiểm ba trường hợp:
+
+| Tình huống | Kết quả |
+|---|---|
+| Commit cũ, chưa có script | **bỏ qua**, build chạy tiếp |
+| Commit mới, có script | **chạy test** như thường |
+| Test có chạy nhưng **thất bại** | **vẫn chặn deploy** |
+
+Điều quan trọng: lưới an toàn không mất tác dụng, nó chỉ thôi làm kẹt cỗ máy nó sinh ra để bảo vệ.
+
+**Việc cần làm:** chạy `Deploy update` để đẩy bản sửa lên `main`, rồi vào Blueprints bấm **Manual sync** lần nữa.
+
+Hai service Mỹ sẽ build lại **vẫn từ commit `15c92fb`** — tức **đúng bản chúng đang chạy trước giờ**. Không có gì mới tới tay tiệm Mỹ. Đó là điều đúng: 7 commit trên `main` **chưa được thử ở Việt Nam**, nên chưa được phát hành.
+
+## Lỗi 3 — `lumio-api-vn`: `db:migrate:deploy` thất bại, `Validation Error: env("DATABASE_URL")`
+
+**Đúng như đã báo trước.** Service chưa có chuỗi kết nối nên Prisma không biết chạy migration vào đâu.
+
+**Cách xử lý:** làm **Phần C** — điền `DATABASE_URL` và các biến còn lại cho `lumio-api-vn`, rồi **Manual Deploy → Deploy latest commit**.
+
+## Thứ tự làm ngay bây giờ
+
+1. `Deploy update` (đẩy bản sửa `--if-present` lên `main`)
+2. Điền biến môi trường cho `lumio-api-vn` và `lumio-web-vn` — **Phần C**
+3. Blueprints → **Manual sync**
+4. Kiểm theo **Phần D**
+
+**Chưa chạy `deploy-to-us.bat`.** Để `production` nằm yên ở `15c92fb` cho tới khi bạn thử xong ở Việt Nam.

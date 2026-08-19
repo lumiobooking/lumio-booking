@@ -20,7 +20,7 @@ Tài khoản mới duy nhất phải tạo là **tài khoản Super Admin bên t
 |---|---|---|
 | **Project name** | `Lumiobooking-VN` | Nhìn tên là biết ngay, không nhầm với project Mỹ |
 | **Postgres version** | để nguyên mặc định | |
-| **Region** | **Singapore (ap-southeast-1)** | Xem lưu ý ngay dưới |
+| **Region** | **AWS Asia Pacific 1 (Singapore)** | Xem lưu ý ngay dưới |
 
 **Lưu ý về Region — đọc trước khi chọn:**
 
@@ -29,9 +29,11 @@ Database nên đặt **cùng vùng với máy chủ**, không phải cùng vùng
 Nên chọn theo cặp:
 
 - Nếu ở Phần B bạn đặt hai service Render ở **Singapore** → Neon chọn **Singapore**
-- Nếu bạn để service Render ở **Oregon/Virginia** (mặc định của Mỹ) → Neon cũng chọn **US East**
+- Nếu bạn để service Render ở **Ohio/Oregon** → Neon cũng chọn **US East**
 
-**Khuyến nghị: chọn Singapore cho cả hai**, vì khách Việt Nam ở gần đó.
+**Khuyến nghị: Singapore cho cả hai.** Tra ngày 15/08/2026: Render có 4 vùng — Oregon, Ohio, Frankfurt, **Singapore** — và **gói free chạy được ở Singapore**. Khách Việt Nam ở gần đó, nên máy chủ nên ở đó, và database phải ở cùng vùng với máy chủ.
+
+**Chọn lệch nhau còn tệ hơn để cả hai ở Mỹ**: mỗi câu truy vấn sẽ bay qua Thái Bình Dương rồi bay về, và một trang thường hỏi database nhiều lần.
 
 ### A3. Sau khi project tạo xong → lấy chuỗi kết nối
 
@@ -104,7 +106,7 @@ Trường hợp này `render.yaml` chỉ là tài liệu, không điều khiển
 | Ô | Điền |
 |---|---|
 | Name | `lumio-api-vn` |
-| Region | **Singapore** (khớp với Neon) |
+| Region | **Singapore** — phải khớp với vùng Neon đã chọn |
 | Branch | `main` |
 | Root Directory | *(để trống)* |
 | Runtime | Node |
@@ -120,7 +122,7 @@ Trường hợp này `render.yaml` chỉ là tài liệu, không điều khiển
 | Ô | Điền |
 |---|---|
 | Name | `lumio-web-vn` |
-| Region | **Singapore** (giống trên) |
+| Region | **Singapore** — giống service API |
 | Branch | `main` |
 | Build Command | `npm install --include=dev && npm run test:guards && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web` |
 | Start Command | `cd apps/web && npx next start -p $PORT` |

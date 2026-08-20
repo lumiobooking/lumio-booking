@@ -173,6 +173,15 @@ model Tenant {
   slug     String       @unique // URL-safe identifier, also used for routing
   status   TenantStatus @default(ACTIVE)
   businessType BusinessType @default(SALON) // salon (default) or restaurant
+  // Which market this salon trades in: US | CA | VN. Set once by Super Admin
+  // when the salon is opened, and it carries the timezone, country, currency,
+  // decimals and tipping convention that always travel together.
+  //
+  // NOT an isolation boundary. Salons are kept apart by tenantId on every table
+  // exactly as they always were; this is a property of one salon, like its plan.
+  // Defaulting to "US" is what makes the migration safe: every salon that
+  // exists today keeps behaving precisely as it does.
+  market   String       @default("US")
   timezone String       @default("UTC")
 
   contactEmail String?

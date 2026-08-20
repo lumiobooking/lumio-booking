@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
 import MarketBadge from '../../../components/MarketBadge';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
+import { MARKET_OPTIONS, marketOption, marketTag } from '../../../lib/markets';
 import { apiFetch } from '../../../lib/api';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { TimezonePicker } from '../../../components/TimezonePicker';
@@ -17,6 +18,7 @@ interface Tenant {
   timezone: string;
   contactEmail: string | null;
   businessType?: string;
+  market?: string; // US | CA | VN — absent on older rows, which means US
   planId: string | null;
   subscriptionStatus: string;
   createdAt: string;
@@ -56,6 +58,10 @@ export default function TenantsPage() {
   const router = useRouter();
   const range = useDateRange('all');
   const [q, setQ] = useState('');
+  // '' = every market. This is the "don't show me the other market" control:
+  // with dozens of US salons, finding the Vietnamese ones by scrolling is not
+  // a workflow, and auditing one market means seeing only that market.
+  const [marketFilter, setMarketFilter] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
 
@@ -140,7 +146,13 @@ export default function TenantsPage() {
   // Filter by signup date + search, then newest first. (Computed before the
   // early returns below so the pagination hook runs on every render.)
   const visible = sortNewest(
-    tenants.filter((t) => range.inRange(t.createdAt) && matchesQuery(`${t.name} ${t.slug} ${t.contactEmail ?? ''} ${t.status}`, q)),
+    tenants.filter(
+      (t) =>
+        range.inRange(t.createdAt) &&
+        // Absent means US: rows created before the column existed.
+        (!marketFilter || marketOption(t.market).code === marketFilter) &&
+        matchesQuery(`${t.name} ${t.slug} ${t.contactEmail ?? ''} ${t.status} ${marketOption(t.market).label}`, q),
+    ),
     (t) => t.createdAt,
   );
   const pg = usePaged(visible, 20);
@@ -207,6 +219,17 @@ export default function TenantsPage() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder="Search salon name, slug, email…" />
+        <select
+          value={marketFilter}
+          onChange={(e) => setMarketFilter(e.target.value)}
+          style={{ ...inp, width: 'auto', minWidth: 150 }}
+          title="Show only salons in one market"
+        >
+          <option value="">🌐 All markets</option>
+          {MARKET_OPTIONS.map((m) => (
+            <option key={m.code} value={m.code}>{m.flag} {m.label}</option>
+          ))}
+        </select>
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} salon{visible.length === 1 ? '' : 's'}</span>
         <DateRangeBar range={range} />
       </div>
@@ -227,6 +250,7 @@ export default function TenantsPage() {
           <thead>
             <tr style={{ background: '#1e293b', textAlign: 'left' }}>
               <th style={th}>Name</th>
+              <th style={th}>Market</th>
               <th style={th}>Slug</th>
               <th style={th}>Status</th>
               <th style={th}>Plan</th>
@@ -238,7 +262,7 @@ export default function TenantsPage() {
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td style={td} colSpan={7}>
+                <td style={td} colSpan={8}>
                   No salons in this range.
                 </td>
               </tr>
@@ -247,6 +271,7 @@ export default function TenantsPage() {
               <Fragment key={t.id}>
               <tr style={{ borderTop: '1px solid #334155' }}>
                 <td style={td}>{t.name}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }} title={marketOption(t.market).label}>{marketTag(t.market)}</td>
                 <td style={{ ...td, color: '#94a3b8' }}>{t.slug}</td>
                 <td style={td}>
                   <StatusBadge status={t.status} />
@@ -352,7 +377,7 @@ function AccountPanel({ token, currentEmail }: { token: string; currentEmail: st
 
 function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; tenant: Tenant; usage?: VoiceUsage; onSaved: () => void }) {
   const currentLoginEmail = tenant.users?.[0]?.email ?? '';
-  const [form, setForm] = useState({ name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone });
+  const [form, setForm] = useState({ name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone, market: marketOption(tenant.market).code });
   const [loginEmail, setLoginEmail] = useState(currentLoginEmail);
   const [pw, setPw] = useState('');
   const [exempt, setExempt] = useState(tenant.billingExempt ?? false);
@@ -367,12 +392,12 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [voiceNum, setVoiceNum] = useState(tenant.voiceLine?.lumioNumber ?? '');
-  const [fp, setFp] = useState<{ key: string; label: string; mode: string }[]>([]);
+  const [fp, setFp] = useState<{ key: string; label: string; mode: string; unavailable?: boolean }[]>([]);
   const [lim, setLim] = useState({ monthlyCents: 0, includedMinutes: 0, includedSms: 0, overageCentsPerMin: 0, overageCentsPerSms: 0, hardCap: false });
 
   useEffect(() => {
-    apiFetch<{ policy: Record<string, string>; defs: { key: string; label: string }[] }>(`/admin/feature-policy/${tenant.id}`, { token })
-      .then((r) => setFp((r.defs || []).map((d) => ({ key: d.key, label: d.label, mode: r.policy?.[d.key] || 'salon' }))))
+    apiFetch<{ policy: Record<string, string>; defs: { key: string; label: string; unavailable?: boolean }[] }>(`/admin/feature-policy/${tenant.id}`, { token })
+      .then((r) => setFp((r.defs || []).map((d) => ({ key: d.key, label: d.label, mode: r.policy?.[d.key] || 'salon', unavailable: d.unavailable }))))
       .catch(() => {});
   }, [tenant.id, token]);
 
@@ -441,7 +466,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   async function saveInfo() {
     setBusy(true); setErr(null); setMsg(null);
     try {
-      await apiFetch(`/tenants/${tenant.id}`, { method: 'PATCH', token, body: { name: form.name, contactEmail: form.contactEmail || undefined, timezone: form.timezone } });
+      await apiFetch(`/tenants/${tenant.id}`, { method: 'PATCH', token, body: { name: form.name, contactEmail: form.contactEmail || undefined, timezone: form.timezone, market: form.market } });
       setMsg('✓ Salon info saved');
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); } finally { setBusy(false); }
@@ -475,6 +500,24 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         <Field label="Contact email"><input style={inp} value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></Field>
         <Field label="Timezone"><TimezonePicker value={form.timezone} onChange={(tz) => setForm({ ...form, timezone: tz })} selectStyle={inp} /></Field>
       </div>
+      <Field label="Market">
+        <select
+          style={{ ...inp, maxWidth: 260 }}
+          value={form.market}
+          onChange={(e) => setForm((f) => ({ ...f, market: e.target.value }))}
+        >
+          {MARKET_OPTIONS.map((m) => (
+            <option key={m.code} value={m.code}>{m.flag} {m.label}</option>
+          ))}
+        </select>
+      </Field>
+      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 8px', maxWidth: 520, lineHeight: 1.5 }}>
+        Changes the label and which features are offered. It deliberately does{' '}
+        <strong>not</strong> rewrite currency, prices or timezone — this salon already
+        has priced services and booked appointments, and rewriting its currency
+        would change what real customers are charged. Adjust money under the
+        salon&apos;s own Settings if it needs to follow.
+      </p>
       <div><button onClick={saveInfo} disabled={busy} style={primaryBtn}>Save salon info</button></div>
 
       <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
@@ -607,10 +650,19 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
           {fp.map((f, i) => (
-            <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
-              <input type="checkbox" checked={f.mode === 'salon'}
+            <label
+              key={f.key}
+              title={f.unavailable ? 'Not available in this salon\u2019s market' : undefined}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, opacity: f.unavailable ? 0.45 : 1 }}
+            >
+              {/* Disabled rather than hidden: seeing that a feature exists but
+                  is not sold here is more useful than wondering where it went,
+                  and it stops someone selling a Hanoi salon a US card terminal. */}
+              <input type="checkbox" checked={f.mode === 'salon' && !f.unavailable} disabled={f.unavailable}
                 onChange={(e) => setFp((rows) => rows.map((r, idx) => (idx === i ? { ...r, mode: e.target.checked ? 'salon' : 'platform' } : r)))} />
-              <span>{f.label} — <span style={{ color: f.mode === 'salon' ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>{f.mode === 'salon' ? 'Salon can manage' : 'Platform-managed (hidden)'}</span></span>
+              <span>{f.label} — {f.unavailable
+                ? <span style={{ color: '#64748b', fontWeight: 600 }}>Not available in this market</span>
+                : <span style={{ color: f.mode === 'salon' ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>{f.mode === 'salon' ? 'Salon can manage' : 'Platform-managed (hidden)'}</span>}</span>
             </label>
           ))}
         </div>
@@ -633,9 +685,18 @@ function CreateTenantForm({
     name: '',
     adminEmail: '',
     adminPassword: '',
+    market: 'US',
     timezone: 'America/New_York',
     planId: '',
   });
+
+  // Picking a market moves the timezone with it, visibly, so the operator sees
+  // what they are getting and can still override it before submitting. The
+  // currency, decimals, country and tipping default are applied server-side —
+  // one source of truth for what a market means.
+  function pickMarket(code: string) {
+    setForm((f) => ({ ...f, market: code, timezone: marketOption(code).timezone }));
+  }
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -655,6 +716,7 @@ function CreateTenantForm({
           name: form.name,
           adminEmail: form.adminEmail,
           adminPassword: form.adminPassword,
+          market: form.market,
           timezone: form.timezone,
           planId: form.planId || undefined,
         },
@@ -682,6 +744,13 @@ function CreateTenantForm({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Salon name">
           <input style={inp} value={form.name} onChange={(e) => update('name', e.target.value)} required />
+        </Field>
+        <Field label="Market — sets currency, timezone, language and tipping">
+          <select style={inp} value={form.market} onChange={(e) => pickMarket(e.target.value)}>
+            {MARKET_OPTIONS.map((m) => (
+              <option key={m.code} value={m.code}>{m.flag} {m.label}</option>
+            ))}
+          </select>
         </Field>
         <Field label="Timezone">
           <TimezonePicker value={form.timezone} onChange={(tz) => update('timezone', tz)} selectStyle={inp} />

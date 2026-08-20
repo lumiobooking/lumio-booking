@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
-import { useLang, tr, NAV_KEY } from '../lib/i18n';
+import { useLang, tr, NAV_KEY, defaultLangForMarket } from '../lib/i18n';
 import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
@@ -203,8 +203,18 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     apiFetch<{ policy: Record<string, string>; defs: { key: string; hrefs: string[] }[] }>('/feature-policy', { token })
       .then((r) => setHiddenHrefs((r?.defs || []).filter((d) => r.policy?.[d.key] === 'platform').flatMap((d) => d.hrefs)))
       .catch(() => {});
-    apiFetch<{ businessType?: string; timezone?: string }>('/me/tenant', { token })
-      .then((r) => { const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on); if (r?.timezone) { try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } } })
+    apiFetch<{ businessType?: string; timezone?: string; market?: string }>('/me/tenant', { token })
+      .then((r) => {
+        const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on);
+        if (r?.timezone) { try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } }
+        // A Vietnamese salon opens in Vietnamese. Its owner should not have to
+        // find a language menu written in English on their first sign-in. Only
+        // when they have never chosen — a stored choice is never overruled.
+        try {
+          const want = defaultLangForMarket(r?.market, window.localStorage.getItem('lumio_lang'));
+          if (want) setLang(want);
+        } catch { /* ignore */ }
+      })
       .catch(() => {});
   }, [token, hasSalonAccess]);
 

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useAuth } from '../lib/auth';
 import { useIsMobile } from '../lib/responsive';
 import { uiLocale } from '../lib/datetime';
-import RegionGate, { ChangeRegionLink } from '../components/RegionGate';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f172a';
@@ -126,9 +125,6 @@ export default function HomePage() {
 
   return (
     <div style={{ background: '#fff', color: INK, minHeight: '100vh', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
-      {/* Asked once, then never again. Renders nothing until a second region
-          has a URL configured, so today this changes nothing at all. */}
-      <RegionGate />
       {/* ---------------- Nav ---------------- */}
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #eef2f7' }}>
         <nav style={{ maxWidth: 1120, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 24 }}>
@@ -339,7 +335,6 @@ export default function HomePage() {
           <Link href="/terms" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Messaging Terms</Link>.
         </div>
         <div style={{ borderTop: '1px solid #1f2937', padding: '18px 24px', textAlign: 'center', fontSize: 13 }}>
-          <ChangeRegionLink style={{ color: '#94a3b8', display: 'block', marginBottom: 10 }} />
           © {new Date().getFullYear()} Lumio Booking · Developed by{' '}
           <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#c7d2fe', fontWeight: 600, textDecoration: 'none' }}>Lumio Agency</a>
         </div>

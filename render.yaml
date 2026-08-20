@@ -196,31 +196,6 @@ services:
       # that answers.
       - key: NEXT_PUBLIC_API_URL
         sync: false
-      # ---- One address, two systems ----
-      #
-      # lumiobooking.com serves BOTH markets from this one build. The visitor
-      # picks a region once; that choice decides which API — and therefore which
-      # database — the browser talks to. The web app is a shell holding no
-      # salon's data, and neither API has a connection string for the other's
-      # database, so this changes which server answers and nothing else.
-      #
-      # LEAVE THE VN URL EMPTY until the Vietnamese API is ready to be used from
-      # this domain. With fewer than two regions configured, the chooser renders
-      # nothing, storage keys stay unsuffixed and every request goes to
-      # NEXT_PUBLIC_API_URL exactly as before — so this ships to the live site as
-      # a no-op and remains one until someone fills in a value on purpose.
-      #
-      # Filling in the VN URL also requires CORS_ORIGINS on lumio-api-vn to
-      # include https://lumiobooking.com, or the browser will block the calls.
-      #
-      # There is deliberately NO key for the US API here. I wrote one from
-      # memory and got it wrong — the live API is lumio-api-uqm6.onrender.com,
-      # with a suffix Render added because the plain name was taken — which
-      # would have pointed every US salon's browser at a host that does not
-      # exist. The US region now resolves to NEXT_PUBLIC_API_URL, the value this
-      # build already uses for every request, so it cannot disagree with itself.
-      - key: NEXT_PUBLIC_REGION_VN_API
-        sync: false
 
   # =========================================================================
   # VIETNAM — a SECOND deployment of the SAME code, with its own database.
@@ -361,30 +336,5 @@ services:
         value: VN
       # Must point at lumio-api-vn, never at the US API.
       - key: NEXT_PUBLIC_API_URL
-        sync: false
-      # ---- One address, two systems ----
-      #
-      # lumiobooking.com serves BOTH markets from this one build. The visitor
-      # picks a region once; that choice decides which API — and therefore which
-      # database — the browser talks to. The web app is a shell holding no
-      # salon's data, and neither API has a connection string for the other's
-      # database, so this changes which server answers and nothing else.
-      #
-      # LEAVE THE VN URL EMPTY until the Vietnamese API is ready to be used from
-      # this domain. With fewer than two regions configured, the chooser renders
-      # nothing, storage keys stay unsuffixed and every request goes to
-      # NEXT_PUBLIC_API_URL exactly as before — so this ships to the live site as
-      # a no-op and remains one until someone fills in a value on purpose.
-      #
-      # Filling in the VN URL also requires CORS_ORIGINS on lumio-api-vn to
-      # include https://lumiobooking.com, or the browser will block the calls.
-      #
-      # There is deliberately NO key for the US API here. I wrote one from
-      # memory and got it wrong — the live API is lumio-api-uqm6.onrender.com,
-      # with a suffix Render added because the plain name was taken — which
-      # would have pointed every US salon's browser at a host that does not
-      # exist. The US region now resolves to NEXT_PUBLIC_API_URL, the value this
-      # build already uses for every request, so it cannot disagree with itself.
-      - key: NEXT_PUBLIC_REGION_VN_API
         sync: false
 

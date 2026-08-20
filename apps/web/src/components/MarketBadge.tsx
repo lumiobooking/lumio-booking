@@ -13,14 +13,15 @@
  * So this is not a control. There is nothing to choose here: it says where you
  * are, in a colour you cannot mistake.
  *
- * It now reads the region at RUNTIME, because lumiobooking.com serves both
- * markets from one build and the answer is therefore a fact about the visitor,
- * not about the build. On a single-market deployment it falls back to
- * NEXT_PUBLIC_MARKET and behaves exactly as it did before — which is to say,
- * invisible on the US site.
+ * Set NEXT_PUBLIC_MARKET on a deployment that is not the main one — the
+ * Singapore staging services use it. Nothing to set on the US services, so
+ * nothing about them changes: no badge appears there at all.
+ *
+ * Not to be confused with a salon's market, which is a column on its tenant row
+ * and is shown in the Super Admin list. This is about WHICH DEPLOYMENT you have
+ * open, which is only ever a question for us, never for a salon.
  */
 import { useEffect, useState } from 'react';
-import { activeRegion } from '../lib/region';
 
 const MARKETS: Record<string, { label: string; fg: string; bg: string; border: string }> = {
   VN: { label: '🇻🇳 VIỆT NAM', fg: '#fca5a5', bg: 'rgba(153,27,27,0.28)', border: '#b91c1c' },
@@ -38,7 +39,7 @@ export default function MarketBadge({ compact = false }: { compact?: boolean }) 
   // Rendering nothing first is correct rather than merely convenient — it keeps
   // the markup identical on both sides and avoids a hydration mismatch.
   const [code, setCode] = useState('');
-  useEffect(() => setCode(activeRegion() || marketCode()), []);
+  useEffect(() => setCode(marketCode()), []);
 
   // No badge on the plain US deployment: adding a label there would be a
   // visible change to a system that is meant to stay untouched.

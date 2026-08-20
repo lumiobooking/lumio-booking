@@ -21,6 +21,10 @@ export function LangProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={{ lang, setLang }}>{children}</Ctx.Provider>;
 }
 
+// Market-driven language default lives in lib/markets.ts (pure logic, no JSX
+// there, so tests can import it). Re-exported so callers have one import.
+export { defaultLangForMarket } from './markets';
+
 export function useLang() { return useContext(Ctx); }
 
 /**

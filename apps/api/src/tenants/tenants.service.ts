@@ -13,12 +13,18 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { ListTenantsDto } from './dto/list-tenants.dto';
 import { uniqueSlug } from './slug.util';
+import { presetFor } from '../common/markets';
+import {
+  BOOKING_RULES_KEY, COMPANY_EXTRA_KEY, POS_SETTINGS_KEY,
+  DEFAULT_BOOKING_RULES, DEFAULT_COMPANY_EXTRA, DEFAULT_POS_SETTINGS,
+} from '../settings/settings.constants';
 
 const TENANT_PUBLIC_SELECT = {
   id: true,
   name: true,
   slug: true,
   status: true,
+  market: true,
   timezone: true,
   businessType: true,
   contactEmail: true,
@@ -186,12 +192,25 @@ export class TenantsService {
 
     const passwordHash = await hashSecret(dto.adminPassword);
 
+    // One choice at creation, and everything that travels with it comes along.
+    //
+    // Before this, opening a Vietnamese salon meant creating it and then
+    // hunting through three settings screens to fix timezone, currency,
+    // decimals and tips — and every one of those getting missed has a real
+    // cost. The wrong timezone books people at the wrong hour; a missing
+    // decimals=0 quoted a 200,000d manicure as d2,000.
+    //
+    // An explicit timezone from the form still wins: the preset is a sensible
+    // starting point, not an override of something the operator has stated.
+    const preset = presetFor(dto.market);
+
     const tenant = await this.prisma.$transaction(async (tx) => {
       const created = await tx.tenant.create({
         data: {
           name: dto.name,
           slug,
-          timezone: dto.timezone ?? 'UTC',
+          market: preset.market,
+          timezone: dto.timezone ?? preset.tenant.timezone,
           contactEmail: dto.contactEmail ?? dto.adminEmail.toLowerCase(),
           planId: dto.planId ?? null,
           subscriptions: dto.planId
@@ -212,6 +231,19 @@ export class TenantsService {
         },
       });
 
+      // Written as full rows merged over the shipped defaults, so a salon never
+      // starts with a half-populated settings blob. In the same transaction as
+      // the tenant: a salon that exists with the wrong currency is worse than
+      // one that failed to be created at all.
+      const rows: { key: string; value: object }[] = [
+        { key: COMPANY_EXTRA_KEY, value: { ...DEFAULT_COMPANY_EXTRA, ...preset.companyExtra } },
+        { key: BOOKING_RULES_KEY, value: { ...DEFAULT_BOOKING_RULES, ...preset.bookingRules } },
+        { key: POS_SETTINGS_KEY, value: { ...DEFAULT_POS_SETTINGS, ...preset.posSettings } },
+      ];
+      for (const row of rows) {
+        await tx.setting.create({ data: { tenantId: created.id, key: row.key, value: row.value } });
+      }
+
       return created;
     });
 
@@ -221,7 +253,7 @@ export class TenantsService {
       action: 'tenant.created',
       resourceType: 'tenant',
       resourceId: tenant.id,
-      metadata: { name: tenant.name, slug: tenant.slug, adminEmail: dto.adminEmail.toLowerCase() },
+      metadata: { name: tenant.name, slug: tenant.slug, market: preset.market, adminEmail: dto.adminEmail.toLowerCase() },
     });
 
     return tenant;
@@ -256,6 +288,11 @@ export class TenantsService {
         planId: dto.planId,
         contactEmail: dto.contactEmail,
         businessType: dto.businessType,
+        // Label and feature availability only. Changing the market of a salon
+        // that already has priced services and booked appointments must not
+        // rewrite its currency — that would change what real customers are
+        // charged. Money stays where the salon set it, under Settings.
+        ...(dto.market !== undefined ? { market: dto.market } : {}),
       },
       select: TENANT_PUBLIC_SELECT,
     });

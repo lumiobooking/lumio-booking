@@ -1,4 +1,5 @@
 import {
+  IsIn,
   IsEmail,
   IsOptional,
   IsString,
@@ -16,6 +17,19 @@ export class CreateTenantDto {
   @MaxLength(120)
   name!: string;
 
+  /**
+   * Which market this salon trades in. One choice that carries the timezone,
+   * country, currency, decimals and tipping convention that always travel
+   * together — see common/markets.ts.
+   *
+   * Optional, and absent means US: that is what every salon created before this
+   * field existed is, so the default has to be the old behaviour.
+   */
+  @IsOptional()
+  @IsIn(['US', 'CA', 'VN'])
+  market?: string;
+
+  /** Overrides the market's default timezone when the salon states its own. */
   @IsOptional()
   @IsString()
   timezone?: string;

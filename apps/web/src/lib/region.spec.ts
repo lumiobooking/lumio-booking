@@ -123,3 +123,34 @@ describe('values that should not be trusted', () => {
     expect(trailing[1].apiUrl.endsWith('/')).toBe(true); // documents why clean() exists
   });
 });
+
+describe('a salon that is already signed in is never asked', () => {
+  // The day this is switched on, every US owner working in the dashboard has a
+  // session but no region. Interrupting them with "are you in Vietnam?" is not
+  // acceptable, so their existing session answers for them.
+  it('treats an existing unsuffixed session as US', () => {
+    expect(activeRegion(null, BOTH, true)).toBe('US');
+  });
+
+  it('sends them to the US API, not the compiled-in default path by accident', () => {
+    expect(apiBaseUrl(null, BOTH, true)).toBe('https://lumio-api.onrender.com/api');
+  });
+
+  it('keeps their session key unsuffixed so they stay signed in', () => {
+    expect(scopedKey('lumio_auth', null, BOTH, true)).toBe('lumio_auth');
+  });
+
+  it('still asks a visitor with no session at all', () => {
+    expect(activeRegion(null, BOTH, false)).toBe('');
+  });
+
+  it('never overrides a choice the visitor actually made', () => {
+    expect(activeRegion('VN', BOTH, true)).toBe('VN');
+    expect(apiBaseUrl('VN', BOTH, true)).toBe('https://lumio-api-vn.onrender.com/api');
+  });
+
+  it('does nothing when the region feature is off', () => {
+    expect(activeRegion(null, ONLY_US, true)).toBe('');
+    expect(apiBaseUrl(null, ONLY_US, true)).toBe(COMPILED_IN);
+  });
+});

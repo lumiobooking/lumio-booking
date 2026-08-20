@@ -70,15 +70,41 @@ export function regionChoiceEnabled(regions: Region[] = configuredRegions()): bo
  * 'US': it is what every existing visitor to lumiobooking.com has, and it must
  * keep behaving exactly as before.
  */
-export function activeRegion(saved?: string | null, regions: Region[] = configuredRegions()): string {
+export function activeRegion(
+  saved?: string | null,
+  regions: Region[] = configuredRegions(),
+  legacySession: boolean | undefined = undefined,
+): string {
   if (!regionChoiceEnabled(regions)) return '';
   const code = norm(saved ?? read(REGION_KEY));
-  return regions.some((r) => r.code === code) ? code : '';
+  if (regions.some((r) => r.code === code)) return code;
+
+  const legacy = legacySession ?? hasLegacySession();
+
+  // Nobody who is ALREADY SIGNED IN should be asked which region they are in.
+  //
+  // A session sitting under the unsuffixed 'lumio_auth' key can only have been
+  // written before regions existed, which means it belongs to the original US
+  // system. Answering for them matters: without this, the day this is switched
+  // on, every US salon owner working in the dashboard is interrupted by a
+  // dialog asking whether they are in Vietnam.
+  if (legacy && regions.some((r) => r.code === 'US')) return 'US';
+
+  return '';
+}
+
+/** A session written before regions existed — therefore a US one. */
+export function hasLegacySession(): boolean {
+  return !!read('lumio_auth');
 }
 
 /** The API this browser should be talking to right now. */
-export function apiBaseUrl(saved?: string | null, regions: Region[] = configuredRegions()): string {
-  const code = activeRegion(saved, regions);
+export function apiBaseUrl(
+  saved?: string | null,
+  regions: Region[] = configuredRegions(),
+  legacySession?: boolean,
+): string {
+  const code = activeRegion(saved, regions, legacySession);
   if (!code) return defaultApiUrl();
   const region = regions.find((r) => r.code === code);
   // A code with no URL should never reach here, but falling back to the
@@ -93,8 +119,13 @@ export function apiBaseUrl(saved?: string | null, regions: Region[] = configured
  * The US keeps the bare key. That is not tidiness — it means every salon
  * currently signed in to lumiobooking.com stays signed in when this deploys.
  */
-export function scopedKey(base: string, saved?: string | null, regions: Region[] = configuredRegions()): string {
-  const code = activeRegion(saved, regions);
+export function scopedKey(
+  base: string,
+  saved?: string | null,
+  regions: Region[] = configuredRegions(),
+  legacySession?: boolean,
+): string {
+  const code = activeRegion(saved, regions, legacySession);
   if (!code || code === 'US') return base;
   return `${base}::${code}`;
 }

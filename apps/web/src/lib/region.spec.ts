@@ -1,6 +1,6 @@
-import { activeRegion, apiBaseUrl, scopedKey, regionChoiceEnabled, Region } from './region';
+import { activeRegion, apiBaseUrl, scopedKey, regionChoiceEnabled, configuredRegions, Region } from './region';
 
-const US: Region = { code: 'US', label: 'US / Canada', flag: '🇺🇸', apiUrl: 'https://lumio-api.onrender.com/api' };
+const US: Region = { code: 'US', label: 'US / Canada', flag: '🇺🇸', apiUrl: 'https://lumio-api-uqm6.onrender.com/api' };
 const VN: Region = { code: 'VN', label: 'Việt Nam', flag: '🇻🇳', apiUrl: 'https://lumio-api-vn.onrender.com/api' };
 const BOTH = [US, VN];
 const ONLY_US = [US];
@@ -63,7 +63,7 @@ describe('a visitor who has never chosen', () => {
 
 describe('once a region is chosen', () => {
   it('sends US traffic to the US API', () => {
-    expect(apiBaseUrl('US', BOTH)).toBe('https://lumio-api.onrender.com/api');
+    expect(apiBaseUrl('US', BOTH)).toBe('https://lumio-api-uqm6.onrender.com/api');
   });
 
   it('sends Vietnamese traffic to the Vietnamese API', () => {
@@ -133,7 +133,7 @@ describe('a salon that is already signed in is never asked', () => {
   });
 
   it('sends them to the US API, not the compiled-in default path by accident', () => {
-    expect(apiBaseUrl(null, BOTH, true)).toBe('https://lumio-api.onrender.com/api');
+    expect(apiBaseUrl(null, BOTH, true)).toBe('https://lumio-api-uqm6.onrender.com/api');
   });
 
   it('keeps their session key unsuffixed so they stay signed in', () => {
@@ -152,5 +152,25 @@ describe('a salon that is already signed in is never asked', () => {
   it('does nothing when the region feature is off', () => {
     expect(activeRegion(null, ONLY_US, true)).toBe('');
     expect(apiBaseUrl(null, ONLY_US, true)).toBe(COMPILED_IN);
+  });
+});
+
+describe('the US region is never a URL somebody typed from memory', () => {
+  // This suite exists because I typed one from memory and got it wrong: the
+  // live API is lumio-api-uqm6.onrender.com, not lumio-api.onrender.com.
+  // Switching regions on would have sent every US salon to a dead host.
+  it('falls back to the API this build already uses', () => {
+    const regions = configuredRegions();
+    const us = regions.find((r) => r.code === 'US');
+    expect(us?.apiUrl).toBe(COMPILED_IN);
+  });
+
+  it('is always present, so only Vietnam ever needs configuring', () => {
+    expect(configuredRegions().some((r) => r.code === 'US')).toBe(true);
+  });
+
+  it('stays inert while Vietnam is unconfigured, despite US being present', () => {
+    // NEXT_PUBLIC_REGION_VN_API is unset in the test environment.
+    expect(regionChoiceEnabled(configuredRegions())).toBe(false);
   });
 });

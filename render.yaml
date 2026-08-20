@@ -209,8 +209,13 @@ services:
       #
       # Filling in the VN URL also requires CORS_ORIGINS on lumio-api-vn to
       # include https://lumiobooking.com, or the browser will block the calls.
-      - key: NEXT_PUBLIC_REGION_US_API
-        value: https://lumio-api.onrender.com/api
+      #
+      # There is deliberately NO key for the US API here. I wrote one from
+      # memory and got it wrong — the live API is lumio-api-uqm6.onrender.com,
+      # with a suffix Render added because the plain name was taken — which
+      # would have pointed every US salon's browser at a host that does not
+      # exist. The US region now resolves to NEXT_PUBLIC_API_URL, the value this
+      # build already uses for every request, so it cannot disagree with itself.
       - key: NEXT_PUBLIC_REGION_VN_API
         sync: false
 
@@ -370,8 +375,13 @@ services:
       #
       # Filling in the VN URL also requires CORS_ORIGINS on lumio-api-vn to
       # include https://lumiobooking.com, or the browser will block the calls.
-      - key: NEXT_PUBLIC_REGION_US_API
-        value: https://lumio-api.onrender.com/api
+      #
+      # There is deliberately NO key for the US API here. I wrote one from
+      # memory and got it wrong — the live API is lumio-api-uqm6.onrender.com,
+      # with a suffix Render added because the plain name was taken — which
+      # would have pointed every US salon's browser at a host that does not
+      # exist. The US region now resolves to NEXT_PUBLIC_API_URL, the value this
+      # build already uses for every request, so it cannot disagree with itself.
       - key: NEXT_PUBLIC_REGION_VN_API
         sync: false
 

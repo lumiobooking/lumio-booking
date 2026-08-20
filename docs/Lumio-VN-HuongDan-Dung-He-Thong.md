@@ -229,7 +229,7 @@ Phải thấy đại khái:
 
 Mở **cả hai** trong hai tab:
 
-- `https://lumio-api.onrender.com/api/health` → ghi lại giá trị `db`
+- `https://lumio-api-uqm6.onrender.com/api/health` → ghi lại giá trị `db`
 - `https://lumio-api-vn.onrender.com/api/health` → ghi lại giá trị `db`
 
 **Hai giá trị `db` PHẢI KHÁC NHAU.**
@@ -244,7 +244,7 @@ Phải thấy **huy hiệu đỏ 🇻🇳 VIỆT NAM** cạnh chữ Lumio. Khôn
 
 ## D4. Hệ thống Mỹ không bị đụng gì
 
-Mở `https://lumio-api.onrender.com/api/health` → giá trị `commit` **phải vẫn là bản cũ**, khác với `commit` của hệ thống VN. Đó là bằng chứng hai bên đang chạy hai nhánh khác nhau và hệ thống Mỹ đang được để yên.
+Mở `https://lumio-api-uqm6.onrender.com/api/health` → giá trị `commit` **phải vẫn là bản cũ**, khác với `commit` của hệ thống VN. Đó là bằng chứng hai bên đang chạy hai nhánh khác nhau và hệ thống Mỹ đang được để yên.
 
 Hai giá trị `commit` giống nhau ngay sau khi bạn đẩy code nghĩa là service Mỹ **vẫn đang theo nhánh `main`** — quay lại bước B3 đổi sang `production`.
 

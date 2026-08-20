@@ -50,10 +50,25 @@ export function defaultApiUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 }
 
-/** Regions declared at build time. A region without an API URL does not count. */
+/**
+ * Regions declared at build time. A region without an API URL does not count.
+ *
+ * THE US REGION IS NEVER CONFIGURED BY HAND, and that is deliberate.
+ *
+ * I originally wrote its URL into render.yaml from memory and got it wrong —
+ * the live API is lumio-api-uqm6.onrender.com, with a suffix Render added
+ * because the plain name was taken. Switching regions on would have pointed
+ * every US salon's browser at a host that does not exist.
+ *
+ * So it is not written down anywhere any more. The US region resolves to
+ * NEXT_PUBLIC_API_URL: the value this build is ALREADY using successfully for
+ * every request it makes. It cannot disagree with itself, so the whole class of
+ * mistake is gone rather than corrected.
+ */
 export function configuredRegions(): Region[] {
   return [
-    { code: 'US', label: 'US / Canada', flag: '🇺🇸', apiUrl: clean(process.env.NEXT_PUBLIC_REGION_US_API) },
+    // Override exists only for unusual setups; unset is the correct normal case.
+    { code: 'US', label: 'US / Canada', flag: '🇺🇸', apiUrl: clean(process.env.NEXT_PUBLIC_REGION_US_API) || defaultApiUrl() },
     { code: 'VN', label: 'Việt Nam', flag: '🇻🇳', apiUrl: clean(process.env.NEXT_PUBLIC_REGION_VN_API) },
   ].filter((r) => r.apiUrl);
 }

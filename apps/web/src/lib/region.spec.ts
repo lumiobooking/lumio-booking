@@ -75,7 +75,8 @@ describe('once a region is chosen', () => {
   });
 
   it('never sends one region to the other region API', () => {
-    expect(apiBaseUrl('VN', BOTH)).not.toContain('lumio-api.onrender.com/api');
+    expect(apiBaseUrl('VN', BOTH)).not.toBe(US.apiUrl);
+    expect(apiBaseUrl('US', BOTH)).not.toBe(VN.apiUrl);
     expect(apiBaseUrl('US', BOTH)).not.toContain('-vn');
   });
 });

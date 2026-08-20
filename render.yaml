@@ -190,7 +190,10 @@ services:
       # so nothing about the system that is already running changes.
       # Base URL of the API INCLUDING the /api suffix. Baked in at build time,
       # so set it before the first web build, e.g.
-      #   https://lumio-api.onrender.com/api
+      #   https://lumio-api-uqm6.onrender.com/api
+      # Read it off the API service's page in the dashboard — Render appends a
+      # suffix when a name is taken, and the tidy-looking guess is not the one
+      # that answers.
       - key: NEXT_PUBLIC_API_URL
         sync: false
       # ---- One address, two systems ----

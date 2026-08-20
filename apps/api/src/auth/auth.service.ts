@@ -1,9 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { StaffRole, TenantStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { verifySecret } from './password.util';
+import { hashSecret, verifySecret } from './password.util';
+import { canBootstrap, passwordProblem } from './bootstrap.guard';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { capabilitiesFor } from './capabilities';
 
@@ -14,6 +15,56 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Create the very first Super Admin, once, on an empty deployment.
+   *
+   * A new market means a new database with nobody in it, and this API only
+   * offers login — so without this there is no way in at all. The seed script
+   * is not an answer: it writes demo salons and a password published in this
+   * repository.
+   *
+   * Two locks, checked in canBootstrap(): BOOTSTRAP_TOKEN must be set and
+   * presented, and the database must contain zero users. The second one closes
+   * the door permanently the moment this succeeds — a fact about the data, not
+   * a flag anyone has to remember to turn off — which is what makes it safe to
+   * leave this endpoint in the code.
+   */
+  async bootstrapSuperAdmin(input: {
+    email: string; password: string; token: string; firstName: string; lastName: string;
+  }) {
+    const userCount = await this.prisma.user.count();
+    const verdict = canBootstrap({
+      userCount,
+      expectedToken: this.config.get<string>('BOOTSTRAP_TOKEN'),
+      givenToken: input.token,
+    });
+    if (!verdict.allowed) {
+      // Deliberately vague to a caller who should not be here: a wrong token
+      // and an already-claimed system look the same from outside.
+      if (verdict.reason === 'already-set-up') {
+        throw new ForbiddenException('This system already has an account. Sign in instead.');
+      }
+      throw new ForbiddenException('Setup is not available.');
+    }
+
+    const problem = passwordProblem(input.password);
+    if (problem) throw new BadRequestException(problem);
+
+    const email = input.email.trim().toLowerCase();
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        passwordHash: await hashSecret(input.password),
+        role: UserRole.SUPER_ADMIN,
+        firstName: input.firstName.trim() || 'Lumio',
+        lastName: input.lastName.trim() || 'Admin',
+        tenantId: null,
+      },
+      select: { id: true, email: true },
+    });
+    return { created: true, email: user.email };
+  }
 
   /**
    * Validates credentials and issues an access token. The token carries the

@@ -256,7 +256,38 @@ Hai giá trị `commit` giống nhau ngay sau khi bạn đẩy code nghĩa là s
 
 Database VN vừa tạo hoàn toàn trống — không có người dùng nào, kể cả bạn. Tài khoản Super Admin bên Mỹ **không đăng nhập được** vào đây.
 
-Cách tạo tài khoản đầu tiên tuỳ vào cơ chế khởi tạo của phần mềm. **Nhắn cho tôi khi bạn tới bước này**, tôi đọc lại code phần đăng ký/seed rồi chỉ đúng cách — tôi không muốn đoán bước liên quan tới mật khẩu.
+Tôi đã đọc lại code, và tìm ra một khoảng trống thật: **hệ thống chưa có cách nào tạo tài khoản đầu tiên.** API chỉ có `login`, không có đăng ký. Còn `db:seed` thì tạo mật khẩu `Password123!` — chuỗi này in công khai trong repo — kèm hai tiệm demo giả. Không được phép chạy nó trên hệ thống thật.
+
+Nên tôi làm một cánh cửa hẹp, khoá bằng **hai ổ khoá độc lập**:
+
+1. **Database phải trống hoàn toàn.** Có đúng một tài khoản là cửa đóng vĩnh viễn — đóng bằng *một sự thật về dữ liệu*, không phải bằng cái cờ ai đó phải nhớ tắt. Đây là lý do để endpoint này nằm lại trong code mãi mãi cũng an toàn.
+2. **Một mã bí mật** (`BOOTSTRAP_TOKEN`). Không có ổ khoá này thì ai tìm thấy hệ thống mới trước chủ của nó đều chiếm được. **Không đặt biến = cửa không tồn tại** — nên hệ thống Mỹ đang chạy hoàn toàn không bị ảnh hưởng, ở đó đã có hàng nghìn user nên ổ khoá thứ nhất cũng đã đóng sẵn.
+
+### Các bước
+
+**E1.** Vào `lumio-api-vn` → **Environment** → tìm `BOOTSTRAP_TOKEN`. Blueprint đã khai `generateValue: true` nên Render tự sinh sẵn. Bấm biểu tượng con mắt để xem, **copy giá trị**.
+
+**E2.** Mở `https://lumio-web-vn.onrender.com/bootstrap`
+
+**E3.** Điền họ tên, email đăng nhập, mật khẩu, và dán mã ở bước E1 vào ô **Mã thiết lập**.
+
+Mật khẩu phải **từ 12 ký tự, có chữ hoa, chữ thường và số**. Hệ thống **từ chối thẳng** chuỗi `Password123!` vì nó nằm công khai trong repo.
+
+> Mật khẩu chỉ đi từ trình duyệt của bạn tới máy chủ của bạn. **Lưu ngay vào trình quản lý mật khẩu** — hệ thống chưa có chức năng quên mật khẩu, và trang này chỉ chạy được một lần.
+
+**E4.** Tạo xong → **quay lại Render xoá biến `BOOTSTRAP_TOKEN`**. Cửa đã tự khoá bằng ổ thứ nhất rồi, nhưng một chiếc chìa không dùng tới vẫn là một chiếc chìa.
+
+**E5.** Đăng nhập ở `https://lumio-web-vn.onrender.com/login`
+
+### Nếu trang báo lỗi
+
+| Thông báo | Nghĩa là |
+|---|---|
+| *"This system already has an account"* | Đã có tài khoản — dùng trang đăng nhập, đừng tạo lại |
+| *"Setup is not available"* | Mã sai, hoặc `BOOTSTRAP_TOKEN` chưa đặt / ngắn hơn 16 ký tự |
+| Báo về mật khẩu | Chưa đủ 12 ký tự, hoặc thiếu chữ hoa/thường/số |
+
+Endpoint này giới hạn **5 lần thử mỗi giờ**, nên đoán mã là vô ích.
 
 ---
 

@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { LoginDto } from './dto/login.dto';
+import { BootstrapDto } from './dto/bootstrap.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -19,6 +20,20 @@ export class AuthController {
   @HttpCode(200)
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
+  }
+
+  // POST /api/auth/bootstrap -> creates the FIRST Super Admin, once.
+  //
+  // Public because there is nobody to authenticate as yet. Guarded instead by
+  // a secret token AND by the database being empty, so it stops working the
+  // moment it has been used. Rate limited hard: five tries an hour makes
+  // guessing the token pointless.
+  @Public()
+  @RateLimit(5, 3_600_000)
+  @Post('bootstrap')
+  @HttpCode(200)
+  bootstrap(@Body() dto: BootstrapDto) {
+    return this.authService.bootstrapSuperAdmin(dto);
   }
 
   // GET /api/auth/me -> requires a valid token; echoes the current principal.

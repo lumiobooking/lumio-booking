@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
+import RegionGate from '../../components/RegionGate';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -47,6 +48,8 @@ export default function LoginPage() {
         padding: 24,
       }}
     >
+      {/* An account belongs to one region only, so the door has to be here too. */}
+      <RegionGate />
       <form
         onSubmit={onSubmit}
         style={{

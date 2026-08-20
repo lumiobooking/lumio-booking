@@ -193,6 +193,20 @@ services:
       #   https://lumio-api.onrender.com/api
       - key: NEXT_PUBLIC_API_URL
         sync: false
+      # ---- One brand, two systems: the region chooser ----
+      #
+      # lumiobooking.com stays the single address people are given. Asked once,
+      # a visitor who picks Vietnam is FORWARDED to the Vietnamese system; the
+      # choice is remembered and never asked again. It is a link, never a
+      # switch: no process ever holds both databases.
+      #
+      # LEAVE THE VN URL EMPTY until vn.lumiobooking.com actually resolves.
+      # With fewer than two URLs the chooser renders nothing at all, so this
+      # ships to the live US site as a no-op and stays one until you decide.
+      - key: NEXT_PUBLIC_REGION_US_URL
+        value: https://lumiobooking.com
+      - key: NEXT_PUBLIC_REGION_VN_URL
+        sync: false
 
   # =========================================================================
   # VIETNAM — a SECOND deployment of the SAME code, with its own database.
@@ -333,5 +347,19 @@ services:
         value: VN
       # Must point at lumio-api-vn, never at the US API.
       - key: NEXT_PUBLIC_API_URL
+        sync: false
+      # ---- One brand, two systems: the region chooser ----
+      #
+      # lumiobooking.com stays the single address people are given. Asked once,
+      # a visitor who picks Vietnam is FORWARDED to the Vietnamese system; the
+      # choice is remembered and never asked again. It is a link, never a
+      # switch: no process ever holds both databases.
+      #
+      # LEAVE THE VN URL EMPTY until vn.lumiobooking.com actually resolves.
+      # With fewer than two URLs the chooser renders nothing at all, so this
+      # ships to the live US site as a no-op and stays one until you decide.
+      - key: NEXT_PUBLIC_REGION_US_URL
+        value: https://lumiobooking.com
+      - key: NEXT_PUBLIC_REGION_VN_URL
         sync: false
 

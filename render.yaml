@@ -287,11 +287,28 @@ services:
         sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
-      # Keep-alive follows Vietnamese opening hours, not New York's.
+      # ---- Keep-alive, Vietnamese hours and the free-tier budget ----
+      #
+      # This MUST name the Vietnamese web service. The code's fallback used to
+      # be the US web URL, so leaving it unset had this instance pinging the US
+      # service every four minutes — burning the paying side's resources while
+      # letting its own web app fall asleep on Vietnamese customers. The
+      # fallback is now market-aware (see keepalive-targets.ts), but naming the
+      # URL here is what makes the Vietnamese web app actually stay warm.
+      - key: KEEPALIVE_ENABLED
+        value: "true"
+      - key: KEEPALIVE_WEB_URL
+        value: https://lumio-web-vn.onrender.com
+      # 09:00–21:00 Vietnam time, and the width is arithmetic rather than taste:
+      # Render gives the workspace 750 free instance-hours a month, and the two
+      # free VN services burn them in parallel while awake —
+      #   2 services x 12h x 30.4 days = 730h, just inside 750.
+      # 08:00–22:00 would be 851h and the services would go dark before month
+      # end. Widen this only after they are on a paid plan.
       - key: KEEPALIVE_START_HOUR
-        value: "8"
+        value: "9"
       - key: KEEPALIVE_END_HOUR
-        value: "22"
+        value: "21"
       - key: KEEPALIVE_TZ
         value: Asia/Ho_Chi_Minh
 

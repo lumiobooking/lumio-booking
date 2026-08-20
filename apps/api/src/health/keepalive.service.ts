@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { keepaliveTargets } from './keepalive-targets';
 
 /**
  * Keep-alive (anti cold-start) for Render's free tier.
@@ -65,20 +66,18 @@ export class KeepaliveService implements OnModuleInit, OnModuleDestroy {
   }
 
   private targets(): string[] {
-    const urls: string[] = [];
-    // Render injects RENDER_EXTERNAL_URL automatically; fall back to KEEPALIVE_SELF_URL.
-    // Public service URLs (not secrets). Env vars override these defaults so the
-    // keep-alive works out of the box even if the blueprint env isn't synced yet.
-    const self =
-      this.config.get<string>('KEEPALIVE_SELF_URL') ??
-      this.config.get<string>('RENDER_EXTERNAL_URL') ??
-      'https://lumio-api-uqm6.onrender.com';
-    const web =
-      this.config.get<string>('KEEPALIVE_WEB_URL') ??
-      'https://lumio-web-1xqk.onrender.com';
-    if (self) urls.push(`${self.replace(/\/$/, '')}/api/health`);
-    if (web) urls.push(`${web.replace(/\/$/, '')}/healthz`);
-    return urls;
+    // The choice itself lives in keepalive-targets.ts, as a pure function with
+    // tests. It used to be here, and it defaulted to the US URLs — which was
+    // fine with one deployment and wrong with two: an unconfigured Vietnamese
+    // instance would have pinged the US web service all day.
+    return keepaliveTargets({
+      market: this.config.get<string>('MARKET'),
+      // Render injects RENDER_EXTERNAL_URL automatically.
+      selfUrl:
+        this.config.get<string>('KEEPALIVE_SELF_URL') ??
+        this.config.get<string>('RENDER_EXTERNAL_URL'),
+      webUrl: this.config.get<string>('KEEPALIVE_WEB_URL'),
+    });
   }
 
   private window(): { start: number; end: number; tz: string } {

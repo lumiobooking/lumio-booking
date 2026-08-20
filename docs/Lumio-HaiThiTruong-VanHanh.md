@@ -138,47 +138,45 @@ Nếu tháng nào bạn sửa nhiều, đây là hạn mức chạm trước ti�
 
 ---
 
-## "Tôi chọn thị trường ở đâu?" — câu trả lời là: không ở đâu cả
+## Một địa chỉ duy nhất: lumiobooking.com
 
-Đây là câu hỏi tự nhiên nhất, và câu trả lời hơi ngược đời: **không có nút chọn thị trường, và đó chính là điều làm nó an toàn.**
+Bạn giữ **một tên miền**. Khách vào `lumiobooking.com`, chọn khu vực **một lần**, và từ đó vào thẳng hệ thống đúng. Không có tên miền thứ hai, không có `/vn` ở cuối, không đổi DNS.
 
-Nếu có một công tắc trong Super Admin để đổi qua lại giữa hai thị trường, nghĩa là **một tiến trình đang cầm chìa khoá của cả hai kho dữ liệu**. Chỉ cần một lỗi phân quyền, một câu truy vấn quên lọc, một lần bấm nhầm — và tiệm Việt Nam nhìn thấy dữ liệu tiệm Mỹ. Cái công tắc đó **tự nó là rủi ro** mà cả cách sắp xếp này sinh ra để loại bỏ.
+### Cái gì dùng chung, cái gì không
 
-Cách đang làm không có chìa khoá nào để cầm nhầm:
+**Dùng chung:** giao diện web. Nó là lớp vỏ — HTML, JavaScript, giao diện. **Nó không chứa dữ liệu của tiệm nào cả.**
+
+**Không dùng chung — và đây mới là phần quan trọng:** máy chủ dữ liệu và cơ sở dữ liệu.
 
 | | Hệ thống Mỹ | Hệ thống Việt Nam |
 |---|---|---|
-| Địa chỉ web | `lumio-web.onrender.com` | `lumio-web-vn.onrender.com` |
-| Máy chủ | `lumio-api` | `lumio-api-vn` |
-| Cơ sở dữ liệu | Neon US | **Neon VN — khác hẳn** |
+| Địa chỉ | `lumiobooking.com` | `lumiobooking.com` — **cùng một địa chỉ** |
+| Giao diện | dùng chung | dùng chung |
+| **Máy chủ dữ liệu** | `lumio-api` (Oregon) | **`lumio-api-vn` (Singapore)** |
+| **Cơ sở dữ liệu** | Neon US | **Neon VN — khác hẳn** |
 | Tài khoản đăng nhập | riêng | **riêng, không dùng chung** |
 
-Tiệm Việt Nam **không có đường nào** để nhìn thấy tiệm Mỹ: khác địa chỉ, khác máy chủ, khác cơ sở dữ liệu, khác tài khoản. Không phải vì code chặn — mà vì **dữ liệu đó không tồn tại trong hệ thống họ đang dùng**.
+Máy chủ Mỹ **không có cả chuỗi kết nối** tới database Việt Nam, và ngược lại. Chọn khu vực chỉ đổi *máy chủ nào trả lời trình duyệt này* — nó không thể lộ dữ liệu thị trường kia hơn là việc bạn gõ một địa chỉ khác vào thanh URL.
 
-### Rủi ro còn lại không phải của khách, mà của bạn
+Lớp bảo vệ tenant vẫn nằm đúng chỗ cũ: mọi truy vấn lọc theo tenant đã đăng nhập, trên một máy chủ chỉ biết một database.
 
-Hai bảng điều khiển **trông y hệt nhau**. Hai tab mở cạnh nhau, và một buổi tối sửa giá nhầm hệ thống. Chuyện này **đã xảy ra một lần trong chính dự án này**, chỉ với hai tenant tên gần giống nhau.
+### Vì sao không có công tắc đổi thị trường trong Super Admin
 
-Nên tôi làm một thứ **không phải công tắc**:
+Nếu có một công tắc như vậy, nghĩa là **một tiến trình cầm chìa khoá của cả hai kho dữ liệu**. Chỉ cần một lỗi phân quyền, một truy vấn quên lọc — và tiệm Việt Nam nhìn thấy dữ liệu tiệm Mỹ.
 
-- **Huy hiệu đỏ 🇻🇳 VIỆT NAM** hiện cạnh chữ Lumio trong bảng điều khiển và trên mọi trang Super Admin của hệ thống VN.
-- **Bảng điều khiển Mỹ không có huy hiệu nào** — cố ý. Thêm nhãn vào hệ thống đang chạy cũng là một thay đổi, mà nó thì phải được để yên.
-- Có test khoá chặt điều đó: đặt `US` hoặc để trống → **không huy hiệu**; đặt `VN` → có.
+Lựa chọn khu vực nằm trong **trình duyệt của từng người**, là nơi duy nhất nó không thể gây rò rỉ: một trình duyệt chỉ cầm phiên đăng nhập của một người, và chỉ nói chuyện với một máy chủ tại một thời điểm.
 
-### Kiểm nhanh bằng máy, không cần nhìn bằng mắt
+### Hai chi tiết đã xử lý
 
-Mở `/api/health` của một máy chủ, nó trả về:
+**Phiên đăng nhập không đè lên nhau.** Cùng một tên miền nghĩa là cùng một kho lưu trữ trình duyệt, và cả hai đều lưu phiên dưới tên `lumio_auth`. Nếu không tách, đăng nhập VN sẽ ghi đè phiên Mỹ và trình duyệt bắt đầu gửi token VN sang máy chủ Mỹ. Nay mỗi khu vực có ngăn riêng — **Mỹ giữ nguyên tên cũ**, nên ai đang đăng nhập vẫn đăng nhập bình thường sau khi cập nhật.
 
-```
-{ "market": "VN", "db": "3f9a1c47", "commit": "486a1b6" }
-```
+**Bất động cho tới khi bạn bật.** Khi chưa khai địa chỉ API Việt Nam, mọi thứ chạy **y hệt hôm nay**: không hỏi khu vực, không đổi tên ngăn lưu trữ, mọi request đi tới đúng `NEXT_PUBLIC_API_URL` cũ. Đây là điều đầu tiên bộ test kiểm.
 
-`db` là **vân tay của chuỗi kết nối** — không lộ mật khẩu, nhưng đủ trả lời câu hỏi duy nhất quan trọng sau khi dựng hệ thống thứ hai:
+### Còn một nửa chưa làm: link đặt lịch công khai
 
-> **Hai máy chủ có đang trỏ vào cùng một cơ sở dữ liệu không?**
+Trang đặt lịch khách hàng (`/book/tên-tiệm`) **chưa biết khu vực**. Khách của tiệm không hề chọn gì — họ bấm link tiệm gửi. Nên link cho tiệm Việt Nam cần **tự mang theo khu vực**.
 
-Hai bên hiện **cùng một `db`** nghĩa là hệ thống Việt Nam đang ghi vào dữ liệu của Mỹ — đúng sai lầm mà toàn bộ cách tách này sinh ra để ngăn. Phải khác nhau.
+Chưa làm vì nó quyết định luôn định dạng link mà plugin WordPress sinh ra, và tôi muốn bàn trước khi chốt. **Chưa có tiệm Việt Nam nào chạy nên chưa chặn việc gì** — nhưng phải làm trước tiệm đầu tiên.
 
-### Việc duy nhất bạn cần đặt
+---
 
-Trên Render, service `lumio-web-vn`: `NEXT_PUBLIC_MARKET = VN`. Trên `lumio-api-vn`: `MARKET = VN`. Hai service Mỹ **không cần đặt gì**.

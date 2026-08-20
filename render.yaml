@@ -193,19 +193,25 @@ services:
       #   https://lumio-api.onrender.com/api
       - key: NEXT_PUBLIC_API_URL
         sync: false
-      # ---- One brand, two systems: the region chooser ----
+      # ---- One address, two systems ----
       #
-      # lumiobooking.com stays the single address people are given. Asked once,
-      # a visitor who picks Vietnam is FORWARDED to the Vietnamese system; the
-      # choice is remembered and never asked again. It is a link, never a
-      # switch: no process ever holds both databases.
+      # lumiobooking.com serves BOTH markets from this one build. The visitor
+      # picks a region once; that choice decides which API — and therefore which
+      # database — the browser talks to. The web app is a shell holding no
+      # salon's data, and neither API has a connection string for the other's
+      # database, so this changes which server answers and nothing else.
       #
-      # LEAVE THE VN URL EMPTY until vn.lumiobooking.com actually resolves.
-      # With fewer than two URLs the chooser renders nothing at all, so this
-      # ships to the live US site as a no-op and stays one until you decide.
-      - key: NEXT_PUBLIC_REGION_US_URL
-        value: https://lumiobooking.com
-      - key: NEXT_PUBLIC_REGION_VN_URL
+      # LEAVE THE VN URL EMPTY until the Vietnamese API is ready to be used from
+      # this domain. With fewer than two regions configured, the chooser renders
+      # nothing, storage keys stay unsuffixed and every request goes to
+      # NEXT_PUBLIC_API_URL exactly as before — so this ships to the live site as
+      # a no-op and remains one until someone fills in a value on purpose.
+      #
+      # Filling in the VN URL also requires CORS_ORIGINS on lumio-api-vn to
+      # include https://lumiobooking.com, or the browser will block the calls.
+      - key: NEXT_PUBLIC_REGION_US_API
+        value: https://lumio-api.onrender.com/api
+      - key: NEXT_PUBLIC_REGION_VN_API
         sync: false
 
   # =========================================================================
@@ -348,18 +354,24 @@ services:
       # Must point at lumio-api-vn, never at the US API.
       - key: NEXT_PUBLIC_API_URL
         sync: false
-      # ---- One brand, two systems: the region chooser ----
+      # ---- One address, two systems ----
       #
-      # lumiobooking.com stays the single address people are given. Asked once,
-      # a visitor who picks Vietnam is FORWARDED to the Vietnamese system; the
-      # choice is remembered and never asked again. It is a link, never a
-      # switch: no process ever holds both databases.
+      # lumiobooking.com serves BOTH markets from this one build. The visitor
+      # picks a region once; that choice decides which API — and therefore which
+      # database — the browser talks to. The web app is a shell holding no
+      # salon's data, and neither API has a connection string for the other's
+      # database, so this changes which server answers and nothing else.
       #
-      # LEAVE THE VN URL EMPTY until vn.lumiobooking.com actually resolves.
-      # With fewer than two URLs the chooser renders nothing at all, so this
-      # ships to the live US site as a no-op and stays one until you decide.
-      - key: NEXT_PUBLIC_REGION_US_URL
-        value: https://lumiobooking.com
-      - key: NEXT_PUBLIC_REGION_VN_URL
+      # LEAVE THE VN URL EMPTY until the Vietnamese API is ready to be used from
+      # this domain. With fewer than two regions configured, the chooser renders
+      # nothing, storage keys stay unsuffixed and every request goes to
+      # NEXT_PUBLIC_API_URL exactly as before — so this ships to the live site as
+      # a no-op and remains one until someone fills in a value on purpose.
+      #
+      # Filling in the VN URL also requires CORS_ORIGINS on lumio-api-vn to
+      # include https://lumiobooking.com, or the browser will block the calls.
+      - key: NEXT_PUBLIC_REGION_US_API
+        value: https://lumio-api.onrender.com/api
+      - key: NEXT_PUBLIC_REGION_VN_API
         sync: false
 

@@ -1,110 +1,133 @@
 /**
- * Which regional system this visitor belongs in.
+ * One address — lumiobooking.com — in front of two completely separate systems.
  *
- * One brand, one address people are given — lumiobooking.com — but two entirely
- * separate systems behind it, each with its own server and its own database. So
- * the region choice here is a DOOR, never a switch: picking Vietnam sends the
- * browser to the Vietnamese system. Nothing in this file ever changes which
- * database is read. The two deployments still do not know each other exists,
- * and the address bar always says which one you are in.
+ * WHAT IS AND IS NOT SHARED
  *
- * Why a subdomain instead of lumiobooking.com/vn, which would look tidier:
+ * Shared: this web app. It is a shell — HTML, JavaScript, styling. It holds no
+ * salon's data of its own.
  *
- *   - The browser scopes localStorage by HOST. Both systems store the session
- *     under 'lumio_auth', so sharing one host means they overwrite each other:
- *     logging into Vietnam would quietly log you out of the US. Separate
- *     subdomains keep the two sessions apart, at no cost.
- *   - A path split needs the US service to forward Vietnamese traffic, which
- *     would send every Vietnamese request through Oregon before Singapore, and
- *     would take Vietnam down whenever the US is down.
+ * Not shared, and this is the part that matters: the API and the database.
+ * The US API can only reach the US database and the Vietnamese API can only
+ * reach the Vietnamese one. Neither process has so much as a connection string
+ * for the other. Choosing a region here changes which SERVER this browser
+ * talks to; it can no more expose the other market's data than typing a
+ * different address into the URL bar could.
  *
- * The most important property in this file: WITH FEWER THAN TWO REGIONS
- * CONFIGURED, NOTHING HAPPENS. The URLs come from env vars, so until the
- * Vietnamese one is set, lumiobooking.com behaves exactly as it does today —
- * no prompt, no redirect, no change to a system real salons are using.
+ * The tenant isolation the platform depends on lives where it always did —
+ * every query scoped by the authenticated tenant, on a server that only knows
+ * one database. Nothing in this file participates in that, by design.
+ *
+ * WHY THE BROWSER STORAGE IS SPLIT TOO
+ *
+ * One origin means one localStorage. Both systems store the session under
+ * 'lumio_auth', so without scoping, signing into Vietnam would overwrite the US
+ * session and a stale token would be sent to the wrong server. So every key
+ * holding data FROM a system is suffixed with that system's code — except for
+ * the US, which keeps the bare key so sessions that already exist keep working.
+ *
+ * THE PROPERTY THAT PROTECTS THE LIVE SITE
+ *
+ * Until a second region has BOTH a label and an API URL configured, every
+ * function here returns exactly what the app did before this file existed: the
+ * NEXT_PUBLIC_API_URL constant and unsuffixed storage keys. No prompt, no
+ * switch, no behaviour change. The Vietnamese URL ships empty on purpose, so
+ * this reaches lumiobooking.com as a no-op and stays one until someone fills
+ * in a value on purpose.
  */
 
 export const REGION_KEY = 'lumio_region';
 
 export interface Region {
   code: string;
-  /** Shown on the chooser. */
   label: string;
   flag: string;
-  /** Where this region's system lives. Empty/unset = not configured. */
-  url: string;
+  /** Which API this region's data lives behind. Empty = not configured. */
+  apiUrl: string;
 }
 
-export type RegionDecision =
-  /** Already in the right place, or the feature is not configured. */
-  | { action: 'stay' }
-  /** First visit: show the chooser. */
-  | { action: 'ask' }
-  /** Chose elsewhere last time: send them there. */
-  | { action: 'go'; url: string; code: string };
-
-export function decideRegion(args: {
-  /** NEXT_PUBLIC_MARKET of the deployment currently being viewed. */
-  currentMarket?: string | null;
-  /** What they picked last time, from localStorage. */
-  saved?: string | null;
-  /** Regions with a URL configured. */
-  regions: Region[];
-  /** Host of the page being viewed, to refuse a redirect back to itself. */
-  currentHost?: string | null;
-}): RegionDecision {
-  const configured = args.regions.filter((r) => cleanUrl(r.url));
-
-  // Nothing to choose between: one region, or none. Never prompt. This is what
-  // keeps the live US site untouched until the second URL is actually set.
-  if (configured.length < 2) return { action: 'stay' };
-
-  const here = normalise(args.currentMarket) || 'US';
-  const saved = normalise(args.saved);
-
-  // No choice yet — and no guessing. They asked to be asked once.
-  if (!saved) return { action: 'ask' };
-
-  // A saved value we no longer recognise (region removed, storage tampered
-  // with, an old build) is not a reason to redirect somewhere arbitrary.
-  const target = configured.find((r) => r.code === saved);
-  if (!target) return { action: 'ask' };
-
-  if (saved === here) return { action: 'stay' };
-
-  // Refuse to redirect to the page we are already on. Without this, one
-  // mistyped URL in the dashboard — Vietnam's entry pointing at the US — makes
-  // an endless redirect loop that looks like the site is simply broken.
-  const targetHost = hostOf(target.url);
-  if (targetHost && targetHost === normaliseHost(args.currentHost)) return { action: 'stay' };
-
-  return { action: 'go', url: cleanUrl(target.url), code: target.code };
+/** The compiled-in default: what the app used before regions existed. */
+export function defaultApiUrl(): string {
+  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 }
 
-/** Read the configured regions from build-time env vars. */
+/** Regions declared at build time. A region without an API URL does not count. */
 export function configuredRegions(): Region[] {
   return [
-    { code: 'US', label: 'US / Canada', flag: '🇺🇸', url: process.env.NEXT_PUBLIC_REGION_US_URL ?? '' },
-    { code: 'VN', label: 'Việt Nam', flag: '🇻🇳', url: process.env.NEXT_PUBLIC_REGION_VN_URL ?? '' },
-  ];
+    { code: 'US', label: 'US / Canada', flag: '🇺🇸', apiUrl: clean(process.env.NEXT_PUBLIC_REGION_US_API) },
+    { code: 'VN', label: 'Việt Nam', flag: '🇻🇳', apiUrl: clean(process.env.NEXT_PUBLIC_REGION_VN_API) },
+  ].filter((r) => r.apiUrl);
 }
 
-function normalise(v: string | null | undefined): string {
-  return String(v ?? '').trim().toUpperCase();
+/** True only when there is a real choice to make. Everything else keys off this. */
+export function regionChoiceEnabled(regions: Region[] = configuredRegions()): boolean {
+  return regions.length >= 2;
 }
 
-function cleanUrl(v: string | null | undefined): string {
-  return String(v ?? '').trim().replace(/\/+$/, '');
+/**
+ * Which region this browser is currently working in.
+ *
+ * '' means "no choice has been made", which is deliberately different from
+ * 'US': it is what every existing visitor to lumiobooking.com has, and it must
+ * keep behaving exactly as before.
+ */
+export function activeRegion(saved?: string | null, regions: Region[] = configuredRegions()): string {
+  if (!regionChoiceEnabled(regions)) return '';
+  const code = norm(saved ?? read(REGION_KEY));
+  return regions.some((r) => r.code === code) ? code : '';
 }
 
-function hostOf(url: string): string {
+/** The API this browser should be talking to right now. */
+export function apiBaseUrl(saved?: string | null, regions: Region[] = configuredRegions()): string {
+  const code = activeRegion(saved, regions);
+  if (!code) return defaultApiUrl();
+  const region = regions.find((r) => r.code === code);
+  // A code with no URL should never reach here, but falling back to the
+  // compiled-in default beats sending requests to an empty string.
+  return region?.apiUrl || defaultApiUrl();
+}
+
+/**
+ * Namespace a localStorage key so two systems on one origin cannot overwrite
+ * each other's data.
+ *
+ * The US keeps the bare key. That is not tidiness — it means every salon
+ * currently signed in to lumiobooking.com stays signed in when this deploys.
+ */
+export function scopedKey(base: string, saved?: string | null, regions: Region[] = configuredRegions()): string {
+  const code = activeRegion(saved, regions);
+  if (!code || code === 'US') return base;
+  return `${base}::${code}`;
+}
+
+/**
+ * Record the region and forget everything belonging to the previous one.
+ *
+ * A full reload follows in the caller, because the app reads its API URL and
+ * its session once on mount; leaving a half-switched page alive is how you end
+ * up sending one system's token to the other and puzzling over the 401.
+ */
+export function rememberRegion(code: string): void {
   try {
-    return normaliseHost(new URL(cleanUrl(url)).host);
+    window.localStorage.setItem(REGION_KEY, norm(code));
   } catch {
-    return '';
+    // Storage blocked (private mode). The choice will not survive this visit,
+    // which is worth an extra prompt but not an exception on the landing page.
   }
 }
 
-function normaliseHost(v: string | null | undefined): string {
-  return String(v ?? '').trim().toLowerCase().replace(/^www\./, '');
+function norm(v: string | null | undefined): string {
+  return String(v ?? '').trim().toUpperCase();
+}
+
+function clean(v: string | null | undefined): string {
+  return String(v ?? '').trim().replace(/\/+$/, '');
+}
+
+function read(key: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
 }

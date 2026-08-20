@@ -1,69 +1,40 @@
 'use client';
 
 /**
- * Asked once, at lumiobooking.com: which region are you in.
+ * Asked once at lumiobooking.com: which system are you signing in to.
  *
- * The answer is remembered and never asked again, and it is only ever used to
- * follow a link. See lib/region.ts for why this is a door and not a switch.
+ * The answer picks which SERVER this browser talks to. It cannot reach across
+ * to the other market's data — see lib/region.ts — and it is remembered, so
+ * nobody is asked twice.
  *
- * Deliberately mounted on the landing page and the login page ONLY. A customer
- * who was sent a direct booking link by their salon must never meet this — that
- * link already points at the right system, and asking a person booking a
- * manicure which continent's server they would like is absurd.
+ * Mounted on the landing page and the login page ONLY. A customer following the
+ * booking link their salon sent must never meet this: asking someone booking a
+ * manicure to choose a continent is absurd, and their link already carries the
+ * answer.
  *
- * Renders nothing at all until two regions have URLs configured.
+ * Renders nothing until a second region has an API URL configured.
  */
 import { useEffect, useState, CSSProperties } from 'react';
-import { decideRegion, configuredRegions, REGION_KEY, Region } from '../lib/region';
+import { configuredRegions, regionChoiceEnabled, activeRegion, rememberRegion, REGION_KEY, Region } from '../lib/region';
 
 export default function RegionGate() {
-  const [asking, setAsking] = useState(false);
   const [regions, setRegions] = useState<Region[]>([]);
 
   useEffect(() => {
     const all = configuredRegions();
-    let saved: string | null = null;
-    try {
-      saved = window.localStorage.getItem(REGION_KEY);
-    } catch {
-      // Private mode, storage disabled. Falling through means we ask, which is
-      // a mild annoyance; throwing here would blank the landing page.
-    }
-
-    const decision = decideRegion({
-      currentMarket: process.env.NEXT_PUBLIC_MARKET,
-      saved,
-      regions: all,
-      currentHost: window.location.host,
-    });
-
-    if (decision.action === 'go') {
-      // replace(), not assign(): the browser Back button should return to
-      // wherever they actually came from, not bounce off this redirect.
-      window.location.replace(decision.url + window.location.pathname + window.location.search);
-      return;
-    }
-    if (decision.action === 'ask') {
-      setRegions(all.filter((r) => r.url.trim()));
-      setAsking(true);
-    }
+    // Ask only when there is a real choice AND none has been made yet.
+    if (regionChoiceEnabled(all) && !activeRegion()) setRegions(all);
   }, []);
 
   function choose(r: Region) {
-    try {
-      window.localStorage.setItem(REGION_KEY, r.code);
-    } catch {
-      // Can't remember it — still honour the choice for this visit.
-    }
-    const here = (process.env.NEXT_PUBLIC_MARKET || 'US').toUpperCase();
-    if (r.code === here) {
-      setAsking(false);
-      return;
-    }
-    window.location.replace(r.url.replace(/\/+$/, '') + window.location.pathname + window.location.search);
+    rememberRegion(r.code);
+    // A full reload, not a state update. The API client and the session are
+    // both read on mount; a half-switched page is how a token from one system
+    // ends up being posted to the other.
+    window.location.reload();
   }
 
-  if (!asking) return null;
+  if (!regions.length) return null;
 
   return (
     <div style={backdrop} role="dialog" aria-modal="true" aria-label="Choose your region">
@@ -103,9 +74,7 @@ export default function RegionGate() {
  */
 export function ChangeRegionLink({ style }: { style?: CSSProperties }) {
   const [show, setShow] = useState(false);
-  useEffect(() => {
-    setShow(configuredRegions().filter((r) => r.url.trim()).length >= 2);
-  }, []);
+  useEffect(() => setShow(regionChoiceEnabled()), []);
   if (!show) return null;
   return (
     <button

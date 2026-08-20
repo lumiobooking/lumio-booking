@@ -1,5 +1,12 @@
 // Thin client for the Lumio Booking backend API.
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
+import { apiBaseUrl, scopedKey } from './region';
+
+// Read per call, not once at module load.
+//
+// lumiobooking.com now serves both markets from one build, so WHICH server this
+// browser talks to is a fact about the visitor rather than about the build. With
+// only one region configured this returns the same compiled-in constant it
+// always did — see region.ts.
 
 // Multi-branch: the salon owner/manager's currently selected branch. Read fresh
 // from localStorage on every call so a switch takes effect immediately (and there
@@ -8,7 +15,9 @@ export const ACTIVE_BRANCH_KEY = 'lumio_active_branch';
 function activeBranchId(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    return localStorage.getItem(ACTIVE_BRANCH_KEY) || null;
+    // Scoped: a branch id from one market means nothing in the other, and
+    // sending it across would be a header pointing at a row that isn't there.
+    return localStorage.getItem(scopedKey(ACTIVE_BRANCH_KEY)) || null;
   } catch {
     return null;
   }
@@ -42,7 +51,7 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
   const { method = 'GET', token, body } = options;
 
   const branch = activeBranchId();
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',

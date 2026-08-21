@@ -433,6 +433,9 @@ function previewPrice(amount: number, currency: string, symbol: string, position
 
 function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
+  // The salon's own country, not the browser's language: an owner reading the
+  // English labels in Hanoi still runs a Vietnamese salon.
+  const isVN = (data.company?.country ?? '').toUpperCase() === 'VN';
   const t = (k: string) => tr(k, lang);
   const b = data.booking;
   const [currency, setCurrency] = useState(b.currency);
@@ -505,6 +508,12 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </div>
 
       {/* --- Collapsible sub-sections keep the card short --- */}
+      {/* Stripe, Square and PayPal do not serve Vietnamese salons, and this
+          row sat directly above the section that IS their payment setup —
+          reading, reasonably, as "the real payment settings are not for you".
+          Hidden rather than disabled: an unavailable gateway is not a choice
+          being withheld, it is a thing that does not exist here. */}
+      {!isVN && (
       <Panel
         title={t('se.pay.gwTitle')}
         badge={connectedGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(connectedGw.length)), color: '#22c55e' } : { text: t('se.pay.none'), color: '#64748b' }}
@@ -552,6 +561,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           <PrimaryCardChannel data={data} onSave={onSave} />
         </div>
       </Panel>
+      )}
 
       <Panel
         title={lang === 'vi' ? 'Phụ phí thẻ (giá Cash / Card)' : 'Card surcharge (Cash / Card)'}
@@ -581,10 +591,13 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         <LoyaltyConfig data={data} onSave={onSave} />
       </Panel>
 
+      {/* In Vietnam this IS the payment setup, not a fallback beneath the real
+          one — so it says so. The owner asked where to configure payments and
+          did not recognise "Bank transfer (manual)" as the answer. */}
       <Panel
-        title={t('se.pay.bankTitle')}
-        badge={data.pos?.transferInstructions ? { text: t('se.pay.setBadge'), color: '#22c55e' } : { text: t('se.pay.notSet'), color: '#64748b' }}
-        hint={t('se.pay.bankHint')}
+        title={isVN ? 'Nhận tiền chuyển khoản · VietQR · MoMo · ZaloPay' : t('se.pay.bankTitle')}
+        badge={data.pos?.transferInstructions ? { text: t('se.pay.setBadge'), color: '#22c55e' } : { text: t('se.pay.notSet'), color: '#f59e0b' }}
+        hint={isVN ? 'Mã QR và số tài khoản khách quét để trả tiền' : t('se.pay.bankHint')}
       >
         <BankTransferConfig data={data} onSave={onSave} />
       </Panel>

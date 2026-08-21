@@ -99,6 +99,15 @@ for /f "delims=" %%n in ('git rev-list --count origin/production..main 2^>nul') 
 if "!AHEAD!"=="0" (
   echo ============================================================
   echo   The live salons already have this. Nothing more to do.
+  echo.
+  REM  Printed as EVIDENCE, not as a claim. This message used to appear
+  REM  because the count above was broken by a stray caret, and there was no
+  REM  way to tell that from the screen. Now it shows the commit the live site
+  REM  is on, so "nothing to do" can be checked rather than believed.
+  echo   Live salons are on:
+  git log --oneline -1 --no-decorate origin/production
+  echo   Your main is on:
+  git log --oneline -1 --no-decorate main
   echo ============================================================
   pause
   exit /b 0

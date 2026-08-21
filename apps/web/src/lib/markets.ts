@@ -15,15 +15,24 @@
 export interface MarketOption {
   code: string;
   label: string;
-  flag: string;
+  /**
+   * Two letters, not a country-flag emoji.
+   *
+   * Those are regional-indicator pairs, and Windows ships no glyphs for them —
+   * Chrome there draws the two letters raw, so the dropdown read
+   * "us US / Canada" and the table column read "us US". A Super Admin screen is
+   * mostly used on Windows, which makes the decoration break precisely where it
+   * was meant to help.
+   */
+  short: string;
   /** Prefill only — the server owns the real default. */
   timezone: string;
 }
 
 export const MARKET_OPTIONS: MarketOption[] = [
-  { code: 'US', label: 'US / Canada', flag: '🇺🇸', timezone: 'America/New_York' },
-  { code: 'CA', label: 'Canada', flag: '🇨🇦', timezone: 'America/Toronto' },
-  { code: 'VN', label: 'Việt Nam', flag: '🇻🇳', timezone: 'Asia/Ho_Chi_Minh' },
+  { code: 'US', label: 'US / Canada', short: 'US', timezone: 'America/New_York' },
+  { code: 'CA', label: 'Canada', short: 'CA', timezone: 'America/Toronto' },
+  { code: 'VN', label: 'Việt Nam', short: 'VN', timezone: 'Asia/Ho_Chi_Minh' },
 ];
 
 /** Unknown or missing is US — the market every existing salon is in. */
@@ -32,10 +41,9 @@ export function marketOption(code: string | null | undefined): MarketOption {
   return MARKET_OPTIONS.find((m) => m.code === key) ?? MARKET_OPTIONS[0];
 }
 
-/** Short label for a table row: "🇻🇳 VN". */
+/** Short label for a table row: just the two letters. */
 export function marketTag(code: string | null | undefined): string {
-  const m = marketOption(code);
-  return `${m.flag} ${m.code}`;
+  return marketOption(code).short;
 }
 
 /**

@@ -120,10 +120,19 @@ describe('the dropdown', () => {
     expect(marketList()[0].code).toBe('US');
   });
 
-  it('every entry has a label and a flag to tell them apart at a glance', () => {
+  it('every entry has a label and a short code to tell them apart at a glance', () => {
     for (const m of marketList()) {
       expect(m.label.length).toBeGreaterThan(0);
-      expect(m.flag.length).toBeGreaterThan(0);
+      expect(m.short.length).toBeGreaterThan(0);
+    }
+  });
+
+  // Windows has no country-flag glyphs, so Chrome there renders one as its two
+  // raw regional-indicator letters: the dropdown read "us US / Canada". Super
+  // Admin work happens on Windows, so this is pinned rather than trusted.
+  it('uses no flag emoji anywhere a Windows browser has to draw it', () => {
+    for (const m of marketList()) {
+      expect(`${m.label} ${m.short}`).not.toMatch(/[\u{1F1E6}-\u{1F1FF}]/u);
     }
   });
 

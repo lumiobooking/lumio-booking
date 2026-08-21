@@ -225,9 +225,9 @@ export default function TenantsPage() {
           style={{ ...inp, width: 'auto', minWidth: 150 }}
           title="Show only salons in one market"
         >
-          <option value="">🌐 All markets</option>
+          <option value="">All markets</option>
           {MARKET_OPTIONS.map((m) => (
-            <option key={m.code} value={m.code}>{m.flag} {m.label}</option>
+            <option key={m.code} value={m.code}>{m.label}</option>
           ))}
         </select>
         <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} salon{visible.length === 1 ? '' : 's'}</span>
@@ -507,7 +507,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           onChange={(e) => setForm((f) => ({ ...f, market: e.target.value }))}
         >
           {MARKET_OPTIONS.map((m) => (
-            <option key={m.code} value={m.code}>{m.flag} {m.label}</option>
+            <option key={m.code} value={m.code}>{m.label}</option>
           ))}
         </select>
       </Field>
@@ -748,7 +748,7 @@ function CreateTenantForm({
         <Field label="Market — sets currency, timezone, language and tipping">
           <select style={inp} value={form.market} onChange={(e) => pickMarket(e.target.value)}>
             {MARKET_OPTIONS.map((m) => (
-              <option key={m.code} value={m.code}>{m.flag} {m.label}</option>
+              <option key={m.code} value={m.code}>{m.label}</option>
             ))}
           </select>
         </Field>

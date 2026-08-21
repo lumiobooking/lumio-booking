@@ -8,8 +8,8 @@ describe('a salon with no market is a US salon', () => {
     expect(marketOption(code).code).toBe('US');
   });
 
-  it('tags them 🇺🇸 US so a row is never blank', () => {
-    expect(marketTag(undefined)).toBe('🇺🇸 US');
+  it('tags them US so a row is never blank', () => {
+    expect(marketTag(undefined)).toBe('US');
   });
 });
 
@@ -20,8 +20,8 @@ describe('reading a market off a row', () => {
   });
 
   it('gives a compact tag for a table cell', () => {
-    expect(marketTag('VN')).toBe('🇻🇳 VN');
-    expect(marketTag('CA')).toBe('🇨🇦 CA');
+    expect(marketTag('VN')).toBe('VN');
+    expect(marketTag('CA')).toBe('CA');
   });
 });
 
@@ -35,7 +35,7 @@ describe('the dropdown', () => {
     expect(new Set(codes).size).toBe(codes.length);
     for (const m of MARKET_OPTIONS) {
       expect(m.label).toBeTruthy();
-      expect(m.flag).toBeTruthy();
+      expect(m.short).toBeTruthy();
       expect(m.timezone).toContain('/');
     }
   });
@@ -45,7 +45,7 @@ describe('the dropdown', () => {
   // two places to disagree about what a Vietnamese salon's currency is.
   it('carries only a timezone hint, never money', () => {
     for (const m of MARKET_OPTIONS) {
-      expect(Object.keys(m).sort()).toEqual(['code', 'flag', 'label', 'timezone']);
+      expect(Object.keys(m).sort()).toEqual(['code', 'label', 'short', 'timezone']);
     }
   });
 });
@@ -70,5 +70,22 @@ describe('a Vietnamese salon opens in Vietnamese', () => {
 
   it('ignores a junk stored value and still applies the market default', () => {
     expect(defaultLangForMarket('VN', 'klingon')).toBe('vi');
+  });
+});
+
+describe('nothing here relies on a glyph Windows does not have', () => {
+  // Chrome on Windows draws a country-flag emoji as its two raw
+  // regional-indicator letters, which is how the Market column came out
+  // reading "us US" and the dropdown "us US / Canada".
+  it('emits no flag emoji from any market tag', () => {
+    for (const code of ['US', 'CA', 'VN', 'ZZ', undefined]) {
+      expect(marketTag(code)).not.toMatch(/[\u{1F1E6}-\u{1F1FF}]/u);
+    }
+  });
+
+  it('emits no flag emoji from any dropdown label', () => {
+    for (const m of MARKET_OPTIONS) {
+      expect(`${m.label} ${m.short}`).not.toMatch(/[\u{1F1E6}-\u{1F1FF}]/u);
+    }
   });
 });

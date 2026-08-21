@@ -36,7 +36,16 @@ export interface MarketDef {
   code: MarketCode;
   /** For the Super Admin dropdown. */
   label: string;
-  flag: string;
+  /**
+   * Two letters, not a country-flag emoji.
+   *
+   * Those are regional-indicator pairs, and Windows ships no glyphs for them —
+   * Chrome there draws the two letters raw, so the dropdown read
+   * "us US / Canada" and the table column read "us US". A Super Admin screen is
+   * mostly used on Windows, which makes the decoration break precisely where it
+   * was meant to help.
+   */
+  short: string;
   /** ISO 3166-1 alpha-2, written to the `company_extra` setting. Drives phone
    *  dial code and the date/number locale in messages sent to customers. */
   country: MarketCode;
@@ -64,7 +73,7 @@ export interface MarketDef {
 
 export const MARKETS: Record<MarketCode, MarketDef> = {
   US: {
-    code: 'US', label: 'US / Canada', flag: '🇺🇸',
+    code: 'US', label: 'US / Canada', short: 'US',
     country: 'US', timezone: 'America/Los_Angeles',
     // '' means "derive from the currency code" — the shipped default. Writing
     // '$' here would be a change to every existing salon, not a preset.
@@ -73,14 +82,14 @@ export const MARKETS: Record<MarketCode, MarketDef> = {
     unavailableFeatures: [],
   },
   CA: {
-    code: 'CA', label: 'Canada', flag: '🇨🇦',
+    code: 'CA', label: 'Canada', short: 'CA',
     country: 'CA', timezone: 'America/Toronto',
     currency: 'CAD', currencySymbol: '', symbolPosition: 'before', priceDecimals: 2,
     tipsEnabled: true, lang: 'en',
     unavailableFeatures: [],
   },
   VN: {
-    code: 'VN', label: 'Việt Nam', flag: '🇻🇳',
+    code: 'VN', label: 'Việt Nam', short: 'VN',
     country: 'VN', timezone: 'Asia/Ho_Chi_Minh',
     currency: 'VND', currencySymbol: '₫', symbolPosition: 'after', priceDecimals: 0,
     tipsEnabled: false, lang: 'vi',

@@ -24,8 +24,8 @@
 import { useEffect, useState } from 'react';
 
 const MARKETS: Record<string, { label: string; fg: string; bg: string; border: string }> = {
-  VN: { label: '🇻🇳 VIỆT NAM', fg: '#fca5a5', bg: 'rgba(153,27,27,0.28)', border: '#b91c1c' },
-  US: { label: '🇺🇸 US / CA', fg: '#93c5fd', bg: 'rgba(30,58,138,0.28)', border: '#1d4ed8' },
+  VN: { label: 'VIỆT NAM', fg: '#fca5a5', bg: 'rgba(153,27,27,0.28)', border: '#b91c1c' },
+  US: { label: 'US / CA', fg: '#93c5fd', bg: 'rgba(30,58,138,0.28)', border: '#1d4ed8' },
 };
 
 /** Build-time market, for deployments that serve exactly one. */

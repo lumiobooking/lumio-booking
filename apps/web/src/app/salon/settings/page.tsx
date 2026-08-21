@@ -262,9 +262,9 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
         <Field label={t('se.co.country')}>
           <select style={ui.input} value={f.country ?? ''} onChange={(e) => pickCountry(e.target.value)}>
             <option value="">{t('se.co.countryAuto')}</option>
-            <option value="US">🇺🇸 United States (+1)</option>
-            <option value="CA">🇨🇦 Canada (+1)</option>
-            <option value="VN">🇻🇳 Việt Nam (+84)</option>
+            <option value="US">United States (+1)</option>
+            <option value="CA">Canada (+1)</option>
+            <option value="VN">Việt Nam (+84)</option>
           </select>
         </Field>
       </div>

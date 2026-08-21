@@ -439,7 +439,7 @@ ${SIGN_VN}`,
     },
   },
   {
-    label: '🇺🇸 EN · Free audit (kéo khách liên hệ)',
+    label: 'EN · Free audit (kéo khách liên hệ)',
     goal: 'Same as Form 1, in English — get a reply, give away a free audit.',
     who: 'Cold list — owners who don’t read Vietnamese.',
     draft: {

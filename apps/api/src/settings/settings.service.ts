@@ -276,6 +276,11 @@ export class SettingsService {
     const tenantId = this.tenantId(user);
     const cur = await this.getPosSettings(tenantId);
     const next: PosSettings = {
+      // Carried forward explicitly. This object is rebuilt from scratch on every
+      // save, so anything not named here is destroyed — a salon that had chosen
+      // its till buttons would have lost them the next time someone edited the
+      // tax rate on an unrelated screen.
+      paymentMethods: cur.paymentMethods,
       taxRatePercent:
         typeof dto.taxRatePercent === 'number' && dto.taxRatePercent >= 0 ? dto.taxRatePercent : cur.taxRatePercent,
       receiptFooter: typeof dto.receiptFooter === 'string' ? dto.receiptFooter : cur.receiptFooter,

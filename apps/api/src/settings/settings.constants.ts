@@ -281,12 +281,18 @@ export interface PosSettings {
   /**
    * Which payment buttons this till shows, in order.
    *
-   * Empty means "use the market default" — which is what every salon that has
-   * never opened this screen has, and why they are all unaffected. A salon that
-   * does not take MoMo should not have a MoMo button to press by mistake at the
-   * end of a long day.
+   * Absent or empty means "use the market default" — which is what every salon
+   * that has never opened this screen has, and why they are all unaffected. A
+   * salon that does not take MoMo should not have a MoMo button to press by
+   * mistake at the end of a long day.
+   *
+   * OPTIONAL on purpose. Settings rows written before this field existed do not
+   * have it, and every place that rebuilds a whole PosSettings object would
+   * otherwise have to remember to carry it — which is exactly what broke the
+   * build: one such place did not, and the salon's choice would have been
+   * silently wiped every time an unrelated POS setting was saved.
    */
-  paymentMethods: string[];
+  paymentMethods?: string[];
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {

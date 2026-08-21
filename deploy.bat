@@ -95,7 +95,7 @@ REM  you while you are thinking about the change, instead of waiting in a file
 REM  whose name you have to recall.
 REM ===========================================================================
 set "AHEAD=0"
-for /f "delims=" %%n in ('git rev-list --count origin/production..main 2^^>nul') do set "AHEAD=%%n"
+for /f "delims=" %%n in ('git rev-list --count origin/production..main 2^>nul') do set "AHEAD=%%n"
 if "!AHEAD!"=="0" (
   echo ============================================================
   echo   The live salons already have this. Nothing more to do.
@@ -105,10 +105,10 @@ if "!AHEAD!"=="0" (
 )
 
 echo ============================================================
-echo   RELEASE TO THE LIVE SALONS?   ^^(lumiobooking.com^^)
+echo   RELEASE TO THE LIVE SALONS?   ^(lumiobooking.com^)
 echo ============================================================
 echo.
-echo   !AHEAD! change^^(s^^) would go out:
+echo   !AHEAD! change^(s^) would go out:
 echo.
 git log --oneline --no-decorate origin/production..main
 echo.

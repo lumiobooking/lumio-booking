@@ -29,11 +29,34 @@
  *  never calls the setter behaves exactly as it did before. */
 let symbol = '$';
 
+/**
+ * Anyone who needs to redraw when the symbol arrives.
+ *
+ * Without this the fix worked BY COINCIDENCE: React does not re-render because
+ * a module-level variable changed, and the labels only corrected themselves
+ * because setUiCurrencySymbol happened to be called next to some setState calls
+ * in the same function. Move that line, or set the symbol from somewhere with
+ * no state change, and every money label silently keeps the stale symbol.
+ *
+ * "Works because of where the line happens to sit" is not a property to leave
+ * in a money field.
+ */
+const listeners = new Set<() => void>();
+
+export function onUiCurrencyChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 export function setUiCurrencySymbol(next: string): void {
   const s = String(next ?? '').trim();
   // An empty value would blank the symbol on every money field at once, which
   // is worse than a stale one. Ignore it.
-  if (s) symbol = s;
+  if (!s || s === symbol) return;
+  symbol = s;
+  for (const fn of listeners) {
+    try { fn(); } catch { /* a broken listener must not stop the others */ }
+  }
 }
 
 export function uiCurrencySymbol(): string {

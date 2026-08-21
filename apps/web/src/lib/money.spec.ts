@@ -94,7 +94,7 @@ describe('displaying a stored amount', () => {
 });
 
 import { currencySymbolFor } from './money';
-import { setUiCurrencySymbol, applyCurrency, uiCurrencySymbol } from './ui-currency';
+import { setUiCurrencySymbol, applyCurrency, uiCurrencySymbol, onUiCurrencyChange } from './ui-currency';
 
 describe('a Vietnamese till must not ask for dollars', () => {
   // From a screenshot of a live Vietnamese salon: the cash field read "Tien
@@ -143,5 +143,44 @@ describe('a Vietnamese till must not ask for dollars', () => {
   it('replaces every occurrence, not just the first', () => {
     setUiCurrencySymbol('\u20ab');
     expect(applyCurrency('{c} to {c}')).toBe('\u20ab to \u20ab');
+  });
+});
+
+describe('the symbol change has to reach the screen', () => {
+  // The first version of this worked by coincidence: React does not re-render
+  // because a module variable changed, and the labels only corrected
+  // themselves because the setter happened to sit next to some setState calls.
+  it('tells anyone who is listening', () => {
+    // Baseline set BEFORE subscribing: this suite shares module state with the
+    // ones above, and a test that only passes in a particular order is a test
+    // that will fail for a reason unrelated to the change that breaks it.
+    setUiCurrencySymbol('$');
+    let calls = 0;
+    const off = onUiCurrencyChange(() => { calls += 1; });
+    setUiCurrencySymbol('₫');
+    expect(calls).toBe(1);
+    off();
+    setUiCurrencySymbol('$');
+    expect(calls).toBe(1);
+  });
+
+  it('stays quiet when the symbol has not actually changed', () => {
+    setUiCurrencySymbol('₫');
+    let calls = 0;
+    const off = onUiCurrencyChange(() => { calls += 1; });
+    setUiCurrencySymbol('₫');
+    setUiCurrencySymbol('');
+    expect(calls).toBe(0);
+    off();
+  });
+
+  it('one broken listener does not stop the others', () => {
+    setUiCurrencySymbol('$');
+    let reached = false;
+    const offA = onUiCurrencyChange(() => { throw new Error('boom'); });
+    const offB = onUiCurrencyChange(() => { reached = true; });
+    expect(() => setUiCurrencySymbol('₫')).not.toThrow();
+    expect(reached).toBe(true);
+    offA(); offB();
   });
 });

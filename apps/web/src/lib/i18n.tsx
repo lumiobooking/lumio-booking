@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { applyCurrency } from './ui-currency';
+import { applyCurrency, onUiCurrencyChange } from './ui-currency';
 
 export type Lang = 'en' | 'vi';
 const KEY = 'lumio_lang';
@@ -19,6 +19,13 @@ export function LangProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(KEY, l); } catch { /* ignore */ }
     setLangState(l);
   };
+
+  // Redraw every label when the salon's currency symbol arrives. tr() reads it
+  // from a module variable, which React has no way to notice on its own — so
+  // without this the money labels would keep whatever symbol was current at
+  // first paint.
+  const [, bump] = useState(0);
+  useEffect(() => onUiCurrencyChange(() => bump((n) => n + 1)), []);
   return <Ctx.Provider value={{ lang, setLang }}>{children}</Ctx.Provider>;
 }
 

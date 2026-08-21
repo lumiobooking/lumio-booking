@@ -265,6 +265,19 @@ export interface PosSettings {
   transferInstructions: string; // bank name / account / Zelle / Interac email, etc.
   transferQrUrl: string; // optional QR image URL the customer can scan
   /**
+   * The same two things, PER PAYMENT METHOD.
+   *
+   * A Vietnamese till offers six buttons — cash, card, transfer, VietQR, MoMo,
+   * ZaloPay — and the last three are different QR images from different apps.
+   * One transferQrUrl cannot hold three of them, so a cashier who tapped MoMo
+   * was shown the bank QR, or nothing.
+   *
+   * Keyed by PaymentMethod. Anything missing falls back to the single pair
+   * above, which is what every US salon has been using for Zelle and must keep
+   * working untouched.
+   */
+  paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
+  /**
    * Whether a tip is asked for at all.
    *
    * Tipping a nail tech is normal in the United States and Canada and strange
@@ -305,6 +318,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   transferQrUrl: '',
   tipsEnabled: true,
   paymentMethods: [], // empty = follow the salon's market
+  paymentDetails: {},
 
 };
 

@@ -271,6 +271,8 @@ export class SettingsService {
       transferInstructions?: string;
       transferQrUrl?: string;
       tipsEnabled?: boolean;
+      paymentMethods?: string[];
+      paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
     },
   ) {
     const tenantId = this.tenantId(user);
@@ -280,7 +282,12 @@ export class SettingsService {
       // save, so anything not named here is destroyed — a salon that had chosen
       // its till buttons would have lost them the next time someone edited the
       // tax rate on an unrelated screen.
-      paymentMethods: cur.paymentMethods,
+      paymentMethods: dto.paymentMethods ?? cur.paymentMethods,
+      // Merged, not replaced: the settings screen saves one method at a time,
+      // and a whole-object write would wipe the other five.
+      paymentDetails: dto.paymentDetails
+        ? { ...(cur.paymentDetails ?? {}), ...dto.paymentDetails }
+        : cur.paymentDetails,
       taxRatePercent:
         typeof dto.taxRatePercent === 'number' && dto.taxRatePercent >= 0 ? dto.taxRatePercent : cur.taxRatePercent,
       receiptFooter: typeof dto.receiptFooter === 'string' ? dto.receiptFooter : cur.receiptFooter,

@@ -161,6 +161,10 @@ export class SettingsController {
       cardSurchargeEnabled?: boolean;
       transferInstructions?: string;
       transferQrUrl?: string;
+      paymentMethods?: string[];
+      // Per-method bank details and QR image. A Vietnamese till has six buttons
+      // and VietQR / MoMo / ZaloPay are three different QR images.
+      paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
       tipsEnabled?: boolean;
     },
   ) {

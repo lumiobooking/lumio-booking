@@ -37,7 +37,7 @@ interface SettingsData {
     gmail: { clientId: string; senderEmail: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
   };
-  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean };
+  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number };
@@ -694,34 +694,106 @@ function PrimaryCardChannel({ data, onSave }: { data: SettingsData; onSave: Save
 
 function BankTransferConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
-  const t = (k: string) => tr(k, lang);
-  const [text, setText] = useState(data.pos?.transferInstructions ?? '');
-  const [qr, setQr] = useState(data.pos?.transferQrUrl ?? '');
+
+  // One block per button the till actually shows, minus the two that need no
+  // details. A Vietnamese salon offers VietQR, MoMo and ZaloPay, and those are
+  // three different QR images from three different apps — one shared field
+  // meant a cashier who tapped MoMo was shown the bank QR, or nothing.
+  const methods = (data.pos?.resolvedPaymentMethods ?? ['TRANSFER']).filter(
+    (m) => m !== 'CASH' && m !== 'CARD',
+  );
+  const LABELS: Record<string, { vi: string; en: string }> = {
+    TRANSFER: { vi: 'Chuyển khoản ngân hàng', en: 'Bank transfer' },
+    VIETQR: { vi: 'VietQR', en: 'VietQR' },
+    MOMO: { vi: 'Ví MoMo', en: 'MoMo' },
+    ZALOPAY: { vi: 'Ví ZaloPay', en: 'ZaloPay' },
+    OTHER: { vi: 'Khác', en: 'Other' },
+  };
+
+  if (!methods.length) {
+    return (
+      <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+        {lang === 'vi'
+          ? 'Máy tính tiền của tiệm chỉ nhận tiền mặt và thẻ, nên không cần khai gì ở đây.'
+          : 'This till only takes cash and card, so there is nothing to fill in here.'}
+      </p>
+    );
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <Field label={t('se.bt.details')}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {methods.map((m) => (
+        <MethodDetails
+          key={m}
+          method={m}
+          label={LABELS[m]?.[lang === 'vi' ? 'vi' : 'en'] ?? m}
+          data={data}
+          onSave={onSave}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MethodDetails({
+  method, label, data, onSave,
+}: { method: string; label: string; data: SettingsData; onSave: SaveFn }) {
+  const { lang } = useLang();
+  // Falls back to the single old pair for TRANSFER, so a US salon that filled
+  // in its Zelle details long ago still sees them here, unchanged.
+  const existing = data.pos?.paymentDetails?.[method];
+  const [text, setText] = useState(
+    existing?.instructions ?? (method === 'TRANSFER' ? data.pos?.transferInstructions ?? '' : ''),
+  );
+  const [qr, setQr] = useState(
+    existing?.qrUrl ?? (method === 'TRANSFER' ? data.pos?.transferQrUrl ?? '' : ''),
+  );
+  const filled = !!(text.trim() || qr.trim());
+  const wallet = method === 'MOMO' || method === 'ZALOPAY';
+
+  return (
+    <div style={{ border: '1px solid #1f2937', borderRadius: 10, padding: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <strong style={{ color: '#e2e8f0', fontSize: 14 }}>{label}</strong>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: filled ? '#22c55e' : '#f59e0b', border: `1px solid ${filled ? '#166534' : '#78350f'}` }}>
+          {filled ? (lang === 'vi' ? 'Đã đặt' : 'Set') : (lang === 'vi' ? 'Chưa đặt' : 'Not set')}
+        </span>
+      </div>
+      <Field label={lang === 'vi' ? 'Thông tin hiện cho khách' : 'Details shown to the customer'}>
         <textarea
+          rows={3}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          rows={3}
-          // The example has to match the country, or it teaches the wrong
-          // thing: a salon in Hanoi has no Bank of America account and no
-          // Zelle, and an owner reading that example reasonably concludes this
-          // screen is not for them.
           placeholder={
             lang === 'vi'
-              ? 'ví dụ:\nVietcombank — NGUYEN VAN A\nSố TK: 0123456789\nNội dung: [tên khách] [giờ hẹn]'
-              : 'e.g.\nBank of America — Lumio Nails\nAccount: 1234567890\nZelle: pay@lumionails.com'
+              ? (wallet
+                  ? 'Số điện thoại ví · tên chủ ví'
+                  : 'Vietcombank — NGUYEN VAN A\nSố TK: 0123456789\nNội dung: [tên khách] [giờ hẹn]')
+              : 'Bank of America — Lumio Nails\nAccount: 1234567890'
           }
           style={{ ...ui.input, resize: 'vertical', fontFamily: 'inherit' }}
         />
       </Field>
-      <Field label={t('se.bt.qr')}>
-        <input style={ui.input} value={qr} onChange={(e) => setQr(e.target.value)} placeholder={t('se.bt.qrPh')} />
+      <Field label={lang === 'vi' ? 'URL ảnh mã QR — khách quét để trả' : 'QR image URL — the customer scans it'}>
+        <input style={ui.input} value={qr} onChange={(e) => setQr(e.target.value)} placeholder="https://…" />
       </Field>
-      <div>
-        <button style={ui.primaryBtn} onClick={() => onSave('pos', { transferInstructions: text, transferQrUrl: qr }, 'Bank transfer')}>
-          {t('se.bt.save')}
+      <div style={{ marginTop: 8 }}>
+        <button
+          style={ui.primaryBtn}
+          onClick={() =>
+            onSave(
+              'pos',
+              {
+                paymentDetails: { [method]: { instructions: text, qrUrl: qr } },
+                // Keep the legacy single pair in step for TRANSFER so anything
+                // still reading the old fields sees the same thing.
+                ...(method === 'TRANSFER' ? { transferInstructions: text, transferQrUrl: qr } : {}),
+              },
+              label,
+            )
+          }
+        >
+          {lang === 'vi' ? `Lưu ${label}` : `Save ${label}`}
         </button>
       </div>
     </div>

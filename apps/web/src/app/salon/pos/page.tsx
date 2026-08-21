@@ -24,6 +24,7 @@ interface CustomerHit { id: string; firstName: string; lastName?: string | null;
 interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
   taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
+  payDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
   tipsOn?: boolean;
   tillMethods?: PayMethod[];
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
@@ -137,6 +138,9 @@ function Register() {
   const [reviewUrl, setReviewUrl] = useState<string | null>(null); // salon Google-review link for the customer display
   const [transferInfo, setTransferInfo] = useState('');
   const [transferQr, setTransferQr] = useState('');
+  // Per-method bank details / QR. VietQR, MoMo and ZaloPay are three different
+  // images, so one shared field showed the cashier the wrong code — or none.
+  const [payDetails, setPayDetails] = useState<Record<string, { instructions?: string; qrUrl?: string }>>({});
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
   const [query, setQuery] = useState('');
   const [catFilter, setCatFilter] = useState<string | null>(null); // service category id, null = all
@@ -262,7 +266,7 @@ function Register() {
 
   const applyCatalog = (c: CatalogCache) => {
     setServices(c.services); setProducts(c.products); setAddons(c.addons); setStaff(c.staff);
-    setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setCurrency(c.currency);
+    setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setPayDetails(c.payDetails ?? {}); setCurrency(c.currency);
     setLoyalty(c.loyalty);
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
     setTipsOn(c.tipsOn !== false);
@@ -282,7 +286,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[] }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
       ]);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
@@ -294,6 +298,7 @@ function Register() {
         cardSurchargeOn: settings.pos?.cardSurchargeEnabled ?? false,
         transferInfo: settings.pos?.transferInstructions ?? '',
         transferQr: settings.pos?.transferQrUrl ?? '',
+        payDetails: settings.pos?.paymentDetails ?? {},
         tipsOn: settings.pos?.tipsEnabled !== false,
         // Which buttons this till shows. Resolved server-side from the salon's
         // own choice, else its market — the page just renders what it is given.
@@ -1813,21 +1818,31 @@ function Register() {
               not the code would leave the cashier with nothing to hold up. */}
           {(payMethod === 'TRANSFER' || payMethod === 'VIETQR' || payMethod === 'MOMO' || payMethod === 'ZALOPAY') && (
             <div style={{ marginBottom: 10 }}>
-              {transferInfo || transferQr ? (
+              {/* The details for the method the cashier actually pressed. A
+                  MoMo QR is not a VietQR is not a bank QR; showing the wrong
+                  one is worse than showing none, because the customer scans it
+                  and pays the wrong place. Falls back to the single legacy pair
+                  so a US salon's Zelle details keep working untouched. */}
+              {(() => {
+                const d = payDetails[payMethod] ?? {};
+                const info = d.instructions ?? (payMethod === 'TRANSFER' ? transferInfo : '');
+                const qr = d.qrUrl ?? (payMethod === 'TRANSFER' ? transferQr : '');
+                return info || qr ? (
                 <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
                   <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('po.transferShow').replace('{x}', formatPrice(money.due, currency))}</div>
-                  {transferInfo && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#e2e8f0', margin: 0 }}>{transferInfo}</pre>}
-                  {transferQr && (
+                  {info && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#e2e8f0', margin: 0 }}>{info}</pre>}
+                  {qr && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={transferQr} alt="Transfer QR" style={{ width: 140, height: 140, objectFit: 'contain', marginTop: 10, background: '#fff', borderRadius: 8, padding: 4 }} />
+                    <img src={qr} alt={`${payMethod} QR`} style={{ width: 140, height: 140, objectFit: 'contain', marginTop: 10, background: '#fff', borderRadius: 8, padding: 4 }} />
                   )}
                   <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>{t('po.transferAfter')}</div>
                 </div>
-              ) : (
+                ) : (
                 <p style={{ color: '#94a3b8', fontSize: 13 }}>
                   {t('po.transferNoneA')}<a href="/salon/settings" style={{ color: '#818cf8' }}>{t('po.transferSettingsLink')}</a>{t('po.transferNoneB')}
                 </p>
-              )}
+                );
+              })()}
             </div>
           )}
 

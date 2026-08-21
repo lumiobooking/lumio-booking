@@ -7,7 +7,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
-import { useLang, tr, NAV_KEY, defaultLangForMarket } from '../lib/i18n';
+import { useLang, tr, NAV_KEY, defaultLangForMarket, setUiCurrencySymbol } from '../lib/i18n';
+import { currencySymbolFor } from '../lib/money';
 import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
@@ -214,6 +215,11 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           const want = defaultLangForMarket(r?.market, window.localStorage.getItem('lumio_lang'));
           if (want) setLang(want);
         } catch { /* ignore */ }
+        // Money-entry labels say "Cash received d" rather than "$" for a
+        // Vietnamese salon. Derived from the market here so every screen is
+        // right immediately; the till refines it from the salon's actual
+        // currency once its settings load.
+        setUiCurrencySymbol(currencySymbolFor(r?.market === 'VN' ? 'VND' : 'USD'));
       })
       .catch(() => {});
   }, [token, hasSalonAccess]);

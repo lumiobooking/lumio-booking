@@ -10,7 +10,8 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch, ApiError } from '../../../lib/api';
 import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
 import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
-import { useLang, tr } from '../../../lib/i18n';
+import { currencySymbolFor } from '../../../lib/money';
+import { useLang, tr, setUiCurrencySymbol } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { uiLocale } from '../../../lib/datetime';
 
@@ -265,6 +266,9 @@ function Register() {
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
     setTipsOn(c.tipsOn !== false);
     setTillMethods(tillMethodsFrom(c.tillMethods));
+    // Exact, from the currency this salon actually counts in — the shell only
+    // guessed it from the market.
+    setUiCurrencySymbol(currencySymbolFor(c.currency));
   };
 
   const load = useCallback(async () => {

@@ -92,3 +92,56 @@ describe('displaying a stored amount', () => {
     expect(formatPrice(200000, 'VND')).toContain('200,000');
   });
 });
+
+import { currencySymbolFor } from './money';
+import { setUiCurrencySymbol, applyCurrency, uiCurrencySymbol } from './ui-currency';
+
+describe('a Vietnamese till must not ask for dollars', () => {
+  // From a screenshot of a live Vietnamese salon: the cash field read "Tien
+  // khach dua $". Thirteen labels had a dollar sign typed straight into them,
+  // in BOTH translations, so the Vietnamese text was wrong too. Not cosmetic:
+  // on a money field the symbol is what tells the owner what scale to type in,
+  // and the wrong scale is the bug that turned 200,000d into d2,000 elsewhere.
+  it('knows the symbol for each currency', () => {
+    expect(currencySymbolFor('VND')).toBe('\u20ab');
+    expect(currencySymbolFor('USD')).toBe('$');
+  });
+
+  it('falls back to the code rather than to a wrong symbol', () => {
+    expect(currencySymbolFor('NOT_A_CURRENCY')).toBe('NOT_A_CURRENCY');
+  });
+
+  it('writes the salon own symbol into a label', () => {
+    setUiCurrencySymbol('\u20ab');
+    expect(applyCurrency('Ti\u1ec1n kh\u00e1ch \u0111\u01b0a {c}')).toBe('Ti\u1ec1n kh\u00e1ch \u0111\u01b0a \u20ab');
+    expect(applyCurrency('\u0110\u01a1n gi\u00e1 ({c})')).toBe('\u0110\u01a1n gi\u00e1 (\u20ab)');
+  });
+
+  it('leaves a US till reading exactly as it did before', () => {
+    setUiCurrencySymbol('$');
+    expect(applyCurrency('Cash received {c}')).toBe('Cash received $');
+    expect(applyCurrency('Amount ({c})')).toBe('Amount ($)');
+  });
+
+  it('defaults to the dollar every one of those labels used to hardcode', () => {
+    // So an app that never calls the setter behaves exactly as before.
+    expect(typeof uiCurrencySymbol()).toBe('string');
+  });
+
+  it('ignores an empty symbol rather than blanking every money field at once', () => {
+    setUiCurrencySymbol('$');
+    setUiCurrencySymbol('');
+    setUiCurrencySymbol('   ');
+    expect(applyCurrency('Cash received {c}')).toBe('Cash received $');
+  });
+
+  it('leaves labels with no money in them untouched', () => {
+    setUiCurrencySymbol('\u20ab');
+    expect(applyCurrency('B\u00e1n h\u00e0ng / Thu ng\u00e2n')).toBe('B\u00e1n h\u00e0ng / Thu ng\u00e2n');
+  });
+
+  it('replaces every occurrence, not just the first', () => {
+    setUiCurrencySymbol('\u20ab');
+    expect(applyCurrency('{c} to {c}')).toBe('\u20ab to \u20ab');
+  });
+});

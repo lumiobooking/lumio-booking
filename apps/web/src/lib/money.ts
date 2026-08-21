@@ -82,3 +82,25 @@ export function fromMinorUnits(minorUnits: number, currency = 'USD'): string {
   if (digits === 0) return String(Math.round(minorUnits || 0));
   return ((minorUnits || 0) / 10 ** digits).toFixed(digits);
 }
+
+/**
+ * The symbol a currency is written with: USD -> $, VND -> ₫.
+ *
+ * Used for money-entry LABELS ("Cash received ₫"), not for amounts — amounts go
+ * through formatPrice, which handles grouping and decimals too. It exists
+ * because thirteen labels had a dollar sign typed straight into them, in both
+ * the English and the Vietnamese translations, so a salon in Hanoi counting
+ * dong was asked for dollars at its own till.
+ *
+ * Falls back to the currency code rather than to '$': a wrong symbol on a
+ * money field is worse than an unfamiliar one, because the symbol is what tells
+ * the owner what scale to type in.
+ */
+export function currencySymbolFor(currency = 'USD'): string {
+  try {
+    const parts = new Intl.NumberFormat('en-US', { style: 'currency', currency }).formatToParts(0);
+    return parts.find((p) => p.type === 'currency')?.value ?? currency;
+  } catch {
+    return currency;
+  }
+}

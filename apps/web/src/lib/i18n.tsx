@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { applyCurrency } from './ui-currency';
 
 export type Lang = 'en' | 'vi';
 const KEY = 'lumio_lang';
@@ -148,7 +149,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'gc.stActive': { en: 'Active', vi: 'Còn hiệu lực' },
   'gc.stRedeemed': { en: 'Used up', vi: 'Đã dùng hết' },
   'gc.stVoid': { en: 'Void', vi: 'Đã huỷ' },
-  'gc.amount': { en: 'Amount ($)', vi: 'Số tiền ($)' },
+  'gc.amount': { en: 'Amount ({c})', vi: 'Số tiền ({c})' },
   'gc.payMethod': { en: 'Paid by', vi: 'Thanh toán bằng' },
   'gc.mCash': { en: 'Cash', vi: 'Tiền mặt' },
   'gc.mCard': { en: 'Card', vi: 'Thẻ' },
@@ -596,7 +597,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'sv.addonName': { en: 'Add-on name', vi: 'Tên tùy chọn' },
   'sv.addonNamePh': { en: 'e.g. Nail art', vi: 'vd: Vẽ móng' },
   'sv.minLabel': { en: 'Min', vi: 'Phút' },
-  'sv.priceLabel': { en: 'Price $', vi: 'Giá $' },
+  'sv.priceLabel': { en: 'Price {c}', vi: 'Giá {c}' },
   'sv.add': { en: '+ Add', vi: '+ Thêm' },
   'sv.serviceName': { en: 'Service name', vi: 'Tên dịch vụ' },
   'sv.creating': { en: 'Creating…', vi: 'Đang tạo…' },
@@ -700,7 +701,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'st.fEmail': { en: 'Email', vi: 'Email' },
   'st.fPhone': { en: 'Phone', vi: 'SĐT' },
   'st.commission': { en: 'Commission % (on service revenue)', vi: 'Hoa hồng % (trên doanh thu dịch vụ)' },
-  'st.basePay': { en: 'Base pay / period ($)', vi: 'Lương cố định / kỳ ($)' },
+  'st.basePay': { en: 'Base pay / period ({c})', vi: 'Lương cố định / kỳ ({c})' },
   'st.roleLabel': { en: 'Role / permissions', vi: 'Vai trò / quyền' },
   'st.roleTech': { en: 'Technician', vi: 'Thợ' },
   'st.roleReception': { en: 'Receptionist', vi: 'Lễ tân' },
@@ -868,11 +869,11 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.tapToAdd': { en: 'Tap a service or product to add it.', vi: 'Bấm vào dịch vụ hoặc sản phẩm để thêm.' },
   'po.addonBadge': { en: 'ADD-ON', vi: 'THÊM' },
   'po.technician': { en: 'Technician…', vi: 'Thợ…' },
-  'po.tipPh': { en: 'Tip $', vi: 'Tip $' },
+  'po.tipPh': { en: 'Tip {c}', vi: 'Tip {c}' },
   'po.editPriceHint': { en: 'Tap to charge a different price for this line', vi: 'Bấm để sửa giá tính cho dòng này' },
   'po.resetPrice': { en: 'Back to menu price', vi: 'Về giá niêm yết' },
   'po.subtotal': { en: 'Subtotal', vi: 'Tạm tính' },
-  'po.discountD': { en: 'Discount $', vi: 'Giảm giá $' },
+  'po.discountD': { en: 'Discount {c}', vi: 'Giảm giá {c}' },
   'po.discountLbl': { en: 'Discount', vi: 'Giảm giá' },
   'po.fullOn': { en: 'Full screen', vi: 'Toàn màn hình' },
   'po.fullOff': { en: 'Exit', vi: 'Thoát' },
@@ -897,7 +898,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'po.card': { en: '💳 Card', vi: '💳 Thẻ' },
   'po.transfer': { en: '🏦 Transfer', vi: '🏦 Chuyển khoản' },
   'po.exact': { en: 'Exact', vi: 'Vừa đủ' },
-  'po.cashReceived': { en: 'Cash received $', vi: 'Tiền khách đưa $' },
+  'po.cashReceived': { en: 'Cash received {c}', vi: 'Tiền khách đưa {c}' },
   'po.change': { en: 'Change', vi: 'Tiền thối' },
   'po.cardHint': { en: 'Charge {x} on the card reader, then press Pay & Print to record & print.', vi: 'Quẹt {x} trên máy đọc thẻ, rồi bấm Trả & In để ghi nhận & in.' },
   'po.transferShow': { en: 'Show this to the customer to transfer {x}:', vi: 'Cho khách xem để chuyển {x}:' },
@@ -987,7 +988,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'pd.confirmDelete': { en: 'Delete this product?', vi: 'Xoá sản phẩm này?' },
   'pd.fName': { en: 'Name', vi: 'Tên' },
   'pd.sku': { en: 'SKU (optional)', vi: 'SKU (tuỳ chọn)' },
-  'pd.price': { en: 'Price $', vi: 'Giá $' },
+  'pd.price': { en: 'Price {c}', vi: 'Giá {c}' },
   'pd.discount': { en: 'Discount %', vi: 'Giảm giá %' },
   'pd.stockQty': { en: 'Stock qty', vi: 'Số lượng tồn' },
   'pd.taxable': { en: 'Taxable', vi: 'Chịu thuế' },
@@ -1413,10 +1414,10 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'mk.offerHelp': { en: 'What the customer gets. Off = the message is only a reminder. The code is typed at the till, which applies the discount automatically.', vi: 'Khách được gì. Tắt = tin chỉ là lời nhắc. Mã được nhập ở quầy, hệ thống tự trừ tiền.' },
   'mk.offerKind': { en: 'Offer type', vi: 'Loại ưu đãi' },
   'mk.offPercent': { en: '% off', vi: 'Giảm %' },
-  'mk.offAmount': { en: '$ off', vi: 'Giảm số tiền' },
+  'mk.offAmount': { en: '{c} off', vi: 'Giảm số tiền' },
   'mk.offGift': { en: 'Free extra (gift)', vi: 'Tặng thêm (quà)' },
   'mk.offerPercent': { en: 'Percent off', vi: 'Giảm bao nhiêu %' },
-  'mk.offerAmount': { en: 'Amount off ($)', vi: 'Giảm bao nhiêu ($)' },
+  'mk.offerAmount': { en: 'Amount off ({c})', vi: 'Giảm bao nhiêu ({c})' },
   'mk.offerGift': { en: 'What you give', vi: 'Tặng cái gì' },
   'mk.offerGiftPh': { en: 'a free nail-art accent on us', vi: 'tặng 1 ngón nail art' },
   'mk.offerCode': { en: 'Code at the till', vi: 'Mã nhập ở quầy' },
@@ -1468,7 +1469,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'iv.noHistory': { en: 'No movements yet.', vi: 'Chưa có nhập/xuất nào.' },
   'iv.mQty': { en: 'Quantity', vi: 'Số lượng' },
   'iv.mReason': { en: 'Reason', vi: 'Lý do' },
-  'iv.mUnitCost': { en: 'Unit cost ($)', vi: 'Đơn giá ($)' },
+  'iv.mUnitCost': { en: 'Unit cost ({c})', vi: 'Đơn giá ({c})' },
   'iv.mUnitCostPh': { en: 'price per 1 unit', vi: 'giá 1 đơn vị' },
   'iv.mLineTotal': { en: 'Line total', vi: 'Thành tiền' },
   'iv.mNote': { en: 'Note (optional)', vi: 'Ghi chú (tuỳ chọn)' },
@@ -1486,7 +1487,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'iv.fUnitPh': { en: 'bottle, box…', vi: 'chai, hộp…' },
   'iv.fStock': { en: 'In stock', vi: 'Số lượng tồn' },
   'iv.fThreshold': { en: 'Low-stock alert at', vi: 'Cảnh báo khi tồn ≤' },
-  'iv.fCost': { en: 'Unit cost $ (optional)', vi: 'Giá/đơn vị $ (tuỳ chọn)' },
+  'iv.fCost': { en: 'Unit cost {c} (optional)', vi: 'Giá/đơn vị {c} (tuỳ chọn)' },
   'iv.fSupplier': { en: 'Supplier (optional)', vi: 'Nhà cung cấp (tuỳ chọn)' },
   'iv.saving': { en: 'Saving…', vi: 'Đang lưu…' },
   'iv.create': { en: 'Create supply', vi: 'Tạo vật tư' },
@@ -1636,7 +1637,7 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.bt.save': { en: 'Save transfer details', vi: 'Lưu thông tin chuyển khoản' },
   // Loyalty config
   'se.lo.enable': { en: 'Enable loyalty program', vi: 'Bật chương trình tích điểm' },
-  'se.lo.earn': { en: 'Points earned per $1 spent', vi: 'Điểm nhận mỗi $1 chi tiêu' },
+  'se.lo.earn': { en: 'Points earned per {c}1 spent', vi: 'Điểm nhận mỗi {c}1 chi tiêu' },
   'se.lo.value': { en: 'Value of 1 point (cents)', vi: 'Giá trị 1 điểm (cent)' },
   'se.lo.minRedeem': { en: 'Min points to redeem', vi: 'Điểm tối thiểu để đổi' },
   'se.lo.save': { en: 'Save loyalty', vi: 'Lưu tích điểm' },
@@ -1759,9 +1760,13 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
 };
 
 /** Translate a key for the given language; falls back to the key itself. */
+// The symbol substitution lives in ui-currency.ts: pure logic, no JSX there,
+// so a plain test can import it. Re-exported so callers have one import.
+export { setUiCurrencySymbol } from './ui-currency';
+
 export function tr(key: string, lang: Lang): string {
   const e = DICT[key] ?? SETTINGS_DICT[key];
-  return e ? e[lang] : key;
+  return applyCurrency(e ? e[lang] : key);
 }
 
 /** Map a sidebar nav href to its translation key. */

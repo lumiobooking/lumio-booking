@@ -691,7 +691,15 @@ function BankTransferConfig({ data, onSave }: { data: SettingsData; onSave: Save
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={3}
-          placeholder={'e.g.\nBank of America — Lumio Nails\nAccount: 1234567890\nZelle: pay@lumionails.com'}
+          // The example has to match the country, or it teaches the wrong
+          // thing: a salon in Hanoi has no Bank of America account and no
+          // Zelle, and an owner reading that example reasonably concludes this
+          // screen is not for them.
+          placeholder={
+            lang === 'vi'
+              ? 'ví dụ:\nVietcombank — NGUYEN VAN A\nSố TK: 0123456789\nNội dung: [tên khách] [giờ hẹn]'
+              : 'e.g.\nBank of America — Lumio Nails\nAccount: 1234567890\nZelle: pay@lumionails.com'
+          }
           style={{ ...ui.input, resize: 'vertical', fontFamily: 'inherit' }}
         />
       </Field>

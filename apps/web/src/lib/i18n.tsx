@@ -1631,7 +1631,7 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.pcc.save': { en: 'Save channel', vi: 'Lưu cổng' },
   'se.pcc.enableFirst': { en: 'Enable & save a gateway above first.', vi: 'Hãy bật & lưu một cổng ở trên trước.' },
   // Bank transfer config
-  'se.bt.details': { en: 'Transfer details (bank / account / Zelle / Interac email)', vi: 'Thông tin chuyển khoản (ngân hàng / số TK / Zelle / email Interac)' },
+  'se.bt.details': { en: 'Transfer details (bank / account / Zelle / Interac email)', vi: 'Thông tin chuyển khoản (ngân hàng / số tài khoản / nội dung chuyển khoản)' },
   'se.bt.qr': { en: 'QR image URL (optional — customer scans to pay)', vi: 'URL ảnh QR (tuỳ chọn — khách quét để trả)' },
   'se.bt.qrPh': { en: 'https://… (paste a QR image link)', vi: 'https://… (dán link ảnh QR)' },
   'se.bt.save': { en: 'Save transfer details', vi: 'Lưu thông tin chuyển khoản' },

@@ -1801,7 +1801,11 @@ function Register() {
               )}
             </div>
           )}
-          {payMethod === 'TRANSFER' && (
+          {/* The QR and bank details belong to every method the customer pays by
+              scanning or transferring, not just the one called "Transfer".
+              VietQR IS a bank transfer with a QR code — showing the button but
+              not the code would leave the cashier with nothing to hold up. */}
+          {(payMethod === 'TRANSFER' || payMethod === 'VIETQR' || payMethod === 'MOMO' || payMethod === 'ZALOPAY') && (
             <div style={{ marginBottom: 10 }}>
               {transferInfo || transferQr ? (
                 <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12 }}>

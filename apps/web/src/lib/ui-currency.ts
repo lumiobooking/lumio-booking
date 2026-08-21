@@ -30,6 +30,32 @@
 let symbol = '$';
 
 /**
+ * The currency this salon counts in.
+ *
+ * Not just for labels. formatPrice() defaults to it, and that default is what
+ * 43 call sites across the dashboard rely on — Tong quan, sales report,
+ * payroll, inventory all call formatPrice(cents) with no second argument. They
+ * were therefore all printing US dollars for a Vietnamese salon, and worse,
+ * dividing by 100 on the way: a 200,000d day showed as US$2,000.00. Wrong
+ * currency and wrong magnitude, on the screen an owner uses to decide things.
+ *
+ * Fixing the default fixes all 43 without touching any of them. 'USD' until
+ * told otherwise, so nothing about a US salon changes.
+ */
+let code = 'USD';
+
+export function setUiCurrency(next: string): void {
+  const c = String(next ?? '').trim().toUpperCase();
+  if (!c || c === code) return;
+  code = c;
+  notify();
+}
+
+export function uiCurrency(): string {
+  return code;
+}
+
+/**
  * Anyone who needs to redraw when the symbol arrives.
  *
  * Without this the fix worked BY COINCIDENCE: React does not re-render because
@@ -48,15 +74,19 @@ export function onUiCurrencyChange(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
+function notify(): void {
+  for (const fn of listeners) {
+    try { fn(); } catch { /* a broken listener must not stop the others */ }
+  }
+}
+
 export function setUiCurrencySymbol(next: string): void {
   const s = String(next ?? '').trim();
   // An empty value would blank the symbol on every money field at once, which
   // is worse than a stale one. Ignore it.
   if (!s || s === symbol) return;
   symbol = s;
-  for (const fn of listeners) {
-    try { fn(); } catch { /* a broken listener must not stop the others */ }
-  }
+  notify();
 }
 
 export function uiCurrencySymbol(): string {

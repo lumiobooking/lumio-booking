@@ -32,7 +32,16 @@ export class MeController {
       where: { id: tenantId },
       select: { id: true, name: true, slug: true, status: true, market: true, timezone: true, businessType: true },
     });
-    return tenant;
+    if (!tenant) return null;
+    // The currency every money figure on every salon screen is formatted with.
+    // Sent from here because the shell already calls this route once per load,
+    // and guessing it from the market would be a hint where a fact is available.
+    const rules = await this.prisma.setting.findUnique({
+      where: { tenantId_key: { tenantId, key: 'booking_rules' } },
+      select: { value: true },
+    });
+    const currency = (rules?.value as { currency?: string } | null)?.currency || 'USD';
+    return { ...tenant, currency };
   }
 
   // GET /api/me/plan -> the salon's plan feature flags (for UI gating).

@@ -1,3 +1,4 @@
+import { uiCurrency } from './ui-currency';
 /**
  * How money is written, in one place.
  *
@@ -20,7 +21,12 @@ const safeFormatter = (currency: string, locale: string): Intl.NumberFormat => {
 export const minorUnitDigits = (currency: string): number =>
   safeFormatter(currency, 'en-US').resolvedOptions().maximumFractionDigits ?? 2;
 
-export function formatPrice(minorUnits: number, currency = 'USD'): string {
+export function formatPrice(minorUnits: number, currency?: string): string {
+  // No second argument means "this salon's currency", not "dollars". 43 call
+  // sites across the dashboard omit it — Tong quan, sales report, payroll,
+  // inventory — so the old 'USD' default printed dollars for a Vietnamese
+  // salon AND divided by 100, turning a 200,000d day into US$2,000.00.
+  currency = currency || uiCurrency();
   // Grouping and symbol placement belong to the locale, not the currency: the
   // amount was right after the decimals were fixed, but a Vietnamese salon was
   // still reading "₫200,000" — American separators, symbol on the American

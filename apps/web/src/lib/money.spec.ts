@@ -184,3 +184,49 @@ describe('the symbol change has to reach the screen', () => {
     offA(); offB();
   });
 });
+
+import { setUiCurrency, uiCurrency } from './ui-currency';
+
+describe('formatPrice with no currency argument means THIS salon, not dollars', () => {
+  // 43 call sites across the dashboard omit the currency — Tổng quan, sales
+  // report, payroll, inventory. The old default was 'USD', so a Vietnamese
+  // salon's overview read "Doanh thu 0,00 US$", and a real 200,000₫ day would
+  // have read US$2,000.00: wrong currency AND divided by 100, on the screen an
+  // owner uses to decide things.
+  afterEach(() => setUiCurrency('USD'));
+
+  it('formats in the salon currency when none is passed', () => {
+    setUiCurrency('VND');
+    expect(formatPrice(200000)).toContain('200');
+    expect(formatPrice(200000)).not.toContain('US$');
+    expect(formatPrice(200000)).not.toContain('2,000.00');
+  });
+
+  it('does not divide a zero-decimal currency by a hundred', () => {
+    setUiCurrency('VND');
+    // 200,000 dong is two hundred thousand, not two thousand.
+    expect(formatPrice(200000).replace(/\D/g, '')).toBe('200000');
+  });
+
+  it('an explicit currency still wins', () => {
+    setUiCurrency('VND');
+    expect(formatPrice(1000, 'USD')).toContain('10');
+  });
+
+  it('is USD until told otherwise, so nothing about a US salon changes', () => {
+    expect(uiCurrency()).toBe('USD');
+    expect(formatPrice(1000)).toContain('10');
+  });
+
+  it('ignores an empty or unchanged value', () => {
+    setUiCurrency('VND');
+    setUiCurrency('');
+    setUiCurrency('   ');
+    expect(uiCurrency()).toBe('VND');
+  });
+
+  it('accepts a lowercase code', () => {
+    setUiCurrency('vnd');
+    expect(uiCurrency()).toBe('VND');
+  });
+});

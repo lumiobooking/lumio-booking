@@ -11,6 +11,7 @@ import { apiFetch, ApiError } from '../../../lib/api';
 import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
 import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
 import { currencySymbolFor } from '../../../lib/money';
+import { setUiCurrency, uiCurrencySymbol } from '../../../lib/ui-currency';
 import { useLang, tr, setUiCurrencySymbol } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { uiLocale } from '../../../lib/datetime';
@@ -268,6 +269,7 @@ function Register() {
     setTillMethods(tillMethodsFrom(c.tillMethods));
     // Exact, from the currency this salon actually counts in — the shell only
     // guessed it from the market.
+    setUiCurrency(c.currency);
     setUiCurrencySymbol(currencySymbolFor(c.currency));
   };
 
@@ -1547,7 +1549,7 @@ function Register() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: '#94a3b8', fontSize: 12.5, width: 72, flexShrink: 0 }}>✂️ {t('po.discountLbl')}</span>
                 <div style={{ display: 'flex', gap: 2, background: '#111827', border: '1px solid #223047', borderRadius: 8, padding: 2, flexShrink: 0 }}>
-                  {([['AMOUNT', '$', t('po.discByAmount')], ['PERCENT', '%', t('po.discByPercent')]] as const).map(([m, sym, hint]) => (
+                  {([['AMOUNT', uiCurrencySymbol(), t('po.discByAmount')], ['PERCENT', '%', t('po.discByPercent')]] as const).map(([m, sym, hint]) => (
                     <button
                       key={m}
                       title={hint}
@@ -1575,7 +1577,7 @@ function Register() {
                     position: 'absolute', top: '50%', transform: 'translateY(-50%)',
                     ...(discountMode === 'PERCENT' ? { right: 9 } : { left: 9 }),
                     fontSize: 12.5, fontWeight: 700, color: orderDiscount ? '#94a3b8' : '#475569', pointerEvents: 'none',
-                  }}>{discountMode === 'PERCENT' ? '%' : '$'}</span>
+                  }}>{discountMode === 'PERCENT' ? '%' : uiCurrencySymbol()}</span>
                 </div>
                 <span
                   title={discountMode === 'PERCENT' && money.typedDiscount > 0 ? `${orderDiscount}% × ${formatPrice(money.subtotal, currency)}` : undefined}

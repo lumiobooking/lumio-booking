@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { useIsMobile } from '../../../lib/responsive';
+import { payLabel, tillMethodsFrom, type PayMethod } from '../../../lib/payment-methods';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch, ApiError } from '../../../lib/api';
@@ -22,6 +23,7 @@ interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
   taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
   tipsOn?: boolean;
+  tillMethods?: PayMethod[];
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
   salonName?: string; salonLogo?: string; salonAccent?: string; salonWelcome?: string;
 }
@@ -120,6 +122,11 @@ function Register() {
   // a salon in a country with no tipping culture turns it off in Settings and
   // the whole prompt disappears rather than showing a 0% option.
   const [tipsOn, setTipsOn] = useState(true);
+  // Which payment buttons this till shows, resolved server-side from the
+  // salon's own choice or its market. Seeded with the three every till has
+  // always had so a slow settings call never leaves the cashier without a
+  // button while a customer is standing there.
+  const [tillMethods, setTillMethods] = useState<PayMethod[]>(['CASH', 'CARD', 'TRANSFER']);
   const [currency, setCurrency] = useState('USD');
   const [salonName, setSalonName] = useState('');
   const [salonLogo, setSalonLogo] = useState('');
@@ -146,12 +153,12 @@ function Register() {
   // Cash-tip logging is an occasional correction, not part of taking payment.
   const [tipOpen, setTipOpen] = useState(false);
   const [promoBusy, setPromoBusy] = useState(false);
-  const [payMethod, setPayMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
+  const [payMethod, setPayMethod] = useState<PayMethod>('CASH');
   const [tendered, setTendered] = useState('');
   // Split payment: one bill settled with several methods (e.g. part cash, part card).
   // Off by default — the common one-method flow above stays untouched.
   const [split, setSplit] = useState(false);
-  const [parts, setParts] = useState<{ method: 'CASH' | 'CARD' | 'TRANSFER'; amount: string }[]>([]);
+  const [parts, setParts] = useState<{ method: PayMethod; amount: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   // Card terminal (Payment Hub) — optional. When a reader is connected, paying by
   // CARD collects on the physical reader before the sale is recorded.
@@ -257,6 +264,7 @@ function Register() {
     setLoyalty(c.loyalty);
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
     setTipsOn(c.tipsOn !== false);
+    setTillMethods(tillMethodsFrom(c.tillMethods));
   };
 
   const load = useCallback(async () => {
@@ -268,7 +276,7 @@ function Register() {
         apiFetch<Product[]>('/pos/products', { token }),
         apiFetch<Addon[]>('/services/addons/all', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
+        apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[] }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
       ]);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
@@ -281,6 +289,9 @@ function Register() {
         transferInfo: settings.pos?.transferInstructions ?? '',
         transferQr: settings.pos?.transferQrUrl ?? '',
         tipsOn: settings.pos?.tipsEnabled !== false,
+        // Which buttons this till shows. Resolved server-side from the salon's
+        // own choice, else its market — the page just renders what it is given.
+        tillMethods: tillMethodsFrom(settings.pos?.resolvedPaymentMethods),
         currency: settings.booking?.currency ?? 'USD',
         loyalty: settings.loyalty
           ? { enabled: settings.loyalty.enabled, redeemCentsPerPoint: settings.loyalty.redeemCentsPerPoint, minRedeemPoints: settings.loyalty.minRedeemPoints }
@@ -912,7 +923,11 @@ function Register() {
     }
     // The gift card (if any) covers part/all of the ticket; tenders cover the rest.
     const dueCents = money.due;
-    const apiOf = (m: 'CASH' | 'CARD' | 'TRANSFER') => (m === 'CASH' ? 'CASH' : m === 'CARD' ? 'CARD' : 'OTHER');
+    // The method IS the stored value now. This used to collapse Transfer into
+    // OTHER because OTHER was the only value the database had — which meant a
+    // Vietnamese salon's VietQR, MoMo and ZaloPay would all have been the same
+    // row, and "how much came in by MoMo" would have had no answer.
+    const apiOf = (m: PayMethod) => m;
     // Cash needs the amount received; Card & Transfer pay the due in full at the terminal/bank.
     const tenderCents = payMethod === 'CASH' ? money.tenderedCents : dueCents;
     // Build the tender list. Split mode = one tender per part; else a single tender.
@@ -1673,11 +1688,18 @@ function Register() {
               sits underneath as a quiet option, not a fourth competing button. */}
           <div style={{ marginBottom: 10 }}>
             {!split && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, background: '#0f172a', border: '1px solid #223047', borderRadius: 12, padding: 4 }}>
-                {([
-                  ['CASH', t('po.cash')],
-                  ['CARD', `${t('po.card')}${cardSurchargeOn && cardSurchargePct > 0 ? ` +${cardSurchargePct}%` : ''}`],
-                  ['TRANSFER', t('po.transfer')],
+              <div style={{
+                // Was fixed at three. A Vietnamese till has six methods, and six
+                // squeezed into one row is six buttons nobody can hit correctly
+                // in a hurry — so it wraps into rows of three instead.
+                display: 'grid', gridTemplateColumns: `repeat(${Math.min(tillMethods.length, 3)}, 1fr)`,
+                gap: 6, background: '#0f172a', border: '1px solid #223047', borderRadius: 12, padding: 4,
+              }}>
+                {tillMethods.map((m) => [
+                  m,
+                  m === 'CARD'
+                    ? `${payLabel(m, lang)}${cardSurchargeOn && cardSurchargePct > 0 ? ` +${cardSurchargePct}%` : ''}`
+                    : payLabel(m, lang),
                 ] as const).map(([m, label]) => (
                   <button key={m} onClick={() => setPayMethod(m as typeof payMethod)} style={payTab(payMethod === m)}>{label}</button>
                 ))}
@@ -1711,11 +1733,11 @@ function Register() {
             <div style={{ border: '1px solid #334155', borderRadius: 10, padding: 10, marginBottom: 10 }}>
               {parts.map((p, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                  <select value={p.method} onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, method: e.target.value as 'CASH' | 'CARD' | 'TRANSFER' } : x))}
+                  <select value={p.method} onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, method: e.target.value as PayMethod } : x))}
                     style={{ ...ui.input, width: 130, padding: '7px 8px' }}>
-                    <option value="CASH">{t('po.cash')}</option>
-                    <option value="CARD">{t('po.card')}</option>
-                    <option value="TRANSFER">{t('po.transfer')}</option>
+                    {tillMethods.map((m) => (
+                      <option key={m} value={m}>{payLabel(m, lang)}</option>
+                    ))}
                   </select>
                   <input type="number" min={0} step="0.01" value={p.amount} placeholder="0.00"
                     onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}

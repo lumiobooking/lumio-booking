@@ -278,6 +278,15 @@ export interface PosSettings {
    * serving tourists may well want it.
    */
   tipsEnabled: boolean;
+  /**
+   * Which payment buttons this till shows, in order.
+   *
+   * Empty means "use the market default" — which is what every salon that has
+   * never opened this screen has, and why they are all unaffected. A salon that
+   * does not take MoMo should not have a MoMo button to press by mistake at the
+   * end of a long day.
+   */
+  paymentMethods: string[];
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
@@ -289,6 +298,8 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   transferInstructions: '',
   transferQrUrl: '',
   tipsEnabled: true,
+  paymentMethods: [], // empty = follow the salon's market
+
 };
 
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */

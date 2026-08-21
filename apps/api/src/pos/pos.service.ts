@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { normalizeSource } from '../common/source.util';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
+import { ledgerProviderFor, bucketFor, methodsForSalon } from './payment-methods';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { TrashService } from '../maintenance/trash.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
@@ -292,7 +293,11 @@ export class PosService {
         // when the card was sold), and cash change is subtracted from the cash line so
         // the ledger reflects money actually kept, not money handed over.
         if (amountDue > 0) {
-          const providerFor = (m: string) => (m === 'CASH' ? 'pos-cash' : m === 'CARD' ? 'pos-card' : 'pos-transfer');
+          // Shared with the report and the till, so the three can never
+          // disagree about what a tender is. MoMo and ZaloPay get their own
+          // provider string; the original three are unchanged because revenue
+          // queries elsewhere match on them.
+          const providerFor = ledgerProviderFor;
           // Collapse tenders by method (a cashier might add two cash notes).
           const byMethod = new Map<string, number>();
           for (const t of dto.tenders ?? []) byMethod.set(t.method, (byMethod.get(t.method) ?? 0) + t.amountCents);
@@ -669,13 +674,19 @@ export class PosService {
     // single bill was paid part cash + part card. Cash change is netted off the cash
     // line; the gift-card portion is shown on its own (it is not new counter money).
     const byMethod = { cashCents: 0, cardCents: 0, otherCents: 0, giftCardCents: 0 };
+    // Per-method detail ALONGSIDE the three original lines, never instead of
+    // them. A Vietnamese owner needs to know MoMo from a bank transfer; a US
+    // owner reads the same three totals they read last night, unmoved.
+    const byTender: Record<string, number> = {};
     for (const o of orders) {
       byMethod.giftCardCents += o.giftCardAppliedCents ?? 0;
       let cashInThisOrder = false;
       for (const tn of o.tenders ?? []) {
-        if (tn.method === 'CASH') { byMethod.cashCents += tn.amountCents; cashInThisOrder = true; }
-        else if (tn.method === 'CARD') byMethod.cardCents += tn.amountCents;
+        const bucket = bucketFor(tn.method);
+        if (bucket === 'cash') { byMethod.cashCents += tn.amountCents; cashInThisOrder = true; }
+        else if (bucket === 'card') byMethod.cardCents += tn.amountCents;
         else byMethod.otherCents += tn.amountCents;
+        byTender[tn.method] = (byTender[tn.method] ?? 0) + tn.amountCents;
       }
       if (cashInThisOrder) byMethod.cashCents -= o.changeCents ?? 0;
     }
@@ -684,6 +695,7 @@ export class PosService {
     return {
       range: { from: from.toISOString(), to: to.toISOString() },
       byMethod,
+      byTender,
       totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, baseCents: totalBase, payCents: totalPay, directTipsCents: totalDirectTips, orders: orders.length + extraTxns },
       staff: [...rows.values()].sort(
         (a, b) =>

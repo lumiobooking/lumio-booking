@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { methodsForSalon } from '../pos/payment-methods';
 import { signingSecret } from '../common/secret.util';
 import {
   BOOKING_RULES_KEY,
@@ -138,6 +139,20 @@ export class SettingsService {
   /** POS settings (tax rate on retail + receipt footer), merged over defaults. */
   async getPosSettings(tenantId: string): Promise<PosSettings> {
     return this.readKey<PosSettings>(tenantId, POS_SETTINGS_KEY, DEFAULT_POS_SETTINGS);
+  }
+
+  /**
+   * POS settings plus the buttons this till should actually show.
+   *
+   * Resolved here rather than in the page so the rule — the salon's own choice,
+   * else the default for its market — lives in one place. `paymentMethods`
+   * stays alongside as the raw choice, where empty means "follow the market";
+   * that is what every salon that has never opened this screen has, which is
+   * why none of them change.
+   */
+  private async posWithTillButtons(tenantId: string, market: string | null | undefined) {
+    const pos = await this.getPosSettings(tenantId);
+    return { ...pos, resolvedPaymentMethods: methodsForSalon(market, pos.paymentMethods) };
   }
 
   /** Loyalty program settings, merged over defaults. */
@@ -763,7 +778,7 @@ export class SettingsService {
     const tenantId = this.tenantId(user);
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, slug: true, contactEmail: true, contactPhone: true, timezone: true, branding: true },
+      select: { name: true, slug: true, contactEmail: true, contactPhone: true, timezone: true, branding: true, market: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     const extra = await this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA);
@@ -783,7 +798,11 @@ export class SettingsService {
       gateways: this.sanitizeGateways(await this.getGateways(tenantId)),
       notifications: this.sanitizeNotifications(await this.getNotificationSettings(tenantId)),
       notificationTemplates: await this.getNotificationTemplates(tenantId),
-      pos: await this.getPosSettings(tenantId),
+      // The till's buttons are RESOLVED here rather than in the page: the rule
+      // (salon's own choice, else the market's default) lives in one place, and
+      // the POS screen just renders what it is handed. `paymentMethods` stays on
+      // the object as the salon's raw choice — empty means "follow the market".
+      pos: await this.posWithTillButtons(tenantId, tenant.market),
       loyalty: await this.getLoyaltySettings(tenantId),
       review: await this.getReviewSettings(tenantId),
       weekdayDiscounts: await this.getWeekdayDiscounts(tenantId),

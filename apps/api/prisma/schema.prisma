@@ -1764,6 +1764,19 @@ enum OrderItemKind {
 enum PaymentMethod {
   CASH
   CARD
+  // Bank transfer. In the US this is Zelle or Interac; in Vietnam it is the
+  // ordinary way to pay for anything. The till has had a Transfer button for a
+  // long time, but no value to store it in — it was written as OTHER, which is
+  // why it needed adding rather than inventing.
+  TRANSFER
+  // Vietnam. Kept apart from TRANSFER and from each other because an owner who
+  // cannot ask "how much came in by MoMo this month" has no way to decide
+  // whether to keep accepting it.
+  VIETQR
+  MOMO
+  ZALOPAY
+  // Never offered as a button. It exists so rows written before TRANSFER
+  // existed still resolve, and as an escape hatch.
   OTHER
 }
 

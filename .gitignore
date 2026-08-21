@@ -11,9 +11,22 @@ node_modules/
 *.env
 !.env.example
 
-# Build output
-dist/
-build/
+# Build output.
+#
+# These are ANCHORED with a leading slash, or scoped to a workspace, on purpose.
+# A bare `build/` matches a directory called "build" at ANY depth, and this repo
+# has a source one: apps/web/src/app/api/build/ is the Next.js route that tells
+# an open browser tab which deployment is live. It was silently never committed,
+# so /api/build returned 404 in production, so the "your tab is running old code"
+# check failed every time and swallowed the error — which made every shipped fix
+# look like it had not deployed. An ignore rule cost days of that.
+#
+# Add new build-output paths as anchored or workspace-scoped patterns. Never
+# bare.
+/dist/
+/build/
+apps/*/dist/
+apps/*/build/
 .next/
 out/
 

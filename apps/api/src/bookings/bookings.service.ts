@@ -10,6 +10,7 @@ import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
+import { fitsBusinessHours, describeWindows } from '../settings/business-hours';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -481,6 +482,49 @@ export class BookingsService {
     // Snapshot stored on the appointment: extra services first, then add-ons.
     const lineItems = [...extraItems, ...addons];
     const end = addMinutes(start, totalDuration);
+
+    // The salon must actually be open — checked HERE, on the server.
+    //
+    // The slot grid the customer picks from is generated in the browser. That is
+    // fine for building a screen and useless as a rule: this endpoint had no
+    // hours check at all, so a request posted directly — a script, a bot, a tab
+    // left open past a settings change — was accepted for 3am on a day the shop
+    // is shut, and the salon found out when someone turned up.
+    //
+    // PUBLIC bookings only. `isPublicBooking` is the same gate the phone-number
+    // rule above uses: staff at the desk must still be able to write down a
+    // walk-in at 8pm or a favour for a regular. This protects the salon from the
+    // outside; it does not tell the owner what to do inside their own shop.
+    if (isPublicBooking) {
+      const [hoursTenant, hoursRules] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.settings.getBookingRules(tenantId),
+      ]);
+      const tz = hoursTenant?.timezone || 'UTC';
+      // Weekday and clock time AS THE SALON SEES THEM. Comparing a UTC instant
+      // against opening hours is how a 9am booking becomes 2am somewhere else.
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(start);
+      const wd = parts.find((x) => x.type === 'weekday')?.value ?? '';
+      const hh = Number(parts.find((x) => x.type === 'hour')?.value ?? NaN);
+      const mm = Number(parts.find((x) => x.type === 'minute')?.value ?? NaN);
+      const dayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+      const day = dayIndex >= 0 ? (hoursRules.businessHours ?? [])[dayIndex] : undefined;
+
+      if (dayIndex >= 0 && Number.isFinite(hh) && Number.isFinite(mm)) {
+        // hour12:false reports midnight as 24 in some environments.
+        const startMinutes = (hh % 24) * 60 + mm;
+        if (!fitsBusinessHours({ day, startMinutes, durationMin: totalDuration })) {
+          const open = describeWindows(day);
+          throw new BadRequestException(
+            open === 'closed'
+              ? 'The salon is closed that day. Please pick another date.'
+              : `That time is outside opening hours (${open}). Please pick another time.`,
+          );
+        }
+      }
+    }
 
     if (dto.staffId) {
       await this.assertStaffActive(tenantId, dto.staffId);

@@ -24,7 +24,48 @@ interface SalesLead {
   id: string; threadId: string | null; name: string; phone: string; salonName: string | null; city: string | null;
   interest: string | null; note: string | null; status: string; createdAt: string;
 }
-interface MThread { id: string; senderId: string; senderName?: string | null; lastText: string | null; handoff: boolean; updatedAt: string; channel?: string }
+interface MThread {
+  id: string; senderId: string; senderName?: string | null; lastText: string | null;
+  handoff: boolean; updatedAt: string; channel?: string;
+  /** Derived on the SERVER so the screen and the webhook can never describe the
+   *  same conversation differently. Optional because an older API build does
+   *  not send it — those fall back to the handoff flag. */
+  state?: 'bot' | 'unclaimed' | 'human' | 'done';
+  assignedName?: string | null;
+  waitingMinutes?: number | null;
+  unread?: boolean;
+  replyWindow?: { open: boolean; minutesLeft: number | null };
+}
+
+/**
+ * The badge that replaced "human handling".
+ *
+ * That label appeared for any thread with the handoff flag set, including ones
+ * whose last human message was nine hours old — so it could not tell "someone
+ * is answering this" from "nobody has looked at this since last night". Three
+ * conversations sat unanswered behind it. A label that cannot distinguish
+ * being-handled from abandoned is worse than none, because it stops people
+ * looking.
+ */
+function StateBadge({ th, lang }: { th: MThread; lang: string }) {
+  const vi = lang === 'vi';
+  const state = th.state ?? (th.handoff ? 'human' : 'bot');
+  const wait = typeof th.waitingMinutes === 'number' ? th.waitingMinutes : null;
+  const pill = (bg: string, fg: string, text: string) => (
+    <span style={{ background: bg, color: fg, borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>{text}</span>
+  );
+  if (state === 'done') return pill('#1e293b', '#94a3b8', vi ? 'Xong' : 'Done');
+  if (state === 'human') {
+    const who = th.assignedName ? (vi ? `${th.assignedName} giữ` : `${th.assignedName} holding`) : (vi ? 'Người thật giữ' : 'Human holding');
+    return pill('#064e3b', '#6ee7b7', `\u{1F512} ${who}`);
+  }
+  if (state === 'unclaimed') {
+    // The state that did not exist before, and the one that costs money.
+    const label = vi ? 'Chưa ai nhận' : 'Nobody has this';
+    return pill('#78350f', '#fcd34d', wait !== null ? `${label} · ${wait}'` : label);
+  }
+  return pill('#312e81', '#c7d2fe', vi ? 'Bot' : 'Bot');
+}
 interface FactRow extends BotFact { custom: boolean }
 interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string }
 interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean; channel?: string }
@@ -1172,10 +1213,17 @@ function Inner() {
                         <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {th.senderName && <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}
                         </div>
-                        <div style={{ color: '#64748b', fontSize: 11 }}>{new Date(th.updatedAt).toLocaleString(uiLocale())}{th.handoff ? ` · ⚠️ ${t('handedOff')}` : ''}</div>
+                        <div style={{ color: '#64748b', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span>{new Date(th.updatedAt).toLocaleString(uiLocale())}</span>
+                          <StateBadge th={th} lang={lang} />
+                        </div>
                       </div>
                       <button onClick={() => renameThread(th.id, th.senderName || '')} title="Set customer name" style={{ ...ghost, padding: '6px 10px' }}>✎</button>
-                      {th.handoff
+                      {/* The button now matches what the badge says. Before, a
+                          thread whose human had walked away hours ago still
+                          offered "Give back to bot" — an action for a situation
+                          that had already ended by itself. */}
+                      {(th.state === 'human' || th.state === 'unclaimed')
                         ? <button onClick={() => handoff(th.id, false)} style={ghost}>{t('giveBack')}</button>
                         : <button onClick={() => handoff(th.id, true)} style={ghost}>{t('takeOver')}</button>}
                     </div>

@@ -59,6 +59,18 @@ export class MessengerController {
     return this.svc.setHandoff(user, id, dto.handoff ?? true);
   }
 
+  /** Close a conversation. A new customer message reopens it automatically. */
+  @Post('threads/:id/status')
+  threadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status?: string }) {
+    return this.svc.setThreadStatus(user, id, dto?.status === 'done' ? 'done' : 'open');
+  }
+
+  /** Opening a conversation in the inbox clears its unread mark. */
+  @Post('threads/:id/read')
+  threadRead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.markThreadRead(user, id);
+  }
+
   @Post('threads/:id/rename')
   rename(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RenameThreadDto) {
     return this.svc.renameThread(user, id, dto.name);

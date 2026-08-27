@@ -4,6 +4,7 @@ import {
   killsTheLead, dodgesTheQuestion, guessesGender, disclosesBeforeQualifying,
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
+import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -637,20 +638,110 @@ export class MessengerService implements OnModuleInit {
     return this.get(user);
   }
 
+  /**
+   * The inbox list.
+   *
+   * Returns the OWNERSHIP STATE, not the raw handoff flag. The old list handed
+   * the dashboard a boolean and let it draw its own conclusion, which is how a
+   * conversation whose last human message was nine hours old still showed
+   * "human handling" — a badge that cannot tell "being answered" from
+   * "abandoned" stops people looking at the ones nobody is reading.
+   *
+   * Deriving it here means the webhook and the screen can never disagree about
+   * who owns a conversation, because they call the same function.
+   */
   async listThreads(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15;
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 50,
-      select: { id: true, senderId: true, senderName: true, lastText: true, handoff: true, updatedAt: true, channel: true },
+      select: {
+        id: true, senderId: true, senderName: true, lastText: true, handoff: true,
+        updatedAt: true, channel: true,
+        handoffAt: true, handoffMode: true, assignedUserId: true, status: true,
+        lastCustomerAt: true, readAt: true,
+        assignedUser: { select: { id: true, name: true } },
+      } as never,
     });
-    return rows;
+    const now = new Date();
+    return rows.map((r) => {
+      const view = ownershipOf(r as never, { now, activeMins });
+      const row = r as unknown as { readAt?: Date | null; updatedAt: Date; assignedUser?: { name?: string | null } | null };
+      return {
+        ...r,
+        state: view.state,
+        stateReason: view.reason,
+        assignedName: row.assignedUser?.name ?? null,
+        waitingMinutes: waitingMinutes(r as never, now),
+        replyWindow: replyWindow(r as never, now),
+        // Unread means nobody has opened it since the last activity — not
+        // merely that readAt is null, or every old thread would shout.
+        unread: !row.readAt || row.readAt < row.updatedAt,
+      };
+    });
   }
 
+  /** Opening a conversation marks it read, so the unread count means something. */
+  async markThreadRead(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('Thread not found');
+    await this.prisma.messengerThread.update({ where: { id: row.id }, data: { readAt: new Date() } as never });
+    return { ok: true };
+  }
+
+  /**
+   * "Take over" / "Give back to bot", pressed by a person in the dashboard.
+   *
+   * This is a DECISION, so taking over writes handoffMode 'locked' and the
+   * fifteen-minute timer does not apply. Before this, the button bought fifteen
+   * minutes and then the bot answered over whoever pressed it — which is how a
+   * salesperson got contradicted mid-pitch in front of a customer.
+   *
+   * The automatic path (pauseForHuman, when an echo arrives that we did not
+   * send) still writes 'auto' and still expires, because that one really is a
+   * guess: the person may have answered once and left.
+   */
   async setHandoff(user: AuthenticatedUser, id: string, handoff: boolean) {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Thread not found');
-    await this.prisma.messengerThread.update({ where: { id: row.id }, data: { handoff, handoffAt: handoff ? new Date() : null } as never });
+    await this.prisma.messengerThread.update({
+      where: { id: row.id },
+      data: handoff
+        ? {
+            handoff: true,
+            handoffAt: new Date(),
+            handoffMode: 'locked',
+            // Taking a conversation means owning it. Without this the inbox
+            // would show "someone is holding this" and be unable to say who.
+            assignedUserId: user.userId,
+            readAt: new Date(),
+            status: 'open',
+          }
+        : {
+            handoff: false,
+            handoffAt: null,
+            handoffMode: 'auto',
+            // Released deliberately, so the thread goes back to the bot rather
+            // than sitting in "waiting for a person who has walked away".
+            assignedUserId: null,
+          } as never,
+    });
+    await this.audit(tenantId, handoff ? 'messenger.thread_claimed' : 'messenger.thread_released');
+    return { ok: true };
+  }
+
+  /** Close a conversation. A new customer message reopens it (handleMessage). */
+  async setThreadStatus(user: AuthenticatedUser, id: string, status: 'open' | 'done') {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });
+    if (!row) throw new NotFoundException('Thread not found');
+    await this.prisma.messengerThread.update({
+      where: { id: row.id },
+      data: { status } as never,
+    });
     return { ok: true };
   }
 
@@ -1178,6 +1269,15 @@ export class MessengerService implements OnModuleInit {
       const name = await this.fetchSenderName(page.pageToken, senderId);
       if (name) await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { senderName: name } }).catch(() => undefined);
     }
+    // When the customer last wrote. Drives the waiting timer in the inbox and
+    // the 24-hour window Meta allows a normal reply inside — both of which are
+    // wrong if this is derived from updatedAt, which also moves when the BOT
+    // replies. A message from the customer also reopens a closed thread.
+    await this.prisma.messengerThread.update({
+      where: { id: thread.id },
+      data: { lastCustomerAt: new Date(eventTs && Number.isFinite(eventTs) ? eventTs : Date.now()), status: 'open' } as never,
+    }).catch(() => undefined);
+
     if (thread.handoff) {
       // The customer's message goes into history NOW — if a human handles it,
       // the bot must still remember this exchange when it re-engages later.
@@ -1192,9 +1292,16 @@ export class MessengerService implements OnModuleInit {
       // message gets a 5-minute grace: if no human reply lands in time, the
       // bot answers it. Idle 15+ minutes → the bot takes the thread back NOW.
       // Net effect: a customer never waits more than 5 minutes, ever.
+      // A LOCKED thread is not a guess that can go stale — somebody pressed
+      // Take over. No grace timer, no expiry, no bot. The customer's message is
+      // already in history above, so the person sees it when they open the
+      // inbox; the bot simply does not answer for them.
+      const tune = conn as unknown as { humanActiveMins?: number; graceMins?: number };
+      const view = ownershipOf(thread as never, { activeMins: tune.humanActiveMins ?? 15 });
+      if (!view.botMaySpeak && view.reason === 'human-holding') return;
+
       const at = (thread as unknown as { handoffAt?: Date | null }).handoffAt;
       const activeAgo = at ? Date.now() - new Date(at).getTime() : Number.POSITIVE_INFINITY;
-      const tune = conn as unknown as { humanActiveMins?: number; graceMins?: number };
       const activeMs = Math.max(1, tune.humanActiveMins ?? 15) * 60_000;
       const graceMs = Math.max(0, tune.graceMins ?? 5) * 60_000;
       if (activeAgo < activeMs && graceMs > 0) {

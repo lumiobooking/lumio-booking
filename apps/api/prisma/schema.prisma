@@ -357,6 +357,8 @@ model User {
 
   auditLogs AuditLog[]
   branchMemberships BranchMembership[]
+  // Conversations in the shared inbox this person is expected to answer.
+  assignedThreads MessengerThread[] @relation("MessengerThreadAssignee")
 
   @@index([tenantId])
   @@index([role])
@@ -1601,6 +1603,26 @@ model MessengerThread {
   lastText String? // last customer message (admin preview)
   handoff  Boolean @default(false) // a human took over → bot stays quiet
   handoffAt DateTime? // last human activity — bot yields 15 min, gives each new message a 5-min grace
+  // How the human came to have the floor. 'auto' = inferred from a reply in the
+  // Meta inbox that we did not send, and it EXPIRES because the person may have
+  // answered once and walked away. 'locked' = somebody pressed Take over, and
+  // it does not expire, because that was a decision rather than a guess.
+  //
+  // Defaults to 'auto', which is exactly what every existing row behaves like
+  // today — so adding this column changes nothing until someone locks a thread.
+  handoffMode String @default("auto")
+  // Which staff member owes this customer an answer. Null = nobody in
+  // particular, which is the bot's case and every row that exists today.
+  assignedUserId String?
+  assignedUser   User? @relation("MessengerThreadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  // 'open' | 'done'. Closing is a human act; a new customer message reopens it.
+  status   String  @default("open")
+  // When the CUSTOMER last wrote. Drives the waiting timer in the inbox and the
+  // 24-hour window Meta allows a normal reply inside — the composer has to warn
+  // before someone types a long answer that cannot be sent.
+  lastCustomerAt DateTime?
+  // When a human last opened it. Null = unread.
+  readAt   DateTime?
   summary  String? // long-term customer memory — distilled from turns that fell off the history window
   // Which surface this conversation arrived on: Facebook Messenger or Instagram
   // Direct. Shown as a badge in the dashboard and in the activity log.

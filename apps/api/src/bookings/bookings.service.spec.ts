@@ -36,6 +36,12 @@ function makePrisma(opts: { overlapConflict: boolean; serviceTenantId?: string }
       findFirst: jest.fn(async () => (opts.overlapConflict ? { id: 'existing' } : null)),
       create: jest.fn(async ({ data }: any) => ({ id: 'appt-new', ...data })),
     },
+    // createForTenant reads the tenant's businessType inside the transaction to
+    // decide whether to auto-assign a restaurant table. A nail salon is the
+    // case these tests are about, so it answers SALON.
+    tenant: {
+      findUnique: jest.fn(async () => ({ businessType: 'SALON' })),
+    },
   };
 
   const prisma = {
@@ -78,10 +84,39 @@ const settings = {
 
 const payments = { settleOnComplete: jest.fn(async () => undefined) };
 
+// Referrals: a booking with no referral code attributes to nobody.
+const referral = { resolveReferrerId: jest.fn(async () => null) };
+// Push and trash are fire-and-forget from create(); no-ops are enough.
+const push = { notifyNewBooking: jest.fn(async () => undefined) };
+const trash = { softDelete: jest.fn(async () => undefined) };
+
+/**
+ * Build the service under test.
+ *
+ * WHY A HELPER RATHER THAN `new BookingsService(...)` IN EVERY TEST
+ *
+ * The constructor grew three dependencies — referral, push, trash — and the
+ * fourteen call sites in this file did not. TypeScript could not catch it
+ * because every argument was already cast to `any`, so the tests kept compiling
+ * and started failing at runtime with "Cannot read properties of undefined
+ * (reading 'resolveReferrerId')".
+ *
+ * That is worse than a broken test: four of the checks protecting
+ * double-booking and tenant isolation were dead, and had been for a while,
+ * while the suite reported them as ordinary failures nobody was reading. One
+ * construction site means the next added dependency breaks in one place.
+ */
+function makeService(prisma: unknown) {
+  return new BookingsService(
+    prisma as never, audit as never, assignment as never, notifications as never,
+    settings as never, payments as never, referral as never, push as never, trash as never,
+  );
+}
+
 describe('BookingsService double-booking prevention', () => {
   it('rejects a booking that overlaps an existing one for the same staff', async () => {
     const prisma = makePrisma({ overlapConflict: true });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
 
     await expect(svc.create(salonA, baseDto as any)).rejects.toBeInstanceOf(ConflictException);
     // It must NOT create the appointment when a conflict exists.
@@ -90,7 +125,7 @@ describe('BookingsService double-booking prevention', () => {
 
   it('acquires the advisory lock before checking overlap (race safety)', async () => {
     const prisma = makePrisma({ overlapConflict: false });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
 
     await svc.create(salonA, baseDto as any);
 
@@ -104,7 +139,7 @@ describe('BookingsService double-booking prevention', () => {
 
   it('creates an ASSIGNED booking stamped with the caller tenantId', async () => {
     const prisma = makePrisma({ overlapConflict: false });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
 
     const result: any = await svc.create(salonA, baseDto as any);
 
@@ -115,7 +150,7 @@ describe('BookingsService double-booking prevention', () => {
 
   it('creates a PENDING booking when no staff is provided', async () => {
     const prisma = makePrisma({ overlapConflict: false });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
 
     const { staffId, ...noStaff } = baseDto;
     const result: any = await svc.create(salonA, noStaff as any);
@@ -148,20 +183,20 @@ describe('BookingsService reschedule', () => {
 
   it('404s when the booking belongs to another tenant', async () => {
     const prisma = primed({ overlapConflict: false, booking: null });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
     await expect(svc.reschedule(salonA, 'appt-of-tenant-b', '2099-06-21T10:00:00.000Z')).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('rejects a move onto a conflicting slot and does not update', async () => {
     const prisma = primed({ overlapConflict: true });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
     await expect(svc.reschedule(salonA, 'appt-1', '2099-06-21T10:00:00.000Z')).rejects.toBeInstanceOf(ConflictException);
     expect((prisma._tx.appointment as any).updateMany).not.toHaveBeenCalled();
   });
 
   it('moves the booking, preserving duration and status', async () => {
     const prisma = primed({ overlapConflict: false });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
     await svc.reschedule(salonA, 'appt-1', '2099-06-21T10:00:00.000Z');
     const data = (prisma._tx.appointment as any).updateMany.mock.calls[0][0].data;
     expect(data.startTime.toISOString()).toBe('2099-06-21T10:00:00.000Z');
@@ -171,7 +206,7 @@ describe('BookingsService reschedule', () => {
 
   it('refuses to reschedule a finished booking', async () => {
     const prisma = primed({ overlapConflict: false, booking: { ...booked, status: 'COMPLETED' } });
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
     await expect(svc.reschedule(salonA, 'appt-1', '2099-06-21T10:00:00.000Z')).rejects.toBeInstanceOf(BadRequestException);
   });
 });
@@ -181,7 +216,7 @@ describe('BookingsService tenant isolation', () => {
     const prisma = makePrisma({ overlapConflict: false });
     // Force appointment lookups to behave as if the row is in another tenant.
     prisma.appointment.findFirst = jest.fn(async (_args: any) => null) as any;
-    const svc = new BookingsService(prisma as any, audit as any, assignment as any, notifications as any, settings as any, payments as any);
+    const svc = makeService(prisma);
 
     await expect(svc.getById(salonA, 'appt-from-b')).rejects.toBeInstanceOf(NotFoundException);
   });

@@ -73,6 +73,38 @@ const LEAD_KILLING_PATTERNS: RegExp[] = [
   /\b(not sold|isn't sold|is not sold)\s+separately\b/i,
   /\bno\s+separate\s+price\b/i,
   /\bonly\s+(available|included)\s+(with|as part of)\b/i,
+
+  // ── ASKING THE CUSTOMER TO QUALIFY THEMSELVES ──────────────────────────
+  //
+  // A moving company answered an ad, gave its name and its phone number, and
+  // was asked back: "Lumio chúng em chuyên marketing cho tiệm nail, spa, nhà
+  // hàng. Anh/chị có đang chạy một trong những ngành này không, hay anh/chị
+  // đang tìm hiểu cho mục đích khác ạ?"
+  //
+  // Not one pattern above fired, because the sentence never refuses. It states
+  // the specialty POSITIVELY and then hands the customer a question only they
+  // can answer wrong. That is worse than a refusal: it sounds diligent, it
+  // sounds polite, and it makes the customer do the disqualifying — after they
+  // had already given us the two things we spend the whole conversation
+  // trying to get.
+  //
+  // The rule the prompt already states — "the trades named are EXAMPLES, not a
+  // boundary" — is exactly what the model broke. A gate is needed because a
+  // prompt is advice.
+  /(có\s*)?(đang\s*)?(phải\s*)?(chạy|làm|kinh doanh|mở|sở hữu|hoạt động)[^.!?]{0,40}(một trong (những|các)|thuộc)\s*(ngành|lĩnh vực|mảng|nhóm|loại hình)/i,
+  /(một trong (những|các)|thuộc)\s*(ngành|lĩnh vực|mảng|nhóm|loại hình)[^.!?]{0,30}(không|ko)\s*[?ạa]*/i,
+  // Offering "or are you asking for some other reason?" is handing them the
+  // exit line and holding the door.
+  /(mục đích|nhu cầu|lý do|việc)\s*(gì\s*)?khác\s*(không|ko|ạ|\?)/i,
+  // "Let me just double-check you're the right kind of customer."
+  /(xác nhận|xác minh|kiểm tra|hỏi)\s*(lại|rõ)?[^.!?]{0,50}(đúng|phải)\s*(là\s*)?(ngành|lĩnh vực|đối tượng|khách hàng|tiệm)/i,
+  // No trailing \b: the stems are truncated on purpose ("industr" covers both
+  // industry and industries), and a word boundary right after a truncated stem
+  // can never match — the next character is always a letter. That is the same
+  // \b trap the Vietnamese patterns above carry a warning about; it silently
+  // disabled this line the first time it was written.
+  /\b(are|is)\s+(you|your business|this)\s+(in|one of)\s+[^.!?]{0,40}(industr|categor|vertical|business)/i,
+  /\bjust\s+to\s+(confirm|check|make sure)\b[^.!?]{0,70}\b(we|lumio)\s+(specialis|focus|work|serve|help)/i,
 ];
 
 /** True when a sales reply disqualifies the customer instead of capturing them. */

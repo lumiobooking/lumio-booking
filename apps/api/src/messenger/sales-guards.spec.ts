@@ -34,6 +34,19 @@ describe('killsTheLead — replies that end a live conversation', () => {
     ['bundle only', 'Dạ cái này chỉ có kèm theo gói thôi ạ.'],
     ['scolds the customer', 'Dạ, em xin lỗi — anh hỏi lần thứ 5 rồi ạ.'],
     ['as I already said', 'Dạ như em đã nói ở trên ạ.'],
+    // A moving company answered the ad, gave its name AND its phone number,
+    // and was then asked to prove it belonged. Nothing in the list refused —
+    // that is why nothing in the list caught it. The reply states the
+    // specialty positively and makes the CUSTOMER do the disqualifying.
+    [
+      'asks the lead to confirm they are in our industry',
+      'Em thấy Lee Logistics Moving là công ty vận chuyển. Em muốn xác nhận lại — Lumio chúng em chuyên marketing và hệ thống quản lý cho tiệm nail, spa, nhà hàng. Anh/chị có đang chạy một trong những ngành này không, hay anh/chị đang tìm hiểu cho mục đích khác ạ?',
+    ],
+    ['offers them the exit', 'Hay anh/chị đang tìm hiểu cho mục đích khác ạ?'],
+    ['asks if they belong to the list', 'Tiệm mình có thuộc nhóm ngành này không ạ?'],
+    ['double-checks they are the right customer', 'Em xin xác nhận lại là bên mình đúng ngành nail phải không ạ?'],
+    ['English self-qualify', 'Just to confirm, we specialise in nail salons — is your business in one of those industries?'],
+    ['English category check', 'Are you in one of these industries?'],
     ['English refusal', 'We only serve nail salons and spas.'],
     ['English no separate price', 'That feature is not sold separately.'],
     ['English inexperience', 'We have no experience with that industry.'],

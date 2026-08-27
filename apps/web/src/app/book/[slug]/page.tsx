@@ -21,6 +21,7 @@ import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
 import { uiLocale } from '../../../lib/datetime';
+import { todayInZone } from '../../../lib/salon-clock';
 import { bookLangForCountry, setBookLang, bt, btf, bookLocale } from '../../../lib/i18n-book';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
@@ -977,7 +978,7 @@ export default function PublicBookingPage() {
                       and step 3 already asks for both. Two pickers for one answer made people
                       wonder what they had missed. What the visitor actually needs at this
                       point is a single fact — "is there room soon?" — so we state it. */}
-                  <SoonestBar rules={rules} services={services} accent={accent} />
+                  <SoonestBar rules={rules} services={services} accent={accent} timezone={salon?.timezone} />
 
                   {/* Group tabs. They only exist once the booker adds a friend —
                       the solo flow never shows them. Every guest picks their own
@@ -1301,14 +1302,15 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
 }) {
   const soon = useMemo(() => {
     const shortest = Math.max(15, Math.min(...(services.length ? services.map((s) => s.durationMinutes) : [30])));
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    // The salon's date, not the reader's — see lib/salon-clock.ts.
+    const today = todayInZone(salon?.timezone);
     for (let i = 0; i <= Math.min(rules.maxAdvanceDays, 21); i++) {
       const d = new Date(today.getTime() + i * 86400000);
-      const first = generateSlots(d, shortest, rules)[0];
+      const first = generateSlots(d, shortest, rules, salon?.timezone)[0];
       if (first) return btf('{when} at {time}', { when: i === 0 ? bt('today') : i === 1 ? bt('tomorrow') : bt(WEEKDAY_NAMES[d.getDay()]), time: fmtTime(first.start) });
     }
     return null;
-  }, [rules, services]);
+  }, [rules, services, salon?.timezone]);
 
   const from = services.length ? Math.min(...services.map((s) => svcNetCents(s))) : 0;
 
@@ -1479,13 +1481,22 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
  * the only scheduling question a visitor has while reading a menu ("can I even
  * get in?") without asking them to pick anything twice.
  */
-function SoonestBar({ rules, services, accent }: { rules: BookingRules; services: Service[]; accent: string }) {
+function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules; services: Service[]; accent: string; timezone?: string | null }) {
   const info = useMemo(() => {
     const shortest = Math.max(15, Math.min(...(services.length ? services.map((s) => s.durationMinutes) : [30])));
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    // Both halves of this line were reading the VISITOR's clock, and each one
+    // was wrong on its own. `new Date()` picked the reader's calendar date, so
+    // someone a day ahead of the salon was shown the wrong row of business
+    // hours entirely. And generateSlots was called without the salon timezone —
+    // the date picker below passes it, this bar did not — so the salon's
+    // morning was filtered against the reader's "now" and the first surviving
+    // slot slid by however many hours apart the two of them were. That is why
+    // the same salon advertised 11:00 AM in one region and 2:00 PM in another,
+    // and neither matched what the owner had typed in.
+    const today = todayInZone(timezone);
     for (let i = 0; i <= Math.min(rules.maxAdvanceDays, 21); i++) {
       const d = new Date(today.getTime() + i * 86400000);
-      const first = generateSlots(d, shortest, rules)[0];
+      const first = generateSlots(d, shortest, rules, timezone)[0];
       if (first) {
         const when = i === 0 ? bt('today') : i === 1 ? bt('tomorrow') : bt(WEEKDAY_NAMES[d.getDay()]);
         const h = rules.businessHours[d.getDay()];
@@ -1494,7 +1505,7 @@ function SoonestBar({ rules, services, accent }: { rules: BookingRules; services
       }
     }
     return null;
-  }, [rules, services]);
+  }, [rules, services, timezone]);
 
   return (
     <div style={{
@@ -1808,7 +1819,11 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
    *  elig === 'ANY' means any tech (unconfigured services). */
   groupNeeds?: { elig: 'ANY' | string[]; durationMin: number }[];
 }) {
-  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  // The day strip already passed the salon's timezone INTO generateSlots, but
+  // started counting from the visitor's own date — so for a reader a day ahead
+  // of the salon the whole strip was offset by one, and "today" was missing
+  // from it. Half a fix reads as a working feature, which is why it survived.
+  const today = useMemo(() => todayInZone(salon?.timezone), [salon?.timezone]);
   const maxDate = useMemo(() => new Date(today.getTime() + rules.maxAdvanceDays * 86400000), [today, rules.maxAdvanceDays]);
 
   // The strip starts at the first bookable day and slides a week at a time.

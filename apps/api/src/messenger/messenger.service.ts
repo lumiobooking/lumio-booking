@@ -870,9 +870,18 @@ export class MessengerService implements OnModuleInit {
       .slice(0, 12)
       .map((f) => ({ label: String(f.label).trim().slice(0, 40), text: String(f.value).trim().slice(0, 600) }));
 
+    // The Page this conversation arrived on. The header says "Messenger ·
+    // Nailstop & Beauty" because a salon with two Pages needs to know which
+    // one they are about to answer as — the customer sees the Page's name, not
+    // the salon's.
+    const pg = row.pageId
+      ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageName: true } }).catch(() => null)
+      : null;
+
     return {
       ...row,
       canned,
+      pageName: pg?.pageName ?? null,
       // Never hand the page token or anything else secret to a browser.
       history: turns.map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual })),
       state: view.state,

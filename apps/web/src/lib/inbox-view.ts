@@ -36,6 +36,22 @@ export function channelOf(raw: unknown): ChannelKind {
   return v === 'instagram' || v === 'zalo' ? v : 'messenger';
 }
 
+/**
+ * A single compact mark for the channel rail.
+ *
+ * Separate from channelLabel because the rail has 48px and the list row has a
+ * pill: the same string cannot serve both without one of them looking wrong.
+ * Still no flag emoji — Windows has no glyph for a regional-indicator pair and
+ * Chrome there draws the raw letters.
+ */
+export function channelMark(raw: unknown): string {
+  switch (channelOf(raw)) {
+    case 'instagram': return '◎';
+    case 'zalo': return '✆';
+    default: return '✉';
+  }
+}
+
 /** Two words and a mark that Windows can actually draw. No flag emoji: those
  *  are regional-indicator pairs with no glyph on Windows, and Chrome there
  *  renders them as raw letters — which is how a market column once read "us US". */

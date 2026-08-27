@@ -35,6 +35,19 @@ export class UpdateBookingRulesDto {
   @IsOptional() @IsBoolean() allowCustomerChooseStaff?: boolean;
   @IsOptional() @IsIn(['none', 'auto']) assignmentMode?: 'none' | 'auto';
   @IsOptional() @IsString() @MaxLength(3) currency?: string;
+  // These four are part of BookingRules and are sent by the settings screen on
+  // every save, but were never declared here. The endpoint validates with
+  // forbidNonWhitelisted, so "Save rules" answered
+  //   property currencySymbol should not exist, property symbolPosition ...
+  // and saved NOTHING. It had been that way since before the market work; the
+  // button simply had no reason to be pressed until a new setting was added to
+  // that panel. A missing line in a DTO is a whole screen that does not work.
+  @IsOptional() @IsString() @MaxLength(8) currencySymbol?: string;
+  @IsOptional() @IsIn(['before', 'after']) symbolPosition?: 'before' | 'after';
+  // 0 for VND, 2 for USD. Capped rather than free so a typo cannot turn every
+  // price on the site into nonsense.
+  @IsOptional() @IsInt() @Min(0) @Max(4) priceDecimals?: number;
+  @IsOptional() @IsIn(['online', 'onsite']) defaultPaymentMethod?: 'online' | 'onsite';
   @IsOptional() @IsBoolean() onlinePaymentEnabled?: boolean;
   @IsOptional() @IsBoolean() payLaterEnabled?: boolean;
   @IsOptional() @IsArray() businessHours?: unknown[];

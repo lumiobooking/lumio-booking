@@ -38,6 +38,65 @@ interface ApiOptions {
   body?: unknown;
 }
 
+/**
+ * Open a Server-Sent Events stream with the normal Authorization header.
+ *
+ * Not EventSource: that cannot set headers, which would force the JWT into the
+ * query string — and query strings end up in proxy and access logs. fetch() with
+ * a stream reader keeps the token where every other request puts it.
+ *
+ * Calls `onEvent` with the event name for each frame. Returns a function that
+ * closes the stream.
+ */
+export function apiStream(
+  path: string,
+  token: string,
+  onEvent: (name: string) => void,
+  onError?: () => void,
+): () => void {
+  const ctrl = new AbortController();
+  const branch = activeBranchId();
+  void (async () => {
+    try {
+      const res = await fetch(`${API_URL}${path}`, {
+        headers: {
+          Accept: 'text/event-stream',
+          Authorization: `Bearer ${token}`,
+          ...(branch ? { 'X-Branch-Id': branch } : {}),
+        },
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) { onError?.(); return; }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        // Frames are separated by a blank line. Anything not yet terminated
+        // stays in the buffer — a frame split across two network packets must
+        // not be read as two half frames.
+        let i = buf.indexOf('\n\n');
+        while (i !== -1) {
+          const frame = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const m = /^event:\s*(\S+)/m.exec(frame);
+          // A frame with no event name is the keep-alive comment; ignore it.
+          if (m) onEvent(m[1]);
+          i = buf.indexOf('\n\n');
+        }
+      }
+      onError?.();
+    } catch {
+      // Aborting on unmount lands here too, which is why the caller decides
+      // whether a reconnect is wanted rather than this function retrying.
+      onError?.();
+    }
+  })();
+  return () => ctrl.abort();
+}
+
 export async function apiFetch<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', token, body } = options;
 

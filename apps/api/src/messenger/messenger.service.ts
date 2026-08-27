@@ -5,6 +5,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
+import { InboxEventsService } from './inbox-events.service';
 import { pickAgent, isOnShift } from './chat-assignment';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -98,6 +99,7 @@ export class MessengerService implements OnModuleInit {
     private readonly bookings: BookingsService,
     private readonly settings: SettingsService,
     private readonly notifications: NotificationsService,
+    private readonly events: InboxEventsService,
   ) {}
 
   // ---- config --------------------------------------------------------------
@@ -1512,6 +1514,12 @@ export class MessengerService implements OnModuleInit {
       data: { lastCustomerAt: new Date(eventTs && Number.isFinite(eventTs) ? eventTs : Date.now()), status: 'open' } as never,
     }).catch(() => undefined);
 
+    // The customer's message is stored — tell every open inbox for this salon
+    // to refresh. This is the whole point of the stream: the eight-second poll
+    // it replaces meant a receptionist could be looking at a screen that
+    // already knew nothing new while somebody waited.
+    this.events.publish(page.tenantId, 'message');
+
     // Route to a member of staff if the salon turned that on. Only for a thread
     // nobody owns yet — reassigning a conversation someone is already holding
     // would take it out from under them mid-sentence, which is the exact thing
@@ -2798,8 +2806,21 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         return null;
       }
       const name = ([j.first_name, j.last_name].filter(Boolean).join(' ').trim()) || (j.name || '').trim();
+      if (!name) {
+        // Meta's own docs: "If you are not allowed to view the person's profile,
+        // an empty object is returned." NOT an error — an empty 200. The check
+        // above only logged the `error` branch, so the case that actually
+        // happens logged nothing at all and there was no way to tell "Meta said
+        // no" from "the request never ran". Two known causes: the account was
+        // created with a phone number rather than a Facebook account (their
+        // error 2018218), or the person never opted in by messaging the Page.
+        this.logger.warn(`profile lookup returned nothing for PSID …${psid.slice(-6)} — Meta withheld the name (empty object, not an error)`);
+      }
       return name || null;
-    } catch { return null; }
+    } catch (e) {
+      this.logger.warn(`profile lookup threw for PSID …${psid.slice(-6)}: ${String(e).slice(0, 120)}`);
+      return null;
+    }
   }
 
   // ---- Facebook Send API ---------------------------------------------------

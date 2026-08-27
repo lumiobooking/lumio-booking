@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
+import { InboxEventsService } from './inbox-events.service';
 import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -12,7 +14,10 @@ import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 @Roles(UserRole.SALON_ADMIN)
 @Controller('messenger')
 export class MessengerController {
-  constructor(private readonly svc: MessengerService) {}
+  constructor(
+    private readonly svc: MessengerService,
+    private readonly events: InboxEventsService,
+  ) {}
 
   @Get()
   get(@CurrentUser() user: AuthenticatedUser) {
@@ -57,6 +62,51 @@ export class MessengerController {
   @Post('threads/:id/handoff')
   handoff(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: HandoffDto) {
     return this.svc.setHandoff(user, id, dto.handoff ?? true);
+  }
+
+  /**
+   * Live inbox stream (Server-Sent Events).
+   *
+   * The browser opens this once and holds it. When a customer writes, the
+   * webhook publishes and this pushes a one-word nudge; the page then refetches
+   * through the normal tenant-scoped endpoints. NOTHING about the message
+   * travels down this pipe — no text, no name, no id — because a long-lived
+   * connection is the easiest place in a system to leak one salon's data onto
+   * another salon's screen, and a bare nudge makes that impossible rather than
+   * merely unlikely.
+   *
+   * Authenticated by the normal guard on this controller, so the token arrives
+   * in the Authorization header like every other request. That is why the page
+   * reads this with fetch() and a stream reader rather than EventSource:
+   * EventSource cannot set headers, which would have forced the token into the
+   * query string, and query strings end up in access logs.
+   */
+  @Get('stream')
+  stream(@CurrentUser() user: AuthenticatedUser, @Req() req: Request, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    // Render and most proxies buffer responses by default, which would hold
+    // every event until the connection closed — the exact opposite of the point.
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const tenantId = user.tenantId ?? '';
+    if (!tenantId) { res.end(); return; }
+
+    res.write('event: ready\ndata: 1\n\n');
+    const off = this.events.subscribe(tenantId, (kind) => {
+      res.write(`event: ${kind}\ndata: 1\n\n`);
+    });
+
+    // A comment line every 25s. Proxies and load balancers close a connection
+    // that has been silent too long, and a stream that dies quietly is worse
+    // than no stream: the page would look live and be frozen.
+    const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
+
+    const close = () => { clearInterval(ping); off(); res.end(); };
+    req.on('close', close);
+    req.on('error', close);
   }
 
   /** One conversation in full, plus what the salon knows about this customer. */

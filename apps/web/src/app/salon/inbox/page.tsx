@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, apiStream } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
@@ -98,16 +98,50 @@ export default function InboxPage() {
 
   useEffect(() => { void loadList(); }, [loadList]);
 
-  // Meta delivers webhooks to the server; nothing pushes them to this browser.
-  // Polling is the honest simple answer — a websocket is a lot of machinery for
-  // a page a receptionist keeps open on one screen.
+  // Live, not polled. Meta delivers a webhook to the server the moment a
+  // customer writes; the server pushes a nudge down this stream and the page
+  // refetches immediately. The eight-second poll this replaces meant a
+  // receptionist could sit looking at a screen that already knew nothing new.
+  //
+  // The stream carries no message content — see the comment on the endpoint.
+  const openRef = useRef<string | null>(null);
+  openRef.current = openId;
+
   useEffect(() => {
-    const t = setInterval(() => {
+    if (!token) return;
+    let stop: (() => void) | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let gone = false;
+
+    const refresh = () => {
       void loadList();
-      if (openId) void loadThread(openId);
-    }, 8000);
-    return () => clearInterval(t);
-  }, [loadList, loadThread, openId]);
+      if (openRef.current) void loadThread(openRef.current);
+    };
+
+    const connect = () => {
+      if (gone) return;
+      stop = apiStream('/messenger/stream', token, refresh, () => {
+        // Dropped — a proxy timeout, a laptop lid, a deploy. Reconnect after a
+        // pause rather than hammering, and keep the slow safety poll running in
+        // the meantime so the page is never fully frozen.
+        if (gone) return;
+        retry = setTimeout(connect, 5000);
+      });
+    };
+    connect();
+
+    // Safety net. A stream that dies quietly is worse than no stream, because
+    // the page LOOKS live while being frozen. Half a minute is slow enough not
+    // to matter when the stream works and fast enough to notice when it does not.
+    const poll = setInterval(refresh, 30_000);
+
+    return () => {
+      gone = true;
+      stop?.();
+      if (retry) clearTimeout(retry);
+      clearInterval(poll);
+    };
+  }, [token, loadList, loadThread]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [detail?.history?.length]);
 
@@ -118,6 +152,17 @@ export default function InboxPage() {
     try {
       await apiFetch(`/messenger/threads/${openId}/${path}`, { method: 'POST', token, body });
       await Promise.all([loadList(), loadThread(openId)]);
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
+  async function renameThread() {
+    if (!detail || !token) return;
+    const next = window.prompt(vi ? 'Tên khách hàng' : 'Customer name', detail.senderName ?? '');
+    if (next === null) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/messenger/threads/${detail.id}/rename`, { method: 'POST', token, body: { name: next.trim() } });
+      await Promise.all([loadList(), loadThread(detail.id)]);
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   }
 
@@ -265,8 +310,19 @@ export default function InboxPage() {
                 {initials(detail.senderName || displayName(detail, vi))}
               </div>
               <div style={{ minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {/* Click the name to set it. Meta withholds the profile for
+                    plenty of people — accounts made with a phone number, anyone
+                    who never opted in — and their own docs return an empty
+                    object rather than an error, so there is no version of this
+                    that always works through the API. Typing it once always
+                    works, and the salon usually knows who this is. */}
+                <p
+                  onClick={() => void renameThread()}
+                  title={vi ? 'Bấm để đặt tên khách' : 'Click to set the name'}
+                  style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
+                >
                   {displayName(detail, vi)}
+                  {!detail.senderName && <span style={{ color: '#64748b', fontWeight: 400, fontSize: 12 }}> ✎</span>}
                 </p>
                 <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>
                   {channelLabel(detail.channel).text.replace(/^\S+\s/, '')}{detail.pageName ? ` · ${detail.pageName}` : ''}

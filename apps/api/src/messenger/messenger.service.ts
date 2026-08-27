@@ -5,6 +5,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
+import { mergeHistory } from './history-merge';
 import { InboxEventsService } from './inbox-events.service';
 import { pickAgent, isOnShift } from './chat-assignment';
 import { Prisma } from '@prisma/client';
@@ -748,9 +749,15 @@ export class MessengerService implements OnModuleInit {
         assignedName: who || null,
         waitingMinutes: waitingMinutes(r as never, now),
         replyWindow: replyWindow(r as never, now),
-        // Unread means nobody has opened it since the last activity — not
-        // merely that readAt is null, or every old thread would shout.
-        unread: !row.readAt || row.readAt < row.updatedAt,
+        // Unread means nobody has opened it since the last MESSAGE.
+        //
+        // Compared against lastMessageAt, never updatedAt. Prisma moves
+        // updatedAt on every write to the row, so with updatedAt here, putting
+        // a label on a conversation — or setting a follow-up — would mark it
+        // unread again the instant you did it. That is the same trap that
+        // threw a conversation to the top of the list when you merely clicked
+        // it, and it is worth being explicit about twice.
+        unread: !row.readAt || row.readAt < ((r as unknown as { lastMessageAt?: Date | null }).lastMessageAt ?? row.updatedAt),
       };
     });
   }
@@ -932,7 +939,24 @@ export class MessengerService implements OnModuleInit {
       }
     }
 
-    const turns = (Array.isArray(row.history) ? row.history : []) as Turn[];
+    const localTurns = (Array.isArray(row.history) ? row.history : []) as Turn[];
+
+    // Read the real transcript from Meta. The local buffer is the fallback, not
+    // the source — see fetchMetaHistory for why they are different things.
+    let turns = localTurns;
+    if (row.pageId && row.senderId) {
+      const pgTok = await this.prisma.messengerPage
+        .findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } })
+        .catch(() => null);
+      const tok = pgTok?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
+      if (tok) {
+        const meta = await this.fetchMetaHistory(
+          String(row.pageId), tok, String(row.senderId),
+          (row as { channel?: string }).channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER',
+        );
+        turns = mergeHistory(meta as never, localTurns as never) as unknown as Turn[];
+      }
+    }
 
     // Canned replies, taken from the facts the salon already wrote for the bot.
     //
@@ -1325,7 +1349,25 @@ export class MessengerService implements OnModuleInit {
     const next = [...history, { role: 'assistant', content: body, manual: true, at: sentAtIso, messageId: out.message_id || null }].slice(-MAX_TURNS);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
-      data: { history: next as unknown as Prisma.InputJsonValue, lastText: thread.lastText ?? null },
+      // lastMessageAt is stamped HERE TOO, not only when the customer writes.
+      //
+      // This was the bug behind "sắp xếp chưa hoạt động đúng": a staff reply
+      // wrote history and nothing else, so the row kept the customer's old
+      // timestamp and stayed where it was. Somebody answered a customer at
+      // 20:37 and the conversation sat in third place showing 19:44 — the
+      // person replying could not see their own work. A message you sent is a
+      // message that happened.
+      data: {
+        history: next as unknown as Prisma.InputJsonValue,
+        // The preview follows the newest message, including our own.
+        //
+        // It used to keep the customer's last words while the timestamp beside
+        // it moved to the staff reply, so the row described two different
+        // messages at once. A list that quietly disagrees with itself is how
+        // people stop trusting the list.
+        lastText: body.slice(0, 300),
+        lastMessageAt: new Date(),
+      } as never,
     });
     // A human just spoke in this thread — the bot yields immediately (and
     // re-engages per the 15-min/5-min yield rules), so replies never collide.
@@ -3082,6 +3124,79 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * Returns a map of PSID → name. Never throws; an empty map simply means the
    * existing placeholder stands.
    */
+  /**
+   * The WHOLE conversation, read back from Meta.
+   *
+   * WHY THIS EXISTS
+   *
+   * What the inbox used to display was `thread.history` — a rolling buffer of
+   * the last 12 turns. That buffer is not a transcript. It exists so the bot
+   * has something to remember; it is capped on purpose, because feeding an
+   * entire year of chat into a language model on every reply is slow and
+   * expensive.
+   *
+   * Displaying it was the mistake. A conversation opened in the inbox showed
+   * whatever happened to be left in the AI's short-term memory, so long threads
+   * appeared cut off in the middle, and a conversation whose row was created by
+   * the name backfill (which reads the Page's conversation list, not the
+   * webhook) opened completely blank — a customer visibly there in the list,
+   * with a message showing, and nothing at all when you clicked.
+   *
+   * So the two are now separated:
+   *   thread.history  → what the BOT remembers      (12 turns, unchanged)
+   *   this function   → what the PERSON reads       (the real transcript)
+   *
+   * This is what Pancake and Business Suite do: they do not keep their own copy
+   * of a conversation, they read the Page's. The permissions are the ones
+   * already approved (pages_messaging, pages_read_engagement).
+   *
+   * Never throws. If Meta cannot be reached the caller keeps the local buffer,
+   * because a screen that shows something incomplete is repairable and a screen
+   * that shows nothing looks like a lost customer.
+   */
+  private async fetchMetaHistory(
+    pageId: string, pageToken: string, psid: string,
+    platform: 'MESSENGER' | 'INSTAGRAM' = 'MESSENGER',
+  ): Promise<Turn[] | null> {
+    try {
+      // user_id narrows the Page's conversation list to this one customer, so
+      // this is a single request rather than a walk over every conversation.
+      const url = `${GRAPH}/${encodeURIComponent(pageId)}/conversations`
+        + `?platform=${platform}&user_id=${encodeURIComponent(psid)}`
+        + `&fields=messages.limit(60){message,from,created_time}`
+        + `&access_token=${encodeURIComponent(pageToken)}`;
+      const r = await fetch(url);
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { messages?: { data?: { message?: string; created_time?: string; from?: { id?: string } }[] } }[];
+        error?: { message?: string };
+      };
+      if (j.error) {
+        this.logger.warn(`history fetch failed for ${pageId}/${psid}: ${(j.error.message || '').slice(0, 140)}`);
+        return null;
+      }
+      const msgs = j.data?.[0]?.messages?.data;
+      if (!Array.isArray(msgs)) return null;
+
+      const turns: Turn[] = msgs
+        .filter((m) => String(m?.message ?? '').trim())
+        .map((m) => ({
+          // from.id is the PAGE on anything we sent — the bot's replies and the
+          // staff's replies both go out through the Page, so Meta cannot tell
+          // them apart and neither can this. They are merged back in below.
+          role: (String(m.from?.id ?? '') === pageId ? 'assistant' : 'user') as Turn['role'],
+          content: String(m.message).trim(),
+          at: m.created_time ? new Date(m.created_time).toISOString() : undefined,
+        }))
+        // Meta returns newest first; people read oldest first.
+        .reverse();
+
+      return turns;
+    } catch (e) {
+      this.logger.warn(`history fetch threw for ${pageId}/${psid}: ${String(e).slice(0, 120)}`);
+      return null;
+    }
+  }
+
   private async fetchNamesForPage(pageId: string, pageToken: string, platform: 'MESSENGER' | 'INSTAGRAM' = 'MESSENGER'): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     try {

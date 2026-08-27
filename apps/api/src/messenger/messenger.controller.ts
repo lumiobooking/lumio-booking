@@ -59,6 +59,12 @@ export class MessengerController {
     return this.svc.setHandoff(user, id, dto.handoff ?? true);
   }
 
+  /** One conversation in full, plus what the salon knows about this customer. */
+  @Get('threads/:id')
+  thread(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.getThread(user, id);
+  }
+
   /** Close a conversation. A new customer message reopens it automatically. */
   @Post('threads/:id/status')
   threadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status?: string }) {

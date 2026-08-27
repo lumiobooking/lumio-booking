@@ -5,6 +5,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
+import { pickAgent, isOnShift } from './chat-assignment';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -682,6 +683,167 @@ export class MessengerService implements OnModuleInit {
     });
   }
 
+  /**
+   * Route a conversation to a member of staff, if the salon asked for that.
+   *
+   * Returns the chosen user id, or null meaning "the bot keeps it" — which is
+   * a real answer, not a failure. Nobody on shift, everybody at their limit, or
+   * the feature switched off all end up here, and in each case an immediate bot
+   * reply beats a customer queued behind a person who cannot answer.
+   *
+   * Never throws. An assignment that fails must not stop the customer getting
+   * a reply, so every step degrades to "the bot keeps it".
+   */
+  private async routeToStaff(tenantId: string, conn: unknown, customerId: string | null): Promise<string | null> {
+    try {
+      const c = conn as {
+        chatAssignMode?: string; chatMaxOpenPerAgent?: number;
+        chatPreferUsualTech?: boolean; chatLastAssignedId?: string | null;
+      };
+      if ((c.chatAssignMode ?? 'off') !== 'round-robin') return null;
+
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+      // The salon's clock decides who is on shift. A server in Oregon reading
+      // "is Hà working now" off its own hours is the same bug that told a
+      // Vietnamese salon its Sunday hours on a Saturday.
+      const tz = tenant?.timezone || 'America/Los_Angeles';
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(new Date());
+      const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+      const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));
+      const minutesLocal = Number(get('hour')) * 60 + Number(get('minute'));
+      if (weekday < 0 || !Number.isFinite(minutesLocal)) return null;
+
+      const staff = await this.prisma.staffMember.findMany({
+        where: { tenantId, isActive: true, userId: { not: null } },
+        select: { userId: true, firstName: true, workingHours: { select: { dayOfWeek: true, startTime: true, endTime: true, isActive: true } } },
+      } as never) as unknown as {
+        userId: string; firstName: string;
+        workingHours: { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
+      }[];
+      if (!staff.length) return null;
+
+      const openCounts = await this.prisma.messengerThread.groupBy({
+        by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true,
+      } as never).catch(() => [] as { assignedUserId: string | null; _count: number }[]) as { assignedUserId: string | null; _count: number }[];
+      const openBy = new Map(openCounts.map((r) => [r.assignedUserId ?? '', Number(r._count) || 0]));
+
+      const agents = staff.map((s) => ({
+        userId: s.userId,
+        name: s.firstName,
+        onShift: isOnShift(s.workingHours, weekday, minutesLocal),
+        openThreads: openBy.get(s.userId) ?? 0,
+      }));
+
+      // The rule a generic inbox cannot have: send her back to the technician
+      // who did her last set.
+      let usualUserId: string | null = null;
+      if ((c.chatPreferUsualTech ?? true) && customerId) {
+        const last = await this.prisma.appointment.findFirst({
+          where: { tenantId, customerId, assignedStaffId: { not: null } },
+          orderBy: { startTime: 'desc' },
+          select: { assignedStaff: { select: { userId: true } } },
+        } as never).catch(() => null) as { assignedStaff?: { userId: string | null } | null } | null;
+        usualUserId = last?.assignedStaff?.userId ?? null;
+      }
+
+      const pick = pickAgent({
+        rules: {
+          mode: 'round-robin',
+          maxOpenPerAgent: c.chatMaxOpenPerAgent ?? 5,
+          preferUsualTech: c.chatPreferUsualTech ?? true,
+        },
+        agents,
+        usualUserId,
+        lastAssignedUserId: c.chatLastAssignedId ?? null,
+      });
+
+      if (pick.userId) {
+        // Move the rotation pointer so two idle people do not both sit at zero
+        // while one of them takes everything.
+        await this.prisma.messengerConnection.update({
+          where: { tenantId }, data: { chatLastAssignedId: pick.userId } as never,
+        }).catch(() => undefined);
+      }
+      return pick.userId;
+    } catch (e) {
+      this.logger.warn(`chat routing failed, bot keeps the thread: ${String(e).slice(0, 120)}`);
+      return null;
+    }
+  }
+
+  /**
+   * One conversation, in full, for the inbox.
+   *
+   * Returns the messages AND what the salon knows about this customer. That
+   * second half is the whole reason to answer here rather than in the Meta
+   * inbox: a generic tool can show you the words, but it cannot tell you this
+   * is her fourteenth visit, that she is booked for tomorrow at two, and that
+   * Hà usually does her nails. Meta cannot either.
+   *
+   * The customer block is only filled when the link is CERTAIN — stamped when a
+   * booking was made from this conversation. Otherwise it is null and the panel
+   * stays empty, because showing one customer another customer's spending
+   * because two people share a common name is worse than showing nothing.
+   */
+  async getThread(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.messengerThread.findFirst({
+      where: { id, tenantId },
+      include: { assignedUser: { select: { id: true, name: true } } } as never,
+    }) as unknown as (Record<string, unknown> & { history?: unknown; customerId?: string | null }) | null;
+    if (!row) throw new NotFoundException('Thread not found');
+
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15;
+    const now = new Date();
+    const view = ownershipOf(row as never, { now, activeMins });
+
+    let customer: Record<string, unknown> | null = null;
+    if (row.customerId) {
+      const c = await this.prisma.customer.findFirst({
+        where: { id: row.customerId, tenantId },
+        select: {
+          id: true, firstName: true, lastName: true, phone: true, email: true,
+          appointments: {
+            orderBy: { startTime: 'desc' }, take: 5,
+            select: {
+              id: true, startTime: true, status: true,
+              service: { select: { name: true } },
+              assignedStaff: { select: { firstName: true } },
+            },
+          },
+        },
+      } as never).catch(() => null) as Record<string, unknown> | null;
+      if (c) {
+        const appts = (c.appointments ?? []) as { startTime: Date; assignedStaff?: { firstName?: string } | null }[];
+        customer = {
+          ...c,
+          visits: appts.length,
+          // The next appointment in the future, which is the one a person
+          // answering a message actually needs on screen.
+          nextAt: appts.map((a) => a.startTime).filter((d) => new Date(d) > now).sort()[0] ?? null,
+          usualTech: appts.find((a) => a.assignedStaff?.firstName)?.assignedStaff?.firstName ?? null,
+        };
+      }
+    }
+
+    const turns = (Array.isArray(row.history) ? row.history : []) as Turn[];
+    return {
+      ...row,
+      // Never hand the page token or anything else secret to a browser.
+      history: turns.map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual })),
+      state: view.state,
+      stateReason: view.reason,
+      waitingMinutes: waitingMinutes(row as never, now),
+      // The composer has to know BEFORE someone types a long answer. Finding
+      // out after pressing send is how a reply is lost silently.
+      replyWindow: replyWindow(row as never, now),
+      customer,
+    };
+  }
+
   /** Opening a conversation marks it read, so the unread count means something. */
   async markThreadRead(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
@@ -1277,6 +1439,24 @@ export class MessengerService implements OnModuleInit {
       where: { id: thread.id },
       data: { lastCustomerAt: new Date(eventTs && Number.isFinite(eventTs) ? eventTs : Date.now()), status: 'open' } as never,
     }).catch(() => undefined);
+
+    // Route to a member of staff if the salon turned that on. Only for a thread
+    // nobody owns yet — reassigning a conversation someone is already holding
+    // would take it out from under them mid-sentence, which is the exact thing
+    // this whole piece of work exists to stop.
+    const owner = (thread as unknown as { assignedUserId?: string | null }).assignedUserId ?? null;
+    if (!owner && !thread.handoff) {
+      const assignTo = await this.routeToStaff(page.tenantId, conn, null);
+      if (assignTo) {
+        await this.prisma.messengerThread.update({
+          where: { id: thread.id }, data: { assignedUserId: assignTo } as never,
+        }).catch(() => undefined);
+        // Assigned to a person = the bot does not answer. The customer is now
+        // 'unclaimed' in the inbox, with a timer running, which is honest: a
+        // human owes them a reply and has not sent one yet.
+        return;
+      }
+    }
 
     if (thread.handoff) {
       // The customer's message goes into history NOW — if a human handles it,
@@ -2464,7 +2644,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
         } as CreateBookingDto;
         const booking = await this.bookings.createForTenant(tenantId, dto, null, 'messenger');
-        const b = booking as { id?: string };
+        const b = booking as { id?: string; customerId?: string | null };
+        // The one moment this page-scoped id and a real customer are provably
+        // the same person: they just gave a name and a phone and a Customer row
+        // came back. Stamp it now — every other way of linking them is a guess,
+        // and a wrong guess shows one customer another customer's history.
+        if (b.customerId && ctx?.threadId) {
+          await this.prisma.messengerThread.update({
+            where: { id: ctx.threadId }, data: { customerId: b.customerId } as never,
+          }).catch(() => undefined);
+        }
         this.logger.log(`bot booking CREATED id=${b.id} start=${startTime} local="${local}" tz=${tz} service=${serviceId} phone=…${phone.slice(-4)}`);
         // Auto-assign a technician (fair rotation) when the salon runs in auto mode —
         // same as the public web flow — so AI bookings don't land unassigned.

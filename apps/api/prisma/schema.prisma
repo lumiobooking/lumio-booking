@@ -1001,6 +1001,9 @@ model Customer {
   @@index([tenantId, phone])
   @@index([tenantId, referredById])
   @@map("customers")
+
+  // Conversations in the shared inbox known to be this person.
+  messengerThreads MessengerThread[]
 }
 
 // ===========================================================================
@@ -1534,6 +1537,13 @@ model MessengerConnection {
   agentName String? // persona: the bot introduces itself with this human name (never "assistant")
   humanActiveMins Int @default(15) // staff counts as "in the chat" this long after their last message
   graceMins       Int @default(5)  // how long an active staffer gets to answer before the bot steps in
+  // Auto-distribution of conversations to staff. 'off' by default: turning it on
+  // changes who answers customers, and that is the salon's decision rather than
+  // a behaviour they acquire by taking an update.
+  chatAssignMode      String  @default("off") // 'off' | 'round-robin'
+  chatMaxOpenPerAgent Int     @default(5)     // 0 = no limit
+  chatPreferUsualTech Boolean @default(true)  // returning customer → her own technician
+  chatLastAssignedId  String?                 // rotation pointer, so ties do not all land on one person
   bizIntro  String? // one-line business description the bot uses when introducing the company
   aiInstruction String? // brand-voice / extra guidance for the bot
   botFacts  Json  @default("[]") // structured FAQ facts [{label,value,on}] injected into the bot
@@ -1623,6 +1633,12 @@ model MessengerThread {
   lastCustomerAt DateTime?
   // When a human last opened it. Null = unread.
   readAt   DateTime?
+  // The salon's customer record, once we know who this is. Stamped the moment a
+  // booking is made from the conversation — that is the only point where the
+  // page-scoped id and a real person are provably the same human. Null until
+  // then, and the inbox simply shows no history panel rather than guessing.
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   summary  String? // long-term customer memory — distilled from turns that fell off the history window
   // Which surface this conversation arrived on: Facebook Messenger or Instagram
   // Direct. Shown as a badge in the dashboard and in the activity log.

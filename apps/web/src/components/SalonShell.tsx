@@ -52,6 +52,10 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/email', label: 'Email marketing', icon: '✉️' },
     { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
     { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
+    // The inbox sits ABOVE the bot settings on purpose: answering customers is
+    // done fifty times a day by a receptionist, configuring the bot is done once
+    // by the owner. The frequent job should not live under the rare one.
+    { href: '/salon/inbox', label: 'Inbox', icon: '💬' },
     { href: '/salon/messenger', label: 'Messenger bot', icon: '🤖' },
     { href: '/salon/voice', label: 'AI Hotline', icon: '📞' },
   ] },

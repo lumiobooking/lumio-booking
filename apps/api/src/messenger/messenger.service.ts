@@ -153,6 +153,9 @@ export class MessengerService implements OnModuleInit {
       agentName: (c as unknown as { agentName?: string | null } | null)?.agentName ?? '',
       bizIntro: (c as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? '',
       humanActiveMins: (c as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15,
+      chatAssignMode: (c as unknown as { chatAssignMode?: string } | null)?.chatAssignMode ?? 'off',
+      chatMaxOpenPerAgent: (c as unknown as { chatMaxOpenPerAgent?: number } | null)?.chatMaxOpenPerAgent ?? 5,
+      chatPreferUsualTech: (c as unknown as { chatPreferUsualTech?: boolean } | null)?.chatPreferUsualTech ?? true,
       graceMins: (c as unknown as { graceMins?: number } | null)?.graceMins ?? 5,
       aiInstruction: c?.aiInstruction ?? '',
       botFacts: Array.isArray(c?.botFacts) ? (c!.botFacts as unknown as BotFact[]) : [],
@@ -591,7 +594,7 @@ export class MessengerService implements OnModuleInit {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; closing?: string; agentName?: string; bizIntro?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string; humanActiveMins?: number; graceMins?: number },
+    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; closing?: string; agentName?: string; bizIntro?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string; humanActiveMins?: number; graceMins?: number; chatAssignMode?: string; chatMaxOpenPerAgent?: number; chatPreferUsualTech?: boolean },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -609,6 +612,20 @@ export class MessengerService implements OnModuleInit {
       bizIntro: typeof dto.bizIntro === 'string' ? (dto.bizIntro.trim().slice(0, 300) || null) : ((cur as unknown as { bizIntro?: string | null } | null)?.bizIntro ?? null),
       humanActiveMins: Number.isInteger(dto.humanActiveMins) ? Math.min(720, Math.max(1, dto.humanActiveMins as number)) : ((cur as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15),
       graceMins: Number.isInteger(dto.graceMins) ? Math.min(60, Math.max(0, dto.graceMins as number)) : ((cur as unknown as { graceMins?: number } | null)?.graceMins ?? 5),
+      // Turning auto-distribution on changes who answers customers, so it is
+      // only ever written when the salon explicitly sends a value. Anything
+      // unrecognised falls back to what is already stored rather than to 'on'.
+      chatAssignMode: dto.chatAssignMode === 'round-robin' || dto.chatAssignMode === 'off'
+        ? dto.chatAssignMode
+        : ((cur as unknown as { chatAssignMode?: string } | null)?.chatAssignMode ?? 'off'),
+      // 0 means no limit. Capped at 50 so a typo cannot pile a hundred live
+      // conversations onto one receptionist.
+      chatMaxOpenPerAgent: Number.isInteger(dto.chatMaxOpenPerAgent)
+        ? Math.min(50, Math.max(0, dto.chatMaxOpenPerAgent as number))
+        : ((cur as unknown as { chatMaxOpenPerAgent?: number } | null)?.chatMaxOpenPerAgent ?? 5),
+      chatPreferUsualTech: typeof dto.chatPreferUsualTech === 'boolean'
+        ? dto.chatPreferUsualTech
+        : ((cur as unknown as { chatPreferUsualTech?: boolean } | null)?.chatPreferUsualTech ?? true),
       aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur?.aiInstruction ?? null,
       botFacts: (Array.isArray(dto.botFacts) ? dto.botFacts.slice(0, 40) : (cur?.botFacts ?? [])) as unknown as Prisma.InputJsonValue,
       // The mode is a PLATFORM decision (a mis-flip turns a salon's booking bot
@@ -830,8 +847,23 @@ export class MessengerService implements OnModuleInit {
     }
 
     const turns = (Array.isArray(row.history) ? row.history : []) as Turn[];
+
+    // Canned replies, taken from the facts the salon already wrote for the bot.
+    //
+    // Deliberately NOT a second list to maintain. The owner has already typed
+    // the price list, the address and the parking instructions once; asking
+    // them to type it again for staff guarantees the two drift, and then the
+    // bot and the receptionist quote different prices to the same customer.
+    // One source, two readers.
+    const facts = (Array.isArray(conn?.botFacts) ? conn?.botFacts : []) as BotFact[];
+    const canned = facts
+      .filter((f) => f && f.on && String(f.label ?? '').trim() && String(f.value ?? '').trim())
+      .slice(0, 12)
+      .map((f) => ({ label: String(f.label).trim().slice(0, 40), text: String(f.value).trim().slice(0, 600) }));
+
     return {
       ...row,
+      canned,
       // Never hand the page token or anything else secret to a browser.
       history: turns.map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual })),
       state: view.state,

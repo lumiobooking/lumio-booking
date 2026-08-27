@@ -42,6 +42,9 @@ interface ThreadDetail extends InboxRow {
   history: Turn[];
   customer: CustomerCtx | null;
   replyWindow?: { open: boolean; minutesLeft: number | null };
+  /** Taken from the facts the salon already wrote for the bot — one source, two
+   *  readers, so a receptionist can never quote a different price than the bot. */
+  canned?: { label: string; text: string }[];
 }
 
 const ghostBtn: React.CSSProperties = {
@@ -244,6 +247,19 @@ export default function InboxPage() {
                   color: notice.blocked ? '#fca5a5' : '#fcd34d',
                   background: notice.blocked ? 'rgba(127,29,29,0.25)' : 'rgba(120,53,15,0.25)',
                 }}>{notice.text}</div>
+              )}
+
+              {!!detail.canned?.length && !notice.blocked && (
+                <div style={{ borderTop: '1px solid #1e293b', padding: '8px 10px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {detail.canned.map((q) => (
+                    <button
+                      key={q.label}
+                      title={q.text}
+                      onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
+                      style={{ ...ghostBtn, fontSize: 11, padding: '3px 9px' }}
+                    >{q.label}</button>
+                  ))}
+                </div>
               )}
 
               <div style={{ borderTop: '1px solid #1e293b', padding: 10, display: 'flex', gap: 8 }}>

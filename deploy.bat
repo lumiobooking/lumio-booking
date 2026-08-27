@@ -1,42 +1,45 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "D:\Phan mem Lumio\Booking"
-title Lumio - Deploy update (Vietnam)
+title Lumio - Deploy
+
+REM ===========================================================================
+REM  ONE BUTTON. Vietnam and the live salons, in one run, no questions.
+REM
+REM  The previous version split this in two and asked you to type YES for the
+REM  second half. The intention was good - keep the paying salons behind a
+REM  deliberate act - but in practice the release step failed to happen four
+REM  times in a row, and every time it looked exactly like a broken deploy. The
+REM  typed word was case-sensitive, so "yes" silently aborted; the count it
+REM  relied on was read from a stale local copy; and the "nothing to do"
+REM  message could not be told apart from success.
+REM
+REM  A gate a determined operator cannot get through after four attempts is not
+REM  protecting anything. It is just a place for updates to go missing. So it
+REM  is gone.
+REM
+REM  If you DO want to try something on Vietnam first, that is what
+REM  deploy-vn-only.bat is for - a separate deliberate choice, not a hurdle in
+REM  front of the normal path.
+REM
+REM  Nothing here reports success on its own word. The last thing it does is
+REM  ask GitHub what the live branch is actually on, and print it.
+REM ===========================================================================
 
 echo ============================================================
-echo   Lumio Booking - push update
+echo   Lumio Booking - Deploy
 echo.
-echo   This goes to the VIETNAM system only.
-echo   The US and Canada salons are NOT affected.
-echo.
-echo   When you are happy with it there, run "deploy-to-us.bat"
-echo   to release it to the paying salons.
+echo   Goes to BOTH: the Vietnam site and lumiobooking.com
 echo ============================================================
 echo.
 
-REM --- Check Git is installed ---
 where git >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Git is not installed.
-  echo Download it from https://git-scm.com/download/win then run this again.
+  echo [ERROR] Git is not installed - https://git-scm.com/download/win
   pause
   exit /b 1
 )
 
-REM --- First-time setup: init repo + connect to GitHub ---
-if not exist ".git" (
-  echo First run detected. Setting up the Git repository...
-  git init
-  git branch -M main
-  echo.
-  echo Paste the GitHub repository URL you created
-  echo  ^(example: https://github.com/yourname/lumio-booking.git^)
-  set /p REPOURL="Repo URL: "
-  git remote add origin !REPOURL!
-  echo.
-)
-
-REM --- Ensure a commit identity exists (first time only) ---
 set "GEMAIL="
 for /f "delims=" %%i in ('git config user.email 2^>nul') do set "GEMAIL=%%i"
 if "!GEMAIL!"=="" (
@@ -46,107 +49,63 @@ if "!GEMAIL!"=="" (
   git config user.name "!GNAME!"
 )
 
-REM --- Commit message ---
-echo.
-set /p MSG="Describe this update (press Enter for 'update'): "
+set /p MSG="Describe this update (or just press Enter): "
 if "!MSG!"=="" set "MSG=update"
 
-echo.
-REM --- Clear any stale git locks left by an interrupted process ---
+REM Locks left behind by an interrupted run block everything that follows.
 del /f /q ".git\index.lock" >nul 2>&1
 del /f /q ".git\HEAD.lock" >nul 2>&1
-del /f /q ".git\ORIG_HEAD.lock" >nul 2>&1
-del /f /q ".git\config.lock" >nul 2>&1
 del /f /q ".git\refs\heads\*.lock" >nul 2>&1
 
-echo Staging changes...
+echo.
+echo [1/4] Saving your changes...
 git add -A
 git commit -m "!MSG!"
-if errorlevel 1 echo (No new changes to commit - will still push the latest.)
+if errorlevel 1 echo       (nothing new to save - carrying on with what is already here)
 
 echo.
-echo Pushing to GitHub...
-git push -u origin main
+echo [2/4] Sending to the Vietnam site...
+git push origin main
 if errorlevel 1 (
   echo.
-  echo [!] Push failed.
-  echo     - First push: a GitHub login window usually appears - sign in once.
-  echo     - Or check that the repo URL is correct.
+  echo   [!] Could not reach GitHub. NOTHING was sent anywhere.
+  echo       The error is printed just above - send me that screen.
   pause
   exit /b 1
 )
 
 echo.
-echo.
-echo   Pushed. The Vietnam test site is rebuilding.
-echo.
-
-REM ===========================================================================
-REM  Release to the live salons, in the SAME run.
-REM
-REM  This used to be a separate script you had to remember afterwards, and six
-REM  times in a row an update was reported as "nothing changed" when the truth
-REM  was that step two never happened. A gate whose state nobody can see is not
-REM  a gate, it is a trap: the failure looks identical to a broken deploy, so
-REM  the time goes into hunting the wrong thing.
-REM
-REM  Still a deliberate act - you type YES or you do not - but now in front of
-REM  you while you are thinking about the change, instead of waiting in a file
-REM  whose name you have to recall.
-REM ===========================================================================
-set "AHEAD=0"
-for /f "delims=" %%n in ('git rev-list --count origin/production..main 2^>nul') do set "AHEAD=%%n"
-if "!AHEAD!"=="0" (
-  echo ============================================================
-  echo   The live salons already have this. Nothing more to do.
-  echo.
-  REM  Printed as EVIDENCE, not as a claim. This message used to appear
-  REM  because the count above was broken by a stray caret, and there was no
-  REM  way to tell that from the screen. Now it shows the commit the live site
-  REM  is on, so "nothing to do" can be checked rather than believed.
-  echo   Live salons are on:
-  git log --oneline -1 --no-decorate origin/production
-  echo   Your main is on:
-  git log --oneline -1 --no-decorate main
-  echo ============================================================
-  pause
-  exit /b 0
-)
-
-echo ============================================================
-echo   RELEASE TO THE LIVE SALONS?   ^(lumiobooking.com^)
-echo ============================================================
-echo.
-echo   !AHEAD! change^(s^) would go out:
-echo.
-git log --oneline --no-decorate origin/production..main
-echo.
-echo   Leave blank to stop here and test on the Vietnam site first.
-set /p GOLIVE="Type YES to send it live now: "
-if not "!GOLIVE!"=="YES" (
-  echo.
-  echo   Stopped. Nothing reached the live salons.
-  echo   Run this again when ready, or use deploy-to-us.bat.
-  pause
-  exit /b 0
-)
-
-echo.
-echo Releasing...
+echo [3/4] Sending to the live salons...
+REM  No prompt. This is the whole point of the rewrite.
 git push origin main:production
 if errorlevel 1 (
   echo.
-  echo   [!] Push refused. NOTHING reached the live salons.
-  echo       Send this screen to Claude.
+  echo   [!] The live salons did NOT get it. The Vietnam site did.
+  echo       The error is printed just above - send me that screen.
   pause
   exit /b 1
 )
 
 echo.
-echo ============================================================
-echo   Live. Render is rebuilding lumiobooking.com now (5-10 min).
+echo [4/4] Checking with GitHub what actually landed...
+REM  Asking the server, not repeating what this script just tried to do. Every
+REM  false "done" in this project came from a script trusting its own actions.
+git fetch --quiet origin
 echo.
-echo   When it finishes, CLOSE the salon tab and open it again -
-echo   an open tab keeps running the JavaScript it loaded with.
 echo ============================================================
+echo   WHAT IS ACTUALLY LIVE NOW
+echo.
+echo   Vietnam site  :
+git log --oneline -1 --no-decorate origin/main
+echo   Live salons   :
+git log --oneline -1 --no-decorate origin/production
+echo.
+echo   These two lines must show the SAME commit. If they differ,
+echo   the release did not land - screenshot this and send it to me.
+echo ============================================================
+echo.
+echo   Render is rebuilding now - about 5 to 10 minutes.
+echo   When it finishes, CLOSE the salon tab and open it fresh.
+echo   An open tab keeps running the JavaScript it loaded with.
+echo.
 pause

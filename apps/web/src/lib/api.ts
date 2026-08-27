@@ -39,6 +39,37 @@ interface ApiOptions {
 }
 
 /**
+ * Fetch an image from the API and hand back an object URL.
+ *
+ * An <img src> cannot carry an Authorization header, and the alternative —
+ * putting the token in the query string — writes it into every proxy and
+ * access log between here and the server. So the bytes come down through a
+ * normal authenticated request and become a blob url the tag can use.
+ *
+ * Returns null when the server says there is no picture (204), which is a
+ * normal answer for a Facebook profile Meta will not share.
+ */
+const imageCache = new Map<string, string | null>();
+
+export async function apiImage(path: string, token: string): Promise<string | null> {
+  // Cached per path for the life of the page: scrolling a list must not refetch
+  // the same face, and switching filters must not either.
+  if (imageCache.has(path)) return imageCache.get(path) ?? null;
+  try {
+    const res = await fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 204 || !res.ok) { imageCache.set(path, null); return null; }
+    const blob = await res.blob();
+    if (!blob.size) { imageCache.set(path, null); return null; }
+    const url = URL.createObjectURL(blob);
+    imageCache.set(path, url);
+    return url;
+  } catch {
+    imageCache.set(path, null);
+    return null;
+  }
+}
+
+/**
  * Open a Server-Sent Events stream with the normal Authorization header.
  *
  * Not EventSource: that cannot set headers, which would force the JWT into the

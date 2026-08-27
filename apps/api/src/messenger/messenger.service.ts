@@ -968,6 +968,66 @@ export class MessengerService implements OnModuleInit {
     };
   }
 
+  /**
+   * The customer's real Facebook picture, fetched through US.
+   *
+   * WHY IT IS PROXIED AND NOT A LINK
+   *
+   * Graph will hand over the picture for a PSID, but only with the Page access
+   * token — and that token is the key to the salon's whole inbox. Putting it in
+   * an <img src> would publish it to every browser, every extension and every
+   * proxy log on the way. So the browser asks US, and the token stays here.
+   *
+   * The other reason: the CDN url Meta redirects to is signed and expires. A
+   * link stored in a row goes dead in a few hours and leaves a broken image; a
+   * route stays valid forever because it re-fetches.
+   *
+   * Returns null when Meta will not give one (a great many people — the same
+   * permission wall that withholds names), and the inbox draws initials.
+   */
+  async threadAvatar(user: AuthenticatedUser, id: string): Promise<{ body: Buffer; contentType: string } | null> {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.messengerThread.findFirst({
+      where: { id, tenantId }, select: { senderId: true, pageId: true },
+    });
+    if (!row?.senderId) return null;
+
+    const cacheKey = `${row.pageId}:${row.senderId}`;
+    const hit = this.avatarCache.get(cacheKey);
+    // Six hours. Long enough that scrolling the inbox costs Meta nothing, short
+    // enough that somebody who changes their picture is not stuck for a week.
+    if (hit && Date.now() - hit.at < 6 * 3_600_000) return hit.body ? { body: hit.body, contentType: hit.contentType } : null;
+
+    const pg = row.pageId
+      ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } }).catch(() => null)
+      : null;
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    const token = pg?.pageToken || conn?.pageToken;
+    if (!token) return null;
+
+    try {
+      const r = await fetch(
+        `${GRAPH}/${encodeURIComponent(String(row.senderId))}/picture?width=96&height=96&redirect=true&access_token=${encodeURIComponent(token)}`,
+      );
+      const type = r.headers.get('content-type') || '';
+      if (!r.ok || !type.startsWith('image/')) {
+        // Remember the refusal too, or every render retries a request Meta has
+        // already said no to.
+        this.avatarCache.set(cacheKey, { at: Date.now(), body: null, contentType: '' });
+        return null;
+      }
+      const body = Buffer.from(await r.arrayBuffer());
+      this.avatarCache.set(cacheKey, { at: Date.now(), body, contentType: type });
+      return { body, contentType: type };
+    } catch {
+      this.avatarCache.set(cacheKey, { at: Date.now(), body: null, contentType: '' });
+      return null;
+    }
+  }
+
+  /** Small, bounded: a salon has tens of conversations, not thousands open. */
+  private readonly avatarCache = new Map<string, { at: number; body: Buffer | null; contentType: string }>();
+
   /** Opening a conversation marks it read, so the unread count means something. */
   async markThreadRead(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);

@@ -115,6 +115,24 @@ export class MessengerController {
     return this.svc.getThread(user, id);
   }
 
+  /**
+   * The customer's real profile picture, streamed through us.
+   *
+   * The Page token never leaves the server — see the service. 204 rather than
+   * 404 when Meta withholds one, because "there is no picture" is a normal
+   * answer here, not an error, and the inbox draws initials instead.
+   */
+  @Get('threads/:id/avatar')
+  async avatar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() res: Response) {
+    const img = await this.svc.threadAvatar(user, id);
+    if (!img) { res.status(204).end(); return; }
+    res.setHeader('Content-Type', img.contentType);
+    // Private: this is one salon's customer, and a shared cache must never hand
+    // it to another tenant's browser.
+    res.setHeader('Cache-Control', 'private, max-age=21600');
+    res.end(img.body);
+  }
+
   /** Close a conversation. A new customer message reopens it automatically. */
   @Post('threads/:id/status')
   threadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status?: string }) {

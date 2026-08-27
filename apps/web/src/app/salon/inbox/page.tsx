@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
-import { apiFetch, apiStream } from '../../../lib/api';
+import { apiFetch, apiStream, apiImage } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
@@ -195,27 +195,53 @@ export default function InboxPage() {
    */
   const Avatar = ({ row, size = 34 }: { row: InboxRow; size?: number }) => {
     const c = pageColor(row.pageId);
+    const [pic, setPic] = useState<string | null>(null);
+
+    useEffect(() => {
+      if (!token) return;
+      let gone = false;
+      // The real Facebook picture, through our own endpoint so the Page token
+      // stays on the server. Null is a normal answer — Meta withholds profiles
+      // for a great many people — and then the initials stand.
+      void apiImage(`/messenger/threads/${row.id}/avatar`, token).then((u) => { if (!gone) setPic(u); });
+      return () => { gone = true; };
+    }, [row.id]);
+
     return (
       <span style={{ position: 'relative', flexShrink: 0, width: size, height: size, display: 'inline-block' }}>
-        <span style={{
-          width: size, height: size, borderRadius: '50%', background: c.bg, color: c.fg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: Math.round(size * 0.36), fontWeight: 700,
-        }}>{initialsOf(displayName(row, vi))}</span>
+        {pic ? (
+          <img
+            src={pic}
+            alt=""
+            style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+            // If the blob ever fails to decode, fall back rather than showing a
+            // broken-image icon in a list of customers.
+            onError={() => setPic(null)}
+          />
+        ) : (
+          <span style={{
+            width: size, height: size, borderRadius: '50%', background: c.bg, color: c.fg,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: Math.round(size * 0.36), fontWeight: 700,
+          }}>{initialsOf(displayName(row, vi))}</span>
+        )}
         <span
           title={row.pageName ?? undefined}
           style={{
             position: 'absolute', right: -2, bottom: -2,
             width: Math.round(size * 0.46), height: Math.round(size * 0.46), borderRadius: '50%',
-            background: '#0b1220', border: '1.5px solid #0b1220',
+            // Ringed in the PAGE colour, so a real photograph still says which
+            // Fanpage it came in on — the thing initials were carrying before.
+            background: '#0b1220', border: `2px solid ${c.bg}`,
             color: channelLabel(row.channel).fg,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: Math.round(size * 0.3), lineHeight: 1,
+            fontSize: Math.round(size * 0.28), lineHeight: 1,
           }}
         >{channelMark(row.channel)}</span>
       </span>
     );
   };
+
   const pill = (tone: string, text: string) => (
     <span style={{ background: TONE[tone].bg, color: TONE[tone].fg, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{text}</span>
   );

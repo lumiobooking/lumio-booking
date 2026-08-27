@@ -952,8 +952,15 @@ export class MessengerService implements OnModuleInit {
       ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageName: true } }).catch(() => null)
       : null;
 
+    const notes = await this.prisma.messengerNote.findMany({
+      where: { tenantId, threadId: String(row.id) },
+      orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, text: true, authorName: true, createdAt: true },
+    } as never).catch(() => []);
+
     return {
       ...row,
+      notes,
       canned,
       pageName: pg?.pageName ?? null,
       // Never hand the page token or anything else secret to a browser.
@@ -1027,6 +1034,53 @@ export class MessengerService implements OnModuleInit {
 
   /** Small, bounded: a salon has tens of conversations, not thousands open. */
   private readonly avatarCache = new Map<string, { at: number; body: Buffer | null; contentType: string }>();
+
+  /**
+   * Add an internal note to a conversation.
+   *
+   * This does NOT touch the message history and does NOT call Meta. A note is
+   * for the people answering, and the customer must never be able to receive
+   * one. That is why it is its own table and its own endpoint rather than a
+   * flagged row in the thread — the mistake it prevents cannot be undone.
+   */
+  async addNote(user: AuthenticatedUser, threadId: string, text: string) {
+    const tenantId = this.tenantId(user);
+    const body = String(text ?? '').trim();
+    if (!body) throw new BadRequestException('Note is empty.');
+
+    const row = await this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true } });
+    if (!row) throw new NotFoundException('Thread not found');
+
+    const me = await this.prisma.user.findUnique({ where: { id: user.userId }, select: { firstName: true, lastName: true, email: true } }).catch(() => null);
+    // Name captured now, not looked up later: a note written by someone who has
+    // since left the salon should still say who wrote it.
+    const authorName = [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.email || 'Lumio';
+
+    await this.prisma.messengerNote.create({
+      data: { tenantId, threadId: row.id, authorId: user.userId, authorName, text: body.slice(0, 2000) },
+    } as never);
+    await this.audit(tenantId, 'messenger.note_added');
+    return this.listNotes(user, threadId);
+  }
+
+  async listNotes(user: AuthenticatedUser, threadId: string) {
+    const tenantId = this.tenantId(user);
+    const rows = await this.prisma.messengerNote.findMany({
+      where: { tenantId, threadId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, text: true, authorName: true, createdAt: true },
+    } as never).catch(() => []);
+    return rows;
+  }
+
+  async deleteNote(user: AuthenticatedUser, threadId: string, noteId: string) {
+    const tenantId = this.tenantId(user);
+    // Scoped by tenantId AND threadId: an id from another salon's inbox must
+    // not delete anything here.
+    await this.prisma.messengerNote.deleteMany({ where: { id: noteId, tenantId, threadId } } as never).catch(() => undefined);
+    return this.listNotes(user, threadId);
+  }
 
   /** Opening a conversation marks it read, so the unread count means something. */
   async markThreadRead(user: AuthenticatedUser, id: string) {

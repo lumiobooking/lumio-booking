@@ -285,6 +285,8 @@ model Tenant {
   tables             RestaurantTable[]
   menuItems          MenuItem[]
 
+  messengerNotes    MessengerNote[]
+
   @@index([status])
   @@index([accountGroupId])
   @@map("tenants")
@@ -359,6 +361,7 @@ model User {
   branchMemberships BranchMembership[]
   // Conversations in the shared inbox this person is expected to answer.
   assignedThreads MessengerThread[] @relation("MessengerThreadAssignee")
+  messengerNotes  MessengerNote[]  @relation("MessengerNoteAuthor")
 
   @@index([tenantId])
   @@index([role])
@@ -1647,11 +1650,45 @@ model MessengerThread {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Internal notes staff write for each other. Never sent to the customer.
+  notes      MessengerNote[]
+
   @@unique([pageId, senderId])
   @@index([tenantId])
   @@index([tenantId, updatedAt])
   @@map("messenger_threads")
 }
+/// An internal note on a conversation. Staff write these for each other —
+/// "khách này khó tính", "đã hẹn gọi lại 3h" — and the customer NEVER sees them.
+///
+/// A separate table from the message history on purpose. Notes and messages
+/// living in one list is how a private remark ends up sent to the person it was
+/// written about: one wrong branch, one shared render, and it is out. Different
+/// table, different endpoint, different colour on screen — three walls, because
+/// this is the one mistake in an inbox you cannot take back.
+model MessengerNote {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  threadId String
+  thread   MessengerThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  /// Who wrote it. Null if that staff account was later removed — the note
+  /// stays, because it is the salon's knowledge about a customer, not the
+  /// employee's property.
+  authorId   String?
+  author     User?   @relation("MessengerNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  authorName String  // captured at write time, so a deleted account still reads sensibly
+
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([threadId, createdAt])
+  @@map("messenger_notes")
+}
+
 
 // ===========================================================================
 // AI Voice hotline — the salon KEEPS its own public phone number and forwards

@@ -49,6 +49,10 @@ interface ThreadDetail extends InboxRow {
   /** Which Page this arrived on. A salon with two Pages needs to know which one
    *  it is about to answer as — the customer sees the Page's name, not theirs. */
   pageName?: string | null;
+  /** Internal notes. Never sent to the customer — different table, different
+   *  endpoint, different colour. Three walls, because this is the one mistake
+   *  in an inbox nobody can take back. */
+  notes?: { id: string; text: string; authorName: string; createdAt: string }[];
 }
 
 const ghostBtn: React.CSSProperties = {
@@ -77,6 +81,7 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [source, setSource] = useState<string>('any');
   const [query, setQuery] = useState('');
+  const [note, setNote] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const loadList = useCallback(async () => {
@@ -163,6 +168,17 @@ export default function InboxPage() {
     try {
       await apiFetch(`/messenger/threads/${detail.id}/rename`, { method: 'POST', token, body: { name: next.trim() } });
       await Promise.all([loadList(), loadThread(detail.id)]);
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
+  async function addNote() {
+    const text = note.trim();
+    if (!text || !detail || !token) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/messenger/threads/${detail.id}/notes`, { method: 'POST', token, body: { text } });
+      setNote('');
+      await loadThread(detail.id);
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   }
 
@@ -255,7 +271,7 @@ export default function InboxPage() {
 
       {err && <div style={{ ...ui.card, borderColor: '#7f1d1d', color: '#fca5a5', marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
-      <div style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '52px minmax(0,300px) minmax(0,1fr)' }}>
+      <div style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '52px minmax(0,290px) minmax(0,1fr) minmax(0,270px)' }}>
         {/* No fixed height on the card. It used to be 74vh, but the card's TOP
             already sits well down the page — support banner, heading, whatever
             else the shell puts above it — so 74vh from there ran off the bottom
@@ -465,17 +481,75 @@ export default function InboxPage() {
               <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} style={ui.primaryBtn}>{vi ? 'Gửi' : 'Send'}</button>
             </div>
 
-            {/* Below the composer, as designed: it is reference while you type,
-                not something to read before you start. */}
-            {detail.customer && (
-              <div style={{ borderTop: '1px solid #1e293b', padding: '9px 13px', display: 'flex', gap: 20, flexWrap: 'wrap', background: '#0f172a' }}>
-                <p style={{ margin: 0, fontSize: 11, color: '#64748b', width: '100%' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
-                {detail.customer.nextAt && <Stat label={vi ? 'Lần tới' : 'Next'} value={new Date(detail.customer.nextAt).toLocaleString(uiLocale())} />}
-                <Stat label={vi ? 'Đã đến' : 'Visits'} value={vi ? `${detail.customer.visits ?? 0} lần` : String(detail.customer.visits ?? 0)} />
-                {detail.customer.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={detail.customer.usualTech} />}
-                {detail.customer.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={detail.customer.phone} />}
-              </div>
-            )}
+          </>)}
+        </div>
+
+        {/* Info column. Customer facts on top, internal notes below — the
+            layout Pancake uses, and the right one: both are reference material
+            you glance at while typing, not things that belong in the flow of
+            the conversation. */}
+        <div style={{ borderLeft: '1px solid #1e293b', display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0f172a' }}>
+          {!detail ? (
+            <p style={{ color: '#64748b', fontSize: 12, padding: 14, margin: 0 }}>
+              {vi ? 'Thông tin khách hiện ở đây.' : 'Customer details appear here.'}
+            </p>
+          ) : (<>
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid #1e293b' }}>
+              <p style={{ margin: '0 0 8px', fontSize: 11, color: '#64748b' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
+              {detail.customer ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {detail.customer.nextAt && <Stat label={vi ? 'Lần tới' : 'Next'} value={new Date(detail.customer.nextAt).toLocaleString(uiLocale())} />}
+                  <Stat label={vi ? 'Đã đến' : 'Visits'} value={vi ? `${detail.customer.visits ?? 0} lần` : String(detail.customer.visits ?? 0)} />
+                  {detail.customer.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={detail.customer.usualTech} />}
+                  {detail.customer.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={detail.customer.phone} />}
+                </div>
+              ) : (
+                <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                  {/* Deliberately empty rather than guessed. Matching on a name
+                      would show one customer another customer's spending. */}
+                  {vi
+                    ? 'Chưa nối được với hồ sơ khách. Sẽ tự nối khi khách đặt lịch từ hội thoại này.'
+                    : 'Not linked to a customer record yet. It links itself when they book from this conversation.'}
+                </p>
+              )}
+            </div>
+
+            <div style={{ padding: '11px 13px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: '#fcd34d', fontWeight: 700 }}>{vi ? 'GHI CHÚ NỘI BỘ' : 'INTERNAL NOTES'}</span>
+              <span style={{ fontSize: 10.5, color: '#64748b' }}>{vi ? '· khách không thấy' : '· customer cannot see these'}</span>
+            </div>
+
+            <div style={{ padding: '0 13px 10px' }}>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
+                placeholder={vi ? 'Nhập ghi chú (Enter để lưu)' : 'Add a note (Enter to save)'}
+                rows={2}
+                style={{ ...ui.input, width: '100%', fontSize: 12, resize: 'vertical', minHeight: 38, borderColor: '#78350f', background: 'rgba(120,53,15,0.12)' }}
+              />
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: 'min(40vh, 340px)', padding: '0 13px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {!detail.notes?.length && (
+                <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>
+              )}
+              {detail.notes?.map((n) => (
+                <div key={n.id} style={{ background: 'rgba(120,53,15,0.18)', border: '1px solid #78350f', borderRadius: 8, padding: '7px 9px' }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: '#fde68a', whiteSpace: 'pre-wrap' }}>{n.text}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: 10.5, color: '#a16207', display: 'flex', gap: 6 }}>
+                    <span>{n.authorName}</span>
+                    <span>·</span>
+                    <span>{new Date(n.createdAt).toLocaleString(uiLocale())}</span>
+                    <button
+                      onClick={() => void apiFetch(`/messenger/threads/${detail.id}/notes/${n.id}/delete`, { method: 'POST', token: token! }).then(() => loadThread(detail.id))}
+                      title={vi ? 'Xoá ghi chú' : 'Delete note'}
+                      style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#a16207', cursor: 'pointer', fontSize: 11, padding: 0 }}
+                    >×</button>
+                  </p>
+                </div>
+              ))}
+            </div>
           </>)}
         </div>
       </div>

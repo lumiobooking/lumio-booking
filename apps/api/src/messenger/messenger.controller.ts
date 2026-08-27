@@ -133,6 +133,19 @@ export class MessengerController {
     res.end(img.body);
   }
 
+  /**
+   * Internal notes. Nothing here reaches Meta or the customer — see the service.
+   */
+  @Post('threads/:id/notes')
+  addNote(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { text?: string }) {
+    return this.svc.addNote(user, id, String(dto?.text ?? ''));
+  }
+
+  @Post('threads/:id/notes/:noteId/delete')
+  deleteNote(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('noteId') noteId: string) {
+    return this.svc.deleteNote(user, id, noteId);
+  }
+
   /** Close a conversation. A new customer message reopens it automatically. */
   @Post('threads/:id/status')
   threadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status?: string }) {

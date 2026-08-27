@@ -32,6 +32,7 @@ import { uiLocale } from '../../../lib/datetime';
 import {
   InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
+  InboxLabel, followUpState, followUpLabel, followUpCount,
 } from '../../../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean }
@@ -53,6 +54,27 @@ interface ThreadDetail extends InboxRow {
    *  endpoint, different colour. Three walls, because this is the one mistake
    *  in an inbox nobody can take back. */
   notes?: { id: string; text: string; authorName: string; createdAt: string }[];
+}
+
+/** The badge colours for a follow-up. Overdue is the only red on this screen —
+ *  a colour that means everything means nothing. */
+const FOLLOWUP_TONE: Record<string, { bg: string; fg: string }> = {
+  overdue: { bg: '#7f1d1d', fg: '#fecaca' },
+  today: { bg: '#78350f', fg: '#fde68a' },
+  upcoming: { bg: '#1e293b', fg: '#94a3b8' },
+};
+
+/** Colours offered when making a label. Six is enough to tell stages apart and
+ *  few enough that nobody spends a morning in a colour picker. */
+const LABEL_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7'];
+
+/** <input type="datetime-local"> wants local wall-clock, not an ISO Z string. */
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 const ghostBtn: React.CSSProperties = {
@@ -78,10 +100,16 @@ export default function InboxPage() {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [listErr, setListErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [source, setSource] = useState<string>('any');
   const [query, setQuery] = useState('');
   const [note, setNote] = useState('');
+  const [labels, setLabels] = useState<InboxLabel[]>([]);
+  const [labelId, setLabelId] = useState<string | null>(null);
+  const [newLabel, setNewLabel] = useState('');
+  const [newColor, setNewColor] = useState(LABEL_COLORS[0]);
+  const [showLabelForm, setShowLabelForm] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const loadList = useCallback(async () => {
@@ -89,7 +117,17 @@ export default function InboxPage() {
     try {
       const r = await apiFetch<InboxRow[]>('/messenger/threads', { token });
       setRows(Array.isArray(r) ? r : []);
-    } catch { /* a failed refresh must not blank the list someone is reading */ }
+      setListErr(null);
+    } catch (e) {
+      // A failed refresh must not blank the list someone is reading — but it
+      // must SAY SO. This used to swallow the error entirely, and the screen
+      // then showed "no conversations match these filters", which is a
+      // different sentence with a different meaning: it says the inbox is fine
+      // and empty. An inbox that reports "empty" when it actually means
+      // "I could not ask" is the worst failure this screen has, because
+      // nobody goes looking for messages they have been told do not exist.
+      setListErr(String(e));
+    }
   }, [token]);
 
   const loadThread = useCallback(async (id: string) => {
@@ -101,7 +139,16 @@ export default function InboxPage() {
     } catch (e) { setErr(String(e)); }
   }, [token]);
 
+  const loadLabels = useCallback(async () => {
+    if (!token) return;
+    try {
+      const r = await apiFetch<InboxLabel[]>('/messenger/labels', { token });
+      setLabels(Array.isArray(r) ? r : []);
+    } catch { /* the inbox works without labels; it must not fail to draw */ }
+  }, [token]);
+
   useEffect(() => { void loadList(); }, [loadList]);
+  useEffect(() => { void loadLabels(); }, [loadLabels]);
 
   // Live, not polled. Meta delivers a webhook to the server the moment a
   // customer writes; the server pushes a nudge down this stream and the page
@@ -182,6 +229,39 @@ export default function InboxPage() {
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   }
 
+  async function createLabel() {
+    const name = newLabel.trim();
+    if (!name || !token) return;
+    setBusy(true);
+    try {
+      const r = await apiFetch<InboxLabel[]>('/messenger/labels', { method: 'POST', token, body: { name, color: newColor } });
+      setLabels(Array.isArray(r) ? r : []);
+      setNewLabel('');
+      setShowLabelForm(false);
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
+  async function toggleLabel(id: string, on: boolean) {
+    if (!detail || !token) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/messenger/threads/${detail.id}/labels`, { method: 'POST', token, body: { labelId: id, on } });
+      await Promise.all([loadList(), loadThread(detail.id)]);
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
+  /** An empty value clears the follow-up. The service treats an unparseable
+   *  date as a clear too, so there is no way to store one that never comes due. */
+  async function setFollowUp(local: string) {
+    if (!detail || !token) return;
+    setBusy(true);
+    try {
+      const at = local ? new Date(local).toISOString() : null;
+      await apiFetch(`/messenger/threads/${detail.id}/followup`, { method: 'POST', token, body: { at, note: detail.followUpNote ?? null } });
+      await Promise.all([loadList(), loadThread(detail.id)]);
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
   async function send() {
     const text = draft.trim();
     if (!text || !detail || !token) return;
@@ -195,8 +275,9 @@ export default function InboxPage() {
   }
 
   const sources = sourcesFrom(rows);
-  const sorted = sortRows(filterRows(rows, { filter, source, query, meId: me }));
+  const sorted = sortRows(filterRows(rows, { filter, source, query, meId: me, labelId }));
   const waiting = waitingCount(rows);
+  const dueCount = followUpCount(rows);
   const notice = composerNotice(detail?.replyWindow, vi);
   const state = detail ? stateOf(detail) : 'bot';
 
@@ -333,20 +414,61 @@ export default function InboxPage() {
               ['waiting', vi ? 'Đang chờ' : 'Waiting'],
               ['unread', vi ? 'Chưa đọc' : 'Unread'],
               ['mine', vi ? 'Của tôi' : 'Mine'],
+              ['followup', vi ? 'Cần theo dõi' : 'Follow-up'],
             ] as [InboxFilter, string][]).map(([key, label]) => (
               <button key={key} onClick={() => setFilter(key)}
                 style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
                   borderColor: filter === key ? '#6366f1' : '#334155',
-                  color: filter === key ? '#c7d2fe' : '#94a3b8' }}>{label}</button>
+                  color: filter === key ? '#c7d2fe' : '#94a3b8' }}>
+                {label}
+                {/* The number is on this chip and nowhere else. A follow-up
+                    nobody can see the count of is a diary left in a drawer. */}
+                {key === 'followup' && dueCount > 0 && (
+                  <span style={{ marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{dueCount}</span>
+                )}
+              </button>
             ))}
           </div>
 
+          {/* Label filter. Only drawn once the salon has made a label — an
+              empty row of nothing is worse than no row. */}
+          {labels.length > 0 && (
+            <div style={{ display: 'flex', gap: 4, padding: '0 8px 7px', borderBottom: '1px solid #1e293b', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button onClick={() => setLabelId(null)}
+                style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
+                  borderColor: labelId === null ? '#6366f1' : '#334155',
+                  color: labelId === null ? '#c7d2fe' : '#64748b' }}>{vi ? 'Mọi nhãn' : 'Any label'}</button>
+              {labels.map((l) => (
+                <button key={l.id} onClick={() => setLabelId(labelId === l.id ? null : l.id)}
+                  style={{
+                    border: `1px solid ${labelId === l.id ? l.color : '#334155'}`,
+                    background: labelId === l.id ? l.color : 'transparent',
+                    color: labelId === l.id ? '#fff' : '#94a3b8',
+                    borderRadius: 999, padding: '2px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600,
+                  }}>{l.name}</button>
+              ))}
+            </div>
+          )}
+
           <div style={{ overflowY: 'auto', flex: 1, maxHeight: 'min(58vh, 520px)' }}>
-            {!sorted.length && (
+            {listErr && (
+              <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: '#450a0a', border: '1px solid #7f1d1d' }}>
+                <p style={{ margin: '0 0 4px', fontSize: 12, color: '#fecaca', fontWeight: 700 }}>
+                  {vi ? 'Không tải được danh sách hội thoại' : 'Could not load conversations'}
+                </p>
+                <p style={{ margin: '0 0 6px', fontSize: 11, color: '#fca5a5', wordBreak: 'break-word' }}>{listErr}</p>
+                <button onClick={() => void loadList()} style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px' }}>
+                  {vi ? 'Thử lại' : 'Retry'}
+                </button>
+              </div>
+            )}
+            {!sorted.length && !listErr && (
               <p style={{ color: '#64748b', fontSize: 13, padding: 16, margin: 0 }}>
                 {filter === 'waiting'
                   ? (vi ? 'Không ai đang chờ. Tốt.' : 'Nobody is waiting. Good.')
-                  : (vi ? 'Không có hội thoại nào khớp bộ lọc.' : 'No conversations match these filters.')}
+                  : rows.length === 0
+                    ? (vi ? 'Chưa có hội thoại nào. Khi khách nhắn vào Page, hội thoại sẽ hiện ở đây.' : 'No conversations yet. They appear here when a customer writes to the Page.')
+                    : (vi ? 'Không có hội thoại nào khớp bộ lọc.' : 'No conversations match these filters.')}
               </p>
             )}
             {sorted.map((r) => {
@@ -383,6 +505,27 @@ export default function InboxPage() {
                             borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 600,
                             maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}>{r.pageName}</span>
+                        )}
+                        {/* Follow-up first, labels after: a date that has come
+                            due is the only thing on this row that is asking
+                            for something today. */}
+                        {followUpState(r.followUpAt) !== 'none' && (
+                          <span style={{
+                            ...FOLLOWUP_TONE[followUpState(r.followUpAt)],
+                            background: FOLLOWUP_TONE[followUpState(r.followUpAt)].bg,
+                            color: FOLLOWUP_TONE[followUpState(r.followUpAt)].fg,
+                            borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 700,
+                          }}>⏰ {followUpLabel(r.followUpAt, new Date())}</span>
+                        )}
+                        {(r.labels ?? []).slice(0, 3).map((l) => (
+                          <span key={l.id} style={{
+                            background: l.color, color: '#fff', borderRadius: 999,
+                            padding: '1px 8px', fontSize: 10, fontWeight: 600,
+                            maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>{l.name}</span>
+                        ))}
+                        {(r.labels?.length ?? 0) > 3 && (
+                          <span style={{ fontSize: 10, color: '#64748b' }}>+{(r.labels?.length ?? 0) - 3}</span>
                         )}
                       </div>
                     </div>
@@ -488,7 +631,7 @@ export default function InboxPage() {
             layout Pancake uses, and the right one: both are reference material
             you glance at while typing, not things that belong in the flow of
             the conversation. */}
-        <div style={{ borderLeft: '1px solid #1e293b', display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0f172a' }}>
+        <div style={{ borderLeft: '1px solid #1e293b', display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0f172a', overflowY: 'auto', maxHeight: 'min(78vh, 700px)' }}>
           {!detail ? (
             <p style={{ color: '#64748b', fontSize: 12, padding: 14, margin: 0 }}>
               {vi ? 'Thông tin khách hiện ở đây.' : 'Customer details appear here.'}
@@ -512,6 +655,108 @@ export default function InboxPage() {
                     : 'Not linked to a customer record yet. It links itself when they book from this conversation.'}
                 </p>
               )}
+            </div>
+
+            {/* Labels: where this conversation stands. */}
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid #1e293b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>{vi ? 'NHÃN' : 'LABELS'}</span>
+                <button onClick={() => setShowLabelForm((v) => !v)}
+                  style={{ ...ghostBtn, marginLeft: 'auto', fontSize: 11, padding: '1px 7px' }}>
+                  {showLabelForm ? (vi ? 'Đóng' : 'Close') : (vi ? '+ Nhãn mới' : '+ New')}
+                </button>
+              </div>
+
+              {showLabelForm && (
+                <div style={{ marginBottom: 9 }}>
+                  <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void createLabel(); } }}
+                    placeholder={vi ? 'Tên nhãn, ví dụ "Đã báo giá"' : 'Label name'}
+                    maxLength={40}
+                    style={{ ...ui.input, fontSize: 12, padding: '5px 8px' }} />
+                  <div style={{ display: 'flex', gap: 5, margin: '7px 0' }}>
+                    {LABEL_COLORS.map((c) => (
+                      <button key={c} onClick={() => setNewColor(c)} aria-label={c}
+                        style={{ width: 20, height: 20, borderRadius: '50%', background: c, cursor: 'pointer',
+                          border: newColor === c ? '2px solid #e2e8f0' : '2px solid transparent' }} />
+                    ))}
+                  </div>
+                  <button onClick={() => void createLabel()} disabled={busy || !newLabel.trim()}
+                    style={{ ...ui.primaryBtn, fontSize: 12, padding: "4px 11px" }}>{vi ? "Tạo" : "Create"}</button>
+                </div>
+              )}
+
+              {!labels.length && !showLabelForm && (
+                // Nothing is seeded on purpose — the stages of a sale differ in
+                // every salon, and an invented default would sit unused forever.
+                <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                  {vi ? 'Chưa có nhãn nào. Tạo nhãn theo cách tiệm bạn bán hàng: "Đã báo giá", "Chờ chốt", "Không quan tâm".'
+                      : 'No labels yet. Create the stages your salon actually uses.'}
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {labels.map((l) => {
+                  const on = (detail.labels ?? []).some((x) => x.id === l.id);
+                  return (
+                    <button key={l.id} onClick={() => void toggleLabel(l.id, !on)} disabled={busy}
+                      title={on ? (vi ? 'Bỏ nhãn' : 'Remove') : (vi ? 'Gắn nhãn' : 'Apply')}
+                      style={{
+                        border: `1px solid ${on ? l.color : '#334155'}`,
+                        background: on ? l.color : 'transparent',
+                        color: on ? '#fff' : '#94a3b8',
+                        borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                      }}>{on ? '✓ ' : ''}{l.name}</button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Follow-up: WHEN to come back. Deliberately not a label — a label
+                is true forever and so cannot remind anybody of anything. */}
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid #1e293b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>{vi ? 'HẸN THEO DÕI' : 'FOLLOW-UP'}</span>
+                {followUpState(detail.followUpAt) !== 'none' && (
+                  <span style={{
+                    background: FOLLOWUP_TONE[followUpState(detail.followUpAt)].bg,
+                    color: FOLLOWUP_TONE[followUpState(detail.followUpAt)].fg,
+                    borderRadius: 6, padding: '1px 7px', fontSize: 10.5, fontWeight: 700,
+                  }}>{followUpLabel(detail.followUpAt, new Date())}</span>
+                )}
+              </div>
+
+              <input type="datetime-local"
+                value={toLocalInput(detail.followUpAt)}
+                onChange={(e) => void setFollowUp(e.target.value)}
+                disabled={busy}
+                style={{ ...ui.input, fontSize: 12, padding: '5px 8px', colorScheme: 'dark' }} />
+
+              <div style={{ display: 'flex', gap: 5, marginTop: 7, flexWrap: 'wrap' }}>
+                {/* The three answers a receptionist actually gives. Typing a
+                    date by hand for every "để em gọi lại sau" is the reason
+                    follow-up systems go unused. */}
+                {([
+                  [1, vi ? 'Mai' : 'Tomorrow'],
+                  [3, vi ? '3 ngày' : '3 days'],
+                  [7, vi ? '1 tuần' : '1 week'],
+                ] as [number, string][]).map(([days, label]) => (
+                  <button key={days} disabled={busy}
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + days);
+                      d.setHours(10, 0, 0, 0); // a working hour, not this minute
+                      void setFollowUp(toLocalInput(d.toISOString()));
+                    }}
+                    style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px' }}>{label}</button>
+                ))}
+                {detail.followUpAt && (
+                  <button onClick={() => void setFollowUp('')} disabled={busy}
+                    style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px', color: '#f87171', borderColor: '#7f1d1d' }}>
+                    {vi ? 'Xoá hẹn' : 'Clear'}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div style={{ padding: '11px 13px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>

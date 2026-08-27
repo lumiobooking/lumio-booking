@@ -36,6 +36,18 @@ export interface InboxRow {
   /** When the ROW was last written — moves when you merely mark it read. Kept
    *  only as a fallback for rows older than lastMessageAt. */
   updatedAt: string;
+  /** The salon's own labels on this conversation. */
+  labels?: InboxLabel[] | null;
+  /** When to come back to this customer. See followUpState(). */
+  followUpAt?: string | null;
+  followUpNote?: string | null;
+}
+
+/** A label the salon made. Nothing is seeded — see the migration. */
+export interface InboxLabel {
+  id: string;
+  name: string;
+  color: string;
 }
 
 /** Unknown channels read as Messenger — the one every salon has. */
@@ -238,7 +250,7 @@ export function sourcesFrom(rows: InboxRow[]): InboxSource[] {
  * newest first, the way every other chat inbox in the world opens. 'waiting'
  * is one click away for when you want to sweep the ones nobody answered.
  */
-export type InboxFilter = 'all' | 'waiting' | 'unread' | 'mine';
+export type InboxFilter = 'all' | 'waiting' | 'unread' | 'mine' | 'followup';
 
 export interface FilterState {
   filter?: InboxFilter;
@@ -250,6 +262,70 @@ export interface FilterState {
    *  staff can be called Mai; they cannot share an id. Null disables the filter
    *  rather than showing an empty list. */
   meId?: string | null;
+  /** A label id, or null for "any label". Filtering by label is how a salon
+   *  works a stage of the sale — every "đã báo giá" in one list. */
+  labelId?: string | null;
+}
+
+export type FollowUpState = 'overdue' | 'today' | 'upcoming' | 'none';
+
+/**
+ * Where a follow-up stands right now.
+ *
+ * THIS IS THE WHOLE POINT OF FOLLOW-UPS, so it is a tested function rather than
+ * a ternary in a render. A label saying "cần gọi lại" is true forever and so
+ * tells nobody anything on any particular morning; a date can become OVERDUE,
+ * and something that becomes overdue by itself is the only kind of reminder
+ * that works.
+ *
+ * 'overdue' means the moment has passed — including earlier today. Somebody who
+ * promised to call at 10:00 and sees "hôm nay" at 16:00 has been told a
+ * comfortable lie. 'today' therefore means later today, still in time.
+ *
+ * Days are compared in the browser's local calendar, which is the salon's own
+ * day. Comparing in UTC would move the boundary by 7 hours in Vietnam and put
+ * an evening follow-up under tomorrow.
+ */
+export function followUpState(at: unknown, now: Date = new Date()): FollowUpState {
+  const raw = at instanceof Date ? at.getTime() : Date.parse(String(at ?? ''));
+  if (!Number.isFinite(raw)) return 'none';
+  const when = new Date(raw);
+  if (raw <= now.getTime()) return 'overdue';
+
+  const sameDay =
+    when.getFullYear() === now.getFullYear() &&
+    when.getMonth() === now.getMonth() &&
+    when.getDate() === now.getDate();
+  return sameDay ? 'today' : 'upcoming';
+}
+
+/** Wording for the badge. Vietnamese, like the rest of the inbox. */
+export function followUpLabel(at: unknown, now: Date = new Date()): string {
+  switch (followUpState(at, now)) {
+    case 'overdue': return 'Quá hạn';
+    case 'today': return 'Hôm nay';
+    case 'upcoming': return 'Đã hẹn';
+    default: return '';
+  }
+}
+
+/**
+ * How many need attention today — overdue AND due-today together.
+ *
+ * They are counted as one number because they are one job: the list of people
+ * you owe a message to before you go home. Splitting them into two chips would
+ * make somebody decide which one to look at first.
+ */
+export function followUpCount(rows: InboxRow[], now: Date = new Date()): number {
+  return rows.reduce((n, r) => {
+    const st = followUpState(r.followUpAt, now);
+    return n + (st === 'overdue' || st === 'today' ? 1 : 0);
+  }, 0);
+}
+
+/** Does this conversation carry that label? */
+export function hasLabel(row: InboxRow, labelId: string): boolean {
+  return (row.labels ?? []).some((l) => l && l.id === labelId);
 }
 
 /** How many customers are sitting unanswered, across every source. */
@@ -265,7 +341,7 @@ export function waitingCount(rows: InboxRow[]): number {
  * accent-insensitive: someone typing "hang" must find "Hằng", or the search box
  * is useless to the people it was built for.
  */
-export function filterRows(rows: InboxRow[], f: FilterState): InboxRow[] {
+export function filterRows(rows: InboxRow[], f: FilterState, now: Date = new Date()): InboxRow[] {
   const fold = (s: unknown) => String(s ?? '')
     .toLowerCase()
     .normalize('NFD')
@@ -287,6 +363,14 @@ export function filterRows(rows: InboxRow[], f: FilterState): InboxRow[] {
     // With no name to compare against, "mine" would silently show an empty
     // list. Showing everything is the honest failure.
     if (filter === 'mine' && f.meId && r.assignedUserId !== f.meId) return false;
+    // Overdue and due-today only. An appointment three weeks out is not work
+    // for this morning and would bury the ones that are.
+    if (filter === 'followup') {
+      const st = followUpState(r.followUpAt, now);
+      if (st !== 'overdue' && st !== 'today') return false;
+    }
+
+    if (f.labelId && !hasLabel(r, f.labelId)) return false;
 
     if (q && !(fold(r.senderName).includes(q) || fold(r.lastText).includes(q))) return false;
     return true;

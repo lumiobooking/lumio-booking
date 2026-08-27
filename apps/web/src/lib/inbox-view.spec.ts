@@ -1,4 +1,4 @@
-import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingCount, sourcesFrom, sourceKey, pageColor, initialsOf, filterRows, displayName, InboxRow } from './inbox-view';
+import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingCount, sourcesFrom, sourceKey, pageColor, initialsOf, filterRows, displayName, followUpState, followUpLabel, followUpCount, hasLabel, InboxRow } from './inbox-view';
 
 const row = (over: Partial<InboxRow> = {}): InboxRow => ({
   id: 'r', updatedAt: '2026-08-27T12:00:00.000Z', ...over,
@@ -375,5 +375,150 @@ describe('the 24-hour window — a warning, never a lock', () => {
     for (const w of [null, undefined, { open: false, minutesLeft: 0 }, { open: true, minutesLeft: null, unknown: true }, { open: true, minutesLeft: 5 }]) {
       expect(composerNotice(w as never, true).blocked).toBe(false);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Follow-ups
+//
+// A follow-up exists so that it can go OVERDUE by itself. Every test below is
+// really testing that one property from a different angle, because a follow-up
+// that quietly reads "upcoming" forever is indistinguishable from having no
+// follow-up system at all — and it is the failure a salon would not notice for
+// weeks, having "used" the feature the whole time.
+// ---------------------------------------------------------------------------
+
+// A fixed local noon. Constructed from parts, not from a Z string: the whole
+// today/tomorrow question is about the LOCAL calendar day, so a test that
+// pinned UTC would pass in London and fail in Ho Chi Minh City.
+const noon = new Date(2026, 7, 27, 12, 0, 0);
+const at = (h: number, dayOffset = 0) => new Date(2026, 7, 27 + dayOffset, h, 0, 0).toISOString();
+
+describe('where a follow-up stands', () => {
+  it('yesterday is overdue', () => {
+    expect(followUpState(at(9, -1), noon)).toBe('overdue');
+  });
+
+  // The one that matters. 10:00 has passed; it is 12:00. Reading this as
+  // "hôm nay" would be a comfortable lie, and the person who promised to call
+  // at ten would keep seeing a calm badge all afternoon.
+  it('EARLIER TODAY is overdue, not "today"', () => {
+    expect(followUpState(at(10), noon)).toBe('overdue');
+  });
+
+  it('later today is today', () => {
+    expect(followUpState(at(16), noon)).toBe('today');
+  });
+
+  it('tomorrow is upcoming, even at one minute past midnight', () => {
+    expect(followUpState(new Date(2026, 7, 28, 0, 1).toISOString(), noon)).toBe('upcoming');
+  });
+
+  it('tonight at 23:59 is still today', () => {
+    expect(followUpState(new Date(2026, 7, 27, 23, 59).toISOString(), noon)).toBe('today');
+  });
+
+  it('the exact moment counts as due, not as pending', () => {
+    expect(followUpState(new Date(noon).toISOString(), noon)).toBe('overdue');
+  });
+
+  it.each([null, undefined, '', 'không biết', {}, NaN])('no date at all is none, not overdue (%s)', (bad) => {
+    // Junk must NOT read as overdue. Every conversation in the salon would
+    // light up red and the badge would be ignored within a day.
+    expect(followUpState(bad as never, noon)).toBe('none');
+  });
+
+  it('accepts a Date as readily as a string', () => {
+    expect(followUpState(new Date(2026, 7, 26, 9, 0), noon)).toBe('overdue');
+  });
+
+  it('gives every state except none a word, and none no word', () => {
+    expect(followUpLabel(at(9, -1), noon)).toBe('Quá hạn');
+    expect(followUpLabel(at(16), noon)).toBe('Hôm nay');
+    expect(followUpLabel(at(9, 3), noon)).toBe('Đã hẹn');
+    expect(followUpLabel(null, noon)).toBe('');
+  });
+});
+
+describe('how many need attention today', () => {
+  it('counts overdue and due-today as one job, and ignores the rest', () => {
+    const rows = [
+      row({ id: 'a', followUpAt: at(9, -2) }),   // overdue
+      row({ id: 'b', followUpAt: at(10) }),      // overdue (earlier today)
+      row({ id: 'c', followUpAt: at(17) }),      // today
+      row({ id: 'd', followUpAt: at(9, 5) }),    // next week
+      row({ id: 'e' }),                          // no follow-up
+    ];
+    expect(followUpCount(rows, noon)).toBe(3);
+  });
+
+  it('is zero for an inbox nobody has set one on', () => {
+    expect(followUpCount([row(), row()], noon)).toBe(0);
+  });
+});
+
+describe('the "cần theo dõi" filter', () => {
+  const rows = [
+    row({ id: 'overdue', followUpAt: at(8) }),
+    row({ id: 'later', followUpAt: at(18) }),
+    row({ id: 'nextweek', followUpAt: at(9, 6) }),
+    row({ id: 'none' }),
+  ];
+
+  it('shows only what is owed today', () => {
+    const ids = filterRows(rows, { filter: 'followup' }, noon).map((r) => r.id);
+    expect(ids).toEqual(['overdue', 'later']);
+  });
+
+  it('does not touch the other filters', () => {
+    expect(filterRows(rows, { filter: 'all' }, noon)).toHaveLength(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Labels
+// ---------------------------------------------------------------------------
+
+const L = (id: string, name = id) => ({ id, name, color: '#6366f1' });
+
+describe('labels on a conversation', () => {
+  it('finds a label that is there', () => {
+    expect(hasLabel(row({ labels: [L('l1'), L('l2')] }), 'l2')).toBe(true);
+  });
+
+  it('says no for a conversation with none, rather than throwing', () => {
+    for (const labels of [undefined, null, []]) {
+      expect(hasLabel(row({ labels: labels as never }), 'l1')).toBe(false);
+    }
+  });
+
+  // Matching on the id, never the name. Two salons can both have a label
+  // called "Đã chốt"; ids are what keep them apart.
+  it('matches on id, not on name', () => {
+    expect(hasLabel(row({ labels: [L('l1', 'Đã chốt')] }), 'Đã chốt')).toBe(false);
+  });
+
+  it('filters the list down to one label', () => {
+    const rows = [
+      row({ id: 'a', labels: [L('quote')] }),
+      row({ id: 'b', labels: [L('quote'), L('hot')] }),
+      row({ id: 'c', labels: [L('hot')] }),
+      row({ id: 'd' }),
+    ];
+    expect(filterRows(rows, { labelId: 'quote' }, noon).map((r) => r.id)).toEqual(['a', 'b']);
+  });
+
+  it('no label chosen means no filtering — not an empty list', () => {
+    const rows = [row({ id: 'a' }), row({ id: 'b', labels: [L('x')] })];
+    expect(filterRows(rows, { labelId: null }, noon)).toHaveLength(2);
+    expect(filterRows(rows, {}, noon)).toHaveLength(2);
+  });
+
+  it('stacks with the other filters instead of replacing them', () => {
+    const rows = [
+      row({ id: 'a', labels: [L('quote')], unread: true }),
+      row({ id: 'b', labels: [L('quote')], unread: false }),
+    ];
+    expect(filterRows(rows, { filter: 'unread', labelId: 'quote' }, noon).map((r) => r.id)).toEqual(['a']);
   });
 });

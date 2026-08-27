@@ -680,7 +680,8 @@ export class MessengerService implements OnModuleInit {
         id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,
         updatedAt: true, channel: true,
         handoffAt: true, handoffMode: true, assignedUserId: true, status: true,
-        lastCustomerAt: true, readAt: true, lastMessageAt: true,
+        lastCustomerAt: true, readAt: true, lastMessageAt: true, followUpAt: true, followUpNote: true,
+        threadLabels: { select: { label: { select: { id: true, name: true, color: true } } } },
         // User has firstName/lastName, NOT name. Selecting a field Prisma does
         // not know throws at runtime, and the stale generated client in the dev
         // sandbox cannot catch it — so this is spelled out rather than guessed.
@@ -743,6 +744,7 @@ export class MessengerService implements OnModuleInit {
         // Fall back to updatedAt for rows written before the column existed, so
         // an old conversation still sorts somewhere sensible.
         lastMessageAt: (r as unknown as { lastMessageAt?: Date | null }).lastMessageAt ?? row.updatedAt,
+        labels: ((r as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
         assignedName: who || null,
         waitingMinutes: waitingMinutes(r as never, now),
         replyWindow: replyWindow(r as never, now),
@@ -861,7 +863,10 @@ export class MessengerService implements OnModuleInit {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({
       where: { id, tenantId },
-      include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } } as never,
+      include: {
+        assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        threadLabels: { select: { label: { select: { id: true, name: true, color: true } } } },
+      } as never,
     }) as unknown as (Record<string, unknown> & { history?: unknown; customerId?: string | null }) | null;
     if (!row) throw new NotFoundException('Thread not found');
 
@@ -963,6 +968,7 @@ export class MessengerService implements OnModuleInit {
 
     return {
       ...row,
+      labels: ((row as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
       notes,
       canned,
       pageName: pg?.pageName ?? null,
@@ -1085,7 +1091,88 @@ export class MessengerService implements OnModuleInit {
     return this.listNotes(user, threadId);
   }
 
-  /** Opening a conversation marks it read, so the unread count means something. */
+  // ---- Labels and follow-ups ------------------------------------------------
+
+  /** The salon's own label set. Nothing is seeded — see the migration. */
+  async listLabels(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    return this.prisma.messengerLabel.findMany({
+      where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, color: true },
+    } as never).catch(() => []);
+  }
+
+  async createLabel(user: AuthenticatedUser, name: string, color: string) {
+    const tenantId = this.tenantId(user);
+    const clean = String(name ?? '').trim().slice(0, 40);
+    if (!clean) throw new BadRequestException('Label needs a name.');
+    // A hex we do not recognise becomes the default rather than being written
+    // raw into a style attribute.
+    const hex = /^#[0-9a-fA-F]{6}$/.test(String(color ?? '')) ? String(color) : '#6366f1';
+    await this.prisma.messengerLabel.upsert({
+      where: { tenantId_name: { tenantId, name: clean } },
+      // Renaming to an existing name is a no-op rather than an error: somebody
+      // typing a label they already have meant to use that one.
+      update: { color: hex },
+      create: { tenantId, name: clean, color: hex },
+    } as never);
+    return this.listLabels(user);
+  }
+
+  async deleteLabel(user: AuthenticatedUser, labelId: string) {
+    const tenantId = this.tenantId(user);
+    await this.prisma.messengerLabel.deleteMany({ where: { id: labelId, tenantId } } as never).catch(() => undefined);
+    return this.listLabels(user);
+  }
+
+  /** Put a label on a conversation, or take it off. */
+  async setThreadLabel(user: AuthenticatedUser, threadId: string, labelId: string, on: boolean) {
+    const tenantId = this.tenantId(user);
+    // Both ids checked against this tenant. An id from another salon's inbox
+    // must not be attachable here, and must not be removable either.
+    const [thread, label] = await Promise.all([
+      this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true } }),
+      this.prisma.messengerLabel.findFirst({ where: { id: labelId, tenantId }, select: { id: true } } as never),
+    ]);
+    if (!thread || !label) throw new NotFoundException('Not found');
+
+    if (on) {
+      await this.prisma.messengerThreadLabel.upsert({
+        where: { threadId_labelId: { threadId, labelId } },
+        update: {},
+        create: { tenantId, threadId, labelId },
+      } as never).catch(() => undefined);
+    } else {
+      await this.prisma.messengerThreadLabel.deleteMany({ where: { threadId, labelId, tenantId } } as never).catch(() => undefined);
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Set or clear a follow-up date.
+   *
+   * Deliberately NOT a label. A label says where a conversation stands; a
+   * follow-up says when to come back, and it can go overdue — that is the whole
+   * point of it. A tag reading "cần gọi lại" is true forever and therefore tells
+   * nobody anything on any particular morning.
+   */
+  async setFollowUp(user: AuthenticatedUser, threadId: string, at: string | null, note: string | null) {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId }, select: { id: true } });
+    if (!row) throw new NotFoundException('Thread not found');
+
+    const when = at ? new Date(at) : null;
+    // An unparseable date CLEARS the follow-up rather than storing garbage that
+    // would either never come due or come due immediately.
+    const valid = when && Number.isFinite(when.getTime()) ? when : null;
+    await this.prisma.messengerThread.update({
+      where: { id: row.id },
+      data: { followUpAt: valid, followUpNote: valid ? String(note ?? '').trim().slice(0, 300) || null : null } as never,
+    });
+    return { ok: true };
+  }
+
+    /** Opening a conversation marks it read, so the unread count means something. */
   async markThreadRead(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });

@@ -286,6 +286,7 @@ model Tenant {
   menuItems          MenuItem[]
 
   messengerNotes    MessengerNote[]
+  messengerLabels   MessengerLabel[]
 
   @@index([status])
   @@index([accountGroupId])
@@ -1636,6 +1637,18 @@ model MessengerThread {
   lastCustomerAt DateTime?
   // When a human last opened it. Null = unread.
   readAt   DateTime?
+  // When a MESSAGE last happened — customer, bot or staff. The inbox sorts by
+  // this. NOT updatedAt: Prisma moves that on every write to the row, including
+  // marking it read, so sorting by it meant merely CLICKING a conversation threw
+  // it to the top and the list rearranged under the hand working down it.
+  lastMessageAt DateTime?
+  // "Come back to this on Thursday." Null = nothing pending.
+  //
+  // A date rather than a label, because a label cannot go overdue. The value of
+  // a follow-up is that it surfaces itself when the day arrives; a tag reading
+  // "cần gọi lại" just sits there being true forever.
+  followUpAt   DateTime?
+  followUpNote String?
   // The salon's customer record, once we know who this is. Stamped the moment a
   // booking is made from the conversation — that is the only point where the
   // page-scoped id and a real person are provably the same human. Null until
@@ -1652,6 +1665,7 @@ model MessengerThread {
 
   /// Internal notes staff write for each other. Never sent to the customer.
   notes      MessengerNote[]
+  threadLabels MessengerThreadLabel[]
 
   @@unique([pageId, senderId])
   @@index([tenantId])
@@ -1666,6 +1680,49 @@ model MessengerThread {
 /// written about: one wrong branch, one shared render, and it is out. Different
 /// table, different endpoint, different colour on screen — three walls, because
 /// this is the one mistake in an inbox you cannot take back.
+/// A label the salon defines: "Đã báo giá", "Chờ chốt", "Không quan tâm".
+///
+/// Salon-defined rather than a fixed list, because the stages of a sale differ
+/// in every shop and a list we invent would be wrong everywhere. Nothing is
+/// seeded for the same reason — the first label a salon makes is one they
+/// actually needed.
+model MessengerLabel {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name  String
+  /// Hex from a fixed palette in the UI. Colour is what makes a row of labels
+  /// scannable rather than readable.
+  color String @default("#6366f1")
+  sortOrder Int @default(0)
+
+  threads   MessengerThreadLabel[]
+  createdAt DateTime @default(now())
+
+  /// One name per salon: two "Đã chốt" chips would be indistinguishable on
+  /// screen and would split the filter in half.
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("messenger_labels")
+}
+
+/// Which labels are on which conversation.
+model MessengerThreadLabel {
+  tenantId String
+  threadId String
+  thread   MessengerThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  labelId  String
+  label    MessengerLabel  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([threadId, labelId])
+  @@index([tenantId])
+  @@index([labelId])
+  @@map("messenger_thread_labels")
+}
+
 model MessengerNote {
   id       String @id @default(uuid())
   tenantId String

@@ -146,6 +146,34 @@ export class MessengerController {
     return this.svc.deleteNote(user, id, noteId);
   }
 
+  // ---- Labels and follow-ups ----------------------------------------------
+
+  @Get('labels')
+  labels(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.listLabels(user);
+  }
+
+  @Post('labels')
+  createLabel(@CurrentUser() user: AuthenticatedUser, @Body() dto: { name?: string; color?: string }) {
+    return this.svc.createLabel(user, String(dto?.name ?? ''), String(dto?.color ?? ''));
+  }
+
+  @Post('labels/:labelId/delete')
+  deleteLabel(@CurrentUser() user: AuthenticatedUser, @Param('labelId') labelId: string) {
+    return this.svc.deleteLabel(user, labelId);
+  }
+
+  @Post('threads/:id/labels')
+  setLabel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { labelId?: string; on?: boolean }) {
+    return this.svc.setThreadLabel(user, id, String(dto?.labelId ?? ''), dto?.on !== false);
+  }
+
+  /** A date, not a label — a label cannot go overdue. See the service. */
+  @Post('threads/:id/followup')
+  followUp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { at?: string | null; note?: string | null }) {
+    return this.svc.setFollowUp(user, id, dto?.at ?? null, dto?.note ?? null);
+  }
+
   /** Close a conversation. A new customer message reopens it automatically. */
   @Post('threads/:id/status')
   threadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status?: string }) {

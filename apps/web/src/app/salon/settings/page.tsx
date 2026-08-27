@@ -38,6 +38,7 @@ interface SettingsData {
     brevo: { senderEmail: string; senderName: string; connected: boolean };
     gmail: { clientId: string; senderEmail: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
+    esms?: { apiKey: string; brandname: string; connected: boolean };
   };
   pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
@@ -965,6 +966,9 @@ function RebookingCard({ data, onSave }: { data: SettingsData; onSave: SaveFn })
 }
 
 function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  // Same source the payments panel uses, so the two panels can never disagree
+  // about whether this is a Vietnamese salon.
+  const isVN = (data.company?.country ?? '').toUpperCase() === 'VN';
   const n = data.notifications;
   const [f, setF] = useState({
     mailService: n.mailService, replyTo: n.replyTo,
@@ -977,6 +981,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   });
   const [showTpl, setShowTpl] = useState(false);
   const [tw, setTw] = useState({ accountSid: n.twilio.accountSid, fromNumber: n.twilio.fromNumber, authToken: '' });
+  const [es, setEs] = useState({ apiKey: n.esms?.apiKey ?? '', brandname: n.esms?.brandname ?? '', secretKey: '' });
   const [smtp, setSmtp] = useState({ host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, fromEmail: n.smtp.fromEmail, secure: n.smtp.secure, pass: '' });
   const [brevo, setBrevo] = useState({ senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName, apiKey: '' });
   const [gmail, setGmail] = useState({ clientId: n.gmail?.clientId ?? '', clientSecret: '' });
@@ -1222,6 +1227,28 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <Field label={t('se.no.fromNumber')}><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
       </div>
 
+      {/* Vietnam sends through a domestic aggregator, never Twilio. Twilio to a
+          Vietnamese number is a silent failure — accepted with an id, dropped by
+          the carrier — so this panel only appears for a VN salon, and Twilio
+          above is the only path for everyone else. */}
+      {isVN && (
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #1e293b' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+            SMS Việt Nam · eSMS.vn{' '}
+            {es.brandname && n.esms?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>đã kết nối</span>}
+          </div>
+          <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px', lineHeight: 1.5 }}>
+            Twilio KHÔNG gửi được vào Việt Nam — nhà mạng chặn tin từ đầu số chưa đăng ký, mà Twilio vẫn báo &quot;đã gửi&quot;.
+            Brandname phải được nhà mạng duyệt trước khi gửi được; chưa duyệt thì eSMS trả lỗi 104 ở mọi lần gửi.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+            <Field label="API Key"><input style={ui.input} value={es.apiKey} onChange={(e) => setEs({ ...es, apiKey: e.target.value })} /></Field>
+            <Field label="Secret Key"><input style={ui.input} type="password" value={es.secretKey} onChange={(e) => setEs({ ...es, secretKey: e.target.value })} placeholder={n.esms?.connected ? 'Đã lưu' : 'Secret Key'} /></Field>
+            <Field label="Brandname"><input style={ui.input} value={es.brandname} onChange={(e) => setEs({ ...es, brandname: e.target.value })} placeholder="LUMIO" /></Field>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
         <Field label={t('se.no.smsTestTo')}><input style={ui.input} value={smsTo} onChange={(e) => setSmsTo(e.target.value)} placeholder="+1…" /></Field>
         <button
@@ -1234,7 +1261,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       {smsTest.kind === 'ok' && <p style={{ color: '#22c55e', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
       {smsTest.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
 
-      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, gmail, twilio: tw }, 'Notifications')}>{t('se.no.save')}</button>
+      <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, gmail, twilio: tw, esms: es }, 'Notifications')}>{t('se.no.save')}</button>
     </Card>
   );
 }

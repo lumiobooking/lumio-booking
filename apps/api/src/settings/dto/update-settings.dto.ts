@@ -95,6 +95,9 @@ export class UpdateNotificationsDto {
   @IsOptional() @IsObject() brevo?: Record<string, unknown>;
   @IsOptional() @IsObject() gmail?: Record<string, unknown>;
   @IsOptional() @IsObject() twilio?: Record<string, unknown>;
+  // eSMS.vn keys for a Vietnamese salon. Same shape as twilio above: the
+  // service merges it and masks the secret on the way back out.
+  @IsOptional() @IsObject() esms?: Record<string, unknown>;
 }
 
 export class UpdatePaymentsDto {

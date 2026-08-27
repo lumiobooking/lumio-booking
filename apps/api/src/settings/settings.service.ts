@@ -379,9 +379,11 @@ export class SettingsService {
     // that appeared to persist across deploys). A real key is never all-mask.
     brevo.apiKey = usableSecret(brevo.apiKey);
     twilio.authToken = usableSecret(twilio.authToken);
+    const esms = { ...DEFAULT_NOTIFICATION_SETTINGS.esms, ...(merged.esms ?? {}) };
+    esms.secretKey = usableSecret(esms.secretKey);
     smtp.pass = usableSecret(smtp.pass);
     gmail.clientSecret = usableSecret(gmail.clientSecret);
-    return { ...merged, smtp, brevo, gmail, twilio };
+    return { ...merged, smtp, brevo, gmail, twilio, esms };
   }
 
   /** Notification view for the frontend — hides the SMTP pass + Twilio token. */
@@ -428,6 +430,13 @@ export class SettingsService {
         fromNumber: n.twilio.fromNumber,
         connected: n.twilio.authToken.length > 0,
       },
+      // secretKey never leaves the server; `connected` is all the UI needs to
+      // know, and is the same shape every other provider here uses.
+      esms: {
+        apiKey: n.esms?.apiKey ?? '',
+        brandname: n.esms?.brandname ?? '',
+        connected: (n.esms?.secretKey ?? '').length > 0,
+      },
     };
   }
 
@@ -438,6 +447,7 @@ export class SettingsService {
     const incBrevo = (dto.brevo ?? {}) as Record<string, unknown>;
     const incGmail = (dto.gmail ?? {}) as Record<string, unknown>;
     const incTwilio = (dto.twilio ?? {}) as Record<string, unknown>;
+    const incEsms = (dto.esms ?? {}) as Record<string, unknown>;
 
     // ---- Gmail credentials: guard the #1 cause of recurring "invalid_client" ----
     // A new Client ID must come with the matching new Client secret. If the admin
@@ -504,6 +514,15 @@ export class SettingsService {
         fromNumber: typeof incTwilio.fromNumber === 'string' ? incTwilio.fromNumber : cur.twilio.fromNumber,
         // Blank/masked auth token keeps the stored one.
         authToken: cleanSecret(incTwilio.authToken) ?? cur.twilio.authToken,
+      },
+      esms: {
+        apiKey: typeof incEsms.apiKey === 'string' ? incEsms.apiKey : (cur.esms?.apiKey ?? ''),
+        brandname: typeof incEsms.brandname === 'string' ? incEsms.brandname : (cur.esms?.brandname ?? ''),
+        // cleanSecret returns undefined for the UI's mask, so re-saving the
+        // form without retyping the key keeps the stored one instead of
+        // overwriting it with bullet characters — the bug that made Brevo
+        // return "Key not found" for weeks.
+        secretKey: cleanSecret(incEsms.secretKey) ?? (cur.esms?.secretKey ?? ''),
       },
     } as NotificationSettings;
     await this.writeKey(tenantId, NOTIFICATION_SETTINGS_KEY, merged);

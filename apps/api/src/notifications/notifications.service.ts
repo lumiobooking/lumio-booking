@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { EmailProvider, SmsProvider } from './providers/notification-provider.interface';
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
+import { ESmsProvider } from './providers/esms.provider';
+import { routeSmsFor } from './providers/sms-routing';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
 import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
 import { GmailOAuthConfig, GmailOAuthProvider } from './providers/gmail-oauth.provider';
@@ -123,6 +125,37 @@ export class NotificationsService {
     return this.email;
   }
 
+  /**
+   * Which SMS network this salon's messages go out on.
+   *
+   * Resolved HERE, from the tenant id, rather than passed in by the caller.
+   * Ten call sites send an SMS, and each would otherwise have to remember to
+   * pass the eSMS keys — nine remembering and one forgetting looks like a
+   * working feature and is a Vietnamese salon whose messages the carrier
+   * silently drops. One lookup cannot be forgotten.
+   *
+   * Never throws: any failure returns null and the existing Twilio path runs,
+   * which is what every salon does today.
+   */
+  private async esmsForTenant(tenantId: string): Promise<{ apiKey: string; secretKey: string; brandname: string } | null> {
+    try {
+      const [t, row] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }),
+        this.prisma.setting.findFirst({ where: { tenantId, key: 'notifications' }, select: { value: true } }).catch(() => null),
+      ]);
+      const market = (t as unknown as { market?: string } | null)?.market ?? 'US';
+      const esms = (row?.value as unknown as { esms?: { apiKey?: string; secretKey?: string; brandname?: string } } | null)?.esms;
+      if (routeSmsFor({ market, esms }).provider !== 'esms' || !esms) return null;
+      return {
+        apiKey: String(esms.apiKey ?? ''),
+        secretKey: String(esms.secretKey ?? ''),
+        brandname: String(esms.brandname ?? ''),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   /** Country calling code for a tenant, read from its timezone. Failures fall
    *  back to '1', i.e. exactly the behaviour before this existed. */
   private async dialCodeForTenant(tenantId: string): Promise<string> {
@@ -179,8 +212,20 @@ export class NotificationsService {
     })();
     // SMS provider (per salon): the salon's own Twilio when its credentials are
     // complete, otherwise the platform env Twilio (or mock). Mirrors the email logic.
+    // Vietnam goes through a domestic aggregator, not Twilio. Twilio to a
+    // Vietnamese number is a SILENT failure: Twilio accepts the message and
+    // returns an id, and the carrier drops it — the salon sees "sent" and the
+    // customer receives nothing. The rule is in sms-routing.ts, pinned by tests
+    // that a US or CA salon is never routed here even with eSMS keys sitting in
+    // its settings.
+    const vnKeys = input.channel === NotificationChannel.SMS
+      ? await this.esmsForTenant(input.tenantId)
+      : null;
+
     const smsProvider: SmsProvider = ((): SmsProvider => {
       if (input.channel !== NotificationChannel.SMS) return this.sms;
+      if (vnKeys) return new ESmsProvider(vnKeys);
+
       const t = input.twilio;
       if (t?.accountSid && t?.authToken && (t.fromNumber || t.messagingServiceSid)) {
         return new TwilioSmsProvider({

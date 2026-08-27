@@ -31,7 +31,7 @@ import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
 import {
   InboxRow, ChannelKind, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
-  sortRows, filterRows, waitingByChannel, composerNotice,
+  sortRows, filterRows, waitingByChannel, composerNotice, displayName,
 } from '../../../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean }
@@ -160,7 +160,14 @@ export default function InboxPage() {
 
       {err && <div style={{ ...ui.card, borderColor: '#7f1d1d', color: '#fca5a5', marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
-      <div style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '52px minmax(0,300px) minmax(0,1fr)', height: '74vh' }}>
+      <div style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '52px minmax(0,300px) minmax(0,1fr)' }}>
+        {/* No fixed height on the card. It used to be 74vh, but the card's TOP
+            already sits well down the page — support banner, heading, whatever
+            else the shell puts above it — so 74vh from there ran off the bottom
+            of the screen and took the composer with it. The message box was
+            rendered and simply unreachable, which reads as "there is no way to
+            reply". Capping the SCROLLING areas instead keeps every control that
+            follows them on screen regardless of what is above. */}
 
         {/* Channel rail. Counts are people WAITING, not conversations that
             exist — "48" next to Messenger tells nobody anything, "3" is worth
@@ -208,7 +215,7 @@ export default function InboxPage() {
             ))}
           </div>
 
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ overflowY: 'auto', flex: 1, maxHeight: 'min(58vh, 520px)' }}>
             {!sorted.length && (
               <p style={{ color: '#64748b', fontSize: 13, padding: 16, margin: 0 }}>
                 {filter === 'waiting'
@@ -229,7 +236,7 @@ export default function InboxPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <span style={{ color: ch.fg, fontSize: 13, flexShrink: 0 }}>{channelMark(r.channel)}</span>
                     <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {r.senderName || (vi ? 'Khách' : 'Customer')}
+                      {displayName(r, vi)}
                     </span>
                     {r.unread && <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
                   </div>
@@ -255,11 +262,11 @@ export default function InboxPage() {
           {detail && (<>
             <div style={{ padding: '9px 13px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 9 }}>
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#312e81', color: '#c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                {initials(detail.senderName)}
+                {initials(detail.senderName || displayName(detail, vi))}
               </div>
               <div style={{ minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {detail.senderName || (vi ? 'Khách' : 'Customer')}
+                  {displayName(detail, vi)}
                 </p>
                 <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>
                   {channelLabel(detail.channel).text.replace(/^\S+\s/, '')}{detail.pageName ? ` · ${detail.pageName}` : ''}
@@ -276,7 +283,7 @@ export default function InboxPage() {
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, background: '#0b1220' }}>
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 180, maxHeight: 'min(46vh, 420px)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, background: '#0b1220' }}>
               {detail.history.map((t, i) => {
                 const mine = t.role === 'assistant';
                 return (
@@ -314,7 +321,7 @@ export default function InboxPage() {
             <div style={{ borderTop: '1px solid #1e293b', padding: 10, display: 'flex', gap: 8 }}>
               <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                placeholder={notice.blocked ? (vi ? 'Không gửi được — quá 24 giờ' : 'Cannot send — past 24 hours') : (vi ? `Nhắn cho ${detail.senderName || (vi ? 'khách' : 'customer')}…` : 'Message the customer…')}
+                placeholder={notice.blocked ? (vi ? 'Không gửi được — quá 24 giờ' : 'Cannot send — past 24 hours') : (vi ? `Nhắn cho ${displayName(detail, vi)}…` : 'Message the customer…')}
                 disabled={notice.blocked || busy} rows={2}
                 style={{ ...ui.input, flex: 1, resize: 'vertical', minHeight: 44 }} />
               <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} style={ui.primaryBtn}>{vi ? 'Gửi' : 'Send'}</button>

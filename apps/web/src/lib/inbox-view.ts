@@ -18,6 +18,7 @@ export type ChannelKind = 'messenger' | 'instagram' | 'zalo';
 
 export interface InboxRow {
   id: string;
+  senderId?: string | null;
   senderName?: string | null;
   lastText?: string | null;
   channel?: string | null;
@@ -64,6 +65,28 @@ export function channelLabel(raw: unknown): { text: string; fg: string; bg: stri
     default:
       return { text: '✉ Messenger', fg: '#93c5fd', bg: 'rgba(59,130,246,0.16)', border: 'rgba(59,130,246,0.45)' };
   }
+}
+
+/**
+ * What to call a customer whose name we do not have.
+ *
+ * Meta's profile lookup is permission-gated and often fails, so senderName is
+ * null on plenty of conversations. Falling back to one generic word gave a list
+ * of eight rows ALL called "Customer" — visually identical, impossible to tell
+ * apart, and impossible to search. A list you cannot distinguish rows in is not
+ * a list.
+ *
+ * The last few characters of the page-scoped id are stable, unique per person,
+ * and mean nothing to anyone — which is exactly right for a placeholder: it
+ * separates the rows without pretending to be a name.
+ */
+export function displayName(row: Pick<InboxRow, 'senderName' | 'senderId'> | null | undefined, vi: boolean): string {
+  const n = String(row?.senderName ?? '').trim();
+  if (n) return n;
+  const id = String(row?.senderId ?? '').trim();
+  const tail = id.slice(-6);
+  const word = vi ? 'Khách' : 'Customer';
+  return tail ? `${word} ${tail}` : word;
 }
 
 /** An older API build does not send `state`; fall back to the flag it does send. */

@@ -360,6 +360,20 @@ export interface NotificationSettings {
   gmail: { clientId: string; clientSecret: string; refreshToken: string; senderEmail: string };
   // SMS gateway (Twilio). authToken is private and never returned to the UI.
   twilio: { accountSid: string; authToken: string; fromNumber: string };
+  /**
+   * SMS inside Vietnam, via eSMS.vn. secretKey is private and never returned.
+   *
+   * A separate provider rather than a second Twilio number, because Twilio to
+   * Vietnam is a silent failure: Twilio accepts the message and returns an id,
+   * and the carrier drops it. Their own docs say delivery over an unregistered
+   * sender is "lower quality or disallowed", and carriers there allowlist
+   * message templates AND urls — so a booking link that differs per salon is
+   * exactly the shape that gets blocked, invisibly and permanently.
+   *
+   * brandname must be registered with the carriers before it will send;
+   * an unregistered one is eSMS error 104 on every attempt.
+   */
+  esms: { apiKey: string; secretKey: string; brandname: string };
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -384,6 +398,9 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   brevo: { apiKey: '', senderEmail: '', senderName: '' },
   gmail: { clientId: '', clientSecret: '', refreshToken: '', senderEmail: '' },
   twilio: { accountSid: '', authToken: '', fromNumber: '' },
+  // Empty = not configured. A VN salon with no eSMS keys falls back to the
+  // existing path, which is what it does today — not to an error.
+  esms: { apiKey: '', secretKey: '', brandname: '' },
 };
 
 /** Supported card/online gateways (most popular for US/Canada salons). */

@@ -821,6 +821,28 @@ export class MessengerService implements OnModuleInit {
     const now = new Date();
     const view = ownershipOf(row as never, { now, activeMins });
 
+    // Backfill the customer's name when we never got one.
+    //
+    // The only place it was ever fetched is the moment a NEW message arrives,
+    // and only if the field was already empty. Every conversation that started
+    // before the app had profile permission therefore kept a null name forever,
+    // and the inbox showed eight rows all called "Customer" — a list nobody can
+    // tell apart. Opening a conversation is a natural, rate-limited moment to
+    // try again, and it costs nothing when it works or when it does not.
+    if (!row.senderName) {
+      const pgTok = row.pageId
+        ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } }).catch(() => null)
+        : null;
+      const token = pgTok?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
+      if (token && row.senderId) {
+        const name = await this.fetchSenderName(token, String(row.senderId)).catch(() => null);
+        if (name) {
+          row.senderName = name;
+          await this.prisma.messengerThread.update({ where: { id: String(row.id) }, data: { senderName: name } }).catch(() => undefined);
+        }
+      }
+    }
+
     let customer: Record<string, unknown> | null = null;
     if (row.customerId) {
       const c = await this.prisma.customer.findFirst({

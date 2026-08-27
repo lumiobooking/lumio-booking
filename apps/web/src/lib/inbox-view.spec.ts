@@ -1,4 +1,4 @@
-import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingByChannel, filterRows, InboxRow } from './inbox-view';
+import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingByChannel, filterRows, displayName, InboxRow } from './inbox-view';
 
 const row = (over: Partial<InboxRow> = {}): InboxRow => ({
   id: 'r', updatedAt: '2026-08-27T12:00:00.000Z', ...over,
@@ -44,6 +44,34 @@ describe('an older API build must not break the badge', () => {
 
   it('prefers the server-derived state when it is there', () => {
     expect(stateOf({ state: 'unclaimed', handoff: false })).toBe('unclaimed');
+  });
+});
+
+describe('naming a customer we have no name for', () => {
+  // Meta's profile lookup is permission-gated and often fails. Falling back to
+  // one generic word gave eight rows all called "Customer" — visually
+  // identical, unsearchable, impossible to tell apart.
+  it('uses the real name when there is one', () => {
+    expect(displayName({ senderName: 'Trần Mỹ Linh', senderId: 'psid-999' }, true)).toBe('Trần Mỹ Linh');
+  });
+
+  it('makes two nameless customers distinguishable', () => {
+    const a = displayName({ senderId: 'abc123456789' }, true);
+    const b = displayName({ senderId: 'abc123999999' }, true);
+    expect(a).not.toBe(b);
+  });
+
+  it('says it in the salon language', () => {
+    expect(displayName({ senderId: 'x778899' }, true)).toBe('Khách 778899');
+    expect(displayName({ senderId: 'x778899' }, false)).toBe('Customer 778899');
+  });
+
+  it.each([null, undefined, { senderName: '   ' }])('falls back to the bare word for %s', (row) => {
+    expect(displayName(row as never, true)).toBe('Khách');
+  });
+
+  it('prefers a name over an id even when both are present', () => {
+    expect(displayName({ senderName: 'Mai', senderId: 'psid-1' }, true)).toBe('Mai');
   });
 });
 

@@ -102,37 +102,66 @@ describe('the badge wording', () => {
   });
 });
 
-describe('ordering — newest first, top to bottom', () => {
-  // An earlier version floated waiting customers to the top and sorted them by
-  // how long they had been ignored. A list that reorders itself under your hand
-  // is hard to work down, and a chat inbox reads newest first everywhere else.
-  it('puts the most recent conversation first', () => {
+describe('ordering — by the last MESSAGE, never by the last click', () => {
+  // The bug this replaced: the list sorted on updatedAt, which Prisma moves on
+  // every write to the row — including marking it read. Clicking a conversation
+  // threw it to the top, so the list rearranged itself under the hand of
+  // whoever was working down it.
+  it('does not move a conversation just because the row was touched', () => {
     const out = sortRows([
-      row({ id: 'older', updatedAt: '2026-08-27T08:00:00.000Z' }),
-      row({ id: 'newest', updatedAt: '2026-08-27T13:00:00.000Z' }),
-      row({ id: 'mid', updatedAt: '2026-08-27T11:00:00.000Z' }),
+      // Opened five minutes ago (updatedAt moved) but nobody has written in it
+      // since this morning.
+      row({ id: 'just-clicked', lastMessageAt: '2026-08-27T08:00:00.000Z', updatedAt: '2026-08-27T13:55:00.000Z' }),
+      row({ id: 'real-new-message', lastMessageAt: '2026-08-27T13:00:00.000Z', updatedAt: '2026-08-27T13:00:00.000Z' }),
+    ]);
+    expect(out[0].id).toBe('real-new-message');
+  });
+
+  it('puts the most recent message first', () => {
+    const out = sortRows([
+      row({ id: 'older', lastMessageAt: '2026-08-27T08:00:00.000Z' }),
+      row({ id: 'newest', lastMessageAt: '2026-08-27T13:00:00.000Z' }),
+      row({ id: 'mid', lastMessageAt: '2026-08-27T11:00:00.000Z' }),
     ]);
     expect(out.map((r) => r.id)).toEqual(['newest', 'mid', 'older']);
   });
 
-  it('does not float a waiting customer above a newer one', () => {
+  // Rows written before the column existed have no lastMessageAt; they must
+  // still sort somewhere sensible rather than collapsing to the bottom.
+  it('falls back to updatedAt for older rows', () => {
     const out = sortRows([
-      row({ id: 'new-bot', state: 'bot', updatedAt: '2026-08-27T13:00:00.000Z' }),
-      row({ id: 'old-waiting', state: 'unclaimed', waitingMinutes: 90, updatedAt: '2026-08-27T09:00:00.000Z' }),
+      row({ id: 'legacy-old', updatedAt: '2026-08-27T08:00:00.000Z' }),
+      row({ id: 'legacy-new', updatedAt: '2026-08-27T14:00:00.000Z' }),
+    ]);
+    expect(out[0].id).toBe('legacy-new');
+  });
+
+  it('mixes new and legacy rows in one honest order', () => {
+    const out = sortRows([
+      row({ id: 'legacy', updatedAt: '2026-08-27T12:00:00.000Z' }),
+      row({ id: 'stamped-newer', lastMessageAt: '2026-08-27T13:00:00.000Z', updatedAt: '2026-08-27T09:00:00.000Z' }),
+    ]);
+    expect(out[0].id).toBe('stamped-newer');
+  });
+
+  it('does not float a waiting customer above a newer message', () => {
+    const out = sortRows([
+      row({ id: 'new-bot', state: 'bot', lastMessageAt: '2026-08-27T13:00:00.000Z' }),
+      row({ id: 'old-waiting', state: 'unclaimed', waitingMinutes: 90, lastMessageAt: '2026-08-27T09:00:00.000Z' }),
     ]);
     expect(out[0].id).toBe('new-bot');
   });
 
-  it('does not sink a closed conversation that is genuinely the newest', () => {
+  it('survives an unparseable timestamp instead of scrambling the list', () => {
     const out = sortRows([
-      row({ id: 'done-new', state: 'done', updatedAt: '2026-08-27T14:00:00.000Z' }),
-      row({ id: 'open-old', state: 'bot', updatedAt: '2026-08-27T08:00:00.000Z' }),
+      row({ id: 'good', lastMessageAt: '2026-08-27T13:00:00.000Z' }),
+      row({ id: 'broken', lastMessageAt: 'not a date', updatedAt: 'also not a date' }),
     ]);
-    expect(out[0].id).toBe('done-new');
+    expect(out[0].id).toBe('good');
   });
 
   it('does not mutate what it was given', () => {
-    const input = [row({ id: 'a' }), row({ id: 'b', updatedAt: '2026-08-27T13:00:00.000Z' })];
+    const input = [row({ id: 'a' }), row({ id: 'b', lastMessageAt: '2026-08-27T13:00:00.000Z' })];
     const copy = [...input];
     sortRows(input);
     expect(input).toEqual(copy);

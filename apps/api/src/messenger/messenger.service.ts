@@ -680,7 +680,7 @@ export class MessengerService implements OnModuleInit {
         id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,
         updatedAt: true, channel: true,
         handoffAt: true, handoffMode: true, assignedUserId: true, status: true,
-        lastCustomerAt: true, readAt: true,
+        lastCustomerAt: true, readAt: true, lastMessageAt: true,
         // User has firstName/lastName, NOT name. Selecting a field Prisma does
         // not know throws at runtime, and the stale generated client in the dev
         // sandbox cannot catch it — so this is spelled out rather than guessed.
@@ -740,6 +740,9 @@ export class MessengerService implements OnModuleInit {
         state: view.state,
         stateReason: view.reason,
         pageName: pageNames.get(String((r as unknown as { pageId?: string }).pageId ?? '')) || null,
+        // Fall back to updatedAt for rows written before the column existed, so
+        // an old conversation still sorts somewhere sensible.
+        lastMessageAt: (r as unknown as { lastMessageAt?: Date | null }).lastMessageAt ?? row.updatedAt,
         assignedName: who || null,
         waitingMinutes: waitingMinutes(r as never, now),
         replyWindow: replyWindow(r as never, now),
@@ -1562,7 +1565,10 @@ export class MessengerService implements OnModuleInit {
     const next = [...history, { role: 'assistant', content: greeting, at: new Date().toISOString() }].slice(-MAX_TURNS);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
-      data: { history: next as unknown as Prisma.InputJsonValue },
+      // This path writes history directly rather than through appendTurns, so
+      // it needs the stamp too — otherwise a conversation that only ever had a
+      // greeting sorts as if nothing had happened in it.
+      data: { history: next as unknown as Prisma.InputJsonValue, lastMessageAt: new Date() } as never,
     });
   }
 
@@ -1621,7 +1627,11 @@ export class MessengerService implements OnModuleInit {
     const dropped = full.slice(0, full.length - next.length);
     await this.prisma.messengerThread.update({
       where: { id: threadId },
-      data: { history: next as unknown as Prisma.InputJsonValue },
+      // lastMessageAt is stamped HERE because this is the one funnel every
+      // message goes through — customer, bot and staff alike. Stamping it at
+      // the five call sites instead would mean five chances to forget one, and
+      // a forgotten one is a conversation that never rises in the list.
+      data: { history: next as unknown as Prisma.InputJsonValue, lastMessageAt: new Date() } as never,
     }).catch(() => undefined);
     if (dropped.length) {
       void this.distillThreadSummary(threadId, summary, dropped).catch((e) =>

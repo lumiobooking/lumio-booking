@@ -367,7 +367,7 @@ export default function InboxPage() {
                           {displayName(r, vi)}
                         </span>
                         <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b', flexShrink: 0 }}>
-                          {new Date(r.updatedAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(r.lastMessageAt || r.updatedAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {r.unread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
                       </div>

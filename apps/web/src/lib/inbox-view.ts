@@ -31,6 +31,10 @@ export interface InboxRow {
   pageName?: string | null;
   waitingMinutes?: number | null;
   unread?: boolean;
+  /** When a MESSAGE last happened. The list sorts by this. */
+  lastMessageAt?: string | null;
+  /** When the ROW was last written — moves when you merely mark it read. Kept
+   *  only as a fallback for rows older than lastMessageAt. */
   updatedAt: string;
 }
 
@@ -124,17 +128,18 @@ export function stateLabel(row: InboxRow, vi: boolean): { text: string; tone: 'b
   return { text: 'Bot', tone: 'bot' };
 }
 
-/** Newest first — see the note inside. */
+/** Newest MESSAGE first — see the note inside. */
 export function sortRows(rows: InboxRow[]): InboxRow[] {
-  // Newest first, full stop.
+  // Sorted by when a message happened, never by when the row was written.
   //
-  // An earlier version floated waiting customers to the top and sorted them by
-  // how long they had been ignored. The reasoning was sound and the result was
-  // not what an operator wants: a list that reorders itself under your hand is
-  // hard to work down, and everybody already knows a chat inbox reads newest
-  // first. The waiting count still has its own filter and its own badge, so
-  // nothing is lost — it just no longer rearranges the list.
-  return [...rows].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  // This used to sort on updatedAt, and Prisma moves updatedAt on every write
+  // to the row — including marking it read. So clicking a conversation wrote
+  // readAt, which moved updatedAt, which threw that conversation to the top.
+  // The list reordered itself under the hand of whoever was working down it,
+  // and the top row was whatever they had touched rather than whatever the
+  // customer had said. Meta's inbox orders by the last message; so does this.
+  const at = (r: InboxRow) => Date.parse(r.lastMessageAt || r.updatedAt) || 0;
+  return [...rows].sort((a, b) => at(b) - at(a));
 }
 
 /**

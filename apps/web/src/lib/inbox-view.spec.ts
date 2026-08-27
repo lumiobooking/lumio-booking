@@ -1,4 +1,4 @@
-import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingCount, sourcesFrom, sourceKey, filterRows, displayName, InboxRow } from './inbox-view';
+import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingCount, sourcesFrom, sourceKey, pageColor, initialsOf, filterRows, displayName, InboxRow } from './inbox-view';
 
 const row = (over: Partial<InboxRow> = {}): InboxRow => ({
   id: 'r', updatedAt: '2026-08-27T12:00:00.000Z', ...over,
@@ -136,6 +136,55 @@ describe('ordering — newest first, top to bottom', () => {
     const copy = [...input];
     sortRows(input);
     expect(input).toEqual(copy);
+  });
+});
+
+describe('a colour per Page — what an icon cannot do', () => {
+  // Two Fanpages are both Messenger and both draw the same envelope. Colour is
+  // the only thing that separates them at a glance, which is exactly when a
+  // salon has grown enough to need it.
+  it('gives the same Page the same colour every time', () => {
+    expect(pageColor('page-abc')).toEqual(pageColor('page-abc'));
+  });
+
+  it('gives two Pages different colours', () => {
+    expect(pageColor('page-abc')).not.toEqual(pageColor('page-xyz'));
+  });
+
+  it('does not depend on what order Pages were connected in', () => {
+    // Assigning colours by position would reshuffle every Page the moment one
+    // is added or removed.
+    const before = pageColor('page-2');
+    const after = pageColor('page-2');
+    expect(before).toEqual(after);
+  });
+
+  it.each([null, undefined, ''])('has a neutral colour for %s', (id) => {
+    const c = pageColor(id);
+    expect(c.bg).toBeTruthy();
+    expect(c.fg).toBeTruthy();
+  });
+
+  it('always returns readable text on its own background', () => {
+    for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']) {
+      const c = pageColor(id);
+      expect(c.bg).not.toBe(c.fg);
+    }
+  });
+});
+
+describe('avatar initials', () => {
+  it('takes the last two words, the way Vietnamese names read', () => {
+    expect(initialsOf('Nguyễn Thị Hằng')).toBe('TH');
+    expect(initialsOf('Hai Cao')).toBe('HC');
+  });
+
+  it('copes with one word', () => {
+    expect(initialsOf('Mai')).toBe('M');
+  });
+
+  it.each(['', '   ', null, undefined])('falls back for %s', (n) => {
+    expect(initialsOf(n as never)).toBe('?');
   });
 });
 

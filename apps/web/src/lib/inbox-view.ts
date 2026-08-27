@@ -138,6 +138,52 @@ export function sortRows(rows: InboxRow[]): InboxRow[] {
 }
 
 /**
+ * A stable colour for a Page.
+ *
+ * The channel mark alone cannot separate two Fanpages: both are Messenger, both
+ * draw the same envelope, and a mixed list becomes unreadable exactly when a
+ * salon has grown enough to need two. Colour does the work an icon cannot —
+ * it survives being small, being at the edge of vision, and being scanned
+ * rather than read.
+ *
+ * Derived from the id, not assigned in order, so a Page keeps its colour when
+ * another is connected or removed. Nothing is stored, and two people looking at
+ * the same inbox see the same colours.
+ */
+const PAGE_COLORS = [
+  { bg: '#1d4ed8', fg: '#dbeafe' }, // blue
+  { bg: '#be185d', fg: '#fce7f3' }, // pink
+  { bg: '#047857', fg: '#d1fae5' }, // green
+  { bg: '#b45309', fg: '#fef3c7' }, // amber
+  { bg: '#6d28d9', fg: '#ede9fe' }, // violet
+  { bg: '#0e7490', fg: '#cffafe' }, // cyan
+  { bg: '#9f1239', fg: '#ffe4e6' }, // rose
+  { bg: '#4d7c0f', fg: '#ecfccb' }, // lime
+];
+
+export function pageColor(pageId: unknown): { bg: string; fg: string } {
+  const id = String(pageId ?? '');
+  if (!id) return { bg: '#334155', fg: '#cbd5e1' };
+  // Cheap, stable string hash. Deterministic across machines and reloads, which
+  // is the only property that matters — a colour that changed between refreshes
+  // would be worse than no colour at all.
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PAGE_COLORS[h % PAGE_COLORS.length];
+}
+
+/** Initials for the avatar circle. Last two words, so "Nguyễn Thị Hằng" is TH. */
+export function initialsOf(name: string): string {
+  return String(name || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(-2)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .toUpperCase() || '?';
+}
+
+/**
  * One entry per connected Page or Instagram account.
  *
  * The rail used to list channel TYPES — "Messenger", "Instagram" — which is

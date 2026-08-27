@@ -31,7 +31,7 @@ import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
 import {
   InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
-  sortRows, filterRows, sourcesFrom, sourceKey, waitingCount, composerNotice, displayName,
+  sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
 } from '../../../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean }
@@ -184,7 +184,38 @@ export default function InboxPage() {
   const notice = composerNotice(detail?.replyWindow, vi);
   const state = detail ? stateOf(detail) : 'bot';
 
-  const initials = (n?: string | null) => String(n || '?').trim().split(/\s+/).slice(-2).map((w) => w[0] ?? '').join('').toUpperCase() || '?';
+  /**
+   * Avatar with the channel mark tucked into its corner, coloured by PAGE.
+   *
+   * This is the piece that answers "which page is this from" at a glance. The
+   * channel mark alone cannot: two Fanpages are both Messenger and draw the
+   * same envelope. The colour separates them, and it is derived from the page
+   * id so it never changes between refreshes or between two people looking at
+   * the same inbox.
+   */
+  const Avatar = ({ row, size = 34 }: { row: InboxRow; size?: number }) => {
+    const c = pageColor(row.pageId);
+    return (
+      <span style={{ position: 'relative', flexShrink: 0, width: size, height: size, display: 'inline-block' }}>
+        <span style={{
+          width: size, height: size, borderRadius: '50%', background: c.bg, color: c.fg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: Math.round(size * 0.36), fontWeight: 700,
+        }}>{initialsOf(displayName(row, vi))}</span>
+        <span
+          title={row.pageName ?? undefined}
+          style={{
+            position: 'absolute', right: -2, bottom: -2,
+            width: Math.round(size * 0.46), height: Math.round(size * 0.46), borderRadius: '50%',
+            background: '#0b1220', border: '1.5px solid #0b1220',
+            color: channelLabel(row.channel).fg,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: Math.round(size * 0.3), lineHeight: 1,
+          }}
+        >{channelMark(row.channel)}</span>
+      </span>
+    );
+  };
   const pill = (tone: string, text: string) => (
     <span style={{ background: TONE[tone].bg, color: TONE[tone].fg, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{text}</span>
   );
@@ -236,6 +267,7 @@ export default function InboxPage() {
                   border: `1px solid ${on ? '#6366f1' : 'transparent'}`,
                   color: on ? '#c7d2fe' : '#64748b', fontSize: 16, lineHeight: 1,
                 }}>
+                <span style={{ position: 'absolute', left: 3, top: 7, bottom: 7, width: 3, borderRadius: 2, background: pageColor(src.key.split('|')[0]).bg }} />
                 {channelMark(src.channel)}
                 {src.waiting > 0 && (
                   <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{src.waiting}</span>
@@ -285,22 +317,33 @@ export default function InboxPage() {
                     background: on ? '#1e293b' : 'transparent', border: 'none',
                     borderLeft: `2px solid ${on ? '#6366f1' : 'transparent'}`,
                     borderBottom: '1px solid #1e293b', padding: '9px 11px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                    <span style={{ color: ch.fg, fontSize: 13, flexShrink: 0 }}>{channelMark(r.channel)}</span>
-                    <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {displayName(r, vi)}
-                    </span>
-                    {r.unread && <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
-                  </div>
-                  <p style={{ margin: '0 0 5px', fontSize: 12, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
-                  {/* Which Page this came in on. Without it a mixed list gives
-                      no way to tell one salon's inbox from another's. */}
-                  {source === 'any' && r.pageName && (
-                    <p style={{ margin: '0 0 4px', fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.pageName}</p>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {pill(st.tone, st.text)}
-                    <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b', flexShrink: 0 }}>{new Date(r.updatedAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}</span>
+                  <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                    <Avatar row={r} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {displayName(r, vi)}
+                        </span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b', flexShrink: 0 }}>
+                          {new Date(r.updatedAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {r.unread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
+                      </div>
+                      <p style={{ margin: '0 0 5px', fontSize: 12, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                        {pill(st.tone, st.text)}
+                        {/* The Page, named and in its own colour. Only while
+                            looking at everything — inside one source it would be
+                            the same chip on every row, which is noise. */}
+                        {source === 'any' && r.pageName && (
+                          <span style={{
+                            background: pageColor(r.pageId).bg, color: pageColor(r.pageId).fg,
+                            borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 600,
+                            maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>{r.pageName}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </button>
               );
@@ -318,9 +361,7 @@ export default function InboxPage() {
 
           {detail && (<>
             <div style={{ padding: '9px 13px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 9 }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#312e81', color: '#c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                {initials(detail.senderName || displayName(detail, vi))}
-              </div>
+              <Avatar row={detail} size={34} />
               <div style={{ minWidth: 0 }}>
                 {/* Click the name to set it. Meta withholds the profile for
                     plenty of people — accounts made with a phone number, anyone
@@ -336,8 +377,11 @@ export default function InboxPage() {
                   {displayName(detail, vi)}
                   {!detail.senderName && <span style={{ color: '#64748b', fontWeight: 400, fontSize: 12 }}> ✎</span>}
                 </p>
-                <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>
-                  {channelLabel(detail.channel).text.replace(/^\S+\s/, '')}{detail.pageName ? ` · ${detail.pageName}` : ''}
+                <p style={{ margin: 0, fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span>{channelLabel(detail.channel).text.replace(/^\S+\s/, '')}</span>
+                  {detail.pageName && (
+                    <span style={{ background: pageColor(detail.pageId).bg, color: pageColor(detail.pageId).fg, borderRadius: 5, padding: '1px 6px', fontWeight: 600 }}>{detail.pageName}</span>
+                  )}
                 </p>
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>

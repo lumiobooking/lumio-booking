@@ -231,24 +231,37 @@ export function filterRows(rows: InboxRow[], f: FilterState): InboxRow[] {
  * they are still typing.
  */
 export function composerNotice(
-  win: { open: boolean; minutesLeft: number | null } | null | undefined,
+  win: { open: boolean; minutesLeft: number | null; unknown?: boolean } | null | undefined,
   vi: boolean,
 ): { blocked: boolean; text: string | null } {
-  if (!win) return { blocked: false, text: null };
+  // Nothing known → say nothing and get out of the way. This used to return
+  // blocked:true and disabled the message box on every conversation we had no
+  // timestamp for, telling people it had been over 24 hours about someone who
+  // had written minutes earlier.
+  if (!win || win.unknown) return { blocked: false, text: null };
+
   if (!win.open) {
+    // Warn loudly, but DO NOT disable the box.
+    //
+    // Our copy of "when they last wrote" can be wrong — backfilled, missed, or
+    // never stamped — and Meta is the only party that actually knows. Blocking
+    // on our guess makes a bad guess unrecoverable; warning on it and letting
+    // the send happen means a wrong guess costs one error message instead of a
+    // conversation nobody could reply to.
     return {
-      blocked: true,
+      blocked: false,
       text: vi
-        ? 'Quá 24 giờ kể từ tin cuối của khách — Meta không cho gửi tin thường nữa. Gọi điện hoặc nhắn SMS cho khách.'
-        : 'More than 24 hours since they last wrote — Meta will not deliver a normal reply. Call or text them instead.',
+        ? 'Có thể đã quá 24 giờ kể từ tin cuối của khách — Meta có thể từ chối. Cứ thử gửi; nếu hỏng thì gọi hoặc nhắn SMS.'
+        : 'It may be more than 24 hours since they wrote — Meta may refuse. Try anyway; if it fails, call or text them.',
     };
   }
+
   const left = win.minutesLeft ?? 0;
   // Under two hours is when it is worth interrupting someone about.
   if (left <= 120) {
     const h = Math.floor(left / 60);
     const m = left % 60;
-    const when = h > 0 ? `${h}h${m ? ` ${m}′` : ''}` : `${m}′`;
+    const when = h > 0 ? `${h}h${m ? ` ${m}\u2032` : ''}` : `${m}\u2032`;
     return {
       blocked: false,
       text: vi ? `Còn ${when} trước khi Meta đóng cửa sổ trả lời` : `${when} left before Meta closes the reply window`,

@@ -172,12 +172,25 @@ describe('Meta closes the door 24 hours after the customer last wrote', () => {
     expect(w.minutesLeft).toBe(0);
   });
 
-  it('is shut when we have never heard from them', () => {
-    expect(replyWindow({}, NOW)).toEqual({ open: false, minutesLeft: null });
-    expect(replyWindow(null, NOW).open).toBe(false);
+  // "We do not know" is NOT "it is shut". Returning shut here disabled the
+  // message box on every conversation whose lastCustomerAt was never stamped —
+  // including people who had written minutes earlier — and told them it had
+  // been more than 24 hours. A value we do not have must never disable the main
+  // action of a screen.
+  it('does NOT claim the window is shut when we never stamped a time', () => {
+    expect(replyWindow({}, NOW)).toEqual({ open: true, minutesLeft: null, unknown: true });
+    expect(replyWindow(null, NOW).open).toBe(true);
+    expect(replyWindow(null, NOW).unknown).toBe(true);
   });
 
-  it('survives a stored timestamp that is not a date', () => {
-    expect(replyWindow({ lastCustomerAt: 'not a date' as never }, NOW).open).toBe(false);
+  it('treats an unparseable timestamp as unknown, not as shut', () => {
+    const w = replyWindow({ lastCustomerAt: 'not a date' as never }, NOW);
+    expect(w.open).toBe(true);
+    expect(w.unknown).toBe(true);
+  });
+
+  it('marks a real answer as known, so the UI can tell them apart', () => {
+    expect(replyWindow({ lastCustomerAt: hoursAgo(1) }, NOW).unknown).toBe(false);
+    expect(replyWindow({ lastCustomerAt: hoursAgo(30) }, NOW).unknown).toBe(false);
   });
 });

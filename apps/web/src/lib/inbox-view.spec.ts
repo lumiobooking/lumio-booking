@@ -245,36 +245,48 @@ describe('filtering', () => {
   });
 });
 
-describe('the 24-hour window, said before they type', () => {
-  // Telling someone AFTER they have written a long answer is how a reply is
-  // lost and the customer hears nothing at all.
-  it('blocks and explains once the window has shut', () => {
-    const n = composerNotice({ open: false, minutesLeft: 0 }, true);
-    expect(n.blocked).toBe(true);
+describe('the 24-hour window — a warning, never a lock', () => {
+  // The composer must never be disabled by something we are only guessing at.
+  it('says nothing at all when we have no timestamp', () => {
+    expect(composerNotice({ open: true, minutesLeft: null, unknown: true }, true)).toEqual({ blocked: false, text: null });
+  });
+
+  it.each([null, undefined])('says nothing for %s', (w) => {
+    expect(composerNotice(w, true)).toEqual({ blocked: false, text: null });
+  });
+
+  // Our copy of "when they last wrote" can be wrong; Meta is the only party
+  // that knows. Warn on the guess, let the send decide.
+  it('warns when we believe it has shut, but does not block', () => {
+    const n = composerNotice({ open: false, minutesLeft: 0, unknown: false }, true);
+    expect(n.blocked).toBe(false);
     expect(n.text).toContain('24 giờ');
   });
 
-  it('tells them what to do instead, not just that it failed', () => {
-    expect(composerNotice({ open: false, minutesLeft: 0 }, true).text).toMatch(/Gọi|SMS/);
-    expect(composerNotice({ open: false, minutesLeft: 0 }, false).text).toMatch(/Call|text/);
+  it('tells them what to do if it does fail', () => {
+    expect(composerNotice({ open: false, minutesLeft: 0 }, true).text).toMatch(/gọi|SMS/);
+    expect(composerNotice({ open: false, minutesLeft: 0 }, false).text).toMatch(/call|text/);
   });
 
-  it('warns while there is still time to act', () => {
-    const n = composerNotice({ open: true, minutesLeft: 45 }, true);
+  it('counts down while there is still time to act', () => {
+    const n = composerNotice({ open: true, minutesLeft: 45, unknown: false }, true);
     expect(n.blocked).toBe(false);
     expect(n.text).toContain('45');
   });
 
   it('writes a long remainder in hours', () => {
-    expect(composerNotice({ open: true, minutesLeft: 90 }, true).text).toContain('1h');
+    expect(composerNotice({ open: true, minutesLeft: 90, unknown: false }, true).text).toContain('1h');
   });
 
   it('stays quiet when there is plenty of time', () => {
-    expect(composerNotice({ open: true, minutesLeft: 600 }, true).text).toBeNull();
+    expect(composerNotice({ open: true, minutesLeft: 600, unknown: false }, true).text).toBeNull();
   });
 
-  it('says nothing rather than guessing when the window is unknown', () => {
-    expect(composerNotice(null, true)).toEqual({ blocked: false, text: null });
-    expect(composerNotice(undefined, false).blocked).toBe(false);
+  // The property that matters most: nothing this function returns ever
+  // disables the message box.
+  it('never blocks, whatever it is given', () => {
+    for (const w of [null, undefined, { open: false, minutesLeft: 0 }, { open: true, minutesLeft: null, unknown: true }, { open: true, minutesLeft: 5 }]) {
+      expect(composerNotice(w as never, true).blocked).toBe(false);
+    }
   });
 });

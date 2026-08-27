@@ -167,11 +167,26 @@ export const MESSAGING_WINDOW_HOURS = 24;
 export function replyWindow(thread: ThreadLike | null | undefined, now: Date = new Date()): {
   open: boolean;
   minutesLeft: number | null;
+  /** True when we have no idea — NOT the same as knowing the window is shut. */
+  unknown: boolean;
 } {
   const at = asTime(thread?.lastCustomerAt);
-  // Never heard from them, so there is no window to be inside of.
-  if (at === null) return { open: false, minutesLeft: null };
+  // WE DO NOT KNOW, AND THAT IS NOT THE SAME AS "SHUT".
+  //
+  // The first version returned { open: false } here, and the composer treated
+  // that as a hard block. Every conversation whose lastCustomerAt was never
+  // stamped — anything from before the column existed, and anything where the
+  // customer opened the chat without typing — therefore had its message box
+  // disabled with "more than 24 hours since they last wrote", about someone who
+  // had written minutes earlier.
+  //
+  // A value we do not have must never disable the main action of a screen.
+  // Meta will refuse the send itself if the window really has closed, and its
+  // refusal is the truth; our guess is only ever a courtesy warning.
+  if (at === null) return { open: true, minutesLeft: null, unknown: true };
   const closesAt = at + MESSAGING_WINDOW_HOURS * 3_600_000;
   const left = Math.floor((closesAt - now.getTime()) / 60_000);
-  return left > 0 ? { open: true, minutesLeft: left } : { open: false, minutesLeft: 0 };
+  return left > 0
+    ? { open: true, minutesLeft: left, unknown: false }
+    : { open: false, minutesLeft: 0, unknown: false };
 }

@@ -24,6 +24,7 @@ export interface InboxRow {
   state?: ThreadState;
   handoff?: boolean;
   assignedName?: string | null;
+  assignedUserId?: string | null;
   waitingMinutes?: number | null;
   unread?: boolean;
   updatedAt: string;
@@ -107,6 +108,78 @@ export function sortRows(rows: InboxRow[]): InboxRow[] {
       if (wa !== wb) return wb - wa;
     }
     return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+  });
+}
+
+/**
+ * The filters down the left edge.
+ *
+ * 'waiting' is first and is the one that earns the page: it is the list of
+ * customers nobody has answered. Everything else is browsing.
+ */
+export type InboxFilter = 'waiting' | 'unread' | 'mine' | 'all';
+
+export interface FilterState {
+  filter?: InboxFilter;
+  channel?: ChannelKind | 'any';
+  query?: string;
+  /** Whose "mine" this is — the user id, not a display name. Two members of
+   *  staff can be called Mai; they cannot share an id. Null disables the filter
+   *  rather than showing an empty list. */
+  meId?: string | null;
+}
+
+/**
+ * Counts for the rail badges.
+ *
+ * Deliberately counts WAITING conversations, not total ones. A badge showing
+ * "48" next to Messenger tells nobody anything — every salon has hundreds of
+ * old threads. A badge showing "3" next to a channel means three people are
+ * sitting there unanswered, which is worth walking across the room for.
+ */
+export function waitingByChannel(rows: InboxRow[]): Record<ChannelKind | 'any', number> {
+  const out: Record<ChannelKind | 'any', number> = { any: 0, messenger: 0, instagram: 0, zalo: 0 };
+  for (const r of rows) {
+    if (stateOf(r) !== 'unclaimed') continue;
+    out.any += 1;
+    out[channelOf(r.channel)] += 1;
+  }
+  return out;
+}
+
+/**
+ * Apply the filters.
+ *
+ * Search looks at the customer's name AND the last message, because a
+ * receptionist remembers one or the other and never knows which. Matching is
+ * accent-insensitive: someone typing "hang" must find "Hằng", or the search box
+ * is useless to the people it was built for.
+ */
+export function filterRows(rows: InboxRow[], f: FilterState): InboxRow[] {
+  const fold = (s: unknown) => String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    // Strip combining marks, then the Vietnamese đ, which is a distinct letter
+    // rather than a d with an accent and so survives NFD untouched.
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd');
+
+  const q = fold(f.query).trim();
+  const wantChannel = f.channel && f.channel !== 'any' ? f.channel : null;
+  const filter = f.filter ?? 'waiting';
+
+  return rows.filter((r) => {
+    if (wantChannel && channelOf(r.channel) !== wantChannel) return false;
+
+    const state = stateOf(r);
+    if (filter === 'waiting' && state !== 'unclaimed') return false;
+    if (filter === 'unread' && !r.unread) return false;
+    // With no name to compare against, "mine" would silently show an empty
+    // list. Showing everything is the honest failure.
+    if (filter === 'mine' && f.meId && r.assignedUserId !== f.meId) return false;
+
+    if (q && !(fold(r.senderName).includes(q) || fold(r.lastText).includes(q))) return false;
+    return true;
   });
 }
 

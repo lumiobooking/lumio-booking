@@ -679,18 +679,22 @@ export class MessengerService implements OnModuleInit {
         updatedAt: true, channel: true,
         handoffAt: true, handoffMode: true, assignedUserId: true, status: true,
         lastCustomerAt: true, readAt: true,
-        assignedUser: { select: { id: true, name: true } },
+        // User has firstName/lastName, NOT name. Selecting a field Prisma does
+        // not know throws at runtime, and the stale generated client in the dev
+        // sandbox cannot catch it — so this is spelled out rather than guessed.
+        assignedUser: { select: { id: true, firstName: true, lastName: true } },
       } as never,
     });
     const now = new Date();
     return rows.map((r) => {
       const view = ownershipOf(r as never, { now, activeMins });
-      const row = r as unknown as { readAt?: Date | null; updatedAt: Date; assignedUser?: { name?: string | null } | null };
+      const row = r as unknown as { readAt?: Date | null; updatedAt: Date; assignedUser?: { firstName?: string | null; lastName?: string | null } | null };
+      const who = [row.assignedUser?.firstName, row.assignedUser?.lastName].filter(Boolean).join(' ').trim();
       return {
         ...r,
         state: view.state,
         stateReason: view.reason,
-        assignedName: row.assignedUser?.name ?? null,
+        assignedName: who || null,
         waitingMinutes: waitingMinutes(r as never, now),
         replyWindow: replyWindow(r as never, now),
         // Unread means nobody has opened it since the last activity — not
@@ -808,7 +812,7 @@ export class MessengerService implements OnModuleInit {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({
       where: { id, tenantId },
-      include: { assignedUser: { select: { id: true, name: true } } } as never,
+      include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } } as never,
     }) as unknown as (Record<string, unknown> & { history?: unknown; customerId?: string | null }) | null;
     if (!row) throw new NotFoundException('Thread not found');
 
@@ -855,7 +859,12 @@ export class MessengerService implements OnModuleInit {
     // them to type it again for staff guarantees the two drift, and then the
     // bot and the receptionist quote different prices to the same customer.
     // One source, two readers.
-    const facts = (Array.isArray(conn?.botFacts) ? conn?.botFacts : []) as BotFact[];
+    // `as unknown as` and not a direct cast: Prisma types a Json column as
+    // JsonValue[], which does not overlap BotFact enough for TypeScript to
+    // allow the one-step version. The dev sandbox's generated client is stale
+    // and types it loosely, so a direct cast compiles here and fails on the
+    // real build — which is exactly how this reached Render.
+    const facts = (Array.isArray(conn?.botFacts) ? conn?.botFacts : []) as unknown as BotFact[];
     const canned = facts
       .filter((f) => f && f.on && String(f.label ?? '').trim() && String(f.value ?? '').trim())
       .slice(0, 12)

@@ -30,7 +30,8 @@ import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
 import {
-  InboxRow, channelLabel, stateLabel, stateOf, sortRows, composerNotice,
+  InboxRow, ChannelKind, InboxFilter, channelLabel, stateLabel, stateOf,
+  sortRows, filterRows, waitingByChannel, composerNotice,
 } from '../../../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean }
@@ -62,6 +63,7 @@ const TONE: Record<string, { bg: string; fg: string }> = {
 export default function InboxPage() {
   const { token } = useAuth();
   const { lang } = useLang();
+  const me = useAuth().user?.id ?? null;
   const vi = lang === 'vi';
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -69,6 +71,9 @@ export default function InboxPage() {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<InboxFilter>('waiting');
+  const [channel, setChannel] = useState<ChannelKind | 'any'>('any');
+  const [query, setQuery] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const loadList = useCallback(async () => {
@@ -125,8 +130,9 @@ export default function InboxPage() {
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   }
 
-  const sorted = sortRows(rows);
-  const waiting = sorted.filter((r) => stateOf(r) === 'unclaimed').length;
+  const counts = waitingByChannel(rows);
+  const sorted = sortRows(filterRows(rows, { filter, channel, query, meId: me }));
+  const waiting = counts.any;
   const notice = composerNotice(detail?.replyWindow, vi);
   const state = detail ? stateOf(detail) : 'bot';
 
@@ -145,10 +151,71 @@ export default function InboxPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,300px) minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
 
-        <div style={{ ...ui.card, padding: 0, overflow: 'hidden', maxHeight: '72vh', overflowY: 'auto' }}>
+        <div style={{ ...ui.card, padding: 0, overflow: 'hidden', maxHeight: '72vh', display: 'flex', flexDirection: 'column' }}>
+
+          {/* Filters. 'waiting' is the default and the one that earns the page:
+              it is the list of customers nobody has answered. Everything else
+              is browsing. */}
+          <div style={{ display: 'flex', gap: 4, padding: '8px 8px 0', flexWrap: 'wrap' }}>
+            {([
+              ['waiting', vi ? 'Đang chờ' : 'Waiting', counts.any],
+              ['unread', vi ? 'Chưa đọc' : 'Unread', 0],
+              ['mine', vi ? 'Của tôi' : 'Mine', 0],
+              ['all', vi ? 'Tất cả' : 'All', 0],
+            ] as [InboxFilter, string, number][]).map(([key, label, n]) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                style={{
+                  ...ghostBtn, fontSize: 11, padding: '3px 9px',
+                  borderColor: filter === key ? '#6366f1' : '#334155',
+                  color: filter === key ? '#c7d2fe' : '#94a3b8',
+                }}
+              >{label}{n > 0 ? ` (${n})` : ''}</button>
+            ))}
+          </div>
+
+          {/* Channel. Counts are WAITING conversations, not totals — "48" next
+              to Messenger tells nobody anything, "3" is worth crossing the room
+              for. */}
+          <div style={{ display: 'flex', gap: 4, padding: '6px 8px 0', flexWrap: 'wrap' }}>
+            {([
+              ['any', vi ? 'Mọi kênh' : 'All channels'],
+              ['messenger', 'Messenger'],
+              ['instagram', 'Instagram'],
+              ['zalo', 'Zalo'],
+            ] as [ChannelKind | 'any', string][]).map(([key, label]) => {
+              const n = counts[key] ?? 0;
+              const on = channel === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setChannel(key)}
+                  style={{
+                    ...ghostBtn, fontSize: 11, padding: '3px 9px',
+                    borderColor: on ? '#6366f1' : '#334155',
+                    color: on ? '#c7d2fe' : '#94a3b8',
+                  }}
+                >{label}{n > 0 ? ` · ${n}` : ''}</button>
+              );
+            })}
+          </div>
+
+          <div style={{ padding: '8px' }}>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={vi ? 'Tìm tên khách hoặc nội dung…' : 'Search name or message…'}
+              style={{ ...ui.input, fontSize: 12, padding: '6px 9px' }}
+            />
+          </div>
+
+          <div style={{ overflowY: 'auto', flex: 1, borderTop: '1px solid #1e293b' }}>
           {!sorted.length && (
             <p style={{ color: '#64748b', fontSize: 13, padding: 16, margin: 0 }}>
-              {vi ? 'Chưa có hội thoại nào.' : 'No conversations yet.'}
+              {filter === 'waiting'
+                ? (vi ? 'Không ai đang chờ. Tốt.' : 'Nobody is waiting. Good.')
+                : (vi ? 'Không có hội thoại nào khớp bộ lọc.' : 'No conversations match these filters.')}
             </p>
           )}
           {sorted.map((r) => {
@@ -179,6 +246,7 @@ export default function InboxPage() {
               </button>
             );
           })}
+          </div>
         </div>
 
         <div style={{ ...ui.card, padding: 0, display: 'flex', flexDirection: 'column', minHeight: 380, maxHeight: '72vh' }}>

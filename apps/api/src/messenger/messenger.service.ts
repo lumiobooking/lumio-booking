@@ -677,7 +677,7 @@ export class MessengerService implements OnModuleInit {
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 50,
       select: {
-        id: true, senderId: true, senderName: true, lastText: true, handoff: true,
+        id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,
         updatedAt: true, channel: true,
         handoffAt: true, handoffMode: true, assignedUserId: true, status: true,
         lastCustomerAt: true, readAt: true,
@@ -687,6 +687,40 @@ export class MessengerService implements OnModuleInit {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
       } as never,
     });
+    // Backfill missing names for the WHOLE list in one call per page.
+    //
+    // Every conversation that started before the app had the right permission
+    // kept a null name, and the screen showed a column of identical rows called
+    // "Customer" — which is not a list, because you cannot tell one row from
+    // another. One conversations lookup names all of them at once, and it only
+    // runs when something is actually missing, so a fully-named inbox costs
+    // nothing.
+    // Typed explicitly: the generated Prisma client in the dev sandbox is stale
+    // and infers these as `any`, so an implicit-any here compiles locally and
+    // fails the real build. That has already cost one deploy.
+    type Nameless = { id: string; senderId: string | null; senderName: string | null; pageId: string; channel: string };
+    const nameless = (rows as unknown as Nameless[]).filter((r) => !r.senderName && r.senderId);
+    if (nameless.length) {
+      const byPage = new Map<string, string>();
+      for (const r of nameless) {
+        const pid = String(r.pageId ?? '');
+        if (pid) byPage.set(pid, r.channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER');
+      }
+      for (const [pid, platform] of byPage) {
+        const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: pid }, select: { pageToken: true } }).catch(() => null);
+        const tok = pg?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
+        if (!tok) continue;
+        const names = await this.fetchNamesForPage(pid, tok, platform as 'MESSENGER' | 'INSTAGRAM');
+        if (!names.size) continue;
+        for (const r of nameless) {
+          const found = names.get(String(r.senderId));
+          if (!found) continue;
+          r.senderName = found;
+          await this.prisma.messengerThread.update({ where: { id: r.id }, data: { senderName: found } }).catch(() => undefined);
+        }
+      }
+    }
+
     const now = new Date();
     return rows.map((r) => {
       const view = ownershipOf(r as never, { now, activeMins });
@@ -837,7 +871,13 @@ export class MessengerService implements OnModuleInit {
         : null;
       const token = pgTok?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
       if (token && row.senderId) {
-        const name = await this.fetchSenderName(token, String(row.senderId)).catch(() => null);
+        // Conversations first — it is the one that actually returns a name.
+        // The profile endpoint stays as a fallback because it is one small
+        // request and occasionally answers when the other does not.
+        const viaConv = row.pageId
+          ? (await this.fetchNamesForPage(String(row.pageId), token, (row as { channel?: string }).channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER')).get(String(row.senderId)) ?? null
+          : null;
+        const name = viaConv ?? await this.fetchSenderName(token, String(row.senderId)).catch(() => null);
         if (name) {
           row.senderName = name;
           await this.prisma.messengerThread.update({ where: { id: String(row.id) }, data: { senderName: name } }).catch(() => undefined);
@@ -2794,6 +2834,58 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    *  is approved. Falls back to null — callers keep showing the PSID. */
   // Per-thread cooldown for profile lookups (in-memory; resets on restart).
   private readonly nameLookupTriedAt = new Map<string, number>();
+
+  /**
+   * Names for many conversations in ONE call, the way Business Suite gets them.
+   *
+   * WHY NOT THE USER PROFILE API
+   *
+   * `GET /{psid}?fields=first_name` is the endpoint this used, and it is the
+   * restricted one: Meta's docs say that when you are not allowed to see a
+   * profile it returns an EMPTY OBJECT, not an error. So it failed silently for
+   * most people and the inbox showed a column of identical rows called
+   * "Customer" — while Meta Business Suite, looking at the same Page, showed
+   * "Hai Cao" and "Rayy Smith" with photographs. Business Suite is not using
+   * that endpoint.
+   *
+   * `GET /{page-id}/conversations?fields=participants` is what does work. It is
+   * the Page's own inbox, the permissions are the ones already approved
+   * (pages_messaging, pages_read_engagement, pages_manage_metadata), and one
+   * call names a whole screen of conversations instead of one.
+   *
+   * Returns a map of PSID → name. Never throws; an empty map simply means the
+   * existing placeholder stands.
+   */
+  private async fetchNamesForPage(pageId: string, pageToken: string, platform: 'MESSENGER' | 'INSTAGRAM' = 'MESSENGER'): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    try {
+      const url = `${GRAPH}/${encodeURIComponent(pageId)}/conversations`
+        + `?platform=${platform}&fields=participants&limit=100&access_token=${encodeURIComponent(pageToken)}`;
+      const r = await fetch(url);
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { participants?: { data?: { id?: string; name?: string }[] } }[];
+        error?: { message?: string; code?: number };
+      };
+      if (j.error) {
+        this.logger.warn(`conversations lookup failed for page ${pageId}: ${(j.error.message || '').slice(0, 140)}`);
+        return out;
+      }
+      for (const conv of j.data ?? []) {
+        for (const p of conv.participants?.data ?? []) {
+          // Every conversation lists the Page itself as a participant. Skip it,
+          // or every thread would be named after the salon.
+          if (!p?.id || p.id === pageId) continue;
+          const name = String(p.name ?? '').trim();
+          if (name) out.set(String(p.id), name);
+        }
+      }
+      this.logger.log(`conversations lookup: ${out.size} name(s) for page ${pageId}`);
+      return out;
+    } catch (e) {
+      this.logger.warn(`conversations lookup threw for page ${pageId}: ${String(e).slice(0, 120)}`);
+      return out;
+    }
+  }
 
   private async fetchSenderName(pageToken: string, psid: string): Promise<string | null> {
     try {

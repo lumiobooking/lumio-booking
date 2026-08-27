@@ -721,6 +721,15 @@ export class MessengerService implements OnModuleInit {
       }
     }
 
+    // Which Page each conversation arrived on, by name. A salon running two
+    // Pages needs to answer one at a time, and the customer sees the Page's
+    // name — so the person replying must see the same thing.
+    const pageNames = new Map<string, string>();
+    for (const pg of await this.prisma.messengerPage.findMany({ where: { tenantId }, select: { pageId: true, pageName: true, igUsername: true } }).catch(() => [])) {
+      const row = pg as unknown as { pageId: string; pageName: string | null; igUsername: string | null };
+      if (row.pageId) pageNames.set(row.pageId, String(row.pageName || row.igUsername || '').trim());
+    }
+
     const now = new Date();
     return rows.map((r) => {
       const view = ownershipOf(r as never, { now, activeMins });
@@ -730,6 +739,7 @@ export class MessengerService implements OnModuleInit {
         ...r,
         state: view.state,
         stateReason: view.reason,
+        pageName: pageNames.get(String((r as unknown as { pageId?: string }).pageId ?? '')) || null,
         assignedName: who || null,
         waitingMinutes: waitingMinutes(r as never, now),
         replyWindow: replyWindow(r as never, now),
@@ -1415,7 +1425,12 @@ export class MessengerService implements OnModuleInit {
     const thread = await this.prisma.messengerThread.upsert({
       where: { pageId_senderId: { pageId: page.pageId, senderId } },
       update: {},
-      create: { tenantId: page.tenantId, pageId: page.pageId, senderId, lastText: '👋 (opened chat)' },
+      // lastCustomerAt on the opt-in too. Opening a chat IS the customer
+      // reaching out and it starts Meta's 24-hour reply window, but only
+      // handleMessage used to stamp it — so a thread created this way had no
+      // timestamp at all, and the composer read that absence as "the window
+      // closed" and refused to let anyone type.
+      create: { tenantId: page.tenantId, pageId: page.pageId, senderId, lastText: '👋 (opened chat)', lastCustomerAt: new Date() } as never,
     });
     if (thread.handoff) return;
     let greeting = (conn.greeting || '').trim();

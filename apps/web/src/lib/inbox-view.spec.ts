@@ -1,4 +1,4 @@
-import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingByChannel, filterRows, displayName, InboxRow } from './inbox-view';
+import { channelOf, channelLabel, stateOf, stateLabel, sortRows, composerNotice, waitingCount, sourcesFrom, sourceKey, filterRows, displayName, InboxRow } from './inbox-view';
 
 const row = (over: Partial<InboxRow> = {}): InboxRow => ({
   id: 'r', updatedAt: '2026-08-27T12:00:00.000Z', ...over,
@@ -102,146 +102,155 @@ describe('the badge wording', () => {
   });
 });
 
-describe('ordering — the ignored customer goes to the top', () => {
-  // A plain newest-first list buries the person who has waited longest under
-  // everyone who just said hello.
-  it('puts waiting customers above everything else', () => {
+describe('ordering — newest first, top to bottom', () => {
+  // An earlier version floated waiting customers to the top and sorted them by
+  // how long they had been ignored. A list that reorders itself under your hand
+  // is hard to work down, and a chat inbox reads newest first everywhere else.
+  it('puts the most recent conversation first', () => {
     const out = sortRows([
-      row({ id: 'bot-recent', state: 'bot', updatedAt: '2026-08-27T13:00:00.000Z' }),
-      row({ id: 'waiting', state: 'unclaimed', waitingMinutes: 3, updatedAt: '2026-08-27T09:00:00.000Z' }),
+      row({ id: 'older', updatedAt: '2026-08-27T08:00:00.000Z' }),
+      row({ id: 'newest', updatedAt: '2026-08-27T13:00:00.000Z' }),
+      row({ id: 'mid', updatedAt: '2026-08-27T11:00:00.000Z' }),
     ]);
-    expect(out[0].id).toBe('waiting');
+    expect(out.map((r) => r.id)).toEqual(['newest', 'mid', 'older']);
   });
 
-  it('puts the longest wait first within that group', () => {
+  it('does not float a waiting customer above a newer one', () => {
     const out = sortRows([
-      row({ id: 'short', state: 'unclaimed', waitingMinutes: 2 }),
-      row({ id: 'long', state: 'unclaimed', waitingMinutes: 40 }),
-      row({ id: 'mid', state: 'unclaimed', waitingMinutes: 12 }),
+      row({ id: 'new-bot', state: 'bot', updatedAt: '2026-08-27T13:00:00.000Z' }),
+      row({ id: 'old-waiting', state: 'unclaimed', waitingMinutes: 90, updatedAt: '2026-08-27T09:00:00.000Z' }),
     ]);
-    expect(out.map((r) => r.id)).toEqual(['long', 'mid', 'short']);
+    expect(out[0].id).toBe('new-bot');
   });
 
-  it('puts unread above read', () => {
+  it('does not sink a closed conversation that is genuinely the newest', () => {
     const out = sortRows([
-      row({ id: 'read', state: 'bot', unread: false, updatedAt: '2026-08-27T13:00:00.000Z' }),
-      row({ id: 'unread', state: 'bot', unread: true, updatedAt: '2026-08-27T10:00:00.000Z' }),
+      row({ id: 'done-new', state: 'done', updatedAt: '2026-08-27T14:00:00.000Z' }),
+      row({ id: 'open-old', state: 'bot', updatedAt: '2026-08-27T08:00:00.000Z' }),
     ]);
-    expect(out[0].id).toBe('unread');
-  });
-
-  it('sinks closed conversations to the bottom however recent', () => {
-    const out = sortRows([
-      row({ id: 'done', state: 'done', updatedAt: '2026-08-27T14:00:00.000Z' }),
-      row({ id: 'open', state: 'bot', updatedAt: '2026-08-27T08:00:00.000Z' }),
-    ]);
-    expect(out[out.length - 1].id).toBe('done');
-  });
-
-  it('falls back to newest first inside a group', () => {
-    const out = sortRows([
-      row({ id: 'older', state: 'bot', updatedAt: '2026-08-27T08:00:00.000Z' }),
-      row({ id: 'newer', state: 'bot', updatedAt: '2026-08-27T11:00:00.000Z' }),
-    ]);
-    expect(out[0].id).toBe('newer');
+    expect(out[0].id).toBe('done-new');
   });
 
   it('does not mutate what it was given', () => {
-    const input = [row({ id: 'a', state: 'bot' }), row({ id: 'b', state: 'unclaimed' })];
+    const input = [row({ id: 'a' }), row({ id: 'b', updatedAt: '2026-08-27T13:00:00.000Z' })];
     const copy = [...input];
     sortRows(input);
     expect(input).toEqual(copy);
   });
 });
 
-describe('the channel rail', () => {
+describe('the source rail — which Page, not which kind of app', () => {
+  // Listing channel TYPES is useless to a salon running two Pages: both inboxes
+  // collapse into one button and there is no way to answer as just one of them.
   const rows = [
-    row({ state: 'unclaimed', channel: 'messenger' }),
-    row({ state: 'unclaimed', channel: 'messenger' }),
-    row({ state: 'unclaimed', channel: 'instagram' }),
-    row({ state: 'bot', channel: 'messenger' }),
-    row({ state: 'human', channel: 'zalo' }),
+    row({ id: 'a', pageId: 'p1', pageName: 'Lumio Agency', channel: 'messenger', state: 'unclaimed' }),
+    row({ id: 'b', pageId: 'p1', pageName: 'Lumio Agency', channel: 'messenger', state: 'bot' }),
+    row({ id: 'c', pageId: 'p2', pageName: 'Nailstop', channel: 'messenger', state: 'unclaimed' }),
+    row({ id: 'd', pageId: 'p1', pageName: 'lumio.ig', channel: 'instagram', state: 'bot' }),
   ];
 
-  // A badge showing "48" next to Messenger tells nobody anything — every salon
-  // has hundreds of old threads. "3" means three people are sitting unanswered,
-  // which is worth walking across the room for.
-  it('counts people waiting, not conversations that exist', () => {
-    const c = waitingByChannel(rows);
-    expect(c.messenger).toBe(2);
-    expect(c.instagram).toBe(1);
-    expect(c.zalo).toBe(0);
-    expect(c.any).toBe(3);
+  it('lists one entry per Page and channel, not per channel type', () => {
+    const out = sourcesFrom(rows);
+    expect(out).toHaveLength(3);
+    // Sorted by label with localeCompare, which ignores case — so 'lumio.ig'
+    // sits beside 'Lumio Agency' rather than after 'Nailstop'. Asserted as a
+    // set plus a stability check below, because the exact collation is the
+    // platform's business, not ours.
+    expect(new Set(out.map((s) => s.label))).toEqual(new Set(['Lumio Agency', 'Nailstop', 'lumio.ig']));
   });
 
-  it('is all zeroes when nobody is waiting', () => {
-    expect(waitingByChannel([row({ state: 'bot' }), row({ state: 'done' })]).any).toBe(0);
+  it('separates the same Page on two channels', () => {
+    expect(sourceKey({ pageId: 'p1', channel: 'messenger' }))
+      .not.toBe(sourceKey({ pageId: 'p1', channel: 'instagram' }));
   });
 
-  it('copes with an empty inbox', () => {
-    expect(waitingByChannel([]).any).toBe(0);
+  it('counts waiting customers per source, not total conversations', () => {
+    const byLabel = Object.fromEntries(sourcesFrom(rows).map((s) => [s.label, s.waiting]));
+    expect(byLabel['Lumio Agency']).toBe(1);
+    expect(byLabel['Nailstop']).toBe(1);
+    expect(byLabel['lumio.ig']).toBe(0);
+  });
+
+  it('falls back to the channel name when a Page has none', () => {
+    expect(sourcesFrom([row({ pageId: 'p9', channel: 'instagram' })])[0].label).toBe('Instagram');
+  });
+
+  it('keeps a stable order so the rail does not reshuffle', () => {
+    const a = sourcesFrom(rows).map((s) => s.key);
+    const b = sourcesFrom([...rows].reverse()).map((s) => s.key);
+    expect(a).toEqual(b);
+  });
+
+  it('counts everyone waiting across all sources', () => {
+    expect(waitingCount(rows)).toBe(2);
+    expect(waitingCount([])).toBe(0);
   });
 });
 
 describe('filtering', () => {
   const rows = [
-    row({ id: 'wait-fb', state: 'unclaimed', channel: 'messenger', senderName: 'Nguyễn Thị Hằng', unread: true }),
-    row({ id: 'wait-ig', state: 'unclaimed', channel: 'instagram', senderName: 'Mai', unread: true }),
-    row({ id: 'bot-fb', state: 'bot', channel: 'messenger', senderName: 'Trang', lastText: 'Đặt lịch mai nhé' }),
-    row({ id: 'mine', state: 'human', channel: 'messenger', senderName: 'Linh', assignedName: 'Hà', assignedUserId: 'u-ha' }),
-    row({ id: 'theirs', state: 'human', channel: 'messenger', senderName: 'Thu', assignedName: 'Mai', assignedUserId: 'u-mai' }),
+    row({ id: 'wait-fb', state: 'unclaimed', pageId: 'p1', channel: 'messenger', senderName: 'Nguyễn Thị Hằng', unread: true }),
+    row({ id: 'wait-ig', state: 'unclaimed', pageId: 'p1', channel: 'instagram', senderName: 'Mai', unread: true }),
+    row({ id: 'bot-fb', state: 'bot', pageId: 'p2', channel: 'messenger', senderName: 'Trang', lastText: 'Đặt lịch mai nhé' }),
+    row({ id: 'mine', state: 'human', pageId: 'p1', channel: 'messenger', senderName: 'Linh', assignedName: 'Hà', assignedUserId: 'u-ha' }),
+    row({ id: 'theirs', state: 'human', pageId: 'p1', channel: 'messenger', senderName: 'Thu', assignedName: 'Mai', assignedUserId: 'u-mai' }),
   ];
 
-  it('defaults to the people nobody has answered', () => {
-    expect(filterRows(rows, {}).map((r) => r.id).sort()).toEqual(['wait-fb', 'wait-ig']);
+  // 'all' is the default now: the first thing you see is everything, newest
+  // first, exactly like every other chat inbox.
+  it('shows everything by default', () => {
+    expect(filterRows(rows, {}).length).toBe(rows.length);
   });
 
-  it('narrows to one channel', () => {
-    expect(filterRows(rows, { filter: 'all', channel: 'instagram' }).map((r) => r.id)).toEqual(['wait-ig']);
+  it('narrows to one Page on one channel', () => {
+    const key = sourceKey({ pageId: 'p1', channel: 'instagram' });
+    expect(filterRows(rows, { source: key }).map((r) => r.id)).toEqual(['wait-ig']);
   });
 
-  it('combines channel and filter', () => {
-    expect(filterRows(rows, { filter: 'waiting', channel: 'messenger' }).map((r) => r.id)).toEqual(['wait-fb']);
+  it('does not mix two Pages that share a channel', () => {
+    const key = sourceKey({ pageId: 'p2', channel: 'messenger' });
+    expect(filterRows(rows, { source: key }).map((r) => r.id)).toEqual(['bot-fb']);
+  });
+
+  it('combines source and state', () => {
+    const key = sourceKey({ pageId: 'p1', channel: 'messenger' });
+    expect(filterRows(rows, { filter: 'waiting', source: key }).map((r) => r.id)).toEqual(['wait-fb']);
+  });
+
+  it('shows only the people waiting', () => {
+    expect(filterRows(rows, { filter: 'waiting' }).map((r) => r.id).sort()).toEqual(['wait-fb', 'wait-ig']);
   });
 
   it('shows only what this person is holding', () => {
     expect(filterRows(rows, { filter: 'mine', meId: 'u-ha' }).map((r) => r.id)).toEqual(['mine']);
   });
 
-  // With nobody to compare against, "mine" would silently show an empty list.
   it('does not silently empty the list when we do not know who you are', () => {
     expect(filterRows(rows, { filter: 'mine', meId: null }).length).toBe(rows.length);
   });
 
-  it('shows everything on all', () => {
-    expect(filterRows(rows, { filter: 'all' }).length).toBe(rows.length);
-  });
-
   // Someone typing "hang" must find "Hằng", or the search box is useless to the
   // people it was built for.
-  it.each([
-    ['hang', 'wait-fb'],
-    ['Hằng', 'wait-fb'],
-    ['HANG', 'wait-fb'],
-    ['nguyen', 'wait-fb'],
-  ])('finds a Vietnamese name typed as %s', (q, id) => {
-    expect(filterRows(rows, { filter: 'all', query: q }).map((r) => r.id)).toEqual([id]);
-  });
+  it.each([['hang', 'wait-fb'], ['Hằng', 'wait-fb'], ['HANG', 'wait-fb'], ['nguyen', 'wait-fb']])(
+    'finds a Vietnamese name typed as %s', (q, id) => {
+      expect(filterRows(rows, { query: q }).map((r) => r.id)).toEqual([id]);
+    },
+  );
 
-  it('searches the last message too, since people remember one or the other', () => {
-    expect(filterRows(rows, { filter: 'all', query: 'dat lich' }).map((r) => r.id)).toEqual(['bot-fb']);
+  it('searches the last message too', () => {
+    expect(filterRows(rows, { query: 'dat lich' }).map((r) => r.id)).toEqual(['bot-fb']);
   });
 
   it('handles đ, which survives accent-stripping untouched', () => {
-    expect(filterRows(rows, { filter: 'all', query: 'Đặt' }).map((r) => r.id)).toEqual(['bot-fb']);
+    expect(filterRows(rows, { query: 'Đặt' }).map((r) => r.id)).toEqual(['bot-fb']);
   });
 
   it('finds nothing rather than everything for a miss', () => {
-    expect(filterRows(rows, { filter: 'all', query: 'zzzz' })).toEqual([]);
+    expect(filterRows(rows, { query: 'zzzz' })).toEqual([]);
   });
 
   it.each(['', '   ', undefined])('ignores an empty query (%s)', (q) => {
-    expect(filterRows(rows, { filter: 'all', query: q }).length).toBe(rows.length);
+    expect(filterRows(rows, { query: q }).length).toBe(rows.length);
   });
 });
 

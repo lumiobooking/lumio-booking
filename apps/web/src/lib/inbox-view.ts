@@ -26,6 +26,9 @@ export interface InboxRow {
   handoff?: boolean;
   assignedName?: string | null;
   assignedUserId?: string | null;
+  /** Which connected Page or Instagram account this arrived on. */
+  pageId?: string | null;
+  pageName?: string | null;
   waitingMinutes?: number | null;
   unread?: boolean;
   updatedAt: string;
@@ -121,46 +124,76 @@ export function stateLabel(row: InboxRow, vi: boolean): { text: string; tone: 'b
   return { text: 'Bot', tone: 'bot' };
 }
 
-/**
- * Order for the list.
- *
- * Waiting customers first, longest wait at the top — the opposite of a plain
- * newest-first list, which buries the person who has been ignored longest under
- * everyone who just said hello. Then unread, then everything else by recency,
- * with closed conversations last.
- */
+/** Newest first — see the note inside. */
 export function sortRows(rows: InboxRow[]): InboxRow[] {
-  const rank = (r: InboxRow): number => {
-    const s = stateOf(r);
-    if (s === 'unclaimed') return 0;
-    if (s === 'done') return 3;
-    return r.unread ? 1 : 2;
-  };
-  return [...rows].sort((a, b) => {
-    const ra = rank(a);
-    const rb = rank(b);
-    if (ra !== rb) return ra - rb;
-    if (ra === 0) {
-      // Longest wait first. This is the whole point of the group.
-      const wa = a.waitingMinutes ?? 0;
-      const wb = b.waitingMinutes ?? 0;
-      if (wa !== wb) return wb - wa;
-    }
-    return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
-  });
+  // Newest first, full stop.
+  //
+  // An earlier version floated waiting customers to the top and sorted them by
+  // how long they had been ignored. The reasoning was sound and the result was
+  // not what an operator wants: a list that reorders itself under your hand is
+  // hard to work down, and everybody already knows a chat inbox reads newest
+  // first. The waiting count still has its own filter and its own badge, so
+  // nothing is lost — it just no longer rearranges the list.
+  return [...rows].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
 
 /**
- * The filters down the left edge.
+ * One entry per connected Page or Instagram account.
  *
- * 'waiting' is first and is the one that earns the page: it is the list of
- * customers nobody has answered. Everything else is browsing.
+ * The rail used to list channel TYPES — "Messenger", "Instagram" — which is
+ * useless to a salon running two Pages: both their inboxes collapse into one
+ * button and there is no way to see only the one you are answering as. The
+ * customer sees the Page's name, so the person replying should too.
  */
-export type InboxFilter = 'waiting' | 'unread' | 'mine' | 'all';
+export interface InboxSource {
+  key: string;
+  label: string;
+  channel: ChannelKind;
+  waiting: number;
+}
+
+/** Stable key for "this Page, on this channel". One Page can carry both. */
+export function sourceKey(row: Pick<InboxRow, 'pageId' | 'channel'> | null | undefined): string {
+  return `${String(row?.pageId ?? '')}|${channelOf(row?.channel)}`;
+}
+
+export function sourcesFrom(rows: InboxRow[]): InboxSource[] {
+  const map = new Map<string, InboxSource>();
+  for (const r of rows) {
+    const key = sourceKey(r);
+    const channel = channelOf(r.channel);
+    const cur = map.get(key);
+    const waiting = stateOf(r) === 'unclaimed' ? 1 : 0;
+    if (cur) {
+      cur.waiting += waiting;
+      // A row that knows the name wins over one that does not, so a single
+      // un-named thread cannot leave the whole source labelled by its channel.
+      if (!cur.label && r.pageName) cur.label = r.pageName;
+    } else {
+      map.set(key, { key, label: String(r.pageName ?? '').trim(), channel, waiting });
+    }
+  }
+  // Named sources first and alphabetical, so the rail does not reshuffle every
+  // time a conversation arrives.
+  return [...map.values()]
+    .map((s) => ({ ...s, label: s.label || channelLabel(s.channel).text.replace(/^\S+\s/, '') }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/**
+ * The state filters above the list.
+ *
+ * 'all' is first and is the default: the first thing you see is everything,
+ * newest first, the way every other chat inbox in the world opens. 'waiting'
+ * is one click away for when you want to sweep the ones nobody answered.
+ */
+export type InboxFilter = 'all' | 'waiting' | 'unread' | 'mine';
 
 export interface FilterState {
   filter?: InboxFilter;
-  channel?: ChannelKind | 'any';
+  /** A key from sourcesFrom(), or 'any'. Replaces the old channel-type filter:
+   *  a salon with two Pages needs to see one Page at a time. */
+  source?: string;
   query?: string;
   /** Whose "mine" this is — the user id, not a display name. Two members of
    *  staff can be called Mai; they cannot share an id. Null disables the filter
@@ -168,22 +201,9 @@ export interface FilterState {
   meId?: string | null;
 }
 
-/**
- * Counts for the rail badges.
- *
- * Deliberately counts WAITING conversations, not total ones. A badge showing
- * "48" next to Messenger tells nobody anything — every salon has hundreds of
- * old threads. A badge showing "3" next to a channel means three people are
- * sitting there unanswered, which is worth walking across the room for.
- */
-export function waitingByChannel(rows: InboxRow[]): Record<ChannelKind | 'any', number> {
-  const out: Record<ChannelKind | 'any', number> = { any: 0, messenger: 0, instagram: 0, zalo: 0 };
-  for (const r of rows) {
-    if (stateOf(r) !== 'unclaimed') continue;
-    out.any += 1;
-    out[channelOf(r.channel)] += 1;
-  }
-  return out;
+/** How many customers are sitting unanswered, across every source. */
+export function waitingCount(rows: InboxRow[]): number {
+  return rows.reduce((n, r) => n + (stateOf(r) === 'unclaimed' ? 1 : 0), 0);
 }
 
 /**
@@ -204,11 +224,11 @@ export function filterRows(rows: InboxRow[], f: FilterState): InboxRow[] {
     .replace(/đ/g, 'd');
 
   const q = fold(f.query).trim();
-  const wantChannel = f.channel && f.channel !== 'any' ? f.channel : null;
-  const filter = f.filter ?? 'waiting';
+  const wantSource = f.source && f.source !== 'any' ? f.source : null;
+  const filter = f.filter ?? 'all';
 
   return rows.filter((r) => {
-    if (wantChannel && channelOf(r.channel) !== wantChannel) return false;
+    if (wantSource && sourceKey(r) !== wantSource) return false;
 
     const state = stateOf(r);
     if (filter === 'waiting' && state !== 'unclaimed') return false;

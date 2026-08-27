@@ -30,8 +30,8 @@ import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
 import {
-  InboxRow, ChannelKind, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
-  sortRows, filterRows, waitingByChannel, composerNotice, displayName,
+  InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
+  sortRows, filterRows, sourcesFrom, sourceKey, waitingCount, composerNotice, displayName,
 } from '../../../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean }
@@ -74,8 +74,8 @@ export default function InboxPage() {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [filter, setFilter] = useState<InboxFilter>('waiting');
-  const [channel, setChannel] = useState<ChannelKind | 'any'>('any');
+  const [filter, setFilter] = useState<InboxFilter>('all');
+  const [source, setSource] = useState<string>('any');
   const [query, setQuery] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -178,18 +178,11 @@ export default function InboxPage() {
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   }
 
-  const counts = waitingByChannel(rows);
-  const sorted = sortRows(filterRows(rows, { filter, channel, query, meId: me }));
-  const waiting = counts.any;
+  const sources = sourcesFrom(rows);
+  const sorted = sortRows(filterRows(rows, { filter, source, query, meId: me }));
+  const waiting = waitingCount(rows);
   const notice = composerNotice(detail?.replyWindow, vi);
   const state = detail ? stateOf(detail) : 'bot';
-
-  const RAIL: [ChannelKind | 'any', string, string][] = [
-    ['any', '▤', vi ? 'Mọi kênh' : 'All channels'],
-    ['messenger', channelMark('messenger'), 'Messenger'],
-    ['instagram', channelMark('instagram'), 'Instagram'],
-    ['zalo', channelMark('zalo'), 'Zalo'],
-  ];
 
   const initials = (n?: string | null) => String(n || '?').trim().split(/\s+/).slice(-2).map((w) => w[0] ?? '').join('').toUpperCase() || '?';
   const pill = (tone: string, text: string) => (
@@ -214,24 +207,38 @@ export default function InboxPage() {
             reply". Capping the SCROLLING areas instead keeps every control that
             follows them on screen regardless of what is above. */}
 
-        {/* Channel rail. Counts are people WAITING, not conversations that
-            exist — "48" next to Messenger tells nobody anything, "3" is worth
-            crossing the room for. */}
+        {/* Source rail: one entry per connected Page or Instagram account, by
+            NAME. Listing channel types instead collapsed two Pages into one
+            button, and a salon running two of them could not answer as just one.
+            The customer sees the Page's name, so the person replying sees it too.
+            Counts are people WAITING, not conversations that exist. */}
         <div style={{ background: '#0b1220', borderRight: '1px solid #1e293b', padding: '10px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-          {RAIL.map(([key, mark, title]) => {
-            const n = counts[key] ?? 0;
-            const on = channel === key;
+          <button onClick={() => setSource('any')} title={vi ? 'Tất cả nguồn' : 'All sources'} aria-label={vi ? 'Tất cả nguồn' : 'All sources'}
+            style={{
+              position: 'relative', width: 34, height: 34, borderRadius: 9, cursor: 'pointer',
+              background: source === 'any' ? '#312e81' : 'transparent',
+              border: `1px solid ${source === 'any' ? '#6366f1' : 'transparent'}`,
+              color: source === 'any' ? '#c7d2fe' : '#64748b', fontSize: 16, lineHeight: 1,
+            }}>
+            ▤
+            {waiting > 0 && (
+              <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{waiting}</span>
+            )}
+          </button>
+
+          {sources.map((src) => {
+            const on = source === src.key;
             return (
-              <button key={key} onClick={() => setChannel(key)} title={title} aria-label={title}
+              <button key={src.key} onClick={() => setSource(src.key)} title={src.label} aria-label={src.label}
                 style={{
                   position: 'relative', width: 34, height: 34, borderRadius: 9, cursor: 'pointer',
                   background: on ? '#312e81' : 'transparent',
                   border: `1px solid ${on ? '#6366f1' : 'transparent'}`,
                   color: on ? '#c7d2fe' : '#64748b', fontSize: 16, lineHeight: 1,
                 }}>
-                {mark}
-                {n > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{n}</span>
+                {channelMark(src.channel)}
+                {src.waiting > 0 && (
+                  <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{src.waiting}</span>
                 )}
               </button>
             );
@@ -248,10 +255,10 @@ export default function InboxPage() {
 
           <div style={{ display: 'flex', gap: 4, padding: '7px 8px', borderBottom: '1px solid #1e293b', flexWrap: 'wrap' }}>
             {([
+              ['all', vi ? 'Tất cả' : 'All'],
               ['waiting', vi ? 'Đang chờ' : 'Waiting'],
               ['unread', vi ? 'Chưa đọc' : 'Unread'],
               ['mine', vi ? 'Của tôi' : 'Mine'],
-              ['all', vi ? 'Tất cả' : 'All'],
             ] as [InboxFilter, string][]).map(([key, label]) => (
               <button key={key} onClick={() => setFilter(key)}
                 style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
@@ -286,6 +293,11 @@ export default function InboxPage() {
                     {r.unread && <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
                   </div>
                   <p style={{ margin: '0 0 5px', fontSize: 12, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
+                  {/* Which Page this came in on. Without it a mixed list gives
+                      no way to tell one salon's inbox from another's. */}
+                  {source === 'any' && r.pageName && (
+                    <p style={{ margin: '0 0 4px', fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.pageName}</p>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {pill(st.tone, st.text)}
                     <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b', flexShrink: 0 }}>{new Date(r.updatedAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}</span>

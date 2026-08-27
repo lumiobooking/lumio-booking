@@ -444,6 +444,29 @@ export interface BookingRules {
   // bookable as an arrival time, the salon serves the group in turns
   // (Vagaro-style). Strict by default — the salon opts INTO flexibility.
   groupPolicy: 'strict' | 'flexible';
+  /**
+   * The badge at the top of the booking page.
+   *
+   *  'hours'   — "Open today 9:00 AM – 5:00 PM". A fact the owner typed in, so
+   *              it cannot be wrong, and it does not advertise a free slot.
+   *  'soonest' — "Next opening today at 2:00 PM". Reads well for a walk-in
+   *              trade, but see the warning below.
+   *  'off'     — show nothing.
+   *
+   * WHY 'soonest' IS NOT THE DEFAULT ANY MORE
+   *
+   * That badge is computed from business hours ALONE. The component has no
+   * appointments and no staff — it never did — so "next opening at 2:00 PM"
+   * means only "the salon's hours say it is open at 2:00 and that is past the
+   * lead time". A salon booked solid all day still advertises 2:00 PM, and the
+   * customer discovers the lie one click later, on the first screen. It also
+   * quotes the SHORTEST service on the menu, so the time can be unreachable for
+   * anything longer.
+   *
+   * Owners also object to it on its own terms: announcing a free slot in ninety
+   * minutes tells every visitor the shop is quiet.
+   */
+  soonestBar: 'hours' | 'soonest' | 'off';
 }
 
 const open9to6: DayHours = { closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 };
@@ -462,6 +485,9 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
   onlinePaymentEnabled: true,
   payLaterEnabled: true,
   groupPolicy: 'strict',
+  // Stating the opening hours rather than promising a slot the page cannot
+  // verify. A salon that wants the old badge back can pick 'soonest'.
+  soonestBar: 'hours',
   // Sun closed by default, Mon–Sat open 09:00–18:00.
   businessHours: [
     { closed: true, openMinutes: 9 * 60, closeMinutes: 18 * 60 },

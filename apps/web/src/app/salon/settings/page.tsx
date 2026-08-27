@@ -16,6 +16,8 @@ interface Booking {
   currencySymbol: string; symbolPosition: 'before' | 'after'; priceDecimals: number; defaultPaymentMethod: 'online' | 'onsite';
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
   businessHours: DayHours[]; daysOff: string[];
+  /** Badge at the top of the public booking page: hours (default) / soonest / off. */
+  soonestBar?: 'hours' | 'soonest' | 'off';
 }
 interface GatewayView { enabled: boolean; connected: boolean; apiKey: string }
 interface SettingsData {
@@ -387,6 +389,37 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
       </div>
       <div style={{ marginTop: 10 }}>
         <Toggle on={f.allowCustomerChooseStaff} onChange={(v) => setF({ ...f, allowCustomerChooseStaff: v })} label={t('se.ru.chooseStaff')} />
+      </div>
+
+      {/* The badge at the top of the public booking page. Three states rather
+          than on/off, because the old wording claimed a free slot the page has
+          no appointment data to back — see apps/web/src/lib/opening-bar.ts. */}
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+        {lang === 'vi' ? 'Nhãn trên trang đặt lịch' : 'Badge on the booking page'}
+      </div>
+      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid #334155', borderRadius: 10, background: '#0f172a' }}>
+        <select
+          style={{ ...ui.input, maxWidth: 380 }}
+          value={f.soonestBar ?? 'hours'}
+          onChange={(e) => setF({ ...f, soonestBar: e.target.value as 'hours' | 'soonest' | 'off' })}
+        >
+          <option value="hours">{lang === 'vi' ? 'Hiện giờ mở cửa hôm nay' : 'Show today’s opening hours'}</option>
+          <option value="soonest">{lang === 'vi' ? 'Hiện giờ trống gần nhất' : 'Show the next opening time'}</option>
+          <option value="off">{lang === 'vi' ? 'Không hiện gì' : 'Show nothing'}</option>
+        </select>
+        <p style={{ color: '#64748b', fontSize: 12.5, margin: '10px 0 0', lineHeight: 1.55 }}>
+          {(f.soonestBar ?? 'hours') === 'hours'
+            ? (lang === 'vi'
+                ? 'Hiện đúng khung giờ bạn đã nhập ở mục Giờ mở cửa — ví dụ "Hôm nay mở cửa 9:00 AM – 5:00 PM". Không thể sai, và không tiết lộ tiệm đang vắng hay đông.'
+                : 'Shows the hours you typed into Business hours — e.g. "Open today 9:00 AM – 5:00 PM". It cannot be wrong, and it says nothing about how busy you are.')
+            : (f.soonestBar === 'soonest'
+              ? (lang === 'vi'
+                  ? 'CẢNH BÁO — nhãn này tính theo giờ mở cửa, KHÔNG theo lịch hẹn thật. Tiệm kín lịch cả ngày vẫn hiện "còn chỗ lúc 2:00 PM", và nó lấy dịch vụ ngắn nhất nên giờ đó có thể không vừa với dịch vụ khách chọn. Nó cũng cho khách biết tiệm đang trống.'
+                  : 'WARNING — this is computed from opening hours, NOT from real appointments. A fully booked salon still advertises "next opening at 2:00 PM", and it quotes your shortest service so that time may not fit what the customer picks. It also tells every visitor you are quiet.')
+              : (lang === 'vi'
+                  ? 'Trang đặt lịch không hiện nhãn nào ở đầu trang.'
+                  : 'No badge is shown at the top of the booking page.'))}
+        </p>
       </div>
 
       <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.ru.assignment')}</div>

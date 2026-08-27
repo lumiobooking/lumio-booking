@@ -108,6 +108,8 @@ const VI: Record<string, string> = {
   'Next opening {when} at {time}': 'Còn chỗ {when} lúc {time}',
   'Next opening {when}': 'Còn chỗ {when}',
   'Open until {time}': 'Mở cửa đến {time}',
+  'Open today {from} – {to}': 'Hôm nay mở cửa {from} – {to}',
+  'Closed today — pick another date below': 'Hôm nay nghỉ — chọn ngày khác bên dưới',
   'Pick a service — we’ll show you every free time.': 'Chọn dịch vụ — tiệm sẽ hiện toàn bộ giờ còn trống.',
   'Book online · confirmed in seconds': 'Đặt online · xác nhận trong vài giây',
   'Pick your service, tech and time': 'Chọn dịch vụ, thợ và giờ',

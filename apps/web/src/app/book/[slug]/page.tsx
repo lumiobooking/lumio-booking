@@ -22,6 +22,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { InstallAppButton } from '../../../components/InstallAppButton';
 import { uiLocale } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
+import { planOpeningBar } from '../../../lib/opening-bar';
 import { bookLangForCountry, setBookLang, bt, btf, bookLocale } from '../../../lib/i18n-book';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
@@ -81,6 +82,8 @@ interface BookingRules {
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
   businessHours: DayHours[]; daysOff: string[];
   groupPolicy?: 'strict' | 'flexible'; // salon's choice: refuse or serve-in-turns when the party outnumbers the team
+  /** What the badge at the top may claim — see lib/opening-bar.ts. */
+  soonestBar?: 'hours' | 'soonest' | 'off';
 }
 const OPEN: DayHours = { closed: false, openMinutes: 540, closeMinutes: 1080 };
 const DEFAULT_RULES: BookingRules = {
@@ -1482,6 +1485,18 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
  * get in?") without asking them to pick anything twice.
  */
 function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules; services: Service[]; accent: string; timezone?: string | null }) {
+  // What this badge is allowed to claim — see lib/opening-bar.ts. Default is
+  // 'hours', which states the times the owner typed in rather than promising a
+  // free slot the page has no appointments to verify.
+  const plan = useMemo(() => {
+    const today = todayInZone(timezone);
+    return planOpeningBar({
+      mode: (rules as unknown as { soonestBar?: string }).soonestBar,
+      day: rules.businessHours[today.getDay()],
+      isDayOff: rules.daysOff.includes(ymd(today)),
+    });
+  }, [rules, timezone]);
+
   const info = useMemo(() => {
     const shortest = Math.max(15, Math.min(...(services.length ? services.map((s) => s.durationMinutes) : [30])));
     // Both halves of this line were reading the VISITOR's clock, and each one
@@ -1507,6 +1522,11 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
     return null;
   }, [rules, services, timezone]);
 
+  if (plan.kind === 'off') return null;
+
+  const pill = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', fontSize: 12.5, fontWeight: 700 } as React.CSSProperties;
+  const minsToClock = (m: number) => fmtTime(new Date(2000, 0, 1, Math.floor(m / 60), m % 60));
+
   return (
     <div style={{
       display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 16,
@@ -1514,14 +1534,26 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
       background: `linear-gradient(120deg, ${tint(accent, 0.10)}, rgba(255,255,255,0))`,
       border: `1px solid ${tint(accent, 0.18)}`,
     }}>
-      {info ? (
+      {plan.kind === 'hours' ? (
+        // Times the owner typed in. Nothing here can be contradicted by the
+        // booking screen, and it says nothing about how busy the shop is.
+        plan.windows.map((w, i) => (
+          <span key={i} style={{ ...pill, border: '1px solid #e9edf4', color: '#166534', fontWeight: 800 }}>
+            🕐 {btf('Open today {from} – {to}', { from: minsToClock(w.open), to: minsToClock(w.close) })}
+          </span>
+        ))
+      ) : plan.kind === 'closed' ? (
+        <span style={{ ...pill, border: '1px solid #e9edf4', color: '#5b6b85' }}>
+          {bt('Closed today — pick another date below')}
+        </span>
+      ) : info ? (
         <>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid #dcfce7', color: '#166534', fontSize: 12.5, fontWeight: 800, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
+          <span style={{ ...pill, border: '1px solid #dcfce7', color: '#166534', fontWeight: 800, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
             {btf('Next opening {when} at {time}', { when: info.when, time: info.time })}
           </span>
           {info.sameDay && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', border: '1px solid #e9edf4', color: '#5b6b85', fontSize: 12.5, fontWeight: 700 }}>
+            <span style={{ ...pill, border: '1px solid #e9edf4', color: '#5b6b85' }}>
               🕐 {btf('Open until {time}', { time: info.close })}
             </span>
           )}

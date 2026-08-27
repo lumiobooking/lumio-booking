@@ -40,6 +40,7 @@ export class UpdateBookingRulesDto {
   @IsOptional() @IsArray() businessHours?: unknown[];
   @IsOptional() @IsArray() @IsString({ each: true }) daysOff?: string[];
   @IsOptional() @IsIn(['strict', 'flexible']) groupPolicy?: 'strict' | 'flexible';
+  @IsOptional() @IsIn(['hours', 'soonest', 'off']) soonestBar?: 'hours' | 'soonest' | 'off';
 }
 
 export class UpdateBrandingDto {

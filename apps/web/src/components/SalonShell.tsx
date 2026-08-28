@@ -3,6 +3,7 @@
 import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
 import { InboxAlerts } from './InboxAlerts';
 import { ThemeToggle } from './ThemeToggle';
+import { NavIcon } from './NavIcon';
 import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -19,65 +20,65 @@ import { NotificationBell } from './NotificationBell';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
 type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant' };
-type NavGroup = { id: string; label: string; icon: string; items: NavItem[] };
+type NavGroup = { id: string; label: string; items: NavItem[] };
 
 // Dashboard sits on its own above the collapsible groups.
-const DASHBOARD: NavItem = { href: '/salon', label: 'Dashboard', icon: '◉' };
+const DASHBOARD: NavItem = { href: '/salon', label: 'Dashboard', icon: 'home' };
 
 // The sidebar is organised as a folder tree: 5 collapsible groups. Usage & costs
 // now lives inside Billing & plan, so it is no longer a separate nav item.
 const GROUPS: NavGroup[] = [
-  { id: 'ops', label: 'Operations', icon: '🗂', items: [
-    { href: '/salon/calendar', label: 'Calendar', icon: '▦' },
-    { href: '/salon/bookings', label: 'Bookings', icon: '🗓' },
+  { id: 'ops', label: 'Operations', items: [
+    { href: '/salon/calendar', label: 'Calendar', icon: 'calendar' },
+    { href: '/salon/bookings', label: 'Bookings', icon: 'calendarCheck' },
     // Front-desk check-in board: seat a customer, run their ticket, hand it to
     // the till. Its route and permission always existed — the nav entry didn't.
-    { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: '🚶' },
-    { href: '/salon/activity', label: 'Activity', icon: '🔔' },
-    { href: '/salon/tables', label: 'Tables', icon: '🍽', biz: 'restaurant' },
-    { href: '/salon/menu', label: 'Menu', icon: '🍜', biz: 'restaurant' },
-    { href: '/salon/waitlist', label: 'Waitlist', icon: '⏳' },
-    { href: '/salon/pos', label: 'POS / Checkout', icon: '🧾', feature: 'pos' },
-    { href: '/salon/orders', label: 'Orders', icon: '📋', feature: 'pos' },
+    { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: 'walk' },
+    { href: '/salon/activity', label: 'Activity', icon: 'pulse' },
+    { href: '/salon/tables', label: 'Tables', icon: 'utensils', biz: 'restaurant' },
+    { href: '/salon/menu', label: 'Menu', icon: 'bowl', biz: 'restaurant' },
+    { href: '/salon/waitlist', label: 'Waitlist', icon: 'clock' },
+    { href: '/salon/pos', label: 'POS / Checkout', icon: 'receipt', feature: 'pos' },
+    { href: '/salon/orders', label: 'Orders', icon: 'clipboard', feature: 'pos' },
   ] },
-  { id: 'clients', label: 'Clients & Catalog', icon: '☺', items: [
-    { href: '/salon/customers', label: 'Customers', icon: '☺' },
-    { href: '/salon/services', label: 'Services', icon: '✦' },
-    { href: '/salon/products', label: 'Products', icon: '🛍', feature: 'pos' },
-    { href: '/salon/gift-cards', label: 'Gift cards', icon: '🎁', feature: 'pos' },
-    { href: '/salon/staff', label: 'Staff', icon: '✄' },
-    { href: '/salon/stations', label: 'Chairs', icon: '💺' },
+  { id: 'clients', label: 'Clients & Catalog', items: [
+    { href: '/salon/customers', label: 'Customers', icon: 'users' },
+    { href: '/salon/services', label: 'Services', icon: 'sparkle' },
+    { href: '/salon/products', label: 'Products', icon: 'bag', feature: 'pos' },
+    { href: '/salon/gift-cards', label: 'Gift cards', icon: 'gift', feature: 'pos' },
+    { href: '/salon/staff', label: 'Staff', icon: 'scissors' },
+    { href: '/salon/stations', label: 'Chairs', icon: 'chair' },
   ] },
-  { id: 'growth', label: 'Marketing & AI', icon: '📣', items: [
-    { href: '/salon/marketing', label: 'Marketing', icon: '📣' },
-    { href: '/salon/marketing/monthly', label: 'Marketing report', icon: '📊' },
-    { href: '/salon/email', label: 'Email marketing', icon: '✉️' },
-    { href: '/salon/reviews', label: 'Reviews & rewards', icon: '★' },
-    { href: '/salon/reviews-replies', label: 'Google reviews', icon: '💬' },
+  { id: 'growth', label: 'Marketing & AI', items: [
+    { href: '/salon/marketing', label: 'Marketing', icon: 'megaphone' },
+    { href: '/salon/marketing/monthly', label: 'Marketing report', icon: 'chart' },
+    { href: '/salon/email', label: 'Email marketing', icon: 'mail' },
+    { href: '/salon/reviews', label: 'Reviews & rewards', icon: 'star' },
+    { href: '/salon/reviews-replies', label: 'Google reviews', icon: 'chat' },
     // The inbox sits ABOVE the bot settings on purpose: answering customers is
     // done fifty times a day by a receptionist, configuring the bot is done once
     // by the owner. The frequent job should not live under the rare one.
-    { href: '/salon/inbox', label: 'Inbox', icon: '💬' },
-    { href: '/salon/messenger', label: 'Messenger bot', icon: '🤖' },
-    { href: '/salon/voice', label: 'AI Hotline', icon: '📞' },
+    { href: '/salon/inbox', label: 'Inbox', icon: 'inboxTray' },
+    { href: '/salon/messenger', label: 'Messenger bot', icon: 'bot' },
+    { href: '/salon/voice', label: 'AI Hotline', icon: 'phone' },
   ] },
-  { id: 'finance', label: 'Finance', icon: '＄', items: [
-    { href: '/salon/payments', label: 'Payments', icon: '＄' },
-    { href: '/salon/payment-terminals', label: 'Card terminals', icon: '💳', feature: 'pos' },
-    { href: '/salon/card-transactions', label: 'Card transactions', icon: '🧾', feature: 'pos' },
-    { href: '/salon/reports', label: 'Business report', icon: '📈' },
-    { href: '/salon/pos/report', label: 'Sales report', icon: '📊', feature: 'pos' },
-    { href: '/salon/payroll', label: 'Staff & pay', icon: '💵', feature: 'pos' },
-    { href: '/salon/inventory', label: 'Inventory', icon: '📦', feature: 'pos' },
+  { id: 'finance', label: 'Finance', items: [
+    { href: '/salon/payments', label: 'Payments', icon: 'dollar' },
+    { href: '/salon/payment-terminals', label: 'Card terminals', icon: 'card', feature: 'pos' },
+    { href: '/salon/card-transactions', label: 'Card transactions', icon: 'fileText', feature: 'pos' },
+    { href: '/salon/reports', label: 'Business report', icon: 'trendUp' },
+    { href: '/salon/pos/report', label: 'Sales report', icon: 'pie', feature: 'pos' },
+    { href: '/salon/payroll', label: 'Staff & pay', icon: 'banknote', feature: 'pos' },
+    { href: '/salon/inventory', label: 'Inventory', icon: 'box', feature: 'pos' },
   ] },
-  { id: 'account', label: 'Account', icon: '⚙', items: [
-    { href: '/salon/billing', label: 'Billing & plan', icon: '💳' },
-    { href: '/salon/notifications', label: 'Notifications', icon: '✉' },
-    { href: '/salon/integrations', label: 'Integrations', icon: '⚙' },
-    { href: '/salon/connections', label: 'Connections', icon: '🔌' },
-    { href: '/salon/settings', label: 'Settings', icon: '⚙' },
+  { id: 'account', label: 'Account', items: [
+    { href: '/salon/billing', label: 'Billing & plan', icon: 'card' },
+    { href: '/salon/notifications', label: 'Notifications', icon: 'bell' },
+    { href: '/salon/integrations', label: 'Integrations', icon: 'puzzle' },
+    { href: '/salon/connections', label: 'Connections', icon: 'plug' },
+    { href: '/salon/settings', label: 'Settings', icon: 'gear' },
     // Deleted items live here for a week before they are gone for good.
-    { href: '/salon/trash', label: 'Recycle bin', icon: '🗑' },
+    { href: '/salon/trash', label: 'Recycle bin', icon: 'trash' },
   ] },
 ];
 
@@ -289,16 +290,22 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         key={item.href}
         href={item.href}
         onClick={() => setDrawerOpen(false)}
+        className="sn-item"
+        // The mockup's grammar: the current page is a SOFT indigo pill (tinted
+        // background, indigo text), not a solid block — the sidebar stays one
+        // quiet column and exactly one thing on it glows. The icon rides
+        // currentColor, so it changes state with the words instead of beside
+        // them, which is precisely what emoji could never do.
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: indent ? '9px 12px 9px 22px' : '11px 12px', borderRadius: 8, fontSize: indent ? 14 : 15,
-          textDecoration: 'none',
-          color: active ? 'white' : 'var(--c94a3b8)',
-          background: active ? '#6366f1' : 'transparent',
-          fontWeight: active ? 600 : 500,
+          padding: indent ? '8px 10px 8px 14px' : '9px 12px', borderRadius: 10, fontSize: 13.5,
+          textDecoration: 'none', lineHeight: 1.2,
+          color: active ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)',
+          background: active ? 'var(--c1e1b4b)' : 'transparent',
+          fontWeight: active ? 700 : 500,
         }}
       >
-        <span style={{ width: 18, textAlign: 'center', fontSize: 13 }}>{item.icon}</span>
+        <span style={{ color: active ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', display: 'grid', placeItems: 'center', width: 20 }}><NavIcon name={item.icon} /></span>
         {NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label}
       </Link>
     );
@@ -316,13 +323,12 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
               onClick={() => toggleGroup(grp.id)}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
-                padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                background: 'transparent', color: hasActive && !open ? 'var(--cc7d2fe)' : 'var(--c64748b)',
-                fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
+                padding: '12px 12px 4px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: 'transparent', color: hasActive && !open ? 'var(--ca5b4fc)' : 'var(--c64748b)',
+                fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase',
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 16, textAlign: 'center', fontSize: 12 }}>{grp.icon}</span>
                 {tr(GROUP_KEY[grp.id], lang)}
                 {hasActive && !open && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#6366f1' }} />}
               </span>

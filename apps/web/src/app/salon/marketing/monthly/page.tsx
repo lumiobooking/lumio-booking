@@ -839,12 +839,12 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     ${sheetFoot(t('AI tổng hợp từ số liệu thật của tháng · Lumio Agency duyệt trước khi gửi khách.', 'AI-drafted from the month’s real numbers · reviewed by Lumio Agency before sending.'))}
   </div>`;
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} — ${esc(salonName || '')} — ${data.month}</title><style>
+  const html = `<!doctype html><html lang="${vi ? 'vi' : 'en'}"><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&display=swap" rel="stylesheet"><title>${t('Báo cáo Marketing', 'Marketing report')} — ${esc(salonName || '')} — ${data.month}</title><style>
   @page{size:A4 landscape;margin:8mm}
   /* Without this line the browser strips every background at print time —
      which is exactly how the last export shipped with grey ghost titles. */
   *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2a3d;margin:0 auto;padding:0;background:#eef2f8;width:281mm;line-height:1.45;
+  body{font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#1f2a3d;margin:0 auto;padding:0;background:#eef2f8;width:281mm;line-height:1.45;
        /* Lining, equal-width digits: numbers in columns land in columns. */
        font-variant-numeric:tabular-nums}
   @media print{body{background:#fff;width:auto}}
@@ -863,7 +863,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   .sec-t{font-size:12px;font-weight:800;letter-spacing:1.1px;color:#0b1f3a;text-transform:uppercase}
   table{width:100%;border-collapse:collapse} td{vertical-align:middle}
   /* Type scale — print sizes, not screen sizes. Every size comes from here. */
-  .t-title{font-size:27px;font-weight:800;color:#0b1f3a;letter-spacing:.2px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t-title{font-size:27px;font-weight:800;color:#0b1f3a;letter-spacing:.2px;line-height:1.3;padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .t-num  {font-size:24px;font-weight:800;line-height:1.12}
   .t-num2 {font-size:19px;font-weight:800;line-height:1.15}
   .t-h2   {font-size:16px;font-weight:800}
@@ -899,10 +899,13 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   var printed=false;
   function printOnce(){ if(printed) return; printed=true; fitPages(); window.print(); }
   window.onload=function(){
-    var i=document.images,n=i.length,c=0;
-    function go(){ if(++c>=n){ setTimeout(printOnce,150); } }
-    if(!n){ printOnce(); return; }
-    for(var k=0;k<n;k++){ var m=i[k]; if(m.complete)go(); else { m.onload=go; m.onerror=go; } }
+    var ready=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
+    ready.then(function(){
+      var i=document.images,n=i.length,c=0;
+      function go(){ if(++c>=n){ setTimeout(printOnce,150); } }
+      if(!n){ printOnce(); return; }
+      for(var k=0;k<n;k++){ var m=i[k]; if(m.complete)go(); else { m.onload=go; m.onerror=go; } }
+    });
     setTimeout(printOnce,2500);
   };
   </script></body></html>`;

@@ -856,7 +856,13 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
             <span style={{ fontSize: 14, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
               {c.label}
               {!c.enabled && <span style={{ fontSize: 10.5, color: '#94a3b8', border: '1px solid #334155', borderRadius: 999, padding: '1px 8px' }}>{T('sắp có', 'coming soon')}</span>}
-              {c.connected && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '1px 8px' }}>{T('đã kết nối', 'connected')}</span>}
+              {c.connected && !c.keyHint?.startsWith('LINKED:') && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '1px 8px' }}>{T('đã kết nối', 'connected')}</span>}
+              {/* A linked channel explains itself. A bare green tick reads as
+                  "somebody set this up here"; this one says which existing
+                  connection it is riding on, so nobody hunts for settings that
+                  do not exist on this page. */}
+              {c.keyHint === 'LINKED:messenger' && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #166534', background: '#052e16', borderRadius: 999, padding: '1px 8px' }}>{T('✓ tự dùng kết nối Messenger AI', '✓ using the Messenger AI connection')}</span>}
+              {c.keyHint === 'LINKED:google-reviews' && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #166534', background: '#052e16', borderRadius: 999, padding: '1px 8px' }}>{T('✓ tự dùng kết nối Google Reviews', '✓ using the Google Reviews connection')}</span>}
               {c.status === 'ERROR' && <span style={{ fontSize: 10.5, color: '#f87171', border: '1px solid #f87171', borderRadius: 999, padding: '1px 8px' }}>{T('lỗi', 'error')}</span>}
             </span>
             <span style={{ display: 'flex', gap: 6 }}>
@@ -864,11 +870,21 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
               {c.connected && <>
                 <button onClick={() => test(c.platform)} disabled={busy === c.platform} style={miniBtn}>{T('Kiểm tra', 'Test')}</button>
                 <button onClick={() => sync(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#6366f1', color: '#c7d2fe' }}>{busy === c.platform ? '…' : T('Đồng bộ', 'Sync')}</button>
-                <button onClick={() => disconnect(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#7f1d1d', color: '#fca5a5' }}>{T('Ngắt', 'Remove')}</button>
+                {c.keyHint?.startsWith('LINKED:')
+                  /* Nothing to disconnect HERE — the credentials live on the
+                     Messenger AI / Google Reviews screen. Removing them there
+                     removes them here. What CAN be done here is overriding
+                     with this page's own credentials, which then win. */
+                  ? <button onClick={() => { setOpenP(openP === c.platform ? null : c.platform); setErr(null); setNote(null); }} style={miniBtn}>{openP === c.platform ? T('Đóng', 'Close') : T('Dùng token riêng', 'Use own token')}</button>
+                  : <button onClick={() => disconnect(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#7f1d1d', color: '#fca5a5' }}>{T('Ngắt', 'Remove')}</button>}
               </>}
             </span>
           </div>
-          {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString(uiLocale()) : ''}{c.lastError ? ' · ' + c.lastError : ''}</div>}
+          {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+            {c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString(uiLocale()) : ''}{c.lastError ? ' · ' + c.lastError : ''}
+            {c.keyHint === 'LINKED:messenger' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/messenger" style={{ color: '#818cf8' }}>Messenger AI</a></>}
+            {c.keyHint === 'LINKED:google-reviews' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/reviews-replies" style={{ color: '#818cf8' }}>Google Reviews</a></>}
+          </div>}
           {openP === c.platform && (
             <div style={{ marginTop: 8, background: '#0f172a', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
               <input style={inp} name="lumio-account-id" autoComplete="off" placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID — vd: 17202153832315858041' : c.platform === 'tiktok' ? T('Bỏ trống — TikTok nhận diện qua token', 'Leave blank — TikTok is identified by the token') : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />

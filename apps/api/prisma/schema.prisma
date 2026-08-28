@@ -2573,3 +2573,4 @@ model TrashItem {
   @@index([expiresAt])
   @@map("trash_items")
 }
+

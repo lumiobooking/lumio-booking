@@ -3,9 +3,10 @@
 import { ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
+import { InboxNavLink } from './InboxAlerts';
 
 /** Layout + auth guard for the Staff (technician) portal. */
-export function StaffShell({ children, title = 'My Bookings' }: { children: ReactNode; title?: string }) {
+export function StaffShell({ children, title = 'My Bookings', wide = false }: { children: ReactNode; title?: string; wide?: boolean }) {
   const { token, user, ready, logout } = useAuth();
   const router = useRouter();
 
@@ -27,7 +28,9 @@ export function StaffShell({ children, title = 'My Bookings' }: { children: Reac
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 16px' }}>
+    // The inbox needs the whole screen; 900px would squeeze four columns into
+    // a letterbox. Everything else keeps the readable column it had.
+    <div style={{ maxWidth: wide ? 1500 : 900, margin: '0 auto', padding: '20px 16px' }}>
       <header
         style={{
           display: 'flex',
@@ -45,6 +48,7 @@ export function StaffShell({ children, title = 'My Bookings' }: { children: Reac
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <InboxNavLink />
           <a href="/staff/bookings" style={navBtn}>My bookings</a>
           <a href="/staff/chair" style={navBtn}>🪑 My chair</a>
           <a href="/staff/reviews" style={navBtn}>My reviews</a>

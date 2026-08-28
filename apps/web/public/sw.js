@@ -57,7 +57,9 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    tag: 'lumio-booking',
+    // The sender decides what replaces what: bookings and inbox messages are
+    // different queues and should not overwrite each other on a lock screen.
+    tag: data.tag || 'lumio-booking',
     renotify: true,
     data: { url: data.url || '/salon/activity' },
   };

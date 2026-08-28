@@ -10,6 +10,7 @@ import { encryptSecret, decryptSecret, maskHint, encConfigured } from '../paymen
 import { NotificationsService } from '../notifications/notifications.service';
 import { SettingsService } from '../settings/settings.service';
 import { publicWebBase } from '../common/public-url.util';
+import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS } from './linked-channels';
 
 /**
  * Marketing module — Phase 0 (read-only).
@@ -880,19 +881,27 @@ export class MarketingService {
     const tenantId = this.tenantId(user, tenantParam);
     const conns = (await this.prisma.marketingChannelConnection.findMany({ where: { tenantId } })) as any[];
     const byPlatform = new Map<string, any>(conns.map((c: any) => [c.platform, c]));
-    return this.social.list().map((p) => {
+    const out = [] as any[];
+    for (const p of this.social.list()) {
       const c = byPlatform.get(p.platform);
-      return {
+      // No explicit connection? Check whether another screen already covers it,
+      // and SAY SO — the green tick must explain where it came from, and the
+      // page must stop asking the owner to connect a thing they connected.
+      const linked = (!c || c.status === 'REVOKED') ? await this.linkedCreds(tenantId, p.platform) : null;
+      out.push({
         ...p,
-        connected: !!c && c.status === 'ACTIVE',
-        status: c?.status ?? null,
-        accountName: c?.accountName ?? null,
-        externalAccountId: c?.externalAccountId ?? null,
-        keyHint: c?.keyHint ?? null,
+        connected: (!!c && c.status === 'ACTIVE') || !!linked,
+        status: c?.status ?? (linked ? 'ACTIVE' : null),
+        accountName: c?.accountName ?? linked?.accountName ?? null,
+        externalAccountId: c?.externalAccountId ?? linked?.creds.externalAccountId ?? null,
+        // 'LINKED:<source>' — the UI keys off this to show "đang dùng kết nối
+        // Messenger AI / Google Reviews" instead of a token form.
+        keyHint: c?.keyHint ?? (linked ? `LINKED:${linked.source}` : null),
         lastSyncedAt: c?.lastSyncedAt ?? null,
         lastError: c?.lastError ?? null,
-      };
-    });
+      });
+    }
+    return out;
   }
 
   async connectChannel(user: AuthenticatedUser, dto: { platform: string; externalAccountId?: string; token?: string; refreshToken?: string; clientId?: string; clientSecret?: string; developerToken?: string; tenantId?: string }) {
@@ -1113,13 +1122,21 @@ export class MarketingService {
   /** Sync every ACTIVE, enabled channel for a tenant/month. Best-effort. */
   async syncAllChannels(user: AuthenticatedUser, tenantId: string, month: string) {
     const conns = (await this.prisma.marketingChannelConnection.findMany({ where: { tenantId, status: 'ACTIVE' } })) as any[];
+    const platforms = new Set<string>(conns.map((c: any) => String(c.platform)));
+    // Linked channels have no row here, but they sync all the same — that is
+    // the point of linking them. Without this, the auto-report would only
+    // include a linked channel after somebody pressed a manual sync button,
+    // which quietly reintroduces the double-connect this removes.
+    for (const p of LINKABLE_PLATFORMS) {
+      if (!platforms.has(p) && (await this.linkedCreds(tenantId, p))) platforms.add(p);
+    }
     let synced = 0;
-    for (const c of conns) {
-      const meta = this.social.list().find((x) => x.platform === c.platform);
+    for (const platform of platforms) {
+      const meta = this.social.list().find((x) => x.platform === platform);
       if (!meta || !meta.enabled) continue;
       try {
-        if (c.platform === 'meta_social') await this.syncOrganic(user, c.platform, month, tenantId);
-        else await this.syncChannel(user, c.platform, month, tenantId);
+        if (platform === 'meta_social') await this.syncOrganic(user, platform, month, tenantId);
+        else await this.syncChannel(user, platform, month, tenantId);
         synced++;
       } catch { /* recorded on the connection */ }
     }
@@ -1205,9 +1222,56 @@ export class MarketingService {
     return null;
   }
 
+  /**
+   * Credentials another screen of this product already holds.
+   *
+   * meta_social rides on Messenger AI's Page connection; gbp rides on the
+   * Google Reviews OAuth (same business.manage scope the Performance API
+   * needs). The decision logic is pure and tested in linked-channels.ts —
+   * this method only fetches the two rows and hands them over.
+   */
+  private async linkedCreds(tenantId: string, platform: string): Promise<LinkedCreds | null> {
+    if (!(LINKABLE_PLATFORMS as readonly string[]).includes(platform)) return null;
+    try {
+      if (platform === 'meta_social') {
+        // Prefer the per-page row (multi-page salons); the connection row is
+        // the fallback for salons connected before messengerPage existed.
+        const pg = await this.prisma.messengerPage.findFirst({
+          where: { tenantId }, orderBy: { createdAt: 'asc' },
+          select: { pageId: true, pageToken: true, pageName: true },
+        } as never).catch(() => null) as { pageId?: string; pageToken?: string; pageName?: string } | null;
+        const conn = pg?.pageToken ? null : await this.prisma.messengerConnection.findUnique({
+          where: { tenantId }, select: { pageId: true, pageToken: true, pageName: true },
+        } as never).catch(() => null) as { pageId?: string; pageToken?: string; pageName?: string } | null;
+        const src = pg?.pageToken ? pg : conn;
+        return linkedCredsFor(platform, { messenger: src ?? null });
+      }
+      // gbp — the reviews module's settings row, plus the app client pair from
+      // env (the same pair the reviews OAuth itself used).
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'googleReviews' } } }).catch(() => null);
+      const v = (row?.value ?? {}) as { connected?: boolean; refreshToken?: string; locationId?: string; locationTitle?: string };
+      return linkedCredsFor(platform, {
+        gbr: {
+          ...v,
+          clientId: process.env.GBP_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
+          clientSecret: process.env.GBP_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
+        },
+      });
+    } catch {
+      return null;
+    }
+  }
+
   private async loadChannelCreds(tenantId: string, platform: string): Promise<ChannelCreds> {
     const conn = await this.prisma.marketingChannelConnection.findUnique({ where: { tenantId_platform: { tenantId, platform } } });
-    if (!conn || conn.status === 'REVOKED') throw new NotFoundException('Channel not connected');
+    if (!conn || conn.status === 'REVOKED') {
+      // Nothing connected HERE — but another screen may already hold what this
+      // platform needs. An explicit connection on this page always wins over a
+      // linked one (checked first, above); the link is only ever a fallback.
+      const linked = await this.linkedCreds(tenantId, platform);
+      if (linked) return linked.creds;
+      throw new NotFoundException('Channel not connected');
+    }
     // No per-tenant secret stored -> the connection rides on the agency token.
     if (!conn.credentialEnc) {
       const shared = this.agencyCreds(platform);

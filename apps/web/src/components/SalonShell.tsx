@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
+import { InboxAlerts } from './InboxAlerts';
 import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -440,6 +441,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
             {navHidden ? '☰' : '⟨⟨'}
             <span>{navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu' : 'Collapse menu')}</span>
           </button>
+          <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} />
           <NotificationBell />
         </header>
         <main style={{ padding: '22px 32px 40px', color: '#e2e8f0', minWidth: 0 }}>{supportBanner}{children}</main>

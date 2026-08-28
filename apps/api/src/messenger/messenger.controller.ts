@@ -10,6 +10,21 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { FeaturePolicyGuard } from '../feature-policy/feature-policy.guard';
 import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 
+/**
+ * Who may do what in here.
+ *
+ * The class default is SALON_ADMIN, so anything NOT listed below stays with the
+ * owner: connecting a Page, the bot's instructions, the pricing facts, deleting
+ * conversations. Answering customers is a different job from configuring the
+ * system, and a technician needs the first without ever being handed the second.
+ *
+ * Widening is therefore per-route and deliberate. RolesGuard uses
+ * getAllAndOverride, so a @Roles() on a method replaces the class's — which
+ * means a route only becomes reachable by staff when somebody typed INBOX_ROLES
+ * on it, never by accident.
+ */
+const INBOX_ROLES = [UserRole.SALON_ADMIN, UserRole.STAFF] as const;
+
 /** Salon-admin management of the Messenger booking bot (tenant-scoped). */
 @Roles(UserRole.SALON_ADMIN)
 @Controller('messenger')
@@ -54,11 +69,13 @@ export class MessengerController {
     return this.svc.disconnect(user, dto?.pageId ? String(dto.pageId) : undefined);
   }
 
+  @Roles(...INBOX_ROLES)
   @Get('threads')
   threads(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.listThreads(user);
   }
 
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/handoff')
   handoff(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: HandoffDto) {
     return this.svc.setHandoff(user, id, dto.handoff ?? true);
@@ -81,6 +98,7 @@ export class MessengerController {
    * EventSource cannot set headers, which would have forced the token into the
    * query string, and query strings end up in access logs.
    */
+  @Roles(...INBOX_ROLES)
   @Get('stream')
   stream(@CurrentUser() user: AuthenticatedUser, @Req() req: Request, @Res() res: Response) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -110,6 +128,7 @@ export class MessengerController {
   }
 
   /** One conversation in full, plus what the salon knows about this customer. */
+  @Roles(...INBOX_ROLES)
   @Get('threads/:id')
   thread(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.getThread(user, id);
@@ -122,6 +141,7 @@ export class MessengerController {
    * 404 when Meta withholds one, because "there is no picture" is a normal
    * answer here, not an error, and the inbox draws initials instead.
    */
+  @Roles(...INBOX_ROLES)
   @Get('threads/:id/avatar')
   async avatar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() res: Response) {
     const img = await this.svc.threadAvatar(user, id);
@@ -136,11 +156,13 @@ export class MessengerController {
   /**
    * Internal notes. Nothing here reaches Meta or the customer — see the service.
    */
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/notes')
   addNote(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { text?: string }) {
     return this.svc.addNote(user, id, String(dto?.text ?? ''));
   }
 
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/notes/:noteId/delete')
   deleteNote(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('noteId') noteId: string) {
     return this.svc.deleteNote(user, id, noteId);
@@ -148,11 +170,13 @@ export class MessengerController {
 
   // ---- Labels and follow-ups ----------------------------------------------
 
+  @Roles(...INBOX_ROLES)
   @Get('labels')
   labels(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.listLabels(user);
   }
 
+  @Roles(...INBOX_ROLES)
   @Post('labels')
   createLabel(@CurrentUser() user: AuthenticatedUser, @Body() dto: { name?: string; color?: string }) {
     return this.svc.createLabel(user, String(dto?.name ?? ''), String(dto?.color ?? ''));
@@ -163,29 +187,34 @@ export class MessengerController {
     return this.svc.deleteLabel(user, labelId);
   }
 
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/labels')
   setLabel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { labelId?: string; on?: boolean }) {
     return this.svc.setThreadLabel(user, id, String(dto?.labelId ?? ''), dto?.on !== false);
   }
 
   /** A date, not a label — a label cannot go overdue. See the service. */
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/followup')
   followUp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { at?: string | null; note?: string | null }) {
     return this.svc.setFollowUp(user, id, dto?.at ?? null, dto?.note ?? null);
   }
 
   /** Close a conversation. A new customer message reopens it automatically. */
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/status')
   threadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status?: string }) {
     return this.svc.setThreadStatus(user, id, dto?.status === 'done' ? 'done' : 'open');
   }
 
   /** Opening a conversation in the inbox clears its unread mark. */
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/read')
   threadRead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.markThreadRead(user, id);
   }
 
+  @Roles(...INBOX_ROLES)
   @Post('threads/:id/rename')
   rename(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RenameThreadDto) {
     return this.svc.renameThread(user, id, dto.name);
@@ -228,6 +257,7 @@ export class MessengerController {
     return this.svc.activity(user);
   }
 
+  @Roles(...INBOX_ROLES)
   @Post('send')
   @UseGuards(FeaturePolicyGuard)
   @RequiresFeature('messengerAi')

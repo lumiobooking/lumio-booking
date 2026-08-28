@@ -7,6 +7,8 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
 import { InboxEventsService } from './inbox-events.service';
+import { PushService } from '../push/push.service';
+import { pushPayload } from '../notifications/push-payload';
 import { pickAgent, isOnShift } from './chat-assignment';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -101,6 +103,7 @@ export class MessengerService implements OnModuleInit {
     private readonly settings: SettingsService,
     private readonly notifications: NotificationsService,
     private readonly events: InboxEventsService,
+    private readonly push: PushService,
   ) {}
 
   // ---- config --------------------------------------------------------------
@@ -1367,6 +1370,12 @@ export class MessengerService implements OnModuleInit {
         // people stop trusting the list.
         lastText: body.slice(0, 300),
         lastMessageAt: new Date(),
+        // Read, too. Unread means "nobody has looked since the last message",
+        // and the person who just typed the last message has plainly looked.
+        // Without this, sending a reply moves lastMessageAt past readAt and the
+        // conversation marks ITSELF unread — which would then ring the new
+        // message alarm at the person who just answered.
+        readAt: new Date(),
       } as never,
     });
     // A human just spoke in this thread — the bot yields immediately (and
@@ -1827,6 +1836,20 @@ export class MessengerService implements OnModuleInit {
     // it replaces meant a receptionist could be looking at a screen that
     // already knew nothing new while somebody waited.
     this.events.publish(page.tenantId, 'message');
+
+    // And wake the phones that are NOT looking at the app.
+    //
+    // The stream above only reaches a page that is open. A technician who has
+    // closed the browser, or whose phone is in a pocket with the screen off,
+    // has nothing running to be told — and that is most of the day. Never
+    // awaited: this hangs off a Facebook webhook, and a push service having a
+    // bad minute must not delay handling a real customer message. It also never
+    // carries the message text; see pushPayload.
+    void this.push.sendToTenant(page.tenantId, pushPayload({
+      name: (thread as unknown as { senderName?: string | null }).senderName ?? null,
+      pageName: (page as unknown as { pageName?: string | null }).pageName ?? null,
+      vi: true,
+    })).catch(() => undefined);
 
     // Route to a member of staff if the salon turned that on. Only for a thread
     // nobody owns yet — reassigning a conversation someone is already holding

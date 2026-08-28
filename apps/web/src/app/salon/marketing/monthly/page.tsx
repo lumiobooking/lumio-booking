@@ -882,9 +882,23 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   .toolbar{position:fixed;top:12px;right:14px;z-index:50;display:flex;align-items:center;gap:10px}
   .print-btn{background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(79,70,229,.35)}
   .toolbar .t-cap{color:#64748b;background:#fff;border:1px solid #e3e8f2;border-radius:8px;padding:4px 9px}
-  @media print{.toolbar{display:none}}
+  .tool-btn{background:#fff;border:1px solid #cdd6e6;color:#334155;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .tool-btn.on{background:#eef2ff;border-color:#6366f1;color:#4338ca}
+  /* Edit mode: hover shows what a click will edit; × removes a whole block. */
+  body.editing .sheet{cursor:text}
+  .panel{position:relative}
+  body.editing .panel:hover{outline:2px dashed #a5b4fc;outline-offset:2px}
+  [contenteditable]:focus{outline:none}
+  .del-x{display:none;position:absolute;top:6px;right:6px;width:21px;height:21px;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;line-height:1;z-index:5;font-family:inherit}
+  body.editing .del-x{display:block}
+  @media print{.toolbar{display:none}.del-x{display:none!important}body.editing .panel:hover{outline:none}}
   </style></head><body>
-  <div class="toolbar"><span class="t-cap">${t('Ctrl+P cũng in được', 'Ctrl+P works too')}</span><button class="print-btn" onclick="doPrint()">🖨 ${t('In / Lưu PDF', 'Print / Save PDF')}</button></div>
+  <div class="toolbar">
+    <span class="t-cap" id="hint">${t('Ctrl+P cũng in được', 'Ctrl+P works too')}</span>
+    <button class="tool-btn" id="undoBtn" onclick="undoDel()" style="display:none">↩ ${t('Hoàn tác xoá', 'Undo remove')}</button>
+    <button class="tool-btn" id="editBtn" onclick="toggleEdit()">✏️ ${t('Chỉnh sửa', 'Edit')}</button>
+    <button class="print-btn" onclick="doPrint()">🖨 ${t('In / Lưu PDF', 'Print / Save PDF')}</button>
+  </div>
   ${sheet1}
   ${gbpSheet}
   ${summarySheet}
@@ -924,7 +938,56 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   // the file just to read it slammed a print dialog in your face, and inside
   // embedded viewers that cannot print at all it opened a dead dialog over
   // the report. A visible button costs one click and surprises nobody.
+  // ---- Edit-before-publish -------------------------------------------------
+  // The rule this exists for: NOTHING reaches a client that a person could not
+  // change first. The app's editor covers the AI text and the manual numbers;
+  // this covers the last mile — standing in front of the finished page, a
+  // sentence to soften, a number to hide, a whole block the client should not
+  // see. Click any text to retype it; × removes a block; undo brings it back.
+  //
+  // Deliberately NOT saved anywhere: this is proofing one export, like pen on
+  // a printout. The durable numbers and the AI text keep living in the app,
+  // where the next month's report is generated from them.
+  var editing=false; var undoStack=[];
+  function toggleEdit(){
+    editing=!editing;
+    document.body.classList.toggle('editing',editing);
+    var sh=document.querySelectorAll('.sheet');
+    for(var i=0;i<sh.length;i++){ sh[i].contentEditable=editing?'true':'false'; }
+    var b=document.getElementById('editBtn');
+    b.classList.toggle('on',editing);
+    b.textContent=editing?'✓ ${t('Xong', 'Done')}':'✏️ ${t('Chỉnh sửa', 'Edit')}';
+    document.getElementById('hint').textContent=editing
+      ? '${t('Bấm vào chữ/số bất kỳ để sửa · dấu × xoá cả khối', 'Click any text to edit · × removes a block')}'
+      : '${t('Ctrl+P cũng in được', 'Ctrl+P works too')}';
+    document.getElementById('undoBtn').style.display=(editing&&undoStack.length)?'':'none';
+    if(editing) ensureDelButtons();
+  }
+  function ensureDelButtons(){
+    var ps=document.querySelectorAll('.panel');
+    for(var i=0;i<ps.length;i++){
+      if(ps[i].querySelector('.del-x')) continue;
+      var x=document.createElement('button');
+      x.className='del-x'; x.textContent='×'; x.contentEditable='false';
+      x.title='${t('Xoá khối này khỏi bản in', 'Remove this block from the print')}';
+      x.onclick=function(ev){ ev.preventDefault(); ev.stopPropagation(); removePanel(this); };
+      ps[i].appendChild(x);
+    }
+  }
+  function removePanel(btn){
+    var el=btn.closest('.panel'); if(!el) return;
+    undoStack.push({el:el,parent:el.parentNode,next:el.nextSibling});
+    el.remove();
+    document.getElementById('undoBtn').style.display='';
+  }
+  function undoDel(){
+    var it=undoStack.pop();
+    if(it&&it.parent){ it.parent.insertBefore(it.el,it.next); }
+    if(!undoStack.length){ document.getElementById('undoBtn').style.display='none'; }
+  }
   function doPrint(){
+    // Paper never sees the editing chrome — carets, dashed outlines, × buttons.
+    if(editing) toggleEdit();
     var ready=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
     var done=false;
     ready.then(function(){ if(done) return; done=true; fitPages(); window.print(); clearFit(); });

@@ -1,4 +1,4 @@
-import { writeKind, successText, cacheable, cacheKey, GetCache, GET_TTL_MS } from './api-feedback';
+import { writeKind, successText, cacheable, cacheKey, GetCache, GET_TTL_MS, preservesCache } from './api-feedback';
 
 describe('which taps earn a receipt', () => {
   it.each([
@@ -95,5 +95,19 @@ describe('one identity never reads another identity’s cache', () => {
   it('the whole JWT is not embalmed in the key', () => {
     const jwt = 'header.payload.signature-abcdefghijklmnop';
     expect(cacheKey('/x', jwt, null)).not.toContain('header.payload');
+  });
+});
+
+describe('which writes leave the cached world true', () => {
+  it('the read-mark preserves the cache — it fires on every conversation open', () => {
+    expect(preservesCache('POST', '/messenger/threads/t1/read')).toBe(true);
+  });
+  it('push renewals and heartbeats preserve it', () => {
+    expect(preservesCache('POST', '/push/subscribe')).toBe(true);
+  });
+  it('real writes still wipe it — a save must never show a stale screen', () => {
+    expect(preservesCache('POST', '/messenger/send')).toBe(false);
+    expect(preservesCache('POST', '/salon/settings')).toBe(false);
+    expect(preservesCache('DELETE', '/services/s1')).toBe(false);
   });
 });

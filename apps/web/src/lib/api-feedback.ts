@@ -64,6 +64,27 @@ export function successText(path: string, vi: boolean): string {
  */
 export const GET_TTL_MS = 15_000;
 
+/**
+ * Writes that leave the cached world TRUE.
+ *
+ * "Any write wipes everything" is the honesty rule above — but marking a
+ * conversation read, re-registering push, a heartbeat: these change nothing a
+ * cached GET ever showed. And the read-mark fires on EVERY conversation open,
+ * so with the blanket rule the cache was being emptied at exactly the moment
+ * it was most useful: flicking between customers in the inbox.
+ */
+const CACHE_PRESERVING: RegExp[] = [
+  /\/read$/,
+  /\/push\//,
+  /\/heartbeat|\/hello|\/telemetry|\/track/,
+];
+
+export function preservesCache(method: string, path: string): boolean {
+  if (String(method || 'GET').toUpperCase() === 'GET') return true;
+  const p = String(path || '').split('?')[0];
+  return CACHE_PRESERVING.some((rx) => rx.test(p));
+}
+
 /** Paths whose answers must never be served from memory. */
 const NEVER_CACHE: RegExp[] = [
   /\/stream/,           // SSE — not a JSON GET, but belt and braces

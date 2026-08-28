@@ -1,5 +1,5 @@
 // Thin client for the Lumio Booking backend API.
-import { writeKind, successText, cacheable, cacheKey, GetCache, SLOW_NOTICE_MS, slowText } from './api-feedback';
+import { writeKind, successText, cacheable, cacheKey, GetCache, SLOW_NOTICE_MS, slowText, preservesCache } from './api-feedback';
 import { notify } from './feedback';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 
@@ -197,8 +197,10 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
   if (method === 'GET') {
     if (cacheable(method, path)) getCache.set(key, data);
   } else {
-    // The world changed: every remembered answer is now suspect.
-    getCache.clear();
+    // The world changed: every remembered answer is now suspect — except for
+    // the bookkeeping writes (read-marks, push renewals) that change nothing a
+    // GET ever showed. See CACHE_PRESERVING for why the read-mark matters.
+    if (!preservesCache(method, path)) getCache.clear();
     // The receipt. Only for things a person did on purpose — see writeKind.
     if (writeKind(method, path) === 'announce') notify('success', successText(path, toastVi));
   }

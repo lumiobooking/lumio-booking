@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
@@ -130,8 +130,10 @@ export class MessengerController {
   /** One conversation in full, plus what the salon knows about this customer. */
   @Roles(...INBOX_ROLES)
   @Get('threads/:id')
-  thread(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.svc.getThread(user, id);
+  thread(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('full') full?: string) {
+    // ?full=0 answers from our own tables only — the inbox paints with it
+    // first, then asks again with the Meta transcript. See the service.
+    return this.svc.getThread(user, id, full !== '0');
   }
 
   /**

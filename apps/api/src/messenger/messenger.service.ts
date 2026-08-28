@@ -869,7 +869,17 @@ export class MessengerService implements OnModuleInit {
    * stays empty, because showing one customer another customer's spending
    * because two people share a common name is worse than showing nothing.
    */
-  async getThread(user: AuthenticatedUser, id: string) {
+  /**
+   * @param full  When false, answer from OUR database only — no Graph calls.
+   *
+   * Opening a conversation used to cost two round-trips to Meta before the
+   * first bubble appeared (the transcript read and, for unnamed customers, the
+   * name lookup) — the owner measured it as "mất khoảng 1 giây mỗi lần bấm".
+   * The inbox now asks twice: once fast to PAINT, once full to be COMPLETE.
+   * A receptionist reads the first messages while Meta is still being asked
+   * about the rest.
+   */
+  async getThread(user: AuthenticatedUser, id: string, full = true) {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({
       where: { id, tenantId },
@@ -893,7 +903,7 @@ export class MessengerService implements OnModuleInit {
     // and the inbox showed eight rows all called "Customer" — a list nobody can
     // tell apart. Opening a conversation is a natural, rate-limited moment to
     // try again, and it costs nothing when it works or when it does not.
-    if (!row.senderName) {
+    if (full && !row.senderName) {
       const pgTok = row.pageId
         ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } }).catch(() => null)
         : null;
@@ -947,7 +957,7 @@ export class MessengerService implements OnModuleInit {
     // Read the real transcript from Meta. The local buffer is the fallback, not
     // the source — see fetchMetaHistory for why they are different things.
     let turns = localTurns;
-    if (row.pageId && row.senderId) {
+    if (full && row.pageId && row.senderId) {
       const pgTok = await this.prisma.messengerPage
         .findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } })
         .catch(() => null);

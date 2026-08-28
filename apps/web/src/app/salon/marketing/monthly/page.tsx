@@ -1250,10 +1250,15 @@ function MktTabs({ vi, active }: { vi: boolean; active: 'monthly' | 'live' }) {
     </div>
   );
 }
+// Every background here is a THEMED token. Two of them used to be hand-picked
+// dark hexes (#3a2606, #0b1e3a) outside the palette — at night they looked
+// intentional, and in light mode they were the unreadable dark-brown box the
+// owner photographed: the card kept its midnight background while the text
+// inside dutifully flipped to ink.
 const VERDICT: Record<string, [string, string, string]> = {
   good: ['#22c55e', 'var(--c052e16)', 'Tốt'],
-  ok: ['#3b82f6', '#0b1e3a', 'Ổn'],
-  weak: ['#f59e0b', '#3a2606', 'Yếu'],
+  ok: ['#3b82f6', 'var(--c172554)', 'Ổn'],
+  weak: ['#f59e0b', 'var(--c451a03)', 'Yếu'],
   nodata: ['var(--c64748b)', 'var(--c1e293b)', 'Chưa đủ dữ liệu'],
 };
 const CH_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác' };

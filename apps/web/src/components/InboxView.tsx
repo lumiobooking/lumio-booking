@@ -163,9 +163,17 @@ export function InboxView() {
   const loadThread = useCallback(async (id: string) => {
     if (!token) return;
     try {
-      const d = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token });
-      setDetail(d);
-      await apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
+      // Two asks. The first never touches Meta and answers in one database
+      // hop — the conversation paints at the speed of a click. The second
+      // brings the full Meta transcript and the name backfill; by the time a
+      // person has read the first two bubbles it has quietly replaced the rest.
+      const quick = await apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token });
+      setDetail((cur) => (cur && cur.id !== quick.id ? cur : quick));
+      void apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
+      const fullD = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token });
+      // The person may have clicked another conversation while Meta answered —
+      // a late reply must never overwrite the thread they are LOOKING at now.
+      setDetail((cur) => (cur && cur.id === fullD.id ? fullD : cur));
     } catch (e) { setErr(String(e)); }
   }, [token]);
 

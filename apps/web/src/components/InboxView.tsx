@@ -125,6 +125,12 @@ export function InboxView() {
   const [narrow, setNarrow] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  /** On a phone the inbox owns everything below the shell header. Measured,
+   *  not guessed: the salon shell and the staff shell put different chrome
+   *  above this component, and a hardcoded offset would be wrong in one of
+   *  them forever. 100dvh (not vh) tracks the mobile browser bar as it hides. */
+  const [cardH, setCardH] = useState<string | null>(null);
 
   useEffect(() => {
     // matchMedia rather than a resize listener: it fires on rotation and on a
@@ -220,6 +226,18 @@ export function InboxView() {
   }, [token, loadList, loadThread]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [detail?.history?.length]);
+
+  useEffect(() => {
+    if (!narrow) { setCardH(null); return; }
+    const measure = () => {
+      window.scrollTo(0, 0);
+      const top = cardRef.current?.getBoundingClientRect().top ?? 0;
+      setCardH(`calc(100dvh - ${Math.max(0, Math.round(top))}px - 8px)`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [narrow, openId, showInfo]);
 
   async function act(path: string, body?: Record<string, unknown>) {
     if (!openId || !token) return;
@@ -369,17 +387,28 @@ export function InboxView() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
-        {waiting > 0 && pill('wait', vi ? `${waiting} khách đang chờ` : `${waiting} waiting`)}
-      </div>
+      {!narrow && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
+          {waiting > 0 && pill('wait', vi ? `${waiting} khách đang chờ` : `${waiting} waiting`)}
+        </div>
+      )}
 
       {err && <div style={{ ...ui.card, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)', marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
-      <div style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid',
+      <div ref={cardRef} style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid',
         // One column on a phone. The list and the conversation then take turns
         // filling the screen, the way every messaging app on a phone works.
-        gridTemplateColumns: narrow ? '1fr' : '52px minmax(0,290px) minmax(0,1fr) minmax(0,270px)' }}>
+        gridTemplateColumns: narrow ? '1fr' : '52px minmax(0,290px) minmax(0,1fr) minmax(0,270px)',
+        // Full-bleed and exactly viewport-tall on the phone. The width trick
+        // escapes whatever padding the shell wrapped us in without knowing it;
+        // the fixed height pins the composer on screen and moves ALL scrolling
+        // inside — a page that scrolls under a chat is two scrollbars fighting.
+        ...(narrow ? {
+          width: '100vw', marginLeft: 'calc(50% - 50vw)',
+          border: 'none', borderRadius: 0,
+          height: cardH ?? undefined, gridTemplateRows: 'minmax(0,1fr)',
+        } : {}) }}>
         {/* No fixed height on the card. It used to be 74vh, but the card's TOP
             already sits well down the page — support banner, heading, whatever
             else the shell puts above it — so 74vh from there ran off the bottom
@@ -441,10 +470,16 @@ export function InboxView() {
           <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--c1e293b)' }}>
             <input value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder={vi ? 'Tìm khách…' : 'Search…'}
-              style={{ ...ui.input, fontSize: 12, padding: '6px 9px' }} />
+              // 16px on the phone is not a taste choice: anything smaller and
+              // iOS zooms the page the moment the field is tapped.
+              style={{ ...ui.input, fontSize: narrow ? 16 : 12, padding: narrow ? '10px 13px' : '6px 9px', borderRadius: narrow ? 12 : 8 }} />
           </div>
 
-          <div style={{ display: 'flex', gap: 4, padding: '7px 8px', borderBottom: '1px solid var(--c1e293b)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--c1e293b)',
+            // One row that scrolls sideways. Wrapping onto a second line — the
+            // desktop behaviour — costs a whole conversation of height on a
+            // phone, and every chat app solved it the same way: swipe the chips.
+            ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' as const }) }}>
             {([
               ['all', vi ? 'Tất cả' : 'All'],
               ['waiting', vi ? 'Đang chờ' : 'Waiting'],
@@ -453,9 +488,10 @@ export function InboxView() {
               ['followup', vi ? 'Cần theo dõi' : 'Follow-up'],
             ] as [InboxFilter, string][]).map(([key, label]) => (
               <button key={key} onClick={() => setFilter(key)}
-                style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
+                style={{ ...ghostBtn, fontSize: narrow ? 13.5 : 11, padding: narrow ? '8px 14px' : '2px 8px', borderRadius: 999, flexShrink: 0,
                   borderColor: filter === key ? '#6366f1' : 'var(--c334155)',
-                  color: filter === key ? 'var(--cc7d2fe)' : 'var(--c94a3b8)' }}>
+                  background: filter === key ? 'var(--c312e81)' : 'transparent',
+                  color: filter === key ? 'var(--cc7d2fe)' : 'var(--c94a3b8)', fontWeight: filter === key ? 700 : 400 }}>
                 {label}
                 {/* The number is on this chip and nowhere else. A follow-up
                     nobody can see the count of is a diary left in a drawer. */}
@@ -469,7 +505,8 @@ export function InboxView() {
           {/* Label filter. Only drawn once the salon has made a label — an
               empty row of nothing is worse than no row. */}
           {labels.length > 0 && (
-            <div style={{ display: 'flex', gap: 4, padding: '0 8px 7px', borderBottom: '1px solid var(--c1e293b)', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '0 8px 7px', borderBottom: '1px solid var(--c1e293b)', alignItems: 'center',
+              ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : { flexWrap: 'wrap' as const }) }}>
               <button onClick={() => setLabelId(null)}
                 style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
                   borderColor: labelId === null ? '#6366f1' : 'var(--c334155)',
@@ -486,7 +523,10 @@ export function InboxView() {
             </div>
           )}
 
-          <div style={{ overflowY: 'auto', flex: 1, maxHeight: narrow ? '70vh' : 'min(58vh, 520px)' }}>
+          <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch',
+            // Desktop caps the list so the panels after it stay reachable; the
+            // phone is a fixed-height screen where flex:1 IS the cap.
+            maxHeight: narrow ? undefined : 'min(58vh, 520px)', minHeight: 0 }}>
             {listErr && (
               <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: 'var(--c450a0a)', border: '1px solid var(--c7f1d1d)' }}>
                 <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--cfecaca)', fontWeight: 700 }}>
@@ -516,12 +556,12 @@ export function InboxView() {
                   style={{ width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
                     background: on ? 'var(--c1e293b)' : 'transparent', border: 'none',
                     borderLeft: `2px solid ${on ? '#6366f1' : 'transparent'}`,
-                    borderBottom: '1px solid var(--c1e293b)', padding: '9px 11px' }}>
+                    borderBottom: '1px solid var(--c1e293b)', padding: narrow ? '13px 14px' : '9px 11px' }}>
                   <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
-                    <Avatar row={r} />
+                    <Avatar row={r} size={narrow ? 48 : 34} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ color: 'var(--ce2e8f0)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {displayName(r, vi)}
                         </span>
                         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>
@@ -529,7 +569,7 @@ export function InboxView() {
                         </span>
                         {r.unread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
                       </div>
-                      <p style={{ margin: '0 0 5px', fontSize: 12, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
+                      <p style={{ margin: '0 0 5px', fontSize: narrow ? 13.5 : 12, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                         {pill(st.tone, st.text)}
                         {/* The Page, named and in its own colour. Only while
@@ -590,7 +630,7 @@ export function InboxView() {
               {narrow && (
                 <button onClick={() => { setOpenId(null); setDetail(null); setShowInfo(false); }}
                   aria-label={vi ? 'Quay lại danh sách' : 'Back to list'}
-                  style={{ ...ghostBtn, padding: '4px 9px', fontSize: 15, lineHeight: 1 }}>‹</button>
+                  style={{ ...ghostBtn, padding: '10px 15px', fontSize: 19, lineHeight: 1, borderRadius: 12 }}>‹</button>
               )}
               <Avatar row={detail} size={34} />
               <div style={{ minWidth: 0 }}>
@@ -616,28 +656,32 @@ export function InboxView() {
                 </p>
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-                {pill(stateLabel(detail, vi).tone, stateLabel(detail, vi).text)}
+                {/* The phone header keeps ONE action. The state pill repeats
+                    what the list already showed, and "Done" lives on in the ⓘ
+                    panel — on a 390px screen every extra button here is paid
+                    for with letters of the customer's name. */}
+                {!narrow && pill(stateLabel(detail, vi).tone, stateLabel(detail, vi).text)}
                 {(state === 'human' || state === 'unclaimed')
-                  ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} style={ghostBtn}>{vi ? 'Trả bot' : 'To bot'}</button>
-                  : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} style={ghostBtn}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
-                {state !== 'done'
+                  ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10 } : {}) }}>{vi ? 'Trả bot' : 'To bot'}</button>
+                  : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' } : {}) }}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
+                {!narrow && (state !== 'done'
                   ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={ghostBtn}>{vi ? 'Xong' : 'Done'}</button>
-                  : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={ghostBtn}>{vi ? 'Mở lại' : 'Reopen'}</button>}
+                  : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={ghostBtn}>{vi ? 'Mở lại' : 'Reopen'}</button>)}
                 {narrow && (
                   // Labels, follow-up and notes are a column on a desktop and a
                   // panel behind this button on a phone. Same content either way.
-                  <button onClick={() => setShowInfo(true)} style={ghostBtn}
+                  <button onClick={() => setShowInfo(true)} style={{ ...ghostBtn, padding: '9px 13px', fontSize: 15, borderRadius: 10 }}
                     title={vi ? 'Nhãn · hẹn · ghi chú' : 'Labels · follow-up · notes'}>ⓘ</button>
                 )}
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 180, maxHeight: 'min(46vh, 420px)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
+            <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: narrow ? 0 : 180, maxHeight: narrow ? undefined : 'min(46vh, 420px)', padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
               {detail.history.map((t, i) => {
                 const mine = t.role === 'assistant';
                 return (
                   <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
-                    <div style={{ background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--c1e293b)', color: 'var(--ce2e8f0)', borderRadius: 12, padding: '7px 11px', fontSize: 13, whiteSpace: 'pre-wrap' }}>{t.content}</div>
+                    <div style={{ background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--c1e293b)', color: 'var(--ce2e8f0)', borderRadius: 16, padding: narrow ? '9px 13px' : '7px 11px', fontSize: narrow ? 15 : 13, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{t.content}</div>
                     <p style={{ margin: '3px 2px 0', fontSize: 11, color: 'var(--c64748b)', textAlign: mine ? 'right' : 'left' }}>
                       {/* Who said it. A staff reply and a bot reply looking
                           identical is how nobody could tell what the bot had
@@ -652,11 +696,12 @@ export function InboxView() {
             </div>
 
             {!!detail.canned?.length && !notice.blocked && (
-              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: '8px 10px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: narrow ? '8px 12px' : '8px 10px', display: 'flex', gap: narrow ? 8 : 6,
+                ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : { flexWrap: 'wrap' as const }) }}>
                 {detail.canned.map((q) => (
                   <button key={q.label} title={q.text}
                     onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
-                    style={{ ...ghostBtn, fontSize: 11, padding: '3px 9px' }}>{q.label}</button>
+                    style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '8px 13px' : '3px 9px', borderRadius: 999, flexShrink: 0 }}>{q.label}</button>
                 ))}
               </div>
             )}
@@ -667,13 +712,24 @@ export function InboxView() {
                 background: notice.blocked ? 'rgba(127,29,29,0.25)' : 'rgba(120,53,15,0.25)' }}>{notice.text}</div>
             )}
 
-            <div style={{ borderTop: '1px solid var(--c1e293b)', padding: 10, display: 'flex', gap: 8 }}>
+            <div style={{ borderTop: '1px solid var(--c1e293b)', padding: narrow ? '8px 10px' : 10, display: 'flex', gap: 8, alignItems: 'flex-end',
+              // The iPhone home bar floats over anything that ignores the safe
+              // area; a send button under it is a send button nobody can press.
+              paddingBottom: narrow ? 'calc(8px + env(safe-area-inset-bottom))' : 10 }}>
               <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                 placeholder={notice.blocked ? (vi ? 'Không gửi được — quá 24 giờ' : 'Cannot send — past 24 hours') : (vi ? `Nhắn cho ${displayName(detail, vi)}…` : 'Message the customer…')}
-                disabled={notice.blocked || busy} rows={2}
-                style={{ ...ui.input, flex: 1, resize: 'vertical', minHeight: 44 }} />
-              <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} style={ui.primaryBtn}>{vi ? 'Gửi' : 'Send'}</button>
+                disabled={notice.blocked || busy} rows={narrow ? 1 : 2}
+                style={{ ...ui.input, flex: 1, resize: narrow ? 'none' : 'vertical', minHeight: 44,
+                  fontSize: narrow ? 16 : 14, borderRadius: narrow ? 22 : 8, padding: narrow ? '11px 16px' : '9px 11px' }} />
+              {narrow ? (
+                <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()}
+                  aria-label={vi ? 'Gửi' : 'Send'}
+                  style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
+                    background: (notice.blocked || !draft.trim()) ? 'var(--c334155)' : '#6366f1', color: '#fff', fontSize: 19, lineHeight: 1 }}>➤</button>
+              ) : (
+                <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} style={ui.primaryBtn}>{vi ? 'Gửi' : 'Send'}</button>
+              )}
             </div>
 
           </>)}
@@ -685,7 +741,7 @@ export function InboxView() {
             the conversation. */}
         <div style={{
           borderLeft: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0,
-          background: 'var(--c0f172a)', overflowY: 'auto', maxHeight: narrow ? '75vh' : 'min(78vh, 700px)',
+          background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', maxHeight: narrow ? undefined : 'min(78vh, 700px)', minHeight: 0,
           // On a phone the notes, labels and follow-up live behind the ⓘ button
           // in the conversation header rather than in a fourth column.
           display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : 'flex',
@@ -720,6 +776,16 @@ export function InboxView() {
                 </p>
               )}
             </div>
+
+            {/* The phone header gave this button's seat to the customer's
+                name; the action itself moves here rather than disappearing. */}
+            {narrow && (
+              <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', gap: 8 }}>
+                {stateOf(detail) !== 'done'
+                  ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>✓ {vi ? 'Xong hội thoại' : 'Mark done'}</button>
+                  : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>{vi ? 'Mở lại hội thoại' : 'Reopen'}</button>}
+              </div>
+            )}
 
             {/* Labels: where this conversation stands. */}
             <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
@@ -839,7 +905,7 @@ export function InboxView() {
               />
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', maxHeight: 'min(40vh, 340px)', padding: '0 13px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: narrow ? undefined : 'min(40vh, 340px)', padding: '0 13px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
               {!detail.notes?.length && (
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>
               )}

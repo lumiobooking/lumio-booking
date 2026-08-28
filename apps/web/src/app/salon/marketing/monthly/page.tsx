@@ -848,7 +848,10 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
        /* Lining, equal-width digits: numbers in columns land in columns. */
        font-variant-numeric:tabular-nums}
   @media print{body{background:#fff;width:auto}}
-  .sheet{width:281mm;min-height:188mm;background:#fff;padding:9mm 11mm 6mm;display:flex;flex-direction:column;page-break-after:always;margin:0 auto;overflow:hidden}
+  .sheet{width:281mm;min-height:186mm;background:#fff;padding:9mm 11mm 6mm;display:flex;flex-direction:column;page-break-after:always;margin:0 auto;overflow:hidden}
+  /* The footer may never be orphaned onto its own page — the exact defect the
+     old export shipped with: one caption line floating alone on page 2. */
+  .foot{break-inside:avoid;page-break-inside:avoid}
   @media screen{.sheet{margin:10px auto;border:1px solid #dbe2ee;border-radius:10px}}
   .sheet:last-of-type{page-break-after:auto}
   .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}

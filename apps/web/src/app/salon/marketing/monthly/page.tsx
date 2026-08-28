@@ -879,7 +879,12 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   .muted{color:#7a8ba6;line-height:1.5}
   .empty{color:#8496b0;background:#f7f9fc;border:1px dashed #dde4ef;border-radius:10px;padding:14px 12px;text-align:center;font-size:12px}
   .foot{margin-top:auto;padding-top:7px;border-top:1px solid #e8edf5;display:flex;justify-content:space-between;align-items:baseline;gap:16px;color:#8a97ad;font-size:10px}
+  .toolbar{position:fixed;top:12px;right:14px;z-index:50;display:flex;align-items:center;gap:10px}
+  .print-btn{background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(79,70,229,.35)}
+  .toolbar .t-cap{color:#64748b;background:#fff;border:1px solid #e3e8f2;border-radius:8px;padding:4px 9px}
+  @media print{.toolbar{display:none}}
   </style></head><body>
+  <div class="toolbar"><span class="t-cap">${t('Ctrl+P cũng in được', 'Ctrl+P works too')}</span><button class="print-btn" onclick="doPrint()">🖨 ${t('In / Lưu PDF', 'Print / Save PDF')}</button></div>
   ${sheet1}
   ${gbpSheet}
   ${summarySheet}
@@ -910,20 +915,22 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     var ps=document.querySelectorAll('.sheet');
     for(var i=0;i<ps.length;i++){ ps[i].style.zoom=''; }
   }
+  // Ctrl+P and the browser menu land here too, so the fit always applies.
   window.onbeforeprint=fitPages;
   window.onafterprint=clearFit;
-  var printed=false;
-  function printOnce(){ if(printed) return; printed=true; fitPages(); window.print(); clearFit(); }
-  window.onload=function(){
+  // Printing happens when the PERSON asks, never on load. The old template
+  // fired window.print() the moment it opened — right for the one button in
+  // the app whose whole job is printing, and wrong everywhere else: opening
+  // the file just to read it slammed a print dialog in your face, and inside
+  // embedded viewers that cannot print at all it opened a dead dialog over
+  // the report. A visible button costs one click and surprises nobody.
+  function doPrint(){
     var ready=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
-    ready.then(function(){
-      var i=document.images,n=i.length,c=0;
-      function go(){ if(++c>=n){ setTimeout(printOnce,150); } }
-      if(!n){ printOnce(); return; }
-      for(var k=0;k<n;k++){ var m=i[k]; if(m.complete)go(); else { m.onload=go; m.onerror=go; } }
-    });
-    setTimeout(printOnce,2500);
-  };
+    var done=false;
+    ready.then(function(){ if(done) return; done=true; fitPages(); window.print(); clearFit(); });
+    // A blocked font CDN must delay the button by at most a second, not hang it.
+    setTimeout(function(){ if(done) return; done=true; fitPages(); window.print(); clearFit(); },1000);
+  }
   </script></body></html>`;
 
   const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); }

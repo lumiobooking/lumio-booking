@@ -70,7 +70,7 @@ const cCell = (v: string) => v === '✓'
   : <span style={{ color: '#4f46e5', fontWeight: 700, fontSize: 12.5 }}>{v}</span>;
 
 function ComparisonTable({ mobile }: { mobile: boolean }) {
-  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 700, textAlign: 'center', background: 'var(--c0f172a)', color: '#fff' };
+  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 700, textAlign: 'center', background: 'var(--c0f172a)', color: 'var(--cf8fafc)' };
   const cat: CSSProperties = { padding: '9px 12px', fontSize: 13, fontWeight: 800, color: 'var(--c0f172a)', background: '#eef2f7' };
   const feat: CSSProperties = { padding: '9px 12px', fontSize: 13.5, color: 'var(--c334155)', borderBottom: '1px solid var(--cf1f5f9)' };
   const val: CSSProperties = { padding: '9px 10px', fontSize: 14, textAlign: 'center', borderBottom: '1px solid var(--cf1f5f9)' };
@@ -303,7 +303,7 @@ export default function HomePage() {
       <footer style={{ background: 'var(--c0b1120)', color: 'var(--c94a3b8)' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: '40px 24px', display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--cf8fafc)' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></div>
             <p style={{ fontSize: 13, margin: '6px 0 0' }}>Booking &amp; salon management software.</p>
             <p style={{ fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.6, color: 'var(--c64748b)' }}>
               Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731, USA<br />

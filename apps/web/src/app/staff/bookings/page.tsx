@@ -361,6 +361,6 @@ const navBtn: React.CSSProperties = {
   background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 18, cursor: 'pointer', lineHeight: 1,
 };
 const acceptBtn: React.CSSProperties = {
-  padding: '6px 16px', borderRadius: 8, border: 'none', background: '#22c55e',
-  color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
+  padding: '6px 16px', borderRadius: 8, border: 'none', background: '#22c55e', color: 'white',
+  fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
 };

@@ -17,7 +17,7 @@
     "db:seed": "npm run db:seed --workspace=apps/api",
     "db:studio": "npm run db:studio --workspace=apps/api",
     "test": "jest",
-    "test:guards": "jest --selectProjects api web --testPathPattern \"(money|phone|sales-guards|market-badge|bootstrap|keepalive|markets|payment-methods|business-hours|sms-policy|esms|salon-clock|opening-bar|booking-rules-dto|thread-ownership|chat-assignment|inbox-view|history-merge|inbox-alerts|push-payload|messenger-access|linked-channels|theme|api-feedback|booking-sources)\""
+    "test:guards": "jest --selectProjects api web --testPathPattern \"(money|phone|sales-guards|market-badge|bootstrap|keepalive|markets|payment-methods|business-hours|sms-policy|esms|salon-clock|opening-bar|booking-rules-dto|thread-ownership|chat-assignment|inbox-view|history-merge|inbox-alerts|push-payload|messenger-access|linked-channels|theme|api-feedback|booking-sources|theme-lint)\""
   },
   "engines": {
     "node": ">=20.0.0"

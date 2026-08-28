@@ -241,7 +241,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--c0f172a)' }}>
           <span style={{ color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
-          <span style={{ color: '#fff', fontSize: 18, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
+          <span style={{ color: 'var(--cf8fafc)', fontSize: 18, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
         </div>
       </div>
 

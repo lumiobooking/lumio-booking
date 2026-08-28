@@ -523,7 +523,7 @@ function Inner() {
             return (
               <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 14, padding: 14, textAlign: 'center' }}>
                 <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-                <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', lineHeight: 1.1, margin: '4px 0' }}>{s.turns}</div>
+                <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '4px 0' }}>{s.turns}</div>
                 <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{t('wi.turns')}</div>
                 <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c64748b)' }}>
                   {isNext ? t('wi.nextUp') : s.busy ? t('wi.serving') : t('wi.free')}
@@ -772,7 +772,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--c0f172a)' }}>
               <span style={{ color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
-              <span style={{ color: '#fff', fontSize: 16, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
+              <span style={{ color: 'var(--cf8fafc)', fontSize: 16, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
             </div>
           </div>
 

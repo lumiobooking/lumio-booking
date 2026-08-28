@@ -253,7 +253,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                 <div key={w.id} style={{ background: 'var(--c1e293b)', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', minWidth: 230 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</button>{tag(w.source)}</div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{formatPrice(total, currency)}</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf8fafc)' }}>{formatPrice(total, currency)}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c94a3b8)', margin: '2px 0 8px' }}>{fullName(w.assignedStaff)} · {vi ? 'chờ' : 'waited'} {minsSince(w.assignedAt)}′</div>
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -395,7 +395,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
               ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--c0f172a)' }}>
               <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 700 }}>{vi ? 'Tạm tính' : 'Subtotal'}</span>
-              <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{formatPrice(subtotal, currency)}</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--cf8fafc)' }}>{formatPrice(subtotal, currency)}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>

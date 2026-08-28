@@ -148,6 +148,6 @@ const fine: React.CSSProperties = { fontSize: 12.5, lineHeight: 1.55, color: 'va
 const sample: React.CSSProperties = { background: 'var(--cf1f5f9)', border: '1px solid var(--ce2e8f0)', borderRadius: 10, padding: '10px 12px', fontSize: 13, lineHeight: 1.5, color: 'var(--c334155)', margin: '0 0 8px' };
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--c334155)', marginTop: 8, marginBottom: 6 };
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '12px 14px', fontSize: 15, borderRadius: 10, border: '1.5px solid var(--ccbd5e1)', outline: 'none' };
-const primaryBtn: React.CSSProperties = { width: '100%', marginTop: 18, background: 'var(--c111827)', color: '#fff', fontWeight: 700, fontSize: 15, padding: '13px', borderRadius: 10, border: 'none', cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { width: '100%', marginTop: 18, background: '#111827', color: '#fff', fontWeight: 700, fontSize: 15, padding: '13px', borderRadius: 10, border: 'none', cursor: 'pointer' };
 const ghostBtn: React.CSSProperties = { marginTop: 16, background: '#fff', color: 'var(--c334155)', fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, border: '1.5px solid var(--ccbd5e1)', cursor: 'pointer' };
 const a: React.CSSProperties = { color: INDIGO, textDecoration: 'none' };

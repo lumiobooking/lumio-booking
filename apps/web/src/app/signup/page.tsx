@@ -6,7 +6,7 @@ import { useIsMobile } from '../../lib/responsive';
 import { uiLocale } from '../../lib/datetime';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
-const INK = '#0f172a';
+const INK = 'var(--c0f172a)';
 const INDIGO = '#6366f1';
 
 interface PublicPlan {
@@ -82,11 +82,11 @@ export default function SignupPage() {
 
       <div style={{ maxWidth: 980, margin: '0 auto', padding: mobile ? '0 16px 48px' : '0 24px 64px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'minmax(0,1fr) 360px', gap: mobile ? 18 : 28, alignItems: 'start' }}>
         {/* Form */}
-        <form onSubmit={submit} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: mobile ? 20 : 32, boxShadow: '0 6px 24px rgba(15,23,42,0.06)', order: mobile ? 2 : 1 }}>
+        <form onSubmit={submit} style={{ background: '#fff', border: '1px solid var(--ce2e8f0)', borderRadius: 20, padding: mobile ? 20 : 32, boxShadow: '0 6px 24px rgba(15,23,42,0.06)', order: mobile ? 2 : 1 }}>
           <h1 style={{ fontSize: 26, margin: 0, letterSpacing: -0.5 }}>Create your salon account</h1>
-          <p style={{ color: '#64748b', margin: '6px 0 22px', fontSize: 15 }}>Start your {plan?.trialDays ?? 14}-day free trial. No charge today.</p>
+          <p style={{ color: 'var(--c64748b)', margin: '6px 0 22px', fontSize: 15 }}>Start your {plan?.trialDays ?? 14}-day free trial. No charge today.</p>
 
-          {canceled && <Banner color="#92400e" bg="#fef3c7">Checkout was canceled — you can try again below.</Banner>}
+          {canceled && <Banner color="var(--c92400e)" bg="var(--cfef3c7)">Checkout was canceled — you can try again below.</Banner>}
           {error && <Banner color="#b91c1c" bg="#fee2e2">{error}</Banner>}
 
           <Field label="Salon name"><input required style={input} value={form.salonName} onChange={upd('salonName')} placeholder="e.g. Lumio Nails &amp; Spa" /></Field>
@@ -111,23 +111,23 @@ export default function SignupPage() {
           <button type="submit" disabled={submitting || !plan || (!plan?.providers.stripe && !plan?.providers.paypal)} style={{ ...primaryBtn, width: '100%', padding: 14, fontSize: 16, marginTop: 22, opacity: submitting ? 0.7 : 1 }}>
             {submitting ? 'Redirecting to secure checkout…' : 'Continue to secure checkout →'}
           </button>
-          <p style={{ color: '#94a3b8', fontSize: 12.5, marginTop: 12, textAlign: 'center' }}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, marginTop: 12, textAlign: 'center' }}>
             You'll be redirected to {provider === 'paypal' ? 'PayPal' : 'Stripe'} to finish securely. Already have an account? <Link href="/login" style={{ color: INDIGO }}>Sign in</Link>
           </p>
         </form>
 
         {/* Order summary */}
-        <aside style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 20, padding: mobile ? 20 : 26, position: mobile ? 'static' : 'sticky', top: 24, order: mobile ? 1 : 2 }}>
-          <h2 style={{ fontSize: 16, margin: '0 0 14px', color: '#334155' }}>Order summary</h2>
-          {!plan ? <p style={{ color: '#94a3b8', fontSize: 14 }}>Loading plans…</p> : (
+        <aside style={{ background: '#fff', border: '1px solid var(--ce2e8f0)', borderRadius: 20, padding: mobile ? 20 : 26, position: mobile ? 'static' : 'sticky', top: 24, order: mobile ? 1 : 2 }}>
+          <h2 style={{ fontSize: 16, margin: '0 0 14px', color: 'var(--c334155)' }}>Order summary</h2>
+          {!plan ? <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>Loading plans…</p> : (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <strong style={{ fontSize: 18 }}>{plan.name}</strong>
-                <span style={{ fontWeight: 800, fontSize: 20 }}>{money(cents, plan.currency)}<span style={{ color: '#64748b', fontSize: 13, fontWeight: 400 }}>/{interval === 'year' ? 'yr' : 'mo'}</span></span>
+                <span style={{ fontWeight: 800, fontSize: 20 }}>{money(cents, plan.currency)}<span style={{ color: 'var(--c64748b)', fontSize: 13, fontWeight: 400 }}>/{interval === 'year' ? 'yr' : 'mo'}</span></span>
               </div>
-              {plan.tagline && <p style={{ color: '#64748b', fontSize: 13, margin: '6px 0 0' }}>{plan.tagline}</p>}
+              {plan.tagline && <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: '6px 0 0' }}>{plan.tagline}</p>}
 
-              <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: 999, padding: 3, marginTop: 16 }}>
+              <div style={{ display: 'inline-flex', background: 'var(--cf1f5f9)', borderRadius: 999, padding: 3, marginTop: 16 }}>
                 <button type="button" onClick={() => setInterval('month')} style={miniToggle(interval === 'month')}>Monthly</button>
                 <button type="button" onClick={() => setInterval('year')} style={miniToggle(interval === 'year')}>Yearly</button>
               </div>
@@ -146,7 +146,7 @@ export default function SignupPage() {
               </div>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {plan.features.slice(0, 6).map((f) => (
-                  <li key={f} style={{ display: 'flex', gap: 8, fontSize: 13.5, color: '#334155' }}><span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}</li>
+                  <li key={f} style={{ display: 'flex', gap: 8, fontSize: 13.5, color: 'var(--c334155)' }}><span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}</li>
                 ))}
               </ul>
             </>
@@ -164,12 +164,12 @@ function Banner({ children, color, bg }: { children: React.ReactNode; color: str
   return <div style={{ background: bg, color, padding: '10px 14px', borderRadius: 10, fontSize: 14, marginBottom: 16 }}>{children}</div>;
 }
 function ProviderBtn({ active, onClick, label: l }: { active: boolean; onClick: () => void; label: string }) {
-  return <button type="button" onClick={onClick} style={{ flex: 1, padding: '11px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 14, border: `1.5px solid ${active ? INDIGO : '#cbd5e1'}`, background: active ? '#eef2ff' : '#fff', color: active ? '#4338ca' : '#334155' }}>{l}</button>;
+  return <button type="button" onClick={onClick} style={{ flex: 1, padding: '11px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 14, border: `1.5px solid ${active ? INDIGO : 'var(--ccbd5e1)'}`, background: active ? '#eef2ff' : '#fff', color: active ? '#4338ca' : 'var(--c334155)' }}>{l}</button>;
 }
 
-const label: React.CSSProperties = { display: 'block', fontSize: 13, color: '#475569', fontWeight: 600, marginBottom: 4 };
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 15, color: INK, background: '#fff' };
+const label: React.CSSProperties = { display: 'block', fontSize: 13, color: 'var(--c475569)', fontWeight: 600, marginBottom: 4 };
+const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid var(--ccbd5e1)', fontSize: 15, color: INK, background: '#fff' };
 const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 700, border: 'none', borderRadius: 12, cursor: 'pointer' };
 function miniToggle(active: boolean): React.CSSProperties {
-  return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, background: active ? INDIGO : 'transparent', color: active ? '#fff' : '#475569' };
+  return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, background: active ? INDIGO : 'transparent', color: active ? '#fff' : 'var(--c475569)' };
 }

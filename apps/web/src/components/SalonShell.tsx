@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
 import { InboxAlerts } from './InboxAlerts';
+import { ThemeToggle } from './ThemeToggle';
 import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -255,7 +256,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8', background: '#0b1120' }}>
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)', background: 'var(--c0b1120)' }}>
         {tr('shell.loading', lang)}
       </div>
     );
@@ -264,7 +265,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // Lumio SUPPORT session: a thin, always-visible strip so the employee can
   // never forget WHICH salon they are inside — and one tap takes them home.
   const supportBanner = user?.supportSession ? (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#312e81', border: '1px solid #6366f1', color: '#e0e7ff', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
       <span style={{ fontWeight: 700 }}>🛠 Lumio Support</span>
       <span style={{ opacity: 0.9 }}>— {tr('shell.supportIn', lang)} <b>{user.tenantName || '…'}</b></span>
       <button
@@ -292,7 +293,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           display: 'flex', alignItems: 'center', gap: 10,
           padding: indent ? '9px 12px 9px 22px' : '11px 12px', borderRadius: 8, fontSize: indent ? 14 : 15,
           textDecoration: 'none',
-          color: active ? 'white' : '#94a3b8',
+          color: active ? 'white' : 'var(--c94a3b8)',
           background: active ? '#6366f1' : 'transparent',
           fontWeight: active ? 600 : 500,
         }}
@@ -316,7 +317,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
                 padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                background: 'transparent', color: hasActive && !open ? '#c7d2fe' : '#64748b',
+                background: 'transparent', color: hasActive && !open ? 'var(--cc7d2fe)' : 'var(--c64748b)',
                 fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
               }}
             >
@@ -339,23 +340,23 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   );
 
   const footer = (
-    <div style={{ marginTop: 'auto', borderTop: '1px solid #1f2937', paddingTop: 14 }}>
+    <div style={{ marginTop: 'auto', borderTop: '1px solid var(--c1f2937)', paddingTop: 14 }}>
       <div style={{ marginBottom: 10 }}>
         <ShareBookingLink />
       </div>
-      <div style={{ fontSize: 12, color: '#94a3b8', padding: '0 10px 8px', wordBreak: 'break-all' }}>{user.email}</div>
-      <Link href="/salon/account" style={{ display: 'block', textAlign: 'center', marginBottom: 8, padding: '9px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, textDecoration: 'none' }}>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', padding: '0 10px 8px', wordBreak: 'break-all' }}>{user.email}</div>
+      <Link href="/salon/account" style={{ display: 'block', textAlign: 'center', marginBottom: 8, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, textDecoration: 'none' }}>
         {tr('shell.myAccount', lang)}
       </Link>
-      <button onClick={logout} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>
+      <button onClick={logout} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer' }}>
         {tr('shell.logout', lang)}
       </button>
       <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
         <InstallAppButton label={tr('shell.installApp', lang)} />
       </div>
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
-        style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 11, color: '#64748b', textDecoration: 'none' }}>
-        Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>
+        style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 11, color: 'var(--c64748b)', textDecoration: 'none' }}>
+        Powered by <span style={{ color: 'var(--c818cf8)', fontWeight: 600 }}>Lumio Booking</span>
       </a>
     </div>
   );
@@ -364,34 +365,34 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     <div style={{ padding: '4px 10px 18px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0' }}>Lumio</span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)' }}>Lumio</span>
           <MarketBadge compact />
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {(['en', 'vi'] as const).map((l) => (
             <button key={l} onClick={() => setLang(l)} aria-label={l === 'en' ? 'English' : 'Tiếng Việt'}
               style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                border: `1px solid ${lang === l ? '#6366f1' : '#334155'}`, background: lang === l ? '#6366f1' : 'transparent', color: lang === l ? '#fff' : '#94a3b8' }}>
+                border: `1px solid ${lang === l ? '#6366f1' : 'var(--c334155)'}`, background: lang === l ? '#6366f1' : 'transparent', color: lang === l ? '#fff' : 'var(--c94a3b8)' }}>
               {l === 'en' ? 'EN' : 'VI'}
             </button>
           ))}
         </div>
       </div>
-      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{tr('shell.subtitle', lang)}</div>
+      <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 2 }}>{tr('shell.subtitle', lang)}</div>
     </div>
   );
 
   // ---------------------------- Mobile ----------------------------
   if (isMobile) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0b1120' }}>
+      <div style={{ minHeight: '100vh', background: 'var(--c0b1120)' }}>
         {/* Sticky top bar */}
-        <header style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: '#111827', borderBottom: '1px solid #1f2937' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0' }}>Lumio</div>
+        <header style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'var(--c111827)', borderBottom: '1px solid var(--c1f2937)' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)' }}>Lumio</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <NotificationBell />
             <button onClick={() => setDrawerOpen(true)} aria-label="Menu"
-              style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
               ☰
             </button>
           </div>
@@ -401,10 +402,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         {drawerOpen && (
           <>
             <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 40 }} />
-            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: '#111827', borderRight: '1px solid #1f2937', padding: '18px 14px', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 50, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
+            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 14px', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 50, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 {brand}
-                <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: '#94a3b8', fontSize: 22, cursor: 'pointer' }}>✕</button>
+                <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>✕</button>
               </div>
               <BranchSwitcher />
               {navList}
@@ -413,7 +414,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           </>
         )}
 
-        <main style={{ padding: '18px 16px 88px', color: '#e2e8f0', minWidth: 0 }}>{supportBanner}{children}</main>
+        <main style={{ padding: '18px 16px 88px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{children}</main>
         <MobileTabBar />
       </div>
     );
@@ -421,9 +422,9 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   // ---------------------------- Desktop ----------------------------
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: navHidden ? '1fr' : '230px 1fr', background: '#0b1120' }}>
+    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: navHidden ? '1fr' : '230px 1fr', background: 'var(--c0b1120)' }}>
       {!navHidden && (
-        <aside style={{ background: '#111827', borderRight: '1px solid #1f2937', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
+        <aside style={{ background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
           {brand}
           <BranchSwitcher />
           {navList}
@@ -431,20 +432,21 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         </aside>
       )}
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'rgba(11,17,32,0.82)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid #1f2937' }}>
+        <header style={{ position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'var(--glass)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid var(--c1f2937)' }}>
           <button
             onClick={toggleNav}
             title={navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu — màn hình rộng hơn' : 'Collapse menu — wider screen')}
             aria-label={navHidden ? 'Show menu' : 'Collapse menu'}
-            style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: '#1e293b', border: '1px solid #475569', color: '#e2e8f0', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--c1e293b)', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
             {navHidden ? '☰' : '⟨⟨'}
             <span>{navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu' : 'Collapse menu')}</span>
           </button>
+          <ThemeToggle />
           <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} />
           <NotificationBell />
         </header>
-        <main style={{ padding: '22px 32px 40px', color: '#e2e8f0', minWidth: 0 }}>{supportBanner}{children}</main>
+        <main style={{ padding: '22px 32px 40px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{children}</main>
       </div>
     </div>
   );
@@ -490,13 +492,13 @@ function BranchSwitcher() {
   }
 
   return (
-    <div style={{ padding: '0 10px 14px', marginBottom: 4, borderBottom: '1px solid #1f2937' }}>
-      <div style={{ fontSize: 11, color: '#818cf8', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>{tr('shell.branch', lang)}</div>
+    <div style={{ padding: '0 10px 14px', marginBottom: 4, borderBottom: '1px solid var(--c1f2937)' }}>
+      <div style={{ fontSize: 11, color: 'var(--c818cf8)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>{tr('shell.branch', lang)}</div>
       <select value={active} onChange={(e) => switchTo(e.target.value)}
-        style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #4f46e5', background: '#1e293b', color: '#e2e8f0', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+        style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #4f46e5', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
         {branches.map((b) => <option key={b.id} value={b.id}>{b.name}{b.id === home ? ' ★' : ''}</option>)}
       </select>
-      <Link href="/salon/chain" style={{ display: 'block', textAlign: 'center', marginTop: 8, fontSize: 12, color: '#a5b4fc', textDecoration: 'none' }}>
+      <Link href="/salon/chain" style={{ display: 'block', textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--ca5b4fc)', textDecoration: 'none' }}>
         {tr('shell.chainReport', lang)} →
       </Link>
     </div>

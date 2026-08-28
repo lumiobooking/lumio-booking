@@ -128,7 +128,7 @@ function Inner() {
       {/* Option 1: hosted online booking link (no WordPress needed) */}
       <div style={{ ...ui.card, marginBottom: 20 }}>
         <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>{t('in.bookingLinkTitle')}</h2>
-        <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
+        <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>
           {t('in.bookingLinkDesc')}
         </p>
         {bookingLink ? (
@@ -138,7 +138,7 @@ function Inner() {
                 flex: 1,
                 minWidth: 240,
                 padding: '10px 12px',
-                background: '#0f172a',
+                background: 'var(--c0f172a)',
                 borderRadius: 8,
                 wordBreak: 'break-all',
                 fontSize: 14,
@@ -149,27 +149,27 @@ function Inner() {
             <button onClick={() => navigator.clipboard?.writeText(bookingLink)} style={ui.primaryBtn}>
               {t('in.copy')}
             </button>
-            <a href={bookingLink} target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid #475569', color: '#e2e8f0' }}>
+            <a href={bookingLink} target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)' }}>
               {t('in.open')}
             </a>
           </div>
         ) : (
-          <p style={{ color: '#64748b', fontSize: 13 }}>{t('in.loadingLink')}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('in.loadingLink')}</p>
         )}
       </div>
 
       {/* Add the Book button to the salon's Google Business Profile */}
       <div style={{ ...ui.card, marginBottom: 20 }}>
         <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>📍 {lang === 'vi' ? 'Thêm nút “Book online” lên Google' : 'Add a “Book online” button to Google'}</h2>
-        <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14, lineHeight: 1.6 }}>
+        <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14, lineHeight: 1.6 }}>
           {lang === 'vi'
             ? 'Dán link NGẮN dưới đây vào Google Business Profile của tiệm. Route /gbp mở đúng form đặt lịch bình thường và tự gắn nguồn Google Maps — mỗi booking từ Google được ghi nhận đích danh, không cần link dài lằng nhằng UTM. Google duyệt ~24–48h.'
             : 'Paste the SHORT link below into the salon\'s Google Business Profile. The /gbp route opens the normal booking form and stamps the Google Maps source itself — every Google booking is attributed by name, no long UTM link needed. Google reviews it in ~24–48h.'}
         </p>
         {gbpLink && (
-          <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '9px 12px', fontFamily: 'monospace', fontSize: 12, color: '#a5b4fc', wordBreak: 'break-all', marginBottom: 10 }}>{gbpLink}</div>
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '9px 12px', fontFamily: 'monospace', fontSize: 12, color: 'var(--ca5b4fc)', wordBreak: 'break-all', marginBottom: 10 }}>{gbpLink}</div>
         )}
-        <ol style={{ color: '#cbd5e1', fontSize: 13.5, lineHeight: 1.9, margin: '8px 0 12px', paddingLeft: 20 }}>
+        <ol style={{ color: 'var(--ccbd5e1)', fontSize: 13.5, lineHeight: 1.9, margin: '8px 0 12px', paddingLeft: 20 }}>
           <li>{lang === 'vi' ? 'Mở Google Business Profile của tiệm (nút dưới), đăng nhập tài khoản sở hữu hồ sơ.' : 'Open the salon\'s Google Business Profile (button below); sign in with the owning account.'}</li>
           <li>{lang === 'vi' ? 'Edit profile → Bookings / Appointment links.' : 'Edit profile → Bookings / Appointment links.'}</li>
           <li>{lang === 'vi' ? 'Add appointment link → dán ĐÚNG link /gbp ở trên (đừng dán link thường — sẽ mất định danh nguồn Google) → Save.' : 'Add appointment link → paste the /gbp link above (not the plain link — you would lose Google attribution) → Save.'}</li>
@@ -180,11 +180,11 @@ function Inner() {
           <button onClick={() => gbpLink && navigator.clipboard?.writeText(gbpLink)} style={ui.primaryBtn} disabled={!gbpLink}>
             {lang === 'vi' ? 'Copy link /gbp cho Google' : 'Copy /gbp Google link'}
           </button>
-          <a href="https://business.google.com/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid #475569', color: '#e2e8f0' }}>
+          <a href="https://business.google.com/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)' }}>
             {lang === 'vi' ? 'Mở Google Business Profile ↗' : 'Open Google Business Profile ↗'}
           </a>
         </div>
-        <p style={{ color: '#64748b', fontSize: 11.5, marginTop: 10, lineHeight: 1.5 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 10, lineHeight: 1.5 }}>
           {lang === 'vi'
             ? '⚠️ Nếu tiệm đang dùng provider khác (Booksy/Vagaro…), Google có thể ưu tiên cái đó — gỡ liên kết provider cũ để link Lumio hiện. Hồ sơ Google phải đã được xác minh (verified).'
             : '⚠️ If the salon already uses another provider (Booksy/Vagaro…), Google may prefer it — remove the old provider link so the Lumio link shows. The Google profile must be verified.'}
@@ -193,7 +193,7 @@ function Inner() {
 
       {/* Option 2: WordPress plugin via API key */}
       <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>{t('in.wpTitle')}</h2>
-      <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
+      <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>
         {t('in.wpDesc')}
       </p>
 
@@ -206,14 +206,14 @@ function Inner() {
           }}
         >
           <strong style={{ color: '#22c55e' }}>{t('in.copyNow')}</strong>
-          <p style={{ color: '#cbd5e1', fontSize: 13, margin: '6px 0' }}>
+          <p style={{ color: 'var(--ccbd5e1)', fontSize: 13, margin: '6px 0' }}>
             {t('in.onlyOnce')}
           </p>
           <code
             style={{
               display: 'block',
               padding: '10px 12px',
-              background: '#0f172a',
+              background: 'var(--c0f172a)',
               borderRadius: 8,
               wordBreak: 'break-all',
               fontSize: 14,
@@ -247,12 +247,12 @@ function Inner() {
       </form>
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>{t('in.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('in.loading')}</p>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#1e293b' }}>
+              <tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={ui.th}>{t('in.colName')}</th>
                 <th style={ui.th}>{t('in.colKey')}</th>
                 <th style={ui.th}>{t('in.colStatus')}</th>
@@ -269,9 +269,9 @@ function Inner() {
                 </tr>
               )}
               {keys.map((k) => (
-                <tr key={k.id} style={{ borderTop: '1px solid #334155' }}>
+                <tr key={k.id} style={{ borderTop: '1px solid var(--c334155)' }}>
                   <td style={ui.td}>{k.name ?? '—'}</td>
-                  <td style={{ ...ui.td, color: '#94a3b8', fontFamily: 'monospace' }}>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)', fontFamily: 'monospace' }}>
                     {k.keyPrefix}…{k.lastFour}
                   </td>
                   <td style={ui.td}>
@@ -279,7 +279,7 @@ function Inner() {
                       {k.status}
                     </span>
                   </td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>
                     {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString(uiLocale()) : t('in.never')}
                   </td>
                   <td style={ui.td}>
@@ -296,19 +296,19 @@ function Inner() {
         </div>
       )}
       <h2 style={{ fontSize: 18, margin: '30px 0 4px' }}>📊 Google Analytics & Tag Manager</h2>
-      <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.6, maxWidth: 680 }}>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 12px', lineHeight: 1.6, maxWidth: 680 }}>
         {lang === 'vi'
           ? 'Dùng CÙNG một GA4/GTM với website của tiệm — mọi nguồn sẽ gom về một báo cáo. Cách hệ thống liên kết, không bao giờ đếm trùng: (1) Form NHÚNG trên website → sự kiện đặt lịch được đẩy lên GTM/GA4 CỦA WEBSITE, tính đúng phiên quảng cáo; (2) Khách mở TRỰC TIẾP trang đặt lịch (Google Maps, link bio, ads trỏ thẳng) → trang tự đo bằng ID dán ở đây, kèm nguồn (google/gbp, facebook/cpc…). Trong GA4 xem: Engagement → Events → booking_completed, thêm chiều “Session source/medium” là biết khách đặt từ đâu nhiều nhất.'
           : 'Use the SAME GA4/GTM as the salon website — every source lands in one report. How it links without double-counting: (1) the EMBEDDED form forwards booking events to the WEBSITE’s own GTM/GA4, credited to the ad session; (2) customers opening the booking page DIRECTLY (Google Maps, bio links, ads to the link) are measured here with their source (google/gbp, facebook/cpc…). In GA4: Engagement → Events → booking_completed, add “Session source/medium” to see where bookings come from.'}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: 640 }}>
-        <label style={{ fontSize: 13, color: '#cbd5e1' }}>GA4 Measurement ID
+        <label style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>GA4 Measurement ID
           <input style={{ ...ui.input, marginTop: 4 }} value={ga4Id} onChange={(e) => setGa4Id(e.target.value)} placeholder="G-XXXXXXXXXX" />
         </label>
-        <label style={{ fontSize: 13, color: '#cbd5e1' }}>GTM Container ID
+        <label style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>GTM Container ID
           <input style={{ ...ui.input, marginTop: 4 }} value={gtmId} onChange={(e) => setGtmId(e.target.value)} placeholder="GTM-XXXXXXX" />
         </label>
-        <label style={{ fontSize: 13, color: '#cbd5e1' }}>{lang === 'vi' ? 'Phương thức đo (chỉ MỘT chạy)' : 'Tracking method (only ONE runs)'}
+        <label style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Phương thức đo (chỉ MỘT chạy)' : 'Tracking method (only ONE runs)'}
           <select style={{ ...ui.input, marginTop: 4 }} value={anMode} onChange={(e) => setAnMode(e.target.value)}>
             <option value="">{lang === 'vi' ? 'Tự động — ưu tiên GTM, không có thì GA4' : 'Auto — GTM if set, else GA4'}</option>
             <option value="gtm">{lang === 'vi' ? 'Chỉ GTM (container tự chứa Google Tag)' : 'GTM only (container holds the Google Tag)'}</option>
@@ -317,14 +317,14 @@ function Inner() {
           </select>
         </label>
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0', maxWidth: 640, lineHeight: 1.5 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0', maxWidth: 640, lineHeight: 1.5 }}>
         {lang === 'vi'
           ? 'Vì sao chỉ một? GTM thường đã chứa Google Tag (GA4) bên trong — nếu nạp thêm GA4 trực tiếp, mỗi lượt xem và mỗi đặt lịch sẽ bị đếm 2 lần. Hệ thống chỉ nạp đúng một phương thức và bắn đúng một sự kiện booking_completed cho mỗi đơn.'
           : 'Why only one? A GTM container usually already includes the Google Tag (GA4) — loading GA4 directly as well would double-count every pageview and booking. The system loads exactly one method and fires exactly one booking_completed per order.'}
       </p>
-      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', marginTop: 12, maxWidth: 640 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>{lang === 'vi' ? '⚡ Tiệm mới? Import mẫu GTM dựng sẵn (2 phút)' : '⚡ New salon? Import the ready-made GTM template (2 min)'}</div>
-        <div style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>
+      <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px', marginTop: 12, maxWidth: 640 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{lang === 'vi' ? '⚡ Tiệm mới? Import mẫu GTM dựng sẵn (2 phút)' : '⚡ New salon? Import the ready-made GTM template (2 min)'}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
           {lang === 'vi'
             ? 'Tải file mẫu → GTM Admin → Import Container → chọn file → Merge → sửa MỘT biến "CONST - GA4 Measurement ID" thành G-ID của tiệm → Publish. Có sẵn: Google Tag nền, purchase (booking) và click_call — khỏi tạo tay từng biến/trigger/tag.'
             : 'Download → GTM Admin → Import Container → choose file → Merge → edit ONE variable "CONST - GA4 Measurement ID" to the salon\'s G-ID → Publish. Includes the base Google Tag, purchase (booking) and click_call — no manual variables/triggers/tags.'}

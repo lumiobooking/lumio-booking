@@ -160,10 +160,10 @@ function ServicesInner() {
         <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto', flexWrap: 'wrap' }}>
           <button onClick={() => fillImages(false)} disabled={filling}
             title={lang === 'vi' ? 'Tự thêm ảnh nail/spa mẫu cho các dịch vụ chưa có ảnh (dùng khi demo)' : 'Auto-add sample nail/spa photos to services without an image (for demos)'}
-            style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #6366f1', color: '#a5b4fc', opacity: filling ? 0.6 : 1 }}>
+            style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', opacity: filling ? 0.6 : 1 }}>
             {filling ? (lang === 'vi' ? 'Đang thêm ảnh…' : 'Adding…') : (lang === 'vi' ? '🖼 Ảnh mẫu' : '🖼 Sample images')}
           </button>
-          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #475569' }}>
+          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid var(--c475569)' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
           </button>
           <button onClick={() => { setShowForm((s) => !s); setShowImport(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined }}>
@@ -174,7 +174,7 @@ function ServicesInner() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('sv.searchPh')} />
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('sv.serviceWord')}</span>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('sv.serviceWord')}</span>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -212,11 +212,11 @@ function ServicesInner() {
       )}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>{t('sv.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('sv.loading')}</p>
       ) : isMobile ? (
         <>
           <MList>
-            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('sv.empty')}</p>}
+            {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('sv.empty')}</p>}
             {pg.paged.map((s) => (
               <ServiceCard key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
             ))}
@@ -226,10 +226,10 @@ function ServicesInner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/services/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#1e293b' }}>
+              <tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('sv.colName')}</th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colCategory')}</th>
@@ -271,21 +271,21 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
   const [editing, setEditing] = useState(false);
   return (
     <>
-      <tr style={{ borderTop: '1px solid #334155', background: selected ? '#1e1b4b' : undefined }}>
+      <tr style={{ borderTop: '1px solid var(--c334155)', background: selected ? 'var(--c1e1b4b)' : undefined }}>
         <td style={{ ...ui.td, width: 34 }}>{onSelect && <BulkRowBox on={!!selected} onChange={onSelect} />}</td>
         <td style={ui.td}>
           <div>
             {s.name}
-            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
+            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: 'var(--c1f2937)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
           </div>
-          {s.description && <div style={{ color: '#94a3b8', fontSize: 12 }}>{s.description}</div>}
+          {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
         </td>
-        <td style={{ ...ui.td, color: '#94a3b8' }}>{catName(s.categoryId)}</td>
+        <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{catName(s.categoryId)}</td>
         <td style={ui.td}>{s.durationMinutes} {t('sv.min')}</td>
         <td style={ui.td}>
           {s.discountPercent && s.discountPercent > 0 ? (
             <span>
-              <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{fmt(s.priceCents)}</span>
+              <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
               <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
             </span>
@@ -294,16 +294,16 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
           )}
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
-          <button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : '#64748b'}`, color: s.isActive ? '#22c55e' : '#94a3b8', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>
+          <button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : 'var(--c64748b)'}`, color: s.isActive ? '#22c55e' : 'var(--c94a3b8)', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>
             {s.isActive ? t('sv.active') : t('sv.inactive')}
           </button>
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
           <div style={{ display: 'inline-flex', gap: 6 }}>
-            <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? '#475569' : '#0ea5e9')}>
+            <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? 'var(--c475569)' : '#0ea5e9')}>
               {editing ? t('sv.close') : t('sv.edit')}
             </button>
-            <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? '#475569' : '#6366f1')}>
+            <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? 'var(--c475569)' : '#6366f1')}>
               {open ? t('sv.hide') : t('sv.addons')}
             </button>
             <button onClick={onDelete} style={actBtn('#b91c1c')}>{t('sv.delete')}</button>
@@ -312,14 +312,14 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
       </tr>
       {editing && (
         <tr>
-          <td colSpan={6} style={{ padding: 0, background: '#0f172a' }}>
+          <td colSpan={6} style={{ padding: 0, background: 'var(--c0f172a)' }}>
             <EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} />
           </td>
         </tr>
       )}
       {open && (
         <tr>
-          <td colSpan={6} style={{ padding: 0, background: '#0f172a' }}>
+          <td colSpan={6} style={{ padding: 0, background: 'var(--c0f172a)' }}>
             <AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} />
           </td>
         </tr>
@@ -339,29 +339,29 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
   return (
     <>
       <MCard>
-        <MHead right={<button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : '#64748b'}`, color: s.isActive ? '#22c55e' : '#94a3b8', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>{s.isActive ? t('sv.active') : t('sv.inactive')}</button>}>
-          {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
+        <MHead right={<button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : 'var(--c64748b)'}`, color: s.isActive ? '#22c55e' : 'var(--c94a3b8)', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>{s.isActive ? t('sv.active') : t('sv.inactive')}</button>}>
+          {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: 'var(--c1f2937)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
         </MHead>
-        {s.description && <div style={{ color: '#94a3b8', fontSize: 12 }}>{s.description}</div>}
+        {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
         <MRow label={t('sv.colCategory')}>{catName(s.categoryId)}</MRow>
         <MRow label={t('sv.colDuration')}>{s.durationMinutes} {t('sv.min')}</MRow>
         <MRow label={t('sv.colPrice')}>
           {s.discountPercent && s.discountPercent > 0 ? (
             <span>
-              <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{fmt(s.priceCents)}</span>
+              <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
               <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
             </span>
           ) : fmt(s.priceCents)}
         </MRow>
         <MActions>
-          <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? '#475569' : '#0ea5e9')}>{editing ? t('sv.close') : t('sv.edit')}</button>
-          <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? '#475569' : '#6366f1')}>{open ? t('sv.hide') : t('sv.addons')}</button>
+          <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? 'var(--c475569)' : '#0ea5e9')}>{editing ? t('sv.close') : t('sv.edit')}</button>
+          <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? 'var(--c475569)' : '#6366f1')}>{open ? t('sv.hide') : t('sv.addons')}</button>
           <button onClick={onDelete} style={actBtn('#b91c1c')}>{t('sv.delete')}</button>
         </MActions>
       </MCard>
-      {editing && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} /></div>}
-      {open && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} /></div>}
+      {editing && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} /></div>}
+      {open && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} /></div>}
     </>
   );
 }
@@ -430,7 +430,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
 
   return (
     <form onSubmit={save} style={{ padding: 16 }}>
-      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{t('sv.editService')}</div>
+      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 8, fontWeight: 600 }}>{t('sv.editService')}</div>
       {error && <div style={ui.banner}>{error}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         <label><span style={ui.label}>{t('sv.fName')}</span><input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
@@ -445,10 +445,10 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }}>
           <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> {t('sv.popularLabel')}
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }}>
           <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
       </div>
@@ -515,16 +515,16 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
 
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{t('sv.addonsTitle')}</div>
+      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 8, fontWeight: 600 }}>{t('sv.addonsTitle')}</div>
       {error && <div style={ui.banner}>{error}</div>}
       {addons.length === 0 ? (
-        <div style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>{t('sv.noAddons')}</div>
+        <div style={{ color: 'var(--c64748b)', fontSize: 13, marginBottom: 10 }}>{t('sv.noAddons')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {addons.map((a) => (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
               <span style={{ flex: 1 }}>{a.name}</span>
-              <span style={{ color: '#94a3b8' }}>{a.durationMinutes} {t('sv.min')}</span>
+              <span style={{ color: 'var(--c94a3b8)' }}>{a.durationMinutes} {t('sv.min')}</span>
               <span style={{ color: '#22c55e' }}>{fmt(a.priceCents)}</span>
               <button onClick={() => remove(a.id)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>{t('sv.remove')}</button>
             </div>
@@ -641,10 +641,10 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8, whiteSpace: 'nowrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} /> {t('sv.popularLabel')}
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', paddingBottom: 8, whiteSpace: 'nowrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
       </div>
@@ -729,7 +729,7 @@ function ImageField({ value, onChange, token }: { value: string; onChange: (v: s
     <div style={{ marginTop: 12 }}>
       <span style={ui.label}>{t('sv.fImage')}</span>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <span style={{ width: 52, height: 52, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: '#0f172a', border: '1px solid #334155', color: '#475569', fontSize: 18 }}>
+        <span style={{ width: 52, height: 52, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--c475569)', fontSize: 18 }}>
           {ok
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={show} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
@@ -750,8 +750,8 @@ function ImageField({ value, onChange, token }: { value: string; onChange: (v: s
         value={show.startsWith('data:') ? '' : value}
         placeholder={t('sv.imgOrPaste')}
         onChange={(e) => onChange(e.target.value)} />
-      {err && <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 5 }}>{err}</div>}
-      <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 5 }}>{t('sv.fImageHelp')}</div>
+      {err && <div style={{ fontSize: 11.5, color: 'var(--cf87171)', marginTop: 5 }}>{err}</div>}
+      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 5 }}>{t('sv.fImageHelp')}</div>
     </div>
   );
 }
@@ -765,7 +765,7 @@ function StaffPicker({ all, ids, set }: { all: Staff[]; ids: string[]; set: (v: 
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   if (all.length === 0) {
-    return <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.noStaff')} <a href="/salon/staff" style={{ color: '#818cf8' }}>{t('sv.staffLink')}</a></p>;
+    return <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.noStaff')} <a href="/salon/staff" style={{ color: 'var(--c818cf8)' }}>{t('sv.staffLink')}</a></p>;
   }
   const has = (id: string) => ids.includes(id);
   const toggle = (id: string) => set(has(id) ? ids.filter((x) => x !== id) : [...ids, id]);
@@ -775,9 +775,9 @@ function StaffPicker({ all, ids, set }: { all: Staff[]; ids: string[]; set: (v: 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>{t('sv.staffHint')}</span>
-        <span style={{ fontSize: 12, color: '#64748b' }}>· {ids.length}/{all.length}</span>
-        <button type="button" onClick={() => set(allOn ? [] : all.map((s) => s.id))} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}>
+        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{t('sv.staffHint')}</span>
+        <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>· {ids.length}/{all.length}</span>
+        <button type="button" onClick={() => set(allOn ? [] : all.map((s) => s.id))} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', cursor: 'pointer', fontWeight: 600 }}>
           {allOn ? t('sv.staffClear') : t('sv.staffAll')}
         </button>
       </div>
@@ -785,9 +785,9 @@ function StaffPicker({ all, ids, set }: { all: Staff[]; ids: string[]; set: (v: 
         {ordered.map((s) => {
           const on = has(s.id);
           return (
-            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#475569'}`, background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontSize: 13, cursor: 'pointer', opacity: s.isActive ? 1 : 0.6 }}>
+            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : 'var(--c475569)'}`, background: on ? 'var(--c312e81)' : 'transparent', color: on ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', opacity: s.isActive ? 1 : 0.6 }}>
               <input type="checkbox" checked={on} onChange={() => toggle(s.id)} />
-              {fullName(s)}{!s.isActive && <span style={{ fontSize: 10, color: '#64748b' }}> ({t('sv.staffOff')})</span>}
+              {fullName(s)}{!s.isActive && <span style={{ fontSize: 10, color: 'var(--c64748b)' }}> ({t('sv.staffOff')})</span>}
             </label>
           );
         })}
@@ -798,7 +798,7 @@ function StaffPicker({ all, ids, set }: { all: Staff[]; ids: string[]; set: (v: 
 
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{ padding: '6px 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${active ? '#6366f1' : '#334155'}`, background: active ? '#312e81' : 'transparent', color: active ? '#c7d2fe' : '#94a3b8' }}>
+    <button onClick={onClick} style={{ padding: '6px 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`, background: active ? 'var(--c312e81)' : 'transparent', color: active ? 'var(--cc7d2fe)' : 'var(--c94a3b8)' }}>
       {children}
     </button>
   );
@@ -839,7 +839,7 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, padding: 0 }}>
         <span style={{ fontSize: 11, transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
         {t('sv.menuCategories')} ({categories.length})
       </button>
@@ -869,7 +869,7 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
   );
 }
 
-const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };
+const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12, cursor: 'pointer' };
 function actBtn(bg: string): React.CSSProperties {
   return { padding: '6px 12px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 64 };
 }
@@ -912,12 +912,12 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.weekdayTitle')}
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.weekdayDesc')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px' }}>{t('sv.weekdayDesc')}</p>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.weekdayEnable')}</span>
@@ -927,7 +927,7 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
             <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t('sv.weekdayHeadlinePh')} />
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {rules.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.weekdayNoRules')}</p>}
+            {rules.length === 0 && <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.weekdayNoRules')}</p>}
             {rules.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={r.day} onChange={(e) => upd(i, { day: parseInt(e.target.value, 10) })} style={{ ...ui.input, width: 'auto' }}>
@@ -938,15 +938,15 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 90 }} />
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.percentOff')}</span>
                 <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
               </div>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.addRule')}</button>
+            <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.addRule')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
         </div>
       )}
@@ -992,12 +992,12 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.fvTitle')}
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.fvDesc')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px' }}>{t('sv.fvDesc')}</p>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.fvEnable')}</span>
@@ -1009,18 +1009,18 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {rules.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.fvVisitNo')}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.fvVisitNo')}</span>
                 <input type="number" min={1} max={100} value={r.visit} onChange={(e) => upd(i, { visit: parseInt(e.target.value, 10) || 1 })} style={{ ...ui.input, width: 80 }} />
                 <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 90 }} />
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.percentOff')}</span>
                 <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
               </div>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { visit: Math.min(100, (rules[rules.length - 1]?.visit ?? 0) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.grAddTier')}</button>
+            <button onClick={() => setRules([...rules, { visit: Math.min(100, (rules[rules.length - 1]?.visit ?? 0) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
         </div>
       )}
@@ -1063,12 +1063,12 @@ function GroupDiscountCard({ token }: { token: string }) {
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.grTitle')}
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.grDesc')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px' }}>{t('sv.grDesc')}</p>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.grEnable')}</span>
@@ -1081,17 +1081,17 @@ function GroupDiscountCard({ token }: { token: string }) {
             {tiers.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <input type="number" min={2} max={20} value={r.minSize} onChange={(e) => upd(i, { minSize: parseInt(e.target.value, 10) || 2 })} style={{ ...ui.input, width: 80 }} />
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.grPeople')}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.grPeople')}</span>
                 <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 90 }} />
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.percentOff')}</span>
                 <button onClick={() => setTiers(tiers.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
               </div>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setTiers([...tiers, { minSize: Math.min(20, (tiers[tiers.length - 1]?.minSize ?? 1) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.grAddTier')}</button>
+            <button onClick={() => setTiers([...tiers, { minSize: Math.min(20, (tiers[tiers.length - 1]?.minSize ?? 1) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
         </div>
       )}
@@ -1134,24 +1134,24 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.dateTitle')}
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{t('sv.dateDesc')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px' }}>{t('sv.dateDesc')}</p>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.dateEnable')}</span>
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {rules.length === 0 && <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.dateNoRules')}</p>}
+            {rules.length === 0 && <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.dateNoRules')}</p>}
             {rules.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <label style={{ fontSize: 12, color: '#94a3b8' }}>{t('sv.dateFrom')}
+                <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{t('sv.dateFrom')}
                   <input type="date" value={r.startDate || ''} min={today} onChange={(e) => upd(i, { startDate: e.target.value })} style={{ ...ui.input, width: 'auto', display: 'block', marginTop: 3 }} />
                 </label>
-                <label style={{ fontSize: 12, color: '#94a3b8' }}>{t('sv.dateTo')}
+                <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{t('sv.dateTo')}
                   <input type="date" value={r.endDate || ''} min={r.startDate || today} onChange={(e) => upd(i, { endDate: e.target.value || null })} style={{ ...ui.input, width: 'auto', display: 'block', marginTop: 3 }} />
                 </label>
                 <select value={r.categoryId ?? ''} onChange={(e) => upd(i, { categoryId: e.target.value || null })} style={{ ...ui.input, width: 'auto' }}>
@@ -1160,7 +1160,7 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
                 </select>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <input type="number" min={1} max={90} value={r.percent} onChange={(e) => upd(i, { percent: parseInt(e.target.value, 10) || 0 })} style={{ ...ui.input, width: 74 }} />
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.percentOff')}</span>
+                  <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.percentOff')}</span>
                 </div>
                 <input value={r.label ?? ''} onChange={(e) => upd(i, { label: e.target.value })} placeholder={t('sv.dateLabelPh')} style={{ ...ui.input, width: 150 }} />
                 <button onClick={() => setRules(rules.filter((_, idx) => idx !== i))} style={ui.dangerBtn}>{t('sv.remove')}</button>
@@ -1168,11 +1168,11 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('sv.dateAddRule')}</button>
+            <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.dateAddRule')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
-          <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('sv.dateHint')}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('sv.dateHint')}</p>
         </div>
       )}
     </div>
@@ -1234,13 +1234,13 @@ function ImportPanel({ token, onDone, currency = 'USD' }: { token: string; onDon
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('sv.importMenu')}</div>
-      <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px' }}>
         {lang === 'vi' ? (
-          <>Dán bảng giá của bạn bên dưới. Bắt đầu một nhóm bằng <code style={{ color: '#cbd5e1' }}># Danh mục</code>, rồi mỗi dòng một dịch vụ:
-          {' '}<code style={{ color: '#cbd5e1' }}>Tên | giá | phút</code>. Dấu <code style={{ color: '#cbd5e1' }}>+</code> sau giá = giá &ldquo;từ&rdquo;; số phút không bắt buộc (mặc định 30).</>
+          <>Dán bảng giá của bạn bên dưới. Bắt đầu một nhóm bằng <code style={{ color: 'var(--ccbd5e1)' }}># Danh mục</code>, rồi mỗi dòng một dịch vụ:
+          {' '}<code style={{ color: 'var(--ccbd5e1)' }}>Tên | giá | phút</code>. Dấu <code style={{ color: 'var(--ccbd5e1)' }}>+</code> sau giá = giá &ldquo;từ&rdquo;; số phút không bắt buộc (mặc định 30).</>
         ) : (
-          <>Paste your price list below. Start a group with <code style={{ color: '#cbd5e1' }}># Category</code>, then one service per line:
-          {' '}<code style={{ color: '#cbd5e1' }}>Name | price | minutes</code>. A <code style={{ color: '#cbd5e1' }}>+</code> after the price = &ldquo;from&rdquo; pricing; minutes is optional (defaults to 30).</>
+          <>Paste your price list below. Start a group with <code style={{ color: 'var(--ccbd5e1)' }}># Category</code>, then one service per line:
+          {' '}<code style={{ color: 'var(--ccbd5e1)' }}>Name | price | minutes</code>. A <code style={{ color: 'var(--ccbd5e1)' }}>+</code> after the price = &ldquo;from&rdquo; pricing; minutes is optional (defaults to 30).</>
         )}
       </p>
       <textarea
@@ -1248,14 +1248,14 @@ function ImportPanel({ token, onDone, currency = 'USD' }: { token: string; onDon
         onChange={(e) => setText(e.target.value)}
         rows={12}
         placeholder={IMPORT_EXAMPLE}
-        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 14, fontFamily: 'ui-monospace, Menlo, monospace', resize: 'vertical' }}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, fontFamily: 'ui-monospace, Menlo, monospace', resize: 'vertical' }}
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
         <button onClick={run} disabled={busy || items.length === 0} style={ui.primaryBtn}>
           {busy ? t('sv.importing') : `${t('sv.importVerb')} ${items.length || ''} ${t('sv.serviceWord')}`}
         </button>
-        {items.length > 0 && !msg && <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('sv.rowsDetected').replace('{n}', String(items.length))}</span>}
-        {msg && <span style={{ color: ok ? '#22c55e' : '#f87171', fontSize: 13 }}>{msg}</span>}
+        {items.length > 0 && !msg && <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.rowsDetected').replace('{n}', String(items.length))}</span>}
+        {msg && <span style={{ color: ok ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
       </div>
     </div>
   );

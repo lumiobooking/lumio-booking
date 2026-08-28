@@ -105,16 +105,16 @@ export function BarcodeScanner({
       }}
       onClick={() => { stop(); onClose(); }}
     >
-      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 16, width: '100%', maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 16, padding: 16, width: '100%', maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <strong style={{ color: '#e2e8f0', fontSize: 16 }}>📷 {title}</strong>
-          <button onClick={() => { stop(); onClose(); }} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 26, lineHeight: 1, cursor: 'pointer' }}>×</button>
+          <strong style={{ color: 'var(--ce2e8f0)', fontSize: 16 }}>📷 {title}</strong>
+          <button onClick={() => { stop(); onClose(); }} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 26, lineHeight: 1, cursor: 'pointer' }}>×</button>
         </div>
         <div id="lumio-bc-reader" style={{ width: '100%', minHeight: 240, borderRadius: 12, overflow: 'hidden', background: '#000' }} />
         {err ? (
           <p style={{ color: '#f59e0b', fontSize: 13, marginTop: 12, textAlign: 'center' }}>{errorText}</p>
         ) : (
-          <p style={{ color: '#64748b', fontSize: 12, marginTop: 12, textAlign: 'center' }}>{hint}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12, textAlign: 'center' }}>{hint}</p>
         )}
       </div>
     </div>

@@ -66,19 +66,19 @@ function Inner() {
   return (
     <section>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('tr.title')}</h1>
-      <p style={{ color: '#94a3b8', fontSize: 14, margin: '0 0 16px' }}>{t('tr.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 16px' }}>{t('tr.subtitle')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
       {loading && rows.length === 0 ? (
-        <div style={{ ...ui.card, color: '#94a3b8' }}>…</div>
+        <div style={{ ...ui.card, color: 'var(--c94a3b8)' }}>…</div>
       ) : rows.length === 0 ? (
-        <div style={{ ...ui.card, color: '#64748b' }}>{t('tr.empty')}</div>
+        <div style={{ ...ui.card, color: 'var(--c64748b)' }}>{t('tr.empty')}</div>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead><tr style={{ background: '#1e293b' }}>
+            <thead><tr style={{ background: 'var(--c1e293b)' }}>
               <th style={ui.th}>{t('tr.what')}</th>
               <th style={ui.th}>{t('tr.item')}</th>
               <th style={ui.th}>{t('tr.deleted')}</th>
@@ -87,13 +87,13 @@ function Inner() {
             </tr></thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} style={{ borderTop: '1px solid #334155' }}>
+                <tr key={r.id} style={{ borderTop: '1px solid var(--c334155)' }}>
                   <td style={ui.td}>{ENTITY_LABEL[r.entity] ?? r.entity}</td>
                   <td style={ui.td}>{r.label}</td>
                   <td style={ui.td}>{new Date(r.deletedAt).toLocaleString(uiLocale())}</td>
                   <td style={ui.td}>
                     {/* Under two days is when someone needs to notice. */}
-                    <span style={{ fontWeight: 700, color: r.daysLeft <= 2 ? '#f97316' : '#94a3b8' }}>
+                    <span style={{ fontWeight: 700, color: r.daysLeft <= 2 ? '#f97316' : 'var(--c94a3b8)' }}>
                       {r.daysLeft} {t('tr.days')}
                     </span>
                   </td>

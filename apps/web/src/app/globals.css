@@ -90,6 +90,6 @@ button {
   width: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: var(--c334155);
   border-radius: 8px;
 }

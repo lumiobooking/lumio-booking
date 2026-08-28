@@ -111,13 +111,13 @@ function Inner() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Save failed'); }
   }
 
-  if (loading) return <section><h1 style={{ fontSize: 24 }}>{t('se.title')}</h1><p style={{ color: '#94a3b8' }}>{t('se.loading')}</p></section>;
+  if (loading) return <section><h1 style={{ fontSize: 24 }}>{t('se.title')}</h1><p style={{ color: 'var(--c94a3b8)' }}>{t('se.loading')}</p></section>;
   if (!data) {
     return (
       <section>
         <h1 style={{ fontSize: 24 }}>{t('se.title')}</h1>
         {error && <div style={ui.banner}>{error}</div>}
-        <p style={{ color: '#94a3b8' }}>{t('se.loadFail')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('se.loadFail')}</p>
       </section>
     );
   }
@@ -126,7 +126,7 @@ function Inner() {
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 16px' }}>{t('se.title')}</h1>
       {error && <div style={ui.banner}>{error}</div>}
-      {savedMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{savedMsg}</div>}
+      {savedMsg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{savedMsg}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '220px 1fr', gap: isMobile ? 14 : 20, alignItems: 'start' }}>
         {/* Settings sub-nav: scrollable row on mobile, sidebar on desktop */}
@@ -136,11 +136,11 @@ function Inner() {
             return (
               <button key={s.id} onClick={() => setTab(s.id)}
                 style={{ textAlign: 'left', display: 'flex', gap: 10, alignItems: 'center', padding: '10px 12px', borderRadius: 10, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
-                  border: '1px solid ' + (active ? '#6366f1' : '#334155'), background: active ? '#312e81' : '#1e293b', color: '#e2e8f0' }}>
+                  border: '1px solid ' + (active ? '#6366f1' : 'var(--c334155)'), background: active ? 'var(--c312e81)' : 'var(--c1e293b)', color: 'var(--ce2e8f0)' }}>
                 <span style={{ fontSize: 16 }}>{s.icon}</span>
                 <span>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{t(`se.sec.${s.id}`)}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{t(`se.secD.${s.id}`)}</div>
+                  <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{t(`se.secD.${s.id}`)}</div>
                 </span>
               </button>
             );
@@ -170,7 +170,7 @@ function Card({ title, desc, children }: { title: string; desc?: string; childre
   return (
     <div style={ui.card}>
       <h2 style={{ fontSize: 17, margin: '0 0 2px' }}>{title}</h2>
-      {desc && <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 13 }}>{desc}</p>}
+      {desc && <p style={{ color: 'var(--c94a3b8)', margin: '0 0 14px', fontSize: 13 }}>{desc}</p>}
       {children}
     </div>
   );
@@ -183,8 +183,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button onClick={() => onChange(!on)} type="button"
-      style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', color: '#e2e8f0', fontSize: 14, padding: '7px 0', textAlign: 'left' }}>
-      <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? '#6366f1' : '#475569', position: 'relative', flexShrink: 0 }}>
+      style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ce2e8f0)', fontSize: 14, padding: '7px 0', textAlign: 'left' }}>
+      <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? '#6366f1' : 'var(--c475569)', position: 'relative', flexShrink: 0 }}>
         <span style={{ position: 'absolute', top: 2, left: on ? 18 : 2, width: 18, height: 18, borderRadius: '50%', background: 'white' }} />
       </span>
       {label}
@@ -198,13 +198,13 @@ function Panel({ title, badge, hint, defaultOpen = false, children }: {
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ marginTop: 10, border: '1px solid #334155', borderRadius: 10, background: '#0f172a', overflow: 'hidden' }}>
+    <div style={{ marginTop: 10, border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)', overflow: 'hidden' }}>
       <button type="button" onClick={() => setOpen((v) => !v)}
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-        <span style={{ color: '#64748b', fontSize: 11, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▶</span>
-        <span style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{title}</span>
+        <span style={{ color: 'var(--c64748b)', fontSize: 11, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }}>▶</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{title}</span>
         {badge && <span style={{ fontSize: 11, fontWeight: 600, color: badge.color, border: `1px solid ${badge.color}`, borderRadius: 999, padding: '1px 8px' }}>{badge.text}</span>}
-        {hint && !open && <span style={{ marginLeft: 'auto', color: '#64748b', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '45%' }}>{hint}</span>}
+        {hint && !open && <span style={{ marginLeft: 'auto', color: 'var(--c64748b)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '45%' }}>{hint}</span>}
       </button>
       {open && <div style={{ padding: '0 14px 14px' }}>{children}</div>}
     </div>
@@ -271,7 +271,7 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
           </select>
         </Field>
       </div>
-      <p style={{ color: '#64748b', fontSize: 11.5, marginTop: 8 }}>{t('se.co.countryHint')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 8 }}>{t('se.co.countryHint')}</p>
       {applied && (
         <p style={{ color: '#34d399', fontSize: 12, marginTop: 6 }}>✓ {t('se.co.countryApplied')}</p>
       )}
@@ -312,26 +312,26 @@ function HoursSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
   };
   return (
     <Card title={t('se.hr.title')} desc={t('se.hr.desc')}>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>{lang === 'vi' ? 'Nhà hàng tách ca? Bấm “+ Thêm ca” để mở nhiều khung giờ trong ngày (vd: trưa 10:30–14:30 và tối 16:30–20:30).' : 'Split shifts? Use “+ Add hours” to open more than one window a day (e.g. lunch 10:30–14:30 and dinner 16:30–20:30).'}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>{lang === 'vi' ? 'Nhà hàng tách ca? Bấm “+ Thêm ca” để mở nhiều khung giờ trong ngày (vd: trưa 10:30–14:30 và tối 16:30–20:30).' : 'Split shifts? Use “+ Add hours” to open more than one window a day (e.g. lunch 10:30–14:30 and dinner 16:30–20:30).'}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {DAY_ORDER.map((day) => {
           const h = hours[day];
           const ivs = h.intervals ?? [];
           return (
-            <div key={day} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderTop: '1px solid #1e293b', paddingTop: 10 }}>
-              <span style={{ width: 42, fontSize: 13, color: '#cbd5e1', paddingTop: 8 }}>{DAY_LABEL[lang][day]}</span>
+            <div key={day} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderTop: '1px solid var(--c1e293b)', paddingTop: 10 }}>
+              <span style={{ width: 42, fontSize: 13, color: 'var(--ccbd5e1)', paddingTop: 8 }}>{DAY_LABEL[lang][day]}</span>
               <div style={{ paddingTop: 6 }}><Toggle on={!h.closed} onChange={(open) => setDay(day, (x) => ({ ...x, closed: !open }))} label="" /></div>
-              {h.closed ? <span style={{ color: '#64748b', fontSize: 13, paddingTop: 8 }}>{t('se.hr.closed')}</span> : (
+              {h.closed ? <span style={{ color: 'var(--c64748b)', fontSize: 13, paddingTop: 8 }}>{t('se.hr.closed')}</span> : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                   {ivs.map((iv, idx) => (
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <input style={{ ...ui.input, width: 116 }} type="time" value={minToHm(iv.open)} onChange={(e) => setIv(day, idx, { open: hmToMin(e.target.value) })} />
-                      <span style={{ color: '#64748b' }}>–</span>
+                      <span style={{ color: 'var(--c64748b)' }}>–</span>
                       <input style={{ ...ui.input, width: 116 }} type="time" value={minToHm(iv.close)} onChange={(e) => setIv(day, idx, { close: hmToMin(e.target.value) })} />
-                      {ivs.length > 1 && <button onClick={() => delIv(day, idx)} title={lang === 'vi' ? 'Xoá ca' : 'Remove'} style={{ background: 'none', border: '1px solid #475569', color: '#94a3b8', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', lineHeight: 1 }}>×</button>}
+                      {ivs.length > 1 && <button onClick={() => delIv(day, idx)} title={lang === 'vi' ? 'Xoá ca' : 'Remove'} style={{ background: 'none', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', lineHeight: 1 }}>×</button>}
                     </div>
                   ))}
-                  <button onClick={() => addIv(day)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #475569', color: '#818cf8', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>+ {lang === 'vi' ? 'Thêm ca' : 'Add hours'}</button>
+                  <button onClick={() => addIv(day)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--c475569)', color: 'var(--c818cf8)', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>+ {lang === 'vi' ? 'Thêm ca' : 'Add hours'}</button>
                 </div>
               )}
             </div>
@@ -352,9 +352,9 @@ function DaysOffSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
   return (
     <Card title={t('se.do.title')} desc={t('se.do.desc')}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        {days.length === 0 && <span style={{ color: '#64748b', fontSize: 13 }}>{t('se.do.none')}</span>}
+        {days.length === 0 && <span style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('se.do.none')}</span>}
         {days.map((d) => (
-          <span key={d} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#0f172a', border: '1px solid #334155', borderRadius: 999, padding: '4px 10px', fontSize: 13 }}>
+          <span key={d} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '4px 10px', fontSize: 13 }}>
             {d}
             <button onClick={() => setDays(days.filter((x) => x !== d))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>×</button>
           </span>
@@ -395,10 +395,10 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
       {/* The badge at the top of the public booking page. Three states rather
           than on/off, because the old wording claimed a free slot the page has
           no appointment data to back — see apps/web/src/lib/opening-bar.ts. */}
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
         {lang === 'vi' ? 'Nhãn trên trang đặt lịch' : 'Badge on the booking page'}
       </div>
-      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid #334155', borderRadius: 10, background: '#0f172a' }}>
+      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
         <select
           style={{ ...ui.input, maxWidth: 380 }}
           value={f.soonestBar ?? 'hours'}
@@ -408,7 +408,7 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
           <option value="soonest">{lang === 'vi' ? 'Hiện giờ trống gần nhất' : 'Show the next opening time'}</option>
           <option value="off">{lang === 'vi' ? 'Không hiện gì' : 'Show nothing'}</option>
         </select>
-        <p style={{ color: '#64748b', fontSize: 12.5, margin: '10px 0 0', lineHeight: 1.55 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '10px 0 0', lineHeight: 1.55 }}>
           {(f.soonestBar ?? 'hours') === 'hours'
             ? (lang === 'vi'
                 ? 'Hiện đúng khung giờ bạn đã nhập ở mục Giờ mở cửa — ví dụ "Hôm nay mở cửa 9:00 AM – 5:00 PM". Không thể sai, và không tiết lộ tiệm đang vắng hay đông.'
@@ -423,10 +423,10 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
         </p>
       </div>
 
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.ru.assignment')}</div>
-      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid #334155', borderRadius: 10, background: '#0f172a' }}>
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.ru.assignment')}</div>
+      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
         <Toggle on={f.assignmentMode === 'auto'} onChange={(v) => setF({ ...f, assignmentMode: v ? 'auto' : 'none' })} label={t('se.ru.autoTitle')} />
-        <p style={{ color: '#64748b', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
           {f.assignmentMode === 'auto'
             ? (lang === 'vi'
                 ? 'ĐANG BẬT — hệ thống tự chọn thợ đang rảnh (xoay vòng công bằng theo kỹ năng, lịch làm và khối lượng việc) cho MỌI lịch đặt: website, Messenger và AI Hotline.'
@@ -437,10 +437,10 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
         </p>
       </div>
 
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.ru.group')}</div>
-      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid #334155', borderRadius: 10, background: '#0f172a' }}>
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.ru.group')}</div>
+      <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
         <Toggle on={f.groupPolicy === 'flexible'} onChange={(v) => setF({ ...f, groupPolicy: v ? 'flexible' : 'strict' })} label={t('se.ru.groupFlex')} />
-        <p style={{ color: '#64748b', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
           {f.groupPolicy === 'flexible'
             ? (lang === 'vi'
                 ? 'LINH ĐỘNG — nhóm đông hơn số thợ vẫn đặt được: khách được báo trước là tiệm phục vụ theo lượt, tiệm tự xếp thợ. Giữ doanh thu nhóm đông.'
@@ -521,12 +521,12 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         </Field>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
-        <div style={{ fontSize: 13, color: '#94a3b8' }}>
-          {t('se.pay.preview')} <strong style={{ color: '#e2e8f0' }}>{previewPrice(35, currency, symbol, position, decimals)}</strong>
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>
+          {t('se.pay.preview')} <strong style={{ color: 'var(--ce2e8f0)' }}>{previewPrice(35, currency, symbol, position, decimals)}</strong>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           <Toggle on={onSite} onChange={setOnSite} label={t('se.pay.acceptOnsite')} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#94a3b8' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--c94a3b8)' }}>
             {t('se.pay.default')}
             <select
               style={{ ...ui.input, padding: '6px 8px', width: 'auto' }}
@@ -550,10 +550,10 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       {!isVN && (
       <Panel
         title={t('se.pay.gwTitle')}
-        badge={connectedGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(connectedGw.length)), color: '#22c55e' } : { text: t('se.pay.none'), color: '#64748b' }}
+        badge={connectedGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(connectedGw.length)), color: '#22c55e' } : { text: t('se.pay.none'), color: 'var(--c64748b)' }}
         hint={connectedGw.length ? connectedGw.map((g) => g.name).join(', ') : t('se.pay.gwHintNone')}
       >
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 10px' }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 10px' }}>
           {t('se.pay.gwIntro')}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -561,14 +561,14 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             const e = gw[g.id];
             const connected = data.gateways?.[g.id]?.connected;
             return (
-              <div key={g.id} style={{ border: `1px solid ${e.enabled ? '#6366f1' : '#334155'}`, borderRadius: 10, padding: 14, background: '#111827' }}>
+              <div key={g.id} style={{ border: `1px solid ${e.enabled ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 10, padding: 14, background: 'var(--c111827)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 15 }}>
                       {g.name}{' '}
                       {connected && <span style={{ color: '#22c55e', fontSize: 12, fontWeight: 600 }}>{t('se.pay.connected')}</span>}
                     </div>
-                    <div style={{ color: '#94a3b8', fontSize: 12 }}>{t(`se.gw.${g.id}`)}</div>
+                    <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{t(`se.gw.${g.id}`)}</div>
                   </div>
                   <Toggle on={e.enabled} onChange={(v) => upd(g.id, { enabled: v })} label="" />
                 </div>
@@ -587,9 +587,9 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           })}
         </div>
 
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #334155' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, color: '#cbd5e1' }}>{t('se.pay.primaryCard')}</div>
-          <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--c334155)' }}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ccbd5e1)' }}>{t('se.pay.primaryCard')}</div>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
             {t('se.pay.primaryCardDesc')}
           </p>
           <PrimaryCardChannel data={data} onSave={onSave} />
@@ -601,7 +601,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         title={lang === 'vi' ? 'Phụ phí thẻ (giá Cash / Card)' : 'Card surcharge (Cash / Card)'}
         badge={data.pos?.cardSurchargeEnabled && (data.pos?.cardSurchargePercent ?? 0) > 0
           ? { text: (lang === 'vi' ? 'Bật ' : 'On ') + (data.pos?.cardSurchargePercent ?? 0) + '%', color: '#22c55e' }
-          : { text: lang === 'vi' ? 'Tắt' : 'Off', color: '#64748b' }}
+          : { text: lang === 'vi' ? 'Tắt' : 'Off', color: 'var(--c64748b)' }}
         hint={lang === 'vi' ? 'Tự cộng % khi khách trả bằng thẻ' : 'Auto-adds % when the customer pays by card'}
       >
         <CardSurcharge data={data} onSave={onSave} />
@@ -610,7 +610,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       <Panel
         title={lang === 'vi' ? 'Tiền tip' : 'Tipping'}
         badge={data.pos?.tipsEnabled === false
-          ? { text: lang === 'vi' ? 'Tắt' : 'Off', color: '#64748b' }
+          ? { text: lang === 'vi' ? 'Tắt' : 'Off', color: 'var(--c64748b)' }
           : { text: lang === 'vi' ? 'Bật' : 'On', color: '#22c55e' }}
         hint={lang === 'vi' ? 'Có hỏi khách tiền tip hay không' : 'Whether the customer is asked for a tip'}
       >
@@ -619,7 +619,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
 
       <Panel
         title={t('se.pay.loyaltyTitle')}
-        badge={data.loyalty?.enabled ? { text: t('se.pay.on'), color: '#eab308' } : { text: t('se.pay.off'), color: '#64748b' }}
+        badge={data.loyalty?.enabled ? { text: t('se.pay.on'), color: '#eab308' } : { text: t('se.pay.off'), color: 'var(--c64748b)' }}
         hint={t('se.pay.loyaltyHint')}
       >
         <LoyaltyConfig data={data} onSave={onSave} />
@@ -642,7 +642,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       >
         {t('se.pay.save')}
       </button>
-      <span style={{ color: '#64748b', fontSize: 12, marginLeft: 12 }}>{t('se.pay.saveHint')}{enabledGw.length ? ` (${enabledGw.length} ${t('se.pay.onWord')})` : ''}.</span>
+      <span style={{ color: 'var(--c64748b)', fontSize: 12, marginLeft: 12 }}>{t('se.pay.saveHint')}{enabledGw.length ? ` (${enabledGw.length} ${t('se.pay.onWord')})` : ''}.</span>
     </Card>
   );
 }
@@ -663,12 +663,12 @@ function TipsConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <label style={{ position: 'relative', display: 'inline-block', width: 42, height: 24, flexShrink: 0 }}>
           <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
-          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : '#334155', borderRadius: 24, transition: '.2s' }} />
+          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
           <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
         </label>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{lang === 'vi' ? 'Hỏi khách tiền tip' : 'Ask the customer for a tip'}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Hỏi khách tiền tip' : 'Ask the customer for a tip'}</div>
       </div>
-      <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
         {lang === 'vi'
           ? 'Tắt thì màn hình khách, màn hình cảm ơn (mã QR tip) và ô ghi tip ở quầy đều ẩn đi — không phải để 0%, mà là không hỏi. Chọn quốc gia Việt Nam sẽ tự tắt; tiệm phục vụ khách nước ngoài có thể bật lại. Không ảnh hưởng tip đã ghi trước đó.'
           : 'When off, the customer screen, the thank-you QR and the counter tip box all disappear — not set to 0%, simply not asked. Picking Vietnam turns this off automatically; a salon serving tourists can turn it back on. Tips already recorded are untouched.'}
@@ -687,21 +687,21 @@ function CardSurcharge({ data, onSave }: { data: SettingsData; onSave: SaveFn })
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <label style={{ position: 'relative', display: 'inline-block', width: 42, height: 24, flexShrink: 0 }}>
           <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
-          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : '#334155', borderRadius: 24, transition: '.2s' }} />
+          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
           <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
         </label>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{lang === 'vi' ? 'Phụ phí khi khách trả bằng thẻ (giá Cash/Card)' : 'Card surcharge (Cash/Card pricing)'}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Phụ phí khi khách trả bằng thẻ (giá Cash/Card)' : 'Card surcharge (Cash/Card pricing)'}</div>
       </div>
-      <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
         {lang === 'vi'
           ? 'Mặc định TẮT. Bật thì menu chỉ nhập MỘT giá (giá tiền mặt); khi khách chọn trả thẻ (tại quầy hoặc đặt cọc online) hệ thống tự cộng % này và HIỆN RÕ cho khách trên hoá đơn + màn hình khách. Không cộng vào tiền tip. Ví dụ 3% → dịch vụ $55 → $56.65 khi trả thẻ.'
           : 'OFF by default. When on, enter ONE menu price (the cash price); if the customer pays by card (at the counter or an online deposit) the system adds this % and SHOWS it clearly on the bill + customer screen. Never added to the tip. E.g. 3% → a $55 service → $56.65 on card.'}
       </p>
       {on && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-          <span style={{ color: '#94a3b8', fontSize: 13 }}>{lang === 'vi' ? 'Mức phí' : 'Fee'}</span>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{lang === 'vi' ? 'Mức phí' : 'Fee'}</span>
           <input type="number" min={0} max={20} step="0.1" value={pct} onChange={(e) => setPct(e.target.value)} style={{ ...ui.input, width: 110 }} />
-          <span style={{ color: '#94a3b8' }}>%</span>
+          <span style={{ color: 'var(--c94a3b8)' }}>%</span>
         </div>
       )}
       <button style={ui.primaryBtn} onClick={() => onSave('pos', { cardSurchargeEnabled: on, cardSurchargePercent: Math.min(20, Math.max(0, parseFloat(pct) || 0)) }, 'Card surcharge')}>{lang === 'vi' ? 'Lưu' : 'Save'}</button>
@@ -721,7 +721,7 @@ function PrimaryCardChannel({ data, onSave }: { data: SettingsData; onSave: Save
         {enabled.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
       </select>
       <button style={ui.primaryBtn} onClick={() => onSave('pos', { primaryCardGateway: sel }, 'Card channel')}>{t('se.pcc.save')}</button>
-      {enabled.length === 0 && <span style={{ color: '#94a3b8', fontSize: 12 }}>{t('se.pcc.enableFirst')}</span>}
+      {enabled.length === 0 && <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{t('se.pcc.enableFirst')}</span>}
     </div>
   );
 }
@@ -746,7 +746,7 @@ function BankTransferConfig({ data, onSave }: { data: SettingsData; onSave: Save
 
   if (!methods.length) {
     return (
-      <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: 0 }}>
         {lang === 'vi'
           ? 'Máy tính tiền của tiệm chỉ nhận tiền mặt và thẻ, nên không cần khai gì ở đây.'
           : 'This till only takes cash and card, so there is nothing to fill in here.'}
@@ -786,10 +786,10 @@ function MethodDetails({
   const wallet = method === 'MOMO' || method === 'ZALOPAY';
 
   return (
-    <div style={{ border: '1px solid #1f2937', borderRadius: 10, padding: 12 }}>
+    <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <strong style={{ color: '#e2e8f0', fontSize: 14 }}>{label}</strong>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: filled ? '#22c55e' : '#f59e0b', border: `1px solid ${filled ? '#166534' : '#78350f'}` }}>
+        <strong style={{ color: 'var(--ce2e8f0)', fontSize: 14 }}>{label}</strong>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: filled ? '#22c55e' : '#f59e0b', border: `1px solid ${filled ? 'var(--c166534)' : 'var(--c78350f)'}` }}>
           {filled ? (lang === 'vi' ? 'Đã đặt' : 'Set') : (lang === 'vi' ? 'Chưa đặt' : 'Not set')}
         </span>
       </div>
@@ -852,7 +852,7 @@ function LoyaltyConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn })
         <Field label={t('se.lo.value')}><input style={ui.input} type="number" min={0} step="1" value={cpp} onChange={(e) => setCpp(e.target.value)} /></Field>
         <Field label={t('se.lo.minRedeem')}><input style={ui.input} type="number" min={0} value={minR} onChange={(e) => setMinR(e.target.value)} /></Field>
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 8 }}>
         {lang === 'vi'
           ? <>Ví dụ: nhận {earnN || 1} điểm/$ · {Math.round(100 / (cppN || 1))} điểm = ${((100 * (cppN || 1)) / 100).toFixed(2)} … tức <strong>100 điểm = ${((100 * (cppN || 0)) / 100).toFixed(2)}</strong> được giảm.</>
           : <>Example: earn {earnN || 1} pt/$ · {Math.round(100 / (cppN || 1))} points = ${((100 * (cppN || 1)) / 100).toFixed(2)} … i.e. <strong>100 points = ${((100 * (cppN || 0)) / 100).toFixed(2)}</strong> off.</>}
@@ -904,7 +904,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
           <Field label={t('se.dep.threshold')}><input style={ui.input} type="number" min={1} value={f.thr} onChange={(e) => setF({ ...f, thr: e.target.value })} /></Field>
         )}
       </div>
-      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
+      <div style={{ background: '#3f2d0e', color: 'var(--cfde68a)', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
         {t('se.dep.warn')}
       </div>
       <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={save}>{t('se.dep.save')}</button>
@@ -928,7 +928,7 @@ function RemindersSection({ data, onSave }: { data: SettingsData; onSave: SaveFn
         <Toggle on={f.channelEmail} onChange={(v) => setF({ ...f, channelEmail: v })} label={t('se.rem.byEmail')} />
         <Toggle on={f.channelSms} onChange={(v) => setF({ ...f, channelSms: v })} label={t('se.rem.bySms')} />
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12 }}>
         {t('se.rem.tip')}
       </p>
       <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={() => onSave('reminders', f, 'Reminders')}>{t('se.rem.save')}</button>
@@ -955,7 +955,7 @@ function RebookingCard({ data, onSave }: { data: SettingsData; onSave: SaveFn })
         <Toggle on={f.email} onChange={(v) => setF({ ...f, email: v })} label="Email" />
         <Toggle on={f.sms} onChange={(v) => setF({ ...f, sms: v })} label="SMS" />
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 12, lineHeight: 1.55 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12, lineHeight: 1.55 }}>
         {lang === 'vi'
           ? 'Chỉ gửi nếu khách CHƯA đặt lịch mới. Kèm link đặt lịch 1 chạm. Nail thường ~21 ngày. Có trần tần suất chống spam.'
           : 'Only sent if the client has NOT already rebooked. Includes a one-tap booking link. ~21 days suits nails. Frequency-capped to avoid spam.'}
@@ -1046,7 +1046,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
 
   return (
     <Card title={t('se.no.title')} desc={t('se.no.desc')}>
-      <div style={{ marginTop: 0, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.no.whenBooked')}</div>
+      <div style={{ marginTop: 0, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.no.whenBooked')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 4, marginTop: 6 }}>
         <Toggle on={f.emailCustomerOnBooking} onChange={(v) => setF({ ...f, emailCustomerOnBooking: v })} label={t('se.no.emailCustomer')} />
         <Toggle on={f.emailAdminOnBooking} onChange={(v) => setF({ ...f, emailAdminOnBooking: v })} label={t('se.no.emailAdmin')} />
@@ -1060,30 +1060,30 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       </div>
 
       <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.no.templates')}</div>
-        <button onClick={() => setShowTpl((s) => !s)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: showTpl ? '#475569' : '#6366f1' }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.no.templates')}</div>
+        <button onClick={() => setShowTpl((s) => !s)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: showTpl ? 'var(--c475569)' : '#6366f1' }}>
           {showTpl ? t('se.no.hide') : t('se.no.customize')}
         </button>
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 0' }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 0' }}>
         {t('se.no.placeholders')} <code>{'{salon} {customer} {service} {date} {time} {technician} {total} {duration} {addons}'}</code>
       </p>
 
       {showTpl && (
-        <div style={{ display: 'grid', gap: 12, marginTop: 12, padding: 14, background: '#0f172a', borderRadius: 10, border: '1px solid #334155' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, color: '#cbd5e1' }}>{t('se.no.customerEmail')}</div>
+        <div style={{ display: 'grid', gap: 12, marginTop: 12, padding: 14, background: 'var(--c0f172a)', borderRadius: 10, border: '1px solid var(--c334155)' }}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ccbd5e1)' }}>{t('se.no.customerEmail')}</div>
           <Field label={t('se.no.subject')}><input style={ui.input} value={f.emailSubjectCustomer} onChange={(e) => setF({ ...f, emailSubjectCustomer: e.target.value })} /></Field>
           <Field label={t('se.no.intro')}><textarea style={{ ...ui.input, minHeight: 60, resize: 'vertical' }} value={f.emailIntroCustomer} onChange={(e) => setF({ ...f, emailIntroCustomer: e.target.value })} /></Field>
           <Field label={t('se.no.footer')}><textarea style={{ ...ui.input, minHeight: 50, resize: 'vertical' }} value={f.emailFooter} onChange={(e) => setF({ ...f, emailFooter: e.target.value })} /></Field>
 
-          <div style={{ fontWeight: 600, fontSize: 13, color: '#cbd5e1', marginTop: 6 }}>{t('se.no.adminEmailTpl')}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 6 }}>{t('se.no.adminEmailTpl')}</div>
           <Field label={t('se.no.subject')}><input style={ui.input} value={f.emailSubjectAdmin} onChange={(e) => setF({ ...f, emailSubjectAdmin: e.target.value })} /></Field>
           <Field label={t('se.no.intro')}><textarea style={{ ...ui.input, minHeight: 50, resize: 'vertical' }} value={f.emailIntroAdmin} onChange={(e) => setF({ ...f, emailIntroAdmin: e.target.value })} /></Field>
 
-          <div style={{ fontWeight: 600, fontSize: 13, color: '#cbd5e1', marginTop: 6 }}>{t('se.no.smsText')}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 6 }}>{t('se.no.smsText')}</div>
           <Field label={t('se.no.toCustomer')}><textarea style={{ ...ui.input, minHeight: 44, resize: 'vertical' }} value={f.smsCustomer} onChange={(e) => setF({ ...f, smsCustomer: e.target.value })} /></Field>
           <Field label={t('se.no.toAdmin')}><textarea style={{ ...ui.input, minHeight: 44, resize: 'vertical' }} value={f.smsAdmin} onChange={(e) => setF({ ...f, smsAdmin: e.target.value })} /></Field>
-          <div style={{ fontSize: 12, color: '#64748b' }}>
+          <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>
             {t('se.no.tplNote')}
           </div>
         </div>
@@ -1091,8 +1091,8 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
 
       {/* Email sending — Amelia-style: pick a Mail service, then shared sender fields,
           then only the chosen provider's fields show below. */}
-      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>{t('se.no.emailSending')}</div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.no.emailSending')}</div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.emailSendingHelp')}
       </p>
       <Field label={t('se.no.mailService')}>
@@ -1105,13 +1105,13 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         </select>
       </Field>
       {f.mailService === 'auto' && (
-        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 12, marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+        <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 12, marginTop: 8, fontSize: 12, color: 'var(--c94a3b8)' }}>
           {t('se.no.autoInfo')}
-          <div style={{ marginTop: 8, color: '#cbd5e1' }}>
+          <div style={{ marginTop: 8, color: 'var(--ccbd5e1)' }}>
             {t('se.no.previewInbox')}<br />
-            <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{f.senderName || t('se.no.yourSalonName')}</span>{' '}
-            <span style={{ color: '#64748b' }}>&lt;notifications@lumio-booking&gt;</span><br />
-            <span style={{ color: '#64748b' }}>{t('se.no.replyTo')}: {f.replyTo || f.senderEmail || 'your@email'}</span>
+            <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{f.senderName || t('se.no.yourSalonName')}</span>{' '}
+            <span style={{ color: 'var(--c64748b)' }}>&lt;notifications@lumio-booking&gt;</span><br />
+            <span style={{ color: 'var(--c64748b)' }}>{t('se.no.replyTo')}: {f.replyTo || f.senderEmail || 'your@email'}</span>
           </div>
         </div>
       )}
@@ -1124,12 +1124,12 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       </div>
 
       {f.mailService === 'brevo' && (
-      <div style={{ marginTop: 12, padding: 14, background: '#0f172a', borderRadius: 10, border: '1px solid #334155' }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: '#cbd5e1' }}>
+      <div style={{ marginTop: 12, padding: 14, background: 'var(--c0f172a)', borderRadius: 10, border: '1px solid var(--c334155)' }}>
+        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ccbd5e1)' }}>
           {t('se.no.brevoSetup')}{' '}
           {n.brevo.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.no.keySaved')}</span>}
         </div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '4px 0 10px' }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '4px 0 10px' }}>
           {t('se.no.brevoHelp')}
         </p>
         <Field label={t('se.no.brevoKey')}><input style={ui.input} type="password" value={brevo.apiKey} onChange={(e) => setBrevo({ ...brevo, apiKey: e.target.value })} placeholder={n.brevo.connected ? t('se.no.saved') : 'xkeysib-…'} /></Field>
@@ -1138,11 +1138,11 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
 
       {f.mailService === 'gmail' && (
       <>
-      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
         {t('se.no.connectGmail')}{' '}
         {n.gmail?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.no.connectedAs').replace('{email}', n.gmail.senderEmail)}</span>}
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.gmailHelp')}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
@@ -1161,7 +1161,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         {n.gmail?.connected && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('se.no.connectedAs').replace('{email}', n.gmail.senderEmail)}</span>}
         {gmailMsg && <span style={{ color: gmailMsg.startsWith('✓') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{gmailMsg}</span>}
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 8 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 8 }}>
         {t('se.no.gmailPublishTip')}
       </p>
       </>
@@ -1169,20 +1169,20 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
 
       {f.mailService === 'smtp' && (
       <>
-      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
         {t('se.no.smtpServer')}{' '}
         {n.smtp.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.pay.connected')}</span>}
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.smtpHelp')}
       </p>
-      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
+      <div style={{ background: '#3f2d0e', color: 'var(--cfde68a)', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
         {t('se.no.smtpWarn')}
       </div>
       <button
         type="button"
         onClick={() => setSmtp({ ...smtp, host: 'smtp.gmail.com', secure: 'ssl', port: 465 })}
-        style={{ ...ui.input, width: 'auto', cursor: 'pointer', marginBottom: 10, background: '#1e293b' }}
+        style={{ ...ui.input, width: 'auto', cursor: 'pointer', marginBottom: 10, background: 'var(--c1e293b)' }}
       >
         {t('se.no.smtpPreset')}
       </button>
@@ -1206,19 +1206,19 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       {/* Diagnostics: verify the chosen email provider actually works. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
         <button type="button" onClick={sendTest} disabled={test.kind === 'sending'}
-          style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', fontSize: 13, cursor: 'pointer' }}>
+          style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 13, cursor: 'pointer' }}>
           {test.kind === 'sending' ? t('se.no.sending') : t('se.no.sendTest')}
         </button>
-        <span style={{ fontSize: 12, color: '#64748b' }}>{t('se.no.testHint')}</span>
+        <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{t('se.no.testHint')}</span>
       </div>
       {test.kind === 'ok' && <div style={{ marginTop: 8, color: '#22c55e', fontSize: 13 }}>✓ {test.msg}</div>}
       {test.kind === 'err' && <div style={{ marginTop: 8, color: '#ef4444', fontSize: 13, wordBreak: 'break-word' }}>✕ {test.msg}</div>}
 
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
         {t('se.no.smsGateway')}{' '}
         {n.twilio.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.pay.connected')}</span>}
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.twilioHelp')}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
@@ -1232,12 +1232,12 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           the carrier — so this panel only appears for a VN salon, and Twilio
           above is the only path for everyone else. */}
       {isVN && (
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #1e293b' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--c1e293b)' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
             SMS Việt Nam · eSMS.vn{' '}
             {es.brandname && n.esms?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>đã kết nối</span>}
           </div>
-          <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px', lineHeight: 1.5 }}>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px', lineHeight: 1.5 }}>
             Twilio KHÔNG gửi được vào Việt Nam — nhà mạng chặn tin từ đầu số chưa đăng ký, mà Twilio vẫn báo &quot;đã gửi&quot;.
             Brandname phải được nhà mạng duyệt trước khi gửi được; chưa duyệt thì eSMS trả lỗi 104 ở mọi lần gửi.
           </p>
@@ -1252,12 +1252,12 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
         <Field label={t('se.no.smsTestTo')}><input style={ui.input} value={smsTo} onChange={(e) => setSmsTo(e.target.value)} placeholder="+1…" /></Field>
         <button
-          style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}
+          style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}
           disabled={smsTest.kind === 'sending'}
           onClick={sendTestSms}
         >{smsTest.kind === 'sending' ? t('se.no.sending') : t('se.no.smsTestBtn')}</button>
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>{t('se.no.smsTestHint')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '6px 0 0' }}>{t('se.no.smsTestHint')}</p>
       {smsTest.kind === 'ok' && <p style={{ color: '#22c55e', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
       {smsTest.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
 
@@ -1390,7 +1390,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       <div style={{ marginTop: 12 }}>
         <Field label={lang === 'vi' ? 'Logo' : 'Logo'}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ width: 46, height: 46, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: logoOk ? '#fff' : '#0f172a', border: '1px solid #334155', fontSize: 20 }}>
+            <span style={{ width: 46, height: 46, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: logoOk ? '#fff' : 'var(--c0f172a)', border: '1px solid var(--c334155)', fontSize: 20 }}>
               {logoOk
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={logoShow} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${(f.logoScale ?? 100) / 100})`, transformOrigin: 'center' }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
@@ -1403,30 +1403,30 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickLogo} />
             {logoShow && (
               <button type="button" onClick={() => setF({ ...f, logoUrl: '' })}
-                style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
+                style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
                 {lang === 'vi' ? 'Xoá' : 'Remove'}
               </button>
             )}
             <input style={{ ...ui.input, fontSize: 12.5, flex: '1 1 200px', minWidth: 160 }} value={logoShow.startsWith('data:') ? '' : (f.logoUrl || '')}
               onChange={(e) => setF({ ...f, logoUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/logo.png' : 'or paste https://…/logo.png'} />
           </div>
-          {logoErr && <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>{logoErr}</div>}
+          {logoErr && <div style={{ color: 'var(--cf87171)', fontSize: 12, marginTop: 4 }}>{logoErr}</div>}
           {logoOk && (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, maxWidth: 380 }}>
-              <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{lang === 'vi' ? 'Phóng to trong khung' : 'Zoom in frame'}</span>
+              <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{lang === 'vi' ? 'Phóng to trong khung' : 'Zoom in frame'}</span>
               <input type="range" min={60} max={180} step={5} value={f.logoScale ?? 100}
                 onChange={(e) => setF({ ...f, logoScale: parseInt(e.target.value, 10) })} style={{ flex: 1 }} />
-              <span style={{ fontSize: 12, color: '#e2e8f0', width: 40, textAlign: 'right' }}>{f.logoScale ?? 100}%</span>
+              <span style={{ fontSize: 12, color: 'var(--ce2e8f0)', width: 40, textAlign: 'right' }}>{f.logoScale ?? 100}%</span>
             </div>
           )}
-          <div style={{ color: '#64748b', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Logo giữ nguyên như file tải lên. Khung nền trắng; kéo thanh trên để logo tràn kín khung (che viền).' : 'The logo is kept exactly as uploaded. White frame; drag the slider to make it fill the frame edge-to-edge.'}</div>
+          <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Logo giữ nguyên như file tải lên. Khung nền trắng; kéo thanh trên để logo tràn kín khung (che viền).' : 'The logo is kept exactly as uploaded. White frame; drag the slider to make it fill the frame edge-to-edge.'}</div>
         </Field>
       </div>
 
       <div style={{ marginTop: 12 }}>
         <Field label={lang === 'vi' ? 'Ảnh màn hình chào khách (Customer display)' : 'Welcome screen image (customer display)'}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ width: 96, height: 54, borderRadius: 8, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: '#0f172a', border: '1px solid #334155', fontSize: 18 }}>
+            <span style={{ width: 96, height: 54, borderRadius: 8, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', fontSize: 18 }}>
               {welcomeOk
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={welcomeShow} alt="welcome" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
@@ -1439,15 +1439,15 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             <input ref={welcomeRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickWelcome} />
             {welcomeShow && (
               <button type="button" onClick={() => setF({ ...f, welcomeImageUrl: '' })}
-                style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
+                style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
                 {lang === 'vi' ? 'Xoá' : 'Remove'}
               </button>
             )}
             <input style={{ ...ui.input, fontSize: 12.5, flex: '1 1 200px', minWidth: 160 }} value={welcomeShow.startsWith('data:') ? '' : (f.welcomeImageUrl || '')}
               onChange={(e) => setF({ ...f, welcomeImageUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/anh.jpg' : 'or paste https://…/photo.jpg'} />
           </div>
-          {wErr && <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>{wErr}</div>}
-          <div style={{ color: '#64748b', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Ảnh ngang, đẹp nhất ~16:9 (vd bàn tay/nail sang trọng). Hiện làm nền màn chào khách kèm logo + chữ "Welcome". Để trống thì dùng màn chào mặc định.' : 'Landscape image, best ~16:9 (e.g. an elegant nail/hand shot). Becomes the welcome-screen background with your logo + a "Welcome" title. Leave blank for the default welcome screen.'}</div>
+          {wErr && <div style={{ color: 'var(--cf87171)', fontSize: 12, marginTop: 4 }}>{wErr}</div>}
+          <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Ảnh ngang, đẹp nhất ~16:9 (vd bàn tay/nail sang trọng). Hiện làm nền màn chào khách kèm logo + chữ "Welcome". Để trống thì dùng màn chào mặc định.' : 'Landscape image, best ~16:9 (e.g. an elegant nail/hand shot). Becomes the welcome-screen background with your logo + a "Welcome" title. Leave blank for the default welcome screen.'}</div>
         </Field>
       </div>
 
@@ -1471,7 +1471,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             </Field>
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6, lineHeight: 1.55 }}>
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6, lineHeight: 1.55 }}>
           {lang === 'vi'
             ? 'Nhập tay: dùng để hiện đúng số sao Google của tiệm (Lumio không tự kéo review từ Google). Hãy nhập số thật của tiệm.'
             : 'Manual lets you show your real Google rating (Lumio does not pull Google reviews automatically). Enter your true numbers.'}
@@ -1480,8 +1480,8 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
 
       {/* Live preview of the booking-page header — what a customer actually sees. */}
       <div style={{ marginTop: 14 }}>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('se.br.preview')}</div>
-        <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #334155' }}>
+        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>{t('se.br.preview')}</div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--c334155)' }}>
           <div style={{ background: `linear-gradient(135deg, ${prevAccent}, ${prevAccent})`, padding: '13px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ width: 38, height: 38, borderRadius: 10, background: logoOk ? '#fff' : 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
               {logoOk
@@ -1495,7 +1495,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             )}
           </div>
         </div>
-        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6, lineHeight: 1.55 }}>{t('se.br.logoHelp')}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6, lineHeight: 1.55 }}>{t('se.br.logoHelp')}</div>
       </div>
 
       <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('branding', f, 'Branding')}>{t('se.br.save')}</button>

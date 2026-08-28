@@ -36,13 +36,13 @@ function Hub() {
   const tabBtn = (id: 'performance' | 'payroll', label: string, icon: string) => (
     <button onClick={() => setTab(id)} style={{
       padding: '10px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700,
-      background: tab === id ? '#6366f1' : '#1e293b', color: tab === id ? '#fff' : '#94a3b8',
+      background: tab === id ? '#6366f1' : 'var(--c1e293b)', color: tab === id ? '#fff' : 'var(--c94a3b8)',
     }}>{icon} {label}</button>
   );
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('pf.hubTitle')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('pf.hubSub')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('pf.hubSub')}</p>
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
         {tabBtn('performance', t('pf.tabPerformance'), '📊')}
         {tabBtn('payroll', t('pf.tabPayroll'), '💵')}
@@ -103,14 +103,14 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <DateRangeBar range={range} />
-          <button onClick={exportCsv} disabled={!data} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>⬇ {t('pr.exportCsv')}</button>
-          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>🖨 {t('pr.print')}</button>
+          <button onClick={exportCsv} disabled={!data} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>⬇ {t('pr.exportCsv')}</button>
+          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>🖨 {t('pr.print')}</button>
         </div>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {loading || !data ? <p style={{ color: '#94a3b8' }}>Loading…</p> : (
+      {loading || !data ? <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 18 }}>
             <Kpi label={t('pr.kTotal')} value={formatPrice(data.totals.payCents)} accent="#22c55e" big />
@@ -131,7 +131,7 @@ function Inner() {
 
           {isMobile ? (
             <MList>
-              {techs.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('pr.empty')}</p>}
+              {techs.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pr.empty')}</p>}
               {techs.map((r) => (
                 <MCard key={r.staffId}>
                   <MHead right={<span style={{ color: '#22c55e', fontWeight: 800, fontSize: 16 }}>{formatPrice(r.totalPayCents)}</span>}>
@@ -139,7 +139,7 @@ function Inner() {
                   </MHead>
                   <MRow label={t('pr.cCount')}>{r.serviceCount}</MRow>
                   <MRow label={t('pr.cRevenue')}>{formatPrice(r.serviceRevenueCents)}</MRow>
-                  <MRow label={t('pr.cCommission')}>{formatPrice(r.commissionCents)} <span style={{ color: '#64748b', fontSize: 12 }}>({r.commissionPercent}%)</span></MRow>
+                  <MRow label={t('pr.cCommission')}>{formatPrice(r.commissionCents)} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.commissionPercent}%)</span></MRow>
                   <MRow label={t('pr.cBase')}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</MRow>
                   <MRow label={t('pr.cTips')}>{formatPrice(r.tipsCents)}</MRow>
                   {(r.directTipsCents ?? 0) > 0 && <MRow label={t('pr.cDirectTips')}>{formatPrice(r.directTipsCents!)}</MRow>}
@@ -147,9 +147,9 @@ function Inner() {
               ))}
             </MList>
           ) : (
-            <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+            <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead><tr style={{ background: '#1e293b' }}>
+              <thead><tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={ui.th}>{t('pr.cTech')}</th>
                 <th style={ui.th}>{t('pr.cCount')}</th>
                 <th style={ui.th}>{t('pr.cRevenue')}</th>
@@ -162,12 +162,12 @@ function Inner() {
               <tbody>
                 {techs.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('pr.empty')}</td></tr>}
                 {techs.map((r) => (
-                  <tr key={r.staffId} style={{ borderTop: '1px solid #334155' }}>
+                  <tr key={r.staffId} style={{ borderTop: '1px solid var(--c334155)' }}>
                     <td style={ui.td}>{r.name}</td>
                     <td style={ui.td}>{r.serviceCount}</td>
                     <td style={ui.td}>{formatPrice(r.serviceRevenueCents)}</td>
-                    <td style={{ ...ui.td, color: '#06b6d4' }}>{formatPrice(r.commissionCents)} <span style={{ color: '#64748b', fontSize: 12 }}>({r.commissionPercent}%)</span></td>
-                    <td style={{ ...ui.td, color: '#cbd5e1' }}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</td>
+                    <td style={{ ...ui.td, color: '#06b6d4' }}>{formatPrice(r.commissionCents)} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.commissionPercent}%)</span></td>
+                    <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</td>
                     <td style={{ ...ui.td, color: '#a855f7' }}>{formatPrice(r.tipsCents)}</td>
                     <td style={{ ...ui.td, color: '#34d399' }}>{(r.directTipsCents ?? 0) > 0 ? formatPrice(r.directTipsCents!) : '—'}</td>
                     <td style={{ ...ui.td, fontWeight: 800, color: '#22c55e', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
@@ -177,7 +177,7 @@ function Inner() {
             </table>
             </div>
           )}
-          <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('pr.note')}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('pr.note')}</p>
           {(data.totals.directTipsCents ?? 0) > 0 && <p style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>{t('pr.directNote')}</p>}
         </>
       )}
@@ -187,10 +187,10 @@ function Inner() {
 
 function MethodChip({ icon, label, cents, color }: { icon: string; label: string; cents: number; color: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px' }}>
       <span style={{ fontSize: 18 }}>{icon}</span>
       <div>
-        <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</div>
         <div style={{ fontSize: 17, fontWeight: 800, color }}>{formatPrice(cents)}</div>
       </div>
     </div>
@@ -199,8 +199,8 @@ function MethodChip({ icon, label, cents, color }: { icon: string; label: string
 
 function Kpi({ label, value, accent, big }: { label: string; value: string; accent: string; big?: boolean }) {
   return (
-    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>{label}</div>
+    <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
       <div style={{ fontSize: big ? 30 : 24, fontWeight: 800, marginTop: 4, color: big ? '#22c55e' : '#fff' }}>{value}</div>
     </div>
   );
@@ -279,8 +279,8 @@ function Performance() {
   const sortChip = (k: typeof sortKey, label: string) => (
     <button onClick={() => setSortKey(k)} style={{
       padding: '6px 13px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
-      border: `1px solid ${sortKey === k ? '#6366f1' : '#334155'}`,
-      background: sortKey === k ? 'rgba(99,102,241,0.15)' : 'transparent', color: sortKey === k ? '#c7d2fe' : '#94a3b8',
+      border: `1px solid ${sortKey === k ? '#6366f1' : 'var(--c334155)'}`,
+      background: sortKey === k ? 'rgba(99,102,241,0.15)' : 'transparent', color: sortKey === k ? 'var(--cc7d2fe)' : 'var(--c94a3b8)',
     }}>{label}</button>
   );
 
@@ -288,7 +288,7 @@ function Performance() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12.5, color: '#94a3b8', alignSelf: 'center' }}>{t('pf.sortBy')}</span>
+          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', alignSelf: 'center' }}>{t('pf.sortBy')}</span>
           {sortChip('revenue', t('pf.sRevenue'))}
           {sortChip('completed', t('pf.sVisits'))}
           {sortChip('tips', t('pf.sTips'))}
@@ -300,7 +300,7 @@ function Performance() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {loading || !data ? <p style={{ color: '#94a3b8' }}>Loading…</p> : (
+      {loading || !data ? <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 18 }}>
             <Kpi label={t('pf.kRevenue')} value={formatPrice(data.totals.collectedCents || data.totals.serviceRevenueCents)} accent="#22c55e" big />
@@ -309,7 +309,7 @@ function Performance() {
             <Kpi label={t('pf.kReviews')} value={String(data.totals.reviewCount)} accent="#f59e0b" />
           </div>
 
-          {rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>{t('pf.empty')}</p> : isMobile ? (
+          {rows.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pf.empty')}</p> : isMobile ? (
             <MList>
               {rows.map((r, i) => (
                 <MCard key={r.staffId}>
@@ -318,12 +318,12 @@ function Performance() {
                   </MHead>
                   <MRow label={t('pf.cVisits')}>{r.completed}</MRow>
                   <MRow label={t('pf.cTips')}>{formatPrice(r.tipsCents)}</MRow>
-                  <MRow label={t('pf.cRating')}>{r.reviewCount ? <>⭐ {r.rating} <span style={{ color: '#64748b' }}>({r.reviewCount})</span></> : '—'}</MRow>
+                  <MRow label={t('pf.cRating')}>{r.reviewCount ? <>⭐ {r.rating} <span style={{ color: 'var(--c64748b)' }}>({r.reviewCount})</span></> : '—'}</MRow>
                   <MRow label={t('pf.cPoints')}>{r.points ? <span style={{ color: '#eab308' }}>{r.points}</span> : '—'}</MRow>
                   <MRow label={t('pf.cTop')}>{r.topService ? `${r.topService.name} ×${r.topService.count}` : '—'}</MRow>
                   {r.recent.length > 0 && (
                     <div style={{ marginTop: 6 }}>
-                      <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                      <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
                         {open === r.staffId ? t('pf.hideCustomers') : `${t('pf.showCustomers')} (${r.recent.length})`}
                       </button>
                       {open === r.staffId && <RecentList recent={r.recent} />}
@@ -333,9 +333,9 @@ function Performance() {
               ))}
             </MList>
           ) : (
-            <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+            <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead><tr style={{ background: '#1e293b' }}>
+                <thead><tr style={{ background: 'var(--c1e293b)' }}>
                   <th style={ui.th}>#</th>
                   <th style={ui.th}>{t('pf.cTech')}</th>
                   <th style={ui.th}>{t('pf.cVisits')}</th>
@@ -349,23 +349,23 @@ function Performance() {
                 <tbody>
                   {rows.map((r, i) => (
                     <>
-                      <tr key={r.staffId} style={{ borderTop: '1px solid #334155', opacity: r.isActive ? 1 : 0.55 }}>
-                        <td style={{ ...ui.td, color: '#64748b' }}>{medal(i) || i + 1}</td>
-                        <td style={ui.td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Ava r={r} /><b>{r.name}</b>{!r.isActive && <span style={{ fontSize: 11, color: '#64748b' }}>({t('pf.inactive')})</span>}</span></td>
+                      <tr key={r.staffId} style={{ borderTop: '1px solid var(--c334155)', opacity: r.isActive ? 1 : 0.55 }}>
+                        <td style={{ ...ui.td, color: 'var(--c64748b)' }}>{medal(i) || i + 1}</td>
+                        <td style={ui.td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Ava r={r} /><b>{r.name}</b>{!r.isActive && <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>({t('pf.inactive')})</span>}</span></td>
                         <td style={ui.td}>{r.completed}</td>
-                        <td style={{ ...ui.td, fontWeight: 800, color: money(r) === best.revenue && best.revenue > 0 ? '#22c55e' : '#e2e8f0' }}>{formatPrice(money(r))}</td>
-                        <td style={{ ...ui.td, color: r.tipsCents === best.tips && best.tips > 0 ? '#a855f7' : '#cbd5e1', fontWeight: r.tipsCents === best.tips && best.tips > 0 ? 700 : 400 }}>{formatPrice(r.tipsCents)}</td>
-                        <td style={ui.td}>{r.reviewCount ? <span style={{ color: r.reviewCount === best.reviews && best.reviews > 0 ? '#f59e0b' : '#e2e8f0', fontWeight: 600 }}>⭐ {r.rating} <span style={{ color: '#64748b', fontSize: 12 }}>({r.reviewCount})</span></span> : <span style={{ color: '#475569' }}>—</span>}</td>
-                        <td style={{ ...ui.td, color: r.points === best.points && best.points > 0 ? '#eab308' : '#cbd5e1', fontWeight: r.points === best.points && best.points > 0 ? 700 : 400 }}>{r.points || '—'}</td>
-                        <td style={{ ...ui.td, color: '#cbd5e1' }}>{r.topService ? <>{r.topService.name} <span style={{ color: '#64748b' }}>×{r.topService.count}</span></> : '—'}</td>
+                        <td style={{ ...ui.td, fontWeight: 800, color: money(r) === best.revenue && best.revenue > 0 ? '#22c55e' : 'var(--ce2e8f0)' }}>{formatPrice(money(r))}</td>
+                        <td style={{ ...ui.td, color: r.tipsCents === best.tips && best.tips > 0 ? '#a855f7' : 'var(--ccbd5e1)', fontWeight: r.tipsCents === best.tips && best.tips > 0 ? 700 : 400 }}>{formatPrice(r.tipsCents)}</td>
+                        <td style={ui.td}>{r.reviewCount ? <span style={{ color: r.reviewCount === best.reviews && best.reviews > 0 ? '#f59e0b' : 'var(--ce2e8f0)', fontWeight: 600 }}>⭐ {r.rating} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.reviewCount})</span></span> : <span style={{ color: 'var(--c475569)' }}>—</span>}</td>
+                        <td style={{ ...ui.td, color: r.points === best.points && best.points > 0 ? '#eab308' : 'var(--ccbd5e1)', fontWeight: r.points === best.points && best.points > 0 ? 700 : 400 }}>{r.points || '—'}</td>
+                        <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.topService ? <>{r.topService.name} <span style={{ color: 'var(--c64748b)' }}>×{r.topService.count}</span></> : '—'}</td>
                         <td style={ui.td}>
                           {r.recent.length > 0
-                            ? <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: '1px solid #334155', color: '#818cf8', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '4px 10px' }}>{open === r.staffId ? t('pf.hide') : `${r.recent.length} ▾`}</button>
-                            : <span style={{ color: '#475569' }}>—</span>}
+                            ? <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c818cf8)', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '4px 10px' }}>{open === r.staffId ? t('pf.hide') : `${r.recent.length} ▾`}</button>
+                            : <span style={{ color: 'var(--c475569)' }}>—</span>}
                         </td>
                       </tr>
                       {open === r.staffId && (
-                        <tr key={`${r.staffId}-x`} style={{ background: '#0f172a' }}>
+                        <tr key={`${r.staffId}-x`} style={{ background: 'var(--c0f172a)' }}>
                           <td></td>
                           <td colSpan={8} style={{ padding: '10px 14px' }}><RecentList recent={r.recent} /></td>
                         </tr>
@@ -376,7 +376,7 @@ function Performance() {
               </table>
             </div>
           )}
-          <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>{t('pf.note')}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12 }}>{t('pf.note')}</p>
         </>
       )}
     </div>
@@ -389,7 +389,7 @@ function Ava({ r }: { r: PerfRow }) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={r.avatarUrl} alt="" width={26} height={26} style={{ borderRadius: '50%', objectFit: 'cover' }} />;
   }
-  return <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#334155', color: '#c7d2fe', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{initials || '?'}</span>;
+  return <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--cc7d2fe)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{initials || '?'}</span>;
 }
 function medal(i: number): string { return i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : ''; }
 
@@ -398,13 +398,13 @@ function RecentList({ recent }: { recent: { name: string; date: string; service:
   const t = (k: string) => tr(k, lang);
   return (
     <div>
-      <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6, fontWeight: 700 }}>{t('pf.recentTitle')}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 6, fontWeight: 700 }}>{t('pf.recentTitle')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {recent.map((x, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, borderBottom: '1px solid #1e293b', paddingBottom: 5 }}>
-            <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{x.name}</span>
-            <span style={{ color: '#94a3b8' }}>{x.service}</span>
-            <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(x.date).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' })}</span>
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, borderBottom: '1px solid var(--c1e293b)', paddingBottom: 5 }}>
+            <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{x.name}</span>
+            <span style={{ color: 'var(--c94a3b8)' }}>{x.service}</span>
+            <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{new Date(x.date).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' })}</span>
           </div>
         ))}
       </div>

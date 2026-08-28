@@ -19,7 +19,7 @@ interface Entry {
   createdAt: string; notifiedAt: string | null; service: { name: string } | null;
 }
 
-const STATUS_COLORS: Record<string, string> = { WAITING: '#eab308', NOTIFIED: '#3b82f6', CONVERTED: '#22c55e', CANCELLED: '#94a3b8' };
+const STATUS_COLORS: Record<string, string> = { WAITING: '#eab308', NOTIFIED: '#3b82f6', CONVERTED: '#22c55e', CANCELLED: 'var(--c94a3b8)' };
 
 export default function WaitlistPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -67,21 +67,21 @@ function Inner() {
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('wl.title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('wl.subA')}<strong>{t('wl.notifyWord')}</strong>{t('wl.subB')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wl.subA')}<strong>{t('wl.notifyWord')}</strong>{t('wl.subB')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
-      {loading && rows.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('wl.loading')}</p> : isMobile ? (
+      {loading && rows.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{t('wl.loading')}</p> : isMobile ? (
         <>
           <MList>
-            {rows.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('wl.empty')}</p>}
+            {rows.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('wl.empty')}</p>}
             {pg.paged.map((e) => (
               <MCard key={e.id}>
-                <MHead right={<span style={{ color: STATUS_COLORS[e.status] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[e.status] ?? '#94a3b8'}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{e.status}</span>}>
+                <MHead right={<span style={{ color: STATUS_COLORS[e.status] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[e.status] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{e.status}</span>}>
                   {e.customerName}
                 </MHead>
-                {e.note && <div style={{ color: '#64748b', fontSize: 12 }}>{e.note}</div>}
+                {e.note && <div style={{ color: 'var(--c64748b)', fontSize: 12 }}>{e.note}</div>}
                 <MRow label={t('wl.colContact')}>{e.phone || e.email || '—'}</MRow>
                 <MRow label={t('wl.colService')}>{e.service?.name || t('wl.any')}</MRow>
                 <MRow label={t('wl.colWants')}>{e.preferredDate || t('wl.anyDay')}</MRow>
@@ -99,9 +99,9 @@ function Inner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/waitlist/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead><tr style={{ background: '#1e293b' }}>
+            <thead><tr style={{ background: 'var(--c1e293b)' }}>
               <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>{t('wl.colAdded')}</th><th style={ui.th}>{t('wl.colCustomer')}</th><th style={ui.th}>{t('wl.colContact')}</th>
               <th style={ui.th}>{t('wl.colService')}</th><th style={ui.th}>{t('wl.colWants')}</th><th style={ui.th}>{t('wl.colStatus')}</th><th style={ui.th}>{t('wl.colActions')}</th>
@@ -109,14 +109,14 @@ function Inner() {
             <tbody>
               {rows.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('wl.empty')}</td></tr>}
               {pg.paged.map((e) => (
-                <tr key={e.id} style={{ borderTop: '1px solid #334155', background: bulk.has(e.id) ? '#1e1b4b' : undefined }}>
+                <tr key={e.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(e.id) ? 'var(--c1e1b4b)' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(e.id)} onChange={() => bulk.toggle(e.id)} /></td>
-                  <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(e.createdAt).toLocaleDateString(uiLocale())}</td>
-                  <td style={ui.td}>{e.customerName}{e.note ? <div style={{ color: '#64748b', fontSize: 12 }}>{e.note}</div> : null}</td>
-                  <td style={{ ...ui.td, color: '#cbd5e1' }}>{e.phone || e.email || '—'}</td>
-                  <td style={{ ...ui.td, color: '#cbd5e1' }}>{e.service?.name || t('wl.any')}</td>
-                  <td style={{ ...ui.td, color: '#cbd5e1' }}>{e.preferredDate || t('wl.anyDay')}</td>
-                  <td style={ui.td}><span style={{ color: STATUS_COLORS[e.status] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[e.status] ?? '#94a3b8'}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{e.status}</span></td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{new Date(e.createdAt).toLocaleDateString(uiLocale())}</td>
+                  <td style={ui.td}>{e.customerName}{e.note ? <div style={{ color: 'var(--c64748b)', fontSize: 12 }}>{e.note}</div> : null}</td>
+                  <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{e.phone || e.email || '—'}</td>
+                  <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{e.service?.name || t('wl.any')}</td>
+                  <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{e.preferredDate || t('wl.anyDay')}</td>
+                  <td style={ui.td}><span style={{ color: STATUS_COLORS[e.status] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[e.status] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{e.status}</span></td>
                   <td style={ui.td}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button onClick={() => notify(e)} style={mini('#22c55e')} title={t('wl.notifyTitle')}>{t('wl.notify')}</button>

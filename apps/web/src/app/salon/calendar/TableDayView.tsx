@@ -31,7 +31,7 @@ interface TableLite { id: string; name: string; seats: number; area: string | nu
 const STATUS_COLOR: Record<string, string> = {
   PENDING: '#f59e0b', ASSIGNED: '#f59e0b', REJECTED: '#f59e0b',
   ACCEPTED: '#3b82f6', CONFIRMED: '#3b82f6',
-  ARRIVED: '#10b981', COMPLETED: '#8b5cf6', NO_SHOW: '#ef4444', CANCELLED: '#64748b',
+  ARRIVED: '#10b981', COMPLETED: '#8b5cf6', NO_SHOW: '#ef4444', CANCELLED: 'var(--c64748b)',
 };
 const sc = (s: string) => STATUS_COLOR[s] ?? '#f59e0b';
 const paidOf = (b: Booking) => (b.payments ?? []).filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0);
@@ -167,13 +167,13 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, padding: '10px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10 }}>
-        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: '#94a3b8' }}>{t('cal.reservations')}</span></span>
-        <span style={{ color: '#334155' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: '#94a3b8' }}>{t('cal.covers')}: </span><strong style={{ color: '#e2e8f0' }}>{covers}</strong></span>
-        <span style={{ color: '#334155' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: '#94a3b8' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
-        {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: '#a7f3d0', background: '#064e3b', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
+        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.reservations')}</span></span>
+        <span style={{ color: 'var(--c334155)' }}>|</span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.covers')}: </span><strong style={{ color: 'var(--ce2e8f0)' }}>{covers}</strong></span>
+        <span style={{ color: 'var(--c334155)' }}>|</span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+        {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: '#a7f3d0', background: 'var(--c064e3b)', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}
       </div>
 
       {activeTables.length > 0 && (
@@ -182,22 +182,22 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
           {activeTables.map((tb) => (
             <button key={tb.id} onClick={() => setFocus(focus === tb.id ? null : tb.id)} style={chip(focus === tb.id)}>{tb.name}</button>
           ))}
-          <span style={{ fontSize: 11.5, color: '#64748b', marginLeft: 6 }}>{t('cal.dragTableHint')}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 6 }}>{t('cal.dragTableHint')}</span>
         </div>
       )}
 
       {activeTables.length === 0 ? (
-        <div style={{ ...ui.card, textAlign: 'center', color: '#64748b', padding: '30px 16px', fontSize: 14 }}>{t('cal.noTables')}</div>
+        <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '30px 16px', fontSize: 14 }}>{t('cal.noTables')}</div>
       ) : items.length === 0 ? (
-        <div style={{ ...ui.card, textAlign: 'center', color: '#64748b', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
+        <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
       ) : (
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid #1f2937', borderRadius: 12, background: '#0f172a', opacity: busy ? 0.6 : 1, transition: 'opacity .15s' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid var(--c1f2937)', borderRadius: 12, background: 'var(--c0f172a)', opacity: busy ? 0.6 : 1, transition: 'opacity .15s' }}>
           <div style={{ position: 'relative', display: 'flex', minWidth: railW + columns.length * colW }}>
-            <div style={{ position: 'sticky', left: 0, zIndex: 4, width: railW, flexShrink: 0, background: '#0f172a', borderRight: '1px solid #1f2937' }}>
+            <div style={{ position: 'sticky', left: 0, zIndex: 4, width: railW, flexShrink: 0, background: 'var(--c0f172a)', borderRight: '1px solid var(--c1f2937)' }}>
               <div style={{ height: headH }} />
               <div style={{ position: 'relative', height: total }}>
                 {Array.from({ length: endH - startH + 1 }, (_, i) => startH + i).map((h) => (
-                  <div key={h} style={{ position: 'absolute', top: (h - startH) * HP - 6, right: 7, fontSize: 11, color: '#64748b' }}>
+                  <div key={h} style={{ position: 'absolute', top: (h - startH) * HP - 6, right: 7, fontSize: 11, color: 'var(--c64748b)' }}>
                     {((h % 12) || 12)}{h < 12 || h === 24 ? 'a' : 'p'}
                   </div>
                 ))}
@@ -213,19 +213,19 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
                   onDragOver={(e) => { if (!un && dragId) { e.preventDefault(); setOverCol(c.id); } }}
                   onDragLeave={() => setOverCol((o) => (o === c.id ? null : o))}
                   onDrop={(e) => { e.preventDefault(); onDrop(c); }}
-                  style={{ width: colW, flexShrink: 0, borderRight: '1px solid #1f2937', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2 }}>
-                  <div style={{ height: headH, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', borderBottom: '1px solid #1f2937', boxSizing: 'border-box' }}>
-                    <div style={{ width: 30, height: 26, borderRadius: 6, flexShrink: 0, background: un ? '#334155' : '#1e293b', border: '1px solid #334155', color: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
+                  style={{ width: colW, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2 }}>
+                  <div style={{ height: headH, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', borderBottom: '1px solid var(--c1f2937)', boxSizing: 'border-box' }}>
+                    <div style={{ width: 30, height: 26, borderRadius: 6, flexShrink: 0, background: un ? 'var(--c334155)' : 'var(--c1e293b)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
                       {un ? '?' : (c.seats ?? '')}
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                      <div style={{ fontSize: 10.5, color: '#64748b' }}>{un ? c.items.length + ' ' + t('cal.reservations') : (c.seats ?? '?') + ' ' + t('cal.seats')}</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{un ? c.items.length + ' ' + t('cal.reservations') : (c.seats ?? '?') + ' ' + t('cal.seats')}</div>
                     </div>
                   </div>
                   <div style={{ position: 'relative', height: total }}>
                     {Array.from({ length: endH - startH }, (_, i) => i + 1).map((i) => (
-                      <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid #1e293b' }} />
+                      <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--c1e293b)' }} />
                     ))}
                     {pos.map(({ b, s, e, col, cols }) => {
                       const cc = sc(b.status);
@@ -240,15 +240,15 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
                           style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? '#18202f' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
                             <span style={{ fontSize: 10.5, fontWeight: 700, color: cc, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                            <span style={{ fontSize: 10.5, fontWeight: 700, color: '#e2e8f0', background: '#334155', borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap' }}>{b.partySize ?? 1}p</span>
+                            <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'var(--c334155)', borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap' }}>{b.partySize ?? 1}p</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
                               {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
                             </span>
                             {paid > 0 && <span title={formatPrice(paid, b.currency)} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />}
                           </div>
-                          {h > 48 && b.priceCents > 0 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</div>}
+                          {h > 48 && b.priceCents > 0 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</div>}
                         </div>
                       );
                     })}
@@ -265,11 +265,11 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
           </div>
         </div>
       )}
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('cal.staffHint')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.staffHint')}</p>
     </div>
   );
 }
 
 function chip(active: boolean): React.CSSProperties {
-  return { padding: '4px 11px', borderRadius: 999, fontSize: 12, cursor: 'pointer', fontWeight: 600, border: `1px solid ${active ? '#6366f1' : '#334155'}`, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#94a3b8' };
+  return { padding: '4px 11px', borderRadius: 999, fontSize: 12, cursor: 'pointer', fontWeight: 600, border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--c94a3b8)' };
 }

@@ -178,7 +178,7 @@ export default function TenantsPage() {
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Salons (Tenants)</h1><MarketBadge /></div>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>
             Super Admin · {user.email}
           </p>
         </div>
@@ -230,7 +230,7 @@ export default function TenantsPage() {
             <option key={m.code} value={m.code}>{m.label}</option>
           ))}
         </select>
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} salon{visible.length === 1 ? '' : 's'}</span>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} salon{visible.length === 1 ? '' : 's'}</span>
         <DateRangeBar range={range} />
       </div>
 
@@ -245,10 +245,10 @@ export default function TenantsPage() {
         />
       )}
 
-      <div style={{ overflowX: 'auto', border: '1px solid #334155', borderRadius: 12 }}>
+      <div style={{ overflowX: 'auto', border: '1px solid var(--c334155)', borderRadius: 12 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#1e293b', textAlign: 'left' }}>
+            <tr style={{ background: 'var(--c1e293b)', textAlign: 'left' }}>
               <th style={th}>Name</th>
               <th style={th}>Market</th>
               <th style={th}>Slug</th>
@@ -269,10 +269,10 @@ export default function TenantsPage() {
             )}
             {pg.paged.map((t) => (
               <Fragment key={t.id}>
-              <tr style={{ borderTop: '1px solid #334155' }}>
+              <tr style={{ borderTop: '1px solid var(--c334155)' }}>
                 <td style={td}>{t.name}</td>
                 <td style={{ ...td, whiteSpace: 'nowrap' }} title={marketOption(t.market).label}>{marketTag(t.market)}</td>
-                <td style={{ ...td, color: '#94a3b8' }}>{t.slug}</td>
+                <td style={{ ...td, color: 'var(--c94a3b8)' }}>{t.slug}</td>
                 <td style={td}>
                   <StatusBadge status={t.status} />
                 </td>
@@ -296,12 +296,12 @@ export default function TenantsPage() {
                   </select>
                 </td>
                 <td style={td}>{t._count?.users ?? '-'}</td>
-                <td style={{ ...td, color: '#94a3b8' }}>
+                <td style={{ ...td, color: 'var(--c94a3b8)' }}>
                   {new Date(t.createdAt).toLocaleDateString(uiLocale())}
                 </td>
                 <td style={td}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
-                    <button onClick={() => setEditId(editId === t.id ? null : t.id)} style={{ ...primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === t.id ? '#475569' : '#6366f1' }}>
+                    <button onClick={() => setEditId(editId === t.id ? null : t.id)} style={{ ...primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === t.id ? 'var(--c475569)' : '#6366f1' }}>
                       {editId === t.id ? 'Close' : 'Edit'}
                     </button>
                     {t.status === 'ACTIVE' ? (
@@ -315,7 +315,7 @@ export default function TenantsPage() {
               </tr>
               {editId === t.id && (
                 <tr>
-                  <td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
+                  <td colSpan={7} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                     <TenantEditPanel token={token} tenant={t} usage={voiceUsage.find((u) => u.tenantId === t.id)} onSaved={loadData} />
                   </td>
                 </tr>
@@ -328,8 +328,8 @@ export default function TenantsPage() {
       </div>
 
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
-        style={{ display: 'block', textAlign: 'center', marginTop: 28, fontSize: 11, color: '#64748b', textDecoration: 'none' }}>
-        Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>
+        style={{ display: 'block', textAlign: 'center', marginTop: 28, fontSize: 11, color: 'var(--c64748b)', textDecoration: 'none' }}>
+        Powered by <span style={{ color: 'var(--c818cf8)', fontWeight: 600 }}>Lumio Booking</span>
       </a>
     </main>
   );
@@ -360,11 +360,11 @@ function AccountPanel({ token, currentEmail }: { token: string; currentEmail: st
   }
 
   return (
-    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+    <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>My account</h2>
-      <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 0 }}>Change your own Super Admin login email and/or password.</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 0 }}>Change your own Super Admin login email and/or password.</p>
       {err && <Banner>{err}</Banner>}
-      {msg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '8px 0' }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '8px 0' }}>{msg}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Login email"><input style={inp} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /></Field>
         <Field label="New password (leave blank to keep)"><input style={inp} type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="min 8 chars" /></Field>
@@ -491,9 +491,9 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ fontWeight: 600, color: '#cbd5e1' }}>Edit {tenant.name}</div>
+      <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)' }}>Edit {tenant.name}</div>
       {err && <Banner>{err}</Banner>}
-      {msg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 12px', borderRadius: 8, fontSize: 13 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13 }}>{msg}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <Field label="Salon name"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -511,7 +511,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           ))}
         </select>
       </Field>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 8px', maxWidth: 520, lineHeight: 1.5 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 8px', maxWidth: 520, lineHeight: 1.5 }}>
         Changes the label and which features are offered. It deliberately does{' '}
         <strong>not</strong> rewrite currency, prices or timezone — this salon already
         has priced services and booked appointments, and rewriting its currency
@@ -520,10 +520,10 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
       </p>
       <div><button onClick={saveInfo} disabled={busy} style={primaryBtn}>Save salon info</button></div>
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
-        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Login email (how the salon signs in)</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
-          This is the salon admin&apos;s sign-in email — different from the contact email above. Current: <strong style={{ color: '#cbd5e1' }}>{currentLoginEmail || '—'}</strong>
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>Login email (how the salon signs in)</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>
+          This is the salon admin&apos;s sign-in email — different from the contact email above. Current: <strong style={{ color: 'var(--ccbd5e1)' }}>{currentLoginEmail || '—'}</strong>
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input style={{ ...inp, maxWidth: 320 }} type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="new-login@email.com" />
@@ -531,21 +531,21 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
-        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Booking URL (slug)</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
-          Public booking address: <strong style={{ color: '#cbd5e1' }}>lumiobooking.com/book/{tenant.slug}</strong>. Changing it moves the page — you must also update the WordPress embed and any shared / printed links, or the old ones will 404.
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>Booking URL (slug)</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>
+          Public booking address: <strong style={{ color: 'var(--ccbd5e1)' }}>lumiobooking.com/book/{tenant.slug}</strong>. Changing it moves the page — you must also update the WordPress embed and any shared / printed links, or the old ones will 404.
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ color: '#64748b', fontSize: 13 }}>/book/</span>
+          <span style={{ color: 'var(--c64748b)', fontSize: 13 }}>/book/</span>
           <input style={{ ...inp, maxWidth: 300 }} value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} placeholder="aura-nail-lab" />
           <button onClick={saveSlug} disabled={busy || slug.length < 2 || slug === tenant.slug} style={primaryBtn}>Save URL</button>
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
-        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Access control</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>Access control</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>
           Grant free access, or set a date after which the salon is locked until you renew. Overrides billing.
         </p>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 10 }}>
@@ -553,19 +553,19 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           <span><strong>Free access</strong> — no payment required, always open</span>
         </label>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: 13, color: '#94a3b8' }}>Locked after:</label>
+          <label style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>Locked after:</label>
           <input type="date" value={accessUntil} disabled={exempt} onChange={(e) => setAccessUntil(e.target.value)} style={{ ...inp, width: 'auto', opacity: exempt ? 0.5 : 1 }} />
           {accessUntil && !exempt && <button onClick={() => setAccessUntil('')} style={ghostBtn}>Clear</button>}
           <button onClick={saveAccess} disabled={busy} style={primaryBtn}>Save access</button>
         </div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '6px 0 0' }}>
           Current: {tenant.billingExempt ? 'Free access' : tenant.accessUntil ? `locks after ${new Date(tenant.accessUntil).toLocaleDateString(uiLocale())}` : 'billing-controlled'} · status {tenant.status}
         </p>
       </div>
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
-        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Plan feature overrides</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 10px' }}>
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>Plan feature overrides</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 10px' }}>
           Grant or remove a feature for THIS salon only. “Default” follows the {tenant.plan?.name ?? 'current'} plan; “On/Off” overrides it — e.g. give a Starter salon POS as an add-on.
         </p>
         <div style={{ display: 'grid', gap: 8 }}>
@@ -575,14 +575,14 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
             const effOn = sel === 'on' ? true : sel === 'off' ? false : planOn;
             return (
               <div key={ft.key} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ minWidth: 190, fontSize: 13.5, color: '#e2e8f0' }}>{ft.label}</span>
-                <span style={{ fontSize: 11.5, color: '#64748b', minWidth: 66 }}>plan: {planOn ? 'On' : 'Off'}</span>
+                <span style={{ minWidth: 190, fontSize: 13.5, color: 'var(--ce2e8f0)' }}>{ft.label}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--c64748b)', minWidth: 66 }}>plan: {planOn ? 'On' : 'Off'}</span>
                 <select value={sel} onChange={(e) => setOvr({ ...ovr, [ft.key]: e.target.value as 'default' | 'on' | 'off' })} style={{ ...inp, width: 'auto' }}>
                   <option value="default">Default (follow plan)</option>
                   <option value="on">Force ON</option>
                   <option value="off">Force OFF</option>
                 </select>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: effOn ? '#4ade80' : '#f87171' }}>{effOn ? 'ENABLED' : 'OFF'}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: effOn ? 'var(--c4ade80)' : 'var(--cf87171)' }}>{effOn ? 'ENABLED' : 'OFF'}</span>
               </div>
             );
           })}
@@ -590,12 +590,12 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         <div style={{ marginTop: 10 }}><button onClick={saveOverrides} disabled={busy} style={primaryBtn}>Save feature overrides</button></div>
       </div>
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
-        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>📞 AI Hotline number</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>📞 AI Hotline number</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>
           Assign a Lumio voice number (E.164). The salon forwards its own line to this number and the AI answers.{' '}
           {tenant.voiceLine?.lumioNumber
-            ? <>Current: <strong style={{ color: '#a5b4fc' }}>{tenant.voiceLine.lumioNumber}</strong> · {tenant.voiceLine.enabled ? 'enabled' : 'off'}</>
+            ? <>Current: <strong style={{ color: 'var(--ca5b4fc)' }}>{tenant.voiceLine.lumioNumber}</strong> · {tenant.voiceLine.enabled ? 'enabled' : 'off'}</>
             : 'Not assigned yet.'}
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -603,27 +603,27 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           <button onClick={saveVoice} disabled={busy || !voiceNum.trim()} style={primaryBtn}>Assign number</button>
         </div>
         {usage && (
-          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '10px 0 0' }}>
-            This month: <strong style={{ color: '#e2e8f0' }}>{usage.aiCalls}</strong> calls · <strong style={{ color: '#e2e8f0' }}>{usage.aiMinutes}</strong> AI min · <strong style={{ color: '#e2e8f0' }}>{usage.smsSent}</strong> SMS
-            {usage.overageCents > 0 && <span style={{ color: '#fca5a5' }}> · overage ~${(usage.overageCents / 100).toFixed(2)}</span>}
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '10px 0 0' }}>
+            This month: <strong style={{ color: 'var(--ce2e8f0)' }}>{usage.aiCalls}</strong> calls · <strong style={{ color: 'var(--ce2e8f0)' }}>{usage.aiMinutes}</strong> AI min · <strong style={{ color: 'var(--ce2e8f0)' }}>{usage.smsSent}</strong> SMS
+            {usage.overageCents > 0 && <span style={{ color: 'var(--cfca5a5)' }}> · overage ~${(usage.overageCents / 100).toFixed(2)}</span>}
           </p>
         )}
 
-        <div style={{ marginTop: 12, fontSize: 12, color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>AI plan limits (0 = unlimited)</div>
+        <div style={{ marginTop: 12, fontSize: 12, color: 'var(--c818cf8)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>AI plan limits (0 = unlimited)</div>
         <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <label style={{ fontSize: 12, color: '#94a3b8' }}>AI Hotline fee $ / mo
+          <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>AI Hotline fee $ / mo
             <input type="number" min={0} step={1} value={(lim.monthlyCents / 100) || 0} onChange={(e) => setLim({ ...lim, monthlyCents: Math.round((Number(e.target.value) || 0) * 100) })} style={{ ...inp, marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 12, color: '#94a3b8' }}>Included minutes / mo
+          <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>Included minutes / mo
             <input type="number" min={0} value={lim.includedMinutes} onChange={(e) => setLim({ ...lim, includedMinutes: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 12, color: '#94a3b8' }}>Included SMS / mo
+          <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>Included SMS / mo
             <input type="number" min={0} value={lim.includedSms} onChange={(e) => setLim({ ...lim, includedSms: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 12, color: '#94a3b8' }}>Overage ¢ / min
+          <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>Overage ¢ / min
             <input type="number" min={0} value={lim.overageCentsPerMin} onChange={(e) => setLim({ ...lim, overageCentsPerMin: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 12, color: '#94a3b8' }}>Overage ¢ / SMS
+          <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>Overage ¢ / SMS
             <input type="number" min={0} value={lim.overageCentsPerSms} onChange={(e) => setLim({ ...lim, overageCentsPerSms: Number(e.target.value) || 0 })} style={{ ...inp, marginTop: 4 }} />
           </label>
         </div>
@@ -634,18 +634,18 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         <button onClick={saveLimits} disabled={busy} style={primaryBtn}>Save plan limits</button>
       </div>
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
-        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>Reset salon admin password</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>Sets a new login password for this salon’s admin account. Give it to the salon owner.</p>
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>Reset salon admin password</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>Sets a new login password for this salon’s admin account. Give it to the salon owner.</p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input style={{ ...inp, maxWidth: 260 }} type="text" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="New password (min 8 chars)" />
           <button onClick={resetPw} disabled={busy} style={warnBtn}>Reset password</button>
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: 14 }}>
-        <div style={{ fontWeight: 600, color: '#cbd5e1', marginBottom: 4 }}>🔒 Feature access</div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>🔒 Feature access</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>
           Uncheck to make a feature <strong>platform-managed</strong> — it disappears from this salon&apos;s dashboard and salon edits are blocked at the API. Checked = the salon self-manages it.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -661,7 +661,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
               <input type="checkbox" checked={f.mode === 'salon' && !f.unavailable} disabled={f.unavailable}
                 onChange={(e) => setFp((rows) => rows.map((r, idx) => (idx === i ? { ...r, mode: e.target.checked ? 'salon' : 'platform' } : r)))} />
               <span>{f.label} — {f.unavailable
-                ? <span style={{ color: '#64748b', fontWeight: 600 }}>Not available in this market</span>
+                ? <span style={{ color: 'var(--c64748b)', fontWeight: 600 }}>Not available in this market</span>
                 : <span style={{ color: f.mode === 'salon' ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>{f.mode === 'salon' ? 'Salon can manage' : 'Platform-managed (hidden)'}</span>}</span>
             </label>
           ))}
@@ -733,8 +733,8 @@ function CreateTenantForm({
     <form
       onSubmit={submit}
       style={{
-        background: '#1e293b',
-        border: '1px solid #334155',
+        background: 'var(--c1e293b)',
+        border: '1px solid var(--c334155)',
         borderRadius: 12,
         padding: 20,
         marginBottom: 20,
@@ -802,8 +802,8 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       style={{
-        color: map[status] ?? '#94a3b8',
-        border: `1px solid ${map[status] ?? '#94a3b8'}`,
+        color: map[status] ?? 'var(--c94a3b8)',
+        border: `1px solid ${map[status] ?? 'var(--c94a3b8)'}`,
         borderRadius: 999,
         padding: '2px 10px',
         fontSize: 12,
@@ -820,7 +820,7 @@ function StatusBadge({ status }: { status: string }) {
 function Field({ label, children }: { label: string; children: ReactNodeLike }) {
   return (
     <label style={{ display: 'block' }}>
-      <span style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 }}>
+      <span style={{ display: 'block', fontSize: 12, color: 'var(--ccbd5e1)', marginBottom: 6 }}>
         {label}
       </span>
       {children}
@@ -832,8 +832,8 @@ function Banner({ children }: { children: ReactNodeLike }) {
   return (
     <div
       style={{
-        background: '#7f1d1d',
-        color: '#fecaca',
+        background: 'var(--c7f1d1d)',
+        color: 'var(--cfecaca)',
         padding: '8px 12px',
         borderRadius: 8,
         fontSize: 13,
@@ -853,7 +853,7 @@ function Centered({ children }: { children: ReactNodeLike }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: '#94a3b8',
+        color: 'var(--c94a3b8)',
       }}
     >
       {children}
@@ -863,16 +863,16 @@ function Centered({ children }: { children: ReactNodeLike }) {
 
 type ReactNodeLike = React.ReactNode;
 
-const th: React.CSSProperties = { padding: '12px 14px', fontWeight: 600, color: '#cbd5e1', whiteSpace: 'nowrap' };
+const th: React.CSSProperties = { padding: '12px 14px', fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' };
 const td: React.CSSProperties = { padding: '12px 14px', whiteSpace: 'nowrap', verticalAlign: 'middle' };
 const inp: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
   padding: '9px 11px',
   borderRadius: 8,
-  border: '1px solid #475569',
-  background: '#0f172a',
-  color: '#e2e8f0',
+  border: '1px solid var(--c475569)',
+  background: 'var(--c0f172a)',
+  color: 'var(--ce2e8f0)',
   fontSize: 14,
 };
 const primaryBtn: React.CSSProperties = {
@@ -892,9 +892,9 @@ const ghostBtn: React.CSSProperties = {
   flexShrink: 0,
   padding: '9px 14px',
   borderRadius: 8,
-  border: '1px solid #475569',
+  border: '1px solid var(--c475569)',
   background: 'transparent',
-  color: '#e2e8f0',
+  color: 'var(--ce2e8f0)',
   fontSize: 13,
   cursor: 'pointer',
 };

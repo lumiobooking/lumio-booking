@@ -124,18 +124,18 @@ export default function GatewaysPage() {
   }
 
   if (!ready || !token || user?.role !== 'SUPER_ADMIN') {
-    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>Loading…</div>;
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)' }}>Loading…</div>;
   }
 
   const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg('✓ Webhook URL copied'); }).catch(() => {});
   const dot = (on: boolean) => <span style={{ color: on ? '#22c55e' : '#ef4444', fontWeight: 700 }}>● {on ? 'Connected' : 'Not set'}</span>;
 
   return (
-    <main style={{ maxWidth: 820, margin: '0 auto', padding: '32px 24px', color: '#e2e8f0' }}>
+    <main style={{ maxWidth: 820, margin: '0 auto', padding: '32px 24px', color: 'var(--ce2e8f0)' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Payment gateways</h1><MarketBadge /></div>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>Connect Stripe / PayPal so salons can pay you. Money goes to the account these keys belong to.</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>Connect Stripe / PayPal so salons can pay you. Money goes to the account these keys belong to.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={testNow} disabled={busy} style={ghost}>Test connection</button>
@@ -143,8 +143,8 @@ export default function GatewaysPage() {
         </div>
       </header>
 
-      {err && <Banner color="#fecaca" bg="#7f1d1d">{err}</Banner>}
-      {msg && <Banner color="#bbf7d0" bg="#14532d">{msg}</Banner>}
+      {err && <Banner color="var(--cfecaca)" bg="var(--c7f1d1d)">{err}</Banner>}
+      {msg && <Banner color="var(--cbbf7d0)" bg="var(--c14532d)">{msg}</Banner>}
 
       {/* Stripe */}
       <section style={card}>
@@ -152,7 +152,7 @@ export default function GatewaysPage() {
           <h2 style={{ fontSize: 18, margin: 0 }}>💳 Stripe (cards)</h2>
           <span style={{ fontSize: 13 }}>{st ? dot(st.stripe.hasKey && st.stripe.hasWebhook) : '…'}{st?.stripe.live ? ' · LIVE' : st?.stripe.hasKey ? ' · TEST' : ''}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px' }}>From Stripe → Developers → API keys (Secret key) and Webhooks (signing secret).</p>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '8px 0 12px' }}>From Stripe → Developers → API keys (Secret key) and Webhooks (signing secret).</p>
         <label style={lbl}>Secret key {st?.stripe.hasKey && <span style={savedTag}>saved</span>}</label>
         <input style={inp} type="password" value={stripeKey} onChange={(e) => setStripeKey(e.target.value)} placeholder={st?.stripe.hasKey ? '•••••••• (leave blank to keep)' : 'sk_live_… or sk_test_…'} />
         <label style={lbl}>Webhook signing secret {st?.stripe.hasWebhook && <span style={savedTag}>saved</span>}</label>
@@ -160,7 +160,7 @@ export default function GatewaysPage() {
         <button onClick={() => save({ stripeSecretKey: stripeKey, stripeWebhookSecret: stripeHook })} disabled={busy} style={primaryBtn}>Save Stripe</button>
 
         <div style={hintBox}>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Add this webhook URL in Stripe (events: checkout.session.completed, customer.subscription.updated/deleted, invoice.payment_failed):</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>Add this webhook URL in Stripe (events: checkout.session.completed, customer.subscription.updated/deleted, invoice.payment_failed):</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <code style={codeBox}>{st?.webhookStripeUrl}</code>
             <button onClick={() => st && copy(st.webhookStripeUrl)} style={ghost}>Copy</button>
@@ -174,7 +174,7 @@ export default function GatewaysPage() {
           <h2 style={{ fontSize: 18, margin: 0 }}>PayPal</h2>
           <span style={{ fontSize: 13 }}>{st ? dot(st.paypal.hasClient && st.paypal.hasWebhook) : '…'}{st ? ` · ${(st.paypal.env || 'live').toUpperCase()}` : ''}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px' }}>From developer.paypal.com → your REST app (Client ID + Secret) and Webhooks (Webhook ID).</p>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '8px 0 12px' }}>From developer.paypal.com → your REST app (Client ID + Secret) and Webhooks (Webhook ID).</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div><label style={lbl}>Client ID {st?.paypal.hasClient && <span style={savedTag}>saved</span>}</label>
             <input style={inp} value={ppId} onChange={(e) => setPpId(e.target.value)} placeholder={st?.paypal.hasClient ? '•••• (keep)' : 'AY…'} /></div>
@@ -188,7 +188,7 @@ export default function GatewaysPage() {
         <button onClick={() => save({ paypalClientId: ppId, paypalSecret: ppSecret, paypalWebhookId: ppHook, paypalEnv: ppEnv })} disabled={busy} style={{ ...primaryBtn, marginTop: 12 }}>Save PayPal</button>
 
         <div style={hintBox}>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Add this webhook URL in PayPal (subscription + payment events):</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>Add this webhook URL in PayPal (subscription + payment events):</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <code style={codeBox}>{st?.webhookPaypalUrl}</code>
             <button onClick={() => st && copy(st.webhookPaypalUrl)} style={ghost}>Copy</button>
@@ -202,7 +202,7 @@ export default function GatewaysPage() {
           <h2 style={{ fontSize: 18, margin: 0 }}>✉ Platform email — invoices AND email marketing</h2>
           <span style={{ fontSize: 13 }}>{st ? dot(!!st.email?.hasKey) : '…'}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px' }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '8px 0 12px' }}>
           The address <b>every Lumio email goes out FROM</b> — month-end invoices, renewal invoices, and <b>every Email marketing campaign you send</b>.
           Free key at brevo.com → SMTP &amp; API → API Keys (~300 emails/day free).
           Verify your sender address in Brevo first (Senders &amp; IP → Senders), and authenticate your domain (SPF/DKIM) or your campaigns will land in spam.
@@ -218,14 +218,14 @@ export default function GatewaysPage() {
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={lbl}>Reply-to — where customer replies land</label>
             <input style={inp} value={replyTo} onChange={(e) => setReplyTo(e.target.value)} placeholder="vietnguyen.lumio@gmail.com" />
-            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: -6, marginBottom: 8 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: -6, marginBottom: 8 }}>
               The address a customer's “Reply” goes to. Used for every Lumio email — invoices and campaigns — unless a campaign sets its own. Leave the campaign's Reply-to box empty and it uses this one.
             </div>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', marginBottom: 4 }}>
               <span style={{ fontSize: 20, fontWeight: 800, color: '#2563eb', letterSpacing: '-0.4px' }}>Lumio Agency</span>
-              <span style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>
+              <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
                 Email header. It is a text wordmark, not an image — image logos get blocked or squashed by mail clients, so the header used to look broken. Text renders the same everywhere.
               </span>
             </div>
@@ -234,11 +234,11 @@ export default function GatewaysPage() {
         <button onClick={() => save({ brevoApiKey: brevoKey, brevoSenderEmail: brevoSender, brevoSenderName: brevoName, replyTo })} disabled={busy} style={primaryBtn}>Save email</button>
 
         <div style={hintBox}>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Send yourself a test to confirm it works before month-end:</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>Send yourself a test to confirm it works before month-end:</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input style={{ ...inp, marginBottom: 0, flex: 1, minWidth: 200 }} value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="your@email.com" />
             <button onClick={sendTest} disabled={busy || !testEmail} style={ghost}>Send test</button>
-            <button onClick={diagnose} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: '#a5b4fc' }}>
+            <button onClick={diagnose} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>
               Check setup with Brevo
             </button>
           </div>
@@ -252,15 +252,15 @@ export default function GatewaysPage() {
                 ['Domain (SPF/DKIM)', diag.domain],
               ] as [string, { ok: boolean; detail: string }][]).map(([label, r]) => (
                 <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 8,
-                  background: '#0f172a', border: `1px solid ${r.ok ? '#166534' : '#7f1d1d'}` }}>
+                  background: 'var(--c0f172a)', border: `1px solid ${r.ok ? 'var(--c166534)' : 'var(--c7f1d1d)'}` }}>
                   <span style={{ flexShrink: 0, fontSize: 14 }}>{r.ok ? '✅' : '❌'}</span>
                   <span style={{ minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{label}</span>
-                    <span style={{ display: 'block', fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.55, marginTop: 2 }}>{r.detail}</span>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{label}</span>
+                    <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 2 }}>{r.detail}</span>
                   </span>
                 </div>
               ))}
-              <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.10)', border: '1px solid #b45309', color: '#fde68a', fontSize: 12.5, lineHeight: 1.55 }}>
+              <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.10)', border: '1px solid #b45309', color: 'var(--cfde68a)', fontSize: 12.5, lineHeight: 1.55 }}>
                 <b>Next:</b> {diag.advice}
               </div>
             </div>
@@ -276,7 +276,7 @@ export default function GatewaysPage() {
           <h2 style={{ fontSize: 18, margin: 0 }}>↩ Auto-detect replies (stops the follow-up robot)</h2>
           <span style={{ fontSize: 13 }}>{st ? dot(!!st.inbound?.ready) : '…'}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '8px 0 12px', lineHeight: 1.7 }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '8px 0 12px', lineHeight: 1.7 }}>
           Today a reply lands in your Gmail and the system never sees it — so you have to tick “Replied” by hand.
           Point a <b>subdomain</b> at Brevo&rsquo;s inbound parsing and every reply comes back through Lumio instead:
           the contact is marked as replied automatically, the follow-up stops for them forever, and the message is
@@ -299,10 +299,10 @@ export default function GatewaysPage() {
 
         {st?.inbound?.webhookUrl && (
           <div style={hintBox}>
-            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 8 }}>
               Two things to do once, in Brevo &amp; your DNS:
             </div>
-            <ol style={{ margin: 0, paddingLeft: 18, color: '#cbd5e1', fontSize: 12.5, lineHeight: 1.9 }}>
+            <ol style={{ margin: 0, paddingLeft: 18, color: 'var(--ccbd5e1)', fontSize: 12.5, lineHeight: 1.9 }}>
               <li>
                 DNS: add an <b>MX record</b> for <code style={code}>{inDomain || 'reply.yourdomain.com'}</code> pointing to{' '}
                 <code style={code}>in.mailin.fr</code> (priority 10). Brevo shows the exact host under
@@ -314,7 +314,7 @@ export default function GatewaysPage() {
                   <code style={{ ...code, flex: 1, wordBreak: 'break-all' }}>{st.inbound.webhookUrl}</code>
                   <button onClick={() => navigator.clipboard?.writeText(st.inbound!.webhookUrl)} style={ghost}>Copy</button>
                 </div>
-                <span style={{ color: '#f87171' }}>Treat this URL as a password — anyone holding it can mark contacts as replied.</span>
+                <span style={{ color: 'var(--cf87171)' }}>Treat this URL as a password — anyone holding it can mark contacts as replied.</span>
               </li>
             </ol>
           </div>
@@ -327,14 +327,14 @@ export default function GatewaysPage() {
           <h2 style={{ fontSize: 18, margin: 0 }}>🖼 Image storage (Hostinger / FTP)</h2>
           <span style={{ fontSize: 13 }}>{st ? dot(!!st.storage?.configured) : '…'}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 0 }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 0 }}>
           Optional. Point uploads at your own Hostinger space so photos are served from your domain instead of the database.
           Leave empty to keep small photos stored inline.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Public URL of the upload folder</label>
             <input style={inp} value={stPublic} onChange={(e) => setStPublic(e.target.value)} placeholder="https://lumioagency.com/uploads" />
-            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: -6, marginBottom: 8 }}>Where the folder below is reachable on the web. A photo becomes &lt;this&gt;/&lt;salon&gt;/&lt;file&gt;.jpg.</div>
+            <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: -6, marginBottom: 8 }}>Where the folder below is reachable on the web. A photo becomes &lt;this&gt;/&lt;salon&gt;/&lt;file&gt;.jpg.</div>
           </div>
           <div><label style={lbl}>FTP host</label><input style={inp} value={stHost} onChange={(e) => setStHost(e.target.value)} placeholder="ftp.lumioagency.com" /></div>
           <div><label style={lbl}>Port</label><input style={inp} value={stPort} onChange={(e) => setStPort(e.target.value)} placeholder="21" /></div>
@@ -344,20 +344,20 @@ export default function GatewaysPage() {
           <div><label style={lbl}>Folder path on the server</label><input style={inp} value={stBase} onChange={(e) => setStBase(e.target.value)} placeholder="/public_html/uploads" /></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 22 }}>
             <input id="ftps" type="checkbox" checked={stSecure} onChange={(e) => setStSecure(e.target.checked)} style={{ width: 16, height: 16 }} />
-            <label htmlFor="ftps" style={{ fontSize: 13, color: '#cbd5e1' }}>Use FTPS (secure) — recommended</label>
+            <label htmlFor="ftps" style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>Use FTPS (secure) — recommended</label>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
           <button onClick={() => save({ storageFtpHost: stHost, storageFtpPort: stPort, storageFtpUser: stUser, storageFtpPass: stPass, storageFtpSecure: String(stSecure), storageFtpBasePath: stBase, storagePublicBase: stPublic })} disabled={busy} style={primaryBtn}>Save storage</button>
-          <button onClick={testStorage} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: '#a5b4fc' }}>Test connection</button>
+          <button onClick={testStorage} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>Test connection</button>
         </div>
         {stTest && (
-          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: stTest.ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: stTest.ok ? '#4ade80' : '#fca5a5', fontSize: 13 }}>
+          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: stTest.ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: stTest.ok ? 'var(--c4ade80)' : 'var(--cfca5a5)', fontSize: 13 }}>
             {stTest.ok ? '✓ ' : '✕ '}{stTest.message}
           </div>
         )}
         <div style={hintBox}>
-          <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
             <b>Hostinger setup:</b> hPanel → Files → FTP Accounts → create an account, note the <b>host, username, password</b>.
             Set the folder to a public one (e.g. <code style={code}>/public_html/uploads</code>) and the Public URL to the matching web address
             (e.g. <code style={code}>https://yourdomain.com/uploads</code>). Press <b>Test connection</b> — a green tick means uploads will land there.
@@ -365,7 +365,7 @@ export default function GatewaysPage() {
         </div>
       </section>
 
-      <p style={{ color: '#64748b', fontSize: 12 }}>Tip: start with Stripe TEST keys + the test card 4242 4242 4242 4242 to verify, then switch to LIVE keys to receive real money. Renewals are automatic.</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12 }}>Tip: start with Stripe TEST keys + the test card 4242 4242 4242 4242 to verify, then switch to LIVE keys to receive real money. Renewals are automatic.</p>
     </main>
   );
 }
@@ -374,12 +374,12 @@ function Banner({ children, color, bg }: { children: React.ReactNode; color: str
   return <div style={{ background: bg, color, padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{children}</div>;
 }
 
-const card: React.CSSProperties = { background: '#1e293b', border: '1px solid #334155', borderRadius: 14, padding: 20, marginBottom: 18 };
-const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 14, colorScheme: 'dark', marginBottom: 10 };
-const lbl: React.CSSProperties = { display: 'block', fontSize: 13, color: '#cbd5e1', marginBottom: 4 };
+const card: React.CSSProperties = { background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 14, padding: 20, marginBottom: 18 };
+const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, marginBottom: 10 };
+const lbl: React.CSSProperties = { display: 'block', fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 4 };
 const primaryBtn: React.CSSProperties = { padding: '9px 16px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' };
-const ghost: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer', textDecoration: 'none' };
-const code: React.CSSProperties = { background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '3px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#a5b4fc' };
-const hintBox: React.CSSProperties = { marginTop: 14, paddingTop: 12, borderTop: '1px solid #334155' };
-const codeBox: React.CSSProperties = { flex: 1, background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: '#cbd5e1', overflowX: 'auto', whiteSpace: 'nowrap' };
+const ghost: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer', textDecoration: 'none' };
+const code: React.CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 6, padding: '3px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'var(--ca5b4fc)' };
+const hintBox: React.CSSProperties = { marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--c334155)' };
+const codeBox: React.CSSProperties = { flex: 1, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: 'var(--ccbd5e1)', overflowX: 'auto', whiteSpace: 'nowrap' };
 const savedTag: React.CSSProperties = { marginLeft: 6, fontSize: 11, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '0 6px' };

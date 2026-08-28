@@ -95,44 +95,44 @@ export default function AgencyPage() {
   }
 
   if (!ready || loading) {
-    return <main style={screen}><div style={{ color: '#94a3b8' }}>Loading…</div></main>;
+    return <main style={screen}><div style={{ color: 'var(--c94a3b8)' }}>Loading…</div></main>;
   }
 
   return (
-    <main style={{ minHeight: '100vh', background: '#0b1120', color: '#e2e8f0', padding: '28px 16px' }}>
+    <main style={{ minHeight: '100vh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 16px' }}>
       <div style={{ maxWidth: 780, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}>🛠 Lumio Support</h1>
           <button onClick={() => { logout(); router.replace('/login'); }}
-            style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
+            style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
             Sign out
           </button>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 14, margin: '0 0 18px' }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 18px' }}>
           Pick a salon to set it up. Each visit opens an 8-hour working session and is logged.
         </p>
 
-        {error && <div style={{ background: '#7f1d1d', color: '#fecaca', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
+        {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
 
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search salon by name…"
           autoFocus
-          style={{ width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 10, padding: '12px 14px', fontSize: 15, marginBottom: 14 }}
+          style={{ width: '100%', boxSizing: 'border-box', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 10, padding: '12px 14px', fontSize: 15, marginBottom: 14 }}
         />
 
-        <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
           {shown.length === 0 && (
-            <div style={{ padding: 18, color: '#64748b', fontSize: 14 }}>No salons match.</div>
+            <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>No salons match.</div>
           )}
           {shown.map((t) => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid #1f2937', background: '#111827' }}>
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-                <div style={{ fontSize: 12.5, color: '#64748b' }}>/{t.slug}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>/{t.slug}</div>
               </div>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: STATUS_COLOR[t.status] || '#94a3b8', border: `1px solid ${STATUS_COLOR[t.status] || '#334155'}`, borderRadius: 999, padding: '3px 10px' }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: STATUS_COLOR[t.status] || 'var(--c94a3b8)', border: `1px solid ${STATUS_COLOR[t.status] || 'var(--c334155)'}`, borderRadius: 999, padding: '3px 10px' }}>
                 {t.status}
               </span>
               <button
@@ -149,4 +149,4 @@ export default function AgencyPage() {
   );
 }
 
-const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0b1120' };
+const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--c0b1120)' };

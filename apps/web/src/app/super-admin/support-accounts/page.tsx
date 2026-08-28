@@ -67,23 +67,23 @@ export default function SupportAccountsPage() {
     finally { setBusy(null); }
   }
 
-  if (!ready || loading) return <main style={screen}><div style={{ color: '#94a3b8' }}>Loading…</div></main>;
+  if (!ready || loading) return <main style={screen}><div style={{ color: 'var(--c94a3b8)' }}>Loading…</div></main>;
 
   return (
-    <main style={{ minHeight: '100vh', background: '#0b1120', color: '#e2e8f0', padding: '28px 16px' }}>
+    <main style={{ minHeight: '100vh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 16px' }}>
       <div style={{ maxWidth: 820, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 22, margin: 0 }}>Support accounts</h1><MarketBadge /></div>
-          <a href="/super-admin/tenants" style={{ marginLeft: 'auto', color: '#818cf8', fontSize: 13.5, textDecoration: 'none' }}>← Tenants</a>
+          <a href="/super-admin/tenants" style={{ marginLeft: 'auto', color: 'var(--c818cf8)', fontSize: 13.5, textDecoration: 'none' }}>← Tenants</a>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 14, margin: '0 0 18px' }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 18px' }}>
           Setup staff log in with these and enter salons from the <b>/agency</b> page. They cannot touch plans, billing or tenant management.
         </p>
 
-        {error && <div style={{ background: '#7f1d1d', color: '#fecaca', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 12 }}>{error}</div>}
-        {msg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 12 }}>{msg}</div>}
+        {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 12 }}>{error}</div>}
+        {msg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 12 }}>{msg}</div>}
 
-        <form onSubmit={create} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, background: '#111827', border: '1px solid #1f2937', borderRadius: 12, padding: 14, marginBottom: 18 }}>
+        <form onSubmit={create} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 12, padding: 14, marginBottom: 18 }}>
           <input required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={input} />
           <input required type="text" placeholder="Password (min 8)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={input} />
           <input placeholder="First name" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} style={input} />
@@ -93,13 +93,13 @@ export default function SupportAccountsPage() {
           </button>
         </form>
 
-        <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
-          {rows.length === 0 && <div style={{ padding: 18, color: '#64748b', fontSize: 14 }}>No support accounts yet.</div>}
+        <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
+          {rows.length === 0 && <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>No support accounts yet.</div>}
           {rows.map((a) => (
-            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid #1f2937', background: '#111827' }}>
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5 }}>{`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}</div>
-                <div style={{ fontSize: 12.5, color: '#64748b' }}>
+                <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
                   {a.email}{a.lastLoginAt ? ` · last login ${new Date(a.lastLoginAt).toLocaleDateString(uiLocale())}` : ' · never logged in'}
                 </div>
               </div>
@@ -107,7 +107,7 @@ export default function SupportAccountsPage() {
                 {a.isActive ? 'ACTIVE' : 'DISABLED'}
               </span>
               <button onClick={() => toggle(a)} disabled={busy === a.id}
-                style={{ background: 'transparent', border: '1px solid #334155', color: a.isActive ? '#f87171' : '#4ade80', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
+                style={{ background: 'transparent', border: '1px solid var(--c334155)', color: a.isActive ? 'var(--cf87171)' : 'var(--c4ade80)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
                 {busy === a.id ? '…' : a.isActive ? 'Disable' : 'Enable'}
               </button>
             </div>
@@ -118,5 +118,5 @@ export default function SupportAccountsPage() {
   );
 }
 
-const input: React.CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '10px 12px', fontSize: 14 };
-const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0b1120' };
+const input: React.CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '10px 12px', fontSize: 14 };
+const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--c0b1120)' };

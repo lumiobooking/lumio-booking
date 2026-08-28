@@ -11,12 +11,12 @@ import { LUMIO_PRESETS } from '../../../lib/emailPresets';
 export default function AdminEmailPage() {
   const { logout } = useAuth();
   return (
-    <main style={{ minHeight: '100vh', background: '#0b1120', color: '#e2e8f0', padding: '28px 20px' }}>
+    <main style={{ minHeight: '100vh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 20px' }}>
       <div style={{ maxWidth: 1180, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Email marketing</h1><MarketBadge /></div>
-            <p style={{ color: '#94a3b8', margin: 0, fontSize: 14 }}>
+            <p style={{ color: 'var(--c94a3b8)', margin: 0, fontSize: 14 }}>
               Send a product email to a list of salons. Sent from the platform Brevo account, with a one-click unsubscribe on every message.
             </p>
           </div>
@@ -32,6 +32,6 @@ export default function AdminEmailPage() {
 }
 
 const btn: React.CSSProperties = {
-  padding: '9px 16px', borderRadius: 8, border: '1px solid #334155',
-  background: 'transparent', color: '#e2e8f0', fontSize: 13.5, cursor: 'pointer',
+  padding: '9px 16px', borderRadius: 8, border: '1px solid var(--c334155)',
+  background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13.5, cursor: 'pointer',
 };

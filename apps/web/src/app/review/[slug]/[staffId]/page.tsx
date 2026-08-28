@@ -99,9 +99,9 @@ export default function ReviewPage() {
     } catch { /* ignore */ }
   }
 
-  if (loadErr) return <Center accent="#6366f1"><p style={{ color: '#64748b' }}>{loadErr}</p></Center>;
-  if (!ctx) return <Center accent="#6366f1"><p style={{ color: '#94a3b8' }}>Loading…</p></Center>;
-  if (!ctx.enabled) return <Center accent={accent}><p style={{ color: '#64748b' }}>Thank you for visiting {ctx.salonName}!</p></Center>;
+  if (loadErr) return <Center accent="#6366f1"><p style={{ color: 'var(--c64748b)' }}>{loadErr}</p></Center>;
+  if (!ctx) return <Center accent="#6366f1"><p style={{ color: 'var(--c94a3b8)' }}>Loading…</p></Center>;
+  if (!ctx.enabled) return <Center accent={accent}><p style={{ color: 'var(--c64748b)' }}>Thank you for visiting {ctx.salonName}!</p></Center>;
 
   // ---- DIRECT MODE: one-tap straight to Google ----
   if (ctx.reviewMode === 'direct') {
@@ -112,33 +112,33 @@ export default function ReviewPage() {
             {ctx.branding?.logoUrl
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={ctx.branding.logoUrl} alt={ctx.salonName} style={{ height: 40, objectFit: 'contain', marginBottom: 8 }} />
-              : <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{ctx.salonName}</div>}
+              : <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c0f172a)' }}>{ctx.salonName}</div>}
           </div>
           <div style={{ textAlign: 'center', marginTop: 18 }}>
             {ctx.staff?.avatarUrl
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={ctx.staff.avatarUrl} alt={ctx.staff.name} width={84} height={84} style={{ borderRadius: '50%', objectFit: 'cover', border: `3px solid ${accent}22` }} />
               : <div style={{ width: 84, height: 84, borderRadius: '50%', background: `${accent}1a`, color: accent, display: 'grid', placeItems: 'center', fontSize: 32, fontWeight: 800, margin: '0 auto' }}>{(ctx.staff?.name || ctx.salonName).charAt(0).toUpperCase()}</div>}
-            <h1 style={{ fontSize: 22, margin: '14px 0 4px', color: '#0f172a', lineHeight: 1.25 }}>
+            <h1 style={{ fontSize: 22, margin: '14px 0 4px', color: 'var(--c0f172a)', lineHeight: 1.25 }}>
               Thank you{ctx.staff ? <> for visiting <span style={{ color: accent }}>{ctx.staff.name}</span></> : ''}! 💛
             </h1>
-            <p style={{ color: '#64748b', fontSize: 14, margin: '0 0 20px' }}>A quick Google review would mean the world to us.</p>
+            <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: '0 0 20px' }}>A quick Google review would mean the world to us.</p>
           </div>
           {ctx.googleUrl ? (
             <>
               <a href={appDeepLink(ctx.googleUrl)} onClick={logSend} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                 ⭐ Leave a Google review
               </a>
-              <p style={{ color: '#94a3b8', fontSize: 11.5, margin: '12px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
+              <p style={{ color: 'var(--c94a3b8)', fontSize: 11.5, margin: '12px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
                 Opens the Google Maps app on your phone — you&apos;re already signed in there, no password needed.
               </p>
             </>
           ) : (
-            <p style={{ color: '#b45309', fontSize: 13, textAlign: 'center', background: '#fef3c7', borderRadius: 10, padding: 12 }}>
+            <p style={{ color: '#b45309', fontSize: 13, textAlign: 'center', background: 'var(--cfef3c7)', borderRadius: 10, padding: 12 }}>
               The salon hasn&apos;t finished setting up Google reviews yet.
             </p>
           )}
-          <div style={{ textAlign: 'center', marginTop: 22, fontSize: 11, color: '#cbd5e1' }}>Powered by Lumio Booking</div>
+          <div style={{ textAlign: 'center', marginTop: 22, fontSize: 11, color: 'var(--ccbd5e1)' }}>Powered by Lumio Booking</div>
         </div>
       </Center>
     );
@@ -152,7 +152,7 @@ export default function ReviewPage() {
           {ctx.branding?.logoUrl
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={ctx.branding.logoUrl} alt={ctx.salonName} style={{ height: 40, objectFit: 'contain', marginBottom: 8 }} />
-            : <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{ctx.salonName}</div>}
+            : <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c0f172a)' }}>{ctx.salonName}</div>}
         </div>
 
         {phase !== 'done' && (
@@ -162,10 +162,10 @@ export default function ReviewPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={ctx.staff.avatarUrl} alt={ctx.staff.name} width={76} height={76} style={{ borderRadius: '50%', objectFit: 'cover', border: `3px solid ${accent}22` }} />
                 : <div style={{ width: 76, height: 76, borderRadius: '50%', background: `${accent}1a`, color: accent, display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 800, margin: '0 auto' }}>{(ctx.staff?.name || ctx.salonName).charAt(0).toUpperCase()}</div>}
-              <h1 style={{ fontSize: 22, margin: '14px 0 4px', color: '#0f172a', lineHeight: 1.25 }}>
+              <h1 style={{ fontSize: 22, margin: '14px 0 4px', color: 'var(--c0f172a)', lineHeight: 1.25 }}>
                 How was your visit{ctx.staff ? <> with <span style={{ color: accent }}>{ctx.staff.name}</span></> : ''}?
               </h1>
-              <p style={{ color: '#64748b', fontSize: 14, margin: 0 }}>Tap to rate — it takes a second.</p>
+              <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: 0 }}>Tap to rate — it takes a second.</p>
             </div>
 
             {/* Stars */}
@@ -175,7 +175,7 @@ export default function ReviewPage() {
                 return (
                   <button key={n} type="button" aria-label={`${n} star`} disabled={busy}
                     onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover(0)} onClick={() => tapStar(n)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 44, lineHeight: 1, padding: 2, color: active ? '#f59e0b' : '#e2e8f0', transition: 'transform .1s', transform: active ? 'scale(1.05)' : 'none' }}>
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 44, lineHeight: 1, padding: 2, color: active ? '#f59e0b' : 'var(--ce2e8f0)', transition: 'transform .1s', transform: active ? 'scale(1.05)' : 'none' }}>
                     ★
                   </button>
                 );
@@ -184,18 +184,18 @@ export default function ReviewPage() {
 
             {/* Optional phone for points */}
             {ctx.customerPoints > 0 && (
-              <div style={{ marginTop: 14, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: 12 }}>
+              <div style={{ marginTop: 14, background: '#f0fdf4', border: '1px solid var(--cbbf7d0)', borderRadius: 12, padding: 12 }}>
                 <div style={{ fontSize: 13, color: '#15803d', fontWeight: 600, marginBottom: 6 }}>🎁 Enter your phone to earn {ctx.customerPoints} reward points</div>
                 <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="Your phone (optional)"
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 16 }} />
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid var(--ccbd5e1)', fontSize: 16 }} />
               </div>
             )}
 
             {phase === 'comment' && (
               <div style={{ marginTop: 14 }}>
-                <p style={{ fontSize: 14, color: '#0f172a', fontWeight: 600, margin: '0 0 6px' }}>Sorry it wasn&apos;t perfect — how can we do better?</p>
+                <p style={{ fontSize: 14, color: 'var(--c0f172a)', fontWeight: 600, margin: '0 0 6px' }}>Sorry it wasn&apos;t perfect — how can we do better?</p>
                 <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} placeholder="Your feedback goes privately to the salon"
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 16, resize: 'vertical', fontFamily: 'inherit' }} />
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid var(--ccbd5e1)', fontSize: 16, resize: 'vertical', fontFamily: 'inherit' }} />
                 <button onClick={() => submit(rating, comment)} disabled={busy}
                   style={{ ...bigBtn, background: accent, marginTop: 12 }}>{busy ? 'Sending…' : 'Send feedback'}</button>
               </div>
@@ -208,35 +208,35 @@ export default function ReviewPage() {
         {phase === 'done' && result && (
           <div style={{ textAlign: 'center', marginTop: 18 }}>
             <div style={{ fontSize: 52 }}>🎉</div>
-            <h1 style={{ fontSize: 22, margin: '6px 0 4px', color: '#0f172a' }}>Thank you!</h1>
+            <h1 style={{ fontSize: 22, margin: '6px 0 4px', color: 'var(--c0f172a)' }}>Thank you!</h1>
             {result.points > 0 && <p style={{ color: '#15803d', fontWeight: 600, margin: '0 0 4px' }}>You earned {result.points} reward points 🎁</p>}
-            <p style={{ color: '#64748b', fontSize: 14, margin: '0 0 18px' }}>We appreciate your feedback.</p>
+            <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: '0 0 18px' }}>We appreciate your feedback.</p>
 
             {result.googleUrl ? (
               <>
-                <p style={{ fontSize: 14, color: '#0f172a', margin: '0 0 8px' }}>Loved your visit? A quick Google review means the world 💛</p>
+                <p style={{ fontSize: 14, color: 'var(--c0f172a)', margin: '0 0 8px' }}>Loved your visit? A quick Google review means the world 💛</p>
                 <textarea
                   value={googleWords}
                   onChange={(e) => setGoogleWords(e.target.value)}
                   rows={2}
                   placeholder="Optional — write a few words and we'll copy them for you"
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 15, resize: 'vertical', fontFamily: 'inherit', marginBottom: 10 }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid var(--ccbd5e1)', fontSize: 15, resize: 'vertical', fontFamily: 'inherit', marginBottom: 10 }}
                 />
                 <a href={appDeepLink(result.googleUrl)} onClick={copyWords} style={{ ...bigBtn, background: accent, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                   ⭐ Open Google review
                 </a>
                 {copied && <p style={{ color: '#15803d', fontSize: 12.5, fontWeight: 600, margin: '10px 0 0' }}>✓ Your words are copied — just press &amp; hold to paste on Google</p>}
-                <p style={{ color: '#94a3b8', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.4 }}>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.4 }}>
                   Opens the Google Maps app on your phone — you&apos;re already signed in there, no password needed.
                 </p>
               </>
             ) : (
-              <p style={{ color: '#94a3b8', fontSize: 13 }}>The salon will follow up with you shortly.</p>
+              <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>The salon will follow up with you shortly.</p>
             )}
           </div>
         )}
 
-        <div style={{ textAlign: 'center', marginTop: 22, fontSize: 11, color: '#cbd5e1' }}>Powered by Lumio Booking</div>
+        <div style={{ textAlign: 'center', marginTop: 22, fontSize: 11, color: 'var(--ccbd5e1)' }}>Powered by Lumio Booking</div>
       </div>
     </Center>
   );
@@ -258,7 +258,7 @@ function appDeepLink(url: string): string {
 
 function Center({ children, accent }: { children: React.ReactNode; accent: string }) {
   return (
-    <div style={{ minHeight: '100vh', background: `linear-gradient(160deg, ${accent}14, #f8fafc 55%)`, display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: `linear-gradient(160deg, ${accent}14, var(--cf8fafc) 55%)`, display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
       {children}
     </div>
   );

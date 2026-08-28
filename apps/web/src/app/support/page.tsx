@@ -10,7 +10,7 @@ export default function SupportPage() {
     <main style={wrap}>
       <div style={card}>
         <div style={{ textAlign: 'center', marginBottom: 6 }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', letterSpacing: -0.5 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--c0f172a)', letterSpacing: -0.5 }}>
             Lumio<span style={{ color: INDIGO }}>Booking</span>
           </div>
           <h1 style={h1}>Support &amp; Help Center</h1>
@@ -58,11 +58,11 @@ export default function SupportPage() {
 }
 
 const INDIGO = '#6366f1';
-const wrap: React.CSSProperties = { minHeight: '100vh', background: '#f8fafc', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
-const card: React.CSSProperties = { maxWidth: 680, margin: '0 auto', background: '#fff', borderRadius: 16, padding: '28px 32px', boxShadow: '0 8px 30px rgba(15,23,42,0.08)', color: '#1e293b' };
-const h1: React.CSSProperties = { fontSize: 24, margin: '12px 0 4px', color: '#0f172a' };
-const h2: React.CSSProperties = { fontSize: 17, margin: '24px 0 8px', color: '#0f172a' };
-const p: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.65, color: '#334155', margin: '0 0 10px' };
-const ul: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.7, color: '#334155', margin: '0 0 10px', paddingLeft: 20 };
-const muted: React.CSSProperties = { fontSize: 13, color: '#64748b', margin: 0 };
+const wrap: React.CSSProperties = { minHeight: '100vh', background: 'var(--cf8fafc)', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
+const card: React.CSSProperties = { maxWidth: 680, margin: '0 auto', background: '#fff', borderRadius: 16, padding: '28px 32px', boxShadow: '0 8px 30px rgba(15,23,42,0.08)', color: 'var(--c1e293b)' };
+const h1: React.CSSProperties = { fontSize: 24, margin: '12px 0 4px', color: 'var(--c0f172a)' };
+const h2: React.CSSProperties = { fontSize: 17, margin: '24px 0 8px', color: 'var(--c0f172a)' };
+const p: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.65, color: 'var(--c334155)', margin: '0 0 10px' };
+const ul: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.7, color: 'var(--c334155)', margin: '0 0 10px', paddingLeft: 20 };
+const muted: React.CSSProperties = { fontSize: 13, color: 'var(--c64748b)', margin: 0 };
 const a: React.CSSProperties = { color: INDIGO, textDecoration: 'none' };

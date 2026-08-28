@@ -91,16 +91,16 @@ export function NotificationBell() {
 
   const recent = items.slice(0, 15);
 
-  const bellBtn: CSSProperties = { position: 'relative', width: 40, height: 40, borderRadius: 10, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 };
-  const badgeStyle: CSSProperties = { position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid #111827' };
+  const bellBtn: CSSProperties = { position: 'relative', width: 40, height: 40, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 };
+  const badgeStyle: CSSProperties = { position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid var(--c111827)' };
   const panel: CSSProperties = isMobile
-    ? { position: 'fixed', top: 64, right: 8, left: 8, zIndex: 71, background: '#0f172a', border: '1px solid #223047', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '74vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
-    : { position: 'fixed', top: 58, right: 22, width: 382, zIndex: 71, background: '#0f172a', border: '1px solid #223047', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '76vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
+    ? { position: 'fixed', top: 64, right: 8, left: 8, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '74vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', top: 58, right: 22, width: 382, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '76vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
 
   return (
     <>
       <button onClick={() => (open ? setOpen(false) : openPanel())} aria-label={L('Thông báo', 'Notifications')} style={bellBtn}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ce2e8f0)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
           <path d="M13.7 21a2 2 0 0 1-3.4 0" />
         </svg>
@@ -111,14 +111,14 @@ export function NotificationBell() {
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'transparent' }} />
           <div style={panel}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: '1px solid #1e293b', flexShrink: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>{L('Thông báo', 'Notifications')}</span>
-              <button onClick={() => setOpen(false)} aria-label={L('Đóng', 'Close')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: '1px solid var(--c1e293b)', flexShrink: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{L('Thông báo', 'Notifications')}</span>
+              <button onClick={() => setOpen(false)} aria-label={L('Đóng', 'Close')} style={{ background: 'transparent', border: 'none', color: 'var(--c94a3b8)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
 
             <div style={{ overflowY: 'auto', flex: 1 }}>
               {recent.length === 0 ? (
-                <p style={{ color: '#64748b', fontSize: 13.5, padding: '22px 15px', textAlign: 'center', margin: 0 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
+                <p style={{ color: 'var(--c64748b)', fontSize: 13.5, padding: '22px 15px', textAlign: 'center', margin: 0 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
               ) : recent.map((i) => {
                 const m = TYPE_META[i.type];
                 const clickable = !!i.appointmentId || !!i.link;
@@ -130,7 +130,7 @@ export function NotificationBell() {
                     onClick={go}
                     onMouseEnter={() => setHoverId(i.id)}
                     onMouseLeave={() => setHoverId(null)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: hovered ? '#1a2536' : 'transparent', border: 'none', borderTop: '1px solid #1e293b', padding: '11px 14px', cursor: 'pointer' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: hovered ? '#1a2536' : 'transparent', border: 'none', borderTop: '1px solid var(--c1e293b)', padding: '11px 14px', cursor: 'pointer' }}
                   >
                     <span style={{ width: 32, height: 32, borderRadius: 9, background: m.bg, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -139,17 +139,17 @@ export function NotificationBell() {
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'block', fontSize: 13.5, color: '#e5e9f0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : `${verb(i.type)} ${i.detail}`}</span>
-                      <span style={{ display: 'block', fontSize: 11.5, color: '#64748b', marginTop: 1 }}>{rel(i.at)}</span>
+                      <span style={{ display: 'block', fontSize: 11.5, color: 'var(--c64748b)', marginTop: 1 }}>{rel(i.at)}</span>
                     </span>
                     {clickable && (
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={hovered ? '#94a3b8' : '#475569'} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M9 6l6 6-6 6" /></svg>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={hovered ? 'var(--c94a3b8)' : 'var(--c475569)'} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M9 6l6 6-6 6" /></svg>
                     )}
                   </button>
                 );
               })}
             </div>
 
-            <button onClick={() => { setOpen(false); router.push('/salon/activity'); }} style={{ borderTop: '1px solid #1e293b', background: 'transparent', color: '#818cf8', fontSize: 13.5, fontWeight: 600, padding: '12px', cursor: 'pointer', border: 'none', flexShrink: 0 }}>
+            <button onClick={() => { setOpen(false); router.push('/salon/activity'); }} style={{ borderTop: '1px solid var(--c1e293b)', background: 'transparent', color: 'var(--c818cf8)', fontSize: 13.5, fontWeight: 600, padding: '12px', cursor: 'pointer', border: 'none', flexShrink: 0 }}>
               {L('Xem tất cả thông báo', 'View all notifications')}
             </button>
           </div>

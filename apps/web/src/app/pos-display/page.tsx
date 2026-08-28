@@ -162,28 +162,28 @@ export default function PosDisplayPage() {
   const orderPayment = (col: boolean) => (
     <div style={{ display: 'flex', flexDirection: col ? 'column' : 'row', gap: col ? 'clamp(14px, 2vh, 20px)' : '2.4vw', alignItems: 'stretch', width: '100%' }}>
       <div style={{ ...itemsPanel, flex: col ? '0 0 auto' : '2 1 440px' }}>
-        <div style={{ fontSize: 'clamp(20px, 2.8vw, 30px)', fontWeight: 800, color: '#0f172a', marginBottom: 14 }}>Your services</div>
+        <div style={{ fontSize: 'clamp(20px, 2.8vw, 30px)', fontWeight: 800, color: 'var(--c0f172a)', marginBottom: 14 }}>Your services</div>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {s.lines.map((l, i) => (
             <div key={i} style={lineRow}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: '#1e293b' }}>
+                <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: 'var(--c1e293b)' }}>
                   <span style={{ color: accent, fontWeight: 800 }}>{l.qty}×</span> {l.name}
                 </div>
-                {l.staff && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 2 }}>with {l.staff}</div>}
+                {l.staff && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: 'var(--c94a3b8)', marginTop: 2 }}>with {l.staff}</div>}
               </div>
-              <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', marginLeft: 16 }}>{money(l.lineCents, cur)}</div>
+              <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 700, color: 'var(--c1e293b)', whiteSpace: 'nowrap', marginLeft: 16 }}>{money(l.lineCents, cur)}</div>
             </div>
           ))}
         </div>
       </div>
       <div style={{ ...totalsPanel(accent), flex: col ? '0 0 auto' : '1 1 330px' }}>
         <Row k="Subtotal" v={money(s.subtotalCents, cur)} />
-        {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="#bbf7d0" />}
+        {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="var(--cbbf7d0)" />}
         {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
         {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
         {(s.cardFeeCents ?? 0) > 0 && <Row k={`Card fee${s.cardFeePct ? ` (${s.cardFeePct}%)` : ''}`} v={money(s.cardFeeCents!, cur)} color="#fbbf24" />}
-        {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="#bbf7d0" />}
+        {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="var(--cbbf7d0)" />}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '16px 0' }} />
         <div style={{ fontSize: 'clamp(14px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>
         <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 900, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
@@ -197,7 +197,7 @@ export default function PosDisplayPage() {
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={s.salonLogo} alt="" style={{ height: 'clamp(34px, 5.2vh, 54px)', width: 'auto', objectFit: 'contain', borderRadius: 8 }} />
         : null}
-      {s.salonName ? <div style={{ fontSize: 'clamp(18px, 2.6vw, 28px)', fontWeight: 800, color: '#1e293b' }}>{s.salonName}</div> : null}
+      {s.salonName ? <div style={{ fontSize: 'clamp(18px, 2.6vw, 28px)', fontWeight: 800, color: 'var(--c1e293b)' }}>{s.salonName}</div> : null}
     </div>
   ) : null;
 
@@ -251,7 +251,7 @@ export default function PosDisplayPage() {
                   <div style={checkCircle(true)}>✓</div>
                   <div style={{ textAlign: 'left' }}>
                     <div style={{ fontSize: 'clamp(26px, 4.6vw, 44px)', fontWeight: 900, color: '#16a34a', lineHeight: 1.05 }}>Thank you!</div>
-                    <div style={{ fontSize: 'clamp(14px, 2.1vw, 20px)', color: '#475569', marginTop: 3 }}>
+                    <div style={{ fontSize: 'clamp(14px, 2.1vw, 20px)', color: 'var(--c475569)', marginTop: 3 }}>
                       Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong>{(s.changeCents ?? 0) > 0 ? ` · change ${money(s.changeCents!, cur)}` : ''}
                     </div>
                   </div>
@@ -260,8 +260,8 @@ export default function PosDisplayPage() {
                 <>
                   <div style={checkCircle(false)}>✓</div>
                   <div style={{ fontSize: 'clamp(32px, 6vw, 54px)', fontWeight: 900, color: '#16a34a' }}>Thank you!</div>
-                  <div style={{ fontSize: 'clamp(18px, 2.8vw, 28px)', color: '#1e293b', marginTop: 12 }}>Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong></div>
-                  {(s.changeCents ?? 0) > 0 && <div style={{ fontSize: 'clamp(15px, 2.2vw, 22px)', color: '#64748b', marginTop: 6 }}>Change {money(s.changeCents!, cur)}</div>}
+                  <div style={{ fontSize: 'clamp(18px, 2.8vw, 28px)', color: 'var(--c1e293b)', marginTop: 12 }}>Paid <strong>{money(s.paidCents ?? s.dueCents, cur)}</strong></div>
+                  {(s.changeCents ?? 0) > 0 && <div style={{ fontSize: 'clamp(15px, 2.2vw, 22px)', color: 'var(--c64748b)', marginTop: 6 }}>Change {money(s.changeCents!, cur)}</div>}
                 </>
               )}
 
@@ -276,14 +276,14 @@ export default function PosDisplayPage() {
                     onCustom={() => { setPad(''); setKeypad(true); }}
                     onConfirm={() => { if (chosenTip != null) sendTipDirect(chosenTip); }}
                     onSkip={() => { setRevealTip(false); setChosenTip(null); }} />
-                  {s.reviewUrl && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', marginTop: 12 }}>The Google review QR comes back after 💛</div>}
+                  {s.reviewUrl && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: 'var(--c94a3b8)', marginTop: 12 }}>The Google review QR comes back after 💛</div>}
                 </div>
               ) : hasTip ? (
                 <button type="button" onPointerDown={() => setRevealTip(true)} onClick={() => setRevealTip(true)} style={{ ...softTipLink(accent), marginTop: 20 }}>
                   💝 Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
                 </button>
               ) : (
-                <div style={{ marginTop: 16, fontSize: 'clamp(15px, 2vw, 20px)', color: '#94a3b8' }}>See you again soon 💕</div>
+                <div style={{ marginTop: 16, fontSize: 'clamp(15px, 2vw, 20px)', color: 'var(--c94a3b8)' }}>See you again soon 💕</div>
               )}
             </div>
 
@@ -310,7 +310,7 @@ export default function PosDisplayPage() {
       {keypad && (
         <div style={keypadOverlay} onClick={() => { setKeypad(false); setPad(''); }}>
           <div style={keypadCard} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', fontWeight: 800, color: '#1e293b', textAlign: 'center' }}>Enter tip amount</div>
+            <div style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', fontWeight: 800, color: 'var(--c1e293b)', textAlign: 'center' }}>Enter tip amount</div>
             <div style={{ fontSize: 'clamp(34px, 6vw, 52px)', fontWeight: 900, color: accent, textAlign: 'center', margin: '8px 0 16px' }}>{money(Math.round((parseFloat(pad) || 0) * 100), cur)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '←'].map((k) => (
@@ -318,7 +318,7 @@ export default function PosDisplayPage() {
               ))}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
-              <button onClick={() => { setKeypad(false); setPad(''); }} style={{ ...keypadKey, background: '#f1f5f9', color: '#475569', fontWeight: 700 }}>Cancel</button>
+              <button onClick={() => { setKeypad(false); setPad(''); }} style={{ ...keypadKey, background: 'var(--cf1f5f9)', color: 'var(--c475569)', fontWeight: 700 }}>Cancel</button>
               <button onClick={() => { const v = Math.round((parseFloat(pad) || 0) * 100); if (v > 0) { setChosenTip(v); setKeypad(false); setPad(''); } }} style={{ ...keypadKey, background: accent, color: 'white', fontWeight: 800 }}>Use this amount</button>
             </div>
           </div>
@@ -331,15 +331,15 @@ export default function PosDisplayPage() {
       {menu && (
         <div style={keypadOverlay} onClick={() => setMenu(false)}>
           <div style={{ ...keypadCard, width: 'min(90vw, 360px)' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontSize: 19, fontWeight: 800, color: '#1e293b', textAlign: 'center' }}>Staff menu</div>
-            <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', margin: '4px 0 18px' }}>For salon staff only</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--c1e293b)', textAlign: 'center' }}>Staff menu</div>
+            <div style={{ fontSize: 13, color: 'var(--c94a3b8)', textAlign: 'center', margin: '4px 0 18px' }}>For salon staff only</div>
             <button onClick={() => { window.location.href = '/login'; }} style={{ ...menuBtn, background: '#4f46e5', color: '#fff' }}>Sign in / Admin</button>
-            <button onClick={() => { window.location.href = '/salon/pos'; }} style={{ ...menuBtn, background: '#f8fafc', color: '#334155', border: '1px solid #e2e8f0' }}>Back to register</button>
-            <button onClick={() => setMenu(false)} style={{ ...menuBtn, background: '#f1f5f9', color: '#64748b' }}>Cancel</button>
+            <button onClick={() => { window.location.href = '/salon/pos'; }} style={{ ...menuBtn, background: 'var(--cf8fafc)', color: 'var(--c334155)', border: '1px solid var(--ce2e8f0)' }}>Back to register</button>
+            <button onClick={() => setMenu(false)} style={{ ...menuBtn, background: 'var(--cf1f5f9)', color: 'var(--c64748b)' }}>Cancel</button>
           </div>
         </div>
       )}
-      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: '#cbd5e1', pointerEvents: 'none', userSelect: 'none' }}>pos-display v4</div>
+      <div style={{ position: 'fixed', bottom: 6, right: 10, fontSize: 10, color: 'var(--ccbd5e1)', pointerEvents: 'none', userSelect: 'none' }}>pos-display v4</div>
     </div>
   );
 }
@@ -353,23 +353,23 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
   const techName = s.tipTechs && s.tipTechs.length === 1 ? s.tipTechs[0].name : 'your tech';
   return (
     <div style={afterTipCard}>
-      <div style={{ fontSize: 'clamp(16px, 2.1vw, 21px)', fontWeight: 700, color: '#334155' }}>A little thank-you for your tech</div>
-      <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#94a3b8', margin: '4px 0 14px' }}>Totally optional 💛 100% goes straight to them.</div>
+      <div style={{ fontSize: 'clamp(16px, 2.1vw, 21px)', fontWeight: 700, color: 'var(--c334155)' }}>A little thank-you for your tech</div>
+      <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: 'var(--c94a3b8)', margin: '4px 0 14px' }}>Totally optional 💛 100% goes straight to them.</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, justifyContent: 'center' }}>
         {s.tipTechs!.map((t, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
             {t.qr
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={t.qr} alt={`${t.name} tip QR`} style={{ width: 'clamp(120px, 20vw, 168px)', height: 'auto', borderRadius: 12, background: '#fff', padding: 7, border: chosen != null ? `2px solid ${accent}` : '1px solid #eef2f7' }} />
-              : <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: '#94a3b8', padding: '18px 8px' }}>Ask {t.name} for their tip QR</div>}
-            <div style={{ fontSize: 'clamp(13px, 1.6vw, 16px)', fontWeight: 600, color: '#475569' }}>{t.name}</div>
-            {t.handle && <div style={{ fontSize: 'clamp(11px, 1.4vw, 14px)', color: '#94a3b8' }}>{t.handle}</div>}
+              : <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: 'var(--c94a3b8)', padding: '18px 8px' }}>Ask {t.name} for their tip QR</div>}
+            <div style={{ fontSize: 'clamp(13px, 1.6vw, 16px)', fontWeight: 600, color: 'var(--c475569)' }}>{t.name}</div>
+            {t.handle && <div style={{ fontSize: 'clamp(11px, 1.4vw, 14px)', color: 'var(--c94a3b8)' }}>{t.handle}</div>}
           </div>
         ))}
       </div>
       {chosen == null ? (
         <>
-          {base > 0 && <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#64748b', margin: '14px 0 8px' }}>Scan the QR to tip any amount — or pick one:</div>}
+          {base > 0 && <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: 'var(--c64748b)', margin: '14px 0 8px' }}>Scan the QR to tip any amount — or pick one:</div>}
           {base > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
               {TIP_PERCENTS.map((pct) => (
@@ -382,8 +382,8 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
         </>
       ) : (
         <>
-          <div style={{ fontSize: 'clamp(15px, 1.9vw, 20px)', color: '#334155', margin: '14px 0 3px' }}>Scan to send <strong style={{ color: accent }}>{money(chosen, cur)}</strong> to {techName}</div>
-          <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#94a3b8', marginBottom: 14 }}>Open your camera or payment app, scan &amp; send — <strong>then</strong> tap below.</div>
+          <div style={{ fontSize: 'clamp(15px, 1.9vw, 20px)', color: 'var(--c334155)', margin: '14px 0 3px' }}>Scan to send <strong style={{ color: accent }}>{money(chosen, cur)}</strong> to {techName}</div>
+          <div style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: 'var(--c94a3b8)', marginBottom: 14 }}>Open your camera or payment app, scan &amp; send — <strong>then</strong> tap below.</div>
           <button onClick={onConfirm} style={{ width: '100%', maxWidth: 320, boxSizing: 'border-box', padding: 'clamp(11px, 1.6vw, 15px)', borderRadius: 12, border: 'none', background: accent, color: '#fff', fontSize: 'clamp(15px, 1.8vw, 19px)', fontWeight: 800, cursor: 'pointer' }}>✓ I&rsquo;ve sent it</button>
           <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 14 }}>
             <button onClick={() => onChoose(null)} style={skipBtn}>Change amount</button>
@@ -395,7 +395,7 @@ function AfterTip({ s, cur, accent, chosen, onChoose, onCustom, onConfirm, onSki
   );
 }
 
-const skipBtn: CSSProperties = { background: 'none', border: 'none', color: '#94a3b8', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
+const skipBtn: CSSProperties = { background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 'clamp(13px, 1.5vw, 15px)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 };
 
 // --- Google review invite ---------------------------------------------------
 function GoogleWord({ size }: { size: number }) {
@@ -432,7 +432,7 @@ function WelcomeImageScreen({ image, logo, salonName, reviewUrl }: { image: stri
         </div>
         <div style={{ position: 'absolute', top: 'clamp(22px, 4vh, 46px)', left: 'clamp(26px, 3vw, 50px)', display: 'flex', alignItems: 'center', gap: 12, zIndex: 2 }}>
           {logo && /* eslint-disable-next-line @next/next/no-img-element */ <img src={logo} alt="" style={{ height: 'clamp(30px, 5vh, 54px)', width: 'auto', objectFit: 'contain', borderRadius: 8 }} />}
-          {salonName && <span style={{ fontWeight: 800, fontSize: 'clamp(17px, 2.6vh, 30px)', color: '#1e293b' }}>{salonName}</span>}
+          {salonName && <span style={{ fontWeight: 800, fontSize: 'clamp(17px, 2.6vh, 30px)', color: 'var(--c1e293b)' }}>{salonName}</span>}
         </div>
         <div style={{ position: 'absolute', bottom: 'clamp(34px, 7vh, 78px)', left: 'clamp(26px, 3vw, 52px)', maxWidth: '64%', zIndex: 2 }}>
           <div style={{ fontFamily: LUMIO_SERIF, fontSize: 'clamp(52px, 13vh, 150px)', fontWeight: 500, color: '#fff', lineHeight: 0.95, textShadow: '0 6px 26px rgba(0,0,0,0.26)' }}>Welcome</div>
@@ -446,17 +446,17 @@ function WelcomeImageScreen({ image, logo, salonName, reviewUrl }: { image: stri
         <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(14px, 2.6vw, 46px)' }}>
           <div style={{ width: '100%', maxWidth: 430, background: 'linear-gradient(160deg, #ffffff, #fffdf7)', borderRadius: 26, padding: 'clamp(20px, 3vh, 40px) clamp(18px, 2.2vw, 34px)', textAlign: 'center', boxShadow: `0 22px 60px rgba(15,23,42,0.12), inset 0 0 0 2px ${GOLD}66, inset 0 0 0 7px #ffffff, inset 0 0 0 8px ${GOLD}2e` }}>
             <div style={{ marginBottom: 8 }}><Stars size="clamp(24px, 3.2vw, 40px)" /></div>
-            <div style={{ fontFamily: LUMIO_SERIF, fontWeight: 600, fontSize: 'clamp(28px, 3.6vw, 50px)', color: '#0f172a' }}>Enjoying your visit?</div>
+            <div style={{ fontFamily: LUMIO_SERIF, fontWeight: 600, fontSize: 'clamp(28px, 3.6vw, 50px)', color: 'var(--c0f172a)' }}>Enjoying your visit?</div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, margin: '9px 0 14px' }}>
               <div style={{ width: 40, height: 1.5, background: `${GOLD}88` }} /><span style={{ color: GOLD, fontSize: 12 }}>✦</span><div style={{ width: 40, height: 1.5, background: `${GOLD}88` }} />
             </div>
-            <div style={{ fontSize: 'clamp(13px, 1.55vw, 19px)', color: '#475569', margin: '0 0 clamp(14px, 2vh, 22px)', lineHeight: 1.5 }}>Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛</div>
+            <div style={{ fontSize: 'clamp(13px, 1.55vw, 19px)', color: 'var(--c475569)', margin: '0 0 clamp(14px, 2vh, 22px)', lineHeight: 1.5 }}>Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛</div>
             <div style={{ display: 'inline-block', background: '#fff', borderRadius: 18, padding: 'clamp(10px, 1.6vh, 16px)', boxShadow: '0 12px 34px rgba(15,23,42,0.13)' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={qr(460, reviewUrl)} alt="Google review QR" style={{ width: 'clamp(150px, 22vh, 280px)', height: 'auto', display: 'block' }} />
             </div>
             <div style={{ marginTop: 'clamp(12px, 2vh, 20px)', display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '9px 16px', border: '1px solid #eef2f7', boxShadow: '0 4px 14px rgba(15,23,42,0.06)' }}>
-              <span style={{ fontSize: 15 }}>📱</span><span style={{ fontSize: 'clamp(12px, 1.4vw, 15px)', color: '#334155', fontWeight: 600 }}>Point your camera to review on</span><GoogleWord size={16} />
+              <span style={{ fontSize: 15 }}>📱</span><span style={{ fontSize: 'clamp(12px, 1.4vw, 15px)', color: 'var(--c334155)', fontWeight: 600 }}>Point your camera to review on</span><GoogleWord size={16} />
             </div>
           </div>
         </div>
@@ -499,15 +499,15 @@ function WelcomeHero({ accent, salonName, image, logo }: { accent: string; salon
       {salonName ? (
         <>
           <div style={{ fontSize: 'clamp(13px, 1.7vh, 20px)', fontWeight: 800, color: accent, letterSpacing: '0.18em', textTransform: 'uppercase', marginBottom: 'clamp(4px, 0.8vh, 8px)' }}>Welcome to</div>
-          <div style={{ fontSize: 'clamp(30px, 6.4vh, 68px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.03 }}>{salonName}</div>
+          <div style={{ fontSize: 'clamp(30px, 6.4vh, 68px)', fontWeight: 900, color: 'var(--c0f172a)', letterSpacing: '-0.02em', lineHeight: 1.03 }}>{salonName}</div>
         </>
       ) : (
-        <div style={{ fontSize: 'clamp(34px, 7vh, 76px)', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.02 }}>Welcome</div>
+        <div style={{ fontSize: 'clamp(34px, 7vh, 76px)', fontWeight: 900, color: 'var(--c0f172a)', letterSpacing: '-0.02em', lineHeight: 1.02 }}>Welcome</div>
       )}
-      <div style={{ fontSize: 'clamp(14px, 2.3vh, 24px)', color: '#64748b', marginTop: 'clamp(8px, 1.6vh, 16px)' }}>Sit back and relax — we&rsquo;ll take care of you 💛</div>
+      <div style={{ fontSize: 'clamp(14px, 2.3vh, 24px)', color: 'var(--c64748b)', marginTop: 'clamp(8px, 1.6vh, 16px)' }}>Sit back and relax — we&rsquo;ll take care of you 💛</div>
       <div style={{ display: 'flex', gap: 'clamp(7px, 1.2vw, 13px)', justifyContent: 'center', flexWrap: 'wrap', marginTop: 'clamp(16px, 2.8vh, 28px)' }}>
         {chips.map(([e, t]) => (
-          <div key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.78)', border: '1px solid #eef2f7', borderRadius: 999, padding: 'clamp(7px,1.2vh,11px) clamp(13px,1.7vw,19px)', boxShadow: '0 4px 16px rgba(15,23,42,0.05)', fontSize: 'clamp(12px, 1.55vh, 16px)', fontWeight: 600, color: '#334155' }}>
+          <div key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.78)', border: '1px solid #eef2f7', borderRadius: 999, padding: 'clamp(7px,1.2vh,11px) clamp(13px,1.7vw,19px)', boxShadow: '0 4px 16px rgba(15,23,42,0.05)', fontSize: 'clamp(12px, 1.55vh, 16px)', fontWeight: 600, color: 'var(--c334155)' }}>
             <span style={{ fontSize: '1.2em' }}>{e}</span>{t}
           </div>
         ))}
@@ -547,18 +547,18 @@ function ReviewCard({ url, accent, stack, big, full }: { url: string; accent: st
       </div>
       <div style={{ flex: col ? 'none' : '1 1 0%', textAlign: col ? 'center' : 'left', maxWidth: col ? 480 : 440 }}>
         <div style={{ marginBottom: 10 }}><Stars size={big ? 'clamp(28px, 4.5vw, 46px)' : 'clamp(22px, 3vw, 34px)'} align={col ? 'center' : 'flex-start'} /></div>
-        <div style={{ fontFamily: LUMIO_SERIF, fontSize: big ? 'clamp(30px, 4vw, 50px)' : 'clamp(24px, 3vw, 34px)', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.005em' }}>
+        <div style={{ fontFamily: LUMIO_SERIF, fontSize: big ? 'clamp(30px, 4vw, 50px)' : 'clamp(24px, 3vw, 34px)', fontWeight: 600, color: 'var(--c0f172a)', letterSpacing: '-0.005em' }}>
           {big ? 'Loved your visit?' : 'Enjoying your visit?'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: col ? 'center' : 'flex-start', gap: 8, margin: '8px 0 4px' }}>
           <div style={{ width: 34, height: 1.5, background: `${GOLD}88` }} /><span style={{ color: GOLD, fontSize: 12 }}>✦</span><div style={{ width: 34, height: 1.5, background: `${GOLD}88` }} />
         </div>
-        <div style={{ fontSize: big ? 'clamp(15px, 1.9vw, 21px)' : 'clamp(14px, 1.7vw, 18px)', color: '#475569', margin: '8px 0 16px', lineHeight: 1.5 }}>
+        <div style={{ fontSize: big ? 'clamp(15px, 1.9vw, 21px)' : 'clamp(14px, 1.7vw, 18px)', color: 'var(--c475569)', margin: '8px 0 16px', lineHeight: 1.5 }}>
           Leave us a quick <strong>5-star Google review</strong> — it truly makes our day 💛
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '8px 15px', border: '1px solid #eef2f7', boxShadow: '0 4px 14px rgba(15,23,42,0.06)' }}>
           <span style={{ fontSize: 15 }}>📱</span>
-          <span style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: '#334155', fontWeight: 600 }}>Point your camera to review on</span>
+          <span style={{ fontSize: 'clamp(12.5px, 1.5vw, 15px)', color: 'var(--c334155)', fontWeight: 600 }}>Point your camera to review on</span>
           <GoogleWord size={16} />
         </div>
       </div>
@@ -595,7 +595,7 @@ function checkCircle(small: boolean): CSSProperties {
 }
 
 const page: CSSProperties = {
-  position: 'fixed', inset: 0, background: 'radial-gradient(1100px 550px at 12% -8%, #e0e7ff 0%, rgba(224,231,255,0) 55%), radial-gradient(900px 480px at 108% 6%, #ede9fe 0%, rgba(237,233,254,0) 52%), linear-gradient(160deg, #f8fafc 0%, #eef2ff 100%)',
+  position: 'fixed', inset: 0, background: 'radial-gradient(1100px 550px at 12% -8%, var(--ce0e7ff) 0%, rgba(224,231,255,0) 55%), radial-gradient(900px 480px at 108% 6%, #ede9fe 0%, rgba(237,233,254,0) 52%), linear-gradient(160deg, var(--cf8fafc) 0%, #eef2ff 100%)',
   display: 'flex', flexDirection: 'column', padding: '2.5vw',
   fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', overflow: 'hidden',
 };
@@ -616,7 +616,7 @@ function totalsPanel(accent: string): CSSProperties {
 }
 const lineRow: CSSProperties = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-  padding: 'clamp(11px, 1.6vw, 18px) 0', borderBottom: '1px solid #f1f5f9',
+  padding: 'clamp(11px, 1.6vw, 18px) 0', borderBottom: '1px solid var(--cf1f5f9)',
 };
 function softTipLink(accent: string): CSSProperties {
   return {
@@ -648,7 +648,7 @@ const keypadCard: CSSProperties = {
 };
 const keypadKey: CSSProperties = {
   padding: 'clamp(12px, 2vw, 20px)', fontSize: 'clamp(20px, 3vw, 28px)', fontWeight: 700,
-  borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#1e293b', cursor: 'pointer', touchAction: 'manipulation',
+  borderRadius: 14, border: '1px solid var(--ce2e8f0)', background: 'var(--cf8fafc)', color: 'var(--c1e293b)', cursor: 'pointer', touchAction: 'manipulation',
 };
 const menuBtn: CSSProperties = {
   display: 'block', width: '100%', boxSizing: 'border-box', marginBottom: 10,
@@ -666,7 +666,7 @@ const CHECKIN_CSS = `
   .lumio-xscroll{scrollbar-width:none;-ms-overflow-style:none}
   .lumio-xscroll::-webkit-scrollbar{display:none}
   .lumio-yscroll::-webkit-scrollbar{width:10px}
-  .lumio-yscroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:5px}
+  .lumio-yscroll::-webkit-scrollbar-thumb{background:var(--ccbd5e1);border-radius:5px}
   .lumio-yscroll::-webkit-scrollbar-track{background:transparent}
 `;
 
@@ -700,15 +700,15 @@ function CheckInScreen({ st, salonName, logo, send }: {
     return (
       <div style={{ ...page, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <div style={{ maxWidth: 760 }}>
-          <div style={{ fontSize: 'clamp(28px, 4.6vw, 46px)', fontWeight: 900, color: '#0f172a', marginBottom: 10 }}>
+          <div style={{ fontSize: 'clamp(28px, 4.6vw, 46px)', fontWeight: 900, color: 'var(--c0f172a)', marginBottom: 10 }}>
             {st.qrTitle || 'Scan to check in'}
           </div>
-          <div style={{ fontSize: 'clamp(16px, 2.2vw, 22px)', color: '#475569', marginBottom: 26 }}>
+          <div style={{ fontSize: 'clamp(16px, 2.2vw, 22px)', color: 'var(--c475569)', marginBottom: 26 }}>
             {st.qrHint || 'Point your camera here, then fill in your details on your phone.'}
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src} alt="Check-in QR" style={{ width: 'min(46vh, 420px)', height: 'min(46vh, 420px)', background: '#fff', borderRadius: 22, padding: 16, boxShadow: '0 18px 44px rgba(15,23,42,0.16)' }} />
-          <div style={{ fontSize: 'clamp(14px, 1.8vw, 18px)', color: '#94a3b8', marginTop: 22 }}>
+          <div style={{ fontSize: 'clamp(14px, 1.8vw, 18px)', color: 'var(--c94a3b8)', marginTop: 22 }}>
             Prefer not to? Just tell the front desk — we&rsquo;ll do it for you.
           </div>
         </div>
@@ -721,8 +721,8 @@ function CheckInScreen({ st, salonName, logo, send }: {
       <div style={{ ...page, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <div>
           <div style={{ width: 128, height: 128, borderRadius: '50%', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64, margin: '0 auto 26px' }}>✓</div>
-          <div style={{ fontSize: 'clamp(30px, 5vw, 52px)', fontWeight: 900, color: '#0f172a' }}>You&rsquo;re checked in</div>
-          <div style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', color: '#475569', marginTop: 12 }}>
+          <div style={{ fontSize: 'clamp(30px, 5vw, 52px)', fontWeight: 900, color: 'var(--c0f172a)' }}>You&rsquo;re checked in</div>
+          <div style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', color: 'var(--c475569)', marginTop: 12 }}>
             {f.firstName ? `Thank you, ${f.firstName}. ` : ''}Please take a seat — we&rsquo;ll call you shortly.
           </div>
         </div>
@@ -732,14 +732,14 @@ function CheckInScreen({ st, salonName, logo, send }: {
 
   const input: React.CSSProperties = {
     width: '100%', boxSizing: 'border-box', padding: 'clamp(13px, 2.2vw, 16px)', borderRadius: 14,
-    border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a',
+    border: '1px solid var(--ccbd5e1)', background: '#fff', color: 'var(--c0f172a)',
     // Never below 16px: iOS Safari zooms the whole page when a smaller field
     // takes focus, which on a wall-mounted display looks like a glitch.
     fontSize: 'clamp(17px, 2.1vw, 19px)', minHeight: 56,
   };
   const chip = (on: boolean): React.CSSProperties => ({
-    border: `2px solid ${on ? '#4f46e5' : '#e2e8f0'}`, background: on ? '#4f46e5' : '#fff',
-    color: on ? '#fff' : '#475569', borderRadius: 999, padding: '13px 20px',
+    border: `2px solid ${on ? '#4f46e5' : 'var(--ce2e8f0)'}`, background: on ? '#4f46e5' : '#fff',
+    color: on ? '#fff' : 'var(--c475569)', borderRadius: 999, padding: '13px 20px',
     fontSize: 16.5, fontWeight: 600, cursor: 'pointer', minHeight: 54, whiteSpace: 'nowrap',
   });
 
@@ -749,15 +749,15 @@ function CheckInScreen({ st, salonName, logo, send }: {
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: 'clamp(12px, 2.4vw, 18px) clamp(14px, 2.6vw, 28px)',
-        borderBottom: '1px solid #e2e8f0', flexShrink: 0, background: '#fff',
+        borderBottom: '1px solid var(--ce2e8f0)', flexShrink: 0, background: '#fff',
       }}>
         {logo
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={logo} alt="" style={{ height: 42, width: 'auto', borderRadius: 10 }} />
           : <span style={{ width: 42, height: 42, borderRadius: 13, background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21 }}>✦</span>}
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 'clamp(18px, 2.4vw, 24px)', fontWeight: 800, color: '#0f172a' }}>{salonName || 'Welcome'}</div>
-          <div style={{ fontSize: 15, color: '#64748b' }}>Please fill this in — or let us do it for you</div>
+          <div style={{ fontSize: 'clamp(18px, 2.4vw, 24px)', fontWeight: 800, color: 'var(--c0f172a)' }}>{salonName || 'Welcome'}</div>
+          <div style={{ fontSize: 15, color: 'var(--c64748b)' }}>Please fill this in — or let us do it for you</div>
         </div>
       </div>
 
@@ -766,7 +766,7 @@ function CheckInScreen({ st, salonName, logo, send }: {
         WebkitOverflowScrolling: 'touch',
         padding: 'clamp(16px, 2.6vw, 22px) clamp(14px, 2.6vw, 28px)',
       }} className="lumio-yscroll">
-        <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a', marginBottom: 16 }}>Your details</div>
+        <div style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: 'var(--c0f172a)', marginBottom: 16 }}>Your details</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 13, marginBottom: 26 }}>
           <label><span style={lbl}>First name <span style={{ color: '#ef4444' }}>*</span></span>
             <input value={f.firstName} onChange={(e) => send('form', { firstName: e.target.value })} placeholder="Anna" style={input} autoCapitalize="words" autoComplete="given-name" enterKeyHint="next" /></label>
@@ -787,17 +787,17 @@ function CheckInScreen({ st, salonName, logo, send }: {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <span style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: '#0f172a' }}>What would you like today?</span>
+          <span style={{ fontSize: 'clamp(20px, 2.6vw, 27px)', fontWeight: 800, color: 'var(--c0f172a)' }}>What would you like today?</span>
           <span style={{
             fontSize: 15.5, fontWeight: 800, borderRadius: 999, padding: '6px 14px',
-            background: picked.length ? '#4f46e5' : '#e2e8f0', color: picked.length ? '#fff' : '#64748b',
+            background: picked.length ? '#4f46e5' : 'var(--ce2e8f0)', color: picked.length ? '#fff' : 'var(--c64748b)',
           }}>{picked.length} selected</span>
         </div>
         {picked.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
             {picked.map((sv) => (
               <button key={sv.id} onClick={() => tap(sv.id)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#3730a3', borderRadius: 999, padding: '9px 14px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#eef2ff', border: '1px solid var(--cc7d2fe)', color: 'var(--c3730a3)', borderRadius: 999, padding: '9px 14px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
                 {sv.name}<span style={{ color: '#6366f1', fontSize: 17 }}>✕</span>
               </button>
             ))}
@@ -817,7 +817,7 @@ function CheckInScreen({ st, salonName, logo, send }: {
                 style={{
                   position: 'relative', textAlign: 'left', borderRadius: 16, padding: '15px 17px', cursor: 'pointer',
                   background: on ? '#4f46e5' : '#fff',
-                  border: `3px solid ${on ? '#4f46e5' : '#e2e8f0'}`,
+                  border: `3px solid ${on ? '#4f46e5' : 'var(--ce2e8f0)'}`,
                   boxShadow: on ? '0 8px 20px rgba(79,70,229,0.28)' : 'none',
                   minHeight: 100, display: 'flex', flexDirection: 'column', gap: 8,
                   transition: 'background .12s ease, box-shadow .12s ease',
@@ -829,10 +829,10 @@ function CheckInScreen({ st, salonName, logo, send }: {
                     fontSize: 19, fontWeight: 900, border: '3px solid #fff',
                   }}>✓</span>
                 )}
-                <span style={{ fontSize: 17.5, fontWeight: 700, color: on ? '#fff' : '#0f172a', lineHeight: 1.25 }}>{sv.name}</span>
+                <span style={{ fontSize: 17.5, fontWeight: 700, color: on ? '#fff' : 'var(--c0f172a)', lineHeight: 1.25 }}>{sv.name}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'auto' }}>
                   <span style={{ fontSize: 18.5, fontWeight: 800, color: on ? '#fff' : '#16a34a' }}>{money(sv.priceCents, 'USD')}</span>
-                  <span style={{ fontSize: 14, color: on ? 'rgba(255,255,255,0.75)' : '#94a3b8' }}>{sv.durationMinutes} min</span>
+                  <span style={{ fontSize: 14, color: on ? 'rgba(255,255,255,0.75)' : 'var(--c94a3b8)' }}>{sv.durationMinutes} min</span>
                 </span>
               </button>
             );
@@ -844,9 +844,9 @@ function CheckInScreen({ st, salonName, logo, send }: {
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flexShrink: 0,
         padding: 'clamp(12px, 2.4vw, 16px) clamp(14px, 2.6vw, 28px)',
         paddingBottom: 'max(clamp(12px, 2.4vw, 16px), env(safe-area-inset-bottom))',
-        borderTop: '1px solid #e2e8f0', background: '#f8fafc',
+        borderTop: '1px solid var(--ce2e8f0)', background: 'var(--cf8fafc)',
       }}>
-        <span style={{ fontSize: 16.5, color: '#475569' }}>
+        <span style={{ fontSize: 16.5, color: 'var(--c475569)' }}>
           {picked.length > 0
             ? <><strong style={{ color: '#4f46e5' }}>{picked.length} service{picked.length > 1 ? 's' : ''}</strong> · <strong style={{ color: '#16a34a' }}>{money(total, 'USD')}</strong> · about {mins} min</>
             : 'Pick anything you like — or tell us at the chair'}
@@ -861,4 +861,4 @@ function CheckInScreen({ st, salonName, logo, send }: {
   );
 }
 
-const lbl: React.CSSProperties = { display: 'block', fontSize: 15, color: '#475569', marginBottom: 7, fontWeight: 600 };
+const lbl: React.CSSProperties = { display: 'block', fontSize: 15, color: 'var(--c475569)', marginBottom: 7, fontWeight: 600 };

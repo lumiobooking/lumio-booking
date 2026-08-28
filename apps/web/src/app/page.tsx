@@ -7,7 +7,7 @@ import { useIsMobile } from '../lib/responsive';
 import { uiLocale } from '../lib/datetime';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
-const INK = '#0f172a';
+const INK = 'var(--c0f172a)';
 const INDIGO = '#6366f1';
 
 interface PublicPlan {
@@ -66,14 +66,14 @@ const COMPARE: [string, [string, string, string, string][]][] = [
 
 const cCell = (v: string) => v === '✓'
   ? <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-  : v === '—' ? <span style={{ color: '#cbd5e1' }}>—</span>
+  : v === '—' ? <span style={{ color: 'var(--ccbd5e1)' }}>—</span>
   : <span style={{ color: '#4f46e5', fontWeight: 700, fontSize: 12.5 }}>{v}</span>;
 
 function ComparisonTable({ mobile }: { mobile: boolean }) {
-  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 700, textAlign: 'center', background: '#0f172a', color: '#fff' };
-  const cat: CSSProperties = { padding: '9px 12px', fontSize: 13, fontWeight: 800, color: '#0f172a', background: '#eef2f7' };
-  const feat: CSSProperties = { padding: '9px 12px', fontSize: 13.5, color: '#334155', borderBottom: '1px solid #f1f5f9' };
-  const val: CSSProperties = { padding: '9px 10px', fontSize: 14, textAlign: 'center', borderBottom: '1px solid #f1f5f9' };
+  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 700, textAlign: 'center', background: 'var(--c0f172a)', color: '#fff' };
+  const cat: CSSProperties = { padding: '9px 12px', fontSize: 13, fontWeight: 800, color: 'var(--c0f172a)', background: '#eef2f7' };
+  const feat: CSSProperties = { padding: '9px 12px', fontSize: 13.5, color: 'var(--c334155)', borderBottom: '1px solid var(--cf1f5f9)' };
+  const val: CSSProperties = { padding: '9px 10px', fontSize: 14, textAlign: 'center', borderBottom: '1px solid var(--cf1f5f9)' };
   return (
     <div style={{ marginTop: 48 }}>
       <div style={{ textAlign: 'center', fontSize: mobile ? 20 : 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 20 }}>Compare every feature</div>
@@ -82,9 +82,9 @@ function ComparisonTable({ mobile }: { mobile: boolean }) {
           <thead>
             <tr>
               <th style={{ ...th, textAlign: 'left', paddingLeft: 14 }}>Feature</th>
-              <th style={th}>Starter<br /><span style={{ fontWeight: 600, color: '#cbd5e1' }}>$29/mo</span></th>
-              <th style={{ ...th, background: '#4f46e5' }}>Pro<br /><span style={{ fontWeight: 600, color: '#c7d2fe' }}>$69/mo</span></th>
-              <th style={th}>Premium<br /><span style={{ fontWeight: 600, color: '#cbd5e1' }}>$149/mo</span></th>
+              <th style={th}>Starter<br /><span style={{ fontWeight: 600, color: 'var(--ccbd5e1)' }}>$29/mo</span></th>
+              <th style={{ ...th, background: '#4f46e5' }}>Pro<br /><span style={{ fontWeight: 600, color: 'var(--cc7d2fe)' }}>$69/mo</span></th>
+              <th style={th}>Premium<br /><span style={{ fontWeight: 600, color: 'var(--ccbd5e1)' }}>$149/mo</span></th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +104,7 @@ function ComparisonTable({ mobile }: { mobile: boolean }) {
           </tbody>
         </table>
       </div>
-      <p style={{ color: '#94a3b8', fontSize: 12.5, marginTop: 14, textAlign: 'center' }}>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, marginTop: 14, textAlign: 'center' }}>
         * On Pro, AI Hotline is an add-on (~$39/mo, 150 minutes). Premium includes 300 minutes. Annual billing saves ~2 months. SMS &amp; minute overage billed as used.
       </p>
     </div>
@@ -158,20 +158,20 @@ export default function HomePage() {
           <h1 style={{ fontSize: mobile ? 33 : 52, lineHeight: 1.1, fontWeight: 800, letterSpacing: mobile ? -0.8 : -1.5, margin: '18px 0 0' }}>
             The booking system that fills your chairs — and runs your salon.
           </h1>
-          <p style={{ fontSize: mobile ? 16 : 20, color: '#475569', maxWidth: 640, margin: '16px auto 0', lineHeight: 1.5 }}>
+          <p style={{ fontSize: mobile ? 16 : 20, color: 'var(--c475569)', maxWidth: 640, margin: '16px auto 0', lineHeight: 1.5 }}>
             Online booking, point-of-sale checkout, loyalty rewards, automatic reminders and payments — all in one beautiful app your clients can install on their phone.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 28, flexWrap: 'wrap' }}>
             <a href="#pricing" style={{ ...primaryBtn, padding: '14px 28px', fontSize: 16, width: mobile ? '100%' : 'auto', textAlign: 'center' }}>Start your 14-day free trial</a>
             <Link href="/book/lumio-salon" style={{ ...ghostBtn, padding: '14px 28px', fontSize: 16, width: mobile ? '100%' : 'auto', textAlign: 'center' }}>See a live booking page →</Link>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 16 }}>No setup fees · Cancel anytime · Card or PayPal</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 16 }}>No setup fees · Cancel anytime · Card or PayPal</p>
         </div>
       </section>
 
       {/* ---------------- Trust strip ---------------- */}
       <section style={{ borderTop: '1px solid #eef2f7', borderBottom: '1px solid #eef2f7', background: '#fbfcfe' }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '22px 24px', display: 'flex', gap: 36, justifyContent: 'center', flexWrap: 'wrap', color: '#64748b', fontSize: 14, fontWeight: 600 }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '22px 24px', display: 'flex', gap: 36, justifyContent: 'center', flexWrap: 'wrap', color: 'var(--c64748b)', fontSize: 14, fontWeight: 600 }}>
           <span>★★★★★ Loved by busy salons</span>
           <span>· Secure payments by Stripe &amp; PayPal</span>
           <span>· Works with your WordPress site</span>
@@ -186,22 +186,22 @@ export default function HomePage() {
             <div key={f.title} style={featureCard}>
               <div style={{ fontSize: 26 }}>{f.icon}</div>
               <h3 style={{ fontSize: 17, margin: '12px 0 6px' }}>{f.title}</h3>
-              <p style={{ color: '#64748b', fontSize: 14, margin: 0, lineHeight: 1.5 }}>{f.desc}</p>
+              <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: 0, lineHeight: 1.5 }}>{f.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ---------------- How it works ---------------- */}
-      <section id="how" style={{ background: '#0b1120', color: '#e2e8f0' }}>
+      <section id="how" style={{ background: 'var(--c0b1120)', color: 'var(--ce2e8f0)' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
           <SectionHead eyebrow="Up and running today" title="Launch in three simple steps" dark />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24, marginTop: 44 }}>
             {STEPS.map((s, i) => (
-              <div key={s.title} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 26 }}>
+              <div key={s.title} style={{ background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 16, padding: 26 }}>
                 <div style={{ width: 38, height: 38, borderRadius: '50%', background: INDIGO, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 16 }}>{i + 1}</div>
                 <h3 style={{ fontSize: 18, margin: '16px 0 6px' }}>{s.title}</h3>
-                <p style={{ color: '#94a3b8', fontSize: 14, margin: 0, lineHeight: 1.5 }}>{s.desc}</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0, lineHeight: 1.5 }}>{s.desc}</p>
               </div>
             ))}
           </div>
@@ -212,9 +212,9 @@ export default function HomePage() {
       <section id="pricing" style={{ maxWidth: 1120, margin: '0 auto', padding: mobile ? '52px 20px' : '80px 24px' }}>
         <SectionHead eyebrow="Simple, transparent pricing" title="Choose the plan that fits your salon" />
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
-          <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: 999, padding: 4 }}>
+          <div style={{ display: 'inline-flex', background: 'var(--cf1f5f9)', borderRadius: 999, padding: 4 }}>
             <button onClick={() => setYearly(false)} style={toggleBtn(!yearly)}>Monthly</button>
-            <button onClick={() => setYearly(true)} style={toggleBtn(yearly)}>Yearly <span style={{ color: yearly ? '#c7d2fe' : '#16a34a', fontWeight: 700 }}>save ~17%</span></button>
+            <button onClick={() => setYearly(true)} style={toggleBtn(yearly)}>Yearly <span style={{ color: yearly ? 'var(--cc7d2fe)' : '#16a34a', fontWeight: 700 }}>save ~17%</span></button>
           </div>
         </div>
 
@@ -224,16 +224,16 @@ export default function HomePage() {
               <div key={p.name} style={{ ...priceCard, ...(p.hi ? priceCardHi : {}) }}>
                 {p.hi && <span style={popularBadge}>MOST POPULAR</span>}
                 <h3 style={{ fontSize: 22, margin: 0 }}>{p.name}</h3>
-                <p style={{ color: '#64748b', fontSize: 14, margin: '6px 0 0' }}>{p.tag}</p>
+                <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: '6px 0 0' }}>{p.tag}</p>
                 <div style={{ margin: '20px 0 4px' }}>
                   <span style={{ fontSize: 44, fontWeight: 800, letterSpacing: -1 }}>${yearly ? p.yearly : p.monthly}</span>
-                  <span style={{ color: '#64748b', fontSize: 16 }}>{yearly ? '/year' : '/month'}</span>
+                  <span style={{ color: 'var(--c64748b)', fontSize: 16 }}>{yearly ? '/year' : '/month'}</span>
                 </div>
-                <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>14-day free trial · no card upfront</p>
+                <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: '4px 0 0' }}>14-day free trial · no card upfront</p>
                 <Link href="/signup" style={{ ...primaryBtn, display: 'block', textAlign: 'center', padding: '13px', marginTop: 20, ...(p.hi ? {} : { background: '#fff', color: INDIGO, border: `1.5px solid ${INDIGO}` }) }}>Start free trial</Link>
                 <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {p.bullets.map((f) => (
-                    <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#334155' }}>
+                    <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: 'var(--c334155)' }}>
                       <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}
                     </li>
                   ))}
@@ -258,23 +258,23 @@ export default function HomePage() {
                 <div key={p.id} style={{ ...priceCard, ...(p.highlighted ? priceCardHi : {}) }}>
                   {p.highlighted && <span style={popularBadge}>MOST POPULAR</span>}
                   <h3 style={{ fontSize: 22, margin: 0 }}>{p.name}</h3>
-                  {p.tagline && <p style={{ color: '#64748b', fontSize: 14, margin: '6px 0 0' }}>{p.tagline}</p>}
+                  {p.tagline && <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: '6px 0 0' }}>{p.tagline}</p>}
                   <div style={{ margin: '20px 0 4px' }}>
                     <span style={{ fontSize: 44, fontWeight: 800, letterSpacing: -1 }}>{money(cents, p.currency)}</span>
-                    <span style={{ color: '#64748b', fontSize: 16 }}>{per}</span>
+                    <span style={{ color: 'var(--c64748b)', fontSize: 16 }}>{per}</span>
                   </div>
                   {yearly && p.priceMonthlyCents > 0 && (
                     <p style={{ color: '#16a34a', fontSize: 13, margin: '0 0 8px', fontWeight: 600 }}>
                       ≈ {money(Math.round(p.priceYearlyCents / 12), p.currency)}/mo billed yearly
                     </p>
                   )}
-                  {p.trialDays > 0 && <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>{p.trialDays}-day free trial</p>}
+                  {p.trialDays > 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: '4px 0 0' }}>{p.trialDays}-day free trial</p>}
                   <Link href={`/signup?plan=${p.id}&interval=${yearly ? 'year' : 'month'}`} style={{ ...primaryBtn, display: 'block', textAlign: 'center', padding: '13px', marginTop: 20, ...(p.highlighted ? {} : { background: '#fff', color: INDIGO, border: `1.5px solid ${INDIGO}` }) }}>
                     Start free trial
                   </Link>
                   <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {(p.features.length ? p.features : defaultFeatures(p)).map((f) => (
-                      <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#334155' }}>
+                      <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: 'var(--c334155)' }}>
                         <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}
                       </li>
                     ))}
@@ -285,7 +285,7 @@ export default function HomePage() {
           </div>
         )}
         <ComparisonTable mobile={mobile} />
-        <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginTop: 28 }}>
+        <p style={{ textAlign: 'center', color: 'var(--c94a3b8)', fontSize: 13, marginTop: 28 }}>
           All plans include secure card payments (Stripe) and PayPal · cancel anytime from your dashboard.
         </p>
       </section>
@@ -300,43 +300,43 @@ export default function HomePage() {
       </section>
 
       {/* ---------------- Footer ---------------- */}
-      <footer style={{ background: '#0b1120', color: '#94a3b8' }}>
+      <footer style={{ background: 'var(--c0b1120)', color: 'var(--c94a3b8)' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: '40px 24px', display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></div>
             <p style={{ fontSize: 13, margin: '6px 0 0' }}>Booking &amp; salon management software.</p>
-            <p style={{ fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.6, color: '#64748b' }}>
+            <p style={{ fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.6, color: 'var(--c64748b)' }}>
               Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731, USA<br />
-              <a href="tel:+15128868189" style={{ color: '#94a3b8', textDecoration: 'none' }}>+1 (512) 886-8189</a> ·{' '}
-              <a href="mailto:lumioagency.com@gmail.com" style={{ color: '#94a3b8', textDecoration: 'none' }}>lumioagency.com@gmail.com</a>
+              <a href="tel:+15128868189" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>+1 (512) 886-8189</a> ·{' '}
+              <a href="mailto:lumioagency.com@gmail.com" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>lumioagency.com@gmail.com</a>
             </p>
           </div>
           <div style={{ display: 'flex', gap: 20, fontSize: 14, flexWrap: 'wrap' }}>
-            <a href="#features" style={{ color: '#94a3b8', textDecoration: 'none' }}>Features</a>
-            <a href="#pricing" style={{ color: '#94a3b8', textDecoration: 'none' }}>Pricing</a>
-            <Link href="/privacy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Privacy Policy</Link>
-            <Link href="/terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Terms &amp; SMS Terms</Link>
-            <Link href="/sms-optin" style={{ color: '#94a3b8', textDecoration: 'none' }}>Text Alerts</Link>
-            <Link href="/booking-policy" style={{ color: '#94a3b8', textDecoration: 'none' }}>Cancellation Policy</Link>
-            <Link href="/merchant-terms" style={{ color: '#94a3b8', textDecoration: 'none' }}>Merchant Agreement</Link>
-            <Link href="/company" style={{ color: '#94a3b8', textDecoration: 'none' }}>Company</Link>
-            <Link href="/support" style={{ color: '#94a3b8', textDecoration: 'none' }}>Support</Link>
-            <Link href="/login" style={{ color: '#94a3b8', textDecoration: 'none' }}>Sign in</Link>
+            <a href="#features" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Features</a>
+            <a href="#pricing" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Pricing</a>
+            <Link href="/privacy" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Privacy Policy</Link>
+            <Link href="/terms" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Terms &amp; SMS Terms</Link>
+            <Link href="/sms-optin" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Text Alerts</Link>
+            <Link href="/booking-policy" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Cancellation Policy</Link>
+            <Link href="/merchant-terms" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Merchant Agreement</Link>
+            <Link href="/company" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Company</Link>
+            <Link href="/support" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Support</Link>
+            <Link href="/login" style={{ color: 'var(--c94a3b8)', textDecoration: 'none' }}>Sign in</Link>
           </div>
         </div>
         {/* SMS program disclosure — public & verifiable for A2P 10DLC review */}
-        <div style={{ borderTop: '1px solid #1f2937', padding: '18px 24px', maxWidth: 1120, margin: '0 auto', fontSize: 12.5, lineHeight: 1.6, color: '#64748b' }}>
-          <strong style={{ color: '#94a3b8' }}>Text messaging:</strong> When a client books with a salon using Lumio Booking and provides a
+        <div style={{ borderTop: '1px solid var(--c1f2937)', padding: '18px 24px', maxWidth: 1120, margin: '0 auto', fontSize: 12.5, lineHeight: 1.6, color: 'var(--c64748b)' }}>
+          <strong style={{ color: 'var(--c94a3b8)' }}>Text messaging:</strong> When a client books with a salon using Lumio Booking and provides a
           mobile number, the salon may send appointment confirmations and reminders by SMS, and — only with separate
           opt-in — promotional offers. Up to ~6 msgs/month. Msg &amp; data rates may apply. Reply STOP to opt out,
           HELP for help. Opt-in and consent data is never shared with third parties.{' '}
-          <Link href="/sms-optin" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Sign up for text alerts</Link> ·{' '}
-          <Link href="/privacy" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Privacy Policy</Link> ·{' '}
-          <Link href="/terms" style={{ color: '#c7d2fe', textDecoration: 'none' }}>Messaging Terms</Link>.
+          <Link href="/sms-optin" style={{ color: 'var(--cc7d2fe)', textDecoration: 'none' }}>Sign up for text alerts</Link> ·{' '}
+          <Link href="/privacy" style={{ color: 'var(--cc7d2fe)', textDecoration: 'none' }}>Privacy Policy</Link> ·{' '}
+          <Link href="/terms" style={{ color: 'var(--cc7d2fe)', textDecoration: 'none' }}>Messaging Terms</Link>.
         </div>
-        <div style={{ borderTop: '1px solid #1f2937', padding: '18px 24px', textAlign: 'center', fontSize: 13 }}>
+        <div style={{ borderTop: '1px solid var(--c1f2937)', padding: '18px 24px', textAlign: 'center', fontSize: 13 }}>
           © {new Date().getFullYear()} Lumio Booking · Developed by{' '}
-          <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#c7d2fe', fontWeight: 600, textDecoration: 'none' }}>Lumio Agency</a>
+          <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--cc7d2fe)', fontWeight: 600, textDecoration: 'none' }}>Lumio Agency</a>
         </div>
       </footer>
     </div>
@@ -377,15 +377,15 @@ const STEPS = [
   { title: 'Take bookings & get paid', desc: 'Share your booking link, accept appointments and payments, and watch loyalty bring clients back.' },
 ];
 
-const navLink: React.CSSProperties = { color: '#475569', textDecoration: 'none', fontSize: 15 };
-const pill: React.CSSProperties = { display: 'inline-block', background: '#e0e7ff', color: '#4338ca', fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 999 };
+const navLink: React.CSSProperties = { color: 'var(--c475569)', textDecoration: 'none', fontSize: 15 };
+const pill: React.CSSProperties = { display: 'inline-block', background: 'var(--ce0e7ff)', color: '#4338ca', fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 999 };
 const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: 'none', cursor: 'pointer' };
-const ghostBtn: React.CSSProperties = { background: '#fff', color: INK, fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: '1.5px solid #cbd5e1', cursor: 'pointer' };
+const ghostBtn: React.CSSProperties = { background: '#fff', color: INK, fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: '1.5px solid var(--ccbd5e1)', cursor: 'pointer' };
 const featureCard: React.CSSProperties = { background: '#fff', border: '1px solid #eef2f7', borderRadius: 16, padding: 24, boxShadow: '0 1px 3px rgba(15,23,42,0.04)' };
-const priceCard: React.CSSProperties = { position: 'relative', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 20, padding: 26, boxShadow: '0 4px 20px rgba(15,23,42,0.05)' };
+const priceCard: React.CSSProperties = { position: 'relative', background: '#fff', border: '1.5px solid var(--ce2e8f0)', borderRadius: 20, padding: 26, boxShadow: '0 4px 20px rgba(15,23,42,0.05)' };
 const priceCardHi: React.CSSProperties = { border: `2px solid ${INDIGO}`, boxShadow: '0 12px 36px rgba(99,102,241,0.18)' };
 const popularBadge: React.CSSProperties = { position: 'absolute', top: -12, right: 24, background: INDIGO, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, padding: '4px 12px', borderRadius: 999 };
 
 function toggleBtn(active: boolean): React.CSSProperties {
-  return { border: 'none', cursor: 'pointer', padding: '8px 18px', borderRadius: 999, fontSize: 14, fontWeight: 600, background: active ? INDIGO : 'transparent', color: active ? '#fff' : '#475569', display: 'flex', gap: 6, alignItems: 'center' };
+  return { border: 'none', cursor: 'pointer', padding: '8px 18px', borderRadius: 999, fontSize: 14, fontWeight: 600, background: active ? INDIGO : 'transparent', color: active ? '#fff' : 'var(--c475569)', display: 'flex', gap: 6, alignItems: 'center' };
 }

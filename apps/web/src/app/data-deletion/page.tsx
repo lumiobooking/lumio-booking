@@ -12,7 +12,7 @@ export default function DataDeletionPage({ searchParams }: { searchParams: { id?
   const ref = typeof searchParams?.id === 'string' ? searchParams.id : '';
 
   return (
-    <main style={{ maxWidth: 720, margin: '0 auto', padding: '48px 20px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', color: '#1f2937', lineHeight: 1.6 }}>
+    <main style={{ maxWidth: 720, margin: '0 auto', padding: '48px 20px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', color: 'var(--c1f2937)', lineHeight: 1.6 }}>
       <h1 style={{ fontSize: 28, marginBottom: 6 }}>Data Deletion</h1>
       <p style={{ color: '#6b7280', marginTop: 0 }}>Lumio Booking messaging assistant</p>
 

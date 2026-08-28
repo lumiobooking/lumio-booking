@@ -133,7 +133,7 @@ function Inner() {
 
   const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
   const Th = ({ k, label }: { k: SortKey; label: string }) => (
-    <th style={{ ...ui.th, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sort.key === k ? '#c7d2fe' : undefined }}
+    <th style={{ ...ui.th, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sort.key === k ? 'var(--cc7d2fe)' : undefined }}
       onClick={() => toggleSort(k)}>{label}{arrow(k)}</th>
   );
 
@@ -142,7 +142,7 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: 24, margin: 0 }}>{t('cu.title')}</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{filtered.length} {t('cu.of')} {customers.length} · 🎂 {withBirthday}</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{filtered.length} {t('cu.of')} {customers.length} · 🎂 {withBirthday}</p>
         </div>
         <input
           placeholder={t('cu.searchPh')}
@@ -154,7 +154,7 @@ function Inner() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12.5, color: '#94a3b8' }}>🎂 {t('cu.birthdayIn')}</span>
+          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>🎂 {t('cu.birthdayIn')}</span>
           <select value={bMonth} onChange={(e) => setBMonth(parseInt(e.target.value, 10))}
             style={{ ...ui.input, padding: '7px 10px', maxWidth: 150 }}>
             <option value={0}>{t('cu.anyMonth')}</option>
@@ -178,15 +178,15 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
 
       {loading && customers.length === 0 ? (
-        <p style={{ color: '#94a3b8' }}>{t('cu.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('cu.loading')}</p>
       ) : isMobile ? (
         <>
           <MList>
-            {filtered.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('cu.empty')}</p>}
+            {filtered.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('cu.empty')}</p>}
             {pg.paged.map((c) => (
               <MCard key={c.id}>
                 <MHead>
-                  <a href={`/salon/customers/${c.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{c.firstName} {c.lastName ?? ''}</a>
+                  <a href={`/salon/customers/${c.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{c.firstName} {c.lastName ?? ''}</a>
                 </MHead>
                 <MRow label={t('cu.colEmail')}>{c.email ?? '—'}</MRow>
                 <MRow label={t('cu.colPhone')}>{c.phone ?? '—'}</MRow>
@@ -194,7 +194,7 @@ function Inner() {
                 <MRow label={t('cu.colBookings')}>{c._count.appointments}</MRow>
                 <MRow label={t('cu.colNoShows')}>
                   {(c.noShowCount ?? 0) === 0 ? '0' : (c.noShowCount ?? 0) >= 2
-                    ? <span style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
+                    ? <span style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
                     : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                 </MRow>
                 <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
@@ -210,10 +210,10 @@ function Inner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/customers/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#1e293b' }}>
+              <tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <Th k="name" label={t('cu.colName')} />
                 <th style={ui.th}>{t('cu.colEmail')}</th>
@@ -231,21 +231,21 @@ function Inner() {
                 <tr><td style={ui.td} colSpan={10}>{t('cu.empty')}</td></tr>
               )}
               {pg.paged.map((c) => (
-                <tr key={c.id} style={{ borderTop: '1px solid #334155', background: bulk.has(c.id) ? '#1e1b4b' : undefined }}>
+                <tr key={c.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(c.id) ? 'var(--c1e1b4b)' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(c.id)} onChange={() => bulk.toggle(c.id)} /></td>
-                  <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a></td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{c.email ?? '—'}</td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{c.phone ?? '—'}</td>
-                  <td style={ui.td}>{c.birthDate ? <span style={{ color: '#f0abfc', fontWeight: 600 }}>🎂 {fmtBirthday(c.birthDate)}</span> : <span style={{ color: '#475569' }}>—</span>}</td>
+                  <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a></td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{c.email ?? '—'}</td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{c.phone ?? '—'}</td>
+                  <td style={ui.td}>{c.birthDate ? <span style={{ color: '#f0abfc', fontWeight: 600 }}>🎂 {fmtBirthday(c.birthDate)}</span> : <span style={{ color: 'var(--c475569)' }}>—</span>}</td>
                   <td style={ui.td}>{c._count.appointments}</td>
                   <td style={ui.td}>
-                    {(c.noShowCount ?? 0) === 0 ? <span style={{ color: '#94a3b8' }}>0</span>
+                    {(c.noShowCount ?? 0) === 0 ? <span style={{ color: 'var(--c94a3b8)' }}>0</span>
                       : (c.noShowCount ?? 0) >= 2
-                        ? <span title={t('cu.repeatNoShow')} style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
+                        ? <span title={t('cu.repeatNoShow')} style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
                         : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                   </td>
                   <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</td>
                   <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button></td>
                 </tr>
               ))}

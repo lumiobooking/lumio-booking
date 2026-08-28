@@ -377,7 +377,7 @@ function Inner() {
     catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
 
-  if (loading && !board) return <section><h2 style={{ fontSize: 18 }}>{t('wi.title')}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
+  if (loading && !board) return <section><h2 style={{ fontSize: 18 }}>{t('wi.title')}</h2><p style={{ color: 'var(--c94a3b8)' }}>Loading…</p></section>;
 
   const staff = board?.staff ?? [];
   const nextUp = board?.nextUpStaffId ?? null;
@@ -385,7 +385,7 @@ function Inner() {
   return (
     <section>
       <h2 style={{ fontSize: 18, margin: '0 0 2px' }}>{t('wi.title')}</h2>
-      <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
 
@@ -400,12 +400,12 @@ function Inner() {
           onClick={openCustomerScreen}
           title={t('wi.custScreenHint')}
           style={{
-            border: `1px solid ${screenOn ? '#4f46e5' : '#334155'}`, background: 'transparent',
-            color: screenOn ? '#c7d2fe' : '#cbd5e1', borderRadius: 8, padding: '10px 14px',
+            border: `1px solid ${screenOn ? '#4f46e5' : 'var(--c334155)'}`, background: 'transparent',
+            color: screenOn ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)', borderRadius: 8, padding: '10px 14px',
             fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
           }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : '#475569' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : 'var(--c475569)' }} />
           🖥️ {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
         </button>
         <span style={{ flex: 1 }} />
@@ -441,9 +441,9 @@ function Inner() {
                 {pickedIds.map((id) => {
                   const sv = services.find((x) => x.id === id);
                   return (
-                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1e3a8a', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c1e3a8a)', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
                       {sv?.name ?? id}
-                      <button type="button" onClick={() => setPickedIds((v) => v.filter((x) => x !== id))} style={{ background: 'none', border: 'none', color: '#93c5fd', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+                      <button type="button" onClick={() => setPickedIds((v) => v.filter((x) => x !== id))} style={{ background: 'none', border: 'none', color: 'var(--c93c5fd)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
                     </span>
                   );
                 })}
@@ -481,8 +481,8 @@ function Inner() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: '1px solid #334155', background: '#0f172a' }}>
-          <span style={{ flex: 1, fontSize: 12.5, color: '#64748b' }}>{t('wi.subtitle')}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--c334155)', background: 'var(--c0f172a)' }}>
+          <span style={{ flex: 1, fontSize: 12.5, color: 'var(--c64748b)' }}>{t('wi.subtitle')}</span>
           <button type="submit" style={{ ...ui.primaryBtn, padding: '10px 20px', fontSize: 14 }}>{t('wi.addQueue')}</button>
         </div>
       </form>
@@ -492,7 +492,7 @@ function Inner() {
         <div style={{ marginBottom: 16 }}>
           {/* Marked Done too early, or done before the customer paid — the ticket
               has to stay reachable, not vanish off the board. */}
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '4px 0 8px' }}>{t('wi.doneToday')}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '4px 0 8px' }}>{t('wi.doneToday')}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {(board?.done ?? []).map((d) => {
               const total = (d.items ?? []).reduce((sum, it) => sum + (it.priceCents || 0), 0);
@@ -500,10 +500,10 @@ function Inner() {
               return (
                 <div key={d.id} style={{ ...ui.card, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 10, opacity: 0.9 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>{d.customerName || 'Walk-in'}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{fullName(d.assignedStaff) || '—'} · {formatPrice(total, currency)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>{d.customerName || 'Walk-in'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{fullName(d.assignedStaff) || '—'} · {formatPrice(total, currency)}</div>
                   </div>
-                  <button onClick={() => act(`${d.id}/reactivate`)} style={{ border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{t('wi.reopen')}</button>
+                  <button onClick={() => act(`${d.id}/reactivate`)} style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{t('wi.reopen')}</button>
                   <a href={href} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, textDecoration: 'none', whiteSpace: 'nowrap' }}>{t('wi.checkout')}</a>
                 </div>
               );
@@ -512,20 +512,20 @@ function Inner() {
         </div>
       )}
 
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '4px 0 8px' }}>{t('wi.turnsToday')}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '4px 0 8px' }}>{t('wi.turnsToday')}</div>
       {staff.length === 0 ? (
-        <div style={{ ...ui.card, color: '#94a3b8' }}>{t('wi.noStaff')}</div>
+        <div style={{ ...ui.card, color: 'var(--c94a3b8)' }}>{t('wi.noStaff')}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
           {staff.map((s) => {
             const isNext = s.nextUp;
-            const border = isNext ? '#22c55e' : s.busy ? '#f59e0b' : '#334155';
+            const border = isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c334155)';
             return (
-              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : '#1e293b', border: `1.5px solid ${border}`, borderRadius: 14, padding: 14, textAlign: 'center' }}>
-                <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 14, padding: 14, textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                 <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', lineHeight: 1.1, margin: '4px 0' }}>{s.turns}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>{t('wi.turns')}</div>
-                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: isNext ? '#22c55e' : s.busy ? '#f59e0b' : '#64748b' }}>
+                <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{t('wi.turns')}</div>
+                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c64748b)' }}>
                   {isNext ? t('wi.nextUp') : s.busy ? t('wi.serving') : t('wi.free')}
                 </div>
               </div>
@@ -537,9 +537,9 @@ function Inner() {
       <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color:#6366f1}.wi-serving:active{transform:scale(.99)}`}</style>
 
       {/* Waiting queue — full width, compact grid (usually short). */}
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{t('wi.waiting')} ({board?.waiting.length ?? 0})</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{t('wi.waiting')} ({board?.waiting.length ?? 0})</div>
       {(!board || board.waiting.length === 0) ? (
-        <div style={{ ...ui.card, color: '#64748b', marginBottom: 20 }}>{t('wi.noWaiting')}</div>
+        <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20 }}>{t('wi.noWaiting')}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10, marginBottom: 20 }}>
           {board.waiting.map((w) => {
@@ -547,29 +547,29 @@ function Inner() {
             return (
               <div key={w.id} style={{ ...ui.card, padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                  <div style={{ fontWeight: 600, color: '#e2e8f0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}{w.partySize > 1 ? ` · ${w.partySize} ${t('wi.people')}` : ''}</div>
-                  <div style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>{waitedMins(w.createdAt)}′</div>
+                  <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}{w.partySize > 1 ? ` · ${w.partySize} ${t('wi.people')}` : ''}</div>
+                  <div style={{ color: 'var(--c94a3b8)', fontSize: 12, flexShrink: 0 }}>{waitedMins(w.createdAt)}′</div>
                 </div>
-                {w.phone && <div style={{ color: '#94a3b8', fontSize: 12, margin: '2px 0 0' }}>{w.phone}</div>}
+                {w.phone && <div style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '2px 0 0' }}>{w.phone}</div>}
                 {(() => {
                   const items = w.items ?? [];
                   const total = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
                   const mins = items.reduce((sum, it) => sum + (it.durationMinutes || 0), 0);
                   if (items.length === 0) {
-                    return <div style={{ color: '#64748b', fontSize: 12, margin: '6px 0 10px' }}>{w.service?.name ?? t('wi.noService')}</div>;
+                    return <div style={{ color: 'var(--c64748b)', fontSize: 12, margin: '6px 0 10px' }}>{w.service?.name ?? t('wi.noService')}</div>;
                   }
                   return (
                     <div style={{ margin: '8px 0 10px', border: '1px solid #263041', borderRadius: 8, overflow: 'hidden' }}>
                       {items.map((it) => (
-                        <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid #1e293b' }}>
-                          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
-                          {it.durationMinutes ? <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>{it.durationMinutes}′</span> : null}
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#e2e8f0', flexShrink: 0 }}>{formatPrice(it.priceCents || 0, currency)}</span>
+                        <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--c1e293b)' }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
+                          {it.durationMinutes ? <span style={{ fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>{it.durationMinutes}′</span> : null}
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{formatPrice(it.priceCents || 0, currency)}</span>
                         </div>
                       ))}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: '#0f172a' }}>
-                        <span style={{ flex: 1, fontSize: 11.5, fontWeight: 700, color: '#94a3b8' }}>{t('wi.subtotal')}</span>
-                        {mins > 0 && <span style={{ fontSize: 11.5, color: '#64748b' }}>{mins} {t('wi.mins')}</span>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: 'var(--c0f172a)' }}>
+                        <span style={{ flex: 1, fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>{t('wi.subtotal')}</span>
+                        {mins > 0 && <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{mins} {t('wi.mins')}</span>}
                         <span style={{ fontSize: 14, fontWeight: 800, color: '#22c55e' }}>{formatPrice(total, currency)}</span>
                       </div>
                     </div>
@@ -592,9 +592,9 @@ function Inner() {
       {/* In service — full-width responsive grid of COMPACT cards. Tap a card to open
           the detail sheet (edit ticket / add services / checkout). Keeps the whole
           floor on one screen even when busy. */}
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{t('wi.inService')} ({board?.serving.length ?? 0})</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{t('wi.inService')} ({board?.serving.length ?? 0})</div>
       {(!board || board.serving.length === 0) ? (
-        <div style={{ ...ui.card, color: '#64748b' }}>{t('wi.noInService')}</div>
+        <div style={{ ...ui.card, color: 'var(--c64748b)' }}>{t('wi.noInService')}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(268px, 1fr))', gap: 12 }}>
           {board.serving.map((w) => (
@@ -635,7 +635,7 @@ function ServiceSearchSelect({ services, value, onChange, placeholder }: {
   const filtered = q ? services.filter((s) => s.name.toLowerCase().includes(q)) : services;
   return (
     <div style={{ position: 'relative' }}>
-      <style>{`.svc-opt:hover{background:#1e293b !important}`}</style>
+      <style>{`.svc-opt:hover{background:var(--c1e293b) !important}`}</style>
       <input
         style={ui.input}
         value={open ? query : selected?.name ?? ''}
@@ -645,14 +645,14 @@ function ServiceSearchSelect({ services, value, onChange, placeholder }: {
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
       />
       {open && (
-        <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: 260, overflowY: 'auto', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
+        <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: 260, overflowY: 'auto', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
           <button type="button" className="svc-opt" onMouseDown={(e) => { e.preventDefault(); onChange(''); setQuery(''); setOpen(false); }} style={svcOpt(!value)}>—</button>
           {filtered.map((s) => (
             <button key={s.id} type="button" className="svc-opt" onMouseDown={(e) => { e.preventDefault(); onChange(s.id); setQuery(s.name); setOpen(false); }} style={svcOpt(s.id === value)}>
               {s.name}
             </button>
           ))}
-          {filtered.length === 0 && <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 13 }}>{t('wi.noMatch')}</div>}
+          {filtered.length === 0 && <div style={{ padding: '10px 12px', color: 'var(--c64748b)', fontSize: 13 }}>{t('wi.noMatch')}</div>}
         </div>
       )}
     </div>
@@ -660,7 +660,7 @@ function ServiceSearchSelect({ services, value, onChange, placeholder }: {
 }
 const svcOpt = (active: boolean): CSSProperties => ({
   display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none',
-  background: active ? '#312e81' : 'transparent', color: active ? '#c7d2fe' : '#e2e8f0', cursor: 'pointer', fontSize: 14,
+  background: active ? 'var(--c312e81)' : 'transparent', color: active ? 'var(--cc7d2fe)' : 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 14,
 });
 
 /** Compact "in service" card: name, station, tech, service count + running total,
@@ -682,26 +682,26 @@ function CompactServingCard({ w, currency, t, onOpen }: {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-            <span style={{ fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</span>
+            <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</span>
             {w.station && <span style={stationChip}>{t('wi.stationShort')} {w.station}</span>}
           </div>
-          <span style={{ color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>{fullName(w.assignedStaff)}</span>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>{fullName(w.assignedStaff)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginTop: 10 }}>
-          <span style={{ color: '#94a3b8', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary}</span>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary}</span>
           <span style={{ color: '#fff', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>{formatPrice(subtotal, currency)}</span>
         </div>
       </div>
-      <div style={{ display: 'flex', borderTop: '1px solid #1e293b', marginTop: 'auto' }}>
+      <div style={{ display: 'flex', borderTop: '1px solid var(--c1e293b)', marginTop: 'auto' }}>
         <a href={checkoutHref} onClick={(e) => e.stopPropagation()}
-          style={{ flex: 1, textAlign: 'center', padding: '10px', color: '#c7d2fe', fontWeight: 700, fontSize: 13, textDecoration: 'none', background: 'rgba(99,102,241,0.12)' }}>{t('wi.checkout')}</a>
+          style={{ flex: 1, textAlign: 'center', padding: '10px', color: 'var(--cc7d2fe)', fontWeight: 700, fontSize: 13, textDecoration: 'none', background: 'rgba(99,102,241,0.12)' }}>{t('wi.checkout')}</a>
         <button onClick={(e) => { e.stopPropagation(); onOpen(); }}
-          style={{ padding: '10px 16px', background: 'none', border: 'none', borderLeft: '1px solid #1e293b', color: '#94a3b8', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>{t('wi.manage')} ›</button>
+          style={{ padding: '10px 16px', background: 'none', border: 'none', borderLeft: '1px solid var(--c1e293b)', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>{t('wi.manage')} ›</button>
       </div>
     </div>
   );
 }
-const stationChip: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#c7d2fe', background: '#312e81', borderRadius: 6, padding: '2px 8px', flexShrink: 0, whiteSpace: 'nowrap' };
+const stationChip: CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--cc7d2fe)', background: 'var(--c312e81)', borderRadius: 6, padding: '2px 8px', flexShrink: 0, whiteSpace: 'nowrap' };
 
 /** Full ticket editor for one in-service walk-in, in a focused overlay: service
  *  lines (each with its tech), add a service, edit station, checkout, done. Opened
@@ -742,36 +742,36 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
   const content = (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(560px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #1e293b', position: 'sticky', top: 0, background: '#111827', zIndex: 1 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--c1e293b)', position: 'sticky', top: 0, background: 'var(--c111827)', zIndex: 1 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
-            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>{t('wi.tech')} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
+            <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
+            <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 2 }}>{t('wi.tech')} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={t('wi.station')}>
-              <span style={{ fontSize: 11, color: '#64748b' }}>{t('wi.stationShort')}</span>
+              <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{t('wi.stationShort')}</span>
               <input value={station} onChange={(e) => setStation(e.target.value)}
                 onBlur={() => { const v = station.trim(); if (v !== (w.station ?? '')) onStation(w.id, v); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 placeholder={t('wi.stationPh')}
-                style={{ width: 52, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: 12, padding: '5px 8px', textAlign: 'center' }} />
+                style={{ width: 52, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, color: 'var(--ce2e8f0)', fontSize: 12, padding: '5px 8px', textAlign: 'center' }} />
             </label>
-            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
+            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
           </div>
         </div>
 
         <div style={{ padding: 16 }}>
           <div style={{ border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>
             {items.length === 0 ? (
-              <div style={{ padding: '12px', color: '#64748b', fontSize: 13 }}>{t('wi.noLines')}</div>
+              <div style={{ padding: '12px', color: 'var(--c64748b)', fontSize: 13 }}>{t('wi.noLines')}</div>
             ) : items.map((it) => (
               <LineRow
                 key={it.lineId} it={it} w={w} staff={staff} services={services} t={t} currency={currency}
                 techLabel={techLabel} onUpdateLine={onUpdateLine} onRemove={onRemove}
               />
             ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: '#0f172a' }}>
-              <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--c0f172a)' }}>
+              <span style={{ color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
               <span style={{ color: '#fff', fontSize: 16, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
             </div>
           </div>
@@ -785,13 +785,13 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
               {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }} title={t('wi.extraTimeHint')}>
-              <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{t('wi.extraTime')}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{t('wi.extraTime')}</span>
               <input
                 type="number" min={0} max={600} step={5} value={extra} placeholder="0"
                 onChange={(e) => setExtra(e.target.value)}
-                style={{ width: 64, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: 12.5, padding: '7px 8px', textAlign: 'right' }}
+                style={{ width: 64, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, color: 'var(--ce2e8f0)', fontSize: 12.5, padding: '7px 8px', textAlign: 'right' }}
               />
-              <span style={{ fontSize: 11.5, color: '#64748b' }}>m</span>
+              <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>m</span>
             </label>
             <button onClick={add} disabled={(!svcId && !extraChanged) || busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: ((svcId || extraChanged) && !busy) ? 1 : 0.5 }}>{busy ? '…' : t('wi.addLine')}</button>
           </div>
@@ -799,7 +799,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <a href={checkoutHref}
               style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
-            <button onClick={onDone} style={{ ...ui.primaryBtn, background: '#334155', padding: '12px 14px' }}>{t('wi.done')}</button>
+            <button onClick={onDone} style={{ ...ui.primaryBtn, background: 'var(--c334155)', padding: '12px 14px' }}>{t('wi.done')}</button>
           </div>
         </div>
       </div>
@@ -813,9 +813,9 @@ const wiGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'rep
 function SecHead({ label, extra }: { label: string; extra?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>{label}</span>
-      {extra && <span style={{ fontSize: 11.5, color: '#818cf8', fontWeight: 600 }}>{extra}</span>}
-      <span style={{ flex: 1, height: 1, background: '#334155' }} />
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>{label}</span>
+      {extra && <span style={{ fontSize: 11.5, color: 'var(--c818cf8)', fontWeight: 600 }}>{extra}</span>}
+      <span style={{ flex: 1, height: 1, background: 'var(--c334155)' }} />
     </div>
   );
 }
@@ -826,7 +826,7 @@ function WiLabel({ text, opt, hint }: { text: string; opt?: string; hint?: strin
   return (
     <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }} title={hint}>
       {clean}
-      {opt && <span style={{ fontSize: 10.5, color: '#64748b', border: '1px solid #334155', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{opt}</span>}
+      {opt && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{opt}</span>}
     </span>
   );
 }
@@ -871,24 +871,24 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
 
   if (!editing) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #1e293b' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-          <div style={{ color: '#94a3b8', fontSize: 11 }}>
+          <div style={{ color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+          <div style={{ color: 'var(--c94a3b8)', fontSize: 11 }}>
             {techLabel(it.staffId)}
-            {it.durationMinutes ? <span style={{ color: '#64748b' }}> · {it.durationMinutes} {t('wi.mins')}</span> : null}
+            {it.durationMinutes ? <span style={{ color: 'var(--c64748b)' }}> · {it.durationMinutes} {t('wi.mins')}</span> : null}
           </div>
         </div>
-        <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
+        <div style={{ color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
         <button onClick={() => setEditing(true)} title={t('wi.editLine')} aria-label={t('wi.editLine')}
-          style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>✎</button>
+          style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>✎</button>
         <button onClick={() => onRemove(w.id, it.lineId)} title={t('wi.removeLine')} aria-label={t('wi.removeLine')}
           style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
       </div>
     );
   }
   return (
-    <div style={{ padding: '10px 12px', borderBottom: '1px solid #1e293b', background: '#0f172a', display: 'flex', flexDirection: 'column', gap: 7 }}>
+    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 7 }}>
       <select value={svc} onChange={(e) => setSvc(e.target.value)} style={{ ...ui.input, padding: '7px 8px', fontSize: 13 }}>
         {services.every((x) => x.id !== svc) && <option value={svc}>{it.name}</option>}
         {services.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
@@ -899,19 +899,19 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
           {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 11.5, color: '#94a3b8' }}>$</span>
+          <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>$</span>
           <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)}
             style={{ ...ui.input, width: 78, padding: '7px 8px', fontSize: 12.5, textAlign: 'right' }} />
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <input type="number" min={0} max={600} step={5} value={mins} placeholder="0" onChange={(e) => setMins(e.target.value)}
             style={{ ...ui.input, width: 64, padding: '7px 8px', fontSize: 12.5, textAlign: 'right' }} />
-          <span style={{ fontSize: 11.5, color: '#64748b' }}>{t('wi.mins')}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{t('wi.mins')}</span>
         </label>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={save} disabled={busy} style={{ ...ui.primaryBtn, padding: '7px 14px', fontSize: 12.5, opacity: busy ? 0.5 : 1 }}>{busy ? '…' : t('wi.lineSave')}</button>
-        <button onClick={reset} style={{ border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, cursor: 'pointer' }}>{t('wi.lineCancel')}</button>
+        <button onClick={reset} style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, cursor: 'pointer' }}>{t('wi.lineCancel')}</button>
       </div>
     </div>
   );
@@ -948,8 +948,8 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
         onClick={() => setOpen((v) => !v)}
         style={{
           background: qrOn ? 'rgba(79,70,229,0.14)' : 'none',
-          border: `1px solid ${qrOn ? '#4f46e5' : '#334155'}`, borderRadius: 8,
-          color: qrOn ? '#c7d2fe' : '#94a3b8', fontSize: 12.5, cursor: 'pointer',
+          border: `1px solid ${qrOn ? '#4f46e5' : 'var(--c334155)'}`, borderRadius: 8,
+          color: qrOn ? 'var(--cc7d2fe)' : 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer',
           padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 7,
         }}
       >
@@ -957,7 +957,7 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
         {qrOn && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700 }}>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />{t('wi.qrLive')}
         </span>}
-        <span style={{ color: '#64748b' }}>{open ? '▴' : '▾'}</span>
+        <span style={{ color: 'var(--c64748b)' }}>{open ? '▴' : '▾'}</span>
       </button>
       {open && (
         <div style={{ ...ui.card, position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 'min(560px, 88vw)', display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -971,23 +971,23 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
                 style={{ width: 156, height: 156, background: '#fff', borderRadius: 12, padding: 8, display: 'block' }}
               />
             ) : (
-              <div style={{ width: 156, height: 156, borderRadius: 12, background: '#0f172a', border: '1px solid #334155' }} />
+              <div style={{ width: 156, height: 156, borderRadius: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }} />
             )}
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{t('wi.kioskScan')}</div>
+            <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 6 }}>{t('wi.kioskScan')}</div>
           </div>
           <div style={{ flex: 1, minWidth: 190 }}>
-            <div style={{ fontSize: 10.5, color: '#94a3b8', letterSpacing: '0.1em', fontWeight: 700 }}>CODE</div>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: '#c7d2fe', marginBottom: 8 }}>{s?.pairCode ?? '······'}</div>
-            <div style={{ fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.55, marginBottom: 10 }}>{t('wi.kioskHow')}</div>
-            {url && <div style={{ fontSize: 12, color: '#818cf8', wordBreak: 'break-all', fontWeight: 600, marginBottom: 10 }}>{url}</div>}
+            <div style={{ fontSize: 10.5, color: 'var(--c94a3b8)', letterSpacing: '0.1em', fontWeight: 700 }}>CODE</div>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: 'var(--cc7d2fe)', marginBottom: 8 }}>{s?.pairCode ?? '······'}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginBottom: 10 }}>{t('wi.kioskHow')}</div>
+            {url && <div style={{ fontSize: 12, color: 'var(--c818cf8)', wordBreak: 'break-all', fontWeight: 600, marginBottom: 10 }}>{url}</div>}
             <button
               onClick={onToggleQr}
               disabled={!canShow}
               style={{
                 width: '100%', marginBottom: 8, borderRadius: 8, padding: '10px 12px', fontSize: 12.5, fontWeight: 600,
                 cursor: canShow ? 'pointer' : 'not-allowed', opacity: canShow ? 1 : 0.5,
-                border: `1px solid ${qrOn ? '#4f46e5' : '#334155'}`,
-                background: qrOn ? '#4f46e5' : 'transparent', color: qrOn ? '#fff' : '#cbd5e1',
+                border: `1px solid ${qrOn ? '#4f46e5' : 'var(--c334155)'}`,
+                background: qrOn ? '#4f46e5' : 'transparent', color: qrOn ? '#fff' : 'var(--ccbd5e1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               }}
             >🖥️ {qrOn ? t('wi.qrHide') : t('wi.qrOnScreen')}</button>
@@ -995,11 +995,11 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
               <button
                 onClick={() => { if (url) printQr(url, t('wi.kioskScan')); }}
                 disabled={!url}
-                style={{ border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: url ? 'pointer' : 'not-allowed', opacity: url ? 1 : 0.5 }}
+                style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: url ? 'pointer' : 'not-allowed', opacity: url ? 1 : 0.5 }}
               >🖨️ {t('wi.kioskPrint')}</button>
               <button
                 onClick={async () => { if (!token) return; try { setS(await apiFetch('/display/rotate', { method: 'POST', token })); } catch { /* ignore */ } }}
-                style={{ border: '1px solid #334155', background: 'transparent', color: '#94a3b8', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}
+                style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}
               >{t('wi.kioskNew')}</button>
             </div>
           </div>
@@ -1016,8 +1016,8 @@ function printQr(url: string, title: string) {
   if (!w) return;
   w.document.write(`<!doctype html><meta charset="utf-8"><title>${title}</title>
     <style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a;text-align:center}
-      h1{font-size:34px;margin:0 0 10px}p{font-size:17px;color:#475569;margin:0 0 26px}
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--c0f172a);text-align:center}
+      h1{font-size:34px;margin:0 0 10px}p{font-size:17px;color:var(--c475569);margin:0 0 26px}
       img{width:340px;height:340px}</style>
     <h1>${title}</h1><p>Scan with your phone camera</p><img src="${src}" alt="">`);
   w.document.close();

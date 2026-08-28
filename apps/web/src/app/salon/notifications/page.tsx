@@ -74,11 +74,11 @@ function Inner() {
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('nt.title')}</h1>
-      <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
+      <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>
         {t('nt.subtitle')}
       </p>
 
-      <div style={{ display: 'flex', gap: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 4, width: 'fit-content', margin: '16px 0 18px' }}>
+      <div style={{ display: 'flex', gap: 4, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 4, width: 'fit-content', margin: '16px 0 18px' }}>
         <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')}>{t('nt.tabTemplates')}</TabBtn>
         <TabBtn active={tab === 'history'} onClick={() => setTab('history')}>{t('nt.tabHistory')}</TabBtn>
       </div>
@@ -168,7 +168,7 @@ function TemplatesView({ token }: { token: string | null }) {
     } finally { setSaving(false); }
   };
 
-  if (loading || !templates) return <p style={{ color: '#94a3b8' }}>{t('nt.loading')}</p>;
+  if (loading || !templates) return <p style={{ color: 'var(--c94a3b8)' }}>{t('nt.loading')}</p>;
 
   return (
     <div>
@@ -176,7 +176,7 @@ function TemplatesView({ token }: { token: string | null }) {
 
       {/* audience tabs + save */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <div style={{ display: 'flex', gap: 4, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
+        <div style={{ display: 'flex', gap: 4, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3 }}>
           <SubTab active={audience === 'customer'} onClick={() => { setAudience('customer'); setSelectedId('customer_booking_confirmed'); }}>{t('nt.toCustomer')}</SubTab>
           <SubTab active={audience === 'staff'} onClick={() => { setAudience('staff'); setSelectedId('staff_new_booking'); }}>{t('nt.toStaff')}</SubTab>
         </div>
@@ -191,7 +191,7 @@ function TemplatesView({ token }: { token: string | null }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {groups.map((g) => (
             <div key={g}>
-              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', margin: '0 0 6px 2px', fontWeight: 700 }}>{t(GROUP_KEY[g] ?? g)}</div>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--c64748b)', margin: '0 0 6px 2px', fontWeight: 700 }}>{t(GROUP_KEY[g] ?? g)}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {items.filter((i) => i.group === g).map((i) => {
                   const it = templates[i.id];
@@ -199,9 +199,9 @@ function TemplatesView({ token }: { token: string | null }) {
                   return (
                     <button key={i.id} onClick={() => setSelectedId(i.id)}
                       style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                        border: `1px solid ${active ? '#6366f1' : '#334155'}`, background: active ? '#312e81' : '#1e293b' }}>
+                        border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`, background: active ? 'var(--c312e81)' : 'var(--c1e293b)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{t('nt.lbl.' + i.id)}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('nt.lbl.' + i.id)}</span>
                         <Dot on={!!it?.enabled} />
                       </div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
@@ -224,7 +224,7 @@ function TemplatesView({ token }: { token: string | null }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <div>
                   <h2 style={{ fontSize: 16, margin: '0 0 4px' }}>{t('nt.lbl.' + meta.id)}</h2>
-                  <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('nt.desc.' + meta.id)}</p>
+                  <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: 0 }}>{t('nt.desc.' + meta.id)}</p>
                 </div>
                 <Switch on={tpl.enabled} onChange={(v) => patch('enabled', v)} />
               </div>
@@ -234,11 +234,11 @@ function TemplatesView({ token }: { token: string | null }) {
                 <Check label={t('nt.sendSms')} checked={tpl.sms} onChange={(v) => patch('sms', v)} />
                 {meta.scheduled && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-                    <span style={{ fontSize: 13, color: '#cbd5e1' }}>{t('nt.send')}</span>
+                    <span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{t('nt.send')}</span>
                     <input type="number" min={0} value={tpl.offsetHours}
                       onChange={(e) => patch('offsetHours', Math.max(0, Number(e.target.value)))}
                       style={{ ...ui.input, width: 70, padding: '6px 8px' }} />
-                    <span style={{ fontSize: 13, color: '#cbd5e1' }}>
+                    <span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>
                       {t('nt.hours')} {meta.scheduled === 'after' ? t('nt.after') : meta.scheduled === 'day' ? t('nt.onDay') : t('nt.before')}
                     </span>
                   </div>
@@ -247,11 +247,11 @@ function TemplatesView({ token }: { token: string | null }) {
 
               {/* Placeholder chips */}
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('nt.clickPlaceholder')}</div>
+                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>{t('nt.clickPlaceholder')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {PLACEHOLDERS.map((p) => (
                     <button key={p} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(p)}
-                      style={{ fontSize: 12, padding: '4px 9px', borderRadius: 999, border: '1px solid #475569', background: '#0f172a', color: '#a5b4fc', cursor: 'pointer' }}>
+                      style={{ fontSize: 12, padding: '4px 9px', borderRadius: 999, border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ca5b4fc)', cursor: 'pointer' }}>
                       {p}
                     </button>
                   ))}
@@ -278,19 +278,19 @@ function TemplatesView({ token }: { token: string | null }) {
                   <textarea ref={smsRef} onFocus={() => (focusedRef.current = 'smsBody')}
                     value={tpl.smsBody} onChange={(e) => patch('smsBody', e.target.value)} rows={3}
                     style={{ ...ui.input, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical' }} />
-                  <div style={{ fontSize: 11, color: fillPct(tpl.smsBody).length > 160 ? '#f97316' : '#64748b', marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: fillPct(tpl.smsBody).length > 160 ? '#f97316' : 'var(--c64748b)', marginTop: 4 }}>
                     {fillPct(tpl.smsBody).length} {t('nt.chars')} {fillPct(tpl.smsBody).length > 160 ? t('nt.overSegment') : ''}
                   </div>
                 </>
               )}
               {!tpl.email && !tpl.sms && (
-                <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('nt.enableToEdit')}</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: 0 }}>{t('nt.enableToEdit')}</p>
               )}
             </div>
 
             {/* Live preview */}
             <div>
-              <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', margin: '0 0 8px 2px', fontWeight: 700 }}>{t('nt.preview')}</div>
+              <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--c64748b)', margin: '0 0 8px 2px', fontWeight: 700 }}>{t('nt.preview')}</div>
               {tpl.email && <EmailPreview accent={accent} subject={fillPct(tpl.subject)} body={fillPct(tpl.body)} salon={SAMPLE.salon_name} contact={SAMPLE.salon_contact} />}
               {tpl.sms && <SmsPreview text={fillPct(tpl.smsBody)} salon={SAMPLE.salon_name} />}
             </div>
@@ -305,10 +305,10 @@ function EmailPreview({ accent, subject, body, salon, contact }: { accent: strin
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   return (
-    <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #334155', maxWidth: 520 }}>
-      <div style={{ background: '#0f172a', padding: '8px 12px', borderBottom: '1px solid #334155' }}>
-        <div style={{ fontSize: 11, color: '#94a3b8' }}>{t('nt.pSubject')}</div>
-        <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>{subject || t('nt.emptySubject')}</div>
+    <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--c334155)', maxWidth: 520 }}>
+      <div style={{ background: 'var(--c0f172a)', padding: '8px 12px', borderBottom: '1px solid var(--c334155)' }}>
+        <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{t('nt.pSubject')}</div>
+        <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{subject || t('nt.emptySubject')}</div>
       </div>
       <div style={{ background: accent, padding: '18px 22px' }}>
         <div style={{ color: '#fff', fontSize: 17, fontWeight: 800 }}>{salon}</div>
@@ -326,8 +326,8 @@ function SmsPreview({ text, salon }: { text: string; salon: string }) {
   const t = (k: string) => tr(k, lang);
   return (
     <div style={{ marginTop: 12, maxWidth: 520 }}>
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>{t('nt.smsFrom').replace('{salon}', salon)}</div>
-      <div style={{ display: 'inline-block', background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0', padding: '10px 14px', borderRadius: '14px 14px 14px 4px', fontSize: 13, lineHeight: 1.5, maxWidth: '90%', whiteSpace: 'pre-wrap' }}>
+      <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 6 }}>{t('nt.smsFrom').replace('{salon}', salon)}</div>
+      <div style={{ display: 'inline-block', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', padding: '10px 14px', borderRadius: '14px 14px 14px 4px', fontSize: 13, lineHeight: 1.5, maxWidth: '90%', whiteSpace: 'pre-wrap' }}>
         {text || t('nt.emptyMsg')}
       </div>
     </div>
@@ -362,11 +362,11 @@ function RichTextEditor({ editorRef, value, onChange, onFocus }: {
   const Btn = ({ cmd, arg, title, children }: { cmd: string; arg?: string; title: string; children: React.ReactNode }) => (
     <button type="button" title={title} onMouseDown={(e) => e.preventDefault()} onClick={() => exec(cmd, arg)} style={tbBtn}>{children}</button>
   );
-  const Sep = () => <span style={{ width: 1, background: '#334155', margin: '2px 4px' }} />;
+  const Sep = () => <span style={{ width: 1, background: 'var(--c334155)', margin: '2px 4px' }} />;
 
   return (
-    <div style={{ border: '1px solid #475569', borderRadius: 8, overflow: 'hidden', background: '#0f172a' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, padding: 6, borderBottom: '1px solid #334155', background: '#1e293b' }}>
+    <div style={{ border: '1px solid var(--c475569)', borderRadius: 8, overflow: 'hidden', background: 'var(--c0f172a)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, padding: 6, borderBottom: '1px solid var(--c334155)', background: 'var(--c1e293b)' }}>
         <Btn cmd="bold" title={t('nt.tBold')}><b>B</b></Btn>
         <Btn cmd="italic" title={t('nt.tItalic')}><i>I</i></Btn>
         <Btn cmd="underline" title={t('nt.tUnderline')}><u>U</u></Btn>
@@ -388,14 +388,14 @@ function RichTextEditor({ editorRef, value, onChange, onFocus }: {
         suppressContentEditableWarning
         onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML); }}
         onFocus={onFocus}
-        style={{ minHeight: 190, padding: 14, color: '#e2e8f0', fontSize: 14, lineHeight: 1.6, outline: 'none' }}
+        style={{ minHeight: 190, padding: 14, color: 'var(--ce2e8f0)', fontSize: 14, lineHeight: 1.6, outline: 'none' }}
       />
     </div>
   );
 }
 const tbBtn: React.CSSProperties = {
-  minWidth: 30, height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid #334155',
-  background: '#0f172a', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  minWidth: 30, height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--c334155)',
+  background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 };
 
 /* ----------------------------- History ----------------------------- */
@@ -423,30 +423,30 @@ function HistoryView({ token }: { token: string | null }) {
   }, [token]);
 
   if (error) return <div style={ui.banner}>{error}</div>;
-  if (loading) return <p style={{ color: '#94a3b8' }}>{t('nt.loading')}</p>;
+  if (loading) return <p style={{ color: 'var(--c94a3b8)' }}>{t('nt.loading')}</p>;
 
   return (
-    <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+    <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
-          <tr style={{ background: '#1e293b' }}>
+          <tr style={{ background: 'var(--c1e293b)' }}>
             <th style={ui.th}>{t('nt.hSent')}</th><th style={ui.th}>{t('nt.hChannel')}</th><th style={ui.th}>{t('nt.hRecipient')}</th><th style={ui.th}>{t('nt.hMessage')}</th><th style={ui.th}>{t('nt.hStatus')}</th>
           </tr>
         </thead>
         <tbody>
           {items.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('nt.noMessages')}</td></tr>}
           {items.map((n) => (
-            <tr key={n.id} style={{ borderTop: '1px solid #334155' }}>
-              <td style={{ ...ui.td, color: '#94a3b8', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString(uiLocale())}</td>
+            <tr key={n.id} style={{ borderTop: '1px solid var(--c334155)' }}>
+              <td style={{ ...ui.td, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString(uiLocale())}</td>
               <td style={ui.td}>{n.channel}</td>
-              <td style={{ ...ui.td, color: '#94a3b8' }}>{n.recipient}</td>
+              <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{n.recipient}</td>
               <td style={ui.td}>
                 {n.subject && <div style={{ fontWeight: 600 }}>{n.subject}</div>}
-                <div style={{ color: '#94a3b8', fontSize: 13 }}>{n.body}</div>
+                <div style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{n.body}</div>
               </td>
               <td style={ui.td}>
-                <span style={{ color: COLORS[n.status] ?? '#94a3b8', fontWeight: 600 }}>{n.status}</span>
-                {n.status === 'FAILED' && n.error && <div style={{ color: '#f87171', fontSize: 11.5, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{n.error}</div>}
+                <span style={{ color: COLORS[n.status] ?? 'var(--c94a3b8)', fontWeight: 600 }}>{n.status}</span>
+                {n.status === 'FAILED' && n.error && <div style={{ color: 'var(--cf87171)', fontSize: 11.5, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{n.error}</div>}
                 {n.status !== 'FAILED' && n.provider === 'mock' && <div style={{ color: '#fbbf24', fontSize: 11, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{lang === 'vi' ? '⚠ Chưa gửi thật — chưa kết nối Twilio/email' : '⚠ Not a real send — connect Twilio/email'}</div>}
               </td>
             </tr>
@@ -461,31 +461,31 @@ function HistoryView({ token }: { token: string | null }) {
 
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{ padding: '7px 16px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#94a3b8' }}>{children}</button>
+    <button onClick={onClick} style={{ padding: '7px 16px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--c94a3b8)' }}>{children}</button>
   );
 }
 function SubTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: active ? '#334155' : 'transparent', color: active ? '#fff' : '#94a3b8' }}>{children}</button>
+    <button onClick={onClick} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: active ? 'var(--c334155)' : 'transparent', color: active ? '#fff' : 'var(--c94a3b8)' }}>{children}</button>
   );
 }
 function Badge({ children }: { children: React.ReactNode }) {
-  return <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 5, background: '#0f172a', border: '1px solid #334155', color: '#94a3b8' }}>{children}</span>;
+  return <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 5, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)' }}>{children}</span>;
 }
 function Dot({ on }: { on: boolean }) {
-  return <span style={{ width: 8, height: 8, borderRadius: '50%', background: on ? '#22c55e' : '#475569', flexShrink: 0 }} />;
+  return <span style={{ width: 8, height: 8, borderRadius: '50%', background: on ? '#22c55e' : 'var(--c475569)', flexShrink: 0 }} />;
 }
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button onClick={() => onChange(!on)} style={{ width: 42, height: 24, borderRadius: 999, border: 'none', cursor: 'pointer', background: on ? '#6366f1' : '#475569', position: 'relative', flexShrink: 0 }}>
+    <button onClick={() => onChange(!on)} style={{ width: 42, height: 24, borderRadius: 999, border: 'none', cursor: 'pointer', background: on ? '#6366f1' : 'var(--c475569)', position: 'relative', flexShrink: 0 }}>
       <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
     </button>
   );
 }
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button onClick={() => onChange(!checked)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${checked ? '#6366f1' : '#334155'}`, background: checked ? '#312e81' : '#1e293b', color: '#e2e8f0', fontSize: 13 }}>
-      <span style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${checked ? '#a5b4fc' : '#64748b'}`, background: checked ? '#6366f1' : 'transparent', display: 'grid', placeItems: 'center', fontSize: 11, color: '#fff' }}>{checked ? '✓' : ''}</span>
+    <button onClick={() => onChange(!checked)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${checked ? '#6366f1' : 'var(--c334155)'}`, background: checked ? 'var(--c312e81)' : 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13 }}>
+      <span style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${checked ? 'var(--ca5b4fc)' : 'var(--c64748b)'}`, background: checked ? '#6366f1' : 'transparent', display: 'grid', placeItems: 'center', fontSize: 11, color: '#fff' }}>{checked ? '✓' : ''}</span>
       {label}
     </button>
   );

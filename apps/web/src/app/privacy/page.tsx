@@ -104,10 +104,10 @@ export default function PrivacyPage() {
   );
 }
 
-const wrap: React.CSSProperties = { minHeight: '100vh', background: '#f8fafc', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
-const card: React.CSSProperties = { maxWidth: 760, margin: '0 auto', background: '#fff', borderRadius: 16, padding: '32px 36px', boxShadow: '0 8px 30px rgba(15,23,42,0.08)', color: '#1e293b' };
-const h1: React.CSSProperties = { fontSize: 28, margin: '0 0 4px', color: '#0f172a' };
-const h2: React.CSSProperties = { fontSize: 17, margin: '24px 0 6px', color: '#0f172a' };
-const p: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.65, color: '#334155', margin: '0 0 10px' };
-const muted: React.CSSProperties = { fontSize: 13, color: '#64748b', margin: '0 0 18px' };
+const wrap: React.CSSProperties = { minHeight: '100vh', background: 'var(--cf8fafc)', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
+const card: React.CSSProperties = { maxWidth: 760, margin: '0 auto', background: '#fff', borderRadius: 16, padding: '32px 36px', boxShadow: '0 8px 30px rgba(15,23,42,0.08)', color: 'var(--c1e293b)' };
+const h1: React.CSSProperties = { fontSize: 28, margin: '0 0 4px', color: 'var(--c0f172a)' };
+const h2: React.CSSProperties = { fontSize: 17, margin: '24px 0 6px', color: 'var(--c0f172a)' };
+const p: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.65, color: 'var(--c334155)', margin: '0 0 10px' };
+const muted: React.CSSProperties = { fontSize: 13, color: 'var(--c64748b)', margin: '0 0 18px' };
 const a: React.CSSProperties = { color: '#4f46e5', textDecoration: 'none' };

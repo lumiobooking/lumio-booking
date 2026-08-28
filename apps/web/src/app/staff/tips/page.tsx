@@ -94,7 +94,7 @@ function Inner() {
     } finally { setSaving(false); }
   }
 
-  if (loading) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (loading) return <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>;
 
   const name = [p?.firstName, p?.lastName].filter(Boolean).join(' ').trim() || 'Me';
   const ready = !!(qr || handle.trim());
@@ -102,10 +102,10 @@ function Inner() {
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
-      <p style={{ color: '#94a3b8', fontSize: 14, margin: '0 0 16px', textAlign: 'center' }}>
-        When a client wants to tip you, tap <b style={{ color: '#e2e8f0' }}>Show to client</b> and turn your phone toward them to scan. Money goes straight to you — the salon never holds it.
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 16px', textAlign: 'center' }}>
+        When a client wants to tip you, tap <b style={{ color: 'var(--ce2e8f0)' }}>Show to client</b> and turn your phone toward them to scan. Money goes straight to you — the salon never holds it.
       </p>
 
       {/* Live preview of the card the client will see */}
@@ -118,18 +118,18 @@ function Inner() {
       >
         📱 Show to client (full screen)
       </button>
-      {!ready && <p style={{ color: '#64748b', fontSize: 12.5, textAlign: 'center', marginTop: 8 }}>Add your payment QR and/or handle below first.</p>}
+      {!ready && <p style={{ color: 'var(--c64748b)', fontSize: 12.5, textAlign: 'center', marginTop: 8 }}>Add your payment QR and/or handle below first.</p>}
 
       {/* Editor */}
       <section style={{ ...ui.card, marginTop: 22 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>💸 Your tip details</div>
-        <p style={{ color: '#64748b', fontSize: 12.5, margin: '0 0 14px' }}>Upload your Venmo / Zelle / Cash App QR and (optionally) your handle. This stays in sync with what your manager sets up.</p>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>💸 Your tip details</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '0 0 14px' }}>Upload your Venmo / Zelle / Cash App QR and (optionally) your handle. This stays in sync with what your manager sets up.</p>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
           {qr
             // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={qr} alt="tip QR" width={92} height={92} style={{ borderRadius: 12, objectFit: 'cover', border: '1px solid #334155', background: '#fff' }} />
-            : <span style={{ width: 92, height: 92, borderRadius: 12, background: '#0f172a', border: '1px dashed #475569', color: '#64748b', display: 'grid', placeItems: 'center', fontSize: 26 }}>🔳</span>}
+            ? <img src={qr} alt="tip QR" width={92} height={92} style={{ borderRadius: 12, objectFit: 'cover', border: '1px solid var(--c334155)', background: '#fff' }} />
+            : <span style={{ width: 92, height: 92, borderRadius: 12, background: 'var(--c0f172a)', border: '1px dashed var(--c475569)', color: 'var(--c64748b)', display: 'grid', placeItems: 'center', fontSize: 26 }}>🔳</span>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <label style={{ ...ui.input, padding: '9px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               📷 {busy ? 'Processing…' : qr ? 'Change QR' : 'Upload QR'}
@@ -166,7 +166,7 @@ function TipCard({ name, avatar, qr, handle, big = false }: { name: string; avat
   };
   const inner: CSSProperties = {
     borderRadius: 24, padding: big ? '34px 26px 30px' : '26px 22px 26px',
-    background: 'radial-gradient(120% 90% at 50% 0%, #1e2544 0%, #0f172a 60%, #0b1120 100%)',
+    background: 'radial-gradient(120% 90% at 50% 0%, #1e2544 0%, var(--c0f172a) 60%, var(--c0b1120) 100%)',
     textAlign: 'center', position: 'relative', overflow: 'hidden',
   };
   return (
@@ -177,14 +177,14 @@ function TipCard({ name, avatar, qr, handle, big = false }: { name: string; avat
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={avatar} alt={name} width={66} height={66} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.35)', boxShadow: '0 6px 18px rgba(0,0,0,0.4)' }} />
           : <span style={{ width: 66, height: 66, borderRadius: '50%', background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', color: '#fff', display: 'inline-grid', placeItems: 'center', fontSize: 26, fontWeight: 800, border: '2px solid rgba(255,255,255,0.35)' }}>{first.charAt(0).toUpperCase()}</span>}
-        <div style={{ fontSize: big ? 24 : 21, fontWeight: 800, color: '#f8fafc', marginTop: 10, letterSpacing: 0.2 }}>{name}</div>
+        <div style={{ fontSize: big ? 24 : 21, fontWeight: 800, color: 'var(--cf8fafc)', marginTop: 10, letterSpacing: 0.2 }}>{name}</div>
         <div style={{ fontSize: 13.5, color: '#c4b5fd', marginTop: 4, fontWeight: 500 }}>Thank you for letting me pamper you 💜</div>
 
         <div style={{ marginTop: 18, display: 'grid', placeItems: 'center' }}>
           {qr
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={qr} alt="Tip QR code" width={qrSize} height={qrSize} style={{ borderRadius: 18, background: '#fff', padding: 12, boxShadow: '0 12px 30px rgba(0,0,0,0.45)' }} />
-            : <div style={{ width: qrSize, height: qrSize, borderRadius: 18, background: 'rgba(255,255,255,0.06)', border: '1px dashed #475569', color: '#94a3b8', display: 'grid', placeItems: 'center', fontSize: 13, padding: 20 }}>Add your payment QR to show it here</div>}
+            : <div style={{ width: qrSize, height: qrSize, borderRadius: 18, background: 'rgba(255,255,255,0.06)', border: '1px dashed var(--c475569)', color: 'var(--c94a3b8)', display: 'grid', placeItems: 'center', fontSize: 13, padding: 20 }}>Add your payment QR to show it here</div>}
         </div>
 
         {handle.trim() && (
@@ -209,7 +209,7 @@ function FullScreenTip({ name, avatar, qr, handle, onClose }: { name: string; av
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'linear-gradient(160deg, #2e1065 0%, #1e1b4b 45%, #0b1120 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'linear-gradient(160deg, #2e1065 0%, var(--c1e1b4b) 45%, var(--c0b1120) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
       <button onClick={onClose} aria-label="Close" style={{ position: 'fixed', top: 16, right: 16, width: 40, height: 40, borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
       <div style={{ width: '100%', maxWidth: 440 }}>
         <TipCard name={name} avatar={avatar} qr={qr} handle={handle} big />

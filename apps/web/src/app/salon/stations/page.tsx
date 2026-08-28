@@ -82,7 +82,7 @@ function Inner() {
     catch (e) { setError(e instanceof Error ? e.message : 'Could not delete'); }
   }
 
-  if (loading) return <section><h2 style={{ fontSize: 18 }}>{vi ? 'Ghế / Bàn' : 'Chairs'}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
+  if (loading) return <section><h2 style={{ fontSize: 18 }}>{vi ? 'Ghế / Bàn' : 'Chairs'}</h2><p style={{ color: 'var(--c94a3b8)' }}>Loading…</p></section>;
 
   const groups = [
     ...types.map((t) => ({ id: t.id, name: t.name, list: rows.filter((r) => r.stationTypeId === t.id) })),
@@ -93,7 +93,7 @@ function Inner() {
   return (
     <section>
       <h2 style={{ fontSize: 18, margin: '0 0 2px' }}>{vi ? 'Ghế / Bàn của tiệm' : 'Chairs & stations'}</h2>
-      <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>
         {vi ? 'Khai báo các loại ghế và ghế của tiệm. Sơ đồ ghế trong Calendar dùng danh sách này để tự xếp khách vào ghế trống đúng loại.'
             : 'Set up your chair types and chairs. The floor view in Calendar uses this to auto-seat walk-ins in a free chair of the right type.'}
       </p>
@@ -102,12 +102,12 @@ function Inner() {
 
       {/* Chair types + auto-seat keywords: automatic, but you control the words */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 4 }}>{vi ? 'Loại ghế & từ khóa tự xếp' : 'Chair types & auto-seat keywords'}</div>
-        <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 12px', lineHeight: 1.5 }}>{vi
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{vi ? 'Loại ghế & từ khóa tự xếp' : 'Chair types & auto-seat keywords'}</div>
+        <p style={{ fontSize: 12, color: 'var(--c64748b)', margin: '0 0 12px', lineHeight: 1.5 }}>{vi
           ? 'Dịch vụ có tên hoặc nhóm chứa một trong các "từ khóa" này sẽ TỰ ĐỘNG được xếp vào loại ghế đó — không cần gán tay từng dịch vụ. Chỉ sửa từ khóa khi có ngoại lệ (vd thêm "combo" vào Pedi).'
           : 'A service whose name or category contains any of these keywords is auto-seated at that chair type — no per-service setup. Edit the words only to fix exceptions.'}</p>
         <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8, fontSize: 11, color: '#64748b' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8, fontSize: 11, color: 'var(--c64748b)' }}>
             <span>{vi ? 'Tên loại' : 'Type name'}</span><span>{vi ? 'Từ khóa (cách nhau bằng dấu phẩy)' : 'Keywords (comma-separated)'}</span><span></span>
           </div>
           {types.map((t) => (
@@ -139,7 +139,7 @@ function Inner() {
       </form>
 
       {rows.length > 0 && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#94a3b8', cursor: 'pointer', margin: '0 0 8px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--c94a3b8)', cursor: 'pointer', margin: '0 0 8px' }}>
           <BulkAllBox on={pick.allOn} onChange={pick.toggleAll} />
           {vi ? 'Chọn tất cả ghế' : 'Select all chairs'}
         </label>
@@ -147,13 +147,13 @@ function Inner() {
       <BulkBar count={pick.count} ids={pick.sel} onClear={pick.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/stations/${id}`, { method: 'DELETE', token }), load)} />
 
       {rows.length === 0 ? (
-        <div style={{ ...ui.card, color: '#64748b' }}>{vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo.' : 'No chairs yet. Use "Quick add" above.'}</div>
+        <div style={{ ...ui.card, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo.' : 'No chairs yet. Use "Quick add" above.'}</div>
       ) : groups.map((g) => (
         <div key={g.id || 'none'} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
             {g.list.map((s) => (
-              <div key={s.id} style={{ ...ui.card, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, opacity: s.isActive ? 1 : 0.5, borderColor: pick.has(s.id) ? '#4338ca' : undefined, background: pick.has(s.id) ? '#1e1b4b' : undefined }}>
+              <div key={s.id} style={{ ...ui.card, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, opacity: s.isActive ? 1 : 0.5, borderColor: pick.has(s.id) ? '#4338ca' : undefined, background: pick.has(s.id) ? 'var(--c1e1b4b)' : undefined }}>
                 <BulkRowBox on={pick.has(s.id)} onChange={() => pick.toggle(s.id)} />
                 <input defaultValue={s.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.name) patch(s.id, { name: v }); }}
                   style={{ ...ui.input, flex: 1, minWidth: 0, padding: '7px 10px' }} />
@@ -162,7 +162,7 @@ function Inner() {
                   {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <button onClick={() => patch(s.id, { isActive: !s.isActive })} title={s.isActive ? (vi ? 'Đang dùng' : 'Active') : (vi ? 'Tạm ẩn' : 'Hidden')}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.isActive ? '#22c55e' : '#64748b', fontSize: 16 }}>{s.isActive ? '●' : '○'}</button>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.isActive ? '#22c55e' : 'var(--c64748b)', fontSize: 16 }}>{s.isActive ? '●' : '○'}</button>
                 <button onClick={() => del(s.id)} aria-label="delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 16 }}>×</button>
               </div>
             ))}

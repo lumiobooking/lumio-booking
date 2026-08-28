@@ -84,9 +84,9 @@ const CONNECTION_TYPES: Array<'cloud' | 'usb' | 'bluetooth'> = SHOW_USB_BT
   ? ['cloud', 'usb', 'bluetooth']
   : ['cloud'];
 
-const box: React.CSSProperties = { border: '1px solid #334155', borderRadius: 12, padding: 16, marginTop: 14, background: '#0f172a' };
-const label: React.CSSProperties = { display: 'block', fontSize: 12, color: '#94a3b8', margin: '10px 0 4px' };
-const input: React.CSSProperties = { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 14, boxSizing: 'border-box' };
+const box: React.CSSProperties = { border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, marginTop: 14, background: 'var(--c0f172a)' };
+const label: React.CSSProperties = { display: 'block', fontSize: 12, color: 'var(--c94a3b8)', margin: '10px 0 4px' };
+const input: React.CSSProperties = { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 14, boxSizing: 'border-box' };
 
 export default function PaymentTerminalsPage() {
   return (
@@ -174,7 +174,7 @@ function Inner() {
     catch (e) { setError(e instanceof Error ? e.message : 'Disconnect failed'); }
   }
 
-  if (loading) return <section><h1 style={{ fontSize: 24 }}>{L.title}</h1><p style={{ color: '#94a3b8' }}>…</p></section>;
+  if (loading) return <section><h1 style={{ fontSize: 24 }}>{L.title}</h1><p style={{ color: 'var(--c94a3b8)' }}>…</p></section>;
 
   // USB / Bluetooth become selectable once a Bridge / Companion is actually paired.
   const usbOk = agents.some((a) => a.kind === 'BRIDGE' && a.paired);
@@ -185,11 +185,11 @@ function Inner() {
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{L.title}</h1>
-      <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>{L.sub}</p>
-      <p style={{ color: '#64748b', fontSize: 12.5, marginTop: 6, lineHeight: 1.5, maxWidth: 760 }}>{L.manualNote}</p>
+      <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>{L.sub}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12.5, marginTop: 6, lineHeight: 1.5, maxWidth: 760 }}>{L.manualNote}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ ...ui.banner, borderColor: '#22c55e', color: '#86efac' }}>{msg}</div>}
+      {msg && <div style={{ ...ui.banner, borderColor: '#22c55e', color: 'var(--c86efac)' }}>{msg}</div>}
       {status && !status.enabled && <div style={ui.banner}>{L.disabled}</div>}
       {status && status.enabled && !status.encryption && <div style={ui.banner}>{L.noEnc}</div>}
 
@@ -200,7 +200,7 @@ function Inner() {
             <div>
               <strong style={{ fontSize: 16 }}>{PROVIDER_META[c.provider]?.name ?? c.provider}</strong>
               <span style={{ marginLeft: 10, fontSize: 12, color: '#22c55e', fontWeight: 700 }}>● {L.connected}</span>
-              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>
+              <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 4 }}>
                 {L.secret}: {c.keyHint ?? '—'} · {c.currency}
                 {c.capabilities?.interac ? ' · Interac' : ''}{c.capabilities?.tapToPay ? ' · Tap to Pay' : ''}
               </div>
@@ -249,11 +249,11 @@ function Inner() {
               })}
             </div>
             {connType !== 'cloud' && (
-              <p style={{ color: '#a5b4fc', fontSize: 12, background: '#1e293b', padding: 10, borderRadius: 8, margin: '8px 0 0' }}>{L.agentNote}</p>
+              <p style={{ color: 'var(--ca5b4fc)', fontSize: 12, background: 'var(--c1e293b)', padding: 10, borderRadius: 8, margin: '8px 0 0' }}>{L.agentNote}</p>
             )}
             {(
               <>
-                <p style={{ fontSize: 12, color: '#a5b4fc', background: '#1e293b', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
+                <p style={{ fontSize: 12, color: 'var(--ca5b4fc)', background: 'var(--c1e293b)', padding: 10, borderRadius: 8, lineHeight: 1.5 }}>
                   <strong>{L.howTo}:</strong> {vi ? meta.help.vi : meta.help.en}
                 </p>
                 {meta.fields.includes('tpn') && (
@@ -300,12 +300,12 @@ function Inner() {
                   </>
                 )}
                 {provider === 'dejavoo' && (
-                  <div style={{ marginTop: 12, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 11 }}>
+                  <div style={{ marginTop: 12, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 11 }}>
                     <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer' }}>
                       <input type="checkbox" checked={amountIncludesTip} onChange={(e) => setAmountIncludesTip(e.target.checked)} style={{ marginTop: 3 }} />
                       <span>
-                        <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600 }}>{L.tipInAmount}</span>
-                        <span style={{ display: 'block', color: '#94a3b8', fontSize: 11.5, lineHeight: 1.5, marginTop: 3 }}>{L.tipInAmountHelp}</span>
+                        <span style={{ color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 600 }}>{L.tipInAmount}</span>
+                        <span style={{ display: 'block', color: 'var(--c94a3b8)', fontSize: 11.5, lineHeight: 1.5, marginTop: 3 }}>{L.tipInAmountHelp}</span>
                       </span>
                     </label>
                   </div>
@@ -326,7 +326,7 @@ function Inner() {
   );
 }
 
-const ghost: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' };
+const ghost: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer' };
 
 function Readers({ provider, token, L }: { provider: string; token: string | null; L: any }) {
   const [readers, setReaders] = useState<Device[]>([]);
@@ -367,22 +367,22 @@ function Readers({ provider, token, L }: { provider: string; token: string | nul
     finally { setTesting(null); }
   }
   return (
-    <div style={{ marginTop: 14, borderTop: '1px solid #334155', paddingTop: 12 }}>
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <strong style={{ fontSize: 13, color: '#cbd5e1' }}>{L.readers}</strong>
+        <strong style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{L.readers}</strong>
         <button onClick={load} style={{ ...ghost, padding: '5px 10px', fontSize: 12 }}>{L.refresh}</button>
       </div>
-      {err && <div style={{ color: '#fca5a5', fontSize: 12, marginTop: 6 }}>{err}</div>}
-      {note && <div style={{ color: '#86efac', fontSize: 12, marginTop: 6 }}>{note}</div>}
-      {readers.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>—</p> : (
+      {err && <div style={{ color: 'var(--cfca5a5)', fontSize: 12, marginTop: 6 }}>{err}</div>}
+      {note && <div style={{ color: 'var(--c86efac)', fontSize: 12, marginTop: 6 }}>{note}</div>}
+      {readers.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>—</p> : (
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
           {readers.map((r) => (
-            <li key={r.id} style={{ fontSize: 13, color: '#e2e8f0', padding: '5px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ color: r.status === 'ONLINE' ? '#22c55e' : '#94a3b8' }}>●</span>
+            <li key={r.id} style={{ fontSize: 13, color: 'var(--ce2e8f0)', padding: '5px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ color: r.status === 'ONLINE' ? '#22c55e' : 'var(--c94a3b8)' }}>●</span>
               <span>{r.label || r.externalReaderId}</span>
-              <span style={{ color: '#64748b' }}>({r.status})</span>
-              {r.locationId && <span style={{ color: '#a5b4fc', fontSize: 11 }}>· {r.locationId}</span>}
-              {r.hasOwnKey && <span style={{ color: '#64748b', fontSize: 11 }}>· {L.ownKey}{r.keyHint ? ' ' + r.keyHint : ''}</span>}
+              <span style={{ color: 'var(--c64748b)' }}>({r.status})</span>
+              {r.locationId && <span style={{ color: 'var(--ca5b4fc)', fontSize: 11 }}>· {r.locationId}</span>}
+              {r.hasOwnKey && <span style={{ color: 'var(--c64748b)', fontSize: 11 }}>· {L.ownKey}{r.keyHint ? ' ' + r.keyHint : ''}</span>}
               <button onClick={() => testOne(r.id)} disabled={testing === r.id} style={{ ...ghost, padding: '3px 9px', fontSize: 11 }}>
                 {testing === r.id ? '…' : L.test}
               </button>
@@ -422,12 +422,12 @@ function TestCharge({ provider, token, L, vi }: { provider: string; token: strin
     finally { setBusy(false); }
   }
   return (
-    <div style={{ marginTop: 12, borderTop: '1px dashed #334155', paddingTop: 12 }}>
-      <strong style={{ fontSize: 13, color: '#cbd5e1' }}>{L.testCharge}</strong>
+    <div style={{ marginTop: 12, borderTop: '1px dashed var(--c334155)', paddingTop: 12 }}>
+      <strong style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{L.testCharge}</strong>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
         <input style={{ ...input, width: 130 }} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={L.amount} />
         <button onClick={run} disabled={busy} style={{ ...ui.primaryBtn, opacity: busy ? 0.6 : 1 }}>{busy ? '…' : L.run}</button>
-        {result && <span style={{ fontSize: 13, color: result.startsWith('SUCCEEDED') ? '#86efac' : '#fca5a5' }}>{result}</span>}
+        {result && <span style={{ fontSize: 13, color: result.startsWith('SUCCEEDED') ? 'var(--c86efac)' : 'var(--cfca5a5)' }}>{result}</span>}
       </div>
     </div>
   );
@@ -453,22 +453,22 @@ function AgentsSection({ token, vi }: { token: string | null; vi: boolean }) {
   return (
     <div style={box}>
       <strong style={{ fontSize: 15 }}>{vi ? 'Thiết bị cầu nối (Bridge / Companion)' : 'Devices & Agents (Bridge / Companion)'}</strong>
-      <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{vi ? 'Cho máy quẹt USB (Windows Bridge) hoặc Bluetooth (mobile Companion). Tạo mã ghép rồi nhập vào ứng dụng.' : 'For USB (Windows Bridge) or Bluetooth (mobile Companion) readers. Create a code and enter it in the app.'}</p>
-      {err && <div style={{ color: '#fca5a5', fontSize: 12 }}>{err}</div>}
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 4 }}>{vi ? 'Cho máy quẹt USB (Windows Bridge) hoặc Bluetooth (mobile Companion). Tạo mã ghép rồi nhập vào ứng dụng.' : 'For USB (Windows Bridge) or Bluetooth (mobile Companion) readers. Create a code and enter it in the app.'}</p>
+      {err && <div style={{ color: 'var(--cfca5a5)', fontSize: 12 }}>{err}</div>}
       {pairCode && (
-        <div style={{ background: '#052e16', border: '1px solid #22c55e', borderRadius: 8, padding: 12, margin: '8px 0' }}>
-          <div style={{ color: '#86efac', fontSize: 13 }}>{vi ? 'Nhập mã này vào Bridge/Companion (hết hạn 15 phút):' : 'Enter this code in the Bridge/Companion (expires in 15 min):'}</div>
+        <div style={{ background: 'var(--c052e16)', border: '1px solid #22c55e', borderRadius: 8, padding: 12, margin: '8px 0' }}>
+          <div style={{ color: 'var(--c86efac)', fontSize: 13 }}>{vi ? 'Nhập mã này vào Bridge/Companion (hết hạn 15 phút):' : 'Enter this code in the Bridge/Companion (expires in 15 min):'}</div>
           <div style={{ color: '#fff', fontSize: 24, letterSpacing: 4, fontWeight: 700, marginTop: 6 }}>{pairCode}</div>
         </div>
       )}
       <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
         {agents.map((a) => (
-          <li key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#e2e8f0', padding: '6px 0' }}>
-            <span><span style={{ color: a.status === 'ONLINE' ? '#22c55e' : '#94a3b8' }}>●</span> {a.kind}{a.label ? ' · ' + a.label : ''} <span style={{ color: '#64748b' }}>({a.status})</span></span>
+          <li key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--ce2e8f0)', padding: '6px 0' }}>
+            <span><span style={{ color: a.status === 'ONLINE' ? '#22c55e' : 'var(--c94a3b8)' }}>●</span> {a.kind}{a.label ? ' · ' + a.label : ''} <span style={{ color: 'var(--c64748b)' }}>({a.status})</span></span>
             <button onClick={() => unpair(a.id)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{vi ? 'Gỡ' : 'Unpair'}</button>
           </li>
         ))}
-        {agents.length === 0 && <li style={{ color: '#64748b', fontSize: 13 }}>—</li>}
+        {agents.length === 0 && <li style={{ color: 'var(--c64748b)', fontSize: 13 }}>—</li>}
       </ul>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button onClick={() => add('COMPANION')} style={ghost}>+ Companion (Bluetooth)</button>

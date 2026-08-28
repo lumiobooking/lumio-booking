@@ -66,7 +66,7 @@ function Inner() {
   );
   const pg = usePaged(visible, 25);
 
-  const statusColor = (s: GiftCard['status']) => (s === 'ACTIVE' ? '#22c55e' : s === 'REDEEMED' ? '#94a3b8' : '#ef4444');
+  const statusColor = (s: GiftCard['status']) => (s === 'ACTIVE' ? '#22c55e' : s === 'REDEEMED' ? 'var(--c94a3b8)' : '#ef4444');
   const statusLabel = (s: GiftCard['status']) => (s === 'ACTIVE' ? t('gc.stActive') : s === 'REDEEMED' ? t('gc.stRedeemed') : t('gc.stVoid'));
 
   return (
@@ -75,7 +75,7 @@ function Inner() {
         <h1 style={{ fontSize: 22, margin: 0 }}>{t('gc.title')}</h1>
         <button onClick={() => { setShowForm((s) => !s); setJustIssued(null); }} style={ui.primaryBtn}>{showForm ? t('gc.close') : t('gc.sell')}</button>
       </div>
-      <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 0 }}>{t('gc.intro')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 0 }}>{t('gc.intro')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
 
@@ -83,11 +83,11 @@ function Inner() {
         <div style={{ ...ui.card, border: '1px solid #22c55e', marginBottom: 16 }}>
           <strong style={{ color: '#22c55e' }}>{t('gc.issued')}</strong>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
-            <code style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, background: '#0f172a', padding: '8px 14px', borderRadius: 8, color: '#a5f3fc' }}>{justIssued.code}</code>
-            <span style={{ fontSize: 16, color: '#e2e8f0' }}>{formatPrice(justIssued.balanceCents, justIssued.currency)}</span>
+            <code style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, background: 'var(--c0f172a)', padding: '8px 14px', borderRadius: 8, color: '#a5f3fc' }}>{justIssued.code}</code>
+            <span style={{ fontSize: 16, color: 'var(--ce2e8f0)' }}>{formatPrice(justIssued.balanceCents, justIssued.currency)}</span>
             <button onClick={() => navigator.clipboard?.writeText(justIssued.code)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 13 }}>{t('gc.copyCode')}</button>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 12, margin: '8px 0 0' }}>{t('gc.issuedHint')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '8px 0 0' }}>{t('gc.issuedHint')}</p>
         </div>
       )}
 
@@ -95,26 +95,26 @@ function Inner() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, margin: '16px 0' }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('gc.searchPh')} />
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('gc.cardsWord')}</span>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('gc.cardsWord')}</span>
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{t('gc.loading')}</p> : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+      {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{t('gc.loading')}</p> : (
+        <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead><tr style={{ background: '#1e293b' }}>
+            <thead><tr style={{ background: 'var(--c1e293b)' }}>
               <th style={ui.th}>{t('gc.colCode')}</th><th style={ui.th}>{t('gc.colBalance')}</th><th style={ui.th}>{t('gc.colRecipient')}</th><th style={ui.th}>{t('gc.colStatus')}</th><th style={ui.th}>{t('gc.colActions')}</th>
             </tr></thead>
             <tbody>
               {visible.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('gc.empty')}</td></tr>}
               {pg.paged.map((c) => (
                 <Fragment key={c.id}>
-                  <tr style={{ borderTop: '1px solid #334155' }}>
+                  <tr style={{ borderTop: '1px solid var(--c334155)' }}>
                     <td style={{ ...ui.td, fontFamily: 'monospace', fontWeight: 700, color: '#a5f3fc' }}>{c.code}</td>
                     <td style={ui.td}>
                       <span style={{ fontWeight: 700 }}>{formatPrice(c.balanceCents, c.currency)}</span>
-                      <span style={{ color: '#64748b', fontSize: 12 }}> / {formatPrice(c.initialCents, c.currency)}</span>
+                      <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> / {formatPrice(c.initialCents, c.currency)}</span>
                     </td>
-                    <td style={{ ...ui.td, color: '#cbd5e1', fontSize: 13 }}>{c.recipientName || '—'}{c.recipientContact ? <div style={{ color: '#64748b' }}>{c.recipientContact}</div> : null}</td>
+                    <td style={{ ...ui.td, color: 'var(--ccbd5e1)', fontSize: 13 }}>{c.recipientName || '—'}{c.recipientContact ? <div style={{ color: 'var(--c64748b)' }}>{c.recipientContact}</div> : null}</td>
                     <td style={ui.td}><span style={{ color: statusColor(c.status), fontWeight: 600 }}>{statusLabel(c.status)}</span></td>
                     <td style={ui.td}>
                       {c.status !== 'VOID' && <button onClick={() => voidCard(c.id)} style={ui.dangerBtn}>{t('gc.void')}</button>}
@@ -183,7 +183,7 @@ function IssueForm({ token, onDone, currency = 'USD' }: { token: string; onDone:
           <input style={{ ...ui.input, flex: 1 }} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder={t('gc.codePh')} />
           <button type="button" onClick={() => setScan(true)} style={{ ...ui.input, width: 'auto', padding: '8px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>📷 {t('gc.scan')}</button>
         </div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '4px 0 0' }}>{t('gc.codeHint')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '4px 0 0' }}>{t('gc.codeHint')}</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>

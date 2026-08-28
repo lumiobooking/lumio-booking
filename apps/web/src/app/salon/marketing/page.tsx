@@ -71,7 +71,7 @@ function Inner() {
   }
 
   if (loading || !f) {
-    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('mk.title')}</h1><p style={{ color: '#94a3b8' }}>{t('mk.loading')}</p></section>;
+    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('mk.title')}</h1><p style={{ color: 'var(--c94a3b8)' }}>{t('mk.loading')}</p></section>;
   }
 
   const patchCamp = (key: CampKey, patch: Partial<Lapsed>) => setF({ ...f, [key]: { ...f[key], ...patch } });
@@ -79,11 +79,11 @@ function Inner() {
   return (
     <section style={{ maxWidth: 760 }}>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('mk.title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('mk.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 14px', fontSize: 14 }}>{t('mk.subtitle')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: '#94a3b8', marginBottom: 16 }}>
+      <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 16 }}>
         🔒 {t('mk.consentNote')}
       </div>
 
@@ -96,7 +96,7 @@ function Inner() {
         </label>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('mk.saved')}</span>}
-          <button onClick={runNow} disabled={running} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{running ? t('mk.running') : t('mk.runNow')}</button>
+          <button onClick={runNow} disabled={running} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{running ? t('mk.running') : t('mk.runNow')}</button>
           <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
         </div>
       </div>
@@ -136,10 +136,10 @@ function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div>
           <h2 style={{ fontSize: 16, margin: '0 0 2px' }}>{title}</h2>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{desc}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: 0 }}>{desc}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{sent} {t('mk.sentBadge')}</span>
+          <span style={{ fontSize: 11, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{sent} {t('mk.sentBadge')}</span>
           <Toggle on={camp.enabled} onChange={(v) => onChange({ enabled: v })} label={t('mk.enable')} />
         </div>
       </div>
@@ -179,23 +179,23 @@ function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, 
           <textarea style={{ ...ui.input, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} value={camp.smsBody} onChange={(e) => onChange({ smsBody: e.target.value })} />
         </label>
       )}
-      <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.placeholders')}</p>
-      <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.offerVars')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.placeholders')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.offerVars')}</p>
       {camp.email && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e293b' }}>
-          <button type="button" onClick={sendTest} disabled={testing} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--c1e293b)' }}>
+          <button type="button" onClick={sendTest} disabled={testing} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}>
             {testing ? t('mk.testSending') : `🧪 ${t('mk.testSend')}`}
           </button>
           {suggested && (
             <button
               type="button"
               onClick={() => { if (confirm(t('mk.useSuggestedConfirm'))) onChange({ subject: suggested.subject, body: suggested.body, smsBody: suggested.smsBody }); }}
-              style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}
+              style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}
             >
               ✍️ {t('mk.useSuggested')}
             </button>
           )}
-          <span style={{ fontSize: 11.5, color: '#64748b' }}>{adminEmail ? t('mk.testHint').replace('{email}', adminEmail) : t('mk.testNoEmail')}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{adminEmail ? t('mk.testHint').replace('{email}', adminEmail) : t('mk.testNoEmail')}</span>
         </div>
       )}
     </div>
@@ -237,10 +237,10 @@ function ReferralSection({ token, t }: { token: string | null; t: (k: string) =>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div>
           <h2 style={{ fontSize: 16, margin: '0 0 2px' }}>🎁 {t('rf.title')}</h2>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('rf.desc')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: 0 }}>{t('rf.desc')}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{t('rf.stat').replace('{total}', String(stat.totalReferred)).replace('{rewarded}', String(stat.rewarded))}</span>
+          <span style={{ fontSize: 11, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{t('rf.stat').replace('{total}', String(stat.totalReferred)).replace('{rewarded}', String(stat.rewarded))}</span>
           <Toggle on={rf.enabled} onChange={(v) => setRf({ ...rf, enabled: v })} label={t('mk.enable')} />
         </div>
       </div>
@@ -259,7 +259,7 @@ function ReferralSection({ token, t }: { token: string | null; t: (k: string) =>
         <span style={ui.label}>{t('rf.message')}</span>
         <input style={ui.input} value={rf.message} onChange={(e) => setRf({ ...rf, message: e.target.value })} />
       </label>
-      <p style={{ color: '#64748b', fontSize: 11.5, margin: '0 0 12px' }}>{t('rf.note')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px' }}>{t('rf.note')}</p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
         {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('mk.saved')}</span>}
@@ -270,8 +270,8 @@ function ReferralSection({ token, t }: { token: string | null; t: (k: string) =>
 
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <button type="button" onClick={() => onChange(!on)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: '#e2e8f0', fontSize: 13, padding: 0 }}>
-      <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? '#6366f1' : '#475569', position: 'relative', flexShrink: 0 }}>
+    <button type="button" onClick={() => onChange(!on)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ce2e8f0)', fontSize: 13, padding: 0 }}>
+      <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? '#6366f1' : 'var(--c475569)', position: 'relative', flexShrink: 0 }}>
         <span style={{ position: 'absolute', top: 2, left: on ? 18 : 2, width: 18, height: 18, borderRadius: '50%', background: 'white' }} />
       </span>
       {label}
@@ -281,8 +281,8 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button type="button" onClick={() => onChange(!checked)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${checked ? '#6366f1' : '#334155'}`, background: checked ? '#312e81' : '#1e293b', color: '#e2e8f0', fontSize: 13 }}>
-      <span style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${checked ? '#a5b4fc' : '#64748b'}`, background: checked ? '#6366f1' : 'transparent', display: 'grid', placeItems: 'center', fontSize: 11, color: '#fff' }}>{checked ? '✓' : ''}</span>
+    <button type="button" onClick={() => onChange(!checked)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${checked ? '#6366f1' : 'var(--c334155)'}`, background: checked ? 'var(--c312e81)' : 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13 }}>
+      <span style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${checked ? 'var(--ca5b4fc)' : 'var(--c64748b)'}`, background: checked ? '#6366f1' : 'transparent', display: 'grid', placeItems: 'center', fontSize: 11, color: '#fff' }}>{checked ? '✓' : ''}</span>
       {label}
     </button>
   );
@@ -301,12 +301,12 @@ function OfferEditor({ offer, t, onChange }: { offer?: Offer; t: (k: string) => 
     { k: 'gift', label: t('mk.offGift') },
   ];
   return (
-    <div style={{ border: '1px solid #1e293b', borderRadius: 10, padding: '12px 14px', margin: '0 0 14px', background: '#0b1220' }}>
+    <div style={{ border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '12px 14px', margin: '0 0 14px', background: 'var(--c0b1220)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>🎁 {t('mk.offerTitle')}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>🎁 {t('mk.offerTitle')}</span>
         <Toggle on={o.enabled} onChange={(v) => onChange({ enabled: v })} label={t('mk.enable')} />
       </div>
-      <p style={{ color: '#64748b', fontSize: 11.5, margin: '4px 0 0', lineHeight: 1.5 }}>{t('mk.offerHelp')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '4px 0 0', lineHeight: 1.5 }}>{t('mk.offerHelp')}</p>
 
       {o.enabled && (
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>

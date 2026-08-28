@@ -69,8 +69,8 @@ export function InstallAppButton({ label = 'Install app' }: { label?: string }) 
         <div
           style={{
             position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 260, zIndex: 50,
-            background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 14,
-            color: '#e2e8f0', fontSize: 13, lineHeight: 1.5, boxShadow: '0 8px 24px rgba(0,0,0,.4)',
+            background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 14,
+            color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.5, boxShadow: '0 8px 24px rgba(0,0,0,.4)',
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Install on iPhone / iPad</div>
@@ -79,7 +79,7 @@ export function InstallAppButton({ label = 'Install app' }: { label?: string }) 
           <div>3. Tap <strong>Add</strong> — the app icon appears on your home screen.</div>
           <button
             onClick={() => setShowIosHelp(false)}
-            style={{ marginTop: 8, background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 13, padding: 0 }}
+            style={{ marginTop: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', cursor: 'pointer', fontSize: 13, padding: 0 }}
           >
             Got it
           </button>

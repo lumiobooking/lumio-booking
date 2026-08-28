@@ -108,33 +108,33 @@ function Inner() {
   return (
     <section style={{ maxWidth: 760 }}>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('bl.title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('bl.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 14px', fontSize: 14 }}>{t('bl.subtitle')}</p>
 
-      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #1f2937', marginBottom: 18, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--c1f2937)', marginBottom: 18, flexWrap: 'wrap' }}>
         {(([['plan', t('bl.tabPlan')], ['usage', t('bl.tabUsage')], ['invoices', t('bl.tabInvoices')]]) as [BillTab, string][]).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             border: 'none', background: 'transparent', cursor: 'pointer', padding: '9px 14px',
             fontSize: 14, fontWeight: tab === id ? 700 : 500,
-            color: tab === id ? '#e2e8f0' : '#94a3b8',
+            color: tab === id ? 'var(--ce2e8f0)' : 'var(--c94a3b8)',
             borderBottom: tab === id ? '2px solid #6366f1' : '2px solid transparent', marginBottom: -1,
           }}>{label}</button>
         ))}
       </div>
 
-      {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
       {error && <div style={ui.banner}>{error}</div>}
 
       {tab === 'plan' && (<>
       <div style={{ ...ui.card, marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 13, color: '#94a3b8' }}>{t('bl.currentPlan')}</div>
+            <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('bl.currentPlan')}</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
           </div>
-          <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid #475569' }}>{t('bl.manageCard')}</button>
+          <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('bl.manageCard')}</button>
         </div>
 
-        <div style={{ borderTop: '1px solid #334155', marginTop: 14, paddingTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+        <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 14, paddingTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
           {sum?.subscription ? (
             <>
               <Detail label={t('bl.dStatus')} value={statusLabel(sum.subscription.status, lang)} />
@@ -157,14 +157,14 @@ function Inner() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 999, padding: 4 }}>
+        <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: 4 }}>
           <button onClick={() => setYearly(false)} style={toggle(!yearly)}>{t('bl.monthly')}</button>
           <button onClick={() => setYearly(true)} style={toggle(yearly)}>{t('bl.yearly')}</button>
         </div>
       </div>
 
       {plans.length === 0 ? (
-        <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('bl.noPlans')}</p>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{t('bl.noPlans')}</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
           {plans.map((p) => {
@@ -177,31 +177,31 @@ function Inner() {
             const curCents = currentPlan ? (yearly ? currentPlan.priceYearlyCents : currentPlan.priceMonthlyCents) : 0;
             const prorateNow = isUpgrade && remainFrac > 0 ? Math.max(0, Math.round((cents - curCents) * remainFrac)) : 0;
             return (
-              <div key={p.id} style={{ ...ui.card, border: p.highlighted ? '2px solid #6366f1' : '1px solid #334155' }}>
-                {p.highlighted && <div style={{ display: 'inline-block', background: '#312e81', color: '#c7d2fe', fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 999, marginBottom: 8 }}>{t('bl.mostPopular')}</div>}
+              <div key={p.id} style={{ ...ui.card, border: p.highlighted ? '2px solid #6366f1' : '1px solid var(--c334155)' }}>
+                {p.highlighted && <div style={{ display: 'inline-block', background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 999, marginBottom: 8 }}>{t('bl.mostPopular')}</div>}
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{p.name}</div>
-                {p.tagline && <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 2 }}>{p.tagline}</div>}
+                {p.tagline && <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 2 }}>{p.tagline}</div>}
                 <div style={{ margin: '12px 0' }}>
                   <span style={{ fontSize: 30, fontWeight: 800 }}>{money(cents, p.currency)}</span>
-                  <span style={{ color: '#94a3b8', fontSize: 14 }}>/{yearly ? t('bl.perYr') : t('bl.perMo')}</span>
+                  <span style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>/{yearly ? t('bl.perYr') : t('bl.perMo')}</span>
                 </div>
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {p.features.slice(0, 6).map((f) => (
-                    <li key={f} style={{ fontSize: 13, color: '#cbd5e1', display: 'flex', gap: 8 }}><span style={{ color: '#22c55e' }}>✓</span>{f}</li>
+                    <li key={f} style={{ fontSize: 13, color: 'var(--ccbd5e1)', display: 'flex', gap: 8 }}><span style={{ color: '#22c55e' }}>✓</span>{f}</li>
                   ))}
                 </ul>
                 {isCurrent ? (
-                  <button disabled style={{ ...ui.primaryBtn, width: '100%', background: '#334155', cursor: 'default' }}>{t('bl.currentPlan')}</button>
+                  <button disabled style={{ ...ui.primaryBtn, width: '100%', background: 'var(--c334155)', cursor: 'default' }}>{t('bl.currentPlan')}</button>
                 ) : (
                   <>
                     <button onClick={() => choose(p.id, provider)} disabled={busy || !canPay}
-                      style={{ ...ui.primaryBtn, width: '100%', ...(isDowngrade ? { background: 'transparent', border: '1px solid #475569', color: '#cbd5e1' } : {}) }}>
+                      style={{ ...ui.primaryBtn, width: '100%', ...(isDowngrade ? { background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ccbd5e1)' } : {}) }}>
                       {!canPay ? t('bl.notAvailable') : busy ? t('bl.opening')
                         : isDowngrade ? (lang === 'vi' ? `Chuyển xuống ${p.name}` : `Downgrade to ${p.name}`)
                         : (lang === 'vi' ? `Nâng cấp lên ${p.name}` : `Upgrade to ${p.name}`)}
                     </button>
                     {(isUpgrade || isDowngrade) && (
-                      <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '8px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
+                      <p style={{ fontSize: 11.5, color: 'var(--c94a3b8)', margin: '8px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
                         {isUpgrade
                           ? (lang === 'vi'
                               ? `Hiệu lực ngay — chỉ tính thêm phần chênh lệch cho ${remainDays} ngày còn lại của kỳ này${prorateNow > 0 ? ` (~${money(prorateNow, p.currency)})` : ''}.`
@@ -219,7 +219,7 @@ function Inner() {
         </div>
       )}
 
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 16 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 16 }}>
         {t('bl.footerNote')}
       </p>
       </>)}
@@ -241,16 +241,16 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
   }, [token]);
   const pg = usePaged(rows ?? [], 12);
 
-  if (rows === null) return <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('bl.loading')}</p>;
+  if (rows === null) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{t('bl.loading')}</p>;
   if (rows.length === 0) return (
     <div style={{ ...ui.card }}>
-      <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{t('bl.invNone')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{t('bl.invNone')}</p>
     </div>
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 4px' }}>{t('bl.invIntro')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 4px' }}>{t('bl.invIntro')}</p>
       {pg.paged.map((iv) => {
         const paid = iv.status === 'PAID';
         const void_ = iv.status === 'VOID';
@@ -258,17 +258,17 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
           <div key={iv.id} style={{ ...ui.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 15, fontWeight: 700 }}>
-                {iv.type === 'RENEWAL' ? t('bl.invRenewal') : t('bl.invOverage')} · <span style={{ color: '#94a3b8', fontWeight: 500 }}>#{iv.number}</span>
+                {iv.type === 'RENEWAL' ? t('bl.invRenewal') : t('bl.invOverage')} · <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>#{iv.number}</span>
               </div>
-              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 3 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 3 }}>
                 {invMoney(iv.totalCents, iv.currency)} · {fmtInvDate(iv.createdAt)}
-                {' · '}<span style={{ color: paid ? '#4ade80' : void_ ? '#94a3b8' : '#fbbf24', fontWeight: 600 }}>
+                {' · '}<span style={{ color: paid ? 'var(--c4ade80)' : void_ ? 'var(--c94a3b8)' : '#fbbf24', fontWeight: 600 }}>
                   {paid ? t('bl.invPaid') : void_ ? t('bl.invVoid') : t('bl.invDue')}
                 </span>
               </div>
             </div>
             <a href={`/invoice/${iv.token}`} target="_blank" rel="noopener noreferrer"
-              style={{ ...ui.primaryBtn, textDecoration: 'none', background: paid || void_ ? 'transparent' : undefined, border: paid || void_ ? '1px solid #475569' : undefined, whiteSpace: 'nowrap' }}>
+              style={{ ...ui.primaryBtn, textDecoration: 'none', background: paid || void_ ? 'transparent' : undefined, border: paid || void_ ? '1px solid var(--c475569)' : undefined, whiteSpace: 'nowrap' }}>
               {paid || void_ ? t('bl.invViewer') : t('bl.invPay')}
             </a>
           </div>
@@ -285,13 +285,13 @@ function fmtInvDate(s: string): string {
 }
 
 function toggle(active: boolean): React.CSSProperties {
-  return { border: 'none', cursor: 'pointer', padding: '7px 18px', borderRadius: 999, fontSize: 14, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#94a3b8' };
+  return { border: 'none', cursor: 'pointer', padding: '7px 18px', borderRadius: 999, fontSize: 14, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--c94a3b8)' };
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>{label}</div>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
       <div style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{value}</div>
     </div>
   );

@@ -100,7 +100,7 @@ const presetBtn = (active: boolean): React.CSSProperties => ({
   borderRadius: 6,
   border: 'none',
   background: active ? '#6366f1' : 'transparent',
-  color: active ? '#fff' : '#cbd5e1',
+  color: active ? '#fff' : 'var(--ccbd5e1)',
   fontSize: 12,
   fontWeight: 600,
   cursor: 'pointer',
@@ -109,11 +109,10 @@ const presetBtn = (active: boolean): React.CSSProperties => ({
 const dateInput: React.CSSProperties = {
   padding: '7px 9px',
   borderRadius: 8,
-  border: '1px solid #475569',
-  background: '#0f172a',
-  color: '#e2e8f0',
+  border: '1px solid var(--c475569)',
+  background: 'var(--c0f172a)',
+  color: 'var(--ce2e8f0)',
   fontSize: 13,
-  colorScheme: 'dark',
 };
 
 /** Case-insensitive substring match (true when the query is empty). */
@@ -137,21 +136,21 @@ export function SearchBox({
   const ph = placeholder ?? tr('lf.search', lang);
   return (
     <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
-      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
+      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c64748b)', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={ph}
         style={{
           width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 30px', borderRadius: 8,
-          border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 14, colorScheme: 'dark',
+          border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14,
         }}
       />
       {value && (
         <button
           onClick={() => onChange('')}
           aria-label="Clear search"
-          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16 }}
+          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 16 }}
         >
           ×
         </button>
@@ -196,9 +195,9 @@ export function usePaged<T>(items: T[], pageSize = 20): Paged<T> {
 const pagerBtn = (disabled: boolean): React.CSSProperties => ({
   padding: '7px 14px',
   borderRadius: 8,
-  border: '1px solid #475569',
-  background: disabled ? 'transparent' : '#1e293b',
-  color: disabled ? '#475569' : '#e2e8f0',
+  border: '1px solid var(--c475569)',
+  background: disabled ? 'transparent' : 'var(--c1e293b)',
+  color: disabled ? 'var(--c475569)' : 'var(--ce2e8f0)',
   fontSize: 13,
   fontWeight: 600,
   cursor: disabled ? 'default' : 'pointer',
@@ -212,13 +211,13 @@ export function Pager({ paged }: { paged: Pick<Paged<unknown>, 'page' | 'totalPa
   if (total === 0) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14 }}>
-      <span style={{ color: '#64748b', fontSize: 12 }}>
+      <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>
         {t('lf.showing').replace('{a}', String(start + 1)).replace('{b}', String(end)).replace('{n}', String(total))}
       </span>
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button disabled={page <= 1} onClick={() => setPage(page - 1)} style={pagerBtn(page <= 1)}>{t('lf.prev')}</button>
-          <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('lf.page').replace('{p}', String(page)).replace('{t}', String(totalPages))}</span>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('lf.page').replace('{p}', String(page)).replace('{t}', String(totalPages))}</span>
           <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} style={pagerBtn(page >= totalPages)}>{t('lf.next')}</button>
         </div>
       )}
@@ -234,7 +233,7 @@ export function DateRangeBar({ range }: { range: DateRange }) {
   const today = isoDay(new Date());
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-      <div style={{ display: 'flex', gap: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
+      <div style={{ display: 'flex', gap: 4, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3 }}>
         {PRESETS.map((p) => (
           <button key={p.key} onClick={() => applyPreset(p.key)} style={presetBtn(preset === p.key)}>
             {p.key === 'all' ? t('lf.all') : p.key === 'month' ? t('lf.month') : p.label}
@@ -250,7 +249,7 @@ export function DateRangeBar({ range }: { range: DateRange }) {
         style={dateInput}
         aria-label="From date"
       />
-      <span style={{ color: '#64748b' }}>→</span>
+      <span style={{ color: 'var(--c64748b)' }}>→</span>
       <input
         lang="en-US"
         type="date"

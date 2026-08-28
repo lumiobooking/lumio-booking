@@ -54,9 +54,9 @@ export default function BootstrapPage() {
     return (
       <main style={wrap}>
         <div style={card}>
-          <h1 style={{ fontSize: 22, margin: '0 0 8px', color: '#e2e8f0' }}>✓ Đã tạo tài khoản</h1>
-          <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6 }}>
-            Tài khoản Super Admin <strong style={{ color: '#e2e8f0' }}>{done}</strong> đã sẵn sàng.
+          <h1 style={{ fontSize: 22, margin: '0 0 8px', color: 'var(--ce2e8f0)' }}>✓ Đã tạo tài khoản</h1>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 14, lineHeight: 1.6 }}>
+            Tài khoản Super Admin <strong style={{ color: 'var(--ce2e8f0)' }}>{done}</strong> đã sẵn sàng.
           </p>
           <p style={{ color: '#fbbf24', fontSize: 13, lineHeight: 1.6, marginTop: 14 }}>
             Trang này giờ đã tự khoá — nó chỉ chạy được một lần. Vào Render và{' '}
@@ -74,12 +74,12 @@ export default function BootstrapPage() {
     <main style={wrap}>
       <form onSubmit={submit} style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <h1 style={{ fontSize: 22, margin: 0, color: '#e2e8f0' }}>Thiết lập lần đầu</h1>
+          <h1 style={{ fontSize: 22, margin: 0, color: 'var(--ce2e8f0)' }}>Thiết lập lần đầu</h1>
           <MarketBadge />
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13.5, lineHeight: 1.6, margin: '4px 0 18px' }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, lineHeight: 1.6, margin: '4px 0 18px' }}>
           Tạo tài khoản Super Admin đầu tiên cho hệ thống này. Trang này chỉ chạy được
-          <strong style={{ color: '#e2e8f0' }}> một lần</strong> — có một tài khoản rồi thì nó tự khoá vĩnh viễn.
+          <strong style={{ color: 'var(--ce2e8f0)' }}> một lần</strong> — có một tài khoản rồi thì nó tự khoá vĩnh viễn.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -112,7 +112,7 @@ export default function BootstrapPage() {
         </Field>
 
         {error && (
-          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', color: '#fca5a5', borderRadius: 8, padding: '10px 12px', fontSize: 13.5, marginTop: 12 }}>
+          <div style={{ background: 'var(--c450a0a)', border: '1px solid var(--c7f1d1d)', color: 'var(--cfca5a5)', borderRadius: 8, padding: '10px 12px', fontSize: 13.5, marginTop: 12 }}>
             {error}
           </div>
         )}
@@ -121,7 +121,7 @@ export default function BootstrapPage() {
           {busy ? 'Đang tạo…' : 'Tạo tài khoản Super Admin'}
         </button>
 
-        <p style={{ color: '#64748b', fontSize: 11.5, lineHeight: 1.6, marginTop: 14 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, lineHeight: 1.6, marginTop: 14 }}>
           Mật khẩu này chỉ đi từ trình duyệt của bạn tới máy chủ của bạn. Không ai khác nhìn thấy nó,
           kể cả trong log — nên hãy lưu vào trình quản lý mật khẩu ngay, hệ thống chưa có chức năng quên mật khẩu.
         </p>
@@ -141,9 +141,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const wrap: React.CSSProperties = {
   minHeight: '100vh', display: 'grid', placeItems: 'center',
-  background: '#0b1120', padding: 24,
+  background: 'var(--c0b1120)', padding: 24,
 };
 const card: React.CSSProperties = {
-  width: '100%', maxWidth: 460, background: '#111827',
-  border: '1px solid #1f2937', borderRadius: 16, padding: 28,
+  width: '100%', maxWidth: 460, background: 'var(--c111827)',
+  border: '1px solid var(--c1f2937)', borderRadius: 16, padding: 28,
 };

@@ -3,8 +3,8 @@ import type { CSSProperties } from 'react';
 // Shared style tokens for the dashboard pages.
 export const ui = {
   card: {
-    background: '#1e293b',
-    border: '1px solid #334155',
+    background: 'var(--c1e293b)',
+    border: '1px solid var(--c334155)',
     borderRadius: 12,
     padding: 20,
   } as CSSProperties,
@@ -13,11 +13,10 @@ export const ui = {
     boxSizing: 'border-box',
     padding: '9px 11px',
     borderRadius: 8,
-    border: '1px solid #475569',
-    background: '#0f172a',
-    color: '#e2e8f0',
+    border: '1px solid var(--c475569)',
+    background: 'var(--c0f172a)',
+    color: 'var(--ce2e8f0)',
     fontSize: 14,
-    colorScheme: 'dark',
   } as CSSProperties,
   primaryBtn: {
     padding: '9px 14px',
@@ -40,17 +39,17 @@ export const ui = {
     cursor: 'pointer',
     whiteSpace: 'nowrap',
   } as CSSProperties,
-  th: { padding: '12px 14px', fontWeight: 600, color: '#cbd5e1', textAlign: 'left', whiteSpace: 'nowrap' } as CSSProperties,
+  th: { padding: '12px 14px', fontWeight: 600, color: 'var(--ccbd5e1)', textAlign: 'left', whiteSpace: 'nowrap' } as CSSProperties,
   td: { padding: '12px 14px' } as CSSProperties,
   banner: {
-    background: '#7f1d1d',
-    color: '#fecaca',
+    background: 'var(--c7f1d1d)',
+    color: 'var(--cfecaca)',
     padding: '8px 12px',
     borderRadius: 8,
     fontSize: 13,
     margin: '12px 0',
   } as CSSProperties,
-  label: { display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 } as CSSProperties,
+  label: { display: 'block', fontSize: 12, color: 'var(--ccbd5e1)', marginBottom: 6 } as CSSProperties,
 };
 
 /**

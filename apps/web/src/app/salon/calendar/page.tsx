@@ -52,7 +52,7 @@ const STATUS_BUCKETS: { key: string; color: string }[] = [
   { key: 'Arrived', color: '#10b981' },
   { key: 'Completed', color: '#8b5cf6' },
   { key: 'NoShow', color: '#ef4444' },
-  { key: 'Cancelled', color: '#64748b' },
+  { key: 'Cancelled', color: 'var(--c64748b)' },
 ];
 function statusBucket(status: string): { key: string; color: string } {
   switch (status) {
@@ -261,10 +261,10 @@ function Inner() {
 
   if (mode === 'floor') {
     return (
-      <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '14px 18px', overflow: 'auto' } : undefined}>
+      <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', overflow: 'auto' } : undefined}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
           <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
-          <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
+          <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
             <button onClick={() => setMode('month')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
             <button onClick={() => setMode('day')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
             <button onClick={() => setMode('staff')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
@@ -277,11 +277,11 @@ function Inner() {
   }
 
   return (
-    <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: '#0b1120', padding: '14px 18px', overflow: 'auto' } : undefined}>
+    <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', overflow: 'auto' } : undefined}>
       {/* Row 1: title + view toggle (toggle is full-width on phones) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
-        <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
+        <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
           <button onClick={() => setMode('month')} style={{ ...segBtn(mode === 'month'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
           <button onClick={() => setMode('day')} style={{ ...segBtn(mode === 'day'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
           <button onClick={() => setMode('staff')} style={{ ...segBtn(mode === 'staff'), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
@@ -314,7 +314,7 @@ function Inner() {
 
       {/* Row 3: search + full screen */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ flex: '1 1 240px', maxWidth: isMobile ? undefined : 380, padding: '9px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: 14 }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ flex: '1 1 240px', maxWidth: isMobile ? undefined : 380, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14 }} />
         {search && <button onClick={() => setSearch('')} style={navBtn} title="Clear">✕</button>}
         <button onClick={toggleFull} style={{ ...navBtn, marginLeft: 'auto' }} title={fullscreen ? (lang === 'vi' ? 'Thoát toàn màn hình' : 'Exit full screen') : (lang === 'vi' ? 'Toàn màn hình' : 'Full screen')}>{fullscreen ? '✕' : '⛶'}{isMobile ? '' : (fullscreen ? (lang === 'vi' ? ' Thoát' : ' Exit') : (lang === 'vi' ? ' Toàn màn hình' : ' Full screen'))}</button>
       </div>
@@ -324,14 +324,14 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
           {STATUS_BUCKETS.map((s) => (
-            <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#cbd5e1' }}>
+            <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ccbd5e1)' }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
               {t('cal.st' + s.key)}
             </span>
           ))}
         </div>
-        <div style={{ fontSize: 13, color: '#94a3b8' }}>
-          {t('cal.todayLabel')}: <strong style={{ color: '#e2e8f0' }}>{todayStats.total}</strong> {t('cal.apptWord')}
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>
+          {t('cal.todayLabel')}: <strong style={{ color: 'var(--ce2e8f0)' }}>{todayStats.total}</strong> {t('cal.apptWord')}
           {todayStats.pending > 0 && <> · <span style={{ color: '#f59e0b' }}>{todayStats.pending} {t('cal.stPending')}</span></>}
           {todayStats.arrived > 0 && <> · <span style={{ color: '#10b981' }}>{todayStats.arrived} {t('cal.stArrived')}</span></>}
           {walkinNow > 0 && <> · <span style={{ color: '#f59e0b' }}>{walkinNow} {lang === 'vi' ? 'khách vãng lai' : 'walk-in'}</span></>}
@@ -347,7 +347,7 @@ function Inner() {
       ) : mode === 'day' ? (
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-            <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
+            <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3 }}>
               <button onClick={() => pickDayLayout('grid')} style={segBtn(dayLayout === 'grid')}>▦ {lang === 'vi' ? 'Lưới' : 'Grid'}</button>
               <button onClick={() => pickDayLayout('timeline')} style={segBtn(dayLayout === 'timeline')}>☰ {lang === 'vi' ? 'Dòng thời gian' : 'Timeline'}</button>
             </div>
@@ -359,7 +359,7 @@ function Inner() {
       ) : isMobile ? (
         /* Phones: day-by-day agenda — nearest day to today on top, paginated. */
         orderedMonthDays.length === 0 ? (
-          <p style={{ color: '#64748b', fontSize: 14, padding: '20px 0', textAlign: 'center' }}>{t('cal.noneThisMonth')}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 14, padding: '20px 0', textAlign: 'center' }}>{t('cal.noneThisMonth')}</p>
         ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {monthPageDays.map((d) => {
@@ -369,11 +369,11 @@ function Inner() {
             return (
               <div key={d.toDateString()} style={{ ...ui.card, padding: 12, opacity: isPast ? 0.72 : 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#818cf8' : '#e2e8f0' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: isToday ? 'var(--c818cf8)' : 'var(--ce2e8f0)' }}>
                     {d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' })}{isToday ? ' · ' + t('cal.todayLabel') : ''}
                   </span>
-                  {isPast && <span style={{ fontSize: 10.5, color: '#64748b', border: '1px solid #334155', borderRadius: 999, padding: '1px 7px' }}>{lang === 'vi' ? 'đã qua' : 'past'}</span>}
-                  <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#64748b' }}>{items.length}</span>
+                  {isPast && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px' }}>{lang === 'vi' ? 'đã qua' : 'past'}</span>}
+                  <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)' }}>{items.length}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {items.map((b) => {
@@ -381,9 +381,9 @@ function Inner() {
                     return (
                       <div key={b.id} onClick={() => setSelected(b)}
                         onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: '#1e293b', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
-                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#e2e8f0' }}>{fmtT(b.startTime)}</span>
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{name(b.customer)}{svcLabel(b) ? ' · ' + svcLabel(b) : ''}</span>
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: 'var(--c1e293b)', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
+                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--ce2e8f0)' }}>{fmtT(b.startTime)}</span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{name(b.customer)}{svcLabel(b) ? ' · ' + svcLabel(b) : ''}</span>
                         <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
                       </div>
                     );
@@ -395,7 +395,7 @@ function Inner() {
           {monthPageCount > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 4 }}>
               <button style={{ ...navBtn, opacity: monthSafePage === 0 ? 0.5 : 1 }} disabled={monthSafePage === 0} onClick={() => setMonthPage((pp) => Math.max(0, pp - 1))}>‹ {lang === 'vi' ? 'Trước' : 'Prev'}</button>
-              <span style={{ fontSize: 13, color: '#94a3b8' }}>{lang === 'vi' ? 'Trang' : 'Page'} {monthSafePage + 1}/{monthPageCount}</span>
+              <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{lang === 'vi' ? 'Trang' : 'Page'} {monthSafePage + 1}/{monthPageCount}</span>
               <button style={{ ...navBtn, opacity: monthSafePage >= monthPageCount - 1 ? 0.5 : 1 }} disabled={monthSafePage >= monthPageCount - 1} onClick={() => setMonthPage((pp) => Math.min(monthPageCount - 1, pp + 1))}>{lang === 'vi' ? 'Sau' : 'Next'} ›</button>
             </div>
           )}
@@ -409,7 +409,7 @@ function Inner() {
           const weekend = dow === 0 || dow === 6;
           const todayCol = today.getDay() === dow;
           return (
-            <div key={dow} style={{ background: '#1e293b', textAlign: 'center', padding: '9px 0', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: todayCol ? '#a5b4fc' : weekend ? '#8ea2c4' : '#94a3b8', fontWeight: 700 }}>{DAY_LABEL[lang][dow]}</div>
+            <div key={dow} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: todayCol ? 'var(--ca5b4fc)' : weekend ? '#8ea2c4' : 'var(--c94a3b8)', fontWeight: 700 }}>{DAY_LABEL[lang][dow]}</div>
           );
         })}
         {days.map((d, i) => {
@@ -417,17 +417,17 @@ function Inner() {
           const isToday = !!d && d.getTime() === today.getTime();
           const dow = d ? d.getDay() : -1;
           const weekend = dow === 0 || dow === 6;
-          const cellBg = !d ? '#0b1322' : isToday ? '#151f38' : weekend ? '#0d1526' : '#0f172a';
+          const cellBg = !d ? '#0b1322' : isToday ? '#151f38' : weekend ? '#0d1526' : 'var(--c0f172a)';
           return (
             <div key={i} style={{ background: cellBg, minHeight: 116, minWidth: 0, overflow: 'hidden', padding: 7, opacity: d ? 1 : 0.5, boxShadow: isToday ? 'inset 0 0 0 1.5px #4f46e5' : undefined }}>
               {d && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
                     <span onClick={() => goDay(d)} title={t('cal.viewDay')}
-                      style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999, fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : '#cbd5e1', background: isToday ? '#6366f1' : 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999, fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : 'var(--ccbd5e1)', background: isToday ? '#6366f1' : 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       {d.getDate()}
                     </span>
-                    {items.length > 0 && <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>{items.length}</span>}
+                    {items.length > 0 && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', fontWeight: 700 }}>{items.length}</span>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {items.slice(0, 4).map((b) => {
@@ -445,7 +445,7 @@ function Inner() {
                         </div>
                       );
                     })}
-                    {items.length > 4 && <div onClick={() => goDay(d)} style={{ fontSize: 10.5, color: '#818cf8', cursor: 'pointer', fontWeight: 600, padding: '2px 4px 0' }}>{t('cal.more').replace('{n}', String(items.length - 4))}</div>}
+                    {items.length > 4 && <div onClick={() => goDay(d)} style={{ fontSize: 10.5, color: 'var(--c818cf8)', cursor: 'pointer', fontWeight: 600, padding: '2px 4px 0' }}>{t('cal.more').replace('{n}', String(items.length - 4))}</div>}
                   </div>
                 </>
               )}
@@ -467,8 +467,8 @@ function Inner() {
           <>
             {/* click-away backdrop (right-click also closes) */}
             <div onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
-            <div style={{ position: 'fixed', top, left, zIndex: 61, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, minWidth: 190, boxShadow: '0 14px 34px rgba(0,0,0,0.55)', padding: 4 }}>
-              <div style={{ padding: '7px 12px 6px', fontSize: 11.5, color: '#94a3b8', borderBottom: '1px solid #273449', marginBottom: 3, maxWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ position: 'fixed', top, left, zIndex: 61, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, minWidth: 190, boxShadow: '0 14px 34px rgba(0,0,0,0.55)', padding: 4 }}>
+              <div style={{ padding: '7px 12px 6px', fontSize: 11.5, color: 'var(--c94a3b8)', borderBottom: '1px solid #273449', marginBottom: 3, maxWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {fmtT(b.startTime)} · {name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}
               </div>
               <CtxItem label={`👁 ${lang === 'vi' ? 'Xem chi tiết' : 'View details'}`} onClick={() => { setSelected(b); close(); }} />
@@ -476,7 +476,7 @@ function Inner() {
               {isActive && <CtxItem label={`✅ ${t('cal.complete')}`} onClick={() => { close(); action(b.id, 'complete'); }} />}
               {isActive && <CtxItem color="#f59e0b" label={`✖ ${t('cal.cancel')}`} onClick={() => { close(); action(b.id, 'cancel'); }} />}
               <div style={{ borderTop: '1px solid #273449', margin: '3px 0' }} />
-              <CtxItem color="#f87171" label={`🗑 ${lang === 'vi' ? 'Xóa booking' : 'Delete booking'}`} onClick={() => { close(); removeBooking(b.id); }} />
+              <CtxItem color="var(--cf87171)" label={`🗑 ${lang === 'vi' ? 'Xóa booking' : 'Delete booking'}`} onClick={() => { close(); removeBooking(b.id); }} />
             </div>
           </>
         );
@@ -568,28 +568,28 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
   return (
     <div>
       <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.14)}.cal-day-card:active{transform:scale(.995)}`}</style>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10 }}>
-        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: '#94a3b8' }}>{t('cal.apptWord')}</span></span>
-        <span style={{ color: '#334155' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: '#94a3b8' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
-        {ev.length > 0 && <><span style={{ color: '#334155' }}>|</span><span style={{ fontSize: 13, color: '#94a3b8' }}>{fmtT(ev[0].b.startTime)} – {fmtT(ev[ev.length - 1].b.endTime)}</span></>}
-        {nextB && <><span style={{ color: '#334155' }}>|</span><span style={{ fontSize: 13, color: '#cbd5e1' }}>{lang === 'vi' ? 'Kế tiếp' : 'Next'}: <strong style={{ color: '#f1f5f9' }}>{fmtT(nextB.startTime)}</strong> {nextB.customer?.firstName ?? ''}</span></>}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
+        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
+        <span style={{ color: 'var(--c334155)' }}>|</span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+        {ev.length > 0 && <><span style={{ color: 'var(--c334155)' }}>|</span><span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{fmtT(ev[0].b.startTime)} – {fmtT(ev[ev.length - 1].b.endTime)}</span></>}
+        {nextB && <><span style={{ color: 'var(--c334155)' }}>|</span><span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Kế tiếp' : 'Next'}: <strong style={{ color: 'var(--cf1f5f9)' }}>{fmtT(nextB.startTime)}</strong> {nextB.customer?.firstName ?? ''}</span></>}
       </div>
 
       {items.length === 0 ? (
-        <div style={{ ...ui.card, textAlign: 'center', color: '#64748b', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
+        <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
       ) : (
-        <div style={{ display: 'flex', background: '#0f172a', border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ width: railW, flexShrink: 0, position: 'relative', height: total, borderRight: '1px solid #1f2937' }}>
+        <div style={{ display: 'flex', background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ width: railW, flexShrink: 0, position: 'relative', height: total, borderRight: '1px solid var(--c1f2937)' }}>
             {Array.from({ length: endH - startH + 1 }, (_, i) => startH + i).map((h) => (
-              <div key={h} style={{ position: 'absolute', top: (h - startH) * HP - 6, right: 8, fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>
+              <div key={h} style={{ position: 'absolute', top: (h - startH) * HP - 6, right: 8, fontSize: 11, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>
                 {((h % 12) || 12)}{h < 12 ? 'a' : 'p'}
               </div>
             ))}
           </div>
           <div style={{ position: 'relative', flex: 1, height: total }}>
             {Array.from({ length: endH - startH + 1 }, (_, i) => i).map((i) => (
-              <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid #1e293b' }} />
+              <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--c1e293b)' }} />
             ))}
             {nowTop >= 0 && (
               <div style={{ position: 'absolute', top: nowTop, left: 0, right: 0, borderTop: '2px solid #ef4444', zIndex: 5 }}>
@@ -608,7 +608,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
               const client = b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—';
               const tech = b.assignedStaff ? b.assignedStaff.firstName : t('cal.unassigned');
               const initial = b.assignedStaff ? b.assignedStaff.firstName.charAt(0).toUpperCase() : '?';
-              const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : '#475569';
+              const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : 'var(--c475569)';
               const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
               const isNext = nextB?.id === b.id;
               return (
@@ -622,16 +622,16 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                   {wide ? (
                     <>
                       <div style={{ width: 94, flexShrink: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#f1f5f9', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</div>
-                        <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtT(b.endTime)} · {durMin}m</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{fmtT(b.endTime)} · {durMin}m</div>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                        <div style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
+                        <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
                         <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
-                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
+                        <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 800, color: '#22c55e', flexShrink: 0, minWidth: 54, textAlign: 'right' }}>{formatPrice(b.priceCents, b.currency)}</div>
                       <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
@@ -643,8 +643,8 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                         <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
                         <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                      {h > 50 && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                      {h > 50 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
                     </>
                   )}
                 </div>
@@ -653,7 +653,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
           </div>
         </div>
       )}
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{t('cal.dayHint')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.dayHint')}</p>
     </div>
   );
 }
@@ -692,19 +692,19 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
   return (
     <div>
       <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.15)}.cal-day-card:active{transform:scale(.99)}`}</style>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10 }}>
-        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: '#94a3b8' }}>{t('cal.apptWord')}</span></span>
-        <span style={{ color: '#334155' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: '#94a3b8' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
+        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
+        <span style={{ color: 'var(--c334155)' }}>|</span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
       </div>
 
       {items.length === 0 ? (
-        <div style={{ ...ui.card, textAlign: 'center', color: '#64748b', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
+        <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {periods.map((pg, i) => pg.list.length === 0 ? null : (
             <div key={i}>
-              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, color: '#64748b', textTransform: 'uppercase', marginBottom: 8 }}>{pg.label} · {pg.list.length}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, color: 'var(--c64748b)', textTransform: 'uppercase', marginBottom: 8 }}>{pg.label} · {pg.list.length}</div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10 }}>
                 {pg.list.map((b) => {
                   const m = statusBucket(b.status);
@@ -713,7 +713,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                   const client = b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—';
                   const tech = b.assignedStaff ? b.assignedStaff.firstName : t('cal.unassigned');
                   const initial = b.assignedStaff ? b.assignedStaff.firstName.charAt(0).toUpperCase() : '?';
-                  const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : '#475569';
+                  const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : 'var(--c475569)';
                   const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
                   const isNext = b.id === nextId;
                   return (
@@ -725,20 +725,20 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13.5, fontWeight: 800, color: '#f1f5f9', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                          <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>· {durMin}m</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
+                          <span style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>· {durMin}m</span>
                         </span>
                         <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
                       </div>
-                      <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
+                        <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
                         <OriginChip b={b} t={t} />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                           <span style={{ width: 22, height: 22, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
-                          <span style={{ fontSize: 12, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
+                          <span style={{ fontSize: 12, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
                         </span>
                         <span style={{ fontSize: 14, fontWeight: 800, color: '#22c55e', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
@@ -750,7 +750,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
           ))}
         </div>
       )}
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>{t('cal.dayHint')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12 }}>{t('cal.dayHint')}</p>
     </div>
   );
 }
@@ -759,7 +759,7 @@ function CtxItem({ label, onClick, color }: { label: string; onClick: () => void
   return (
     <div
       onClick={onClick}
-      style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, color: color ?? '#e2e8f0', cursor: 'pointer', borderRadius: 6, whiteSpace: 'nowrap' }}
+      style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, color: color ?? 'var(--ce2e8f0)', cursor: 'pointer', borderRadius: 6, whiteSpace: 'nowrap' }}
       onMouseEnter={(e) => { e.currentTarget.style.background = '#273449'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
@@ -769,7 +769,7 @@ function CtxItem({ label, onClick, color }: { label: string; onClick: () => void
 }
 
 function segBtn(active: boolean): React.CSSProperties {
-  return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#94a3b8' };
+  return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--c94a3b8)' };
 }
 
 function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
@@ -792,10 +792,10 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
       {/* backdrop */}
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }} />
       {/* right drawer */}
-      <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: 380, maxWidth: '90vw', background: '#111827', borderLeft: '1px solid #1f2937', zIndex: 41, padding: 24, overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.4)' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: 380, maxWidth: '90vw', background: 'var(--c111827)', borderLeft: '1px solid var(--c1f2937)', zIndex: 41, padding: 24, overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: 18, margin: 0 }}>{t('cal.detailsTitle')}</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
@@ -831,7 +831,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
           );
         })()}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
-          <span style={{ color: '#94a3b8' }}>{t('cal.dPaid')}</span>
+          <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.dPaid')}</span>
           <span style={{ textAlign: 'right', fontWeight: 600, color: paidCents > 0 ? '#22c55e' : '#f59e0b' }}>
             {paidCents > 0 ? `✓ ${formatPrice(paidCents, b.currency)}` : t('cal.unpaid')}
           </span>
@@ -843,8 +843,8 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         <StatusPicker b={b} onAction={onAction} />
         <VisitEditor b={b} onAction={onAction} />
 
-        <div style={{ borderTop: '1px solid #1f2937', margin: '16px 0 12px' }} />
-        <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>{t('cal.customer')}</div>
+        <div style={{ borderTop: '1px solid var(--c1f2937)', margin: '16px 0 12px' }} />
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginBottom: 6, fontWeight: 600 }}>{t('cal.customer')}</div>
         <DetailRow label={t('cal.dName')} value={fullName} />
         {b.customer?.phone && <DetailRow label={t('cal.dPhone')} value={b.customer.phone} />}
         {b.customer?.email && <DetailRow label={t('cal.dEmail')} value={b.customer.email} />}
@@ -880,8 +880,8 @@ function StatusPicker({ b, onAction }: { b: Booking; onAction: (id: string, path
   const [next, setNext] = useState(b.status);
   useEffect(() => { setNext(b.status); }, [b.status, b.id]);
   return (
-    <div style={{ border: '1px solid #334155', borderRadius: 10, padding: 10, marginTop: 12, background: '#0f172a' }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 7 }}>{t('cal.setStatus')}</div>
+    <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginTop: 12, background: 'var(--c0f172a)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 7 }}>{t('cal.setStatus')}</div>
       <div style={{ display: 'flex', gap: 6 }}>
         <select value={next} onChange={(e) => setNext(e.target.value)} style={{ ...ui.input, flex: 1, padding: '7px 8px', fontSize: 13 }}>
           {ALL_STATUSES.map((sName) => <option key={sName} value={sName}>{t(`cal.st${sName}`)}</option>)}
@@ -893,7 +893,7 @@ function StatusPicker({ b, onAction }: { b: Booking; onAction: (id: string, path
         >{t('cal.apply')}</button>
       </div>
       {b.status === 'COMPLETED' && (
-        <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>{t('cal.statusHint')}</div>
+        <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 6, lineHeight: 1.5 }}>{t('cal.statusHint')}</div>
       )}
     </div>
   );
@@ -927,24 +927,24 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
   if (b.status === 'CANCELLED' || b.status === 'REJECTED') return null;
 
   return (
-    <div style={{ border: '1px solid #334155', borderRadius: 10, padding: 10, marginTop: 8, background: '#0f172a' }}>
+    <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginTop: 8, background: 'var(--c0f172a)' }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}
+        style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}
       >
-        {t('cal.editVisit')}<span style={{ marginLeft: 'auto', color: '#64748b' }}>{open ? '▴' : '▾'}</span>
+        {t('cal.editVisit')}<span style={{ marginLeft: 'auto', color: 'var(--c64748b)' }}>{open ? '▴' : '▾'}</span>
       </button>
       {open && (
         <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {lines.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {lines.map((a, i) => (
-                <label key={`${a.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: drop.includes(i) ? '#64748b' : '#cbd5e1', textDecoration: drop.includes(i) ? 'line-through' : 'none' }}>
+                <label key={`${a.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: drop.includes(i) ? 'var(--c64748b)' : 'var(--ccbd5e1)', textDecoration: drop.includes(i) ? 'line-through' : 'none' }}>
                   <input
                     type="checkbox" checked={drop.includes(i)}
                     onChange={() => setDrop((d) => d.includes(i) ? d.filter((x) => x !== i) : [...d, i])}
                   />
-                  {a.name} <span style={{ marginLeft: 'auto', color: '#64748b' }}>{t('cal.removeLine')}</span>
+                  {a.name} <span style={{ marginLeft: 'auto', color: 'var(--c64748b)' }}>{t('cal.removeLine')}</span>
                 </label>
               ))}
             </div>
@@ -954,12 +954,12 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
             {services.map((sv) => <option key={sv.id} value={sv.id}>{sv.name} · {sv.durationMinutes}m</option>)}
           </select>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12.5, color: '#94a3b8', flex: 1 }}>{t('cal.addTime')}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', flex: 1 }}>{t('cal.addTime')}</span>
             {[15, 30, 60].map((m) => (
               <button key={m} onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
             ))}
             <button onClick={() => setMinutes(0)} style={chipBtn} disabled={minutes === 0}>↺</button>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: minutes ? '#22c55e' : '#475569', width: 46, textAlign: 'right' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: minutes ? '#22c55e' : 'var(--c475569)', width: 46, textAlign: 'right' }}>
               {minutes ? `+${minutes}m` : '—'}
             </span>
           </div>
@@ -984,7 +984,7 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
 }
 
 const chipBtn: React.CSSProperties = {
-  border: '1px solid #334155', background: 'transparent', color: '#cbd5e1',
+  border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)',
   borderRadius: 7, padding: '4px 8px', fontSize: 12, cursor: 'pointer',
 };
 
@@ -1001,7 +1001,7 @@ function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: s
   // The staff picker that used to sit here moved into ServiceLines below:
   // one place answers "who does what", for one service or five.
   return (
-    <div style={{ background: '#0f172a', border: '1px solid #1f2937', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...ui.input, padding: '6px 8px', flex: 1, minWidth: 0 }} />
         <button onClick={() => onAction(b.id, 'reschedule', { startTime: new Date(when).toISOString() })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
@@ -1040,8 +1040,8 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
     : tr('cal.unassigned', lang);
 
   return (
-    <div style={{ background: '#0f172a', border: '1px solid #1f2937', borderRadius: 10, padding: 10, margin: '8px 0 4px' }}>
-      <div style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 600, marginBottom: 8 }}>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 10, margin: '8px 0 4px' }}>
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 600, marginBottom: 8 }}>
         {tr('cal.dServices', lang)} ({lines.length + 1})
       </div>
 
@@ -1050,7 +1050,7 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {b.service?.name ?? '—'}
-          <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: '#818cf8', border: '1px solid #3730a3', borderRadius: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
+          <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid var(--c3730a3)', borderRadius: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
             {tr('cal.lineMain', lang)}
           </span>
         </span>
@@ -1064,13 +1064,13 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
             {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
           </select>
         ) : (
-          <span style={{ color: b.assignedStaff ? '#e2e8f0' : '#f59e0b', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
+          <span style={{ color: b.assignedStaff ? 'var(--ce2e8f0)' : '#f59e0b', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
         )}
       </div>
 
       {/* extra service lines — each with its own tech picker */}
       {lines.map((line) => (
-        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5, borderTop: '1px solid #1f2937' }}>
+        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5, borderTop: '1px solid var(--c1f2937)' }}>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</span>
           {editable ? (
             <select
@@ -1082,13 +1082,13 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
               {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
             </select>
           ) : (
-            <span style={{ color: '#e2e8f0', whiteSpace: 'nowrap' }}>👤 {nameOf(line.staffMemberId) ?? primaryTech}</span>
+            <span style={{ color: 'var(--ce2e8f0)', whiteSpace: 'nowrap' }}>👤 {nameOf(line.staffMemberId) ?? primaryTech}</span>
           )}
         </div>
       ))}
 
       {extras.length > 0 && (
-        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>
           {tr('cal.dAddons', lang)}: {extras.map((a) => a.name).join(', ')}
         </div>
       )}
@@ -1099,7 +1099,7 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
-      <span style={{ color: '#94a3b8' }}>{label}</span>
+      <span style={{ color: 'var(--c94a3b8)' }}>{label}</span>
       <span style={{ textAlign: 'right', wordBreak: 'break-word' }}>{value}</span>
     </div>
   );
@@ -1145,7 +1145,7 @@ function OriginChip({ b, t }: { b: Booking; t: (k: string) => string }) {
   return (
     <span title={[sm ? t(sm.key) : '', dm ? t(dm.key) : ''].filter(Boolean).join(' · ')}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 10, fontWeight: 700,
-        color: '#93a4bd', background: '#1e293b', border: '1px solid #334155', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+        color: '#93a4bd', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>
       {sm && <span>{sm.icon}</span>}
       {sm && <span>{t(sm.key)}</span>}
       {dm && <span style={{ opacity: 0.85 }}>{dm.icon}</span>}
@@ -1174,11 +1174,11 @@ function buildMonth(view: Date): (Date | null)[] {
 }
 
 const navBtn: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 8, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 13, cursor: 'pointer',
+  padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer',
 };
 
 const pickerBtn: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 8, border: '1px solid #4f46e5', background: '#1e293b', color: '#e2e8f0', fontSize: 13, fontWeight: 700, cursor: 'pointer', minWidth: 128, textAlign: 'center', whiteSpace: 'nowrap',
+  padding: '6px 12px', borderRadius: 8, border: '1px solid #4f46e5', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 700, cursor: 'pointer', minWidth: 128, textAlign: 'center', whiteSpace: 'nowrap',
 };
 
 // Zero-size but still rendered, so the browser's native month/date picker

@@ -55,17 +55,17 @@ function StateBadge({ th, lang }: { th: MThread; lang: string }) {
   const pill = (bg: string, fg: string, text: string) => (
     <span style={{ background: bg, color: fg, borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>{text}</span>
   );
-  if (state === 'done') return pill('#1e293b', '#94a3b8', vi ? 'Xong' : 'Done');
+  if (state === 'done') return pill('var(--c1e293b)', 'var(--c94a3b8)', vi ? 'Xong' : 'Done');
   if (state === 'human') {
     const who = th.assignedName ? (vi ? `${th.assignedName} giữ` : `${th.assignedName} holding`) : (vi ? 'Người thật giữ' : 'Human holding');
-    return pill('#064e3b', '#6ee7b7', `\u{1F512} ${who}`);
+    return pill('var(--c064e3b)', 'var(--c6ee7b7)', `\u{1F512} ${who}`);
   }
   if (state === 'unclaimed') {
     // The state that did not exist before, and the one that costs money.
     const label = vi ? 'Chưa ai nhận' : 'Nobody has this';
-    return pill('#78350f', '#fcd34d', wait !== null ? `${label} · ${wait}'` : label);
+    return pill('var(--c78350f)', 'var(--cfcd34d)', wait !== null ? `${label} · ${wait}'` : label);
   }
-  return pill('#312e81', '#c7d2fe', vi ? 'Bot' : 'Bot');
+  return pill('var(--c312e81)', 'var(--cc7d2fe)', vi ? 'Bot' : 'Bot');
 }
 interface FactRow extends BotFact { custom: boolean }
 interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string }
@@ -83,7 +83,7 @@ function ChannelBadge({ channel }: { channel?: string }) {
       display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
       padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700,
       background: ig ? 'rgba(219,39,119,0.16)' : 'rgba(59,130,246,0.16)',
-      color: ig ? '#f9a8d4' : '#93c5fd',
+      color: ig ? '#f9a8d4' : 'var(--c93c5fd)',
       border: `1px solid ${ig ? 'rgba(219,39,119,0.45)' : 'rgba(59,130,246,0.45)'}`,
     }}>
       {ig ? '◎ Instagram' : '✉ Messenger'}
@@ -575,7 +575,7 @@ function Inner() {
   }
 
   if (loading || !c) {
-    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: '#94a3b8' }}>{t('loading')}</p></section>;
+    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: 'var(--c94a3b8)' }}>{t('loading')}</p></section>;
   }
 
   // Meta Review Mode: show only reviewer-tagged messages (real data stays in DB).
@@ -584,8 +584,8 @@ function Inner() {
   return (
     <section style={{ maxWidth: 820 }}>
       {c && !c.connected && (
-        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '12px 16px', marginBottom: 14, fontSize: 13, lineHeight: 1.7, color: '#cbd5e1' }}>
-          <b style={{ color: '#e2e8f0' }}>{lang === 'vi' ? '4 bước kết nối — chỉ cần nhớ một điều: PHẢI TICK PAGE' : '4 steps — the one thing to remember: TICK THE PAGE'}</b>
+        <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '12px 16px', marginBottom: 14, fontSize: 13, lineHeight: 1.7, color: 'var(--ccbd5e1)' }}>
+          <b style={{ color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? '4 bước kết nối — chỉ cần nhớ một điều: PHẢI TICK PAGE' : '4 steps — the one thing to remember: TICK THE PAGE'}</b>
           <div>1️⃣ {lang === 'vi' ? 'Bấm nút xanh Connect with Facebook.' : 'Press the blue Connect with Facebook button.'}</div>
           <div>2️⃣ {lang === 'vi' ? <>Cửa sổ Meta hiện ra: chọn <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (và làm tương tự ở bước Businesses) — nhanh nhất, khỏi tick từng cái.</> : <>In the Meta window pick <b style={{ color: '#fbbf24' }}>“Opt in to all current and future Pages”</b> (same on the Businesses step) — fastest, no per-item ticking.</>}</div>
           <div>3️⃣ {lang === 'vi' ? 'Continue → giữ nguyên mọi quyền được bật → Save.' : 'Continue → keep every permission ON → Save.'}</div>
@@ -593,10 +593,10 @@ function Inner() {
         </div>
       )}
       {fbResult && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: fbResult.ok ? '#052e1e' : '#7f1d1d', color: fbResult.ok ? '#bbf7d0' : '#fecaca', border: `1px solid ${fbResult.ok ? '#10b981' : '#ef4444'}`, borderRadius: 10, padding: '11px 14px', fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: fbResult.ok ? '#052e1e' : 'var(--c7f1d1d)', color: fbResult.ok ? 'var(--cbbf7d0)' : 'var(--cfecaca)', border: `1px solid ${fbResult.ok ? '#10b981' : '#ef4444'}`, borderRadius: 10, padding: '11px 14px', fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
           <span style={{ flex: 1 }}>{fbResult.ok ? '✅ ' : '⚠️ '}{fbResult.text}</span>
           {!fbResult.ok && (
-            <button onClick={connectFacebook} style={{ background: '#fff', border: 'none', color: '#7f1d1d', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <button onClick={connectFacebook} style={{ background: '#fff', border: 'none', color: 'var(--c7f1d1d)', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {lang === 'vi' ? '↻ Connect lại' : '↻ Retry connect'}
             </button>
           )}
@@ -604,21 +604,21 @@ function Inner() {
         </div>
       )}
       {c?.connectTrace && fbResult && !fbResult.ok && (
-        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>
+        <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 6 }}>
             🔬 {lang === 'vi' ? 'Chi tiết kỹ thuật lần kết nối gần nhất' : 'Last connect attempt — technical trace'} · {new Date(c.connectTrace.at).toLocaleString(uiLocale())}
           </div>
-          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--ccbd5e1)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {c.connectTrace.steps.join('\n')}
           </div>
         </div>
       )}
       {pickList && (
         <div style={{ ...ui.card, marginBottom: 16, border: '1px solid #6366f1' }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
             {lang === 'vi' ? '📄 Facebook cấp nhiều page — chọn ĐÚNG page của tiệm này' : '📄 Facebook granted several Pages — pick THIS salon\'s page'}
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>
             {lang === 'vi' ? 'Tài khoản của bạn quản lý nhiều page khách. Chỉ page được chọn mới gắn vào tiệm đang setup — các page khác không bị ảnh hưởng.' : 'Your account manages many client pages. Only the page you pick is bound to the salon being set up — the rest are untouched.'}
           </p>
           {pickList.length === 0 ? (
@@ -630,7 +630,7 @@ function Inner() {
                   value={pickSearch}
                   onChange={(e) => setPickSearch(e.target.value)}
                   placeholder={lang === 'vi' ? `🔎 Tìm trong ${pickList.length} page — gõ tên tiệm hoặc Page ID` : `🔎 Search ${pickList.length} pages — name or Page ID`}
-                  style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px', color: '#e2e8f0', fontSize: 13, marginBottom: 2 }}
+                  style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px', color: 'var(--ce2e8f0)', fontSize: 13, marginBottom: 2 }}
                 />
               )}
               {pickList
@@ -640,10 +640,10 @@ function Inner() {
                 })
                 .slice(0, 40)
                 .map((pg) => (
-                <div key={pg.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px' }}>
+                <div key={pg.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.name}</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>{pg.id}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{pg.id}</div>
                   </div>
                   {pg.taken === 'this' || c.pages?.some((x) => x.pageId === pg.id) ? (
                     <span style={{ color: '#34d399', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ {lang === 'vi' ? 'Đã nối' : 'Connected'}</span>
@@ -664,14 +664,14 @@ function Inner() {
         </div>
       )}
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}
-      {notice && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#22c55e', color: '#bbf7d0', fontSize: 13.5, whiteSpace: 'pre-line', lineHeight: 1.6 }}>{notice}</div>}
+      {notice && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#22c55e', color: 'var(--cbbf7d0)', fontSize: 13.5, whiteSpace: 'pre-line', lineHeight: 1.6 }}>{notice}</div>}
 
       {/* Connect */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>{t('connectTitle')}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('connectTitle')}</div>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: c.connected ? '#22c55e' : '#f59e0b' }}>
             ● {c.connected ? t('connected') : t('notConnected')}
           </span>
@@ -680,20 +680,20 @@ function Inner() {
         {/* One-click OAuth (preferred) */}
         {c.fbConfigured && (
           <div style={{ marginBottom: 4 }}>
-            <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>{t('oneClickHint')}</p>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>{t('oneClickHint')}</p>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={connectFacebook} disabled={connecting} style={fbBtn}>
                 <span style={{ fontSize: 16, fontWeight: 800 }}>f</span>
                 {connecting ? t('connecting') : (c.connected ? (lang === 'vi' ? '＋ Thêm page / kết nối lại' : '＋ Add page / reconnect') : t('connectFb'))}
               </button>
               {c.connected && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
                   <input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
                   {t('enable')}
                 </label>
               )}
               {c.connected && (
-                <button onClick={disconnectFacebook} style={{ ...ghost, borderColor: '#7f1d1d', color: '#fca5a5', marginLeft: 'auto' }}>
+                <button onClick={disconnectFacebook} style={{ ...ghost, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)', marginLeft: 'auto' }}>
                   {t('disconnectFb')}
                 </button>
               )}
@@ -706,8 +706,8 @@ function Inner() {
 
         {/* Manual entry — always shown if FB app not configured, else collapsible */}
         {(!c.fbConfigured || showManual) && (
-          <div style={{ marginTop: c.fbConfigured ? 12 : 0, paddingTop: c.fbConfigured ? 12 : 0, borderTop: c.fbConfigured ? '1px solid #334155' : 'none' }}>
-            {c.fbConfigured && <p style={{ color: '#64748b', fontSize: 11.5, margin: '0 0 12px' }}>{t('advancedHint')}</p>}
+          <div style={{ marginTop: c.fbConfigured ? 12 : 0, paddingTop: c.fbConfigured ? 12 : 0, borderTop: c.fbConfigured ? '1px solid var(--c334155)' : 'none' }}>
+            {c.fbConfigured && <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px' }}>{t('advancedHint')}</p>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <div>
                 <label style={ui.label}>{t('pageId')}</label>
@@ -722,7 +722,7 @@ function Inner() {
                 <input value={pageToken} placeholder={c.connected ? '••••••••' : t('pageTokenPh')} onChange={(e) => setPageToken(e.target.value)} style={ui.input} />
               </div>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
               <input type="checkbox" checked={c.enabled} onChange={(e) => setC({ ...c, enabled: e.target.checked })} />
               {t('enable')}
             </label>
@@ -732,13 +732,13 @@ function Inner() {
             </div>
           </div>
         )}
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '12px 0 0' }}>{t('pendingNote')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '12px 0 0' }}>{t('pendingNote')}</p>
       </div>
 
       {/* Connection details + live webhook subscription status (App Review evidence) */}
       {c.connected && (
         <div style={{ ...ui.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('connDetailsTitle')}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('connDetailsTitle')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <Field label={t('pageName')} value={wh?.pageName || c.pageName || '—'} />
             <Field label={t('pageIdLabel')} value={wh?.pageId || c.pageId || '—'} mono />
@@ -757,10 +757,10 @@ function Inner() {
             const igId = igPage?.igId || c.igId || '';
             if (!igId) return null;
             return (
-              <div style={{ marginTop: 12, background: '#0f172a', border: '1px solid #831843', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ marginTop: 12, background: 'var(--c0f172a)', border: '1px solid #831843', borderRadius: 8, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <ChannelBadge channel="instagram" />
-                  <span style={{ color: '#94a3b8', fontSize: 12.5 }}>
+                  <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5 }}>
                     {lang === 'vi' ? 'Tài khoản Instagram đã kết nối' : 'Connected Instagram account'}
                   </span>
                 </div>
@@ -769,7 +769,7 @@ function Inner() {
                   <Field label="IG ID" value={igId} mono />
                   <Field label={t('connStatus')} value={t('connected')} good />
                 </div>
-                <div style={{ color: '#64748b', fontSize: 11.5, marginTop: 6 }}>
+                <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>
                   {lang === 'vi'
                     ? 'Bot trả lời tin nhắn Instagram Direct bằng chính bộ não này — cùng dịch vụ, giá và cơ chế nhường quyền cho nhân viên.'
                     : 'The assistant answers Instagram Direct with this same brain — same services, prices and staff hand-over rules.'}
@@ -777,12 +777,12 @@ function Inner() {
               </div>
             );
           })()}
-          <div style={{ marginTop: 12, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', fontSize: 12.5 }}>
-            <div style={{ color: '#94a3b8', marginBottom: 4 }}>{t('subscribedEvents')}</div>
-            <div style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+          <div style={{ marginTop: 12, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '10px 12px', fontSize: 12.5 }}>
+            <div style={{ color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('subscribedEvents')}</div>
+            <div style={{ color: 'var(--ce2e8f0)', fontFamily: 'monospace' }}>
               {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
             </div>
-            {wh?.verifiedAt && <div style={{ color: '#64748b', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString(uiLocale())}</div>}
+            {wh?.verifiedAt && <div style={{ color: 'var(--c64748b)', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString(uiLocale())}</div>}
             {typeof wh?.echoOk === 'boolean' && (
               <div style={{ color: wh.echoOk ? '#34d399' : '#f59e0b', marginTop: 6 }}>
                 {wh.echoOk
@@ -792,27 +792,27 @@ function Inner() {
             )}
           </div>
           {whBusy && !wh?.subscribed
-            ? <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('whPolling')}</p>
+            ? <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>{t('whPolling')}</p>
             : (!wh || (whFail && !wh.subscribed))
-              ? <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('whUnknown')}</p>
+              ? <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>{t('whUnknown')}</p>
               : !wh.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
           {(c.pages?.length ?? 0) > 0 && (
             <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 8 }}>
                 {lang === 'vi' ? `Các page đang dùng chung bot này (${c.pages.length})` : `Pages sharing this bot (${c.pages.length})`}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {c.pages.map((pg) => (
-                  <div key={pg.pageId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px' }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: pg.enabled ? '#22c55e' : '#64748b', flexShrink: 0 }} />
+                  <div key={pg.pageId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '8px 12px' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: pg.enabled ? '#22c55e' : 'var(--c64748b)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.pageName || pg.pageId}</div>
-                      <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.pageName || pg.pageId}</div>
+                      <div style={{ fontSize: 11, color: 'var(--c64748b)', fontFamily: 'monospace' }}>
                         {pg.pageId}{pg.igId ? ` · IG ${pg.igUsername ? '@' + pg.igUsername + ' ' : ''}${pg.igId}` : ''}
                       </div>
                     </div>
                     <button onClick={() => disconnectPage(pg.pageId)}
-                      style={{ background: 'transparent', border: '1px solid #7f1d1d', color: '#f87171', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      style={{ background: 'transparent', border: '1px solid var(--c7f1d1d)', color: 'var(--cf87171)', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       {lang === 'vi' ? 'Ngắt page' : 'Detach'}
                     </button>
                   </div>
@@ -828,14 +828,14 @@ function Inner() {
       {c.connected && <>
       {/* Send a test message — a real user-initiated Send API call from the app UI */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('sendTestTitle')}</div>
-        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('sendTestTitle')}</div>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
         {threads.length === 0 ? (
           <p style={{ color: '#f59e0b', fontSize: 13 }}>{t('noRecipient')}</p>
         ) : (
           <>
-            <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 10 }}>
-              {t('sendingAs')}: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{wh?.pageName || c.pageName || '—'}</span>
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 10 }}>
+              {t('sendingAs')}: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 700 }}>{wh?.pageName || c.pageName || '—'}</span>
             </div>
             <label style={ui.label}>{t('recipient')}</label>
             <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 4 }}>
@@ -850,7 +850,7 @@ function Inner() {
               if (!cur) return <div style={{ marginBottom: 10 }} />;
               const ig = cur.channel === 'instagram';
               return (
-                <div style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <ChannelBadge channel={cur.channel} />
                   <span>{lang === 'vi'
                     ? (ig ? 'Gửi qua Instagram Direct (Instagram-scoped ID)' : 'Gửi qua Facebook Messenger (page-scoped ID)')
@@ -864,7 +864,7 @@ function Inner() {
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
               {sendResult === 'ok' && <span style={{ color: '#22c55e', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
-              {sendResult && sendResult !== 'ok' && <span style={{ color: '#fca5a5', fontSize: 12.5 }}>{sendResult}</span>}
+              {sendResult && sendResult !== 'ok' && <span style={{ color: 'var(--cfca5a5)', fontSize: 12.5 }}>{sendResult}</span>}
             </div>
           </>
         )}
@@ -873,48 +873,48 @@ function Inner() {
       {/* Messenger activity — chronological in/out log (App Review evidence) */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>{t('activityTitle')}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('activityTitle')}</div>
           <button onClick={silentRefresh} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{t('refreshActivity')}</button>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, color: '#e2e8f0', marginLeft: 'auto' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, color: 'var(--ce2e8f0)', marginLeft: 'auto' }}>
             <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
             Meta Review Mode
           </label>
         </div>
         {(activityPage || wh?.pageName || c.pageName) && (
-          <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
-            Page: <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
+          <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginBottom: 10 }}>
+            Page: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{activityPage || wh?.pageName || c.pageName}</span>
           </div>
         )}
         {reviewMode && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12.5 }}>
-            <span style={{ color: '#94a3b8' }}>Review Test ID:</span>
-            <code style={{ color: '#e2e8f0', fontWeight: 700 }}>{reviewId || '—'}</code>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12.5 }}>
+            <span style={{ color: 'var(--c94a3b8)' }}>Review Test ID:</span>
+            <code style={{ color: 'var(--ce2e8f0)', fontWeight: 700 }}>{reviewId || '—'}</code>
             <button onClick={genReviewId} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>Generate new review ID</button>
             {reviewId && <button onClick={() => copy(reviewId, 'rid')} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{copied === 'rid' ? '✓' : 'Copy'}</button>}
-            <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: '#fca5a5', borderColor: '#7f1d1d' }}>Clear review test data</button>
-            <button onClick={clearAllConvos} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: '#fca5a5', borderColor: '#7f1d1d' }}>Clear ALL conversations</button>
+            <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear review test data</button>
+            <button onClick={clearAllConvos} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear ALL conversations</button>
             {reviewNotice && <span style={{ color: '#22c55e' }}>{reviewNotice}</span>}
           </div>
         )}
         {shownActivity.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{reviewMode ? 'No review activity yet — send a message containing the Review Test ID.' : t('noActivity')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{reviewMode ? 'No review activity yet — send a message containing the Review Test ID.' : t('noActivity')}</p>
         ) : (
           <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
-                <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+                <tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
                   <th style={thc}>{t('colTime')}</th><th style={thc}>Channel</th><th style={thc}>{t('colDirection')}</th><th style={thc}>{t('colUser')}</th><th style={thc}>{t('colMessage')}</th><th style={thc}>{t('colStatus')}</th>
                 </tr>
               </thead>
               <tbody>
                 {shownActivity.map((ev, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #1e293b', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
+                  <tr key={i} style={{ borderTop: '1px solid var(--c1e293b)', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
                     <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
-                    <td style={{ ...tdc, fontFamily: 'monospace', color: '#94a3b8' }}>{ev.user}</td>
+                    <td style={{ ...tdc, fontFamily: 'monospace', color: 'var(--c94a3b8)' }}>{ev.user}</td>
                     <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
-                    <td style={{ ...tdc, color: ev.status === 'Failed' ? '#fca5a5' : ev.status === 'Received' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
+                    <td style={{ ...tdc, color: ev.status === 'Failed' ? 'var(--cfca5a5)' : ev.status === 'Received' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
                   </tr>
                 ))}
               </tbody>
@@ -932,7 +932,7 @@ function Inner() {
         </button>
         {showWebhook && (
           <div style={{ marginTop: 12 }}>
-            <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>{t('webhookAutoNote')}</p>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>{t('webhookAutoNote')}</p>
             {([['webhookUrl', c.webhookUrl], ['verifyToken', c.verifyToken]] as const).map(([k, val]) => (
               <div key={k} style={{ marginBottom: 8 }}>
                 <label style={ui.label}>{t(k)}</label>
@@ -942,31 +942,31 @@ function Inner() {
                 </div>
               </div>
             ))}
-            <p style={{ color: '#64748b', fontSize: 11.5, margin: '8px 0 0', lineHeight: 1.5 }}>{t('webhookHint')}</p>
+            <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '8px 0 0', lineHeight: 1.5 }}>{t('webhookHint')}</p>
           </div>
         )}
       </div>
 
       {/* Behaviour */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
           {t('behaviorTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: c.aiEnabled ? '#22c55e' : '#f59e0b' }}>· {c.aiEnabled ? t('aiOn') : t('aiOff')}</span>
         </div>
         {canPickMode && (
           <>
             <label style={ui.label}>{t('modeLabel')}</label>
-            <div style={{ display: 'inline-flex', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
+            <div style={{ display: 'inline-flex', border: '1px solid var(--c334155)', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
               {(['booking', 'sales'] as const).map((m) => (
                 <button key={m}
                   onClick={() => { setC({ ...c, botMode: m }); save({ botMode: m }); }}
                   style={{ padding: '8px 16px', fontSize: 13, border: 'none', cursor: 'pointer',
                     background: c.botMode === m ? '#6366f1' : 'transparent',
-                    color: c.botMode === m ? '#fff' : '#64748b', fontWeight: c.botMode === m ? 700 : 500 }}>
+                    color: c.botMode === m ? '#fff' : 'var(--c64748b)', fontWeight: c.botMode === m ? 700 : 500 }}>
                   {m === 'booking' ? t('modeBooking') : t('modeSales')}
                 </button>
               ))}
             </div>
-            <p style={{ color: '#64748b', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('modeHint')}</p>
+            <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('modeHint')}</p>
             {c.botMode === 'sales' && (
               <>
                 <label style={ui.label}>{t('leadEmail')}</label>
@@ -990,7 +990,7 @@ function Inner() {
               onChange={(e) => setC({ ...c, bizIntro: e.target.value })} onBlur={() => save({})} style={ui.input} />
           </div>
         </div>
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
           {lang === 'vi'
             ? 'Đặt tên là bot nói chuyện như một nhân viên thật, không tự nhận là trợ lý. Nếu khách hỏi thẳng "bot hả?", bot không nói dối — nó khéo léo mời gọi lại ngay và ghi lead.'
             : 'With a name set, the bot speaks as a real team member and never calls itself an assistant. Asked point-blank "is this a bot?", it won\u2019t lie — it gracefully offers an instant call back and logs the lead.'}
@@ -1012,8 +1012,8 @@ function Inner() {
         {/* Auto-distribution. Off unless the salon asks for it: switching it on
             changes who answers customers, which is not a behaviour anyone should
             acquire by taking an update. */}
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #1e293b' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1', marginBottom: 8 }}>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--c1e293b)' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 8 }}>
             {lang === 'vi' ? 'Chia hội thoại cho nhân viên' : 'Share conversations with staff'}
           </div>
           <select
@@ -1033,7 +1033,7 @@ function Inner() {
                   onBlur={() => save({})} style={ui.input} />
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#cbd5e1', fontSize: 13, cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox" checked={c.chatPreferUsualTech ?? true}
                     onChange={(e) => { const v = e.target.checked; setC({ ...c, chatPreferUsualTech: v }); void save({ chatPreferUsualTech: v }); }} />
                   {lang === 'vi' ? 'Ưu tiên thợ quen của khách' : 'Prefer her usual technician'}
@@ -1041,14 +1041,14 @@ function Inner() {
               </div>
             </div>
           )}
-          <p style={{ color: '#64748b', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.5 }}>
+          <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.5 }}>
             {lang === 'vi'
               ? 'Khi bật: khách nhắn tới sẽ được giao cho một nhân viên đang trong ca — ưu tiên thợ đã làm cho khách lần trước, sau đó chia cho người đang ít việc nhất. Không ai trong ca, hoặc ai cũng đã đầy, thì bot vẫn trả lời ngay chứ không để khách chờ.'
               : 'When on, an incoming message is given to someone on shift — her usual technician first, then whoever is holding the fewest. If nobody is on shift, or everyone is at their limit, the bot answers immediately rather than leaving the customer waiting.'}
           </p>
         </div>
 
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>
           {lang === 'vi'
             ? 'Nhân viên vừa nhắn trong X phút thì mỗi tin mới của khách được nhường Y phút cho người thật; hết Y phút bot trả lời. Nhân viên im quá X phút thì bot trực lại ngay. Y = 0 nghĩa là bot không chờ.'
             : 'If staff messaged within X minutes, each new customer message waits Y minutes for a human; then the bot answers. Staff idle past X minutes → bot resumes instantly. Y = 0 means the bot never waits.'}
@@ -1056,14 +1056,14 @@ function Inner() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <label style={ui.label}>{t('greeting')}</label>
           <button type="button" onClick={() => setGreetOpen((v) => !v)}
-            style={{ background: 'transparent', border: '1px solid #6366f1', color: '#a5b4fc', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 6 }}>
+            style={{ background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 6 }}>
             {lang === 'vi' ? '✨ Nhờ AI viết giúp' : '✨ Let AI write it'}
           </button>
         </div>
         <textarea value={c.greeting} placeholder={t('greetingPh')} rows={2} onChange={(e) => setC({ ...c, greeting: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: greetOpen ? 8 : 12 }} />
         {greetOpen && (
-          <div style={{ background: '#0f172a', border: '1px solid #312e81', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-            <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 8px', lineHeight: 1.5 }}>
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c312e81)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '0 0 8px', lineHeight: 1.5 }}>
               {lang === 'vi'
                 ? 'AI đọc dịch vụ, ưu đãi đang chạy, giờ làm và địa chỉ của tiệm để viết. Gõ thêm ý bạn muốn nhấn mạnh (không bắt buộc).'
                 : 'AI reads your services, live discounts, hours and address. Add anything you want emphasised (optional).'}
@@ -1077,15 +1077,15 @@ function Inner() {
                 {greetBusy ? (lang === 'vi' ? 'Đang viết…' : 'Writing…') : (lang === 'vi' ? 'Gợi ý 3 câu' : 'Draft 3')}
               </button>
             </div>
-            {greetErr && <p style={{ color: '#f87171', fontSize: 12, margin: '8px 0 0' }}>{greetErr}</p>}
+            {greetErr && <p style={{ color: 'var(--cf87171)', fontSize: 12, margin: '8px 0 0' }}>{greetErr}</p>}
             {greetOptions && greetOptions.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
                 {greetOptions.map((op, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: '9px 11px' }}>
-                    <div style={{ flex: 1, color: '#e2e8f0', fontSize: 13, lineHeight: 1.55 }}>{op}</div>
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--c111827)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '9px 11px' }}>
+                    <div style={{ flex: 1, color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.55 }}>{op}</div>
                     <button type="button"
                       onClick={() => { setC({ ...c, greeting: op }); save({ greeting: op }); setGreetOpen(false); setGreetOptions(null); }}
-                      style={{ background: '#22c55e', border: 'none', color: '#052e16', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      style={{ background: '#22c55e', border: 'none', color: 'var(--c052e16)', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       {lang === 'vi' ? 'Dùng' : 'Use'}
                     </button>
                   </div>
@@ -1099,7 +1099,7 @@ function Inner() {
           placeholder={lang === 'vi' ? 'vd: Cảm ơn anh/chị đã tin tưởng Lumio — chúc một ngày thật đẹp ạ! 🌸' : 'e.g. Thank you for trusting Lumio — have a lovely day! 🌸'}
           onChange={(e) => setC({ ...c, closing: e.target.value })} onBlur={() => save({})}
           style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
           {lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.'}
         </p>
         <label style={ui.label}>{t('extraNotes')}</label>
@@ -1108,10 +1108,10 @@ function Inner() {
 
       {/* Knowledge import: website / fanpage → proposed facts → human approves */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
           📥 {lang === 'vi' ? 'Nạp kiến thức tự động' : 'Auto-import knowledge'}
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.55 }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.55 }}>
           {lang === 'vi'
             ? 'Đọc website hoặc fanpage, AI chưng cất thành các dòng thông tin — bạn duyệt rồi mới lưu. Bot chỉ nói những gì đã được duyệt.'
             : 'Reads your website or fanpage and distills it into fact rows — you approve before saving. The bot only speaks approved facts.'}
@@ -1139,17 +1139,17 @@ function Inner() {
             {lang === 'vi' ? '✨ Phân loại tự động' : '✨ Sort it out'}
           </button>
         </div>
-        {importErr && <div style={{ color: '#f87171', fontSize: 13, marginTop: 10 }}>{importErr}</div>}
+        {importErr && <div style={{ color: 'var(--cf87171)', fontSize: 13, marginTop: 10 }}>{importErr}</div>}
         {suggest && (
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {([['greeting', lang === 'vi' ? 'Câu chào' : 'Greeting'], ['closing', lang === 'vi' ? 'Câu kết thúc' : 'Goodbye'], ['instruction', lang === 'vi' ? 'Giọng điệu / luật' : 'Tone / rules']] as const).map(([k, title]) => {
               const v = suggest[k];
               if (!v) return null;
               return (
-                <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px' }}>
+                <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a5b4fc', marginBottom: 3 }}>{title}</div>
-                    <div style={{ fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.5 }}>{v}</div>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ca5b4fc)', marginBottom: 3 }}>{title}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>{v}</div>
                   </div>
                   <button
                     onClick={() => {
@@ -1167,17 +1167,17 @@ function Inner() {
           </div>
         )}
         {proposed && (
-          <div style={{ marginTop: 14, border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc', marginBottom: 8 }}>
+          <div style={{ marginTop: 14, border: '1px solid var(--c334155)', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ca5b4fc)', marginBottom: 8 }}>
               {lang === 'vi' ? `AI đề xuất ${proposed.length} mục — bỏ tick mục nào sai rồi bấm thêm:` : `AI proposes ${proposed.length} row(s) — untick anything wrong, then add:`}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
               {proposed.map((f, i) => (
-                <label key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: '#cbd5e1', cursor: 'pointer' }}>
+                <label key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={f.pick}
                     onChange={(e) => setProposed((ps) => ps ? ps.map((x, k) => k === i ? { ...x, pick: e.target.checked } : x) : ps)}
                     style={{ marginTop: 2 }} />
-                  <span><b style={{ color: '#e2e8f0' }}>{f.label}:</b> {f.value}</span>
+                  <span><b style={{ color: 'var(--ce2e8f0)' }}>{f.label}:</b> {f.value}</span>
                 </label>
               ))}
             </div>
@@ -1185,7 +1185,7 @@ function Inner() {
               <button onClick={mergeProposed} disabled={!proposed.some((f) => f.pick)} style={{ ...ui.primaryBtn, opacity: proposed.some((f) => f.pick) ? 1 : 0.5 }}>
                 {lang === 'vi' ? `➕ Thêm ${proposed.filter((f) => f.pick).length} mục vào Bot facts` : `➕ Add ${proposed.filter((f) => f.pick).length} row(s) to Bot facts`}
               </button>
-              <button onClick={() => setProposed(null)} style={{ background: 'transparent', border: '1px solid #334155', color: '#94a3b8', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
+              <button onClick={() => setProposed(null)} style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
                 {lang === 'vi' ? 'Bỏ qua' : 'Discard'}
               </button>
             </div>
@@ -1196,26 +1196,26 @@ function Inner() {
       {/* Salon info — tick + fill so the bot answers common questions */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: infoOpen ? 6 : 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>
-            {t('infoTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: '#64748b' }}>· {facts.filter((f) => f.on && f.value.trim()).length}</span>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+            {t('infoTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--c64748b)' }}>· {facts.filter((f) => f.on && f.value.trim()).length}</span>
           </div>
           <button onClick={() => setInfoOpen((v) => !v)} style={{ ...ghost, fontSize: 12 }}>{infoOpen ? t('collapse') : t('expand')}</button>
         </div>
         {infoOpen && (
           <>
-            <p style={{ color: '#94a3b8', fontSize: 12, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
-            <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
-              <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: '#94a3b8' }}>{t('infoKnowsList')}</span>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
+            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
+              <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: 'var(--c94a3b8)' }}>{t('infoKnowsList')}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: facts.length > 6 ? 4 : 0 }}>
               {facts.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: f.on ? '#0f172a' : 'transparent', border: '1px solid', borderColor: f.on ? '#334155' : '#1e293b', borderRadius: 8, padding: '8px 10px' }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: f.on ? 'var(--c0f172a)' : 'transparent', border: '1px solid', borderColor: f.on ? 'var(--c334155)' : 'var(--c1e293b)', borderRadius: 8, padding: '8px 10px' }}>
                   <input type="checkbox" checked={f.on} onChange={(e) => setFact(i, { on: e.target.checked })} style={{ flexShrink: 0, width: 16, height: 16 }} />
                   {f.custom
                     ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />
-                    : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? '#e2e8f0' : '#94a3b8' }}>{factLabel(f.label)}</span>}
+                    : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>{factLabel(f.label)}</span>}
                   <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
-                  {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: '#fca5a5', borderColor: '#7f1d1d' }}>✕</button>}
+                  {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>✕</button>}
                 </div>
               ))}
             </div>
@@ -1232,9 +1232,9 @@ function Inner() {
           shows nothing but the Connect card (clean App-Review opening shot). */}
       {c.connected && (
       <div style={{ ...ui.card }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
         {threads.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noConvos')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noConvos')}</p>
         ) : (() => {
           const q = convoSearch.trim().toLowerCase();
           const shown = q ? threads.filter((th) => (th.lastText || '').toLowerCase().includes(q)) : threads;
@@ -1244,17 +1244,17 @@ function Inner() {
                 <input value={convoSearch} onChange={(e) => setConvoSearch(e.target.value)} placeholder={t('searchConvo')} style={{ ...ui.input, marginBottom: 10 }} />
               )}
               {shown.length === 0 ? (
-                <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noMatch')}</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noMatch')}</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto', paddingRight: shown.length > 6 ? 4 : 0 }}>
                   {shown.map((th) => (
-                    <div key={th.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <div key={th.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <ChannelBadge channel={th.channel} />
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ color: '#cbd5e1', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {th.senderName && <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}
+                        <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {th.senderName && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}
                         </div>
-                        <div style={{ color: '#64748b', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <div style={{ color: 'var(--c64748b)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <span>{new Date(th.updatedAt).toLocaleString(uiLocale())}</span>
                           <StateBadge th={th} lang={lang} />
                         </div>
@@ -1280,22 +1280,22 @@ function Inner() {
       {/* Sales-mode leads: the bot's handover list for the human team. */}
       {c.connected && c.botMode === 'sales' && (
       <div style={{ ...ui.card, marginTop: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
         {leads.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noLeads')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noLeads')}</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead><tr>
-                {['👤', '📞', '💅', '💬', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', color: '#94a3b8', fontSize: 11, padding: '6px 8px', borderBottom: '1px solid #334155' }}>{h}</th>)}
+                {['👤', '📞', '💅', '💬', ''].map((h, i) => <th key={i} style={{ textAlign: 'left', color: 'var(--c94a3b8)', fontSize: 11, padding: '6px 8px', borderBottom: '1px solid var(--c334155)' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {leads.map((l) => (
-                  <tr key={l.id} style={{ borderBottom: '1px solid #1f2937' }}>
-                    <td style={{ padding: '9px 8px', fontWeight: 700, color: '#e2e8f0' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: '#64748b' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
-                    <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: '#cbd5e1' }}>{l.phone}</td>
-                    <td style={{ padding: '9px 8px', color: '#94a3b8', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: '#64748b' }}>{l.note}</span> : null}</td>
-                    <td style={{ padding: '9px 8px', color: '#64748b', fontSize: 11.5, whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleDateString(uiLocale())}</td>
+                  <tr key={l.id} style={{ borderBottom: '1px solid var(--c1f2937)' }}>
+                    <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--ce2e8f0)' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
+                    <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{l.phone}</td>
+                    <td style={{ padding: '9px 8px', color: 'var(--c94a3b8)', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{l.note}</span> : null}</td>
+                    <td style={{ padding: '9px 8px', color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleDateString(uiLocale())}</td>
                     <td style={{ padding: '9px 8px' }}>
                       <select value={l.status}
                         onChange={async (e) => {
@@ -1322,20 +1322,20 @@ function Inner() {
   );
 }
 
-const thc: React.CSSProperties = { padding: '6px 10px', fontWeight: 600, position: 'sticky', top: 0, background: '#1e293b', zIndex: 1 };
-const tdc: React.CSSProperties = { padding: '6px 10px', color: '#cbd5e1', verticalAlign: 'top' };
+const thc: React.CSSProperties = { padding: '6px 10px', fontWeight: 600, position: 'sticky', top: 0, background: 'var(--c1e293b)', zIndex: 1 };
+const tdc: React.CSSProperties = { padding: '6px 10px', color: 'var(--ccbd5e1)', verticalAlign: 'top' };
 
 function Field({ label, value, mono, good, warn }: { label: string; value: string; mono?: boolean; good?: boolean; warn?: boolean }) {
   return (
     <div>
-      <div style={{ color: '#94a3b8', fontSize: 11.5, marginBottom: 3 }}>{label}</div>
-      <div style={{ color: good ? '#22c55e' : warn ? '#f59e0b' : '#e2e8f0', fontSize: 13.5, fontWeight: 600, fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value}</div>
+      <div style={{ color: 'var(--c94a3b8)', fontSize: 11.5, marginBottom: 3 }}>{label}</div>
+      <div style={{ color: good ? '#22c55e' : warn ? '#f59e0b' : 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600, fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value}</div>
     </div>
   );
 }
 
 const ghost: React.CSSProperties = {
-  padding: '8px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12.5, cursor: 'pointer',
+  padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12.5, cursor: 'pointer',
 };
 
 const fbBtn: React.CSSProperties = {

@@ -94,15 +94,15 @@ export default function PlansPage() {
   }
 
   if (!ready || !token || user?.role !== 'SUPER_ADMIN') {
-    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>Loading…</div>;
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)' }}>Loading…</div>;
   }
 
   return (
-    <main style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px', color: '#e2e8f0' }}>
+    <main style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px', color: 'var(--ce2e8f0)' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Plans</h1><MarketBadge /></div>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>Define what each subscription package unlocks.</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>Define what each subscription package unlocks.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a href="/super-admin/tenants" style={ghost}>← Salons</a>
@@ -116,21 +116,21 @@ export default function PlansPage() {
 
       {showForm && <PlanForm token={token} onDone={async () => { setShowForm(false); await load(); }} />}
 
-      {loading ? <p style={{ color: '#94a3b8' }}>Loading…</p> : (
-        <div style={{ overflowX: 'auto', border: '1px solid #334155', borderRadius: 12 }}>
+      {loading ? <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p> : (
+        <div style={{ overflowX: 'auto', border: '1px solid var(--c334155)', borderRadius: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead><tr style={{ background: '#1e293b', textAlign: 'left' }}>
+            <thead><tr style={{ background: 'var(--c1e293b)', textAlign: 'left' }}>
               <th style={th}>Plan</th><th style={th}>Price</th><th style={th}>Includes</th><th style={th}>Status</th><th style={th}>Actions</th>
             </tr></thead>
             <tbody>
               {plans.length === 0 && <tr><td style={td} colSpan={5}>No plans yet. Click “+ New plan”.</td></tr>}
               {plans.map((p) => (
                 <Fragment key={p.id}>
-                  <tr style={{ borderTop: '1px solid #334155' }}>
-                    <td style={td}><strong>{p.name}</strong>{p.description ? <div style={{ color: '#94a3b8', fontSize: 12 }}>{p.description}</div> : null}</td>
+                  <tr style={{ borderTop: '1px solid var(--c334155)' }}>
+                    <td style={td}><strong>{p.name}</strong>{p.description ? <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{p.description}</div> : null}</td>
                     <td style={td}>
                       ${((p.priceMonthlyCents || p.priceCents) / 100).toFixed(0)}/mo
-                      {p.priceYearlyCents ? <div style={{ color: '#94a3b8', fontSize: 12 }}>${(p.priceYearlyCents / 100).toFixed(0)}/yr</div> : null}
+                      {p.priceYearlyCents ? <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>${(p.priceYearlyCents / 100).toFixed(0)}/yr</div> : null}
                     </td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -141,11 +141,11 @@ export default function PlansPage() {
                         <Tag on={p.whiteLabelEnabled}>White-label</Tag>
                       </div>
                     </td>
-                    <td style={td}><span style={{ color: p.isActive ? '#22c55e' : '#94a3b8' }}>{p.isActive ? 'Active' : 'Inactive'}</span></td>
-                    <td style={td}><div style={{ display: 'flex', gap: 6 }}><button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...primary, padding: '6px 12px', fontSize: 12, background: editId === p.id ? '#475569' : '#6366f1' }}>{editId === p.id ? 'Close' : 'Edit'}</button><button onClick={() => deletePlan(p.id, p.name)} style={{ ...ghost, padding: '6px 10px', fontSize: 12, borderColor: '#7f1d1d', color: '#fca5a5' }}>Delete</button></div></td>
+                    <td style={td}><span style={{ color: p.isActive ? '#22c55e' : 'var(--c94a3b8)' }}>{p.isActive ? 'Active' : 'Inactive'}</span></td>
+                    <td style={td}><div style={{ display: 'flex', gap: 6 }}><button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...primary, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1' }}>{editId === p.id ? 'Close' : 'Edit'}</button><button onClick={() => deletePlan(p.id, p.name)} style={{ ...ghost, padding: '6px 10px', fontSize: 12, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)' }}>Delete</button></div></td>
                   </tr>
                   {editId === p.id && (
-                    <tr><td colSpan={5} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={5} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <PlanForm token={token} plan={p} onDone={async () => { setEditId(null); await load(); }} />
                     </td></tr>
                   )}
@@ -218,7 +218,7 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
   );
 
   return (
-    <form onSubmit={submit} style={plan ? {} : { background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+    <form onSubmit={submit} style={plan ? {} : { background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <Field label="Plan name"><input style={inp} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Starter / Pro" /></Field>
         <Field label="Price $/month"><input style={inp} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></Field>
@@ -230,8 +230,8 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
       </div>
       <Field label="Description (internal)"><input style={inp} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Short internal summary" /></Field>
 
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Public marketing (landing page)</div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>Shown on the homepage pricing section when “Show on website” is on.</p>
+      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>Public marketing (landing page)</div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>Shown on the homepage pricing section when “Show on website” is on.</p>
       <Field label="Tagline"><input style={inp} value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} placeholder="e.g. For a single salon getting started" /></Field>
       <Field label="Selling points (one per line)"><textarea style={{ ...inp, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }} value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} placeholder={'Online booking 24/7\nEmail reminders\nUp to 3 staff'} /></Field>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
@@ -239,10 +239,10 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
         <label style={chkRow}>{chk('highlighted')} <span><strong>Highlight</strong> — show a “Most popular” badge</span></label>
       </div>
 
-      <p style={{ color: '#64748b', fontSize: 12, margin: '12px 0 0' }}>💳 No payment IDs needed — Stripe charges this amount directly and PayPal plans are created automatically. Just set the prices above and configure your Stripe/PayPal keys once in the server settings.</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '12px 0 0' }}>💳 No payment IDs needed — Stripe charges this amount directly and PayPal plans are created automatically. Just set the prices above and configure your Stripe/PayPal keys once in the server settings.</p>
 
-      <div style={{ marginTop: 14, fontWeight: 600, fontSize: 14, color: '#cbd5e1' }}>Features unlocked</div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 10px' }}>Booking is always included. Tick what this plan adds on top.</p>
+      <div style={{ marginTop: 14, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>Features unlocked</div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>Booking is always included. Tick what this plan adds on top.</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <label style={chkRow}>{chk('posEnabled')} <span><strong>POS suite</strong> — Checkout, Products, Orders &amp; Sales report</span></label>
         <label style={chkRow}>{chk('onlinePaymentEnabled')} <span><strong>Online payments</strong> — card gateways at booking</span></label>
@@ -259,21 +259,21 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
 
 function Tag({ on, children }: { on: boolean; children: React.ReactNode }) {
   return (
-    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, border: `1px solid ${on ? '#22c55e' : '#334155'}`, color: on ? '#22c55e' : '#64748b' }}>
+    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, border: `1px solid ${on ? '#22c55e' : 'var(--c334155)'}`, color: on ? '#22c55e' : 'var(--c64748b)' }}>
       {on ? '✓ ' : '✕ '}{children}
     </span>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label style={{ display: 'block' }}><span style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6, marginTop: 6 }}>{label}</span>{children}</label>;
+  return <label style={{ display: 'block' }}><span style={{ display: 'block', fontSize: 12, color: 'var(--ccbd5e1)', marginBottom: 6, marginTop: 6 }}>{label}</span>{children}</label>;
 }
 function Banner({ children }: { children: React.ReactNode }) {
-  return <div style={{ background: '#7f1d1d', color: '#fecaca', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>{children}</div>;
+  return <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>{children}</div>;
 }
 
-const th: React.CSSProperties = { padding: '12px 14px', fontWeight: 600, color: '#cbd5e1' };
+const th: React.CSSProperties = { padding: '12px 14px', fontWeight: 600, color: 'var(--ccbd5e1)' };
 const td: React.CSSProperties = { padding: '12px 14px' };
-const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 14, colorScheme: 'dark' };
+const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14};
 const primary: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: 'none', background: '#6366f1', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
-const ghost: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
+const ghost: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
 const chkRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 };

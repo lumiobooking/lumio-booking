@@ -100,10 +100,10 @@ export function BulkBar({
       style={{
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         padding: '8px 12px', marginBottom: 10, borderRadius: 10,
-        background: '#1e1b4b', border: '1px solid #4338ca',
+        background: 'var(--c1e1b4b)', border: '1px solid #4338ca',
       }}
     >
-      <span style={{ fontSize: 13, color: '#c7d2fe', fontWeight: 600 }}>
+      <span style={{ fontSize: 13, color: 'var(--cc7d2fe)', fontWeight: 600 }}>
         {t('bulk.selected').replace('{n}', String(count))}
       </span>
       <button
@@ -112,7 +112,7 @@ export function BulkBar({
         disabled={busy}
         style={{
           fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8,
-          border: '1px solid #b91c1c', background: busy ? '#7f1d1d' : '#dc2626',
+          border: '1px solid #b91c1c', background: busy ? 'var(--c7f1d1d)' : '#dc2626',
           color: '#fff', cursor: busy ? 'default' : 'pointer',
         }}
       >
@@ -122,11 +122,11 @@ export function BulkBar({
         type="button"
         onClick={onClear}
         disabled={busy}
-        style={{ fontSize: 12, padding: '6px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}
+        style={{ fontSize: 12, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer' }}
       >
         {t('bulk.clear')}
       </button>
-      {msg && <span style={{ fontSize: 12, color: '#fca5a5' }}>{msg}</span>}
+      {msg && <span style={{ fontSize: 12, color: 'var(--cfca5a5)' }}>{msg}</span>}
     </div>
   );
 }

@@ -65,16 +65,16 @@ export function ImportCsv({ token, endpoint, header, sample, existing, buildBody
   }
 
   const rowCount = text.split(/\r?\n/).filter((l) => l.trim()).length;
-  const ghost: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer' };
+  const ghost: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer' };
 
   return (
     <div style={{ marginBottom: 14 }}>
       <button onClick={() => setOpen(!open)} style={ghost}>{open ? '✕ Close import' : '⭳ Import CSV'}</button>
       {open && (
         <div style={{ ...ui.card, marginTop: 8 }}>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>Columns: <code style={{ color: '#cbd5e1' }}>{header}</code> — choose a .csv file, or paste rows, or Load sample.</div>
-          <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setText); }} style={{ fontSize: 13, marginBottom: 8, color: '#cbd5e1' }} />
-          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} placeholder={header + '\n…'} style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 12, padding: 8, borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }} />
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 8 }}>Columns: <code style={{ color: 'var(--ccbd5e1)' }}>{header}</code> — choose a .csv file, or paste rows, or Load sample.</div>
+          <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setText); }} style={{ fontSize: 13, marginBottom: 8, color: 'var(--ccbd5e1)' }} />
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} placeholder={header + '\n…'} style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 12, padding: 8, borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)' }} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
             <button onClick={run} disabled={busy || !text.trim()} style={ui.primaryBtn}>{busy ? 'Importing…' : `Import ${rowCount} row${rowCount === 1 ? '' : 's'}`}</button>
             <button onClick={() => setText(sample)} style={ghost}>Load sample</button>

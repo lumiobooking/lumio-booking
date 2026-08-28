@@ -82,7 +82,7 @@ export function channelLabel(raw: unknown): { text: string; fg: string; bg: stri
     case 'zalo':
       return { text: '✆ Zalo', fg: '#7dd3fc', bg: 'rgba(14,165,233,0.16)', border: 'rgba(14,165,233,0.45)' };
     default:
-      return { text: '✉ Messenger', fg: '#93c5fd', bg: 'rgba(59,130,246,0.16)', border: 'rgba(59,130,246,0.45)' };
+      return { text: '✉ Messenger', fg: 'var(--c93c5fd)', bg: 'rgba(59,130,246,0.16)', border: 'rgba(59,130,246,0.45)' };
   }
 }
 
@@ -170,8 +170,8 @@ export function sortRows(rows: InboxRow[]): InboxRow[] {
 const PAGE_COLORS = [
   { bg: '#1d4ed8', fg: '#dbeafe' }, // blue
   { bg: '#be185d', fg: '#fce7f3' }, // pink
-  { bg: '#047857', fg: '#d1fae5' }, // green
-  { bg: '#b45309', fg: '#fef3c7' }, // amber
+  { bg: '#047857', fg: 'var(--cd1fae5)' }, // green
+  { bg: '#b45309', fg: 'var(--cfef3c7)' }, // amber
   { bg: '#6d28d9', fg: '#ede9fe' }, // violet
   { bg: '#0e7490', fg: '#cffafe' }, // cyan
   { bg: '#9f1239', fg: '#ffe4e6' }, // rose
@@ -180,7 +180,7 @@ const PAGE_COLORS = [
 
 export function pageColor(pageId: unknown): { bg: string; fg: string } {
   const id = String(pageId ?? '');
-  if (!id) return { bg: '#334155', fg: '#cbd5e1' };
+  if (!id) return { bg: 'var(--c334155)', fg: 'var(--ccbd5e1)' };
   // Cheap, stable string hash. Deterministic across machines and reloads, which
   // is the only property that matters — a colour that changed between refreshes
   // would be worse than no colour at all.

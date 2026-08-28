@@ -112,11 +112,11 @@ function Inner() {
   return (
     <section style={{ maxWidth: 720 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('tb.title')}</h1>
-      <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{t('tb.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{t('tb.subtitle')}</p>
       {err && <div style={ui.banner}>{err}</div>}
 
       <ImportCsv token={token} endpoint="/tables" header="name,seats,area" sample={SAMPLE_TABLES} existing={() => new Set(tables.map((tb) => tb.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], seats: parseInt(c[1], 10) || 2, area: c[2] || undefined })} onDone={load} />
-      <button onClick={loadSampleRes} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>+ Sample reservations (today)</button>
+      <button onClick={loadSampleRes} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>+ Sample reservations (today)</button>
 
       <form onSubmit={add} style={{ ...ui.card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ flex: '2 1 150px' }}><span style={ui.label}>{t('tb.name')}</span>
@@ -129,7 +129,7 @@ function Inner() {
       </form>
 
       {tables.length > 0 && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#94a3b8', cursor: 'pointer', marginTop: 14 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--c94a3b8)', cursor: 'pointer', marginTop: 14 }}>
           <BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} />
           {tr('bulk.selectAll', lang)}
         </label>
@@ -138,21 +138,21 @@ function Inner() {
         <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/tables/${id}`, { method: 'DELETE', token }), load)} />
       </div>
       <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {tables.length === 0 && <p style={{ color: '#64748b', fontSize: 14 }}>{t('tb.empty')}</p>}
+        {tables.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 14 }}>{t('tb.empty')}</p>}
         {tables.map((tb) => (
-          <div key={tb.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 12, opacity: tb.isActive ? 1 : 0.55, borderColor: bulk.has(tb.id) ? '#4338ca' : undefined, background: bulk.has(tb.id) ? '#1e1b4b' : undefined }}>
+          <div key={tb.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 12, opacity: tb.isActive ? 1 : 0.55, borderColor: bulk.has(tb.id) ? '#4338ca' : undefined, background: bulk.has(tb.id) ? 'var(--c1e1b4b)' : undefined }}>
             <BulkRowBox on={bulk.has(tb.id)} onChange={() => bulk.toggle(tb.id)} />
             <input style={{ ...ui.input, width: 110 }} value={tb.name}
               onChange={(e) => setTables((xs) => xs.map((x) => (x.id === tb.id ? { ...x, name: e.target.value } : x)))}
               onBlur={(e) => patch(tb.id, { name: e.target.value })} />
-            <span style={{ color: '#94a3b8', fontSize: 13 }}>{t('tb.seats')}</span>
+            <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('tb.seats')}</span>
             <input style={{ ...ui.input, width: 68 }} type="number" min={1} max={50} value={tb.seats}
               onChange={(e) => setTables((xs) => xs.map((x) => (x.id === tb.id ? { ...x, seats: parseInt(e.target.value, 10) || 1 } : x)))}
               onBlur={(e) => patch(tb.id, { seats: parseInt(e.target.value, 10) || 1 })} />
             <input style={{ ...ui.input, width: 130 }} value={tb.area ?? ''} placeholder={t('tb.area')}
               onChange={(e) => setTables((xs) => xs.map((x) => (x.id === tb.id ? { ...x, area: e.target.value } : x)))}
               onBlur={(e) => patch(tb.id, { area: e.target.value })} />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#cbd5e1' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--ccbd5e1)' }}>
               <input type="checkbox" checked={tb.isActive} onChange={(e) => patch(tb.id, { isActive: e.target.checked })} />{t('tb.active')}
             </label>
             <button onClick={() => remove(tb.id)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 13 }}>{t('tb.delete')}</button>

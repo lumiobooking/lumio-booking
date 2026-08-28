@@ -85,9 +85,9 @@ export function PwaRegister() {
       style={{
         position: 'fixed', left: '50%', bottom: 18, transform: 'translateX(-50%)',
         zIndex: 9999, display: 'flex', alignItems: 'center', gap: 12,
-        background: '#1e1b4b', border: '1px solid #6366f1', borderRadius: 999,
+        background: 'var(--c1e1b4b)', border: '1px solid #6366f1', borderRadius: 999,
         padding: '9px 10px 9px 16px', boxShadow: '0 10px 30px rgba(0,0,0,.45)',
-        color: '#e0e7ff', fontSize: 13.5, fontWeight: 600,
+        color: 'var(--ce0e7ff)', fontSize: 13.5, fontWeight: 600,
       }}
     >
       <span>Đã có bản cập nhật mới · A new version is available</span>

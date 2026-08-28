@@ -29,7 +29,7 @@ interface Txn {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  SUCCEEDED: '#22c55e', FAILED: '#ef4444', CANCELED: '#94a3b8',
+  SUCCEEDED: '#22c55e', FAILED: '#ef4444', CANCELED: 'var(--c94a3b8)',
   PROCESSING: '#f59e0b', REQUIRES_PAYMENT: '#f59e0b', QUEUED: '#f59e0b',
 };
 
@@ -114,15 +114,15 @@ function Inner() {
   }
 
   const unresolved = rows.filter((r) => r.unresolved);
-  const box: React.CSSProperties = { border: '1px solid #334155', borderRadius: 12, padding: 14, marginBottom: 10, background: '#0f172a' };
-  const meta: React.CSSProperties = { color: '#94a3b8', fontSize: 12 };
+  const box: React.CSSProperties = { border: '1px solid var(--c334155)', borderRadius: 12, padding: 14, marginBottom: 10, background: 'var(--c0f172a)' };
+  const meta: React.CSSProperties = { color: 'var(--c94a3b8)', fontSize: 12 };
 
   function Row({ t }: { t: Txn }) {
-    const color = STATUS_COLOR[t.status] ?? '#94a3b8';
+    const color = STATUS_COLOR[t.status] ?? 'var(--c94a3b8)';
     return (
-      <div style={{ ...box, borderColor: t.unresolved ? '#f59e0b' : '#334155' }}>
+      <div style={{ ...box, borderColor: t.unresolved ? '#f59e0b' : 'var(--c334155)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
             {formatPrice(t.amountCents, t.currency)}
             {t.tipCents ? <span style={{ ...meta, marginLeft: 8 }}>({L.tip} {formatPrice(t.tipCents, t.currency)})</span> : null}
           </div>
@@ -142,12 +142,12 @@ function Inner() {
             {L.refunded}: {formatPrice(t.refundedCents, t.currency)} / {formatPrice(t.amountCents, t.currency)}
           </div>
         )}
-        {t.lastError && <div style={{ ...meta, marginTop: 6, color: '#fca5a5' }}>{t.lastError}</div>}
+        {t.lastError && <div style={{ ...meta, marginTop: 6, color: 'var(--cfca5a5)' }}>{t.lastError}</div>}
 
         {t.unresolved && (
-          <div style={{ marginTop: 10, background: '#1e293b', borderLeft: '3px solid #f59e0b', borderRadius: 6, padding: 10 }}>
+          <div style={{ marginTop: 10, background: 'var(--c1e293b)', borderLeft: '3px solid #f59e0b', borderRadius: 6, padding: 10 }}>
             <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: 13 }}>{L.unresolvedTitle}</div>
-            <div style={{ color: '#cbd5e1', fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>{L.unresolvedBody}</div>
+            <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>{L.unresolvedBody}</div>
           </div>
         )}
 
@@ -164,7 +164,7 @@ function Inner() {
           )}
           {t.canRefund && (
             <button onClick={() => doRefund(t)} disabled={busy === t.id}
-              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>
+              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer' }}>
               {busy === t.id ? '…' : L.refundBtn}
             </button>
           )}
@@ -178,31 +178,31 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{L.title}</h1>
-          <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>{L.sub}</p>
+          <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>{L.sub}</p>
         </div>
-        <button onClick={load} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>{L.refresh}</button>
+        <button onClick={load} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}>{L.refresh}</button>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ ...ui.banner, background: '#064e3b', borderColor: '#059669', color: '#d1fae5' }}>{msg}</div>}
+      {msg && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)' }}>{msg}</div>}
 
       {unresolved.length > 0 && (
         <div style={{ border: '1px solid #f59e0b', background: '#1c1917', borderRadius: 12, padding: 14, margin: '14px 0' }}>
           <div style={{ color: '#fbbf24', fontWeight: 700 }}>
             {unresolved.length} {vi ? 'giao dịch chưa rõ kết quả' : 'unresolved payment(s)'}
           </div>
-          <div style={{ color: '#cbd5e1', fontSize: 13, marginTop: 4, lineHeight: 1.55 }}>{L.unresolvedBody}</div>
+          <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, marginTop: 4, lineHeight: 1.55 }}>{L.unresolvedBody}</div>
         </div>
       )}
 
-      <div style={{ border: '1px solid #334155', borderRadius: 12, padding: 12, background: '#1e293b', margin: '14px 0', fontSize: 13, lineHeight: 1.6, color: '#cbd5e1' }}>
-        <strong style={{ color: '#a5b4fc' }}>{L.voidVsRefund}</strong>{' '}
+      <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, padding: 12, background: 'var(--c1e293b)', margin: '14px 0', fontSize: 13, lineHeight: 1.6, color: 'var(--ccbd5e1)' }}>
+        <strong style={{ color: 'var(--ca5b4fc)' }}>{L.voidVsRefund}</strong>{' '}
         <span dangerouslySetInnerHTML={{ __html: L.voidVsRefundBody }} />
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{L.loading}</p>
+      {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{L.loading}</p>
         : error ? null /* the banner already explains it — do not also claim there are none */
-        : rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>{L.empty}</p>
+        : rows.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{L.empty}</p>
         : rows.map((t) => <Row key={t.id} t={t} />)}
     </section>
   );

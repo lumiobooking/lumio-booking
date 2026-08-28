@@ -124,7 +124,7 @@ export default function BookPage() {
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px' }}>
       <h1 style={{ fontSize: 26, marginBottom: 4 }}>Book an appointment</h1>
-      <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
+      <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>
         Customer booking demo — this is what your salon's visitors see (via the WordPress plugin in
         production). The raw system response is shown on the right.
       </p>
@@ -135,7 +135,7 @@ export default function BookPage() {
           {!connected ? (
             <form onSubmit={connect}>
               <h2 style={{ fontSize: 16, marginTop: 0 }}>Connect with your salon API key</h2>
-              <p style={{ color: '#94a3b8', fontSize: 13 }}>
+              <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>
                 Get this from Salon Admin → Integrations → Generate API key.
               </p>
               <input
@@ -199,7 +199,7 @@ export default function BookPage() {
             </form>
           )}
           {error && (
-            <div style={{ background: '#7f1d1d', color: '#fecaca', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginTop: 12 }}>
+            <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginTop: 12 }}>
               {error}
             </div>
           )}
@@ -209,12 +209,12 @@ export default function BookPage() {
         <div style={card}>
           <h2 style={{ fontSize: 16, marginTop: 0 }}>System response</h2>
           {!lastCall ? (
-            <p style={{ color: '#64748b', fontSize: 13 }}>
+            <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>
               Submit the form to see exactly what the backend API returns.
             </p>
           ) : (
             <div style={{ fontSize: 13 }}>
-              <div style={{ color: '#cbd5e1', marginBottom: 6 }}>
+              <div style={{ color: 'var(--ccbd5e1)', marginBottom: 6 }}>
                 <code>{lastCall.method} {lastCall.path}</code>
               </div>
               <div style={{ marginBottom: 8 }}>
@@ -228,8 +228,8 @@ export default function BookPage() {
               </div>
               <pre
                 style={{
-                  background: '#0f172a',
-                  border: '1px solid #334155',
+                  background: 'var(--c0f172a)',
+                  border: '1px solid var(--c334155)',
                   borderRadius: 8,
                   padding: 12,
                   overflowX: 'auto',
@@ -249,8 +249,8 @@ export default function BookPage() {
 }
 
 const card: React.CSSProperties = {
-  background: '#1e293b',
-  border: '1px solid #334155',
+  background: 'var(--c1e293b)',
+  border: '1px solid var(--c334155)',
   borderRadius: 12,
   padding: 20,
 };
@@ -259,12 +259,12 @@ const input: React.CSSProperties = {
   boxSizing: 'border-box',
   padding: '9px 11px',
   borderRadius: 8,
-  border: '1px solid #475569',
-  background: '#0f172a',
-  color: '#e2e8f0',
+  border: '1px solid var(--c475569)',
+  background: 'var(--c0f172a)',
+  color: 'var(--ce2e8f0)',
   fontSize: 14,
 };
-const label: React.CSSProperties = { display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 };
+const label: React.CSSProperties = { display: 'block', fontSize: 12, color: 'var(--ccbd5e1)', marginBottom: 6 };
 const primaryBtn: React.CSSProperties = {
   padding: '10px 14px',
   borderRadius: 8,
@@ -278,9 +278,9 @@ const primaryBtn: React.CSSProperties = {
 const ghostBtn: React.CSSProperties = {
   padding: '8px 14px',
   borderRadius: 8,
-  border: '1px solid #475569',
+  border: '1px solid var(--c475569)',
   background: 'transparent',
-  color: '#94a3b8',
+  color: 'var(--c94a3b8)',
   fontSize: 13,
   cursor: 'pointer',
 };

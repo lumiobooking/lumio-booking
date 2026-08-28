@@ -7,5 +7,5 @@ import { useRouter } from 'next/navigation';
 export default function UsageCostsRedirect() {
   const router = useRouter();
   useEffect(() => { router.replace('/salon/billing?tab=usage'); }, [router]);
-  return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>…</div>;
+  return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)' }}>…</div>;
 }

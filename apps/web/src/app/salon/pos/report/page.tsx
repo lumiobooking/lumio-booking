@@ -57,14 +57,14 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: 22, margin: 0 }}>{t('sr.title')}</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{t('sr.subtitle')}</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{t('sr.subtitle')}</p>
         </div>
         <DateRangeBar range={range} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {loading || !data ? <p style={{ color: '#94a3b8' }}>{t('sr.loading')}</p> : (
+      {loading || !data ? <p style={{ color: 'var(--c94a3b8)' }}>{t('sr.loading')}</p> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 18 }}>
             <Kpi label={t('sr.kpiSales')} value={formatPrice(data.totals.revenueCents)} accent="#22c55e" />
@@ -75,7 +75,7 @@ function Inner() {
 
           {isMobile ? (
             <MList>
-              {data.staff.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('sr.empty')}</p>}
+              {data.staff.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('sr.empty')}</p>}
               {data.staff.map((r) => (
                 <MCard key={r.staffId}>
                   <MHead>{r.name}</MHead>
@@ -87,9 +87,9 @@ function Inner() {
               ))}
             </MList>
           ) : (
-            <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+            <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead><tr style={{ background: '#1e293b' }}>
+              <thead><tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={ui.th}>{t('sr.colTech')}</th>
                 <th style={ui.th}>{t('sr.colService')}</th>
                 <th style={ui.th}>{t('sr.colProduct')}</th>
@@ -99,7 +99,7 @@ function Inner() {
               <tbody>
                 {data.staff.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('sr.empty')}</td></tr>}
                 {data.staff.map((r) => (
-                  <tr key={r.staffId} style={{ borderTop: '1px solid #334155' }}>
+                  <tr key={r.staffId} style={{ borderTop: '1px solid var(--c334155)' }}>
                     <td style={ui.td}>{r.name}</td>
                     <td style={ui.td}>{formatPrice(r.serviceRevenueCents)}</td>
                     <td style={ui.td}>{formatPrice(r.productRevenueCents)}</td>
@@ -111,7 +111,7 @@ function Inner() {
             </table>
             </div>
           )}
-          <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>
             {t('sr.footnote')}
           </p>
         </>
@@ -122,8 +122,8 @@ function Inner() {
 
 function Kpi({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
-    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>{label}</div>
+    <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{value}</div>
     </div>
   );

@@ -4,6 +4,7 @@ import { ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { InboxNavLink } from './InboxAlerts';
+import { ThemeToggle } from './ThemeToggle';
 
 /** Layout + auth guard for the Staff (technician) portal. */
 export function StaffShell({ children, title = 'My Bookings', wide = false }: { children: ReactNode; title?: string; wide?: boolean }) {
@@ -21,7 +22,7 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
 
   if (!ready || !token || user?.role !== 'STAFF') {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)' }}>
         Loading...
       </div>
     );
@@ -43,11 +44,12 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
       >
         <div>
           <h1 style={{ fontSize: 22, margin: 0 }}>{title}</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 13 }}>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 13 }}>
             Technician · {user.email}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <ThemeToggle />
           <InboxNavLink />
           <a href="/staff/bookings" style={navBtn}>My bookings</a>
           <a href="/staff/chair" style={navBtn}>🪑 My chair</a>
@@ -59,9 +61,9 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
             style={{
               padding: '8px 14px',
               borderRadius: 8,
-              border: '1px solid #475569',
+              border: '1px solid var(--c475569)',
               background: 'transparent',
-              color: '#e2e8f0',
+              color: 'var(--ce2e8f0)',
               fontSize: 13,
               cursor: 'pointer',
             }}
@@ -72,14 +74,14 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
       </header>
       {children}
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
-        style={{ display: 'block', textAlign: 'center', marginTop: 28, fontSize: 11, color: '#64748b', textDecoration: 'none' }}>
-        Powered by <span style={{ color: '#818cf8', fontWeight: 600 }}>Lumio Booking</span>
+        style={{ display: 'block', textAlign: 'center', marginTop: 28, fontSize: 11, color: 'var(--c64748b)', textDecoration: 'none' }}>
+        Powered by <span style={{ color: 'var(--c818cf8)', fontWeight: 600 }}>Lumio Booking</span>
       </a>
     </div>
   );
 }
 
 const navBtn: React.CSSProperties = {
-  padding: '8px 14px', borderRadius: 8, border: '1px solid #475569',
-  background: 'transparent', color: '#e2e8f0', fontSize: 13, textDecoration: 'none',
+  padding: '8px 14px', borderRadius: 8, border: '1px solid var(--c475569)',
+  background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, textDecoration: 'none',
 };

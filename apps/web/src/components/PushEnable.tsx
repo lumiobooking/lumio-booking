@@ -62,13 +62,13 @@ export function PushEnable() {
 
   if (state === 'hidden') return null;
 
-  const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '11px 13px', margin: '4px 0 12px' };
+  const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '11px 13px', margin: '4px 0 12px' };
 
   if (state === 'denied') {
     return (
       <div style={box}>
         <span style={{ fontSize: 18 }}>🔕</span>
-        <div style={{ fontSize: 13, color: '#94a3b8' }}>{L('Thông báo đẩy đang bị chặn trong cài đặt trình duyệt. Hãy bật lại để nhận báo khi có booking mới.', 'Push is blocked in your browser settings. Re-enable it to get new-booking alerts.')}</div>
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Thông báo đẩy đang bị chặn trong cài đặt trình duyệt. Hãy bật lại để nhận báo khi có booking mới.', 'Push is blocked in your browser settings. Re-enable it to get new-booking alerts.')}</div>
       </div>
     );
   }
@@ -76,7 +76,7 @@ export function PushEnable() {
   return (
     <div style={box}>
       <span style={{ fontSize: 18 }}>🔔</span>
-      <div style={{ flex: 1, fontSize: 13, color: '#cbd5e1' }}>{L('Nhận thông báo ngay khi có booking mới — kể cả khi đã đóng app.', 'Get alerted the moment a booking arrives — even with the app closed.')}</div>
+      <div style={{ flex: 1, fontSize: 13, color: 'var(--ccbd5e1)' }}>{L('Nhận thông báo ngay khi có booking mới — kể cả khi đã đóng app.', 'Get alerted the moment a booking arrives — even with the app closed.')}</div>
       <button onClick={enable} disabled={state === 'busy'} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 13, cursor: state === 'busy' ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>{state === 'busy' ? L('Đang bật…', 'Enabling…') : L('Bật', 'Enable')}</button>
     </div>
   );

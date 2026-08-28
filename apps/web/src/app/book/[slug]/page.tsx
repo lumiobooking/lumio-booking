@@ -885,7 +885,7 @@ export default function PublicBookingPage() {
             </div>
             {step === 1 && (
               <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 0 3px rgba(74,222,128,.25)' }} className="lumio-dot" />
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c4ade80)', boxShadow: '0 0 0 3px rgba(74,222,128,.25)' }} className="lumio-dot" />
                 {bt('Book online · confirmed in seconds')}
               </div>
             )}
@@ -917,24 +917,24 @@ export default function PublicBookingPage() {
               {bookedVisits.length > 1 ? (
                 <div style={{ textAlign: 'left', margin: '10px 0 6px', border: '1px solid #e9edf4', borderRadius: 12, overflow: 'hidden' }}>
                   {bookedVisits.map((label, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 13px', borderTop: i ? '1px solid #eef1f6' : 'none', fontSize: 13.5, color: '#334155' }}>
+                    <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 13px', borderTop: i ? '1px solid #eef1f6' : 'none', fontSize: 13.5, color: 'var(--c334155)' }}>
                       <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
                       <span>{label}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p style={{ color: '#475569', lineHeight: 1.6 }}>
+                <p style={{ color: 'var(--c475569)', lineHeight: 1.6 }}>
                   Thanks {form.firstName}! Your booking for <strong>{service?.name}</strong>
                   {slot && <> on <strong>{slot.start.toLocaleDateString(bookLocale())} at {fmtTime(slot.start)}</strong></>} is received.
                 </p>
               )}
               {bookedVisits.length > 1 && (
-                <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6 }}>
+                <p style={{ color: 'var(--c64748b)', fontSize: 13, lineHeight: 1.6 }}>
                   {bt('Each visit has its own confirmation and its own cancel link, so you can change one without touching the others.')}
                 </p>
               )}
-              <p style={{ color: '#475569' }}>{bt("Payment: ")}<strong>{result?.paymentStatus === 'PAID' ? bt('Paid online ✓') : bt('Pay at the salon')}</strong></p>
+              <p style={{ color: 'var(--c475569)' }}>{bt("Payment: ")}<strong>{result?.paymentStatus === 'PAID' ? bt('Paid online ✓') : bt('Pay at the salon')}</strong></p>
               <button onClick={reset} style={{ ...primaryBtn, marginTop: 8 }}>{bt("Book another")}</button>
             </div>
           </div>
@@ -954,7 +954,7 @@ export default function PublicBookingPage() {
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📅 {v.label}</span>
                       <span style={{ color: accent, fontWeight: 800, flexShrink: 0 }}>{fmt(v.totalCents)}</span>
                       <button type="button" onClick={() => removeCartVisit(i)} aria-label={bt("Remove visit")}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
+                        style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
                     </span>
                   ))}
                   <span style={{ alignSelf: 'center', fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>+ this visit ↓</span>
@@ -968,7 +968,7 @@ export default function PublicBookingPage() {
                 <>
                   <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
                   {offerCode && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 12, padding: '11px 14px', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ecfdf5', border: '1px solid var(--c6ee7b7)', borderRadius: 12, padding: '11px 14px', marginBottom: 12 }}>
                       <span style={{ fontSize: 18 }}>🎁</span>
                       <span style={{ fontSize: 13.5, color: '#065f46', lineHeight: 1.5 }}>
                         Your offer <b style={{ fontFamily: 'ui-monospace, Menlo, monospace', letterSpacing: 1 }}>{offerCode}</b> is attached to this booking — the salon applies it when you pay. Nothing to remember.
@@ -998,7 +998,7 @@ export default function PublicBookingPage() {
                           <span style={{ marginLeft: 6, fontWeight: 500 }}>· {g.serviceIds.length || 0}</span>
                           {i > 0 && on && (
                             <span onClick={(e) => { e.stopPropagation(); setExtraGuests((gs) => gs.filter((_, k) => k !== i - 1)); setActiveGuest(0); setSlot(null); }}
-                              style={{ marginLeft: 8, color: '#94a3b8' }}>✕</span>
+                              style={{ marginLeft: 8, color: 'var(--c94a3b8)' }}>✕</span>
                           )}
                         </button>
                       );
@@ -1049,7 +1049,7 @@ export default function PublicBookingPage() {
                               style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
                               <span style={{ flex: 1, textAlign: 'left' }}>
                                 <span style={rowTitle}>{a.name}</span>
-                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span> </>}<b style={{ color: accent }}>+{salon?.cardFee?.enabled && salon.cardFee.percent > 0 ? <>💵 </> : null}{fmt(a.priceCents)}</b>{salon?.cardFee?.enabled && salon.cardFee.percent > 0 && <span style={{ color: '#8fa0bb', fontWeight: 700 }}> · 💳 +{fmt(Math.round(a.priceCents * (1 + salon.cardFee.percent / 100)))}</span>}</span>
+                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{salon?.cardFee?.enabled && salon.cardFee.percent > 0 ? <>💵 </> : null}{fmt(a.priceCents)}</b>{salon?.cardFee?.enabled && salon.cardFee.percent > 0 && <span style={{ color: '#8fa0bb', fontWeight: 700 }}> · 💳 +{fmt(Math.round(a.priceCents * (1 + salon.cardFee.percent / 100)))}</span>}</span>
                               </span>
                               <PlusCheck on={on} accent={accent} />
                             </button>
@@ -1151,7 +1151,7 @@ export default function PublicBookingPage() {
 
         {asPage && (
           <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
-            style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(104px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: '#94a3b8', textDecoration: 'none' }}>
+            style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(104px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: 'var(--c94a3b8)', textDecoration: 'none' }}>
             {bt('Powered by')} <span style={{ color: accent, fontWeight: 700 }}>Lumio Booking</span>
           </a>
         )}
@@ -1237,7 +1237,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
             <CartThumb url={l.imageUrl} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: INK, lineHeight: 1.35 }}>{l.name}</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
+              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3 }}>
                 {l.durationMinutes > 0 ? btf('{n} min', { n: l.durationMinutes }) : ''}{employee && step >= 3 ? <>{l.durationMinutes > 0 ? ' · ' : ''}<b style={{ color: accent }}>{employee.firstName}</b></> : null}
               </div>
             </div>
@@ -1264,7 +1264,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
           </div>
         )}
         {totalDuration > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: '#94a3b8' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: 'var(--c94a3b8)' }}>
             <span>🕐 Duration</span><span>{fmtDur(totalDuration)}</span>
           </div>
         )}
@@ -1325,7 +1325,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salon?.name}</div>
             <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80' }} className="lumio-dot" />
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c4ade80)' }} className="lumio-dot" />
               {bt('Book online · confirmed in seconds')}
             </div>
           </div>
@@ -1333,7 +1333,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
 
         <div style={{ padding: '16px 16px 18px' }}>
           {soon && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#166534', fontSize: 12.5, fontWeight: 800, marginBottom: 12 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid var(--cbbf7d0)', color: 'var(--c166534)', fontSize: 12.5, fontWeight: 800, marginBottom: 12 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
               {btf('Next opening {when}', { when: soon })}
             </div>
@@ -1375,7 +1375,7 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
       <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
         <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🛍️</div>
         <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>{bt("Pick a service to start")}</div>
-        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>
           Tap <b style={{ color: accent }}>＋</b> on any service. You can add more than one.
         </div>
       </div>
@@ -1538,7 +1538,7 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
         // Times the owner typed in. Nothing here can be contradicted by the
         // booking screen, and it says nothing about how busy the shop is.
         plan.windows.map((w, i) => (
-          <span key={i} style={{ ...pill, border: '1px solid #e9edf4', color: '#166534', fontWeight: 800 }}>
+          <span key={i} style={{ ...pill, border: '1px solid #e9edf4', color: 'var(--c166534)', fontWeight: 800 }}>
             🕐 {btf('Open today {from} – {to}', { from: minsToClock(w.open), to: minsToClock(w.close) })}
           </span>
         ))
@@ -1548,7 +1548,7 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
         </span>
       ) : info ? (
         <>
-          <span style={{ ...pill, border: '1px solid #dcfce7', color: '#166534', fontWeight: 800, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
+          <span style={{ ...pill, border: '1px solid #dcfce7', color: 'var(--c166534)', fontWeight: 800, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
             {btf('Next opening {when} at {time}', { when: info.when, time: info.time })}
           </span>
@@ -1720,7 +1720,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                     <span style={rowTitle}>
                       {s.name}
-                      {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
+                      {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: 'var(--c166534)', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
                       {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800 }}>-{disc}%</span>}
                     </span>
                     {/* The salon's own words about the service. Two clamped
@@ -1728,7 +1728,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                         towel and polish"), never enough to bury the price. */}
                     {s.description?.trim() ? <span style={rowDesc}>{s.description.trim()}</span> : null}
                     <span style={rowMeta}>
-                      {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: '#cbd5e1' }}>|</span>{' '}</>}
+                      {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span>{' '}</>}
                       {disc > 0 && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
                       {dualPct > 0 ? (
                         <>
@@ -1744,7 +1744,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                 </button>
               );
             })}
-            {g.items.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13.5, padding: '8px 2px' }}>{bt("Nothing found.")}</div>}
+            {g.items.length === 0 && <div style={{ color: 'var(--c94a3b8)', fontSize: 13.5, padding: '8px 2px' }}>{bt("Nothing found.")}</div>}
           </div>
         </div>
       ))}
@@ -1822,9 +1822,9 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
             <Avatar name={label} url={s.avatarUrl} size={46} accent={accent} />
             <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12, minWidth: 0 }}>
               {s.id ? label : bt('Any nail tech')}
-              {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>{bt("First one free at your time")}</span>}
+              {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--c94a3b8)', marginTop: 2 }}>{bt("First one free at your time")}</span>}
               {s.id && !ok && <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#b0532f', marginTop: 2 }}>{btf('Doesn’t offer {what}', { what: missing.join(', ') || bt('this service') })}</span>}
-              {s.id && ok && hint && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#94a3b8', marginTop: 2 }}>{btf('Works {hint}', { hint })}</span>}
+              {s.id && ok && hint && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--c94a3b8)', marginTop: 2 }}>{btf('Works {hint}', { hint })}</span>}
             </span>
             {on
               ? <span style={{ width: 30, height: 30, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, flexShrink: 0 }}>✓</span>
@@ -1992,7 +1992,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontWeight: 800, color: INK, fontSize: 15 }}>
           {selectedDate && <span style={{ color: accent, marginRight: 8 }}>📅 {selectedDate.toLocaleDateString(bookLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
-          <span style={{ color: '#64748b', fontWeight: 600 }}>{bt(MONTH_NAMES[stripStart.getMonth()])} {stripStart.getFullYear()}</span>
+          <span style={{ color: 'var(--c64748b)', fontWeight: 600 }}>{bt(MONTH_NAMES[stripStart.getMonth()])} {stripStart.getFullYear()}</span>
         </div>
         <label style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid #e6eaf2', display: 'grid', placeItems: 'center', cursor: 'pointer', color: INK }}>
           🗓
@@ -2020,7 +2020,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
                 style={{ display: 'grid', justifyItems: 'center', gap: 2, padding: '8px 2px', borderRadius: 12, border: 'none', cursor: closed ? 'not-allowed' : 'pointer',
                   background: on ? `linear-gradient(140deg, ${accent}, ${shade(accent, 0.28)})` : 'transparent',
                   boxShadow: on ? `0 10px 22px -12px ${tint(accent, 0.95)}` : 'none',
-                  color: on ? '#fff' : closed ? '#cbd5e1' : INK, position: 'relative' }}>
+                  color: on ? '#fff' : closed ? 'var(--ccbd5e1)' : INK, position: 'relative' }}>
                 <span style={{ fontSize: 17, fontWeight: 800, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
                 <span style={{ fontSize: 11, opacity: on ? 0.95 : 0.6 }}>{bt(DOW_SHORT[d.getDay()])}</span>
                 {!on && deal > 0 && !closed && <span style={{ position: 'absolute', top: 2, right: 6, fontSize: 9, fontWeight: 800, color: '#16a34a' }}>-{deal}%</span>}
@@ -2032,7 +2032,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       </div>
 
       {promo > 0 && (
-        <div style={{ marginBottom: 14, padding: '9px 12px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #6ee7b7', color: '#065f46', fontSize: 13, fontWeight: 700 }}>
+        <div style={{ marginBottom: 14, padding: '9px 12px', borderRadius: 10, background: '#ecfdf5', border: '1px solid var(--c6ee7b7)', color: '#065f46', fontSize: 13, fontWeight: 700 }}>
           🎉 −{promo}% off on this day — applied automatically.
         </div>
       )}
@@ -2040,14 +2040,14 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       {/* A service nobody lists no longer blocks the day — the booking goes in
           and the front desk assigns someone. A quiet note keeps it honest. */}
       {avail && !avail.noStaff && avail.perService.some((ps) => ps.unstaffed) && (
-        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 12.5, fontWeight: 600 }}>
+        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid var(--cfde68a)', color: 'var(--c92400e)', fontSize: 12.5, fontWeight: 600 }}>
           🛠️ Part of your visit isn&apos;t linked to a technician yet — the salon will assign the right person after you book.
         </div>
       )}
       {/* More guests than technicians for these services: bookable, in waves.
           Said BEFORE the times so nobody expects four chairs at once. */}
       {groupNeeds.length > 1 && groupShortage && rules.groupPolicy === 'flexible' && (
-        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
+        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid var(--cfde68a)', color: 'var(--c92400e)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
           👥 Your group is bigger than the number of technicians who do these services — the salon will serve you in turns, so some guests may wait a little between starts. The times below are your group&apos;s arrival time.
         </div>
       )}
@@ -2057,13 +2057,13 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
              so no date will help — say the real reason, not "try tomorrow". */
           <div style={{ padding: '22px 0', textAlign: 'center' }}>
             <div style={{ fontSize: 30, marginBottom: 8 }}>👥</div>
-            <div style={{ textAlign: 'left', fontSize: 13.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '12px 16px', lineHeight: 1.65 }}>
+            <div style={{ textAlign: 'left', fontSize: 13.5, color: 'var(--c92400e)', background: '#fffbeb', border: '1px solid var(--cfde68a)', borderRadius: 12, padding: '12px 16px', lineHeight: 1.65 }}>
               A group of <b>{groupNeeds.length}</b> needs <b>{groupNeeds.length} different technicians</b> free at the same time — more than currently offer the services you picked, so no day will show times. Try different services, book one person at a time, or call the salon to arrange your group.
             </div>
             {waitlist}
           </div>
         ) : (
-        <div style={{ padding: '26px 0', textAlign: 'center', color: '#94a3b8' }}>
+        <div style={{ padding: '26px 0', textAlign: 'center', color: 'var(--c94a3b8)' }}>
           <div style={{ fontSize: 30, marginBottom: 6 }}>😔</div>
           <div style={{ fontSize: 14 }}>{bt("No times left on this day. Try the next one.")}</div>
           {waitlist}
@@ -2119,7 +2119,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
   const showEmailError = form.email.trim().length > 0 && !isValidEmail(form.email);
   return (
     <div>
-      <p style={{ color: '#64748b', fontSize: 14, margin: '-6px 0 16px' }}>{bt('Review your details and complete your appointment.')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: '-6px 0 16px' }}>{bt('Review your details and complete your appointment.')}</p>
 
       <Card title={bt("APPOINTMENT")}>
         <InfoRow icon="🏪" label={bt("Location")} value={salon?.name ?? ''} sub={salon?.address ?? undefined} />
@@ -2135,7 +2135,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
               <CartThumb url={l.imageUrl} />
               <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: INK }}>{l.name}</div>
-              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{l.durationMinutes > 0 ? `${l.durationMinutes} min` : ''}{employee && <>{l.durationMinutes > 0 ? ' · ' : ''}👤 <b style={{ color: accent }}>{employee.firstName}</b></>}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.durationMinutes > 0 ? `${l.durationMinutes} min` : ''}{employee && <>{l.durationMinutes > 0 ? ' · ' : ''}👤 <b style={{ color: accent }}>{employee.firstName}</b></>}</div>
               </div>
             </div>
             <div style={{ fontSize: 14, fontWeight: 800, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
@@ -2155,7 +2155,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           return (
             <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 700 }}>
               {bt('Deposit due today: ')}{fmt(depositCents + fee)}
-              {fee > 0 && <span style={{ display: 'block', fontWeight: 500, color: '#64748b', fontSize: 12, marginTop: 2 }}>{btf('Paid online by card — includes {percent}% card fee ({amount}). Pay at the salon in cash to avoid it.', { percent: feePct, amount: fmt(fee) })}</span>}
+              {fee > 0 && <span style={{ display: 'block', fontWeight: 500, color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{btf('Paid online by card — includes {percent}% card fee ({amount}). Pay at the salon in cash to avoid it.', { percent: feePct, amount: fmt(fee) })}</span>}
             </div>
           );
         })()}
@@ -2175,7 +2175,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
               onChange={(e) => setForm({ ...form, email: e.target.value })} />
             {showEmailError
               ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid email address.")}</div>
-              : <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>{bt('We’ll email your receipt 💌')}</div>}
+              : <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{bt('We’ll email your receipt 💌')}</div>}
           </Field>
           <Field label={bt("People")}><input style={inputStyle} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></Field>
           <Field label={bt("🎂 Birthday (optional)")}><BirthdayInput value={form.birthDate} onChange={(iso) => setForm({ ...form, birthDate: iso })} /></Field>
@@ -2183,14 +2183,14 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 
         <div style={{ marginTop: 8, padding: '12px 14px', background: SOFT, border: '1px solid #e6eaf2', borderRadius: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: INK, marginBottom: 4 }}>{bt('📱 Appointment text updates')}</div>
-          <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: '#64748b' }}>
+          <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: 'var(--c64748b)' }}>
             {btf('We’ll text you confirmations & reminders for this appointment from {salon}. Up to ~6 msgs/month. Msg & data rates may apply. Reply STOP to opt out, HELP for help.', { salon: salon?.name || bt('the salon') })}
           </p>
           <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 10, cursor: 'pointer' }}>
             <input type="checkbox" checked={smsConsent} onChange={(e) => setSmsConsent(e.target.checked)} style={{ marginTop: 2, width: 16, height: 16, accentColor: accent, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>{bt('Also send me special offers & promotions by text')} <span style={{ color: '#94a3b8' }}>{bt('(optional)')}</span></span>
+            <span style={{ fontSize: 12, color: 'var(--c475569)', lineHeight: 1.5 }}>{bt('Also send me special offers & promotions by text')} <span style={{ color: 'var(--c94a3b8)' }}>{bt('(optional)')}</span></span>
           </label>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 9 }}>
+          <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 9 }}>
             <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>{bt("Privacy")}</a>
             <span style={{ margin: '0 6px' }}>·</span>
             <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>{bt("Messaging Terms")}</a>
@@ -2214,8 +2214,8 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
         </Card>
       )}
 
-      {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 10, padding: '10px 12px', fontSize: 13.5, marginBottom: 12 }}>{error}</div>}
-      {!infoOk && <div style={{ color: '#94a3b8', fontSize: 12.5, marginBottom: 8 }}>{bt('Enter your first name and phone number to confirm. Email is optional.')}</div>}
+      {error && <div style={{ background: '#fef2f2', border: '1px solid var(--cfecaca)', color: '#b91c1c', borderRadius: 10, padding: '10px 12px', fontSize: 13.5, marginBottom: 12 }}>{error}</div>}
+      {!infoOk && <div style={{ color: 'var(--c94a3b8)', fontSize: 12.5, marginBottom: 8 }}>{bt('Enter your first name and phone number to confirm. Email is optional.')}</div>}
     </div>
   );
 }
@@ -2235,7 +2235,7 @@ function InfoRow({ icon, label, value, sub, last }: { icon: string; label: strin
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#8fa0bb' }}>{label}</div>
         <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{value}</div>
-        {sub && <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{sub}</div>}
+        {sub && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{sub}</div>}
       </div>
     </div>
   );
@@ -2244,12 +2244,12 @@ function PayOption({ selected, onClick, title, desc, accent }: { selected: boole
   return (
     <button type="button" onClick={onClick} className="lumio-row"
       style={{ ...rowCard, alignItems: 'flex-start', borderColor: selected ? accent : '#e6eaf2', background: selected ? '#f6f7ff' : '#fff' }}>
-      <span style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${selected ? accent : '#cbd5e1'}`, display: 'grid', placeItems: 'center', marginTop: 2, flexShrink: 0 }}>
+      <span style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${selected ? accent : 'var(--ccbd5e1)'}`, display: 'grid', placeItems: 'center', marginTop: 2, flexShrink: 0 }}>
         {selected && <span style={{ width: 10, height: 10, borderRadius: '50%', background: accent }} />}
       </span>
       <span style={{ textAlign: 'left', marginLeft: 12 }}>
         <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: INK }}>{title}</span>
-        <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{desc}</span>
+        <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{desc}</span>
       </span>
     </button>
   );
@@ -2308,7 +2308,7 @@ function CartThumb({ url }: { url?: string | null }) {
   useEffect(() => { setOk(clean.startsWith('https://') || clean.startsWith('data:image/')); }, [clean]);
   if (!ok) return null;
   return (
-    <span style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9', display: 'block' }}>
+    <span style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'var(--cf1f5f9)', display: 'block' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={clean} alt="" loading="lazy" onError={() => setOk(false)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
     </span>
@@ -2321,7 +2321,7 @@ function ServiceThumb({ url }: { url?: string | null }) {
   useEffect(() => { setOk(clean.startsWith('https://') || clean.startsWith('data:image/')); }, [clean]);
   if (!ok) return null;
   return (
-    <span style={{ width: 56, height: 56, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: '#f1f5f9', display: 'block' }}>
+    <span style={{ width: 56, height: 56, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: 'var(--cf1f5f9)', display: 'block' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={clean} alt="" loading="lazy" onError={() => setOk(false)}
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -2411,7 +2411,7 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
   }
 
   if (done) return (
-    <div style={{ marginTop: 12, background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 12, padding: '12px 14px', color: '#065f46', fontSize: 14, textAlign: 'center' }}>
+    <div style={{ marginTop: 12, background: '#ecfdf5', border: '1px solid var(--c6ee7b7)', borderRadius: 12, padding: '12px 14px', color: '#065f46', fontSize: 14, textAlign: 'center' }}>
       {bt('✓ You’re on the waitlist! We’ll reach out if a spot opens up.')}
     </div>
   );
@@ -2425,7 +2425,7 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 }}>
             <div style={{ fontWeight: 800, color: INK }}>{bt("Join the waitlist")}</div>
-            <button onClick={() => { setOpen(false); setErr(null); }} aria-label={bt("Close")} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, lineHeight: 1, cursor: 'pointer' }}>×</button>
+            <button onClick={() => { setOpen(false); setErr(null); }} aria-label={bt("Close")} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, lineHeight: 1, cursor: 'pointer' }}>×</button>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
             <input placeholder={bt("Your name")} value={f.customerName} onChange={(e) => setF({ ...f, customerName: e.target.value })} style={inputStyle} />
@@ -2476,9 +2476,9 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
   const ddSorted = ddOn ? [...dd!.rules].filter((r) => r.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
   const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString(bookLocale(), { month: 'short', day: 'numeric' }); } catch { return s; } };
   const fmtRange = (r: DateRule) => (r.endDate && r.endDate !== r.startDate ? `${fmtOne(r.startDate)}–${fmtOne(r.endDate)}` : fmtOne(r.startDate));
-  const chip: React.CSSProperties = { background: '#fff', border: '1px solid #6ee7b7', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 700 };
+  const chip: React.CSSProperties = { background: '#fff', border: '1px solid var(--c6ee7b7)', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 700 };
   return (
-    <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,#d1fae5)', border: '1px solid #6ee7b7' }}>
+    <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,var(--cd1fae5))', border: '1px solid var(--c6ee7b7)' }}>
       <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 14.5 }}>💸 {(wdOn && wd!.message) || bt('Save on select days!')}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{btf('{day}: −{percent}% off {what}', { day: bt(WEEKDAY_NAMES[r.day]), percent: r.percent, what: catName(r.categoryId) })}</span>)}
@@ -2695,7 +2695,7 @@ function Progress({ step, accent, allowStaff }: { step: Step; accent: string; al
             }}>
               <span style={{
                 width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800,
-                background: done ? '#16a34a' : on ? accent : '#e6eaf2', color: done || on ? '#fff' : '#94a3b8',
+                background: done ? '#16a34a' : on ? accent : '#e6eaf2', color: done || on ? '#fff' : 'var(--c94a3b8)',
                 boxShadow: on ? `0 0 0 4px ${tint(accent, 0.15)}` : 'none',
               }} className={on ? 'lumio-dot' : undefined}>{done ? '✓' : i + 1}</span>
               <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
@@ -2808,7 +2808,7 @@ function useEmbedded(): boolean {
   return emb;
 }
 function Center({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'grid', placeItems: 'center', minHeight: 240, color: '#475569', padding: 24 }}>{children}</div>;
+  return <div style={{ display: 'grid', placeItems: 'center', minHeight: 240, color: 'var(--c475569)', padding: 24 }}>{children}</div>;
 }
 
 // No hour12 flag: the locale decides. American English still reads 05:30 PM,

@@ -43,17 +43,17 @@ interface Markdowns {
 
 /* --------------------------------------------------------------- labels --- */
 const SRC_ORDER: Src[] = ['website', 'lumiolink', 'online', 'hotline', 'messenger', 'walkin', 'staff'];
-const SRC_COLOR: Record<Src, string> = { website: '#6366f1', lumiolink: '#0ea5e9', online: '#64748b', hotline: '#22c55e', messenger: '#3b82f6', walkin: '#f59e0b', staff: '#a78bfa' };
+const SRC_COLOR: Record<Src, string> = { website: '#6366f1', lumiolink: '#0ea5e9', online: 'var(--c64748b)', hotline: '#22c55e', messenger: '#3b82f6', walkin: '#f59e0b', staff: '#a78bfa' };
 const SRC_LABEL = (s: Src, vi: boolean): string => ({
   website: vi ? 'Website tiệm' : 'Website', lumiolink: vi ? 'Link Lumio' : 'Lumio link',
   online: vi ? 'Online (chưa rõ)' : 'Online (unattributed)', hotline: 'Hotline', messenger: 'Messenger',
   walkin: vi ? 'Khách vãng lai' : 'Walk-in', staff: vi ? 'Nhân viên nhập' : 'Staff',
 }[s]);
 const DEV_ORDER: Dev[] = ['mobile', 'web', 'unknown'];
-const DEV_COLOR: Record<Dev, string> = { mobile: '#8b5cf6', web: '#0ea5e9', unknown: '#475569' };
+const DEV_COLOR: Record<Dev, string> = { mobile: '#8b5cf6', web: '#0ea5e9', unknown: 'var(--c475569)' };
 const DEV_LABEL = (d: Dev, vi: boolean) => ({ mobile: vi ? 'Điện thoại' : 'Phone', web: vi ? 'Máy tính' : 'Computer', unknown: vi ? 'Không rõ' : 'Unknown' }[d]);
 const PAY_LABEL = (k: string, vi: boolean) => ({ cash: vi ? 'Tiền mặt' : 'Cash', card: vi ? 'Thẻ' : 'Card', transfer: vi ? 'Chuyển khoản' : 'Transfer', online: vi ? 'Online' : 'Online', onsite: vi ? 'Tại tiệm (khác)' : 'On-site (other)' }[k] ?? k);
-const PAY_COLOR: Record<string, string> = { cash: '#22c55e', card: '#6366f1', transfer: '#0ea5e9', online: '#a78bfa', onsite: '#64748b' };
+const PAY_COLOR: Record<string, string> = { cash: '#22c55e', card: '#6366f1', transfer: '#0ea5e9', online: '#a78bfa', onsite: 'var(--c64748b)' };
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
@@ -119,7 +119,7 @@ function Inner() {
     return 'custom';
   })();
 
-  if (loading && !dash) return <section><h2 style={{ fontSize: 18 }}>{T('Báo cáo', 'Reports')}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
+  if (loading && !dash) return <section><h2 style={{ fontSize: 18 }}>{T('Báo cáo', 'Reports')}</h2><p style={{ color: 'var(--c94a3b8)' }}>Loading…</p></section>;
 
   const k = dash?.kpis;
   const visitsTotal = src?.totals.visitsTotal ?? 0;
@@ -172,16 +172,16 @@ function Inner() {
         </div>
       </div>
       <div className="rp-controls" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>{T('Từ', 'From')}</span>
+        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('Từ', 'From')}</span>
         <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>{T('đến', 'to')}</span>
+        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('đến', 'to')}</span>
         <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} style={dateInput} />
-        <span style={{ width: 1, height: 20, background: '#334155', margin: '0 2px' }} />
+        <span style={{ width: 1, height: 20, background: 'var(--c334155)', margin: '0 2px' }} />
         <button onClick={() => preset('last7')} style={chip(activePreset === 'last7')}>{T('7 ngày', 'Last 7d')}</button>
         <button onClick={() => preset('thisMonth')} style={chip(activePreset === 'thisMonth')}>{T('Tháng này', 'This month')}</button>
         <button onClick={() => preset('lastMonth')} style={chip(activePreset === 'lastMonth')}>{T('Tháng trước', 'Last month')}</button>
         <button onClick={() => preset('thisYear')} style={chip(activePreset === 'thisYear')}>{T('Năm nay', 'This year')}</button>
-        {activePreset === 'custom' && <span style={{ fontSize: 12, color: '#818cf8', fontWeight: 600 }}>{T('Khoảng tự chọn', 'Custom range')}</span>}
+        {activePreset === 'custom' && <span style={{ fontSize: 12, color: 'var(--c818cf8)', fontWeight: 600 }}>{T('Khoảng tự chọn', 'Custom range')}</span>}
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -199,7 +199,7 @@ function Inner() {
       <div className="rp-2col" style={grid2}>
         <Card title={metric === 'revenue' ? T('Doanh thu theo ngày', 'Revenue by day') : T('Lượt đặt theo ngày', 'Bookings by day')}
           right={(
-            <div style={{ display: 'inline-flex', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 2 }}>
+            <div style={{ display: 'inline-flex', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 2 }}>
               <button onClick={() => setMetric('revenue')} style={miniSeg(metric === 'revenue')}>{T('Doanh thu', 'Revenue')}</button>
               <button onClick={() => setMetric('bookings')} style={miniSeg(metric === 'bookings')}>{T('Lượt đặt', 'Bookings')}</button>
             </div>
@@ -258,17 +258,17 @@ function Inner() {
           const pm = dash?.paymentMethods; const tot = pm ? pm.cash + pm.card + pm.transfer + pm.online + pm.onsite : 0;
           return tot === 0 ? <Empty vi={vi} /> : (['cash', 'card', 'transfer', 'online', 'onsite'] as const).filter((key) => (pm?.[key] ?? 0) > 0).map((key) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div style={{ width: 130, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5e1' }}>
+              <div style={{ width: 130, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)' }}>
                 <span style={{ width: 10, height: 10, borderRadius: 3, background: PAY_COLOR[key] }} />{PAY_LABEL(key, vi)}
               </div>
               <div style={track}><div style={{ width: `${pct(pm?.[key] ?? 0, tot)}%`, height: '100%', background: PAY_COLOR[key], borderRadius: 6 }} /></div>
-              <div style={{ width: 100, textAlign: 'right', fontSize: 13, color: '#e2e8f0', flexShrink: 0 }}>{money(pm?.[key] ?? 0)}</div>
+              <div style={{ width: 100, textAlign: 'right', fontSize: 13, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{money(pm?.[key] ?? 0)}</div>
             </div>
           ));
         })()}
       </Card>
 
-      <p style={{ color: '#64748b', fontSize: 12, marginTop: 14 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 14 }}>
         {T('Số liệu chỉ tính lịch không huỷ / không no-show cho doanh thu. Chọn khoảng ngày ở trên để đo bất kỳ kỳ nào.',
            'Revenue counts only non-cancelled / non-no-show bookings. Pick a date range above to measure any period.')}
       </p>
@@ -287,10 +287,10 @@ function Inner() {
 /* ------------------------------------------------------------ components --- */
 function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
-    <div style={{ background: '#111827', border: '1px solid #1e293b', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{label}</div>
+    <div style={{ background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 12, padding: '12px 14px' }}>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? '#fff' }}>{value}</div>
-      {hint && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>
   );
 }
@@ -299,7 +299,7 @@ function Card({ title, children, right }: { title: string; children: ReactNode; 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>{title}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{title}</div>
         {right}
       </div>
       {children}
@@ -311,11 +311,11 @@ function Bar({ color, label, n, total }: { color: string; label: string; n: numb
   const p = total > 0 ? Math.round((n / total) * 100) : 0;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-      <div style={{ width: 130, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#cbd5e1' }}>
+      <div style={{ width: 130, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ccbd5e1)' }}>
         <span style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />{label}
       </div>
       <div style={track}><div style={{ width: `${p}%`, height: '100%', background: color, borderRadius: 6 }} /></div>
-      <div style={{ width: 90, textAlign: 'right', fontSize: 13, color: '#e2e8f0', flexShrink: 0 }}><strong>{n}</strong> <span style={{ color: '#64748b' }}>· {p}%</span></div>
+      <div style={{ width: 90, textAlign: 'right', fontSize: 13, color: 'var(--ce2e8f0)', flexShrink: 0 }}><strong>{n}</strong> <span style={{ color: 'var(--c64748b)' }}>· {p}%</span></div>
     </div>
   );
 }
@@ -325,7 +325,7 @@ function Outcomes({ k, vi }: { k: Dash['kpis'] | undefined; vi: boolean }) {
   const rows: { label: string; n: number; color: string }[] = [
     { label: vi ? 'Hoàn tất' : 'Completed', n: k.completed, color: '#22c55e' },
     { label: 'No-show', n: k.noShow, color: '#f59e0b' },
-    { label: vi ? 'Huỷ' : 'Cancelled', n: k.cancelled, color: '#64748b' },
+    { label: vi ? 'Huỷ' : 'Cancelled', n: k.cancelled, color: 'var(--c64748b)' },
   ];
   const other = Math.max(0, k.totalBookings - k.completed - k.noShow - k.cancelled);
   if (other > 0) rows.push({ label: vi ? 'Đang chờ / khác' : 'Pending / other', n: other, color: '#3b82f6' });
@@ -340,10 +340,10 @@ function RankedList({ rows, money, vi }: { rows: Ranked[]; money: (c: number) =>
     <>{shown.map((r, i) => (
       <div key={i} style={{ marginBottom: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 3 }}>
-          <span style={{ color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '62%' }}>{r.name}</span>
-          <span style={{ color: '#94a3b8', flexShrink: 0 }}>{r.bookings} · <span style={{ color: '#22c55e' }}>{money(r.revenueCents)}</span></span>
+          <span style={{ color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '62%' }}>{r.name}</span>
+          <span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{r.bookings} · <span style={{ color: '#22c55e' }}>{money(r.revenueCents)}</span></span>
         </div>
-        <div style={{ height: 6, background: '#0f172a', borderRadius: 999 }}><div style={{ height: '100%', width: `${Math.max(3, (r.revenueCents / max) * 100)}%`, background: '#6366f1', borderRadius: 999 }} /></div>
+        <div style={{ height: 6, background: 'var(--c0f172a)', borderRadius: 999 }}><div style={{ height: '100%', width: `${Math.max(3, (r.revenueCents / max) * 100)}%`, background: '#6366f1', borderRadius: 999 }} /></div>
       </div>
     ))}</>
   );
@@ -362,7 +362,7 @@ function TrendChart({ series, money, metric, vi }: { series: Dash['series']; mon
   return (
     <div>
       {/* max-value guide so bar heights have a clear meaning */}
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{vi ? 'Cao nhất' : 'Peak'}: {metric === 'revenue' ? money(max) : `${max} ${vi ? 'lượt' : 'bookings'}`} · {series[peakIdx]?.date.slice(5)}</div>
+      <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 4 }}>{vi ? 'Cao nhất' : 'Peak'}: {metric === 'revenue' ? money(max) : `${max} ${vi ? 'lượt' : 'bookings'}`} · {series[peakIdx]?.date.slice(5)}</div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 140 }}>
         {series.map((s, i) => (
           <div key={s.date} title={`${s.date}\n${fmt(s)}`} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
@@ -370,7 +370,7 @@ function TrendChart({ series, money, metric, vi }: { series: Dash['series']; mon
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: '#64748b' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--c64748b)' }}>
         <span>{series[0]?.date.slice(5)}</span>
         <span>{vi ? 'Tổng kỳ' : 'Period total'}: {metric === 'revenue' ? money(totalRev) : `${totalBk} ${vi ? 'lượt' : 'bookings'}`}</span>
         <span>{series[series.length - 1]?.date.slice(5)}</span>
@@ -393,7 +393,7 @@ function Hours({ byHour, vi }: { byHour: number[]; vi: boolean }) {
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: '#64748b' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: 'var(--c64748b)' }}>
         {[0, 6, 12, 18, 23].map((h) => <span key={h}>{hr(h)}</span>)}
       </div>
       <p style={{ ...hint, marginTop: 8 }}>{vi ? 'Giờ đông nhất' : 'Busiest'}: <strong style={{ color: '#f59e0b' }}>{hr(peak)}</strong> ({max})</p>
@@ -412,21 +412,21 @@ function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number)
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{T('Giảm giá tại quầy', 'Counter markdowns')}</span>
-        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{T('Giảm giá tại quầy', 'Counter markdowns')}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
           {T('Tiền đã giảm khi sửa giá lúc thanh toán', 'Money given away by editing prices at checkout')}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
         {[
-          [T('Tổng đã giảm', 'Given away'), money(md.totalDiscountCents), heavy ? '#f87171' : '#fbbf24'],
-          [T('Giá niêm yết', 'List value'), money(md.listValueCents), '#cbd5e1'],
+          [T('Tổng đã giảm', 'Given away'), money(md.totalDiscountCents), heavy ? 'var(--cf87171)' : '#fbbf24'],
+          [T('Giá niêm yết', 'List value'), money(md.listValueCents), 'var(--ccbd5e1)'],
           [T('Thực thu', 'Actually charged'), money(md.chargedCents), '#22c55e'],
-          [T('Tỉ lệ giảm', 'Markdown rate'), `${md.discountRate}%`, heavy ? '#f87171' : '#cbd5e1'],
-          [T('Số dòng', 'Lines'), String(md.lines), '#cbd5e1'],
+          [T('Tỉ lệ giảm', 'Markdown rate'), `${md.discountRate}%`, heavy ? 'var(--cf87171)' : 'var(--ccbd5e1)'],
+          [T('Số dòng', 'Lines'), String(md.lines), 'var(--ccbd5e1)'],
         ].map(([label, value, color]) => (
-          <div key={label} style={{ flex: '1 1 130px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
-            <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}</div>
+          <div key={label} style={{ flex: '1 1 130px', background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</div>
             <div style={{ fontSize: 19, fontWeight: 800, color }}>{value}</div>
           </div>
         ))}
@@ -436,7 +436,7 @@ function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number)
         <MdTable title={T('Theo thợ', 'By technician')} rows={md.byStaff} money={money} T={T} />
       </div>
       {heavy && (
-        <p style={{ fontSize: 11.5, color: '#fca5a5', margin: '10px 0 0', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 11.5, color: 'var(--cfca5a5)', margin: '10px 0 0', lineHeight: 1.5 }}>
           {T(`Đang giảm ${md.discountRate}% giá trị của những dòng này. Nếu một dịch vụ luôn bị sửa giá, nên tách thành dịch vụ riêng với giá đúng thay vì sửa tay mỗi lần.`,
              `${md.discountRate}% of the list value of these lines was given away. If one service is always edited, create it as its own service at the real price instead of re-keying it every time.`)}
         </p>
@@ -448,11 +448,11 @@ function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number)
 function MdTable({ title, rows, money, T }: { title: string; rows: MdRow[]; money: (c: number) => string; T: (v: string, e: string) => string }) {
   return (
     <div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 6 }}>{title}</div>
-      {rows.length === 0 ? <div style={{ fontSize: 12.5, color: '#64748b' }}>—</div> : (
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 6 }}>{title}</div>
+      {rows.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>—</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
           <thead>
-            <tr style={{ color: '#64748b' }}>
+            <tr style={{ color: 'var(--c64748b)' }}>
               <th style={{ textAlign: 'left', padding: '4px 0', fontWeight: 600 }}>{T('Tên', 'Name')}</th>
               <th style={{ textAlign: 'right', padding: '4px 0', fontWeight: 600 }}>{T('Lần', 'Lines')}</th>
               <th style={{ textAlign: 'right', padding: '4px 0', fontWeight: 600 }}>{T('Đã giảm', 'Given away')}</th>
@@ -460,9 +460,9 @@ function MdTable({ title, rows, money, T }: { title: string; rows: MdRow[]; mone
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={(r.staffId ?? '') + r.name} style={{ borderTop: '1px solid #1e293b' }}>
-                <td style={{ padding: '5px 0', color: '#e2e8f0' }}>{r.name}</td>
-                <td style={{ padding: '5px 0', textAlign: 'right', color: '#94a3b8' }}>{r.lines}</td>
+              <tr key={(r.staffId ?? '') + r.name} style={{ borderTop: '1px solid var(--c1e293b)' }}>
+                <td style={{ padding: '5px 0', color: 'var(--ce2e8f0)' }}>{r.name}</td>
+                <td style={{ padding: '5px 0', textAlign: 'right', color: 'var(--c94a3b8)' }}>{r.lines}</td>
                 <td style={{ padding: '5px 0', textAlign: 'right', color: '#fbbf24', fontWeight: 600 }}>{money(r.discountCents)}</td>
               </tr>
             ))}
@@ -481,9 +481,9 @@ function Weekdays({ byWeekday, vi }: { byWeekday: number[]; vi: boolean }) {
   return (
     <>{byWeekday.map((n, i) => (
       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        <div style={{ width: 40, flexShrink: 0, fontSize: 12, color: i === peak ? '#f59e0b' : '#cbd5e1', fontWeight: i === peak ? 700 : 400 }}>{names[i]}</div>
+        <div style={{ width: 40, flexShrink: 0, fontSize: 12, color: i === peak ? '#f59e0b' : 'var(--ccbd5e1)', fontWeight: i === peak ? 700 : 400 }}>{names[i]}</div>
         <div style={track}><div style={{ width: `${(n / max) * 100}%`, height: '100%', background: i === peak ? '#f59e0b' : '#6366f1', borderRadius: 6 }} /></div>
-        <div style={{ width: 34, textAlign: 'right', fontSize: 13, color: '#e2e8f0', flexShrink: 0 }}>{n}</div>
+        <div style={{ width: 34, textAlign: 'right', fontSize: 13, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{n}</div>
       </div>
     ))}</>
   );
@@ -495,9 +495,9 @@ function Empty({ vi }: { vi: boolean }) {
 
 /* ---------------------------------------------------------------- styles --- */
 const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 };
-const track: CSSProperties = { flex: 1, height: 18, background: '#0f172a', borderRadius: 6, overflow: 'hidden' };
-const hint: CSSProperties = { color: '#64748b', fontSize: 13, lineHeight: 1.6, margin: 0 };
-const btn: CSSProperties = { padding: '7px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' };
-const chip = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
-const miniSeg = (on: boolean): CSSProperties => ({ padding: '4px 10px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#94a3b8', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
-const dateInput: CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13 };
+const track: CSSProperties = { flex: 1, height: 18, background: 'var(--c0f172a)', borderRadius: 6, overflow: 'hidden' };
+const hint: CSSProperties = { color: 'var(--c64748b)', fontSize: 13, lineHeight: 1.6, margin: 0 };
+const btn: CSSProperties = { padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' };
+const chip = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
+const miniSeg = (on: boolean): CSSProperties => ({ padding: '4px 10px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--c94a3b8)', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
+const dateInput: CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '6px 10px', fontSize: 13 };

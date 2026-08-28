@@ -24,7 +24,7 @@ const IC: Record<string, string> = {
 
 function Icon({ d, active }: { d: string; active: boolean }) {
   return (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={active ? '#818cf8' : '#94a3b8'} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke={active ? 'var(--c818cf8)' : 'var(--c94a3b8)'} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       {d.split('M').filter(Boolean).map((seg, i) => <path key={i} d={'M' + seg} />)}
     </svg>
   );
@@ -79,15 +79,15 @@ export function MobileTabBar() {
   const onAlerts = pathname === '/salon/activity';
 
   return (
-    <nav style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', background: '#111827', borderTop: '1px solid #1f2937', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <nav style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', background: 'var(--c111827)', borderTop: '1px solid var(--c1f2937)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       {tabs.map((t) => {
         const active = t.exact ? pathname === t.href : pathname === t.href || pathname.startsWith(t.href + '/');
         return (
-          <Link key={t.href} href={t.href} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '9px 2px 11px', textDecoration: 'none', color: active ? '#818cf8' : '#94a3b8', fontSize: 10.5, fontWeight: 600 }}>
+          <Link key={t.href} href={t.href} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '9px 2px 11px', textDecoration: 'none', color: active ? 'var(--c818cf8)' : 'var(--c94a3b8)', fontSize: 10.5, fontWeight: 600 }}>
             <span style={{ position: 'relative', lineHeight: 0 }}>
               <Icon d={t.icon} active={active} />
               {t.badge && unread > 0 && !onAlerts && (
-                <span style={{ position: 'absolute', top: -6, right: -9, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid #111827' }}>{unread > 9 ? '9+' : unread}</span>
+                <span style={{ position: 'absolute', top: -6, right: -9, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid var(--c111827)' }}>{unread > 9 ? '9+' : unread}</span>
               )}
             </span>
             {t.label}

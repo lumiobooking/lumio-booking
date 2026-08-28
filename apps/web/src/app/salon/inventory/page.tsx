@@ -75,14 +75,14 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ fontSize: 22, margin: 0 }}>{t('iv.title')}</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{t('iv.subtitle')}</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{t('iv.subtitle')}</p>
         </div>
         <button onClick={() => { setShowForm((s) => !s); setEditId(null); }} style={ui.primaryBtn}>{showForm ? t('iv.close') : t('iv.newItem')}</button>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
       {lowCount > 0 && (
-        <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '9px 14px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>
+        <div style={{ background: '#3f2d0e', color: 'var(--cfde68a)', padding: '9px 14px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>
           {t('iv.lowBanner').replace('{n}', String(lowCount))}
         </div>
       )}
@@ -92,25 +92,25 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, margin: '14px 0 16px' }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('iv.searchPh')} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => setLowOnly((v) => !v)} style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${lowOnly ? '#f59e0b' : '#475569'}`, background: lowOnly ? '#78350f' : 'transparent', color: lowOnly ? '#fde68a' : '#cbd5e1', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>{t('iv.lowOnly')}</button>
-          <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('iv.itemsWord')}</span>
+          <button onClick={() => setLowOnly((v) => !v)} style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${lowOnly ? '#f59e0b' : 'var(--c475569)'}`, background: lowOnly ? 'var(--c78350f)' : 'transparent', color: lowOnly ? 'var(--cfde68a)' : 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>{t('iv.lowOnly')}</button>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('iv.itemsWord')}</span>
         </div>
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{t('iv.loading')}</p> : isMobile ? (
+      {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{t('iv.loading')}</p> : isMobile ? (
         <>
           <MList>
-            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('iv.empty')}</p>}
+            {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('iv.empty')}</p>}
             {pg.paged.map((i) => (
               <Fragment key={i.id}>
                 <MCard>
-                  <MHead right={i.lowStock ? <span style={{ background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span> : null}>
+                  <MHead right={i.lowStock ? <span style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span> : null}>
                     <span style={{ opacity: i.isActive ? 1 : 0.5 }}>{i.name}</span>
                   </MHead>
                   <MRow label={t('iv.colStock')}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <button onClick={() => adjust(i.id, -1)} style={qtyBtn}>−</button>
-                      <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? '#f59e0b' : '#e2e8f0' }}>{i.stockQty} <span style={{ color: '#64748b', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
+                      <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? '#f59e0b' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
                       <button onClick={() => adjust(i.id, 1)} style={qtyBtn}>+</button>
                     </span>
                   </MRow>
@@ -120,14 +120,14 @@ function Inner() {
                   <MActions>
                     <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
                     <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
-                    <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? '#475569' : '#334155' }}>{t('iv.history')}</button>
-                    <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? '#475569' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
+                    <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)' }}>{t('iv.history')}</button>
+                    <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
                     <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                   </MActions>
                 </MCard>
-                {editId === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} /></div>}
-                {moveFor?.id === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><MovePanel token={token!} currency={pageCurrency} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} /></div>}
-                {histFor === i.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><HistoryPanel token={token!} item={i} /></div>}
+                {editId === i.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} /></div>}
+                {moveFor?.id === i.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><MovePanel token={token!} currency={pageCurrency} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} /></div>}
+                {histFor === i.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><HistoryPanel token={token!} item={i} /></div>}
               </Fragment>
             ))}
           </MList>
@@ -136,9 +136,9 @@ function Inner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/supplies/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead><tr style={{ background: '#1e293b' }}>
+            <thead><tr style={{ background: 'var(--c1e293b)' }}>
               <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>{t('iv.colName')}</th>
               <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('iv.colStock')}</th>
@@ -151,44 +151,44 @@ function Inner() {
               {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('iv.empty')}</td></tr>}
               {pg.paged.map((i) => (
                 <Fragment key={i.id}>
-                  <tr style={{ borderTop: '1px solid #334155', opacity: i.isActive ? 1 : 0.5, background: bulk.has(i.id) ? '#1e1b4b' : undefined }}>
+                  <tr style={{ borderTop: '1px solid var(--c334155)', opacity: i.isActive ? 1 : 0.5, background: bulk.has(i.id) ? 'var(--c1e1b4b)' : undefined }}>
                     <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(i.id)} onChange={() => bulk.toggle(i.id)} /></td>
                     <td style={ui.td}>
                       {i.name}{' '}
-                      {i.lowStock && <span style={{ marginLeft: 4, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span>}
+                      {i.lowStock && <span style={{ marginLeft: 4, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span>}
                     </td>
                     <td style={ui.td}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <button onClick={() => adjust(i.id, -1)} style={qtyBtn}>−</button>
-                        <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? '#f59e0b' : '#e2e8f0' }}>{i.stockQty} <span style={{ color: '#64748b', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
+                        <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? '#f59e0b' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
                         <button onClick={() => adjust(i.id, 1)} style={qtyBtn}>+</button>
                       </div>
                     </td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{i.lowStockThreshold}</td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{i.costCents != null ? formatPrice(i.costCents) : '—'}</td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{i.supplier || '—'}</td>
+                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{i.lowStockThreshold}</td>
+                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{i.costCents != null ? formatPrice(i.costCents) : '—'}</td>
+                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{i.supplier || '—'}</td>
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
                         <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
-                        <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? '#475569' : '#334155' }}>{t('iv.history')}</button>
-                        <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? '#475569' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
+                        <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)' }}>{t('iv.history')}</button>
+                        <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
                         <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                       </div>
                     </td>
                   </tr>
                   {editId === i.id && (
-                    <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={6} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} />
                     </td></tr>
                   )}
                   {moveFor?.id === i.id && (
-                    <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={6} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <MovePanel token={token!} currency={pageCurrency} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} />
                     </td></tr>
                   )}
                   {histFor === i.id && (
-                    <tr><td colSpan={6} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={6} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <HistoryPanel token={token!} item={i} />
                     </td></tr>
                   )}
@@ -254,7 +254,7 @@ function SupplyForm({ token, item, onDone, currency = 'USD' }: { token: string; 
 }
 
 const qtyBtn: React.CSSProperties = {
-  width: 28, height: 28, borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 16, lineHeight: 1,
+  width: 28, height: 28, borderRadius: 6, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 16, lineHeight: 1,
 };
 
 interface Movement { id: string; delta: number; reason: string; note: string | null; unitCostCents: number | null; createdAt: string }
@@ -291,7 +291,7 @@ function MovePanel({ token, item, dir, onDone, onCancel, currency = 'USD' }: { t
   return (
     <form onSubmit={submit}>
       <div style={{ fontSize: 13, fontWeight: 700, color: dir === 'IN' ? '#22c55e' : '#f59e0b', marginBottom: 10 }}>
-        {dir === 'IN' ? t('iv.stockIn') : t('iv.stockOut')} — {item.name} <span style={{ color: '#64748b', fontWeight: 400 }}>({t('iv.mNow')}: {item.stockQty} {item.unit})</span>
+        {dir === 'IN' ? t('iv.stockIn') : t('iv.stockOut')} — {item.name} <span style={{ color: 'var(--c64748b)', fontWeight: 400 }}>({t('iv.mNow')}: {item.stockQty} {item.unit})</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('iv.mQty')} ({item.unit})</span>
@@ -308,15 +308,15 @@ function MovePanel({ token, item, dir, onDone, onCancel, currency = 'USD' }: { t
           <input style={ui.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('iv.mNotePh')} /></label>
       </div>
       {dir === 'IN' && cost && (parseFloat(cost) > 0) && (
-        <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 10 }}>
-          {t('iv.mLineTotal')}: <strong style={{ color: '#e2e8f0' }}>${((Math.abs(parseInt(qty, 10) || 0)) * (parseFloat(cost) || 0)).toFixed(2)}</strong>
-          <span style={{ color: '#64748b' }}> ({Math.abs(parseInt(qty, 10) || 0)} {item.unit} × ${(parseFloat(cost) || 0).toFixed(2)})</span>
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginTop: 10 }}>
+          {t('iv.mLineTotal')}: <strong style={{ color: 'var(--ce2e8f0)' }}>${((Math.abs(parseInt(qty, 10) || 0)) * (parseFloat(cost) || 0)).toFixed(2)}</strong>
+          <span style={{ color: 'var(--c64748b)' }}> ({Math.abs(parseInt(qty, 10) || 0)} {item.unit} × ${(parseFloat(cost) || 0).toFixed(2)})</span>
         </div>
       )}
       {err && <div style={{ ...ui.banner, marginTop: 10 }}>{err}</div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, background: dir === 'IN' ? '#16a34a' : '#d97706' }}>{busy ? t('iv.saving') : t('iv.mConfirm')}</button>
-        <button type="button" onClick={onCancel} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer' }}>{t('iv.close')}</button>
+        <button type="button" onClick={onCancel} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer' }}>{t('iv.close')}</button>
       </div>
     </form>
   );
@@ -332,17 +332,17 @@ function HistoryPanel({ token, item }: { token: string; item: Supply }) {
   }, [item.id, token]);
   return (
     <div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>{t('iv.history')} — {item.name}</div>
-      {rows === null ? <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('iv.loading')}</p>
-        : rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>{t('iv.noHistory')}</p>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('iv.history')} — {item.name}</div>
+      {rows === null ? <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('iv.loading')}</p>
+        : rows.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('iv.noHistory')}</p>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 280, overflowY: 'auto' }}>
             {rows.map((m) => (
-              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#1e293b', borderRadius: 6 }}>
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: 'var(--c1e293b)', borderRadius: 6 }}>
                 <span style={{ width: 56, fontWeight: 700, textAlign: 'right', color: m.delta >= 0 ? '#22c55e' : '#f59e0b' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
-                <span style={{ color: '#cbd5e1', minWidth: 120 }}>{t(REASON_KEY[m.reason] ?? 'iv.rAdjust')}</span>
-                <span style={{ color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.note || ''}</span>
-                <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(m.createdAt).toLocaleString(uiLocale())}</span>
+                <span style={{ color: 'var(--ccbd5e1)', minWidth: 120 }}>{t(REASON_KEY[m.reason] ?? 'iv.rAdjust')}</span>
+                <span style={{ color: 'var(--c94a3b8)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.note || ''}</span>
+                <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{new Date(m.createdAt).toLocaleString(uiLocale())}</span>
               </div>
             ))}
           </div>

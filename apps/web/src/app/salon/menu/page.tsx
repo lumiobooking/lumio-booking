@@ -60,8 +60,8 @@ function MenuThumb({ url, onSet, onClear }: { url: string | null; onSet: (dataUr
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <button type="button" onClick={() => inputRef.current?.click()} title="Upload dish photo"
-        style={{ width: 48, height: 48, borderRadius: 10, border: '1px solid #334155', color: '#64748b', cursor: 'pointer', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 0, fontSize: 18,
-          background: has ? `#0f172a center/cover no-repeat url(${url})` : '#0f172a' }}>
+        style={{ width: 48, height: 48, borderRadius: 10, border: '1px solid var(--c334155)', color: 'var(--c64748b)', cursor: 'pointer', display: 'grid', placeItems: 'center', overflow: 'hidden', padding: 0, fontSize: 18,
+          background: has ? `var(--c0f172a) center/cover no-repeat url(${url})` : 'var(--c0f172a)' }}>
         {!has && (busy ? '…' : '📷')}
       </button>
       {has && <button type="button" onClick={onClear} title="Remove photo" style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: 1 }}>×</button>}
@@ -143,22 +143,22 @@ function Inner() {
   const shownGroups = activeCat === '__all' ? grouped : grouped.filter(([c]) => c === activeCat);
   const shownIds = shownGroups.flatMap(([, list]) => list.map((it) => it.id));
   const bulk = useBulkSelect(shownIds);
-  const catTab = (on: boolean): React.CSSProperties => ({ padding: '7px 14px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' });
+  const catTab = (on: boolean): React.CSSProperties => ({ padding: '7px 14px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' });
 
   return (
     <section style={{ maxWidth: 820 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('mn.title')}</h1>
-      <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{t('mn.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{t('mn.subtitle')}</p>
       {err && <div style={ui.banner}>{err}</div>}
 
       <ImportCsv token={token} endpoint="/menu-items" header="name,category,price,description,image,sort" sample={SAMPLE_MENU} existing={() => new Set(items.map((i) => i.name.toLowerCase()))} buildBody={(c) => { const price = parseFloat(c[2]); if (!c[0] || !c[0].trim() || !Number.isFinite(price)) return null; return { name: c[0].trim(), category: c[1] || undefined, priceCents: toMinorUnits(price, pageCurrency), description: c[3] || undefined, imageUrl: c[4] || undefined, sortOrder: c[5] ? parseInt(c[5], 10) : undefined }; }} onDone={load} />
 
       {items.length > 0 && (
         <div style={{ marginTop: -6, marginBottom: 12 }}>
-          <button onClick={clearAll} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #ef4444', background: 'transparent', color: '#f87171', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={clearAll} disabled={busy} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #ef4444', background: 'transparent', color: 'var(--cf87171)', fontSize: 13, cursor: 'pointer' }}>
             {lang === 'vi' ? `Xoá tất cả ${items.length} món` : `Delete all ${items.length} items`}
           </button>
-          <span style={{ fontSize: 11.5, color: '#64748b', marginLeft: 10 }}>{lang === 'vi' ? 'dùng khi import nhầm file' : 'use if you imported the wrong file'}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 10 }}>{lang === 'vi' ? 'dùng khi import nhầm file' : 'use if you imported the wrong file'}</span>
         </div>
       )}
 
@@ -175,7 +175,7 @@ function Inner() {
         <button type="submit" disabled={busy} style={ui.primaryBtn}>{t('mn.add')}</button>
       </form>
 
-      {items.length === 0 && <p style={{ color: '#64748b', fontSize: 14, marginTop: 16 }}>{t('mn.empty')}</p>}
+      {items.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 14, marginTop: 16 }}>{t('mn.empty')}</p>}
 
       {items.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '18px 0 12px', overflowX: 'auto', paddingBottom: 2 }}>
@@ -188,7 +188,7 @@ function Inner() {
 
       {shownIds.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--c94a3b8)', cursor: 'pointer' }}>
             <BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} />
             {tr('bulk.selectAll', lang)}
           </label>
@@ -198,10 +198,10 @@ function Inner() {
 
       {shownGroups.map(([cat, list]) => (
         <div key={cat} style={{ marginTop: 4 }}>
-          {activeCat === '__all' && <div style={{ fontSize: 13, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: '#475569' }}>· {list.length}</span></div>}
+          {activeCat === '__all' && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c818cf8)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: 'var(--c475569)' }}>· {list.length}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {list.map((it) => (
-              <div key={it.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 10, opacity: it.isActive ? 1 : 0.5, borderColor: bulk.has(it.id) ? '#4338ca' : undefined, background: bulk.has(it.id) ? '#1e1b4b' : undefined }}>
+              <div key={it.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 10, opacity: it.isActive ? 1 : 0.5, borderColor: bulk.has(it.id) ? '#4338ca' : undefined, background: bulk.has(it.id) ? 'var(--c1e1b4b)' : undefined }}>
                 <BulkRowBox on={bulk.has(it.id)} onChange={() => bulk.toggle(it.id)} />
                 <MenuThumb url={it.imageUrl} onSet={(d) => patch(it.id, { imageUrl: d })} onClear={() => patch(it.id, { imageUrl: '' })} />
                 <input style={{ ...ui.input, flex: '2 1 150px', minWidth: 120 }} value={it.name}
@@ -211,12 +211,12 @@ function Inner() {
                   onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, category: e.target.value } : x)))}
                   onBlur={(e) => patch(it.id, { category: e.target.value })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <span style={{ color: '#94a3b8' }}>$</span>
+                  <span style={{ color: 'var(--c94a3b8)' }}>$</span>
                   <input style={{ ...ui.input, width: 78 }} type="number" min={0} step={priceInputStep(it.currency)} value={fromMinorUnits(it.priceCents, it.currency)}
                     onChange={(e) => setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, priceCents: toMinorUnits(e.target.value, it.currency) } : x)))}
                     onBlur={(e) => patch(it.id, { priceCents: toMinorUnits(e.target.value, it.currency) })} />
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#cbd5e1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--ccbd5e1)' }}>
                   <input type="checkbox" checked={it.isActive} onChange={(e) => patch(it.id, { isActive: e.target.checked })} />{t('mn.active')}
                 </label>
                 <button onClick={() => remove(it.id)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 13 }}>{t('mn.delete')}</button>

@@ -182,8 +182,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
 
 const OUTCOME: Record<string, { vi: string; en: string; color: string }> = {
   booked: { vi: 'Đã đặt lịch', en: 'Booked', color: '#22c55e' },
-  info: { vi: 'Trả lời câu hỏi', en: 'Answered', color: '#60a5fa' },
-  no_action: { vi: 'Không đặt', en: 'No booking', color: '#94a3b8' },
+  info: { vi: 'Trả lời câu hỏi', en: 'Answered', color: 'var(--c60a5fa)' },
+  no_action: { vi: 'Không đặt', en: 'No booking', color: 'var(--c94a3b8)' },
   handoff: { vi: 'Chuyển người', en: 'Handoff', color: '#f59e0b' },
   in_progress: { vi: 'Đang gọi', en: 'In progress', color: '#a78bfa' },
   error: { vi: 'Lỗi', en: 'Error', color: '#ef4444' },
@@ -246,34 +246,34 @@ function Inner() {
   const outc = (o: string) => OUTCOME[o] || OUTCOME.no_action;
 
   if (loading || !c) {
-    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: '#94a3b8' }}>{t('loading')}</p></section>;
+    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: 'var(--c94a3b8)' }}>{t('loading')}</p></section>;
   }
 
   return (
     <section style={{ maxWidth: 820 }}>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}
-      {!c.aiEnabled && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#f59e0b', color: '#fde68a', fontSize: 13.5 }}>{t('aiOff')}</div>}
+      {!c.aiEnabled && <div style={{ ...ui.card, marginBottom: 16, borderColor: '#f59e0b', color: 'var(--cfde68a)', fontSize: 13.5 }}>{t('aiOff')}</div>}
 
       {/* Assigned number + enable */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>{t('statusTitle')}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>{t('statusTitle')}</div>
         {!c.provisioned ? (
-          <div style={{ fontSize: 14, color: '#fca5a5' }}>
+          <div style={{ fontSize: 14, color: 'var(--cfca5a5)' }}>
             {t('notProvisioned')}{' '}
-            <a href={`mailto:${SUPPORT_EMAIL}?subject=AI%20Hotline%20activation`} style={{ color: '#a5b4fc' }}>{t('contact')} →</a>
+            <a href={`mailto:${SUPPORT_EMAIL}?subject=AI%20Hotline%20activation`} style={{ color: 'var(--ca5b4fc)' }}>{t('contact')} →</a>
           </div>
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-              <span style={{ fontSize: 26, fontWeight: 800, color: '#a5b4fc', letterSpacing: 0.5 }}>{c.lumioNumber}</span>
-              <button onClick={copyNum} style={{ ...ui.primaryBtn, background: copied ? '#22c55e' : '#334155' }}>{copied ? t('copied') : t('copy')}</button>
+              <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--ca5b4fc)', letterSpacing: 0.5 }}>{c.lumioNumber}</span>
+              <button onClick={copyNum} style={{ ...ui.primaryBtn, background: copied ? '#22c55e' : 'var(--c334155)' }}>{copied ? t('copied') : t('copy')}</button>
             </div>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
               <input type="checkbox" checked={c.enabled} disabled={saving} onChange={(e) => save({ enabled: e.target.checked })}
                 style={{ width: 18, height: 18, accentColor: '#6366f1', cursor: 'pointer' }} />
-              {t('enable')} — <span style={{ color: c.enabled ? '#22c55e' : '#94a3b8', fontWeight: 700 }}>{c.enabled ? t('enabledOn') : t('enabledOff')}</span>
+              {t('enable')} — <span style={{ color: c.enabled ? '#22c55e' : 'var(--c94a3b8)', fontWeight: 700 }}>{c.enabled ? t('enabledOn') : t('enabledOff')}</span>
             </label>
           </>
         )}
@@ -282,26 +282,26 @@ function Inner() {
       {/* Usage this month */}
       {usage && (
         <div style={{ ...ui.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('usageTitle')}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('usageTitle')}</div>
           <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
             <Stat label={t('usageCalls')} value={usage.aiCalls} />
             <Stat label={t('usageMinutes')} value={usage.includedMinutes > 0 ? `${usage.aiMinutes} / ${usage.includedMinutes}` : usage.aiMinutes} />
             <Stat label={t('usageSms')} value={usage.includedSms > 0 ? `${usage.smsSent} / ${usage.includedSms}` : usage.smsSent} />
           </div>
           {(usage.overageMinutes > 0 || usage.overageSms > 0) && (
-            <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#3b1d1d', border: '1px solid #b91c1c', color: '#fecaca', fontSize: 13 }}>
+            <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#3b1d1d', border: '1px solid #b91c1c', color: 'var(--cfecaca)', fontSize: 13 }}>
               ⚠️ {t('overWarn')}: {usage.overageMinutes > 0 ? `+${usage.overageMinutes} ${t('usageMinutes').toLowerCase()}` : ''}{usage.overageMinutes > 0 && usage.overageSms > 0 ? ', ' : ''}{usage.overageSms > 0 ? `+${usage.overageSms} SMS` : ''}{usage.overageCents > 0 ? ` (~$${(usage.overageCents / 100).toFixed(2)})` : ''}
             </div>
           )}
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>{t('usageNote')}</div>
+          <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 10 }}>{t('usageNote')}</div>
         </div>
       )}
 
       {/* Call handling — everything below is enforced by Lumio, not the carrier */}
       {c.provisioned && (
         <div style={{ ...ui.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>{t('routeTitle')}</div>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 14px' }}>{t('routeIntro')}</p>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{t('routeTitle')}</div>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 14px' }}>{t('routeIntro')}</p>
 
           {/* 1 — how a call is handled */}
           <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
@@ -314,14 +314,14 @@ function Inner() {
               return (
                 <button key={key} type="button" onClick={() => setC({ ...c, mode: key })}
                   style={{ display: 'flex', gap: 10, alignItems: 'flex-start', textAlign: 'left', width: '100%', cursor: 'pointer',
-                    padding: '12px 14px', borderRadius: 10, background: on ? 'rgba(99,102,241,0.12)' : '#0f172a',
-                    border: `1px solid ${on ? '#6366f1' : '#1e293b'}` }}>
+                    padding: '12px 14px', borderRadius: 10, background: on ? 'rgba(99,102,241,0.12)' : 'var(--c0f172a)',
+                    border: `1px solid ${on ? '#6366f1' : 'var(--c1e293b)'}` }}>
                   <span style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, marginTop: 2,
-                    border: `2px solid ${on ? '#6366f1' : '#475569'}`, background: on ? '#6366f1' : 'transparent',
-                    boxShadow: on ? 'inset 0 0 0 3px #0f172a' : 'none' }} />
+                    border: `2px solid ${on ? '#6366f1' : 'var(--c475569)'}`, background: on ? '#6366f1' : 'transparent',
+                    boxShadow: on ? 'inset 0 0 0 3px var(--c0f172a)' : 'none' }} />
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{label}</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 3, lineHeight: 1.5 }}>{hint}</span>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{label}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3, lineHeight: 1.5 }}>{hint}</span>
                   </span>
                 </button>
               );
@@ -345,8 +345,8 @@ function Inner() {
                       return (
                         <button key={sec} type="button" onClick={() => setC({ ...c, ringSeconds: sec })}
                           style={{ padding: '8px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                            border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : '#0f172a',
-                            color: on ? '#fff' : '#cbd5e1' }}>
+                            border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'var(--c0f172a)',
+                            color: on ? '#fff' : 'var(--ccbd5e1)' }}>
                           {Math.round(sec / 6)} {t('rings')} · {sec}{t('seconds')}
                         </button>
                       );
@@ -369,7 +369,7 @@ function Inner() {
                 <option value="custom">{t('schedCustom')}</option>
               </select>
               {(c.schedule === 'after_hours' || c.schedule === 'business_hours') && (
-                <p style={{ color: '#94a3b8', fontSize: 12, margin: '6px 0 0' }}>{t('schedHint')}</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '6px 0 0' }}>{t('schedHint')}</p>
               )}
 
               {c.schedule === 'custom' && (
@@ -383,15 +383,15 @@ function Inner() {
                     };
                     return (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
-                        background: '#0f172a', border: '1px solid #1e293b' }}>
+                        background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', width: 92, flexShrink: 0 }}>
                           <input type="checkbox" checked={row.enabled} onChange={(e) => put({ enabled: e.target.checked })}
                             style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }} />
-                          <span style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>{dn}</span>
+                          <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{dn}</span>
                         </label>
                         <input type="time" value={row.start} disabled={!row.enabled} onChange={(e) => put({ start: e.target.value })}
                           style={{ ...ui.input, width: 120, opacity: row.enabled ? 1 : 0.4 }} />
-                        <span style={{ color: '#64748b' }}>→</span>
+                        <span style={{ color: 'var(--c64748b)' }}>→</span>
                         <input type="time" value={row.end} disabled={!row.enabled} onChange={(e) => put({ end: e.target.value })}
                           style={{ ...ui.input, width: 120, opacity: row.enabled ? 1 : 0.4 }} />
                       </div>
@@ -424,7 +424,7 @@ function Inner() {
                 <label style={ui.label}>{t('vmSmsLabel')}</label>
                 <input value={c.voicemailSms} onChange={(e) => setC({ ...c, voicemailSms: e.target.value })}
                   placeholder="+1 403 555 0123" style={{ ...ui.input, width: '100%' }} />
-                <p style={{ color: '#94a3b8', fontSize: 12, margin: '6px 0 0' }}>{t('vmSmsHint')}</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '6px 0 0' }}>{t('vmSmsHint')}</p>
               </div>
             )}
           </div>
@@ -437,41 +437,41 @@ function Inner() {
 
       {/* Setup instructions — they differ per mode, so show only the right ones. */}
       {c.provisioned && c.mode === 'ring_first' && (
-        <div style={{ ...ui.card, marginBottom: 16, fontSize: 13.5, color: '#cbd5e1', lineHeight: 1.65 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 8 }}>{t('ringSetupTitle')}</div>
+        <div style={{ ...ui.card, marginBottom: 16, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.65 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 8 }}>{t('ringSetupTitle')}</div>
           <p style={{ margin: '0 0 10px' }}>{t('ringSetupIntro')}</p>
           <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
             <li style={{ marginBottom: 6 }}>{t('ringSetup1')}</li>
             <li>{t('ringSetup2')} <code style={codeS}>*72 {c.lumioNumber}</code> ({t('codeOff')} <code style={codeS}>*73</code>)</li>
           </ul>
-          <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.12)', border: '1px solid #b45309', color: '#fde68a' }}>
+          <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.12)', border: '1px solid #b45309', color: 'var(--cfde68a)' }}>
             {t('ringSetupWarn')}
           </p>
         </div>
       )}
 
       {c.provisioned && c.mode !== 'ring_first' && (
-        <div style={{ ...ui.card, marginBottom: 16, fontSize: 13.5, color: '#cbd5e1', lineHeight: 1.65 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 8 }}>{t('forwardTitle')}</div>
+        <div style={{ ...ui.card, marginBottom: 16, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.65 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 8 }}>{t('forwardTitle')}</div>
           <p style={{ margin: '0 0 12px' }}>{t('forwardIntro')}</p>
-          <div style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: 6 }}>{t('forwardCodes')}</div>
+          <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('forwardCodes')}</div>
           <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
             <li>{t('codeNoAnswer')} <code style={codeS}>*92 {c.lumioNumber}</code></li>
             <li>{t('codeBusy')} <code style={codeS}>*90 {c.lumioNumber}</code></li>
             <li>{t('codeOff')} <code style={codeS}>*93</code> / <code style={codeS}>*91</code></li>
           </ul>
           <p style={{ margin: '0 0 8px' }}>{t('forwardVoip')}</p>
-          <p style={{ margin: 0, color: '#94a3b8' }}>{t('forwardHelp')}</p>
+          <p style={{ margin: 0, color: 'var(--c94a3b8)' }}>{t('forwardHelp')}</p>
         </div>
       )}
 
       {/* Behavior settings */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('behaviorTitle')}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('behaviorTitle')}</div>
 
         <label style={ui.label}>{t('greeting')}</label>
         <input value={c.greeting} onChange={(e) => setC({ ...c, greeting: e.target.value })} placeholder={t('greetingPh')} style={{ ...ui.input, marginBottom: 6 }} />
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>{t('greetingHint')}</div>
+        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 14 }}>{t('greetingHint')}</div>
 
         <label style={ui.label}>{t('language')}</label>
         <select value={c.language} onChange={(e) => setC({ ...c, language: e.target.value })} style={{ ...ui.input, marginBottom: 14 }}>
@@ -483,7 +483,7 @@ function Inner() {
         <textarea value={c.aiInstruction} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} placeholder={t('aiInstructionPh')}
           rows={3} style={{ ...ui.input, marginBottom: 10, resize: 'vertical' }} />
 
-        <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 14 }}>{t('faqReuse')}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 14 }}>{t('faqReuse')}</div>
 
         <button onClick={() => save({})} disabled={saving} style={{ ...ui.primaryBtn, opacity: saving ? 0.6 : 1 }}>
           {saving ? t('saving') : saved ? t('saved') : t('save')}
@@ -492,15 +492,15 @@ function Inner() {
 
       {/* Recent calls */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('callsTitle')}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('callsTitle')}</div>
         {calls.length === 0 ? (
-          <div style={{ color: '#94a3b8', fontSize: 13.5 }}>{t('noCalls')}</div>
+          <div style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noCalls')}</div>
         ) : (
           <>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #334155' }}>
+                <tr style={{ borderBottom: '1px solid var(--c334155)' }}>
                   <th style={ui.th}>{t('colFrom')}</th>
                   <th style={ui.th}>{t('colOutcome')}</th>
                   <th style={ui.th}>{t('colWhen')}</th>
@@ -508,10 +508,10 @@ function Inner() {
               </thead>
               <tbody>
                 {pgCalls.paged.map((cl) => (
-                  <tr key={cl.id} style={{ borderBottom: '1px solid #1f2937' }}>
+                  <tr key={cl.id} style={{ borderBottom: '1px solid var(--c1f2937)' }}>
                     <td style={ui.td}>{cl.fromNumber || '—'}</td>
                     <td style={ui.td}><span style={{ color: outc(cl.outcome).color, fontWeight: 600 }}>● {outc(cl.outcome)[lang as Lang]}</span></td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{fmtWhen(cl.createdAt)}</td>
+                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtWhen(cl.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -522,18 +522,18 @@ function Inner() {
         )}
       </div>
 
-      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>{t('complianceNote')}</div>
+      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>{t('complianceNote')}</div>
     </section>
   );
 }
 
-const codeS: CSSProperties = { padding: '2px 7px', background: '#0f172a', borderRadius: 6, border: '1px solid #334155', color: '#a5b4fc', fontSize: 13 };
+const codeS: CSSProperties = { padding: '2px 7px', background: 'var(--c0f172a)', borderRadius: 6, border: '1px solid var(--c334155)', color: 'var(--ca5b4fc)', fontSize: 13 };
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div>
-      <div style={{ fontSize: 28, fontWeight: 800, color: '#a5b4fc', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{label}</div>
     </div>
   );
 }

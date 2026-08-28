@@ -78,9 +78,9 @@ function RolePicker({
               onClick={() => onChange(r.v, r.v === 'TECHNICIAN')}
               style={{
                 padding: '9px 16px', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                border: `1px solid ${on ? '#6366f1' : '#475569'}`,
-                background: on ? '#312e81' : 'transparent',
-                color: on ? '#c7d2fe' : '#cbd5e1',
+                border: `1px solid ${on ? '#6366f1' : 'var(--c475569)'}`,
+                background: on ? 'var(--c312e81)' : 'transparent',
+                color: on ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)',
               }}
             >
               {r.emoji} {r.label}
@@ -90,9 +90,9 @@ function RolePicker({
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer' }}>
         <input type="checkbox" checked={takesAppointments} onChange={(e) => onChange(role, e.target.checked)} />
-        <span style={{ fontSize: 14, color: '#e2e8f0', fontWeight: 600 }}>{t('st.takesAppts')}</span>
+        <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{t('st.takesAppts')}</span>
       </label>
-      <p style={{ color: takesAppointments ? '#64748b' : '#f59e0b', fontSize: 12, marginTop: 6 }}>
+      <p style={{ color: takesAppointments ? 'var(--c64748b)' : '#f59e0b', fontSize: 12, marginTop: 6 }}>
         {takesAppointments ? t('st.bookableHint') : t('st.notBookableHint')}
       </p>
     </div>
@@ -105,8 +105,8 @@ function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
   const t = (k: string) => tr(k, lang);
   const r: Role = role ?? 'TECHNICIAN';
   const map: Record<Role, { label: string; bg: string; fg: string }> = {
-    TECHNICIAN: { label: t('st.roleTech'), bg: '#312e81', fg: '#c7d2fe' },
-    RECEPTIONIST: { label: t('st.roleReception'), bg: '#78350f', fg: '#fcd34d' },
+    TECHNICIAN: { label: t('st.roleTech'), bg: 'var(--c312e81)', fg: 'var(--cc7d2fe)' },
+    RECEPTIONIST: { label: t('st.roleReception'), bg: 'var(--c78350f)', fg: 'var(--cfcd34d)' },
     MANAGER: { label: t('st.roleManager'), bg: '#155e75', fg: '#a5f3fc' },
   };
   const m = map[r];
@@ -114,7 +114,7 @@ function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg, whiteSpace: 'nowrap' }}>{m.label}</span>
       {takes === false && r === 'TECHNICIAN' && (
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>· {t('st.notBookableTag')}</span>
+        <span style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>· {t('st.notBookableTag')}</span>
       )}
       {takes === true && r !== 'TECHNICIAN' && (
         <span style={{ fontSize: 11, color: '#22c55e' }}>· {t('st.bookableTag')}</span>
@@ -129,7 +129,7 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
     // eslint-disable-next-line @next/next/no-img-element
     <img src={url} alt={name} width={36} height={36} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
   ) : (
-    <span style={{ width: 36, height: 36, borderRadius: '50%', background: '#334155', color: '#cbd5e1', display: 'inline-grid', placeItems: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>
+    <span style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'inline-grid', placeItems: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>
       {initial}
     </span>
   );
@@ -165,8 +165,8 @@ function AvatarPicker({ value, name, onChange }: { value: string; name: string; 
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       {value
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={value} alt="avatar" width={64} height={64} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid #334155' }} />
-        : <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#334155', color: '#cbd5e1', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>{(name || '?').charAt(0).toUpperCase()}</span>}
+        ? <img src={value} alt="avatar" width={64} height={64} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--c334155)' }} />
+        : <span style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>{(name || '?').charAt(0).toUpperCase()}</span>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label style={{ ...ui.input, padding: '8px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           📷 {busy ? t('st.processing') : value ? t('st.changePhoto') : t('st.uploadPhoto')}
@@ -174,7 +174,7 @@ function AvatarPicker({ value, name, onChange }: { value: string; name: string; 
         </label>
         {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{t('st.removePhoto')}</button>}
         {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
-        <span style={{ color: '#64748b', fontSize: 11 }}>{t('st.photoHint')}</span>
+        <span style={{ color: 'var(--c64748b)', fontSize: 11 }}>{t('st.photoHint')}</span>
       </div>
     </div>
   );
@@ -196,8 +196,8 @@ function QrPicker({ value, onChange }: { value: string; onChange: (dataUrl: stri
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       {value
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={value} alt="tip QR" width={84} height={84} style={{ borderRadius: 10, objectFit: 'cover', border: '1px solid #334155', background: '#fff' }} />
-        : <span style={{ width: 84, height: 84, borderRadius: 10, background: '#0f172a', border: '1px dashed #475569', display: 'grid', placeItems: 'center', fontSize: 26 }}>📱</span>}
+        ? <img src={value} alt="tip QR" width={84} height={84} style={{ borderRadius: 10, objectFit: 'cover', border: '1px solid var(--c334155)', background: '#fff' }} />
+        : <span style={{ width: 84, height: 84, borderRadius: 10, background: 'var(--c0f172a)', border: '1px dashed var(--c475569)', display: 'grid', placeItems: 'center', fontSize: 26 }}>📱</span>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label style={{ ...ui.input, padding: '8px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           📷 {busy ? t('st.processing') : value ? t('st.changePhoto') : t('st.tipQrUpload')}
@@ -324,11 +324,11 @@ function StaffInner() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('st.searchPh')} />
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('st.staffWord')}</span>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('st.staffWord')}</span>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
-      {createdMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{createdMsg}</div>}
+      {createdMsg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>{createdMsg}</div>}
 
       {showForm && (
         <CreateStaffForm
@@ -342,14 +342,14 @@ function StaffInner() {
       )}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>{t('st.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('st.loading')}</p>
       ) : isMobile ? (
         <MList>
-          {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('st.empty')}</p>}
+          {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('st.empty')}</p>}
           {pg.paged.map((m) => (
             <Fragment key={m.id}>
               <MCard>
-                <MHead right={<span style={{ color: m.isActive ? '#22c55e' : '#94a3b8', fontSize: 12, fontWeight: 600 }}>{m.isActive ? t('st.active') : t('st.inactive')}</span>}>
+                <MHead right={<span style={{ color: m.isActive ? '#22c55e' : 'var(--c94a3b8)', fontSize: 12, fontWeight: 600 }}>{m.isActive ? t('st.active') : t('st.inactive')}</span>}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Avatar url={m.avatarUrl} name={m.firstName} />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -364,21 +364,21 @@ function StaffInner() {
                   {m.user ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ color: '#22c55e' }}>🔑 {m.user.email}</span>
-                      <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? '#475569' : '#334155' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>
+                      <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>
                     </span>
                   ) : (
-                    <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? '#475569' : '#6366f1' }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>
+                    <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1' }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>
                   )}
                 </MRow>
                 <MActions>
-                  <button onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? '#475569' : '#6366f1' }}>{editFor === m.id ? t('st.close') : t('st.edit')}</button>
+                  <button onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1' }}>{editFor === m.id ? t('st.close') : t('st.edit')}</button>
                   <button onClick={() => remove(m.id)} style={ui.dangerBtn}>{t('st.delete')}</button>
                 </MActions>
               </MCard>
-              {editFor === m.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><StaffEditPanel token={token!} member={m} services={services} onSaved={load} /></div>}
+              {editFor === m.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><StaffEditPanel token={token!} member={m} services={services} onSaved={load} /></div>}
               {loginFor === m.id && (
-                <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}>
-                  <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>{(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}</div>
+                <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 8, fontWeight: 600 }}>{(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}</div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
                     <label style={{ flex: 1, minWidth: 160 }}>
                       <span style={ui.label}>{t('st.loginEmail')}</span>
@@ -399,10 +399,10 @@ function StaffInner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/staff/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#1e293b' }}>
+              <tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('st.colName')}</th>
                 <th style={ui.th}>{t('st.colContact')}</th>
@@ -422,7 +422,7 @@ function StaffInner() {
               )}
               {pg.paged.map((m) => (
                 <Fragment key={m.id}>
-                <tr style={{ borderTop: '1px solid #334155', background: bulk.has(m.id) ? '#1e1b4b' : undefined }}>
+                <tr style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(m.id) ? 'var(--c1e1b4b)' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
                   <td style={ui.td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -433,29 +433,29 @@ function StaffInner() {
                       </div>
                     </div>
                   </td>
-                  <td style={{ ...ui.td, color: '#94a3b8', fontSize: 13 }}>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)', fontSize: 13 }}>
                     {m.email ?? ''}
                     {m.phone ? <div>{m.phone}</div> : null}
                   </td>
-                  <td style={{ ...ui.td, color: '#cbd5e1', fontSize: 13 }}>
+                  <td style={{ ...ui.td, color: 'var(--ccbd5e1)', fontSize: 13 }}>
                     <SkillsCell m={m} total={services.length} serviceName={serviceName} t={t} />
                   </td>
                   <td style={ui.td}>
                     {m.user ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span style={{ color: '#22c55e', fontSize: 13 }}>🔑 {m.user.email}</span>
-                        <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? '#475569' : '#334155' }}>
+                        <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)' }}>
                           {loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? '#475569' : '#6366f1' }}>
+                      <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1' }}>
                         {loginFor === m.id ? t('st.cancel') : t('st.createLogin')}
                       </button>
                     )}
                   </td>
                   <td style={ui.td}>
-                    <span style={{ color: m.isActive ? '#22c55e' : '#94a3b8' }}>
+                    <span style={{ color: m.isActive ? '#22c55e' : 'var(--c94a3b8)' }}>
                       {m.isActive ? t('st.active') : t('st.inactive')}
                     </span>
                   </td>
@@ -463,7 +463,7 @@ function StaffInner() {
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button
                         onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }}
-                        style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? '#475569' : '#6366f1' }}
+                        style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1' }}
                       >
                         {editFor === m.id ? t('st.close') : t('st.edit')}
                       </button>
@@ -475,7 +475,7 @@ function StaffInner() {
                 </tr>
                 {editFor === m.id && (
                   <tr>
-                    <td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
+                    <td colSpan={7} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <StaffEditPanel
                         token={token!}
                         member={m}
@@ -487,8 +487,8 @@ function StaffInner() {
                 )}
                 {loginFor === m.id && (
                   <tr>
-                    <td colSpan={7} style={{ padding: 14, background: '#0f172a' }}>
-                      <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 8, fontWeight: 600 }}>
+                    <td colSpan={7} style={{ padding: 14, background: 'var(--c0f172a)' }}>
+                      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 8, fontWeight: 600 }}>
                         {(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
@@ -539,7 +539,7 @@ function HourToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => v
       type="button"
       onClick={() => onChange(!on)}
       aria-pressed={on}
-      style={{ width: 40, height: 22, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: on ? '#6366f1' : '#334155', transition: 'background .15s ease', flexShrink: 0 }}
+      style={{ width: 40, height: 22, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: on ? '#6366f1' : 'var(--c334155)', transition: 'background .15s ease', flexShrink: 0 }}
     >
       <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s ease' }} />
     </button>
@@ -659,7 +659,7 @@ function StaffEditPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>{t('st.editName').replace('{name}', member.firstName)}</div>
+      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600 }}>{t('st.editName').replace('{name}', member.firstName)}</div>
 
       {/* Profile photo */}
       <div>
@@ -693,7 +693,7 @@ function StaffEditPanel({
         <label style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 9 }}>
             <input type="checkbox" checked={form.isActive} onChange={(e) => up('isActive', e.target.checked)} />
-            <span style={{ fontSize: 14, color: '#e2e8f0' }}>{t('st.activeBookings')}</span>
+            <span style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>{t('st.activeBookings')}</span>
           </span>
         </label>
       </div>
@@ -705,7 +705,7 @@ function StaffEditPanel({
           <SkillPicker all={services} ids={skillIds} set={(v) => { setSkillIds(v); setSaved(false); }} />
         </div>
       ) : (
-        <p style={{ color: '#64748b', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
       )}
 
       {/* Working hours */}
@@ -715,8 +715,8 @@ function StaffEditPanel({
           {hours.map((d) => {
             const label = DAY_LABEL[lang][d.dow] ?? '';
             return (
-              <div key={d.dow} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', borderBottom: '1px solid #1e293b' }}>
-                <span style={{ width: 40, fontSize: 13.5, color: '#cbd5e1', paddingTop: 5 }}>{label}</span>
+              <div key={d.dow} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--c1e293b)' }}>
+                <span style={{ width: 40, fontSize: 13.5, color: 'var(--ccbd5e1)', paddingTop: 5 }}>{label}</span>
                 <div style={{ paddingTop: 3 }}>
                   <HourToggle on={d.enabled} onChange={(v) => updDay(d.dow, { enabled: v })} />
                 </div>
@@ -725,25 +725,25 @@ function StaffEditPanel({
                     {d.windows.map((w, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <input type="time" style={{ ...ui.input, width: 118 }} value={w.start} onChange={(e) => setWin(d.dow, i, { start: e.target.value })} />
-                        <span style={{ color: '#64748b' }}>–</span>
+                        <span style={{ color: 'var(--c64748b)' }}>–</span>
                         <input type="time" style={{ ...ui.input, width: 118 }} value={w.end} onChange={(e) => setWin(d.dow, i, { end: e.target.value })} />
                         {d.windows.length > 1 && (
-                          <button type="button" onClick={() => rmWin(d.dow, i)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
+                          <button type="button" onClick={() => rmWin(d.dow, i)} style={{ background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
                         )}
                       </div>
                     ))}
-                    <button type="button" onClick={() => addWin(d.dow)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #334155', borderRadius: 8, color: '#a5b4fc', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}>
+                    <button type="button" onClick={() => addWin(d.dow)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--c334155)', borderRadius: 8, color: 'var(--ca5b4fc)', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}>
                       {t('st.addHours')}
                     </button>
                   </div>
                 ) : (
-                  <span style={{ color: '#64748b', fontSize: 13, paddingTop: 5 }}>{t('st.off')}</span>
+                  <span style={{ color: 'var(--c64748b)', fontSize: 13, paddingTop: 5 }}>{t('st.off')}</span>
                 )}
               </div>
             );
           })}
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8 }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 8 }}>
           {anyEnabled ? t('st.hoursSet') : t('st.hoursUnset')}
         </p>
       </div>
@@ -751,7 +751,7 @@ function StaffEditPanel({
       {/* Direct tip: this tech's payment QR (Venmo/Zelle/Cash App) + handle. */}
       <div>
         <span style={ui.label}>💸 {t('st.tipSection')}</span>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 8px' }}>{t('st.tipHint')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>{t('st.tipHint')}</p>
         <QrPicker value={form.tipQrUrl} onChange={(v) => up('tipQrUrl', v)} />
         <label style={{ display: 'block', marginTop: 10, maxWidth: 360 }}>
           <span style={ui.label}>{t('st.tipHandle')}</span>
@@ -876,9 +876,9 @@ function CreateStaffForm({
       </div>
 
       {/* Inline login. Required for receptionists/managers to actually sign in. */}
-      <div style={{ borderTop: '1px solid #1e293b', paddingTop: 14 }}>
+      <div style={{ borderTop: '1px solid var(--c1e293b)', paddingTop: 14 }}>
         <span style={ui.label}>{t('st.loginOptional')}</span>
-        <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 10px' }}>{t('st.loginHint')}</p>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '0 0 10px' }}>{t('st.loginHint')}</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           <label>
             <span style={ui.label}>{t('st.loginEmail')}</span>
@@ -896,13 +896,13 @@ function CreateStaffForm({
         <div>
           <span style={ui.label}>{t('st.skills')}</span>
           {services.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServicesCreate')}</p>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('st.noServicesCreate')}</p>
           ) : (
             <SkillPicker all={services} ids={skillIds} set={setSkillIds} />
           )}
         </div>
       ) : (
-        <p style={{ color: '#64748b', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
       )}
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -924,7 +924,7 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
   const [q, setQ] = useState('');
   const [selOnly, setSelOnly] = useState(false);
   const [cat, setCat] = useState<string>('__all__');
-  if (all.length === 0) return <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('st.noServices')}</p>;
+  if (all.length === 0) return <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('st.noServices')}</p>;
 
   const ql = q.trim().toLowerCase();
   const searching = ql.length > 0;
@@ -962,15 +962,15 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
   const rowBtn = (on: boolean): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
     padding: '7px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13,
-    background: on ? '#312e81' : 'transparent', color: on ? '#c7d2fe' : '#cbd5e1', fontWeight: on ? 600 : 400,
+    background: on ? 'var(--c312e81)' : 'transparent', color: on ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)', fontWeight: on ? 600 : 400,
   });
   const countPill = (n: number, tot: number): React.CSSProperties => ({
     marginLeft: 'auto', fontSize: 11, padding: '1px 7px', borderRadius: 999, fontWeight: 600,
-    background: n > 0 ? '#4338ca' : '#1e293b', color: n > 0 ? '#e0e7ff' : '#64748b',
+    background: n > 0 ? '#4338ca' : 'var(--c1e293b)', color: n > 0 ? 'var(--ce0e7ff)' : 'var(--c64748b)',
   });
   const colHead: React.CSSProperties = {
-    fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: '#64748b',
-    padding: '8px 10px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 8,
+    fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)',
+    padding: '8px 10px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', alignItems: 'center', gap: 8,
   };
 
   return (
@@ -978,22 +978,22 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
       {/* Toolbar: search · selected-only · counter · select all */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
+          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c64748b)', fontSize: 13, pointerEvents: 'none' }}>🔍</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('st.skSearchPh')} style={{ ...ui.input, width: '100%', paddingLeft: 30, boxSizing: 'border-box' }} />
         </div>
-        <button type="button" onClick={() => setSelOnly((v) => !v)} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 999, border: `1px solid ${selOnly ? '#6366f1' : '#334155'}`, background: selOnly ? '#312e81' : 'transparent', color: selOnly ? '#c7d2fe' : '#94a3b8', cursor: 'pointer', fontWeight: 600 }}>
+        <button type="button" onClick={() => setSelOnly((v) => !v)} style={{ fontSize: 12, padding: '5px 11px', borderRadius: 999, border: `1px solid ${selOnly ? '#6366f1' : 'var(--c334155)'}`, background: selOnly ? 'var(--c312e81)' : 'transparent', color: selOnly ? 'var(--cc7d2fe)' : 'var(--c94a3b8)', cursor: 'pointer', fontWeight: 600 }}>
           {selOnly ? '✓ ' : ''}{t('st.skSelectedOnly')}
         </button>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>{t('st.skSelected').replace('{n}', String(ids.length)).replace('{m}', String(all.length))}</span>
-        <button type="button" onClick={() => set(allOn ? [] : all.map((sv) => sv.id))} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontWeight: 600 }}>
+        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{t('st.skSelected').replace('{n}', String(ids.length)).replace('{m}', String(all.length))}</span>
+        <button type="button" onClick={() => set(allOn ? [] : all.map((sv) => sv.id))} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', cursor: 'pointer', fontWeight: 600 }}>
           {allOn ? t('st.clearAll') : t('st.selectAll')}
         </button>
       </div>
 
       {/* 3 columns: categories · services · selected */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden', background: '#0b1220' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', border: '1px solid var(--c1e293b)', borderRadius: 12, overflow: 'hidden', background: 'var(--c0b1220)' }}>
         {/* Column 1 — categories */}
-        <div style={{ width: 210, minWidth: 180, flex: '0 1 210px', borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ width: 210, minWidth: 180, flex: '0 1 210px', borderRight: '1px solid var(--c1e293b)', display: 'flex', flexDirection: 'column' }}>
           <div style={colHead}>{t('st.skCategories')}</div>
           <div style={{ maxHeight: colH, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <button type="button" onClick={() => { setCat('__all__'); setSelOnly(false); }} style={rowBtn(cat === '__all__' && !selOnly)}>
@@ -1002,7 +1002,7 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
             <button type="button" onClick={() => { setCat('__all__'); setSelOnly(true); }} style={rowBtn(selOnly)}>
               <span>✓</span><span>{t('st.skSelectedCol')}</span><span style={countPill(ids.length, ids.length)}>{ids.length}</span>
             </button>
-            <div style={{ height: 1, background: '#1e293b', margin: '4px 6px' }} />
+            <div style={{ height: 1, background: 'var(--c1e293b)', margin: '4px 6px' }} />
             {cats.map((g) => {
               const sel = g.items.filter((sv) => has(sv.id)).length;
               return (
@@ -1016,28 +1016,28 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
         </div>
 
         {/* Column 2 — services in the active category */}
-        <div style={{ flex: '1 1 300px', minWidth: 260, borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: '1 1 300px', minWidth: 260, borderRight: '1px solid var(--c1e293b)', display: 'flex', flexDirection: 'column' }}>
           <div style={colHead}>
-            <span style={{ color: '#cbd5e1' }}>{midTitle}</span>
-            <span style={{ color: '#64748b', textTransform: 'none', letterSpacing: 0 }}>{list.filter((sv) => has(sv.id)).length}/{list.length}</span>
+            <span style={{ color: 'var(--ccbd5e1)' }}>{midTitle}</span>
+            <span style={{ color: 'var(--c64748b)', textTransform: 'none', letterSpacing: 0 }}>{list.filter((sv) => has(sv.id)).length}/{list.length}</span>
             {list.length > 0 && (
-              <button type="button" onClick={() => set(listAllOn ? ids.filter((id) => !listIds.includes(id)) : [...new Set([...ids, ...listIds])])} style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
+              <button type="button" onClick={() => set(listAllOn ? ids.filter((id) => !listIds.includes(id)) : [...new Set([...ids, ...listIds])])} style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer' }}>
                 {listAllOn ? t('st.covNone') : t('st.covAll')}
               </button>
             )}
           </div>
           <div style={{ maxHeight: colH, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
             {list.length === 0 ? (
-              <p style={{ color: '#64748b', fontSize: 13, padding: '10px 6px' }}>{searching ? `${t('st.skNoMatch')} "${q}"` : t('st.skEmptyList')}</p>
+              <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: '10px 6px' }}>{searching ? `${t('st.skNoMatch')} "${q}"` : t('st.skEmptyList')}</p>
             ) : list.map((sv) => {
               const on = has(sv.id);
               const m = meta(sv);
               return (
-                <label key={sv.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '7px 10px', borderRadius: 8, cursor: 'pointer', background: on ? '#312e81' : 'transparent', border: `1px solid ${on ? '#4338ca' : 'transparent'}` }}>
+                <label key={sv.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '7px 10px', borderRadius: 8, cursor: 'pointer', background: on ? 'var(--c312e81)' : 'transparent', border: `1px solid ${on ? '#4338ca' : 'transparent'}` }}>
                   <input type="checkbox" checked={on} onChange={() => toggle(sv.id)} style={{ marginTop: 2 }} />
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-                    <span style={{ fontSize: 13, color: on ? '#e0e7ff' : '#e2e8f0' }}>{sv.name}</span>
-                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                    <span style={{ fontSize: 13, color: on ? 'var(--ce0e7ff)' : 'var(--ce2e8f0)' }}>{sv.name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>
                       {(searching || cat === '__all__' || selOnly) ? catName(sv) + (m ? ` · ${m}` : '') : m}
                     </span>
                   </span>
@@ -1050,21 +1050,21 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
         {/* Column 3 — what this technician can do */}
         <div style={{ width: 220, minWidth: 190, flex: '0 1 220px', display: 'flex', flexDirection: 'column' }}>
           <div style={colHead}>
-            <span style={{ color: '#cbd5e1' }}>{t('st.skSelectedCol')}</span>
-            <span style={{ color: '#64748b', textTransform: 'none' }}>{ids.length}</span>
+            <span style={{ color: 'var(--ccbd5e1)' }}>{t('st.skSelectedCol')}</span>
+            <span style={{ color: 'var(--c64748b)', textTransform: 'none' }}>{ids.length}</span>
             {ids.length > 0 && (
-              <button type="button" onClick={() => set([])} style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer' }}>
+              <button type="button" onClick={() => set([])} style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 9px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer' }}>
                 {t('st.clearAll')}
               </button>
             )}
           </div>
           <div style={{ maxHeight: colH, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {picked.length === 0 ? (
-              <p style={{ color: '#64748b', fontSize: 12, padding: '10px 6px' }}>{t('st.skEmptySel')}</p>
+              <p style={{ color: 'var(--c64748b)', fontSize: 12, padding: '10px 6px' }}>{t('st.skEmptySel')}</p>
             ) : picked.map((sv) => (
-              <span key={sv.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8, background: '#1e1b4b', border: '1px solid #4338ca', color: '#c7d2fe', fontSize: 12 }}>
+              <span key={sv.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8, background: 'var(--c1e1b4b)', border: '1px solid #4338ca', color: 'var(--cc7d2fe)', fontSize: 12 }}>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sv.name}>{sv.name}</span>
-                <button type="button" onClick={() => toggle(sv.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', color: '#a5b4fc', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
+                <button type="button" onClick={() => toggle(sv.id)} aria-label="remove" style={{ border: 'none', background: 'transparent', color: 'var(--ca5b4fc)', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>
               </span>
             ))}
           </div>
@@ -1088,11 +1088,11 @@ function SkillsCell({ m, total, serviceName, t }: {
 }) {
   const [open, setOpen] = useState(false);
   const n = m.staffServices.length;
-  if (m.takesAppointments === false) return <span style={{ color: '#64748b' }}>—</span>;
+  if (m.takesAppointments === false) return <span style={{ color: 'var(--c64748b)' }}>—</span>;
   if (n === 0) {
     // The one state that costs bookings — loud on purpose.
     return (
-      <span style={{ display: 'inline-block', background: 'rgba(239,68,68,0.12)', border: '1px solid #7f1d1d', color: '#fca5a5', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>
+      <span style={{ display: 'inline-block', background: 'rgba(239,68,68,0.12)', border: '1px solid var(--c7f1d1d)', color: 'var(--cfca5a5)', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>
         ⚠ {t('st.covNone')}
       </span>
     );
@@ -1103,9 +1103,9 @@ function SkillsCell({ m, total, serviceName, t }: {
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
-          background: all ? 'rgba(34,197,94,0.12)' : '#1e293b',
-          border: `1px solid ${all ? '#166534' : '#334155'}`,
-          color: all ? '#86efac' : '#cbd5e1',
+          background: all ? 'rgba(34,197,94,0.12)' : 'var(--c1e293b)',
+          border: `1px solid ${all ? 'var(--c166534)' : 'var(--c334155)'}`,
+          color: all ? 'var(--c86efac)' : 'var(--ccbd5e1)',
           borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
         }}
       >
@@ -1114,7 +1114,7 @@ function SkillsCell({ m, total, serviceName, t }: {
       {open && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7, maxWidth: 560 }}>
           {m.staffServices.map((ss) => (
-            <span key={ss.serviceId} style={{ background: '#0f172a', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 7px', fontSize: 11.5 }}>
+            <span key={ss.serviceId} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 7px', fontSize: 11.5 }}>
               {serviceName(ss.serviceId)}
             </span>
           ))}

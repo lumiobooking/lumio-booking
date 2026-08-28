@@ -53,8 +53,8 @@ export default function InvoicePage() {
     }
   }
 
-  if (inv === undefined) return <Shell><p style={{ color: '#64748b' }}>Loading…</p></Shell>;
-  if (!inv) return <Shell><p style={{ color: '#64748b' }}>Invoice not found. Please check the link in your email.</p></Shell>;
+  if (inv === undefined) return <Shell><p style={{ color: 'var(--c64748b)' }}>Loading…</p></Shell>;
+  if (!inv) return <Shell><p style={{ color: 'var(--c64748b)' }}>Invoice not found. Please check the link in your email.</p></Shell>;
 
   const paid = inv.status === 'PAID';
   const voided = inv.status === 'VOID';
@@ -65,25 +65,25 @@ export default function InvoicePage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900, color: '#4f46e5' }}>Lumio Booking</div>
-          <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Invoice · {inv.number}</div>
+          <div style={{ fontSize: 13, color: 'var(--c64748b)', marginTop: 2 }}>Invoice · {inv.number}</div>
         </div>
         <span style={{
           fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 999,
-          background: paid ? '#dcfce7' : voided ? '#f1f5f9' : '#fef3c7',
-          color: paid ? '#15803d' : voided ? '#64748b' : '#b45309',
+          background: paid ? '#dcfce7' : voided ? 'var(--cf1f5f9)' : 'var(--cfef3c7)',
+          color: paid ? '#15803d' : voided ? 'var(--c64748b)' : '#b45309',
         }}>
           {paid ? '✓ Paid' : voided ? 'Void' : 'Payment due'}
         </span>
       </div>
 
-      <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid #e2e8f0' }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: '#0f172a' }}>{title}</div>
-        {inv.salonName && <div style={{ fontSize: 14, color: '#475569', marginTop: 2 }}>{inv.salonName}</div>}
-        <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginTop: 12, fontSize: 13, color: '#64748b' }}>
-          <div><div style={{ color: '#94a3b8', fontSize: 11.5 }}>Issued</div>{fmt(inv.createdAt)}</div>
-          <div><div style={{ color: '#94a3b8', fontSize: 11.5 }}>Due</div>{fmt(inv.dueDate)}</div>
-          {inv.periodStart && <div><div style={{ color: '#94a3b8', fontSize: 11.5 }}>Period</div>{fmt(inv.periodStart)} – {fmt(inv.periodEnd)}</div>}
-          {paid && <div><div style={{ color: '#94a3b8', fontSize: 11.5 }}>Paid</div>{fmt(inv.paidAt)}</div>}
+      <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ce2e8f0)' }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--c0f172a)' }}>{title}</div>
+        {inv.salonName && <div style={{ fontSize: 14, color: 'var(--c475569)', marginTop: 2 }}>{inv.salonName}</div>}
+        <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginTop: 12, fontSize: 13, color: 'var(--c64748b)' }}>
+          <div><div style={{ color: 'var(--c94a3b8)', fontSize: 11.5 }}>Issued</div>{fmt(inv.createdAt)}</div>
+          <div><div style={{ color: 'var(--c94a3b8)', fontSize: 11.5 }}>Due</div>{fmt(inv.dueDate)}</div>
+          {inv.periodStart && <div><div style={{ color: 'var(--c94a3b8)', fontSize: 11.5 }}>Period</div>{fmt(inv.periodStart)} – {fmt(inv.periodEnd)}</div>}
+          {paid && <div><div style={{ color: 'var(--c94a3b8)', fontSize: 11.5 }}>Paid</div>{fmt(inv.paidAt)}</div>}
         </div>
       </div>
 
@@ -91,12 +91,12 @@ export default function InvoicePage() {
         <tbody>
           {inv.lineItems.map((li, i) => (
             <tr key={i}>
-              <td style={{ padding: '10px 0', color: '#334155', borderBottom: '1px solid #f1f5f9' }}>{li.label}</td>
-              <td align="right" style={{ padding: '10px 0', color: '#0f172a', fontWeight: 600, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{money(li.amountCents, inv.currency)}</td>
+              <td style={{ padding: '10px 0', color: 'var(--c334155)', borderBottom: '1px solid var(--cf1f5f9)' }}>{li.label}</td>
+              <td align="right" style={{ padding: '10px 0', color: 'var(--c0f172a)', fontWeight: 600, borderBottom: '1px solid var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{money(li.amountCents, inv.currency)}</td>
             </tr>
           ))}
           <tr>
-            <td style={{ padding: '14px 0 0', fontWeight: 800, fontSize: 16 }}>Total due<div style={{ fontWeight: 400, fontSize: 12, color: '#94a3b8' }}>Số tiền cần thanh toán</div></td>
+            <td style={{ padding: '14px 0 0', fontWeight: 800, fontSize: 16 }}>Total due<div style={{ fontWeight: 400, fontSize: 12, color: 'var(--c94a3b8)' }}>Số tiền cần thanh toán</div></td>
             <td align="right" style={{ padding: '14px 0 0', fontWeight: 900, fontSize: 22, color: '#4f46e5', whiteSpace: 'nowrap' }}>{money(inv.totalCents, inv.currency)}</td>
           </tr>
         </tbody>
@@ -105,22 +105,22 @@ export default function InvoicePage() {
       {err && <div style={{ marginTop: 16, background: '#fef2f2', color: '#b91c1c', padding: '10px 14px', borderRadius: 8, fontSize: 13.5 }}>{err}</div>}
 
       {paid ? (
-        <div style={{ marginTop: 22, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', padding: '14px 16px', borderRadius: 10, fontSize: 14.5, fontWeight: 600 }}>
+        <div style={{ marginTop: 22, background: '#f0fdf4', border: '1px solid var(--cbbf7d0)', color: 'var(--c166534)', padding: '14px 16px', borderRadius: 10, fontSize: 14.5, fontWeight: 600 }}>
           ✓ This invoice has been paid. Thank you! · Cảm ơn bạn đã thanh toán.
         </div>
       ) : voided ? (
-        <div style={{ marginTop: 22, color: '#64748b', fontSize: 14 }}>This invoice was cancelled.</div>
+        <div style={{ marginTop: 22, color: 'var(--c64748b)', fontSize: 14 }}>This invoice was cancelled.</div>
       ) : inv.canPay ? (
         <button onClick={pay} disabled={busy} style={payBtn}>
           {busy ? 'Opening secure checkout…' : `Pay ${money(inv.totalCents, inv.currency)} · Thanh toán ngay →`}
         </button>
       ) : (
-        <div style={{ marginTop: 22, color: '#64748b', fontSize: 14 }}>
+        <div style={{ marginTop: 22, color: 'var(--c64748b)', fontSize: 14 }}>
           To pay this invoice, please contact Lumio or reply to your invoice email.
         </div>
       )}
 
-      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #e2e8f0', fontSize: 12, color: '#94a3b8' }}>
+      <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--ce2e8f0)', fontSize: 12, color: 'var(--c94a3b8)' }}>
         Secure payment by Stripe. Questions about this bill? Reply to the invoice email we sent you.
       </div>
     </Shell>
@@ -129,7 +129,7 @@ export default function InvoicePage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9', display: 'flex', justifyContent: 'center', padding: '5vh 16px', boxSizing: 'border-box' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--cf1f5f9)', display: 'flex', justifyContent: 'center', padding: '5vh 16px', boxSizing: 'border-box' }}>
       <div style={card}>{children}</div>
     </div>
   );

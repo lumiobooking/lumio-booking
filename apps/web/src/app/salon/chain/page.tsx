@@ -48,19 +48,19 @@ function Inner() {
   return (
     <section style={{ maxWidth: 900 }}>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('cr.title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('cr.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('cr.subtitle')}</p>
 
       <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
         <label><span style={ui.label}>{t('cr.from')}</span><input lang="en-US" type="date" style={ui.input} value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label><span style={ui.label}>{t('cr.to')}</span><input lang="en-US" type="date" style={ui.input} value={to} onChange={(e) => setTo(e.target.value)} /></label>
         <button onClick={load} style={ui.primaryBtn}>{t('cr.apply')}</button>
-        {data && <span style={{ color: '#64748b', fontSize: 12, marginLeft: 'auto' }}>{data.range.from} → {data.range.to}</span>}
+        {data && <span style={{ color: 'var(--c64748b)', fontSize: 12, marginLeft: 'auto' }}>{data.range.from} → {data.range.to}</span>}
       </div>
 
       {err && <div style={ui.banner}>{err}</div>}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>{t('cr.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('cr.loading')}</p>
       ) : data && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -70,26 +70,26 @@ function Inner() {
           </div>
 
           <div style={ui.card}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.7fr 0.7fr', gap: 8, fontSize: 12, color: '#94a3b8', fontWeight: 700, padding: '0 0 10px', borderBottom: '1px solid #334155' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.7fr 0.7fr', gap: 8, fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, padding: '0 0 10px', borderBottom: '1px solid var(--c334155)' }}>
               <span>{t('cr.branch')}</span>
               <span style={{ textAlign: 'right' }}>{t('cr.revenue')}</span>
               <span style={{ textAlign: 'right' }}>{t('cr.bookings')}</span>
               <span style={{ textAlign: 'right' }}>{t('cr.newCust')}</span>
             </div>
             {data.branches.map((b) => (
-              <div key={b.tenantId} style={{ padding: '10px 0', borderBottom: '1px solid #1e293b' }}>
+              <div key={b.tenantId} style={{ padding: '10px 0', borderBottom: '1px solid var(--c1e293b)' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.7fr 0.7fr', gap: 8, alignItems: 'center', fontSize: 14 }}>
-                  <span style={{ fontWeight: 600, color: '#e2e8f0' }}>{b.name}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--ce2e8f0)' }}>{b.name}</span>
                   <span style={{ textAlign: 'right', color: '#22c55e', fontWeight: 600 }}>{formatPrice(b.revenueCents, currency)}</span>
-                  <span style={{ textAlign: 'right', color: '#cbd5e1' }}>{b.bookings}</span>
-                  <span style={{ textAlign: 'right', color: '#cbd5e1' }}>{b.newCustomers}</span>
+                  <span style={{ textAlign: 'right', color: 'var(--ccbd5e1)' }}>{b.bookings}</span>
+                  <span style={{ textAlign: 'right', color: 'var(--ccbd5e1)' }}>{b.newCustomers}</span>
                 </div>
-                <div style={{ height: 6, background: '#1e293b', borderRadius: 3, marginTop: 6, overflow: 'hidden' }}>
+                <div style={{ height: 6, background: 'var(--c1e293b)', borderRadius: 3, marginTop: 6, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${Math.round((b.revenueCents / max) * 100)}%`, background: 'linear-gradient(90deg,#6366f1,#7c3aed)', borderRadius: 3 }} />
                 </div>
               </div>
             ))}
-            {data.branches.length === 0 && <p style={{ color: '#64748b', fontSize: 14, padding: '12px 0' }}>{t('cr.empty')}</p>}
+            {data.branches.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 14, padding: '12px 0' }}>{t('cr.empty')}</p>}
           </div>
         </>
       )}
@@ -100,7 +100,7 @@ function Inner() {
 function Kpi({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
     <div style={{ ...ui.card, flex: '1 1 160px', minWidth: 150 }}>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 800, color: accent }}>{value}</div>
     </div>
   );

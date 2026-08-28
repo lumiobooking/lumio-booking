@@ -210,9 +210,9 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
     <>
       <a href={href} style={{
         position: 'relative', padding: '8px 14px', borderRadius: 8,
-        border: `1px solid ${count > 0 ? '#ef4444' : '#475569'}`,
-        background: count > 0 ? '#7f1d1d' : 'transparent',
-        color: '#e2e8f0', fontSize: 13, textDecoration: 'none', fontWeight: count > 0 ? 700 : 400,
+        border: `1px solid ${count > 0 ? '#ef4444' : 'var(--c475569)'}`,
+        background: count > 0 ? 'var(--c7f1d1d)' : 'transparent',
+        color: 'var(--ce2e8f0)', fontSize: 13, textDecoration: 'none', fontWeight: count > 0 ? 700 : 400,
       }}>
         💬 {label}
         {count > 0 && (
@@ -226,8 +226,8 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
       <button onClick={toggleMute} title={muted ? (vi ? 'Bật tiếng' : 'Unmute') : (vi ? 'Tắt tiếng' : 'Mute')}
         aria-label={muted ? 'Unmute' : 'Mute'}
         style={{
-          padding: '8px 10px', borderRadius: 8, border: '1px solid #475569',
-          background: 'transparent', color: muted ? '#64748b' : '#e2e8f0', fontSize: 13, cursor: 'pointer',
+          padding: '8px 10px', borderRadius: 8, border: '1px solid var(--c475569)',
+          background: 'transparent', color: muted ? 'var(--c64748b)' : 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer',
         }}>{muted ? '🔇' : '🔔'}</button>
 
       {push !== 'ready' && (
@@ -238,7 +238,7 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
           title={pushMessage(push, vi)}
           style={{
             padding: '8px 12px', borderRadius: 8, border: '1px solid #6366f1',
-            background: '#312e81', color: '#c7d2fe', fontSize: 12, cursor: 'pointer',
+            background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 12, cursor: 'pointer',
           }}>
           {vi ? 'Bật thông báo' : 'Turn on alerts'}
         </button>
@@ -250,12 +250,12 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
         // home screen first" is three taps.
         <div style={{
           position: 'fixed', left: 16, bottom: 16, zIndex: 60, maxWidth: 340,
-          background: '#1e293b', border: '1px solid #475569', borderRadius: 10,
-          padding: '11px 13px', fontSize: 12, color: '#cbd5e1', lineHeight: 1.5,
+          background: 'var(--c1e293b)', border: '1px solid var(--c475569)', borderRadius: 10,
+          padding: '11px 13px', fontSize: 12, color: 'var(--ccbd5e1)', lineHeight: 1.5,
         }}>
           {pushNote}
           <button onClick={() => setPushNote(null)}
-            style={{ marginLeft: 8, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>×</button>
+            style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer' }}>×</button>
         </div>
       )}
 
@@ -266,14 +266,14 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
               onClick={() => setToasts((p) => p.filter((x) => x.id !== t.id))}
               style={{
                 display: 'block', textDecoration: 'none',
-                background: '#1e293b', border: '1px solid #6366f1', borderLeft: '4px solid #6366f1',
+                background: 'var(--c1e293b)', border: '1px solid #6366f1', borderLeft: '4px solid #6366f1',
                 borderRadius: 10, padding: '11px 13px', boxShadow: '0 10px 30px rgba(0,0,0,.45)',
               }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{t.name}</p>
-              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8' }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t.name}</p>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--c94a3b8)' }}>
                 {vi ? 'vừa nhắn tin' : 'sent a message'}{t.pageName ? ` · ${t.pageName}` : ''}
               </p>
-              <p style={{ margin: '6px 0 0', fontSize: 11, color: '#818cf8', fontWeight: 600 }}>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--c818cf8)', fontWeight: 600 }}>
                 {vi ? 'Bấm để trả lời →' : 'Tap to reply →'}
               </p>
             </a>

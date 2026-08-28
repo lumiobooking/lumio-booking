@@ -47,23 +47,23 @@ export default function AdminInvoicesPage() {
   }
 
   if (!ready || !token || user?.role !== 'SUPER_ADMIN') {
-    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>Loading…</div>;
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)' }}>Loading…</div>;
   }
 
   const badge = (s: Row['status']) => (
     <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
-      background: s === 'PAID' ? '#064e3b' : s === 'VOID' ? '#334155' : '#78350f',
-      color: s === 'PAID' ? '#a7f3d0' : s === 'VOID' ? '#cbd5e1' : '#fde68a' }}>
+      background: s === 'PAID' ? 'var(--c064e3b)' : s === 'VOID' ? 'var(--c334155)' : 'var(--c78350f)',
+      color: s === 'PAID' ? '#a7f3d0' : s === 'VOID' ? 'var(--ccbd5e1)' : 'var(--cfde68a)' }}>
       {s === 'PAID' ? 'Paid' : s === 'VOID' ? 'Void' : 'Open'}
     </span>
   );
 
   return (
-    <main style={{ maxWidth: 980, margin: '0 auto', padding: '32px 24px', color: '#e2e8f0' }}>
+    <main style={{ maxWidth: 980, margin: '0 auto', padding: '32px 24px', color: 'var(--ce2e8f0)' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Invoices</h1><MarketBadge /></div>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>Month-end overage + plan-renewal invoices. Sent automatically; you can resend or run the sweep manually.</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>Month-end overage + plan-renewal invoices. Sent automatically; you can resend or run the sweep manually.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => act('/admin/invoices/run-now', '✓ Sweep ran. New invoices (if any) were emailed.')} disabled={busy} style={primary}>Run sweep now</button>
@@ -71,20 +71,20 @@ export default function AdminInvoicesPage() {
         </div>
       </header>
 
-      {err && <Banner color="#fecaca" bg="#7f1d1d">{err}</Banner>}
-      {msg && <Banner color="#bbf7d0" bg="#14532d">{msg}</Banner>}
+      {err && <Banner color="var(--cfecaca)" bg="var(--c7f1d1d)">{err}</Banner>}
+      {msg && <Banner color="var(--cbbf7d0)" bg="var(--c14532d)">{msg}</Banner>}
 
       <section style={card}>
         {rows === null ? (
-          <p style={{ color: '#94a3b8', margin: 0 }}>Loading…</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: 0 }}>Loading…</p>
         ) : rows.length === 0 ? (
-          <p style={{ color: '#94a3b8', margin: 0 }}>No invoices yet. They are generated at month end (overage) and when a plan is due (renewal).</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: 0 }}>No invoices yet. They are generated at month end (overage) and when a plan is due (renewal).</p>
         ) : (
           <>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, minWidth: 720 }}>
               <thead>
-                <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+                <tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
                   <th style={th}>Invoice</th><th style={th}>Salon</th><th style={th}>Type</th>
                   <th style={{ ...th, textAlign: 'right' }}>Amount</th><th style={th}>Status</th>
                   <th style={th}>Sent</th><th style={th}>Paid</th><th style={{ ...th, textAlign: 'right' }}>Actions</th>
@@ -92,7 +92,7 @@ export default function AdminInvoicesPage() {
               </thead>
               <tbody>
                 {pg.paged.map((r) => (
-                  <tr key={r.id} style={{ borderTop: '1px solid #1f2937' }}>
+                  <tr key={r.id} style={{ borderTop: '1px solid var(--c1f2937)' }}>
                     <td style={td}><span style={{ fontFamily: 'monospace' }}>{r.number}</span></td>
                     <td style={td}>{r.salonName ?? '—'}</td>
                     <td style={td}>{r.type === 'RENEWAL' ? 'Renewal' : 'Overage'}</td>
@@ -103,7 +103,7 @@ export default function AdminInvoicesPage() {
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <a href={`/invoice/${r.token}`} target="_blank" rel="noopener noreferrer" style={miniLink}>View</a>
                       {r.status !== 'VOID' && <button onClick={() => act(`/admin/invoices/${r.id}/resend`, '✓ Invoice re-emailed.')} disabled={busy} style={mini}>Resend</button>}
-                      {r.status === 'OPEN' && <button onClick={() => act(`/admin/invoices/${r.id}/void`, '✓ Invoice voided.')} disabled={busy} style={{ ...mini, color: '#fca5a5' }}>Void</button>}
+                      {r.status === 'OPEN' && <button onClick={() => act(`/admin/invoices/${r.id}/void`, '✓ Invoice voided.')} disabled={busy} style={{ ...mini, color: 'var(--cfca5a5)' }}>Void</button>}
                     </td>
                   </tr>
                 ))}
@@ -122,10 +122,10 @@ function Banner({ children, color, bg }: { children: ReactNode; color: string; b
   return <div style={{ background: bg, color, padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{children}</div>;
 }
 
-const card: CSSProperties = { background: '#111827', border: '1px solid #1f2937', borderRadius: 12, padding: 18 };
+const card: CSSProperties = { background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 12, padding: 18 };
 const th: CSSProperties = { padding: '6px 10px', fontWeight: 600 };
-const td: CSSProperties = { padding: '10px 10px', color: '#e2e8f0', verticalAlign: 'middle' };
-const ghost: CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer', textDecoration: 'none' };
+const td: CSSProperties = { padding: '10px 10px', color: 'var(--ce2e8f0)', verticalAlign: 'middle' };
+const ghost: CSSProperties = { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer', textDecoration: 'none' };
 const primary: CSSProperties = { padding: '9px 14px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
-const mini: CSSProperties = { marginLeft: 8, padding: '5px 10px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 12.5, cursor: 'pointer' };
-const miniLink: CSSProperties = { marginLeft: 8, padding: '5px 10px', borderRadius: 6, border: '1px solid #334155', color: '#a5b4fc', fontSize: 12.5, textDecoration: 'none' };
+const mini: CSSProperties = { marginLeft: 8, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, cursor: 'pointer' };
+const miniLink: CSSProperties = { marginLeft: 8, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--c334155)', color: 'var(--ca5b4fc)', fontSize: 12.5, textDecoration: 'none' };

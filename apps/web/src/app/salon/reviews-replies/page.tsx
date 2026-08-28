@@ -262,52 +262,52 @@ function Inner() {
   const filteredLocs = (locations ?? []).filter((l) => `${l.title} ${l.address}`.toLowerCase().includes(locFilter.trim().toLowerCase()));
 
   if (loading || !s) {
-    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: '#94a3b8' }}>{t('loading')}</p></section>;
+    return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: 'var(--c94a3b8)' }}>{t('loading')}</p></section>;
   }
 
   const c = s.counts || {};
   return (
     <section style={{ maxWidth: 860 }}>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 14px', fontSize: 14 }}>{t('subtitle')}</p>
 
-      {flash && <div style={{ ...ui.banner, background: '#14532d', color: '#bbf7d0' }}>{flash}</div>}
+      {flash && <div style={{ ...ui.banner, background: 'var(--c14532d)', color: 'var(--cbbf7d0)' }}>{flash}</div>}
       {error && <div style={ui.banner}>{error}</div>}
-      {!s.clientConfigured && <div style={{ ...ui.banner, background: '#78350f', color: '#fed7aa' }}>{t('notConfigured')}</div>}
+      {!s.clientConfigured && <div style={{ ...ui.banner, background: 'var(--c78350f)', color: '#fed7aa' }}>{t('notConfigured')}</div>}
 
       {/* Connection */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         {!s.connected ? (
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>{t('connectTitle')}</div>
-            <p style={{ color: '#94a3b8', fontSize: 13.5, margin: '0 0 14px', lineHeight: 1.5 }}>{t('connectDesc')}</p>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('connectTitle')}</div>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, margin: '0 0 14px', lineHeight: 1.5 }}>{t('connectDesc')}</p>
             <button onClick={connect} disabled={!s.clientConfigured} style={{ ...ui.primaryBtn, opacity: s.clientConfigured ? 1 : 0.5 }}>{t('connectBtn')}</button>
-            <p style={{ color: '#64748b', fontSize: 12, margin: '12px 0 0' }}>{t('pendingApproval')}</p>
+            <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '12px 0 0' }}>{t('pendingApproval')}</p>
           </div>
         ) : (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 14, color: '#e2e8f0' }}>
+              <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
                 <span style={{ color: '#22c55e', fontWeight: 700 }}>● {t('connected')}</span>
-                {s.connectedEmail ? <span style={{ color: '#94a3b8' }}> · {s.connectedEmail}</span> : null}
+                {s.connectedEmail ? <span style={{ color: 'var(--c94a3b8)' }}> · {s.connectedEmail}</span> : null}
               </div>
               <button onClick={disconnect} style={ui.dangerBtn}>{t('disconnect')}</button>
             </div>
 
             {/* Location picker — always available (even after one is set) + searchable,
                 since an agency account can manage many salons. */}
-            <div style={{ marginTop: 14, borderTop: '1px solid #334155', paddingTop: 14 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
                 {t('pickLocation')}
                 {s.hasLocation && <span style={{ color: '#22c55e', fontWeight: 500, marginLeft: 8, fontSize: 12.5 }}>✓ {t('locSet')}</span>}
               </div>
               {s.hasLocation && s.locationTitle && (
-                <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 10 }}>📍 <strong>{s.locationTitle}</strong>{saved && <span style={{ color: '#22c55e', marginLeft: 8, fontSize: 12 }}>{t('saved')}</span>}</div>
+                <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 10 }}>📍 <strong>{s.locationTitle}</strong>{saved && <span style={{ color: '#22c55e', marginLeft: 8, fontSize: 12 }}>{t('saved')}</span>}</div>
               )}
               {locations === null ? (
                 <button onClick={loadLocations} style={ui.primaryBtn}>{s.hasLocation ? t('changeLoc') : t('loadLocations')}</button>
               ) : locations.length === 0 ? (
-                <p style={{ color: '#94a3b8', fontSize: 13 }}>{t('noLocations')}</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('noLocations')}</p>
               ) : (
                 <div>
                   <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder={t('filterLoc')} style={{ ...ui.input, marginBottom: 8, maxWidth: 420 }} />
@@ -318,7 +318,7 @@ function Inner() {
                     </select>
                     <button onClick={saveLocation} style={ui.primaryBtn}>{t('saveLocation')}</button>
                   </div>
-                  <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>{filteredLocs.length}/{locations.length} {t('locCount')}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6 }}>{filteredLocs.length}/{locations.length} {t('locCount')}</div>
                 </div>
               )}
             </div>
@@ -328,15 +328,15 @@ function Inner() {
 
       {/* Rule + settings */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('settingsTitle')}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('settingsTitle')}</div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
           <input type="checkbox" checked={s.enabled} onChange={(e) => saveSettings({ enabled: e.target.checked })} />
           {t('enable')}
         </label>
 
         {/* Rule */}
-        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, color: '#cbd5e1', lineHeight: 1.9 }}>
+        <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.9 }}>
           <div>
             {t('ruleAuto')}{' '}
             <select value={s.autoMinStars} onChange={(e) => saveSettings({ autoMinStars: Number(e.target.value) })} style={selStyle}>
@@ -351,7 +351,7 @@ function Inner() {
           </div>
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: '#e2e8f0' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
           <input type="checkbox" checked={s.approveFirst} onChange={(e) => saveSettings({ approveFirst: e.target.checked })} />
           {t('approveFirst')}
         </label>
@@ -387,13 +387,13 @@ function Inner() {
             <button onClick={testAi} disabled={testing} style={{ ...ghostBtn, padding: '7px 12px', fontSize: 12.5 }}>{testing ? t('testingAi') : t('testAi')}</button>
           </div>
           {aiTest && (
-            <div style={{ marginTop: 10, background: '#0f172a', border: `1px solid ${aiTest.ok ? '#14532d' : '#7f1d1d'}`, borderRadius: 10, padding: 12 }}>
+            <div style={{ marginTop: 10, background: 'var(--c0f172a)', border: `1px solid ${aiTest.ok ? 'var(--c14532d)' : 'var(--c7f1d1d)'}`, borderRadius: 10, padding: 12 }}>
               <div style={{ fontSize: 12, color: aiTest.ok ? '#22c55e' : '#f59e0b', fontWeight: 700, marginBottom: 6 }}>
                 {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
               </div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
-              <div style={{ fontSize: 13.5, color: '#e2e8f0', lineHeight: 1.5 }}>💬 {aiTest.reply}</div>
-              {aiTest.error && <div style={{ fontSize: 11.5, color: '#fca5a5', marginTop: 6 }}>{aiTest.error}</div>}
+              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
+              <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>💬 {aiTest.reply}</div>
+              {aiTest.error && <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginTop: 6 }}>{aiTest.error}</div>}
             </div>
           )}
         </div>
@@ -406,8 +406,8 @@ function Inner() {
             style={{ ...ghostBtn, padding: '9px 12px', fontSize: 12.5, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
             {t('resyncFresh')}
           </button>
-          {saving ? <span style={{ color: '#94a3b8', fontSize: 12 }}>…</span> : saved ? <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span> : null}
-          <span style={{ color: '#64748b', fontSize: 12, marginLeft: 'auto' }}>
+          {saving ? <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>…</span> : saved ? <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span> : null}
+          <span style={{ color: 'var(--c64748b)', fontSize: 12, marginLeft: 'auto' }}>
             {t('lastSync')}: {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString(uiLocale()) : t('never')}
           </span>
         </div>
@@ -419,7 +419,7 @@ function Inner() {
       {/* Inbox */}
       <div style={{ ...ui.card }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>{t('inbox')}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('inbox')}</div>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
             {([['DRAFTED', 'fDraft', c.DRAFTED], ['NEEDS_ATTENTION', 'fNeeds', c.NEEDS_ATTENTION], ['REPLIED', 'fReplied', c.REPLIED], ['ALL', 'fAll', undefined]] as const).map(([key, lbl, n]) => (
               <button key={key} onClick={() => setFilter(key)}
@@ -431,18 +431,18 @@ function Inner() {
         </div>
 
         {reviews.length === 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: 13.5, padding: '10px 0' }}>{t('empty')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, padding: '10px 0' }}>{t('empty')}</p>
         ) : (
           <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {pgReviews.paged.map((r) => (
-              <div key={r.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 14 }}>
+              <div key={r.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <span style={{ color: r.starRating >= 4 ? '#22c55e' : '#f59e0b', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
-                  <span style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
-                  {r.reviewCreatedAt && <span style={{ color: '#64748b', fontSize: 12 }}>{new Date(r.reviewCreatedAt).toLocaleDateString(uiLocale())}</span>}
+                  <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
+                  {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{new Date(r.reviewCreatedAt).toLocaleDateString(uiLocale())}</span>}
                 </div>
-                {r.comment && <div style={{ color: '#cbd5e1', fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>{r.comment}</div>}
+                {r.comment && <div style={{ color: 'var(--ccbd5e1)', fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>{r.comment}</div>}
 
                 {r.status === 'DRAFTED' && (
                   <div>
@@ -470,7 +470,7 @@ function Inner() {
                 {r.status === 'REPLIED' && r.replyText && (
                   <div style={{ borderLeft: '3px solid #22c55e', paddingLeft: 10, marginTop: 4 }}>
                     <div style={{ ...ui.label, marginBottom: 2 }}>{t('yourReply')}</div>
-                    <div style={{ color: '#cbd5e1', fontSize: 13, lineHeight: 1.5 }}>{r.replyText}</div>
+                    <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, lineHeight: 1.5 }}>{r.replyText}</div>
                   </div>
                 )}
               </div>
@@ -485,12 +485,12 @@ function Inner() {
 }
 
 const selStyle: React.CSSProperties = {
-  background: '#1e293b', color: '#e2e8f0', border: '1px solid #475569', borderRadius: 6, padding: '2px 6px', fontSize: 13.5, fontWeight: 700,
+  background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)', borderRadius: 6, padding: '2px 6px', fontSize: 13.5, fontWeight: 700,
 };
 const tabStyle: React.CSSProperties = {
-  padding: '5px 10px', borderRadius: 999, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap',
+  padding: '5px 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const tabActive: React.CSSProperties = { background: '#6366f1', color: 'white', borderColor: '#6366f1', fontWeight: 700 };
 const ghostBtn: React.CSSProperties = {
-  padding: '9px 14px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
+  padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
 };

@@ -243,11 +243,11 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
         <div style={{ background: '#fff', borderRadius: 18, boxShadow: '0 24px 60px -40px rgba(15,42,82,.45)', padding: 30, textAlign: 'center' }}>
           <div style={{ width: 66, height: 66, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'grid', placeItems: 'center', margin: '0 auto 14px' }} className="lumio-added"><Icon d="M20 6L9 17l-5-5" size={34} /></div>
           <h2 style={{ fontFamily: DISPLAY, fontSize: 26, margin: '0 0 6px', color: INK }}>{bt('Your table is reserved')}</h2>
-          <p style={{ color: '#64748b', fontSize: 14.5, margin: '0 0 20px' }}>{btf('A confirmation text is on its way{name}.', { name: form.name ? `, ${form.name.split(' ')[0]}` : '' })}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 14.5, margin: '0 0 20px' }}>{btf('A confirmation text is on its way{name}.', { name: form.name ? `, ${form.name.split(' ')[0]}` : '' })}</p>
           <div style={{ textAlign: 'left', background: SOFT, border: '1px solid #eef1f6', borderRadius: 14, padding: '16px 18px', maxWidth: 380, margin: '0 auto' }}>
             <div style={{ fontFamily: DISPLAY, fontSize: 19, color: INK, marginBottom: 8 }}>{salon.name}</div>
             {resRows.filter(([k]) => k !== bt('Contact')).map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 14.5 }}><span style={{ color: '#94a3b8' }}>{k}</span><span style={{ color: INK, fontWeight: 700 }}>{v}</span></div>
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 14.5 }}><span style={{ color: 'var(--c94a3b8)' }}>{k}</span><span style={{ color: INK, fontWeight: 700 }}>{v}</span></div>
             ))}
           </div>
           {depLabel && <p style={{ color: '#b45309', fontSize: 13, marginTop: 14 }}>{btf('A {deposit} may apply to hold your table.', { deposit: depLabel })}</p>}
@@ -272,7 +272,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
             <div style={{ fontWeight: 800, fontSize: isMobile ? 16 : 19, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{barTitle}</div>
             {step === 1 && (
               <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 0 3px rgba(74,222,128,.25)' }} className="lumio-dot" />
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c4ade80)', boxShadow: '0 0 0 3px rgba(74,222,128,.25)' }} className="lumio-dot" />
                 Reserve online · confirmed in seconds
               </div>
             )}
@@ -319,24 +319,24 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                   {dateCards.map((d, i) => {
                     const sel = d.getTime() === dateObj.getTime();
                     return <button key={i} className="lumio-row" onClick={() => { setDateObj(d); setSlot(null); }} style={{ flexShrink: 0, width: 64, padding: '9px 0', borderRadius: 12, border: `1px solid ${sel ? accent : '#e6eaf2'}`, background: sel ? tint(accent, 0.08) : '#fff', cursor: 'pointer', textAlign: 'center' }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 800, color: sel ? accent : '#94a3b8' }}>{i === 0 ? bt('Today') : i === 1 ? bt('Tmrw') : d.toLocaleDateString(bookLocale(), { weekday: 'short' })}</div>
-                      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{d.toLocaleDateString(bookLocale(), { month: 'short' })}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 800, color: sel ? accent : 'var(--c94a3b8)' }}>{i === 0 ? bt('Today') : i === 1 ? bt('Tmrw') : d.toLocaleDateString(bookLocale(), { weekday: 'short' })}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--c94a3b8)' }}>{d.toLocaleDateString(bookLocale(), { month: 'short' })}</div>
                       <div style={{ fontSize: 18, fontWeight: 800, color: sel ? accent : INK }}>{d.getDate()}</div>
                     </button>;
                   })}
-                  <label style={{ position: 'relative', flexShrink: 0, width: 52, borderRadius: 12, border: '1px solid #e6eaf2', display: 'grid', placeItems: 'center', cursor: 'pointer', color: '#64748b' }}>
+                  <label style={{ position: 'relative', flexShrink: 0, width: 52, borderRadius: 12, border: '1px solid #e6eaf2', display: 'grid', placeItems: 'center', cursor: 'pointer', color: 'var(--c64748b)' }}>
                     <Icon d="M8 2v4|M16 2v4|M3 10h18|M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" size={18} />
                     <input type="date" min={dateCards[0] ? `${dateCards[0].getFullYear()}-${pad(dateCards[0].getMonth() + 1)}-${pad(dateCards[0].getDate())}` : undefined} onChange={(e) => { if (e.target.value) { const [Y, M, D] = e.target.value.split('-').map(Number); setDateObj(new Date(Y, M - 1, D)); setSlot(null); } }} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
                   </label>
                 </div>
 
                 <SectionLabel accent={accent}>{bt('Select time')}</SectionLabel>
-                {dayClosed ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>{btf('Closed on {day}. Please pick another date.', { day: dateObj.toLocaleDateString(bookLocale(), { weekday: 'long' }) })}</div>
-                  : loadingAvail && !avail ? <p style={{ color: '#94a3b8', fontSize: 14 }}>{bt('Finding available times…')}</p>
-                  : !anyOpen ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: '#64748b', fontSize: 14 }}>{btf('No tables for {n} guests on this date. Try another time or date.', { n: party })}</div>
+                {dayClosed ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: 'var(--c64748b)', fontSize: 14 }}>{btf('Closed on {day}. Please pick another date.', { day: dateObj.toLocaleDateString(bookLocale(), { weekday: 'long' }) })}</div>
+                  : loadingAvail && !avail ? <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{bt('Finding available times…')}</p>
+                  : !anyOpen ? <div style={{ background: SOFT, border: '1px solid #eef1f6', borderRadius: 12, padding: 16, textAlign: 'center', color: 'var(--c64748b)', fontSize: 14 }}>{btf('No tables for {n} guests on this date. Try another time or date.', { n: party })}</div>
                   : groups.map(([label, arr]) => (
                     <div key={label} style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 12.5, color: '#94a3b8', fontWeight: 700, margin: '2px 0 6px' }}>{bt(label)}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 700, margin: '2px 0 6px' }}>{bt(label)}</div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
                         {arr.map((s) => { const on = slot === s.hm; return (
                           <button key={s.hm} disabled={!s.open} className="lumio-slot" onClick={() => setSlot(s.hm)} style={{ ...pill(on, accent), padding: '8px 2px', background: on ? accent : s.open ? '#fff' : '#f4f6fb', color: on ? '#fff' : s.open ? INK : '#c2cbd9', borderColor: on ? accent : '#e6eaf2', cursor: s.open ? 'pointer' : 'not-allowed', textDecoration: s.open ? 'none' : 'line-through' }}>
@@ -361,12 +361,12 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                   <input style={inputStyle} type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder={bt("Phone number *")} />
                   <input style={inputStyle} type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={bt("Email (optional)")} />
                 </div>
-                <SectionLabel accent={accent}>{bt('Special occasion')} <span style={{ fontWeight: 500, color: '#94a3b8', fontSize: 13 }}>{bt('(optional)')}</span></SectionLabel>
+                <SectionLabel accent={accent}>{bt('Special occasion')} <span style={{ fontWeight: 500, color: 'var(--c94a3b8)', fontSize: 13 }}>{bt('(optional)')}</span></SectionLabel>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{OCCASIONS.map((o) => <button key={o} className="lumio-row" onClick={() => setOccasion(occasion === o ? '' : o)} style={{ ...pill(occasion === o, accent), flex: '1 1 90px' }}>{bt(o)}</button>)}</div>
                 <SectionLabel accent={accent}>{bt('Additional requests')}</SectionLabel>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{REQUESTS.map((r) => <button key={r} className="lumio-row" onClick={() => toggleReq(r)} style={{ ...pill(requests.includes(r), accent), flex: '1 1 120px' }}>{bt(r)}</button>)}</div>
                 <textarea value={note} maxLength={250} onChange={(e) => setNote(e.target.value)} rows={3} placeholder={bt("Add a note for the restaurant (optional)")} style={{ ...inputStyle, marginTop: 12, resize: 'vertical', fontFamily: 'inherit' }} />
-                <div style={{ textAlign: 'right', fontSize: 11, color: '#94a3b8' }}>{note.length}/250</div>
+                <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--c94a3b8)' }}>{note.length}/250</div>
                 <div style={{ display: 'flex', gap: 10, background: tint(accent, 0.07), borderRadius: 12, padding: 13, marginTop: 8 }}>
                   <span style={{ color: accent, flexShrink: 0 }}><Icon d="M12 6v6l4 2|M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /></span>
                   <div style={{ fontSize: 13, color: '#44506a' }}><b style={{ color: INK }}>{bt('Your table is held for 15 minutes.')}</b> {bt('Please arrive on time — call the restaurant if you’re running late.')}</div>
@@ -378,12 +378,12 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
               <div>
                 <div style={{ border: '1px solid #eef1f6', borderRadius: 14, padding: '6px 16px' }}>
                   {([[bt('Restaurant'), salon.name + (salon.contactPhone ? ' · ' + salon.contactPhone : '')], ...resRows] as [string, string][]).map(([k, v], i) => (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '11px 0', fontSize: 14, borderTop: i ? '1px solid #f1f4f9' : 'none' }}><span style={{ color: '#94a3b8', flexShrink: 0 }}>{k}</span><span style={{ color: INK, fontWeight: 700, textAlign: 'right' }}>{v}</span></div>
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '11px 0', fontSize: 14, borderTop: i ? '1px solid #f1f4f9' : 'none' }}><span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{k}</span><span style={{ color: INK, fontWeight: 700, textAlign: 'right' }}>{v}</span></div>
                   ))}
                 </div>
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 13, marginTop: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>{bt('Cancellation policy')}</div>
-                  <div style={{ fontSize: 12.5, color: '#92400e', marginTop: 2 }}>{bt('You can cancel or modify up to 2 hours in advance.')}{depLabel ? btf(' A {deposit} may be applied to hold your table.', { deposit: depLabel }) : ''}</div>
+                <div style={{ background: '#fffbeb', border: '1px solid var(--cfde68a)', borderRadius: 12, padding: 13, marginTop: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--c92400e)' }}>{bt('Cancellation policy')}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--c92400e)', marginTop: 2 }}>{bt('You can cancel or modify up to 2 hours in advance.')}{depLabel ? btf(' A {deposit} may be applied to hold your table.', { deposit: depLabel }) : ''}</div>
                 </div>
                 <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 14, fontSize: 13.5, color: '#44506a', cursor: 'pointer' }}>
                   <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} style={{ marginTop: 2 }} />
@@ -394,7 +394,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 16, borderTop: '1px solid #f1f4f9', paddingTop: 14 }}>
                   {[['M20 6L9 17l-5-5', bt('Instant confirmation')], ['M20.6 13.4 12 22l-9-9V3h10z|M7 7h.01', bt('No booking fees')], ['M19 11H5V21H19V11z|M7 11V7a5 5 0 0 1 10 0v4', bt('Secure & private')], ['M12 2l3 6.5 7 .6-5.3 4.7 1.6 7L12 17l-6.9 3.8 1.6-7L1.4 9.1l7-.6z', bt('Top-rated')]].map(([d, t]) => (
-                    <div key={t} style={{ textAlign: 'center', color: '#64748b' }}><div style={{ color: accent }}><Icon d={d} size={18} /></div><div style={{ fontSize: 10.5, marginTop: 3, lineHeight: 1.2 }}>{t}</div></div>
+                    <div key={t} style={{ textAlign: 'center', color: 'var(--c64748b)' }}><div style={{ color: accent }}><Icon d={d} size={18} /></div><div style={{ fontSize: 10.5, marginTop: 3, lineHeight: 1.2 }}>{t}</div></div>
                   ))}
                 </div>
               </div>
@@ -409,7 +409,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
 
         {isMobile && <MobileBar accent={accent} party={party} timeLine={slot ? fmtSlot(slot) : null} canContinue={canContinue} label={ctaLabel} onContinue={goNext} embedded={embedded} />}
 
-        <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(96px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: '#94a3b8', textDecoration: 'none' }}>
+        <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(96px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: 'var(--c94a3b8)', textDecoration: 'none' }}>
           {bt('Powered by')} <span style={{ color: accent, fontWeight: 700 }}>Lumio Booking</span>
         </a>
       </div>
@@ -433,7 +433,7 @@ function Progress({ step, accent }: { step: number; accent: string }) {
         return (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: i === steps.length - 1 ? '0 0 auto' : 1, minWidth: 0 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: on ? accent : done ? '#16a34a' : '#a9b4c6' }}>
-              <span className={on ? 'lumio-dot' : undefined} style={{ width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, background: done ? '#16a34a' : on ? accent : '#e6eaf2', color: done || on ? '#fff' : '#94a3b8', boxShadow: on ? `0 0 0 4px ${tint(accent, 0.15)}` : 'none' }}>{done ? '✓' : i + 1}</span>
+              <span className={on ? 'lumio-dot' : undefined} style={{ width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, background: done ? '#16a34a' : on ? accent : '#e6eaf2', color: done || on ? '#fff' : 'var(--c94a3b8)', boxShadow: on ? `0 0 0 4px ${tint(accent, 0.15)}` : 'none' }}>{done ? '✓' : i + 1}</span>
               <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
             </span>
             {i < steps.length - 1 && <span style={{ flex: 1, height: 2, borderRadius: 2, background: done ? '#16a34a' : '#e6eaf2', minWidth: 12 }} />}
@@ -472,7 +472,7 @@ function ReservationSummary({ salon, accent, rows, hasSlot, dateLine, timeLine, 
             <div style={{ textAlign: 'center', padding: '8px 0 14px' }}>
               <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🍽️</div>
               <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>{bt('Choose your table')}</div>
-              <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>{bt('Pick a party size, date and time to hold your table.')}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>{bt('Pick a party size, date and time to hold your table.')}</div>
             </div>
             <div style={{ display: 'grid', gap: 10 }}>
               {perks.map(([icon, text]) => (
@@ -487,7 +487,7 @@ function ReservationSummary({ salon, accent, rows, hasSlot, dateLine, timeLine, 
           <div style={{ padding: '4px 0' }}>
             {rows.map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '11px 0', borderBottom: '1px solid #eef1f6', fontSize: 13.5 }}>
-                <span style={{ color: '#94a3b8', flexShrink: 0 }}>{k}</span><span style={{ color: INK, fontWeight: 700, textAlign: 'right' }}>{v}</span>
+                <span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{k}</span><span style={{ color: INK, fontWeight: 700, textAlign: 'right' }}>{v}</span>
               </div>
             ))}
           </div>
@@ -581,7 +581,7 @@ function menuTags(d: Dish): string[] {
   return out.slice(0, 3);
 }
 const TAG_COLORS: Record<string, [string, string]> = {
-  Vegan: ['#065f46', '#d1fae5'], Veg: ['#065f46', '#d1fae5'], GF: ['#1e3a8a', '#dbeafe'], Spicy: ['#9a1c1c', '#fee2e2'],
+  Vegan: ['#065f46', 'var(--cd1fae5)'], Veg: ['#065f46', 'var(--cd1fae5)'], GF: ['var(--c1e3a8a)', '#dbeafe'], Spicy: ['#9a1c1c', '#fee2e2'],
 };
 
 function DishRow({ d, accent, dishPrice }: { d: Dish; accent: string; dishPrice: (cents: number) => string }) {
@@ -623,8 +623,8 @@ function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; a
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, maxWidth: 620, width: '100%', height: '90vh', maxHeight: 880, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 30px 80px -28px rgba(15,42,82,0.6)' }}>
         <div style={{ padding: '15px 18px 10px', borderBottom: '1px solid #eef1f6', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontFamily: DISPLAY, fontSize: 23, fontWeight: 800, color: INK }}>{bt('Menu')}{menu && menu.length ? <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginLeft: 8 }}>{btf('{n} dishes', { n: menu.length })}</span> : null}</div>
-            <button onClick={onClose} aria-label={bt("Close")} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: '#64748b', fontSize: 19, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            <div style={{ fontFamily: DISPLAY, fontSize: 23, fontWeight: 800, color: INK }}>{bt('Menu')}{menu && menu.length ? <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c94a3b8)', marginLeft: 8 }}>{btf('{n} dishes', { n: menu.length })}</span> : null}</div>
+            <button onClick={onClose} aria-label={bt("Close")} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: 'var(--c64748b)', fontSize: 19, cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
           {grouped.length > 1 && (
             <div className="lumio-tabs" style={{ display: 'flex', gap: 7, overflowX: 'auto', marginTop: 11, paddingBottom: 2 }}>
@@ -633,14 +633,14 @@ function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; a
           )}
         </div>
         <div ref={scrollRef} className="lumio-scroll" style={{ flex: 1, overflowY: 'auto', padding: '4px 18px 22px' }}>
-          {!menu ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>{bt('Loading…')}</p>
-            : menu.length === 0 ? <p style={{ color: '#94a3b8', padding: '20px 0' }}>{bt('Menu coming soon.')}</p>
+          {!menu ? <p style={{ color: 'var(--c94a3b8)', padding: '20px 0' }}>{bt('Loading…')}</p>
+            : menu.length === 0 ? <p style={{ color: 'var(--c94a3b8)', padding: '20px 0' }}>{bt('Menu coming soon.')}</p>
             : grouped.map(([cat, dishes], i) => (
               <div key={cat} data-idx={i} style={{ marginTop: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 6px' }}>
                   <span style={{ width: 4, height: 16, borderRadius: 2, background: accent, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 800, color: INK, textTransform: 'uppercase', letterSpacing: 0.5 }}>{cat}</span>
-                  <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{dishes.length}</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{dishes.length}</span>
                 </div>
                 {dishes.map((d) => <DishRow key={d.name} d={d} accent={accent} dishPrice={dishPrice} />)}
               </div>

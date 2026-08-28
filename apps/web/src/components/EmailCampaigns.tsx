@@ -98,7 +98,7 @@ function parseList(raw: string): { valid: string[]; invalid: string[]; named: nu
 const BODY_MAX = 40000;
 
 const STATUS: Record<string, { label: string; c: string }> = {
-  draft:   { label: 'Draft',   c: '#94a3b8' },
+  draft:   { label: 'Draft',   c: 'var(--c94a3b8)' },
   sending: { label: 'Sending', c: '#f59e0b' },
   sent:    { label: 'Sent',    c: '#22c55e' },
   failed:  { label: 'Failed',  c: '#ef4444' },
@@ -399,14 +399,14 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
     <div style={{ marginBottom: 14 }}>
       <label style={ui.label}>{label}</label>
       {node}
-      {hint && <p style={{ color: '#64748b', fontSize: 11.5, margin: '5px 0 0', lineHeight: 1.5 }}>{hint}</p>}
+      {hint && <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '5px 0 0', lineHeight: 1.5 }}>{hint}</p>}
     </div>
   );
 
   return (
     <div>
       {error && <div style={ui.banner}>{error}</div>}
-      {ok && <div style={{ ...ui.card, marginBottom: 14, borderColor: '#16a34a', color: '#86efac', fontSize: 13.5 }}>{ok}</div>}
+      {ok && <div style={{ ...ui.card, marginBottom: 14, borderColor: '#16a34a', color: 'var(--c86efac)', fontSize: 13.5 }}>{ok}</div>}
 
       {/* Four jobs, four screens. Trying to do all of it on one page is what made the
           old layout unreadable. */}
@@ -423,13 +423,13 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <button key={k} onClick={() => setTab(k)}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 10, cursor: 'pointer',
                 fontSize: 13.5, fontWeight: 700,
-                border: on ? '1px solid #6366f1' : '1px solid #334155',
-                background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1' }}>
+                border: on ? '1px solid #6366f1' : '1px solid var(--c334155)',
+                background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)' }}>
               {label}
               {badge && (
                 <span style={{ fontSize: 11, fontWeight: 800, padding: '1px 7px', borderRadius: 999,
-                  background: on ? 'rgba(255,255,255,0.22)' : hot ? '#16a34a' : '#1e293b',
-                  color: on ? '#fff' : hot ? '#fff' : '#94a3b8' }}>{badge}</span>
+                  background: on ? 'rgba(255,255,255,0.22)' : hot ? '#16a34a' : 'var(--c1e293b)',
+                  color: on ? '#fff' : hot ? '#fff' : 'var(--c94a3b8)' }}>{badge}</span>
               )}
             </button>
           );
@@ -440,29 +440,29 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
         {/* ---------------- compose ---------------- */}
         <div ref={composeRef} style={{ ...ui.card }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 14 }}>
             {t('Soạn email', 'Compose')}
           </div>
 
           {/* Pick the template by what you're TRYING TO DO, not by what it's called.
               The wrong template on the wrong list is how a campaign lands in spam. */}
           {presets.length > 0 && (
-            <div style={{ marginBottom: 18, border: '1px solid #334155', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ marginBottom: 18, border: '1px solid var(--c334155)', borderRadius: 12, overflow: 'hidden' }}>
               <button onClick={() => setPickOpen((v) => !v)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
                   background: 'rgba(99,102,241,0.10)', border: 0, cursor: 'pointer', textAlign: 'left' }}>
                 <span style={{ fontSize: 16 }}>📨</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
                     {t('Chọn mẫu theo nhu cầu', 'Pick a template by what you need')}
                   </span>
-                  <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>
                     {chosen
                       ? t(`Đang dùng: ${chosen}`, `Using: ${chosen}`)
                       : t(`${presets.length} mẫu — bấm một cái là điền hết, sửa lại thoải mái`, `${presets.length} templates — one click fills everything, then edit`)}
                   </span>
                 </span>
-                <span style={{ color: '#94a3b8', fontSize: 12, transform: pickOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>▶</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 12, transform: pickOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>▶</span>
               </button>
 
               {pickOpen && (
@@ -475,14 +475,14 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                       {mine.map((tpl) => (
                         <div key={tpl.id}
                           style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10,
-                            border: chosen === tpl.name ? '1px solid #fbbf24' : '1px solid #1e293b',
-                            background: chosen === tpl.name ? 'rgba(251,191,36,0.10)' : '#0f172a' }}>
+                            border: chosen === tpl.name ? '1px solid #fbbf24' : '1px solid var(--c1e293b)',
+                            background: chosen === tpl.name ? 'rgba(251,191,36,0.10)' : 'var(--c0f172a)' }}>
                           <button onClick={() => useTemplate(tpl)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
-                            <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{tpl.name}</span>
-                            <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{tpl.name}</span>
+                            <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {tpl.subject}
                             </span>
-                            <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                            <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>
                               {t('Sửa lần cuối', 'Edited')} {new Date(tpl.updatedAt).toLocaleDateString(vi ? 'vi-VN' : uiLocale())}
                             </span>
                           </button>
@@ -490,8 +490,8 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                             style={{ flexShrink: 0, background: 'none', border: 0, color: '#ef4444', fontSize: 20, cursor: 'pointer' }}>&times;</button>
                         </div>
                       ))}
-                      <div style={{ height: 1, background: '#1e293b', margin: '6px 0' }} />
-                      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 2px 0' }}>
+                      <div style={{ height: 1, background: 'var(--c1e293b)', margin: '6px 0' }} />
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 2px 0' }}>
                         {t('Mẫu có sẵn của Lumio', 'Built-in templates')}
                       </div>
                     </>
@@ -506,13 +506,13 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                           setPickOpen(false);
                         }}
                         style={{ display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 10,
-                          border: on ? '1px solid #6366f1' : '1px solid #1e293b',
-                          background: on ? 'rgba(99,102,241,0.12)' : '#0f172a' }}>
-                        <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#e2e8f0', marginBottom: 5 }}>{p.label}</span>
-                        <span style={{ display: 'block', fontSize: 12.5, color: '#cbd5e1', lineHeight: 1.55 }}>
-                          <b style={{ color: '#a5b4fc' }}>{t('Mục tiêu:', 'Goal:')}</b> {p.goal}
+                          border: on ? '1px solid #6366f1' : '1px solid var(--c1e293b)',
+                          background: on ? 'rgba(99,102,241,0.12)' : 'var(--c0f172a)' }}>
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 5 }}>{p.label}</span>
+                        <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
+                          <b style={{ color: 'var(--ca5b4fc)' }}>{t('Mục tiêu:', 'Goal:')}</b> {p.goal}
                         </span>
-                        <span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.55, marginTop: 3 }}>
+                        <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 3 }}>
                           <b style={{ color: '#fbbf24' }}>{t('Gửi cho:', 'Send to:')}</b> {p.who}
                         </span>
                       </button>
@@ -551,7 +551,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
               <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={10}
                 style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace, monospace', fontSize: 13,
                   border: bodyOver ? '1px solid #ef4444' : undefined }} />
-              <div style={{ textAlign: 'right', fontSize: 11.5, marginTop: 4, color: bodyOver ? '#ef4444' : '#64748b', fontWeight: bodyOver ? 700 : 400 }}>
+              <div style={{ textAlign: 'right', fontSize: 11.5, marginTop: 4, color: bodyOver ? '#ef4444' : 'var(--c64748b)', fontWeight: bodyOver ? 700 : 400 }}>
                 {d.body.length.toLocaleString()} / {BODY_MAX.toLocaleString()}
                 {bodyOver && ' — ' + t('Nội dung quá dài, hệ thống sẽ không gửi. Anh chị cắt bớt giúp em.', 'Too long — this will not send. Please trim it.')}
               </div>
@@ -582,7 +582,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <input value={d.replyTo} onChange={(e) => setD({ ...d, replyTo: e.target.value })}
               placeholder={t('Mặc định của hệ thống', 'Platform default')} style={{ ...ui.input, width: '100%' }} />)}
 
-          <div style={{ height: 1, background: '#1e293b', margin: '6px 0 16px' }} />
+          <div style={{ height: 1, background: 'var(--c1e293b)', margin: '6px 0 16px' }} />
 
           {field(t('Người nhận — mỗi dòng một người (có tên càng tốt)', 'Recipients — one per line (a name is better)'),
             t('Có tên thì thư sẽ chào đúng tên khách, và tỉ lệ mở cao hơn hẳn. Trong nội dung, {{name|anh chị}} sẽ tự điền tên khách — ai chưa có tên thì thư vẫn chào "anh chị" bình thường. Hệ thống tự lọc trùng và địa chỉ sai.',
@@ -594,7 +594,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           {/* Pull people straight out of the address book — the whole point of having one. */}
           {contacts.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '-6px 0 14px' }}>
-              <span style={{ fontSize: 12, color: '#64748b', alignSelf: 'center' }}>{t('Lấy nhanh từ danh bạ:', 'Pull from contacts:')}</span>
+              <span style={{ fontSize: 12, color: 'var(--c64748b)', alignSelf: 'center' }}>{t('Lấy nhanh từ danh bạ:', 'Pull from contacts:')}</span>
               {([
                 ['all', t(`Tất cả (${pickTargets('all').length})`, `All (${pickTargets('all').length})`)],
                 ['new', t(`Chưa từng gửi (${pickTargets('new').length})`, `Never emailed (${pickTargets('new').length})`)],
@@ -603,7 +603,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
               ] as [PickTarget, string][]).map(([k, label]) => (
                 <button key={k} onClick={() => fillFromContacts(k)} disabled={pickTargets(k).length === 0}
                   style={{ padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                    border: '1px dashed #6366f1', background: 'rgba(99,102,241,0.10)', color: '#c7d2fe',
+                    border: '1px dashed #6366f1', background: 'rgba(99,102,241,0.10)', color: 'var(--cc7d2fe)',
                     opacity: pickTargets(k).length === 0 ? 0.4 : 1 }}>
                   + {label}
                 </button>
@@ -623,8 +623,8 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                 )}
               </div>
               {showBad && parsed.invalid.length > 0 && (
-                <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #7f1d1d',
-                  fontSize: 12, color: '#fca5a5', fontFamily: 'ui-monospace, monospace', maxHeight: 120, overflow: 'auto' }}>
+                <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c7f1d1d)',
+                  fontSize: 12, color: 'var(--cfca5a5)', fontFamily: 'ui-monospace, monospace', maxHeight: 120, overflow: 'auto' }}>
                   {parsed.invalid.slice(0, 30).map((x, i) => <div key={i}>{x}</div>)}
                   {parsed.invalid.length > 30 && <div>…</div>}
                 </div>
@@ -636,7 +636,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <input value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder={t('Gửi thử tới email của bạn', 'Send a test to your email')}
               style={{ ...ui.input, flex: 1, minWidth: 200 }} />
             <button onClick={sendTest} disabled={busy || !testTo || !d.subject || !d.fromName}
-              style={{ ...ui.primaryBtn, background: '#334155', opacity: busy || !testTo || !d.subject || !d.fromName ? 0.5 : 1 }}>
+              style={{ ...ui.primaryBtn, background: 'var(--c334155)', opacity: busy || !testTo || !d.subject || !d.fromName ? 0.5 : 1 }}>
               {t('Gửi thử', 'Send test')}
             </button>
           </div>
@@ -648,7 +648,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             </button>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setConfirm(false)} style={{ ...ui.primaryBtn, flex: 1, background: '#334155' }}>
+              <button onClick={() => setConfirm(false)} style={{ ...ui.primaryBtn, flex: 1, background: 'var(--c334155)' }}>
                 {t('Huỷ', 'Cancel')}
               </button>
               <button onClick={sendAll} disabled={busy}
@@ -657,7 +657,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
               </button>
             </div>
           )}
-          <p style={{ color: '#64748b', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.55 }}>
+          <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.55 }}>
             {t('Mỗi email đều có nút "Unsubscribe". Ai đã huỷ nhận thì lần sau hệ thống tự bỏ qua — luật email marketing ở Mỹ/Canada bắt buộc điều này.',
                'Every email carries an unsubscribe link. Anyone who opts out is skipped on every future send — US/Canada email law requires it.')}
           </p>
@@ -665,12 +665,12 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button onClick={saveTemplate} disabled={busy || !d.subject.trim()}
               style={{ flex: 1, minWidth: 180, padding: '11px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                border: '1px dashed #fbbf24', background: 'rgba(251,191,36,0.08)', color: '#fde68a', opacity: d.subject.trim() ? 1 : 0.5 }}>
+                border: '1px dashed #fbbf24', background: 'rgba(251,191,36,0.08)', color: 'var(--cfde68a)', opacity: d.subject.trim() ? 1 : 0.5 }}>
               {t('💾 Lưu thành mẫu của tôi', '💾 Save as my template')}
             </button>
             <button onClick={addStepFromDraft} disabled={busy || !d.subject.trim()}
               style={{ flex: 1, minWidth: 180, padding: '11px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                border: '1px dashed #6366f1', background: 'transparent', color: '#c7d2fe', opacity: d.subject.trim() ? 1 : 0.5 }}>
+                border: '1px dashed #6366f1', background: 'transparent', color: 'var(--cc7d2fe)', opacity: d.subject.trim() ? 1 : 0.5 }}>
               {t('🔁 Thêm vào chuỗi tự động', '🔁 Add to the follow-up')}
             </button>
           </div>
@@ -680,10 +680,10 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
         <div style={{ position: 'sticky', top: 12 }}>
           <div style={{ ...ui.card, padding: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{t('Xem trước', 'Live preview')}</span>
-              <span style={{ fontSize: 11, color: '#64748b' }}>{t('đúng như khách sẽ thấy', 'exactly what lands in the inbox')}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('Xem trước', 'Live preview')}</span>
+              <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{t('đúng như khách sẽ thấy', 'exactly what lands in the inbox')}</span>
             </div>
-            <div style={{ borderRadius: 10, overflow: 'hidden', background: '#f1f5f9' }}>
+            <div style={{ borderRadius: 10, overflow: 'hidden', background: 'var(--cf1f5f9)' }}>
               <iframe title="preview" srcDoc={html} style={{ width: '100%', height: 560, border: 0, display: 'block' }} />
             </div>
           </div>
@@ -697,15 +697,15 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
       <div>
         {/* import */}
         <div style={{ ...ui.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
             {t('Nhập danh sách khách hàng', 'Import your list')}
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.6 }}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.6 }}>
             {t('Mỗi dòng một người. Có tên thì email sẽ chào đúng tên — mở mail cao hơn hẳn. Cả bốn kiểu dưới đây đều được:',
                'One person per line. With a name, the email greets them properly — which lifts open rates a lot. All four forms work:')}
           </p>
-          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#a5b4fc', background: '#0f172a',
-            border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', marginBottom: 10, lineHeight: 1.9 }}>
+          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'var(--ca5b4fc)', background: 'var(--c0f172a)',
+            border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, lineHeight: 1.9 }}>
             Anh Tuấn &lt;tuan@gmail.com&gt;<br />
             tuan@gmail.com, Anh Tuấn<br />
             Chị Mai, mai@yahoo.com<br />
@@ -718,7 +718,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             style={{ ...ui.primaryBtn, opacity: busy || !importText.trim() ? 0.5 : 1 }}>
             {t('Nhập vào danh bạ', 'Import into contacts')}
           </button>
-          <p style={{ color: '#64748b', fontSize: 11.5, margin: '8px 0 0' }}>
+          <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '8px 0 0' }}>
             {t('Người đã có trong danh bạ sẽ được cập nhật tên, không bị nhân đôi. Xuất CSV từ Excel rồi dán thẳng vào đây cũng được.',
                'Existing people are updated, never duplicated. You can export a CSV from Excel and paste it straight in.')}
           </p>
@@ -726,10 +726,10 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
 
         {/* Mark replies in bulk — works today, no DNS setup needed. */}
         <div style={{ ...ui.card, marginBottom: 16, borderColor: '#b45309' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
             {t('💬 Đánh dấu người đã phản hồi', '💬 Mark people who replied')}
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.65 }}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.65 }}>
             {t('Dán email của những người đã trả lời thư, hoặc đã gọi điện cho anh chị. Hệ thống sẽ NGỪNG gửi nhắc tự động cho họ ngay lập tức — một lá thư máy rơi vào hộp thư của người vừa nói chuyện với anh chị hôm qua là cách nhanh nhất để mất họ.',
                'Paste the addresses of anyone who replied — or who phoned you. The follow-up stops for them immediately. An automated “just checking in” landing after a real conversation is the fastest way to lose a prospect.')}
           </p>
@@ -743,28 +743,28 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0' }}>{t('Danh bạ', 'Contacts')}</span>
-          <span style={{ fontSize: 12, color: '#64748b' }}>{t(`${contacts.length} người`, `${contacts.length} people`)}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('Danh bạ', 'Contacts')}</span>
+          <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{t(`${contacts.length} người`, `${contacts.length} people`)}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px' }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 12px' }}>
           {t('Ai đã nhận mấy lá thư, lá cuối là mẫu nào, có tới nơi không. Ai đã phản hồi thì đánh dấu — hệ thống sẽ KHÔNG gửi nhắc tự động cho họ nữa.',
              'How many letters each person has had, which one, and whether it landed. Mark anyone who replied — the automation will never chase them again.')}
         </p>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           {([
-            ['all', t(`Tất cả (${stats.all})`, `All (${stats.all})`), '#818cf8'],
+            ['all', t(`Tất cả (${stats.all})`, `All (${stats.all})`), 'var(--c818cf8)'],
             ['new', t(`🆕 Chưa gửi (${stats.fresh})`, `🆕 Never emailed (${stats.fresh})`), '#38bdf8'],
             ['ok', t(`✅ Đã gửi (${stats.ok})`, `✅ Emailed (${stats.ok})`), '#22c55e'],
             ['failed', t(`❌ Lỗi (${stats.failed})`, `❌ Failed (${stats.failed})`), '#ef4444'],
             ['replied', t(`💬 Đã phản hồi (${stats.replied})`, `💬 Replied (${stats.replied})`), '#fbbf24'],
-            ['unsub', t(`🚫 Huỷ nhận (${stats.unsub})`, `🚫 Unsubscribed (${stats.unsub})`), '#94a3b8'],
+            ['unsub', t(`🚫 Huỷ nhận (${stats.unsub})`, `🚫 Unsubscribed (${stats.unsub})`), 'var(--c94a3b8)'],
           ] as [ContactFilter, string, string][]).map(([k, label, col]) => {
             const on = cFilter === k;
             return (
               <button key={k} onClick={() => { setCFilter(k); setPicked(new Set()); }}
                 style={{ padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
-                  border: `1px solid ${on ? col : '#334155'}`, background: on ? col : 'transparent', color: on ? '#0b1120' : '#cbd5e1' }}>
+                  border: `1px solid ${on ? col : 'var(--c334155)'}`, background: on ? col : 'transparent', color: on ? 'var(--c0b1120)' : 'var(--ccbd5e1)' }}>
                 {label}
               </button>
             );
@@ -791,22 +791,22 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
         )}
 
         {visibleContacts.length === 0 ? (
-          <div style={{ ...ui.card, color: '#64748b', fontSize: 13.5 }}>{t('Chưa có ai trong nhóm này.', 'Nobody in this group yet.')}</div>
+          <div style={{ ...ui.card, color: 'var(--c64748b)', fontSize: 13.5 }}>{t('Chưa có ai trong nhóm này.', 'Nobody in this group yet.')}</div>
         ) : (
           <div style={{ ...ui.card, padding: 0, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--c0f172a)', borderBottom: '1px solid var(--c1e293b)' }}>
               <input type="checkbox" checked={allPicked} onChange={toggleAll}
                 style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 700, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 {t('Người nhận', 'Person')}
               </span>
-              <span style={{ width: 62, textAlign: 'center', fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+              <span style={{ width: 62, textAlign: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--c64748b)', textTransform: 'uppercase' }}>
                 {t('Số lần', 'Sends')}
               </span>
-              <span style={{ width: 170, fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+              <span style={{ width: 170, fontSize: 11.5, fontWeight: 700, color: 'var(--c64748b)', textTransform: 'uppercase' }}>
                 {t('Lần cuối', 'Last')}
               </span>
-              <span style={{ width: 108, textAlign: 'center', fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+              <span style={{ width: 108, textAlign: 'center', fontSize: 11.5, fontWeight: 700, color: 'var(--c64748b)', textTransform: 'uppercase' }}>
                 {t('Phản hồi', 'Replied')}
               </span>
             </div>
@@ -815,11 +815,11 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
               {visibleContacts.map((c) => {
                 const on = picked.has(c.email);
                 const locked = c.unsubscribed || c.replied; // never chase these two
-                const dot = c.unsubscribed ? '#94a3b8' : c.replied ? '#fbbf24'
+                const dot = c.unsubscribed ? 'var(--c94a3b8)' : c.replied ? '#fbbf24'
                   : c.sends === 0 ? '#38bdf8' : c.lastStatus === 'failed' ? '#ef4444' : '#22c55e';
                 return (
                   <div key={c.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: '1px solid #1e293b',
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: '1px solid var(--c1e293b)',
                       background: on ? 'rgba(99,102,241,0.10)' : 'transparent', opacity: c.unsubscribed ? 0.55 : 1 }}>
                     <input type="checkbox" checked={on} disabled={c.unsubscribed}
                       onChange={() => togglePick(c.email)}
@@ -830,25 +830,25 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                         <input value={c.name ?? ''} onChange={(e) => renameContact(c, e.target.value)}
                           placeholder={t('+ thêm tên', '+ add a name')}
                           style={{ width: 130, flexShrink: 0, background: 'transparent', border: '1px solid transparent', borderRadius: 6,
-                            padding: '2px 6px', color: c.name ? '#e2e8f0' : '#64748b', fontSize: 13.5, fontWeight: c.name ? 700 : 400 }} />
-                        <span style={{ minWidth: 0, fontSize: 13, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            padding: '2px 6px', color: c.name ? 'var(--ce2e8f0)' : 'var(--c64748b)', fontSize: 13.5, fontWeight: c.name ? 700 : 400 }} />
+                        <span style={{ minWidth: 0, fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {c.email}
                         </span>
                       </span>
                       {c.lastError && !c.unsubscribed && (
-                        <span title={c.lastError} style={{ display: 'block', fontSize: 11.5, color: '#f87171', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span title={c.lastError} style={{ display: 'block', fontSize: 11.5, color: 'var(--cf87171)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {c.lastError}
                         </span>
                       )}
                     </span>
-                    <span style={{ width: 62, textAlign: 'center', flexShrink: 0, fontSize: 12.5, fontWeight: 800, color: c.sends > 2 ? '#fbbf24' : c.sends ? '#cbd5e1' : '#475569' }}>
+                    <span style={{ width: 62, textAlign: 'center', flexShrink: 0, fontSize: 12.5, fontWeight: 800, color: c.sends > 2 ? '#fbbf24' : c.sends ? 'var(--ccbd5e1)' : 'var(--c475569)' }}>
                       {c.sends}×
                     </span>
                     <span style={{ width: 170, flexShrink: 0, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 12, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ display: 'block', fontSize: 12, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {c.lastCampaign}
                       </span>
-                      <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>
                         {c.lastSentAt ? new Date(c.lastSentAt).toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' }) : t('chưa gửi', 'never')}
                       </span>
                     </span>
@@ -856,9 +856,9 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                       <button onClick={() => markReplied(c, !c.replied)} disabled={c.unsubscribed}
                         title={t('Khách đã trả lời / đã gọi điện — hệ thống sẽ ngừng gửi nhắc tự động', 'They answered — the automation will stop chasing them')}
                         style={{ padding: '5px 10px', borderRadius: 999, cursor: c.unsubscribed ? 'not-allowed' : 'pointer', fontSize: 11.5, fontWeight: 700,
-                          border: `1px solid ${c.replied ? '#fbbf24' : '#334155'}`,
+                          border: `1px solid ${c.replied ? '#fbbf24' : 'var(--c334155)'}`,
                           background: c.replied ? 'rgba(251,191,36,0.15)' : 'transparent',
-                          color: c.replied ? '#fbbf24' : '#64748b', whiteSpace: 'nowrap' }}>
+                          color: c.replied ? '#fbbf24' : 'var(--c64748b)', whiteSpace: 'nowrap' }}>
                         {c.replied ? t('💬 Đã trả lời', '💬 Replied') : t('Đánh dấu', 'Mark')}
                       </button>
                     </span>
@@ -871,11 +871,11 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
 
         {picked.size > 0 && (
           <div style={{ position: 'sticky', bottom: 12, zIndex: 20, marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-            padding: '12px 16px', borderRadius: 12, background: '#1e293b', border: '1px solid #6366f1', boxShadow: '0 10px 30px rgba(2,6,23,0.5)' }}>
-            <span style={{ flex: 1, minWidth: 160, fontSize: 14, color: '#e2e8f0' }}>
+            padding: '12px 16px', borderRadius: 12, background: 'var(--c1e293b)', border: '1px solid #6366f1', boxShadow: '0 10px 30px rgba(2,6,23,0.5)' }}>
+            <span style={{ flex: 1, minWidth: 160, fontSize: 14, color: 'var(--ce2e8f0)' }}>
               {t(`Đã chọn ${picked.size} người`, `${picked.size} selected`)}
             </span>
-            <button onClick={() => setPicked(new Set())} style={{ ...ui.primaryBtn, background: '#334155' }}>{t('Bỏ chọn', 'Clear')}</button>
+            <button onClick={() => setPicked(new Set())} style={{ ...ui.primaryBtn, background: 'var(--c334155)' }}>{t('Bỏ chọn', 'Clear')}</button>
             <button onClick={reuse} style={{ ...ui.primaryBtn, background: '#16a34a' }}>
               {t(`Soạn thư gửi ${picked.size} người này →`, `Write to these ${picked.size} →`)}
             </button>
@@ -887,38 +887,38 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
       {/* ---------------- the follow-up ---------------- */}
       {tab === 'auto' && auto && (
       <div style={{ maxWidth: 760 }}>
-        <div style={{ ...ui.card, marginBottom: 16, borderColor: auto.enabled ? '#16a34a' : '#334155' }}>
+        <div style={{ ...ui.card, marginBottom: 16, borderColor: auto.enabled ? '#16a34a' : 'var(--c334155)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
               <input type="checkbox" checked={auto.enabled} disabled={busy}
                 onChange={(e) => saveAuto({ enabled: e.target.checked })}
                 style={{ width: 20, height: 20, accentColor: '#16a34a', cursor: 'pointer' }} />
-              <span style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>
                 {t('Tự động gửi nhắc lại', 'Automatic follow-up')}
               </span>
             </label>
             <span style={{ fontSize: 12.5, fontWeight: 800, padding: '3px 10px', borderRadius: 999,
-              background: auto.enabled ? '#16a34a' : '#334155', color: auto.enabled ? '#fff' : '#94a3b8' }}>
+              background: auto.enabled ? '#16a34a' : 'var(--c334155)', color: auto.enabled ? '#fff' : 'var(--c94a3b8)' }}>
               {auto.enabled ? t('ĐANG BẬT', 'ON') : t('ĐANG TẮT', 'OFF')}
             </span>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '10px 0 0', lineHeight: 1.65 }}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '10px 0 0', lineHeight: 1.65 }}>
             {t('Mỗi ngày hệ thống tự rà danh bạ. Ai chưa phản hồi, chưa huỷ nhận, và đã quá số ngày cách nhau bên dưới thì được gửi lá thư TIẾP THEO trong chuỗi — không phải lá cũ.',
                'Every day the system sweeps the list. Anyone who has not replied, has not unsubscribed, and whose gap has passed gets the NEXT letter in the sequence — never the same one twice.')}
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginTop: 14 }}>
-            <div style={{ ...ui.card, padding: 12, background: '#0f172a' }}>
-              <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>{t('Đang chờ gửi', 'Due now')}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#a5b4fc', marginTop: 4 }}>{auto.dueNow}</div>
+            <div style={{ ...ui.card, padding: 12, background: 'var(--c0f172a)' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', fontWeight: 700, textTransform: 'uppercase' }}>{t('Đang chờ gửi', 'Due now')}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ca5b4fc)', marginTop: 4 }}>{auto.dueNow}</div>
             </div>
-            <div style={{ ...ui.card, padding: 12, background: '#0f172a' }}>
-              <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>{t('Đã gửi tự động', 'Sent so far')}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#4ade80', marginTop: 4 }}>{auto.sentTotal}</div>
+            <div style={{ ...ui.card, padding: 12, background: 'var(--c0f172a)' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', fontWeight: 700, textTransform: 'uppercase' }}>{t('Đã gửi tự động', 'Sent so far')}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--c4ade80)', marginTop: 4 }}>{auto.sentTotal}</div>
             </div>
-            <div style={{ ...ui.card, padding: 12, background: '#0f172a' }}>
-              <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>{t('Chạy lần cuối', 'Last run')}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginTop: 6 }}>
+            <div style={{ ...ui.card, padding: 12, background: 'var(--c0f172a)' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', fontWeight: 700, textTransform: 'uppercase' }}>{t('Chạy lần cuối', 'Last run')}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginTop: 6 }}>
                 {auto.lastRunAt ? new Date(auto.lastRunAt).toLocaleString(vi ? 'vi-VN' : uiLocale()) : t('chưa chạy', 'never')}
               </div>
             </div>
@@ -926,7 +926,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
         </div>
 
         <div style={{ ...ui.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 12 }}>{t('Cài đặt', 'Settings')}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('Cài đặt', 'Settings')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={ui.label}>{t('Cách nhau bao nhiêu ngày', 'Days between letters')}</label>
@@ -936,8 +936,8 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                   return (
                     <button key={n} onClick={() => saveAuto({ everyDays: n })} disabled={busy}
                       style={{ padding: '7px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
-                        border: on ? '1px solid #6366f1' : '1px solid #334155',
-                        background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1' }}>
+                        border: on ? '1px solid #6366f1' : '1px solid var(--c334155)',
+                        background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)' }}>
                       {n} {t('ngày', 'days')}
                     </button>
                   );
@@ -950,7 +950,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                 onChange={(e) => setAuto({ ...auto, dailyCap: Number(e.target.value) })}
                 onBlur={() => saveAuto({ dailyCap: auto.dailyCap })}
                 style={{ ...ui.input, width: '100%' }} />
-              <p style={{ color: '#64748b', fontSize: 11.5, margin: '4px 0 0' }}>
+              <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '4px 0 0' }}>
                 {t('Gói Brevo miễn phí chỉ cho 300 mail/ngày — để 100 là an toàn.', 'The free Brevo plan allows 300/day — 100 is a safe cap.')}
               </p>
             </div>
@@ -958,16 +958,16 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
         </div>
 
         <div style={{ ...ui.card }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
             {t(`Chuỗi thư (${auto.steps.length}/5)`, `The sequence (${auto.steps.length}/5)`)}
           </div>
-          <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
             {t('Lá thứ 1 gửi cho người mới. Ai im lặng thì lá thứ 2 gửi sau đó — và phải là NỘI DUNG KHÁC. Gửi lại y hệt lá cũ là cách nhanh nhất để bị bấm spam.',
                'Letter 1 goes to a new contact. If they stay silent, letter 2 follows — and it must say something DIFFERENT. Resending the same letter is the fastest way to get marked as spam.')}
           </p>
 
           {auto.steps.length === 0 ? (
-            <div style={{ padding: '20px 16px', borderRadius: 10, border: '1px dashed #334155', textAlign: 'center', color: '#64748b', fontSize: 13.5 }}>
+            <div style={{ padding: '20px 16px', borderRadius: 10, border: '1px dashed var(--c334155)', textAlign: 'center', color: 'var(--c64748b)', fontSize: 13.5 }}>
               {t('Chưa có lá thư nào. Sang tab “Soạn & gửi”, chọn một mẫu, rồi bấm “Dùng lá thư này cho chuỗi gửi tự động”.',
                  'No letters yet. Go to Compose, pick a template, then click “Add this letter to the follow-up sequence”.')}
             </div>
@@ -975,14 +975,14 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <div style={{ display: 'grid', gap: 8 }}>
               {auto.steps.map((st, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10,
-                  background: '#0f172a', border: '1px solid #1e293b' }}>
+                  background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
                   <span style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: '#6366f1', color: '#fff',
                     display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{i + 1}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {st.subject}
                     </span>
-                    <span style={{ display: 'block', fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                    <span style={{ display: 'block', fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
                       {i === 0
                         ? t('Gửi ngay khi thêm người mới vào danh bạ', 'Sent as soon as a new contact is added')
                         : t(`Gửi ${auto.everyDays} ngày sau lá ${i}, nếu vẫn im lặng`, `Sent ${auto.everyDays} days after letter ${i}, if still silent`)}
@@ -996,7 +996,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           )}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-            <button onClick={() => setTab('compose')} style={{ ...ui.primaryBtn, background: '#334155' }}>
+            <button onClick={() => setTab('compose')} style={{ ...ui.primaryBtn, background: 'var(--c334155)' }}>
               {t('+ Soạn thêm một lá', '+ Write another letter')}
             </button>
             <button onClick={runAutoNow} disabled={busy || !auto.enabled}
@@ -1006,7 +1006,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           </div>
 
           <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(251,191,36,0.10)', border: '1px solid #b45309' }}>
-            <p style={{ color: '#fde68a', fontSize: 12.5, margin: 0, lineHeight: 1.65 }}>
+            <p style={{ color: 'var(--cfde68a)', fontSize: 12.5, margin: 0, lineHeight: 1.65 }}>
               <b>{t('Luật vàng:', 'The rule that matters:')}</b>{' '}
               {t('Ai đã trả lời anh chị, hoặc đã gọi điện, thì vào tab Danh bạ bấm “Đánh dấu” — hệ thống sẽ KHÔNG bao giờ gửi nhắc tự động cho họ nữa. Một lá thư tự động rơi vào hộp thư của người vừa gọi cho anh chị hôm qua là cách nhanh nhất để mất họ.',
                  'The moment someone replies or calls you, open Contacts and mark them. The robot will never chase them again. An automated “just checking in” landing after a real conversation is the fastest way to lose a prospect.')}
@@ -1019,12 +1019,12 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
       {/* ---------------- outbox ---------------- */}
       {tab === 'outbox' && (
       <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>{t('Hộp thư đi', 'Outbox')}</div>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{t('Hộp thư đi', 'Outbox')}</div>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 12px' }}>
           {t('Mọi lần gửi đều được lưu: gửi cho ai, lúc nào, tới nơi hay lỗi.', 'Every send is kept: who it went to, when, and whether it landed.')}
         </p>
         {list.length === 0 ? (
-          <div style={{ ...ui.card, color: '#64748b', fontSize: 13.5 }}>{t('Chưa gửi chiến dịch nào.', 'No campaigns sent yet.')}</div>
+          <div style={{ ...ui.card, color: 'var(--c64748b)', fontSize: 13.5 }}>{t('Chưa gửi chiến dịch nào.', 'No campaigns sent yet.')}</div>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {list.map((c) => {
@@ -1035,17 +1035,17 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                 }}
                   style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', cursor: 'pointer', width: '100%' }}>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {c.subject}
                     </span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 3 }}>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--c64748b)', marginTop: 3 }}>
                       {new Date(c.sentAt ?? c.createdAt).toLocaleString(vi ? 'vi-VN' : uiLocale())}
                     </span>
                   </span>
                   <span style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <span style={pill('#22c55e')}>{c.sent} {t('đã gửi', 'sent')}</span>
                     {c.failed > 0 && <span style={pill('#ef4444')}>{c.failed} {t('lỗi', 'failed')}</span>}
-                    {c.skipped > 0 && <span style={pill('#94a3b8')}>{c.skipped} {t('bỏ qua', 'skipped')}</span>}
+                    {c.skipped > 0 && <span style={pill('var(--c94a3b8)')}>{c.skipped} {t('bỏ qua', 'skipped')}</span>}
                     <span style={pill(st.c)}>{st.label}</span>
                   </span>
                 </button>
@@ -1068,35 +1068,35 @@ function CampaignSheet({ c, vi, onClose }: { c: CampaignDetail; vi: boolean; onC
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(2,6,23,0.75)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: '100%', maxWidth: 880, maxHeight: '86vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 12 }}>
-          <span style={{ fontSize: 17, fontWeight: 800, color: '#e2e8f0' }}>{c.subject}</span>
-          <button onClick={onClose} style={{ background: 'none', border: 0, color: '#94a3b8', fontSize: 22, cursor: 'pointer' }}>&times;</button>
+          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{c.subject}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 0, color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>&times;</button>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
           <span style={pill('#22c55e')}>{c.sent} {t('đã gửi', 'sent')}</span>
           {c.failed > 0 && <span style={pill('#ef4444')}>{c.failed} {t('lỗi', 'failed')}</span>}
-          {c.skipped > 0 && <span style={pill('#94a3b8')}>{c.skipped} {t('bỏ qua', 'skipped')}</span>}
-          <span style={pill('#818cf8')}>{c.total} {t('tổng cộng', 'total')}</span>
+          {c.skipped > 0 && <span style={pill('var(--c94a3b8)')}>{c.skipped} {t('bỏ qua', 'skipped')}</span>}
+          <span style={pill('var(--c818cf8)')}>{c.total} {t('tổng cộng', 'total')}</span>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 14 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>{t('Người nhận', 'Recipients')}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('Người nhận', 'Recipients')}</div>
             <div style={{ maxHeight: 420, overflowY: 'auto', display: 'grid', gap: 4 }}>
               {c.recipients.map((r) => {
-                const col = r.status === 'sent' ? '#22c55e' : r.status === 'failed' ? '#ef4444' : '#94a3b8';
+                const col = r.status === 'sent' ? '#22c55e' : r.status === 'failed' ? '#ef4444' : 'var(--c94a3b8)';
                 return (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #1e293b' }}>
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: col, flexShrink: 0 }} />
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.email}</span>
-                    {r.error && <span title={r.error} style={{ fontSize: 11, color: '#f87171', flexShrink: 0 }}>{t('lỗi', 'failed')}</span>}
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.email}</span>
+                    {r.error && <span title={r.error} style={{ fontSize: 11, color: 'var(--cf87171)', flexShrink: 0 }}>{t('lỗi', 'failed')}</span>}
                   </div>
                 );
               })}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>{t('Email đã gửi', 'What was sent')}</div>
-            <div style={{ borderRadius: 10, overflow: 'hidden', background: '#f1f5f9' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('Email đã gửi', 'What was sent')}</div>
+            <div style={{ borderRadius: 10, overflow: 'hidden', background: 'var(--cf1f5f9)' }}>
               <iframe title="sent" srcDoc={c.html ?? ''} style={{ width: '100%', height: 420, border: 0, display: 'block' }} />
             </div>
           </div>

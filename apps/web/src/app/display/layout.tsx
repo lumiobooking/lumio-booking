@@ -25,7 +25,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover', // draw under the notch / rounded corners, truly full-bleed
-  themeColor: '#0f172a',
+  themeColor: 'var(--c0f172a)',
 };
 
 export default function DisplayLayout({ children }: { children: React.ReactNode }) {

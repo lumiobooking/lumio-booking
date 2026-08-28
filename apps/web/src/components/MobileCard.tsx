@@ -24,7 +24,7 @@ export function MCard({ children }: { children: ReactNode }) {
 export function MHead({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-      <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 15, minWidth: 0, wordBreak: 'break-word' }}>{children}</div>
+      <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 15, minWidth: 0, wordBreak: 'break-word' }}>{children}</div>
       {right != null && <div style={{ flexShrink: 0, textAlign: 'right' }}>{right}</div>}
     </div>
   );
@@ -33,8 +33,8 @@ export function MHead({ children, right }: { children: ReactNode; right?: ReactN
 export function MRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, alignItems: 'baseline' }}>
-      <span style={{ color: '#94a3b8', flexShrink: 0 }}>{label}</span>
-      <span style={{ color: '#e2e8f0', textAlign: 'right', minWidth: 0, wordBreak: 'break-word' }}>{children}</span>
+      <span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{label}</span>
+      <span style={{ color: 'var(--ce2e8f0)', textAlign: 'right', minWidth: 0, wordBreak: 'break-word' }}>{children}</span>
     </div>
   );
 }

@@ -77,20 +77,20 @@ function Inner() {
     } finally { setSaving(false); }
   }
 
-  if (loading) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (loading) return <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>;
 
   return (
     <form onSubmit={save} style={{ ...ui.card, maxWidth: 520 }}>
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
-      <div style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, marginBottom: 4 }}>Profile photo</div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 12px' }}>Clients see this when choosing a technician. A clear, square face photo works best.</p>
+      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600, marginBottom: 4 }}>Profile photo</div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 12px' }}>Clients see this when choosing a technician. A clear, square face photo works best.</p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
         {form.avatarUrl
           // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={form.avatarUrl} alt="avatar" width={84} height={84} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid #334155' }} />
-          : <span style={{ width: 84, height: 84, borderRadius: '50%', background: '#334155', color: '#cbd5e1', display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 700 }}>{(form.firstName || '?').charAt(0).toUpperCase()}</span>}
+          ? <img src={form.avatarUrl} alt="avatar" width={84} height={84} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--c334155)' }} />
+          : <span style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 700 }}>{(form.firstName || '?').charAt(0).toUpperCase()}</span>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label style={{ ...ui.input, padding: '9px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             📷 {busy ? 'Processing…' : form.avatarUrl ? 'Change photo' : 'Upload photo'}

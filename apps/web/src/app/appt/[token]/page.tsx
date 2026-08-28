@@ -44,22 +44,22 @@ export default function ApptPage() {
     <div style={wrap}>
       <div style={card}>
         {err && !s ? (
-          <p style={{ color: '#64748b', textAlign: 'center' }}>{err}</p>
+          <p style={{ color: 'var(--c64748b)', textAlign: 'center' }}>{err}</p>
         ) : !s ? (
-          <p style={{ color: '#94a3b8', textAlign: 'center' }}>Loading…</p>
+          <p style={{ color: 'var(--c94a3b8)', textAlign: 'center' }}>Loading…</p>
         ) : (
           <>
-            <div style={{ textAlign: 'center', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{s.salon}</div>
+            <div style={{ textAlign: 'center', fontSize: 18, fontWeight: 800, color: 'var(--c0f172a)' }}>{s.salon}</div>
 
             {done === 'confirmed' ? (
               <Banner emoji="✅" title="See you then!" text="Your appointment is confirmed. Thank you." />
             ) : done === 'cancelled' ? (
               <Banner emoji="🗓️" title="Appointment cancelled" text="Thanks for letting us know. Book again anytime." />
             ) : (
-              <p style={{ color: '#64748b', fontSize: 14, textAlign: 'center', margin: '6px 0 18px' }}>Hi {s.customer}, here are your appointment details:</p>
+              <p style={{ color: 'var(--c64748b)', fontSize: 14, textAlign: 'center', margin: '6px 0 18px' }}>Hi {s.customer}, here are your appointment details:</p>
             )}
 
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, margin: '8px 0 18px' }}>
+            <div style={{ background: 'var(--cf8fafc)', border: '1px solid var(--ce2e8f0)', borderRadius: 12, padding: 16, margin: '8px 0 18px' }}>
               <Row label="Service" value={s.service} />
               <Row label="Date" value={s.date} />
               <Row label="Time" value={s.time} />
@@ -74,20 +74,20 @@ export default function ApptPage() {
                 <a href={`/book/${encodeURIComponent(s.slug)}`} style={{ ...btn, background: '#eef2ff', color: '#4338ca', textDecoration: 'none', display: 'block', textAlign: 'center' }}>
                   Reschedule (book a new time)
                 </a>
-                <button onClick={() => act('cancel')} disabled={busy} style={{ ...btn, background: '#fff', color: '#dc2626', border: '1px solid #fca5a5' }}>
+                <button onClick={() => act('cancel')} disabled={busy} style={{ ...btn, background: '#fff', color: '#dc2626', border: '1px solid var(--cfca5a5)' }}>
                   Cancel appointment
                 </button>
               </>
             )}
             {!done && !s.canAct && (
-              <p style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>This appointment can no longer be changed online. Please call the salon.</p>
+              <p style={{ color: 'var(--c94a3b8)', fontSize: 13, textAlign: 'center' }}>This appointment can no longer be changed online. Please call the salon.</p>
             )}
             {err && <p style={{ color: '#dc2626', fontSize: 13, textAlign: 'center', marginTop: 10 }}>{err}</p>}
 
             {s.referral && <ReferCard r={s.referral} salon={s.salon} />}
           </>
         )}
-        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: '#cbd5e1' }}>Powered by Lumio Booking</div>
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: 'var(--ccbd5e1)' }}>Powered by Lumio Booking</div>
       </div>
     </div>
   );
@@ -96,8 +96,8 @@ export default function ApptPage() {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 14 }}>
-      <span style={{ color: '#64748b' }}>{label}</span>
-      <span style={{ color: '#0f172a', fontWeight: 600, textAlign: 'right' }}>{value}</span>
+      <span style={{ color: 'var(--c64748b)' }}>{label}</span>
+      <span style={{ color: 'var(--c0f172a)', fontWeight: 600, textAlign: 'right' }}>{value}</span>
     </div>
   );
 }
@@ -106,8 +106,8 @@ function Banner({ emoji, title, text }: { emoji: string; title: string; text: st
   return (
     <div style={{ textAlign: 'center', margin: '14px 0' }}>
       <div style={{ fontSize: 44 }}>{emoji}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginTop: 4 }}>{title}</div>
-      <div style={{ color: '#64748b', fontSize: 14, marginTop: 2 }}>{text}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c0f172a)', marginTop: 4 }}>{title}</div>
+      <div style={{ color: 'var(--c64748b)', fontSize: 14, marginTop: 2 }}>{text}</div>
     </div>
   );
 }
@@ -139,8 +139,8 @@ function ReferCard({ r, salon }: { r: NonNullable<Summary['referral']>; salon: s
 
   return (
     <div style={referCard}>
-      <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>🎁 Refer friends, get rewarded</div>
-      <p style={{ color: '#475569', fontSize: 13, lineHeight: 1.5, margin: '6px 0 12px' }}>
+      <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--c0f172a)' }}>🎁 Refer friends, get rewarded</div>
+      <p style={{ color: 'var(--c475569)', fontSize: 13, lineHeight: 1.5, margin: '6px 0 12px' }}>
         {r.message}{reward && <> When they book their first visit, <strong>{reward}</strong>.</>}
       </p>
       <input readOnly value={r.link} onFocus={(e) => e.currentTarget.select()} style={referInput} />
@@ -154,10 +154,10 @@ function ReferCard({ r, salon }: { r: NonNullable<Summary['referral']>; salon: s
   );
 }
 
-const wrap: React.CSSProperties = { minHeight: '100vh', background: 'linear-gradient(160deg,#eef2ff,#f8fafc 55%)', display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
+const wrap: React.CSSProperties = { minHeight: '100vh', background: 'linear-gradient(160deg,#eef2ff,var(--cf8fafc) 55%)', display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
 const card: React.CSSProperties = { width: '100%', maxWidth: 380, background: '#fff', borderRadius: 22, padding: '26px 22px', boxShadow: '0 12px 40px rgba(15,23,42,0.12)' };
 const btn: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '13px', borderRadius: 12, border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 };
-const referCard: React.CSSProperties = { background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 14, padding: 16, marginTop: 16 };
-const referInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 9, border: '1px solid #c7d2fe', background: '#fff', color: '#334155', fontSize: 13 };
+const referCard: React.CSSProperties = { background: '#eef2ff', border: '1px solid var(--cc7d2fe)', borderRadius: 14, padding: 16, marginTop: 16 };
+const referInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 9, border: '1px solid var(--cc7d2fe)', background: '#fff', color: 'var(--c334155)', fontSize: 13 };
 const shareBtn: React.CSSProperties = { flex: 1, minWidth: 84, boxSizing: 'border-box', textAlign: 'center', padding: '10px', borderRadius: 9, fontSize: 13.5, fontWeight: 700, textDecoration: 'none', border: 'none' };
-const shareGhost: React.CSSProperties = { background: '#fff', color: '#4338ca', border: '1px solid #c7d2fe' };
+const shareGhost: React.CSSProperties = { background: '#fff', color: '#4338ca', border: '1px solid var(--cc7d2fe)' };

@@ -104,22 +104,22 @@ function Inner() {
   return (
     <section style={{ maxWidth: 640 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 2px' }}>{L('Thông báo', 'Notifications')}</h1>
-      <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{L('Booking mới, huỷ lịch và thanh toán — chạm để xem chi tiết.', 'New bookings, cancellations and payments — tap to see details.')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{L('Booking mới, huỷ lịch và thanh toán — chạm để xem chi tiết.', 'New bookings, cancellations and payments — tap to see details.')}</p>
 
       <PushEnable />
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0 6px' }}>
         {chips.map((c) => {
           const on = filter === c.k;
-          return <button key={c.k} onClick={() => setFilter(c.k)} style={{ padding: '7px 14px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : '#334155'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#cbd5e1', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{c.label}</button>;
+          return <button key={c.k} onClick={() => setFilter(c.k)} style={{ padding: '7px 14px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{c.label}</button>;
         })}
       </div>
 
-      {loading ? <p style={{ color: '#64748b', fontSize: 14, marginTop: 16 }}>{L('Đang tải…', 'Loading…')}</p>
-        : shown.length === 0 ? <p style={{ color: '#64748b', fontSize: 14, marginTop: 20 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
+      {loading ? <p style={{ color: 'var(--c64748b)', fontSize: 14, marginTop: 16 }}>{L('Đang tải…', 'Loading…')}</p>
+        : shown.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 14, marginTop: 20 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
         : <>{groups.map(([day, list]) => (
           <div key={day} style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6, color: '#64748b', marginBottom: 8 }}>{day}</div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6, color: 'var(--c64748b)', marginBottom: 8 }}>{day}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {list.map((i) => {
                 const m = TYPE_META[i.type];
@@ -136,7 +136,7 @@ function Inner() {
                     role={clickable ? 'button' : undefined}
                     tabIndex={clickable ? 0 : undefined}
                     aria-label={clickable ? L('Xem chi tiết', 'View details') : undefined}
-                    style={{ display: 'flex', gap: 12, alignItems: 'center', background: hovered ? '#243044' : '#1e293b', border: `1px solid ${hovered ? '#3b4a63' : '#223047'}`, borderRadius: 12, padding: '11px 13px', cursor: clickable ? 'pointer' : 'default', transition: 'background .12s, border-color .12s' }}
+                    style={{ display: 'flex', gap: 12, alignItems: 'center', background: hovered ? '#243044' : 'var(--c1e293b)', border: `1px solid ${hovered ? '#3b4a63' : '#223047'}`, borderRadius: 12, padding: '11px 13px', cursor: clickable ? 'pointer' : 'default', transition: 'background .12s, border-color .12s' }}
                   >
                     <span style={{ width: 38, height: 38, borderRadius: 11, background: m.bg, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -144,13 +144,13 @@ function Inner() {
                       </svg>
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, color: '#f1f5f9', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : `${verb(i.type)} ${i.detail}`}</div>
-                      {(i.when || i.type === 'payment') && <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }}>{i.when ? whenText(i.when) : L('Đã thanh toán', 'Paid')}</div>}
+                      <div style={{ fontSize: 14.5, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : `${verb(i.type)} ${i.detail}`}</div>
+                      {(i.when || i.type === 'payment') && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{i.when ? whenText(i.when) : L('Đã thanh toán', 'Paid')}</div>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-                      <span style={{ fontSize: 12, color: '#64748b' }}>{rel(i.at)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{rel(i.at)}</span>
                       {clickable && (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={hovered ? '#94a3b8' : '#475569'} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={hovered ? 'var(--c94a3b8)' : 'var(--c475569)'} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
                       )}
                     </div>
                   </div>

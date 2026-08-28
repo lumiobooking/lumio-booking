@@ -25,9 +25,9 @@ function initials(name: string) { return (name || '?').split(' ').map((w) => w[0
 function srcMeta(source: string | null | undefined, vi: boolean) {
   const m: Record<string, { label: string; c: string; bg: string }> = {
     walkin: { label: vi ? 'Vãng lai' : 'Walk-in', c: '#fbbf24', bg: 'rgba(245,158,11,0.15)' },
-    online: { label: 'Online', c: '#a5b4fc', bg: 'rgba(99,102,241,0.18)' },
-    hotline: { label: 'Hotline', c: '#4ade80', bg: 'rgba(34,197,94,0.15)' },
-    messenger: { label: 'Messenger', c: '#60a5fa', bg: 'rgba(59,130,246,0.15)' },
+    online: { label: 'Online', c: 'var(--ca5b4fc)', bg: 'rgba(99,102,241,0.18)' },
+    hotline: { label: 'Hotline', c: 'var(--c4ade80)', bg: 'rgba(34,197,94,0.15)' },
+    messenger: { label: 'Messenger', c: 'var(--c60a5fa)', bg: 'rgba(59,130,246,0.15)' },
     staff: { label: vi ? 'Nhân viên' : 'Staff', c: '#c4b5fd', bg: 'rgba(167,139,250,0.15)' },
   };
   return m[source || 'walkin'] || m.walkin;
@@ -95,7 +95,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
     catch (e) { setError(e instanceof Error ? e.message : 'Could not check in'); }
   };
 
-  if (!board) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (!board) return <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>;
 
   const active = stations.filter((s) => s.isActive);
   const occByStation = new Map<string, Serving>();
@@ -126,7 +126,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
           <span style={{ fontSize: 13, color: freeCount > 0 ? '#22c55e' : '#f59e0b', background: freeCount > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', borderRadius: 8, padding: '5px 10px', fontWeight: 700 }}>
             {active.length === 0 ? (vi ? 'Chưa có ghế' : 'No chairs yet') : `${freeCount} ${vi ? 'ghế trống' : 'free'}`}
           </span>
-          {active.length === 0 && <a href="/salon/stations" style={{ fontSize: 12, color: '#818cf8', textDecoration: 'none' }}>{vi ? 'Khai báo ghế →' : 'Set up chairs →'}</a>}
+          {active.length === 0 && <a href="/salon/stations" style={{ fontSize: 12, color: 'var(--c818cf8)', textDecoration: 'none' }}>{vi ? 'Khai báo ghế →' : 'Set up chairs →'}</a>}
         </div>
         <button onClick={() => setQuick(true)} style={{ ...ui.primaryBtn, padding: '9px 16px' }}>+ {vi ? 'Lên bill' : 'New bill'}</button>
       </div>
@@ -134,17 +134,17 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
       {error && <div style={ui.banner}>{error}</div>}
 
       {lastDone && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#1e293b', border: '1px solid #475569', borderRadius: 10, padding: '8px 12px', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, color: '#cbd5e1' }}>{vi ? `Đã kết thúc "${lastDone.name}" (không thu tiền).` : `Finished "${lastDone.name}" (no sale).`}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'var(--c1e293b)', border: '1px solid var(--c475569)', borderRadius: 10, padding: '8px 12px', marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{vi ? `Đã kết thúc "${lastDone.name}" (không thu tiền).` : `Finished "${lastDone.name}" (no sale).`}</span>
           <button onClick={() => reactivate(lastDone.id)} style={{ ...ui.primaryBtn, padding: '6px 14px' }}>{vi ? '↶ Hoàn tác' : '↶ Undo'}</button>
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#111827', border: '1px solid #1e293b', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
-        <span style={{ fontSize: 13, color: '#94a3b8' }}>{vi ? 'Thợ đang rảnh' : 'Idle techs'}</span>
-        {idle.length === 0 ? <span style={{ fontSize: 12, color: '#64748b' }}>{vi ? 'Tất cả đang bận' : 'all busy'}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
+        <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{vi ? 'Thợ đang rảnh' : 'Idle techs'}</span>
+        {idle.length === 0 ? <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Tất cả đang bận' : 'all busy'}</span>
           : idle.map((s) => (
-            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#e2e8f0', background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: '3px 10px' }}>
+            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ce2e8f0)', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 20, padding: '3px 10px' }}>
               <span style={ava}>{initials(s.name)}</span>{s.name} · {s.turns}{s.nextUp ? (vi ? ' · tới lượt' : ' · next') : ''}
             </span>
           ))}
@@ -152,17 +152,17 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {board.booked && board.booked.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{vi ? 'Đã hẹn hôm nay · chờ tới' : 'Booked today · not arrived'}</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>{vi ? 'Đã hẹn hôm nay · chờ tới' : 'Booked today · not arrived'}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {board.booked.map((b) => {
               const time = new Date(b.startTime).toLocaleTimeString(vi ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' });
               return (
-                <div key={b.id} style={{ background: '#111827', border: '1px solid #334155', borderRadius: 12, padding: '9px 11px', minWidth: 190 }}>
+                <div key={b.id} style={{ background: 'var(--c111827)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '9px 11px', minWidth: 190 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.customerName || (vi ? 'Khách' : 'Guest')} · {time}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.customerName || (vi ? 'Khách' : 'Guest')} · {time}</div>
                     {tag(b.source)}
                   </div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.serviceName ?? ''}{b.staff ? ` · ${b.staff.name}` : ''}</div>
+                  <div style={{ fontSize: 11, color: 'var(--c94a3b8)', margin: '2px 0 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.serviceName ?? ''}{b.staff ? ` · ${b.staff.name}` : ''}</div>
                   <button onClick={() => seatBooked(b.id)} style={{ ...ui.primaryBtn, width: '100%', padding: '7px', fontSize: 13 }}>{vi ? 'Nhận khách' : 'Seat'}</button>
                 </div>
               );
@@ -176,10 +176,10 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
           <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>{vi ? 'Đang làm, chưa có ghế — chọn ghế bên dưới (hoặc kéo vào ô ghế trống):' : 'In service, no chair — pick a chair below (or drag onto a free chair):'}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {noChair.map((w) => (
-              <div key={w.id} style={{ background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 12px', minWidth: 200 }}>
+              <div key={w.id} style={{ background: 'var(--c1e293b)', border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 12px', minWidth: 200 }}>
                 <div draggable onDragStart={() => setDragId(w.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(w.id)} style={{ cursor: 'grab' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</span>{tag(w.source)}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{fullName(w.assignedStaff)} · {formatPrice(w.items.reduce((a, it) => a + it.priceCents, 0), currency)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{w.customerName || 'Walk-in'}</span>{tag(w.source)}</div>
+                  <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{fullName(w.assignedStaff)} · {formatPrice(w.items.reduce((a, it) => a + it.priceCents, 0), currency)}</div>
                 </div>
                 <select value="" onChange={(e) => e.target.value && move(w.id, e.target.value)} style={{ ...ui.input, width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '5px 8px', fontSize: 12 }}>
                   <option value="">{vi ? 'Xếp vào ghế…' : 'Seat at chair…'}</option>
@@ -193,7 +193,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {byType.map((g) => (
         <div key={g.id} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(172px, 1fr))', gap: 10 }}>
             {g.list.map((st) => {
               const occ = occByStation.get(st.id);
@@ -203,24 +203,24 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                 const exp = expectedMins(occ.items);
                 const over = exp > 0 && elapsed >= exp;
                 const soon = exp > 0 && !over && elapsed >= exp - 5;
-                const tColor = over ? '#f87171' : soon ? '#fbbf24' : '#c7d2fe';
-                const tBg = over ? 'rgba(248,113,113,0.15)' : soon ? 'rgba(251,191,36,0.15)' : '#312e81';
+                const tColor = over ? 'var(--cf87171)' : soon ? '#fbbf24' : 'var(--cc7d2fe)';
+                const tBg = over ? 'rgba(248,113,113,0.15)' : soon ? 'rgba(251,191,36,0.15)' : 'var(--c312e81)';
                 return (
                   <div key={st.id} className="fl-tile" draggable onDragStart={() => setDragId(occ.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(occ.id)}
                     style={{ ...ui.card, padding: '10px 12px', cursor: 'pointer', minHeight: 118, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><span style={{ fontSize: 12, color: '#64748b' }}>{st.name}</span>{tag(occ.source)}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{st.name}</span>{tag(occ.source)}</div>
                       <span style={{ fontSize: 11, color: tColor, background: tBg, borderRadius: 20, padding: '2px 8px', flexShrink: 0 }}>{elapsed}′{exp > 0 ? ` / ${exp}′` : ''}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                       <span style={ava}>{initials(occ.customerName || 'W')}</span>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{occ.customerName || 'Walk-in'}</div>
-                        <div style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{occ.items.length ? (occ.items.length === 1 ? occ.items[0].name : `${occ.items.length} ${vi ? 'dịch vụ' : 'services'}`) : (vi ? 'chưa có dịch vụ' : 'no service')}</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{occ.customerName || 'Walk-in'}</div>
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{occ.items.length ? (occ.items.length === 1 ? occ.items[0].name : `${occ.items.length} ${vi ? 'dịch vụ' : 'services'}`) : (vi ? 'chưa có dịch vụ' : 'no service')}</div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-                      <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName(occ.assignedStaff) || '—'}</span>
+                      <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName(occ.assignedStaff) || '—'}</span>
                       <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{formatPrice(total, currency)}</span>
                     </div>
                   </div>
@@ -250,12 +250,12 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
               const total = w.items.reduce((a, it) => a + it.priceCents, 0);
               const href = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&appointmentId=${w.appointmentId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
               return (
-                <div key={w.id} style={{ background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', minWidth: 230 }}>
+                <div key={w.id} style={{ background: 'var(--c1e293b)', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', minWidth: 230 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: '#e2e8f0', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</button>{tag(w.source)}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</button>{tag(w.source)}</div>
                     <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{formatPrice(total, currency)}</div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px' }}>{fullName(w.assignedStaff)} · {vi ? 'chờ' : 'waited'} {minsSince(w.assignedAt)}′</div>
+                  <div style={{ fontSize: 11, color: 'var(--c94a3b8)', margin: '2px 0 8px' }}>{fullName(w.assignedStaff)} · {vi ? 'chờ' : 'waited'} {minsSince(w.assignedAt)}′</div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <a href={href} style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>{vi ? '💳 Thu ngân' : '💳 Checkout'}</a>
                     <select value="" onChange={(e) => e.target.value && move(w.id, e.target.value)} style={{ ...ui.input, width: 'auto', padding: '8px', fontSize: 12 }}>
@@ -272,12 +272,12 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {board.waiting.length > 0 && (
         <div style={{ marginTop: 6 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 8px' }}>{vi ? 'Đang chờ' : 'Waiting'} ({board.waiting.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{vi ? 'Đang chờ' : 'Waiting'} ({board.waiting.length})</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {board.waiting.map((w) => (
               <div key={w.id} style={{ ...ui.card, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div><div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{w.service?.name ?? (vi ? 'chưa chọn' : 'no service')} · {minsSince(w.createdAt)}′</div></div>
+                <div><div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{w.customerName || 'Walk-in'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{w.service?.name ?? (vi ? 'chưa chọn' : 'no service')} · {minsSince(w.createdAt)}′</div></div>
                 <button onClick={() => call(`${w.id}/assign`, 'PATCH', { staffId: board.nextUpStaffId })} disabled={!board.nextUpStaffId}
                   style={{ ...ui.primaryBtn, padding: '7px 12px', opacity: board.nextUpStaffId ? 1 : 0.5 }}>{vi ? 'Bắt đầu' : 'Start'}</button>
               </div>
@@ -295,7 +295,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
   );
 }
 
-const ava: CSSProperties = { width: 26, height: 26, borderRadius: '50%', background: '#312e81', color: '#c7d2fe', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 };
+const ava: CSSProperties = { width: 26, height: 26, borderRadius: '50%', background: 'var(--c312e81)', color: 'var(--cc7d2fe)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 };
 
 function ServicePick({ services, onPick, placeholder }: { services: Svc[]; onPick: (id: string) => void; placeholder: string }) {
   const [q, setQ] = useState('');
@@ -307,14 +307,14 @@ function ServicePick({ services, onPick, placeholder }: { services: Svc[]; onPic
       <input style={{ ...ui.input, width: '100%', boxSizing: 'border-box' }} value={q} placeholder={placeholder}
         onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onBlur={() => setTimeout(() => setOpen(false), 150)} />
       {open && (
-        <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: 220, overflowY: 'auto', background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}>
+        <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: 220, overflowY: 'auto', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}>
           {list.map((s) => (
             <button key={s.id} type="button" onMouseDown={(e) => { e.preventDefault(); onPick(s.id); setQ(''); setOpen(false); }}
-              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 14 }}>
-              <span>{s.name}</span><span style={{ color: '#94a3b8' }}>{formatPrice(s.priceCents, 'USD')}</span>
+              style={{ display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 14 }}>
+              <span>{s.name}</span><span style={{ color: 'var(--c94a3b8)' }}>{formatPrice(s.priceCents, 'USD')}</span>
             </button>
           ))}
-          {list.length === 0 && <div style={{ padding: '10px 12px', color: '#64748b', fontSize: 13 }}>—</div>}
+          {list.length === 0 && <div style={{ padding: '10px 12px', color: 'var(--c64748b)', fontSize: 13 }}>—</div>}
         </div>
       )}
     </div>
@@ -331,8 +331,8 @@ function QuickBill({ vi, services, currency, onClose, onCreate }: {
   const content = (
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', padding: 18 }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: '#e2e8f0', marginBottom: 4 }}>{vi ? 'Lên bill nhanh' : 'Quick bill'}</div>
-        <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 14px' }}>{vi ? 'Hệ thống tự chọn ghế trống + thợ tới lượt. Đổi sau bằng cách kéo trên sơ đồ.' : 'Auto-picks a free chair + the up-next tech. Drag on the floor to change.'}</p>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{vi ? 'Lên bill nhanh' : 'Quick bill'}</div>
+        <p style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 14px' }}>{vi ? 'Hệ thống tự chọn ghế trống + thợ tới lượt. Đổi sau bằng cách kéo trên sơ đồ.' : 'Auto-picks a free chair + the up-next tech. Drag on the floor to change.'}</p>
         <label style={{ display: 'block', marginBottom: 10 }}><span style={ui.label}>{vi ? 'Tên khách (tuỳ chọn)' : 'Customer (optional)'}</span>
           <input style={ui.input} value={name} placeholder="Walk-in" onChange={(e) => setName(e.target.value)} /></label>
         <label style={{ display: 'block', marginBottom: 10 }}><span style={ui.label}>{vi ? 'Điện thoại (tuỳ chọn)' : 'Phone (optional)'}</span>
@@ -340,7 +340,7 @@ function QuickBill({ vi, services, currency, onClose, onCreate }: {
         <div style={{ marginBottom: 4 }}><span style={ui.label}>{vi ? 'Dịch vụ (tuỳ chọn)' : 'Service (optional)'}</span></div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
           <ServicePick services={services} onPick={setServiceId} placeholder={vi ? 'Tìm dịch vụ…' : 'Search service…'} />
-          {svc && <span style={{ fontSize: 13, color: '#cbd5e1', whiteSpace: 'nowrap' }}>{svc.name} · {formatPrice(svc.priceCents, currency)}</span>}
+          {svc && <span style={{ fontSize: 13, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' }}>{svc.name} · {formatPrice(svc.priceCents, currency)}</span>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => onCreate({ customerName: name.trim() || undefined, phone: phone.trim() || undefined, serviceId: serviceId || undefined })}
@@ -367,43 +367,43 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
   const content = (
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(540px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #1e293b' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--c1e293b)' }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: '#e2e8f0' }}>{w.customerName || 'Walk-in'}</div>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>{vi ? 'Thợ' : 'Tech'} <strong style={{ color: '#cbd5e1' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{w.customerName || 'Walk-in'}</div>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Thợ' : 'Tech'} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <select value={w.stationId ?? ''} onChange={(e) => onMove(w.id, e.target.value)} style={{ ...ui.input, width: 'auto', padding: '7px 8px' }}>
               <option value="">{vi ? 'Ghế…' : 'Chair…'}</option>
               {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <button onClick={onClose} aria-label="close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
+            <button onClick={onClose} aria-label="close" style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
           </div>
         </div>
         <div style={{ padding: 16 }}>
           <div style={{ border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>
-            {items.length === 0 ? <div style={{ padding: 12, color: '#64748b', fontSize: 13 }}>{vi ? 'Chưa có dịch vụ.' : 'No services yet.'}</div>
+            {items.length === 0 ? <div style={{ padding: 12, color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Chưa có dịch vụ.' : 'No services yet.'}</div>
               : items.map((it) => (
-                <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #1e293b' }}>
+                <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{techName(it.staffId)}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{techName(it.staffId)}</div>
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{formatPrice(it.priceCents, currency)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{formatPrice(it.priceCents, currency)}</div>
                   <button onClick={() => onRemove(w.id, it.lineId)} aria-label="remove" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18 }}>×</button>
                 </div>
               ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: '#0f172a' }}>
-              <span style={{ fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>{vi ? 'Tạm tính' : 'Subtotal'}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--c0f172a)' }}>
+              <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 700 }}>{vi ? 'Tạm tính' : 'Subtotal'}</span>
               <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{formatPrice(subtotal, currency)}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
             {pendingSvc ? (
-              <div style={{ flex: 1, minWidth: 150, display: 'flex', alignItems: 'center', gap: 8, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '8px 10px' }}>
-                <span style={{ flex: 1, minWidth: 0, color: '#e2e8f0', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pendingSvc.name}</span>
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>{formatPrice(pendingSvc.priceCents, currency)}</span>
-                <button onClick={() => setPendingSvc(null)} aria-label="clear" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16 }}>×</button>
+              <div style={{ flex: 1, minWidth: 150, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '8px 10px' }}>
+                <span style={{ flex: 1, minWidth: 0, color: 'var(--ce2e8f0)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pendingSvc.name}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{formatPrice(pendingSvc.priceCents, currency)}</span>
+                <button onClick={() => setPendingSvc(null)} aria-label="clear" style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 16 }}>×</button>
               </div>
             ) : (
               <ServicePick services={services} onPick={(sid) => setPendingSvc(services.find((s) => s.id === sid) || null)} placeholder={vi ? 'Chọn dịch vụ…' : 'Pick a service…'} />
@@ -424,9 +424,9 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
             <button
               onClick={() => { if (window.confirm(vi ? 'Kết thúc khách này mà KHÔNG thu tiền? Chỉ dùng khi khách bỏ về hoặc không tính tiền.' : 'Finish this client WITHOUT taking payment? Only use this for a walk-out or a comp.')) onDone(); }}
               title={vi ? 'Kết thúc không thu tiền' : 'Finish without payment'}
-              style={{ ...ui.primaryBtn, background: '#334155', padding: '11px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
+              style={{ ...ui.primaryBtn, background: 'var(--c334155)', padding: '11px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
           </div>
-          <p style={{ fontSize: 11, color: '#64748b', margin: '10px 0 0', lineHeight: 1.5 }}>{vi ? 'Chờ thanh toán = khách xong, rời ghế cho khách mới, bill vẫn mở để tính sau. Thu ngân = tính tiền & kết thúc. Xong = kết thúc KHÔNG thu tiền.' : 'Waiting to pay frees the chair, bill stays open. Checkout takes payment & finishes. Done finishes with no sale.'}</p>
+          <p style={{ fontSize: 11, color: 'var(--c64748b)', margin: '10px 0 0', lineHeight: 1.5 }}>{vi ? 'Chờ thanh toán = khách xong, rời ghế cho khách mới, bill vẫn mở để tính sau. Thu ngân = tính tiền & kết thúc. Xong = kết thúc KHÔNG thu tiền.' : 'Waiting to pay frees the chair, bill stays open. Checkout takes payment & finishes. Done finishes with no sale.'}</p>
         </div>
       </div>
     </div>

@@ -96,8 +96,8 @@ export function UsageCostsPanel() {
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
-  if (sum === undefined) return <p style={{ color: '#94a3b8' }}>{t('loading')}</p>;
-  if (!sum || !sum.plan) return <p style={{ color: '#94a3b8', maxWidth: 620 }}>{t('none')}</p>;
+  if (sum === undefined) return <p style={{ color: 'var(--c94a3b8)' }}>{t('loading')}</p>;
+  if (!sum || !sum.plan) return <p style={{ color: 'var(--c94a3b8)', maxWidth: 620 }}>{t('none')}</p>;
 
   const cur = sum.currency || 'USD';
   const month = (() => {
@@ -114,21 +114,21 @@ export function UsageCostsPanel() {
   const minIncLabel = sum.hotline.includedMinutes > 0 ? String(sum.hotline.includedMinutes) : t('unlimited');
 
   return (
-    <section className="stmt" style={{ maxWidth: 780, color: '#e2e8f0' }}>
+    <section className="stmt" style={{ maxWidth: 780, color: 'var(--ce2e8f0)' }}>
       <style>{`
         @media print {
           aside, header { display: none !important; }
           main { padding: 0 !important; }
           .stmt .noprint { display: none !important; }
-          .stmt .card { background: #fff !important; color: #0f172a !important; border: 1px solid #e2e8f0 !important; box-shadow: none !important; }
-          .stmt .muted { color: #475569 !important; }
-          .stmt .hero { background: #f1f5ff !important; color: #0f172a !important; border: 1px solid #c7d2fe !important; }
+          .stmt .card { background: #fff !important; color: var(--c0f172a) !important; border: 1px solid var(--ce2e8f0) !important; box-shadow: none !important; }
+          .stmt .muted { color: var(--c475569) !important; }
+          .stmt .hero { background: #f1f5ff !important; color: var(--c0f172a) !important; border: 1px solid var(--cc7d2fe) !important; }
           .stmt .heavy { color: #4f46e5 !important; }
         }
       `}</style>
 
       <div className="noprint" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
-        <p className="muted" style={{ color: '#94a3b8', margin: 0, fontSize: 13.5, maxWidth: 540 }}>{t('subtitle')}</p>
+        <p className="muted" style={{ color: 'var(--c94a3b8)', margin: 0, fontSize: 13.5, maxWidth: 540 }}>{t('subtitle')}</p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={load} style={btnGhost}>↻ {t('refresh')}</button>
           <button onClick={() => window.print()} style={btnGhost}>🖨 {t('print')}</button>
@@ -137,20 +137,20 @@ export function UsageCostsPanel() {
 
       {/* HERO — projected month-end total */}
       <div className="hero card" style={hero}>
-        <div style={{ fontSize: 13, color: '#c7d2fe', fontWeight: 600 }} className="muted">{t('estTotal')}</div>
+        <div style={{ fontSize: 13, color: 'var(--cc7d2fe)', fontWeight: 600 }} className="muted">{t('estTotal')}</div>
         <div className="heavy" style={{ fontSize: 44, fontWeight: 900, lineHeight: 1.05, margin: '4px 0 6px' }}>
           {money(sum.totals.projectedGrandTotalCents, cur)}
         </div>
-        <div style={{ fontSize: 13.5, color: '#cbd5e1' }} className="muted">
-          {t('soFar')}: <strong style={{ color: '#e2e8f0' }} className="heavy">{money(sum.totals.grandTotalCents, cur)}</strong>
+        <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)' }} className="muted">
+          {t('soFar')}: <strong style={{ color: 'var(--ce2e8f0)' }} className="heavy">{money(sum.totals.grandTotalCents, cur)}</strong>
           {' · '}{daysLeft} {t('daysLeft')} ({month})
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }} className="muted">{t('estNote')}</div>
+        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8 }} className="muted">{t('estNote')}</div>
       </div>
 
       {/* ITEMIZED STATEMENT */}
       <div className="card" style={card}>
-        <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 2 }} className="muted">{t('billFor')}</div>
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginBottom: 2 }} className="muted">{t('billFor')}</div>
         <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 14 }}>{month}</div>
 
         <div style={sectionHead}>{t('fixed')}</div>
@@ -181,24 +181,24 @@ export function UsageCostsPanel() {
             within={t('within')}
           />
         ) : (
-          <div style={{ ...rowWrap, color: '#64748b', fontSize: 13.5 }} className="muted">{t('hotOff')}</div>
+          <div style={{ ...rowWrap, color: 'var(--c64748b)', fontSize: 13.5 }} className="muted">{t('hotOff')}</div>
         )}
 
         <Row label={t('subOver')} amount={money(sum.totals.overageCents, cur)} subtotal />
 
-        <div style={{ borderTop: '2px solid #334155', marginTop: 14, paddingTop: 12 }}>
+        <div style={{ borderTop: '2px solid var(--c334155)', marginTop: 14, paddingTop: 12 }}>
           <Row label={t('grandNow')} amount={money(sum.totals.grandTotalCents, cur)} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8 }}>
             <span style={{ fontSize: 15.5, fontWeight: 800 }}>{t('grandProj')}</span>
-            <span className="heavy" style={{ fontSize: 26, fontWeight: 900, color: '#818cf8' }}>{money(sum.totals.projectedGrandTotalCents, cur)}</span>
+            <span className="heavy" style={{ fontSize: 26, fontWeight: 900, color: 'var(--c818cf8)' }}>{money(sum.totals.projectedGrandTotalCents, cur)}</span>
           </div>
         </div>
       </div>
 
       {/* HOW IT'S CALCULATED */}
-      <div className="card" style={{ ...card, background: '#0f172a' }}>
+      <div className="card" style={{ ...card, background: 'var(--c0f172a)' }}>
         <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>💡 {t('howTitle')}</div>
-        <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13.5, color: '#cbd5e1' }} className="muted">
+        <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13.5, color: 'var(--ccbd5e1)' }} className="muted">
           <li>{fill(t('howPlan'), { sms: smsIncLabel, min: minIncLabel })}</li>
           <li>{fill(t('howSms'), { sms: smsIncLabel, rate: smsRate })}</li>
           {sum.hotline.enabled && <li>{fill(t('howMin'), { min: minIncLabel, rate: minRate })}</li>}
@@ -211,8 +211,8 @@ export function UsageCostsPanel() {
 
 function Row({ label, amount, subtotal }: { label: string; amount: string; subtotal?: boolean }) {
   return (
-    <div style={{ ...rowWrap, borderTop: subtotal ? '1px solid #334155' : 'none', marginTop: subtotal ? 8 : 0, paddingTop: subtotal ? 10 : 8 }}>
-      <span style={{ fontSize: 14.5, color: subtotal ? '#e2e8f0' : '#cbd5e1', fontWeight: subtotal ? 700 : 500 }} className={subtotal ? '' : 'muted'}>{label}</span>
+    <div style={{ ...rowWrap, borderTop: subtotal ? '1px solid var(--c334155)' : 'none', marginTop: subtotal ? 8 : 0, paddingTop: subtotal ? 10 : 8 }}>
+      <span style={{ fontSize: 14.5, color: subtotal ? 'var(--ce2e8f0)' : 'var(--ccbd5e1)', fontWeight: subtotal ? 700 : 500 }} className={subtotal ? '' : 'muted'}>{label}</span>
       <span style={{ fontSize: 15, fontWeight: subtotal ? 800 : 600 }}>{amount}</span>
     </div>
   );
@@ -222,21 +222,21 @@ function UsageRow({ label, detail, over, overText, amount, within }: { label: st
   return (
     <div style={{ ...rowWrap, alignItems: 'flex-start', paddingTop: 10 }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14.5, color: '#e2e8f0', fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 2 }} className="muted">{detail}</div>
-        {over > 0 && <div style={{ fontSize: 12.5, color: '#fca5a5', marginTop: 2 }}>{overText}</div>}
+        <div style={{ fontSize: 14.5, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }} className="muted">{detail}</div>
+        {over > 0 && <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', marginTop: 2 }}>{overText}</div>}
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: 10 }}>
         {over > 0
           ? <span style={{ fontSize: 15, fontWeight: 700 }}>{amount}</span>
-          : <span style={{ fontSize: 12.5, color: '#4ade80' }}>{within}</span>}
+          : <span style={{ fontSize: 12.5, color: 'var(--c4ade80)' }}>{within}</span>}
       </div>
     </div>
   );
 }
 
-const card: CSSProperties = { background: '#111827', border: '1px solid #1f2937', borderRadius: 14, padding: 20, marginTop: 16 };
-const hero: CSSProperties = { background: 'linear-gradient(150deg, #1e1b4b, #111827)', border: '1px solid #3730a3', borderRadius: 16, padding: '20px 22px', marginTop: 4 };
-const sectionHead: CSSProperties = { fontSize: 12, color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 };
+const card: CSSProperties = { background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 14, padding: 20, marginTop: 16 };
+const hero: CSSProperties = { background: 'linear-gradient(150deg, var(--c1e1b4b), var(--c111827))', border: '1px solid var(--c3730a3)', borderRadius: 16, padding: '20px 22px', marginTop: 4 };
+const sectionHead: CSSProperties = { fontSize: 12, color: 'var(--c818cf8)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 };
 const rowWrap: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0' };
-const btnGhost: CSSProperties = { padding: '8px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' };
+const btnGhost: CSSProperties = { padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' };

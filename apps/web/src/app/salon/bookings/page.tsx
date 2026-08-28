@@ -58,7 +58,7 @@ const STATUS_COLORS: Record<string, string> = {
   ACCEPTED: '#22c55e',
   CONFIRMED: '#22c55e',
   REJECTED: '#ef4444',
-  CANCELLED: '#94a3b8',
+  CANCELLED: 'var(--c94a3b8)',
   COMPLETED: '#a855f7',
   NO_SHOW: '#ef4444',
 };
@@ -227,11 +227,11 @@ function BookingsInner() {
         <button
           onClick={() => setNeedsConfirm((v) => !v)}
           title={t('bk.needsConfirmHint')}
-          style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${needsConfirm ? '#f59e0b' : '#475569'}`, background: needsConfirm ? '#78350f' : 'transparent', color: needsConfirm ? '#fde68a' : '#cbd5e1', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+          style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${needsConfirm ? '#f59e0b' : 'var(--c475569)'}`, background: needsConfirm ? 'var(--c78350f)' : 'transparent', color: needsConfirm ? 'var(--cfde68a)' : 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
         >
           {t('bk.needsConfirm')}{unconfirmedCount > 0 ? ` (${unconfirmedCount})` : ''}
         </button>
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('bk.bookingWord')}</span>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('bk.bookingWord')}</span>
         <DateRangeBar range={range} />
       </div>
 
@@ -251,24 +251,24 @@ function BookingsInner() {
       )}
 
       {loading && bookings.length === 0 ? (
-        <p style={{ color: '#94a3b8' }}>{t('bk.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('bk.loading')}</p>
       ) : isMobile ? (
         <>
           <MList>
-            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('bk.noBookings')}</p>}
+            {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('bk.noBookings')}</p>}
             {pg.paged.flatMap((b) => {
               const gid = b.groupId ?? '';
               const grp = gid ? bookings.filter((x) => x.groupId === gid) : [];
               const open = !!gid && openGroups.has(gid);
               const members = grp.filter((x) => x.id !== b.id);
               const pill = (st: string) => (
-                <span style={{ color: STATUS_COLORS[st] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[st] ?? '#94a3b8'}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{st}</span>
+                <span style={{ color: STATUS_COLORS[st] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[st] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{st}</span>
               );
               const cards = [
                 <MCard key={b.id}>
                   <MHead right={pill(b.status)}>
                     {b.customer?.id
-                      ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(b.customer)}</a>
+                      ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(b.customer)}</a>
                       : staffName(b.customer)}
                     {gid && grp.length > 1 ? <GroupChip n={grp.length} open={open} onToggle={() => toggleGroup(gid)} label={t('bk.groupChip')} /> : null}
                   </MHead>
@@ -290,12 +290,12 @@ function BookingsInner() {
               if (open) {
                 for (const m of members) {
                   cards.push(
-                    <div key={m.id} style={{ marginLeft: 14, borderLeft: '2px solid #312e81', paddingLeft: 8 }}>
+                    <div key={m.id} style={{ marginLeft: 14, borderLeft: '2px solid var(--c312e81)', paddingLeft: 8 }}>
                       <MCard>
                         <MHead right={pill(m.status)}>
-                          <span style={{ color: '#64748b' }}>↳ </span>
+                          <span style={{ color: 'var(--c64748b)' }}>↳ </span>
                           {m.customer?.id
-                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(m.customer)}</a>
+                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
                             : staffName(m.customer)}
                         </MHead>
                         <MRow label={t('bk.colService')}><ServiceCell b={m} /></MRow>
@@ -323,10 +323,10 @@ function BookingsInner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/bookings/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#1e293b' }}>
+              <tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colWhen')}</th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('bk.colCustomer')}</th>
@@ -351,15 +351,15 @@ function BookingsInner() {
                 const open = !!gid && openGroups.has(gid);
                 const members = grp.filter((x) => x.id !== b.id);
                 const pill = (st: string) => (
-                  <span style={{ display: 'inline-block', whiteSpace: 'nowrap', color: STATUS_COLORS[st] ?? '#94a3b8', border: `1px solid ${STATUS_COLORS[st] ?? '#94a3b8'}`, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{st}</span>
+                  <span style={{ display: 'inline-block', whiteSpace: 'nowrap', color: STATUS_COLORS[st] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[st] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{st}</span>
                 );
                 const rows = [
-                  <tr key={b.id} style={{ borderTop: '1px solid #334155', background: bulk.has(b.id) ? '#1e1b4b' : undefined }}>
+                  <tr key={b.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(b.id) ? 'var(--c1e1b4b)' : undefined }}>
                     <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(b.id)} onChange={() => bulk.toggle(b.id)} /></td>
                     <td style={ui.td}>{fmtWhen(b.startTime, salonTz)}</td>
                     <td style={ui.td}>
                       {b.customer?.id
-                        ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
+                        ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{staffName(b.customer)}</a>
                         : staffName(b.customer)}
                       {gid && grp.length > 1 ? <GroupChip n={grp.length} open={open} onToggle={() => toggleGroup(gid)} label={t('bk.groupChip')} /> : null}
                     </td>
@@ -383,13 +383,13 @@ function BookingsInner() {
                 if (open) {
                   for (const m of members) {
                     rows.push(
-                      <tr key={m.id} style={{ borderTop: '1px dashed #26324a', background: bulk.has(m.id) ? '#1e1b4b' : '#0d1526' }}>
+                      <tr key={m.id} style={{ borderTop: '1px dashed #26324a', background: bulk.has(m.id) ? 'var(--c1e1b4b)' : '#0d1526' }}>
                         <td style={{ ...ui.td, width: 34, boxShadow: 'inset 3px 0 0 #4338ca' }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
                         <td style={ui.td}></td>
                         <td style={ui.td}>
                           <span style={{ color: '#6366f1', marginRight: 6 }}>↳</span>
                           {m.customer?.id
-                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: '#818cf8', textDecoration: 'none' }}>{staffName(m.customer)}</a>
+                            ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
                             : staffName(m.customer)}
                         </td>
                         <td style={ui.td}><ServiceCell b={m} /></td>
@@ -446,7 +446,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
 
   const iconBtn: React.CSSProperties = {
     width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 8,
-    border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 14,
+    border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 14,
   };
 
   return (
@@ -483,13 +483,13 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
         {/* Change the plan — icons, because they are used far less than the step above */}
         {active && (
           <>
-            <button onClick={() => setPanel(panel === 'move' ? 'none' : 'move')} title={t('bk.reschedule')} style={{ ...iconBtn, ...(panel === 'move' ? { borderColor: '#6366f1', color: '#a5b4fc' } : {}) }}>🗓</button>
-            <button onClick={() => setPanel(panel === 'staff' ? 'none' : 'staff')} title={pending ? t('bk.assign') : t('bk.changeStaff')} style={{ ...iconBtn, ...(panel === 'staff' ? { borderColor: '#6366f1', color: '#a5b4fc' } : {}) }}>👤</button>
+            <button onClick={() => setPanel(panel === 'move' ? 'none' : 'move')} title={t('bk.reschedule')} style={{ ...iconBtn, ...(panel === 'move' ? { borderColor: '#6366f1', color: 'var(--ca5b4fc)' } : {}) }}>🗓</button>
+            <button onClick={() => setPanel(panel === 'staff' ? 'none' : 'staff')} title={pending ? t('bk.assign') : t('bk.changeStaff')} style={{ ...iconBtn, ...(panel === 'staff' ? { borderColor: '#6366f1', color: 'var(--ca5b4fc)' } : {}) }}>👤</button>
           </>
         )}
 
         {/* Everything that ends or undoes the booking */}
-        <button onClick={() => setMenu((v) => !v)} title={t('bk.colActions')} style={{ ...iconBtn, ...(menu ? { borderColor: '#6366f1', color: '#a5b4fc' } : {}) }}>⋯</button>
+        <button onClick={() => setMenu((v) => !v)} title={t('bk.colActions')} style={{ ...iconBtn, ...(menu ? { borderColor: '#6366f1', color: 'var(--ca5b4fc)' } : {}) }}>⋯</button>
       </div>
 
       {panel === 'move' && (
@@ -514,15 +514,15 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
       {menu && (
         <>
           <div onClick={() => setMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', top: 36, left: 0, zIndex: 41, minWidth: 190, background: '#0f172a', border: '1px solid #223047', borderRadius: 10, boxShadow: '0 14px 40px rgba(0,0,0,.5)', padding: 5 }}>
+          <div style={{ position: 'absolute', top: 36, left: 0, zIndex: 41, minWidth: 190, background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 10, boxShadow: '0 14px 40px rgba(0,0,0,.5)', padding: 5 }}>
             {active && groupSize > 1 && (
               <>
                 <MenuItem
                   label={`🧾 ${t('bk.checkoutSolo')}`}
-                  color="#a5b4fc"
+                  color="var(--ca5b4fc)"
                   onClick={() => { setMenu(false); window.location.href = checkoutHref; }}
                 />
-                <div style={{ height: 1, background: '#1e293b', margin: '4px 6px' }} />
+                <div style={{ height: 1, background: 'var(--c1e293b)', margin: '4px 6px' }} />
               </>
             )}
             {active && (
@@ -530,10 +530,10 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
                 <MenuItem label={`✅ ${t('bk.complete')}`} color="#22c55e" onClick={() => { setMenu(false); onAction('complete'); }} />
                 <MenuItem label={`⚠ ${t('bk.noShow')}`} color="#f97316" onClick={() => { setMenu(false); if (confirm(t('bk.confirmNoShow'))) onAction('no-show'); }} />
                 <MenuItem label={`✖ ${t('bk.cancel')}`} color="#ef4444" onClick={() => { setMenu(false); if (confirm(t('bk.confirmCancel'))) onAction('cancel'); }} />
-                <div style={{ height: 1, background: '#1e293b', margin: '4px 6px' }} />
+                <div style={{ height: 1, background: 'var(--c1e293b)', margin: '4px 6px' }} />
               </>
             )}
-            <MenuItem label={`🗑 ${t('bk.delete')}`} color="#f87171" onClick={() => { setMenu(false); onDelete(); }} />
+            <MenuItem label={`🗑 ${t('bk.delete')}`} color="var(--cf87171)" onClick={() => { setMenu(false); onDelete(); }} />
           </div>
         </>
       )}
@@ -558,11 +558,11 @@ function AssignLines({ b, live, t, onAction, onClose }: {
   const lines = (b.addons ?? []).filter((a) => a?.kind === 'service' && a.id);
   const selStyle: React.CSSProperties = { ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 140, flexShrink: 0 };
   return (
-    <div style={{ background: '#0f172a', border: '1px solid #223047', borderRadius: 10, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 250 }}>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 10, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 250 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {b.service?.name ?? '—'}
-          <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: '#818cf8', border: '1px solid #3730a3', borderRadius: 6, padding: '0 4px' }}>{t('cal.lineMain')}</span>
+          <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid var(--c3730a3)', borderRadius: 6, padding: '0 4px' }}>{t('cal.lineMain')}</span>
         </span>
         <select
           value={b.assignedStaff?.id ?? ''}
@@ -574,7 +574,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
         </select>
       </div>
       {lines.map((line) => (
-        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, borderTop: '1px solid #1e293b', paddingTop: 6 }}>
+        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, borderTop: '1px solid var(--c1e293b)', paddingTop: 6 }}>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</span>
           <select
             value={line.staffMemberId ?? ''}
@@ -586,7 +586,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
           </select>
         </div>
       ))}
-      <button onClick={onClose} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', color: '#818cf8', fontSize: 12.5, cursor: 'pointer', padding: '2px 4px', fontWeight: 700 }}>
+      <button onClick={onClose} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12.5, cursor: 'pointer', padding: '2px 4px', fontWeight: 700 }}>
         ✓ {t('bk.done')}
       </button>
     </div>
@@ -618,7 +618,7 @@ function InlineMove({ current, t, onMove, onClose }: { current: string; t: (k: s
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
       <input type="datetime-local" value={val} onChange={(e) => setVal(e.target.value)} style={{ ...ui.input, padding: '5px 8px', fontSize: 13 }} />
       <button disabled={!val} onClick={() => val && onMove(new Date(val).toISOString())} style={smallOk}>{t('bk.move')}</button>
-      <button onClick={onClose} style={actBtnOutline('#94a3b8')}>✕</button>
+      <button onClick={onClose} style={actBtnOutline('var(--c94a3b8)')}>✕</button>
     </div>
   );
 }
@@ -815,14 +815,14 @@ function CreateBookingForm({
       <style>{`
         .bkf input, .bkf select { transition: border-color .12s ease, box-shadow .12s ease; }
         .bkf input:focus, .bkf select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); }
-        .bkf input::placeholder { color: #475569; }
+        .bkf input::placeholder { color: var(--c475569); }
       `}</style>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 20px', borderBottom: '1px solid #334155' }}>
-        <span style={{ width: 34, height: 34, borderRadius: 10, background: '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📅</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 20px', borderBottom: '1px solid var(--c334155)' }}>
+        <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--c1e3a8a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📅</span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}>{t('bk.createBooking')}</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('bk.createBooking')}</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
             {serviceIds.length === 0
               ? t('bk.pickSvcFirst')
               : `${serviceIds.length} ${t('bk.servicesPicked')} · ${t('bk.totalDuration')} ${totalMinutes} min${endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}`}
@@ -872,9 +872,9 @@ function CreateBookingForm({
             <div
               style={{
                 marginTop: 10, fontSize: 12.5, lineHeight: 1.5, display: 'inline-flex', alignItems: 'center', gap: 6,
-                color: staffShort ? '#fbbf24' : '#94a3b8',
-                background: staffShort ? '#2a1c06' : '#0f172a',
-                border: `1px solid ${staffShort ? '#78350f' : '#334155'}`,
+                color: staffShort ? '#fbbf24' : 'var(--c94a3b8)',
+                background: staffShort ? '#2a1c06' : 'var(--c0f172a)',
+                border: `1px solid ${staffShort ? 'var(--c78350f)' : 'var(--c334155)'}`,
                 borderRadius: 999, padding: '6px 12px',
               }}
             >
@@ -918,7 +918,7 @@ function CreateBookingForm({
         </FormSection>
         <FormSection title={partyN > 1 ? t('bk.secWhatGroup') : t('bk.secWhat')}>
         {partyN > 1 && (
-          <div style={{ border: '1px solid #334155', borderRadius: 10, background: '#0f172a', padding: 12, marginBottom: 14 }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)', padding: 12, marginBottom: 14 }}>
             <span style={{ ...ui.label, display: 'block', marginBottom: 8 }}>{t('bk.perPersonHint')}</span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {people.map((p, i) => {
@@ -933,9 +933,9 @@ function CreateBookingForm({
                     type="button"
                     onClick={() => setWho(i)}
                     style={{
-                      border: `1px solid ${on ? '#6366f1' : n === 0 ? '#78350f' : '#334155'}`,
-                      background: on ? '#312e81' : '#0f172a',
-                      color: on ? '#e0e7ff' : n === 0 ? '#fbbf24' : '#cbd5e1',
+                      border: `1px solid ${on ? '#6366f1' : n === 0 ? 'var(--c78350f)' : 'var(--c334155)'}`,
+                      background: on ? 'var(--c312e81)' : 'var(--c0f172a)',
+                      color: on ? 'var(--ce0e7ff)' : n === 0 ? '#fbbf24' : 'var(--ccbd5e1)',
                       borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
                     }}
                   >
@@ -963,7 +963,7 @@ function CreateBookingForm({
               ? (who === 0 ? (form.customerFirstName.trim() || t('bk.you')) : (people[who]?.name?.trim() || `${t('bk.guestLabel')} ${who + 1}`))
               : t('bk.fService')}
             {serviceIds.length > 0 && (
-              <span style={{ color: '#94a3b8', fontWeight: 400 }}> · {totalMinutes} min{endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}</span>
+              <span style={{ color: 'var(--c94a3b8)', fontWeight: 400 }}> · {totalMinutes} min{endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}</span>
             )}
           </span>
           {/* Picked services stay visible as chips while staff searches for the next one. */}
@@ -973,9 +973,9 @@ function CreateBookingForm({
                 const s = services.find((x) => x.id === id);
                 if (!s) return null;
                 return (
-                  <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1e3a8a', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                  <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c1e3a8a)', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
                     {s.name}
-                    <button type="button" onClick={() => toggleSvc(id)} style={{ background: 'none', border: 'none', color: '#93c5fd', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+                    <button type="button" onClick={() => toggleSvc(id)} style={{ background: 'none', border: 'none', color: 'var(--c93c5fd)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
                   </span>
                 );
               })}
@@ -987,10 +987,10 @@ function CreateBookingForm({
             placeholder={t('bk.searchService')}
             style={{ ...ui.input, marginBottom: 8 }}
           />
-          <div style={{ border: '1px solid #334155', borderRadius: 8, background: '#0f172a', maxHeight: 210, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
-            {svcShown.length === 0 && <span style={{ color: '#94a3b8', fontSize: 13, padding: '6px 8px' }}>{t('bk.noSvcMatch')}</span>}
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 8, background: 'var(--c0f172a)', maxHeight: 210, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+            {svcShown.length === 0 && <span style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: '6px 8px' }}>{t('bk.noSvcMatch')}</span>}
             {svcShown.map((s) => (
-              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: serviceIds.includes(s.id) ? '#1e293b' : 'transparent', fontSize: 13, color: serviceIds.includes(s.id) ? '#e2e8f0' : '#cbd5e1' }}>
+              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: serviceIds.includes(s.id) ? 'var(--c1e293b)' : 'transparent', fontSize: 13, color: serviceIds.includes(s.id) ? 'var(--ce2e8f0)' : 'var(--ccbd5e1)' }}>
                 <input type="checkbox" checked={serviceIds.includes(s.id)} onChange={() => toggleSvc(s.id)} style={{ flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name} ({s.durationMinutes} min)</span>
               </label>
@@ -1000,10 +1000,10 @@ function CreateBookingForm({
         </FormSection>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '13px 20px', borderTop: '1px solid #334155', background: '#0f172a' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '13px 20px', borderTop: '1px solid var(--c334155)', background: 'var(--c0f172a)' }}>
         {error
-          ? <span style={{ color: '#f87171', fontSize: 13, flex: 1, minWidth: 160 }}>{error}</span>
-          : <span style={{ color: '#64748b', fontSize: 12.5, flex: 1, minWidth: 160 }}>{t('bk.custFirstName')} + {t('bk.dateTime').toLowerCase()} {lang === 'vi' ? 'là bắt buộc' : 'are required'}</span>}
+          ? <span style={{ color: 'var(--cf87171)', fontSize: 13, flex: 1, minWidth: 160 }}>{error}</span>
+          : <span style={{ color: 'var(--c64748b)', fontSize: 12.5, flex: 1, minWidth: 160 }}>{t('bk.custFirstName')} + {t('bk.dateTime').toLowerCase()} {lang === 'vi' ? 'là bắt buộc' : 'are required'}</span>}
         <button
           type="submit"
           disabled={submitting || people.some((p) => p.serviceIds.length === 0)}
@@ -1022,8 +1022,8 @@ function FormSection({ title, children }: { title: string; children: React.React
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>{title}</span>
-        <span style={{ flex: 1, height: 1, background: '#334155' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>{title}</span>
+        <span style={{ flex: 1, height: 1, background: 'var(--c334155)' }} />
       </div>
       {children}
     </div>
@@ -1038,9 +1038,9 @@ function FieldLabel({ raw, required, optionalWord, hint }: { raw: string; requir
   return (
     <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }} title={hint}>
       {text}
-      {required && <span style={{ color: '#f87171', fontWeight: 700 }}>*</span>}
+      {required && <span style={{ color: 'var(--cf87171)', fontWeight: 700 }}>*</span>}
       {isOpt && !required && (
-        <span style={{ fontSize: 10.5, color: '#64748b', border: '1px solid #334155', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{optionalWord}</span>
+        <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{optionalWord}</span>
       )}
     </span>
   );
@@ -1058,7 +1058,7 @@ function GroupChip({ n, open, onToggle, label }: { n: number; open: boolean; onT
       type="button"
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
       title={label.replace('{n}', String(n))}
-      style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 4, background: open ? '#3730a3' : '#312e81', color: '#c7d2fe', border: '1px solid #4338ca', borderRadius: 999, padding: '1px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer' }}
+      style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 4, background: open ? 'var(--c3730a3)' : 'var(--c312e81)', color: 'var(--cc7d2fe)', border: '1px solid #4338ca', borderRadius: 999, padding: '1px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer' }}
     >
       👥 {n} <span style={{ fontSize: 9 }}>{open ? '▼' : '▶'}</span>
     </button>
@@ -1105,7 +1105,7 @@ function StaffCell({ b, staff }: { b: Booking; staff: Staff[] }) {
   return (
     <span title={[primary, ...others].join(', ')}>
       {primary}
-      <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>+ {others.join(' · ')}</span>
+      <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>+ {others.join(' · ')}</span>
     </span>
   );
 }
@@ -1117,7 +1117,7 @@ function ServiceCell({ b }: { b: Booking }) {
     <span>
       {names[0]}
       {names.length > 1 && (
-        <span style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+        <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>
           + {names.slice(1).join(' · ')}
         </span>
       )}
@@ -1132,7 +1132,7 @@ function PaymentCell({ payment }: { payment?: Payment }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   if (!payment) {
-    return <span style={{ color: '#64748b', fontSize: 12 }}>{t('bk.collectAtCheckout')}</span>;
+    return <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('bk.collectAtCheckout')}</span>;
   }
   const color = payment.status === 'PAID' ? '#22c55e' : payment.status === 'FAILED' ? '#ef4444' : '#eab308';
   return <span style={{ color, fontSize: 12, fontWeight: 600 }}>{payment.status}</span>;
@@ -1152,9 +1152,9 @@ const smallWarn: React.CSSProperties = actBtnOutline('#f97316');
 const ghostBtn: React.CSSProperties = {
   padding: '9px 14px',
   borderRadius: 8,
-  border: '1px solid #475569',
+  border: '1px solid var(--c475569)',
   background: 'transparent',
-  color: '#e2e8f0',
+  color: 'var(--ce2e8f0)',
   fontSize: 13,
   cursor: 'pointer',
 };

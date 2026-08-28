@@ -93,18 +93,18 @@ function Inner() {
   const finish = async (id: string, name: string) => { await act(id, `/my-chair/${id}/done`, 'PATCH'); setUndo({ id, name }); };
   const undoDone = (id: string) => { setUndo(null); act(id, `/my-chair/${id}/reactivate`, 'PATCH'); };
 
-  if (loading && !data) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (loading && !data) return <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>;
 
   const serving = data?.serving ?? [];
   const others = data?.salon ?? [];
 
   return (
     <div style={{ paddingBottom: undo ? 76 : 0 }}>
-      <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 14 }}>{t('sc.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('sc.subtitle')}</p>
       {error && <div style={ui.banner}>{error}</div>}
 
       {serving.length === 0 && others.length === 0 ? (
-        <div style={{ ...ui.card, color: '#94a3b8', textAlign: 'center', padding: '36px 16px' }}>
+        <div style={{ ...ui.card, color: 'var(--c94a3b8)', textAlign: 'center', padding: '36px 16px' }}>
           <div style={{ fontSize: 34, marginBottom: 8 }}>💺</div>
           {t('sc.none')}
         </div>
@@ -120,8 +120,8 @@ function Inner() {
 
       {others.length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', margin: '0 0 4px' }}>{t('sc.others')}</div>
-          <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 10px' }}>{t('sc.moved')}</p>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 4px' }}>{t('sc.others')}</div>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 10px' }}>{t('sc.moved')}</p>
           <div style={{ display: 'grid', gap: 10 }}>
             {others.map((o) => (
               <OtherClientRow key={o.id} c={o} services={services} currency={currency} t={t}
@@ -132,17 +132,17 @@ function Inner() {
       )}
 
       {serving.length > 0 && (
-        <p style={{ color: '#64748b', fontSize: 12, marginTop: 16, lineHeight: 1.5 }}>{t('sc.hint')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 16, lineHeight: 1.5 }}>{t('sc.hint')}</p>
       )}
 
       {undo && (
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', alignItems: 'center', gap: 12,
-          padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))', background: '#1e293b', borderTop: '1px solid #334155' }}>
-          <span style={{ flex: 1, minWidth: 0, color: '#e2e8f0', fontSize: 14 }}>
+          padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))', background: 'var(--c1e293b)', borderTop: '1px solid var(--c334155)' }}>
+          <span style={{ flex: 1, minWidth: 0, color: 'var(--ce2e8f0)', fontSize: 14 }}>
             {vi ? 'Đã xong' : 'Finished'}: <b>{undo.name}</b>
           </span>
           <button onClick={() => undoDone(undo.id)}
-            style={{ flexShrink: 0, padding: '10px 18px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: '#a5b4fc', fontWeight: 700, cursor: 'pointer' }}>
+            style={{ flexShrink: 0, padding: '10px 18px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', fontWeight: 700, cursor: 'pointer' }}>
             {vi ? '↩ Hoàn tác' : '↩ Undo'}
           </button>
         </div>
@@ -159,18 +159,18 @@ function ServicePicker({ services, currency, busy, onPick, onCancel, t }: {
   const q = query.trim().toLowerCase();
   const filtered = q ? services.filter((s) => s.name.toLowerCase().includes(q)) : services;
   return (
-    <div style={{ border: '1px solid #334155', borderRadius: 12, padding: 10 }}>
+    <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, padding: 10 }}>
       <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('wi.addServicePh')}
         style={{ ...ui.input, width: '100%', boxSizing: 'border-box', marginBottom: 8 }} />
       <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 6 }}>
         {filtered.map((s) => (
           <button key={s.id} disabled={busy} onClick={() => onPick(s.id)}
-            style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', cursor: 'pointer', fontSize: 15, textAlign: 'left' }}>
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 15, textAlign: 'left' }}>
             <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-            <span style={{ color: '#94a3b8' }}>{formatPrice(s.priceCents, currency)}</span>
+            <span style={{ color: 'var(--c94a3b8)' }}>{formatPrice(s.priceCents, currency)}</span>
           </button>
         ))}
-        {filtered.length === 0 && <div style={{ color: '#64748b', fontSize: 13, padding: '8px 4px' }}>{t('wi.noMatch')}</div>}
+        {filtered.length === 0 && <div style={{ color: 'var(--c64748b)', fontSize: 13, padding: '8px 4px' }}>{t('wi.noMatch')}</div>}
       </div>
       <button onClick={onCancel} style={{ ...ghost, width: '100%', marginTop: 8 }}>{t('wi.cancel')}</button>
     </div>
@@ -194,14 +194,14 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
     <div style={{ ...ui.card, padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0' }}>{name}</div>
-          {mins > 0 && <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{mins}m {t('sc.inChair')}</div>}
+          <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--ce2e8f0)' }}>{name}</div>
+          {mins > 0 && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{mins}m {t('sc.inChair')}</div>}
         </div>
-        {w.phone && <a href={`tel:${w.phone}`} style={{ color: '#818cf8', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>}
+        {w.phone && <a href={`tel:${w.phone}`} style={{ color: 'var(--c818cf8)', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>}
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+        <label style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>
           {vi ? 'Ghế / bàn khách đang ngồi' : 'Chair the client is sitting in'}
         </label>
         <select value={w.stationId ?? ''} disabled={busy} onChange={(e) => onChair(w.id, e.target.value)}
@@ -222,7 +222,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
           </p>
         )}
         {chair && (
-          <p style={{ color: '#a5b4fc', fontSize: 12, margin: '6px 0 0' }}>
+          <p style={{ color: 'var(--ca5b4fc)', fontSize: 12, margin: '6px 0 0' }}>
             {vi ? 'Đang ngồi' : 'Seated at'}: <b>{chair.name}</b>{chair.type ? ' · ' + chair.type : ''}
           </p>
         )}
@@ -230,17 +230,17 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
 
       <div style={{ border: '1px solid #263041', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }}>
         {items.length === 0 ? (
-          <div style={{ padding: '12px 14px', color: '#64748b', fontSize: 13 }}>{t('wi.noLines')}</div>
+          <div style={{ padding: '12px 14px', color: 'var(--c64748b)', fontSize: 13 }}>{t('wi.noLines')}</div>
         ) : items.map((it) => (
-          <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid #1e293b' }}>
-            <div style={{ flex: 1, minWidth: 0, color: '#e2e8f0', fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-            <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700 }}>{formatPrice(it.priceCents, currency)}</div>
+          <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--c1e293b)' }}>
+            <div style={{ flex: 1, minWidth: 0, color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+            <div style={{ color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700 }}>{formatPrice(it.priceCents, currency)}</div>
             <button onClick={() => onRemove(w.id, it.lineId)} aria-label={t('wi.removeLine')}
               style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>&times;</button>
           </div>
         ))}
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#0f172a' }}>
-          <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--c0f172a)' }}>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
           <span style={{ color: '#fff', fontSize: 18, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
         </div>
       </div>
@@ -262,7 +262,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
           </button>
           {!confirm ? (
             <button onClick={() => setConfirm(true)} disabled={busy}
-              style={{ ...ghost, flex: 1, padding: '12px', borderColor: '#16a34a', color: '#4ade80' }}>
+              style={{ ...ghost, flex: 1, padding: '12px', borderColor: '#16a34a', color: 'var(--c4ade80)' }}>
               {vi ? '✓ Xong khách' : '✓ Finish'}
             </button>
           ) : (
@@ -274,7 +274,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
         </div>
       )}
       {confirm && (
-        <p style={{ color: '#94a3b8', fontSize: 12, margin: '8px 0 0' }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '8px 0 0' }}>
           {vi ? 'Xong khách sẽ nhả ghế và tính một lượt cho thợ. Bấm lại để xác nhận — lỡ tay vẫn hoàn tác được.'
               : 'Finishing frees the chair and credits your turn. Tap again to confirm — you can still undo.'}
         </p>
@@ -293,9 +293,9 @@ function OtherClientRow({ c, services, currency, t, busy, onAdd }: {
   return (
     <div style={{ ...ui.card, padding: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontWeight: 600, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.customerName || t('sc.walkin')}</span>
-          {c.station && <span style={{ fontSize: 12, fontWeight: 700, color: '#c7d2fe', background: '#312e81', borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>{t('wi.stationShort')} {c.station}</span>}
+          {c.station && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--cc7d2fe)', background: 'var(--c312e81)', borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>{t('wi.stationShort')} {c.station}</span>}
         </div>
         {!adding && <button onClick={() => setAdding(true)} style={{ ...ui.primaryBtn, padding: '8px 14px', flexShrink: 0 }}>{t('sc.addMine')}</button>}
       </div>
@@ -310,6 +310,6 @@ function OtherClientRow({ c, services, currency, t, busy, onAdd }: {
 }
 
 const ghost: React.CSSProperties = {
-  padding: '10px 14px', borderRadius: 8, border: '1px solid #475569',
-  background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer',
+  padding: '10px 14px', borderRadius: 8, border: '1px solid var(--c475569)',
+  background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer',
 };

@@ -42,7 +42,7 @@ interface Dashboard {
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: '#eab308', ASSIGNED: '#3b82f6', ACCEPTED: '#22c55e', CONFIRMED: '#22c55e',
-  REJECTED: '#ef4444', CANCELLED: '#94a3b8', COMPLETED: '#a855f7', NO_SHOW: '#f97316',
+  REJECTED: '#ef4444', CANCELLED: 'var(--c94a3b8)', COMPLETED: '#a855f7', NO_SHOW: '#f97316',
 };
 
 const PRESETS: { label: string; days: number }[] = [
@@ -108,21 +108,21 @@ function Inner() {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('db.title')}</h1>
-          <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
+          <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>
             {t('db.subtitle')}
           </p>
         </div>
 
         {/* Date range controls */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3 }}>
+          <div style={{ display: 'flex', gap: 4, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3 }}>
             {PRESETS.map((p) => (
               <button key={p.label} onClick={() => applyPreset(p.days)} style={presetBtn}>{p.label}</button>
             ))}
             <button onClick={applyThisMonth} style={presetBtn}>{t('db.month')}</button>
           </div>
           <input lang="en-US" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
-          <span style={{ color: '#64748b' }}>→</span>
+          <span style={{ color: 'var(--c64748b)' }}>→</span>
           <input lang="en-US" type="date" value={to} min={from} max={isoDay(today)} onChange={(e) => setTo(e.target.value)} style={dateInput} />
         </div>
       </div>
@@ -130,7 +130,7 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
 
       {!data ? (
-        <p style={{ color: '#94a3b8', marginTop: 24 }}>{t('db.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)', marginTop: 24 }}>{t('db.loading')}</p>
       ) : (
         <>
           {/* KPI tiles */}
@@ -172,22 +172,22 @@ function Inner() {
             </Card>
             <Card title={t('db.upcoming')}>
               {data.upcoming.length === 0 ? (
-                <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{t('db.noUpcoming')}</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{t('db.noUpcoming')}</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {data.upcoming.map((b) => (
-                    <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderBottom: '1px solid #1f2937' }}>
+                    <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--c1f2937)' }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {name(b.customer)}
                         </div>
-                        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
                           {b.service?.name ?? '—'} · {name(b.assignedStaff)}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ fontSize: 13 }}>{new Date(b.startTime).toLocaleDateString(uiLocale())}</div>
-                        <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
                           {new Date(b.startTime).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
@@ -211,10 +211,10 @@ function pct(v: number) {
 
 function Kpi({ label, value, accent, hint }: { label: string; value: number | string; accent: string; hint?: string }) {
   return (
-    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>{label}</div>
+    <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
       <div style={{ fontSize: 25, fontWeight: 700, marginTop: 4 }}>{value}</div>
-      {hint && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>
   );
 }
@@ -222,14 +222,14 @@ function Kpi({ label, value, accent, hint }: { label: string; value: number | st
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ ...ui.card, padding: 18 }}>
-      <h2 style={{ fontSize: 14, margin: '0 0 14px', color: '#cbd5e1', fontWeight: 600 }}>{title}</h2>
+      <h2 style={{ fontSize: 14, margin: '0 0 14px', color: 'var(--ccbd5e1)', fontWeight: 600 }}>{title}</h2>
       {children}
     </div>
   );
 }
 
 function RankedTable({ rows, firstCol, empty }: { rows: Ranked[]; firstCol: string; empty: string }) {
-  if (rows.length === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{empty}</p>;
+  if (rows.length === 0) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{empty}</p>;
   const max = Math.max(...rows.map((r) => r.revenueCents), 1);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -239,11 +239,11 @@ function RankedTable({ rows, firstCol, empty }: { rows: Ranked[]; firstCol: stri
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '60%' }}>
               {r.name}
             </span>
-            <span style={{ color: '#94a3b8' }}>
+            <span style={{ color: 'var(--c94a3b8)' }}>
               {r.bookings} · <span style={{ color: '#22c55e' }}>{formatPrice(r.revenueCents)}</span>
             </span>
           </div>
-          <div style={{ height: 6, background: '#0f172a', borderRadius: 999 }}>
+          <div style={{ height: 6, background: 'var(--c0f172a)', borderRadius: 999 }}>
             <div style={{ height: '100%', width: `${Math.max(4, (r.revenueCents / max) * 100)}%`, background: '#6366f1', borderRadius: 999 }} />
           </div>
         </div>
@@ -263,7 +263,7 @@ function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: nu
     { label: t('db.pmOnsite'), value: pm.onsite, color: '#eab308' },
   ];
   const total = rows.reduce((s, r) => s + r.value, 0);
-  if (total === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{t('db.noPayments')}</p>;
+  if (total === 0) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{t('db.noPayments')}</p>;
   return (
     <>
       <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', marginBottom: 14 }}>
@@ -275,9 +275,9 @@ function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: nu
         {rows.map((r) => (
           <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: r.color }} />
-            <span style={{ color: '#cbd5e1' }}>{r.label}</span>
-            <span style={{ marginLeft: 'auto', color: '#e2e8f0', fontWeight: 600 }}>{formatPrice(r.value)}</span>
-            <span style={{ color: '#64748b', width: 42, textAlign: 'right' }}>{Math.round((r.value / total) * 100)}%</span>
+            <span style={{ color: 'var(--ccbd5e1)' }}>{r.label}</span>
+            <span style={{ marginLeft: 'auto', color: 'var(--ce2e8f0)', fontWeight: 600 }}>{formatPrice(r.value)}</span>
+            <span style={{ color: 'var(--c64748b)', width: 42, textAlign: 'right' }}>{Math.round((r.value / total) * 100)}%</span>
           </div>
         ))}
       </div>
@@ -288,20 +288,20 @@ function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: nu
 function StatusBreakdown({ breakdown, total }: { breakdown: Record<string, number>; total: number }) {
   const { lang } = useLang();
   const entries = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
-  if (total === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{tr('db.noBookingsRange', lang)}</p>;
+  if (total === 0) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{tr('db.noBookingsRange', lang)}</p>;
   return (
     <>
       <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', marginBottom: 14 }}>
         {entries.map(([s, n]) => (
-          <div key={s} title={`${s}: ${n}`} style={{ width: `${(n / total) * 100}%`, background: STATUS_COLORS[s] ?? '#64748b' }} />
+          <div key={s} title={`${s}: ${n}`} style={{ width: `${(n / total) * 100}%`, background: STATUS_COLORS[s] ?? 'var(--c64748b)' }} />
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
         {entries.map(([s, n]) => (
           <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: STATUS_COLORS[s] ?? '#64748b' }} />
-            <span style={{ color: '#cbd5e1' }}>{s}</span>
-            <span style={{ marginLeft: 'auto', color: '#94a3b8' }}>{n}</span>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: STATUS_COLORS[s] ?? 'var(--c64748b)' }} />
+            <span style={{ color: 'var(--ccbd5e1)' }}>{s}</span>
+            <span style={{ marginLeft: 'auto', color: 'var(--c94a3b8)' }}>{n}</span>
           </div>
         ))}
       </div>
@@ -322,7 +322,7 @@ function TrendChart({ series }: { series: SeriesPoint[] }) {
   const innerH = H - padT - padB;
   const n = series.length;
 
-  if (n === 0) return <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>{tr('db.noData', lang)}</p>;
+  if (n === 0) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{tr('db.noData', lang)}</p>;
 
   const maxRev = Math.max(...series.map((s) => s.revenueCents), 1);
   const maxBook = Math.max(...series.map((s) => s.bookings), 1);
@@ -353,18 +353,18 @@ function TrendChart({ series }: { series: SeriesPoint[] }) {
         {series.map((s, i) => {
           const x = padL + slot * i + slot / 2;
           const y = padT + innerH - (s.bookings / maxBook) * innerH;
-          return <circle key={i} cx={x} cy={y} r={2.2} fill="#818cf8" />;
+          return <circle key={i} cx={x} cy={y} r={2.2} fill="var(--c818cf8)" />;
         })}
         {/* x labels */}
         {series.map((s, i) =>
           i % step === 0 ? (
-            <text key={i} x={padL + slot * i + slot / 2} y={H - 6} fontSize={9} fill="#64748b" textAnchor="middle">
+            <text key={i} x={padL + slot * i + slot / 2} y={H - 6} fontSize={9} fill="var(--c64748b)" textAnchor="middle">
               {s.date.slice(5)}
             </text>
           ) : null,
         )}
       </svg>
-      <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
+      <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 10, height: 10, borderRadius: 2, background: '#22c55e', opacity: 0.6 }} /> Revenue
         </span>
@@ -381,7 +381,7 @@ const presetBtn: React.CSSProperties = {
   borderRadius: 6,
   border: 'none',
   background: 'transparent',
-  color: '#cbd5e1',
+  color: 'var(--ccbd5e1)',
   fontSize: 12,
   fontWeight: 600,
   cursor: 'pointer',
@@ -390,9 +390,8 @@ const presetBtn: React.CSSProperties = {
 const dateInput: React.CSSProperties = {
   padding: '7px 9px',
   borderRadius: 8,
-  border: '1px solid #475569',
-  background: '#0f172a',
-  color: '#e2e8f0',
+  border: '1px solid var(--c475569)',
+  background: 'var(--c0f172a)',
+  color: 'var(--ce2e8f0)',
   fontSize: 13,
-  colorScheme: 'dark',
 };

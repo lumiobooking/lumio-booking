@@ -120,23 +120,23 @@ function Inner() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('pd.searchPh')} />
-        <span style={{ color: '#94a3b8', fontSize: 13 }}>{visible.length} {t('pd.productsWord')}</span>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('pd.productsWord')}</span>
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8' }}>{t('pd.loading')}</p> : isMobile ? (
+      {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{t('pd.loading')}</p> : isMobile ? (
         <>
           <MList>
-            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('pd.empty')}</p>}
+            {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pd.empty')}</p>}
             {pg.paged.map((p) => (
               <Fragment key={p.id}>
                 <MCard>
-                  <MHead right={<span style={{ color: p.isActive ? '#22c55e' : '#94a3b8', fontSize: 12, fontWeight: 600 }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span>}>
-                    {p.name}{p.sku ? <span style={{ color: '#64748b', fontSize: 12 }}> · {p.sku}</span> : null}
+                  <MHead right={<span style={{ color: p.isActive ? '#22c55e' : 'var(--c94a3b8)', fontSize: 12, fontWeight: 600 }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span>}>
+                    {p.name}{p.sku ? <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {p.sku}</span> : null}
                   </MHead>
                   <MRow label={t('pd.colPrice')}>
                     {p.discountPercent && p.discountPercent > 0 ? (
                       <span>
-                        <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
+                        <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
                         <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
                         <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
                       </span>
@@ -145,11 +145,11 @@ function Inner() {
                   <MRow label={t('pd.colTaxable')}>{p.taxable ? t('pd.yes') : t('pd.no')}</MRow>
                   <MRow label={t('pd.colStock')}>{p.trackStock ? p.stockQty : '—'}</MRow>
                   <MActions>
-                    <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? '#475569' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
+                    <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
                     <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
                   </MActions>
                 </MCard>
-                {editId === p.id && <div style={{ padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 10 }}><ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} /></div>}
+                {editId === p.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} /></div>}
               </Fragment>
             ))}
           </MList>
@@ -158,9 +158,9 @@ function Inner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/pos/products/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead><tr style={{ background: '#1e293b' }}>
+            <thead><tr style={{ background: 'var(--c1e293b)' }}>
               <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>{t('pd.colName')}</th><th style={ui.th}>{t('pd.colPrice')}</th><th style={ui.th}>{t('pd.colTaxable')}</th><th style={ui.th}>{t('pd.colStock')}</th><th style={ui.th}>{t('pd.colStatus')}</th><th style={ui.th}>{t('pd.colActions')}</th>
             </tr></thead>
@@ -168,13 +168,13 @@ function Inner() {
               {visible.length === 0 && <tr><td style={ui.td} colSpan={7}>{t('pd.empty')}</td></tr>}
               {pg.paged.map((p) => (
                 <Fragment key={p.id}>
-                  <tr style={{ borderTop: '1px solid #334155', background: bulk.has(p.id) ? '#1e1b4b' : undefined }}>
+                  <tr style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(p.id) ? 'var(--c1e1b4b)' : undefined }}>
                     <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
-                    <td style={ui.td}>{p.name}{p.sku ? <span style={{ color: '#64748b', fontSize: 12 }}> · {p.sku}</span> : null}</td>
+                    <td style={ui.td}>{p.name}{p.sku ? <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {p.sku}</span> : null}</td>
                     <td style={ui.td}>
                       {p.discountPercent && p.discountPercent > 0 ? (
                         <span>
-                          <span style={{ textDecoration: 'line-through', color: '#94a3b8', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
+                          <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
                           <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
                           <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
                         </span>
@@ -182,16 +182,16 @@ function Inner() {
                     </td>
                     <td style={ui.td}>{p.taxable ? t('pd.yes') : t('pd.no')}</td>
                     <td style={ui.td}>{p.trackStock ? p.stockQty : '—'}</td>
-                    <td style={ui.td}><span style={{ color: p.isActive ? '#22c55e' : '#94a3b8' }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span></td>
+                    <td style={ui.td}><span style={{ color: p.isActive ? '#22c55e' : 'var(--c94a3b8)' }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span></td>
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? '#475569' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
+                        <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
                         <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
                       </div>
                     </td>
                   </tr>
                   {editId === p.id && (
-                    <tr><td colSpan={7} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={7} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} />
                     </td></tr>
                   )}

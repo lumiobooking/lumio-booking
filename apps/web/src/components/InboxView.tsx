@@ -58,9 +58,9 @@ interface ThreadDetail extends InboxRow {
 /** The badge colours for a follow-up. Overdue is the only red on this screen —
  *  a colour that means everything means nothing. */
 const FOLLOWUP_TONE: Record<string, { bg: string; fg: string }> = {
-  overdue: { bg: '#7f1d1d', fg: '#fecaca' },
-  today: { bg: '#78350f', fg: '#fde68a' },
-  upcoming: { bg: '#1e293b', fg: '#94a3b8' },
+  overdue: { bg: 'var(--c7f1d1d)', fg: 'var(--cfecaca)' },
+  today: { bg: 'var(--c78350f)', fg: 'var(--cfde68a)' },
+  upcoming: { bg: 'var(--c1e293b)', fg: 'var(--c94a3b8)' },
 };
 
 /** Colours offered when making a label. Six is enough to tell stages apart and
@@ -77,15 +77,15 @@ function toLocalInput(iso: string | null | undefined): string {
 }
 
 const ghostBtn: React.CSSProperties = {
-  background: 'transparent', border: '1px solid #475569', color: '#cbd5e1',
+  background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ccbd5e1)',
   borderRadius: 8, padding: '5px 10px', fontSize: 12, cursor: 'pointer',
 };
 
 const TONE: Record<string, { bg: string; fg: string }> = {
-  bot: { bg: '#312e81', fg: '#c7d2fe' },
-  wait: { bg: '#78350f', fg: '#fcd34d' },
-  held: { bg: '#064e3b', fg: '#6ee7b7' },
-  done: { bg: '#1e293b', fg: '#94a3b8' },
+  bot: { bg: 'var(--c312e81)', fg: 'var(--cc7d2fe)' },
+  wait: { bg: 'var(--c78350f)', fg: 'var(--cfcd34d)' },
+  held: { bg: 'var(--c064e3b)', fg: 'var(--c6ee7b7)' },
+  done: { bg: 'var(--c1e293b)', fg: 'var(--c94a3b8)' },
 };
 
 /**
@@ -353,7 +353,7 @@ export function InboxView() {
             width: Math.round(size * 0.46), height: Math.round(size * 0.46), borderRadius: '50%',
             // Ringed in the PAGE colour, so a real photograph still says which
             // Fanpage it came in on — the thing initials were carrying before.
-            background: '#0b1220', border: `2px solid ${c.bg}`,
+            background: 'var(--c0b1220)', border: `2px solid ${c.bg}`,
             color: channelLabel(row.channel).fg,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: Math.round(size * 0.28), lineHeight: 1,
@@ -370,11 +370,11 @@ export function InboxView() {
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#e2e8f0' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
         {waiting > 0 && pill('wait', vi ? `${waiting} khách đang chờ` : `${waiting} waiting`)}
       </div>
 
-      {err && <div style={{ ...ui.card, borderColor: '#7f1d1d', color: '#fca5a5', marginBottom: 12, fontSize: 13 }}>{err}</div>}
+      {err && <div style={{ ...ui.card, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)', marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
       <div style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid',
         // One column on a phone. The list and the conversation then take turns
@@ -394,17 +394,17 @@ export function InboxView() {
             The customer sees the Page's name, so the person replying sees it too.
             Counts are people WAITING, not conversations that exist. */}
         <div style={{
-          background: '#0b1220', gap: 6, display: (narrow && openId) ? 'none' : 'flex',
+          background: 'var(--c0b1220)', gap: 6, display: (narrow && openId) ? 'none' : 'flex',
           ...(narrow
-            ? { flexDirection: 'row', padding: '8px 10px', borderBottom: '1px solid #1e293b', overflowX: 'auto', alignItems: 'center' }
-            : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid #1e293b', alignItems: 'center' }),
+            ? { flexDirection: 'row', padding: '8px 10px', borderBottom: '1px solid var(--c1e293b)', overflowX: 'auto', alignItems: 'center' }
+            : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid var(--c1e293b)', alignItems: 'center' }),
         }}>
           <button onClick={() => setSource('any')} title={vi ? 'Tất cả nguồn' : 'All sources'} aria-label={vi ? 'Tất cả nguồn' : 'All sources'}
             style={{
               position: 'relative', width: 34, height: 34, borderRadius: 9, cursor: 'pointer',
-              background: source === 'any' ? '#312e81' : 'transparent',
+              background: source === 'any' ? 'var(--c312e81)' : 'transparent',
               border: `1px solid ${source === 'any' ? '#6366f1' : 'transparent'}`,
-              color: source === 'any' ? '#c7d2fe' : '#64748b', fontSize: 16, lineHeight: 1,
+              color: source === 'any' ? 'var(--cc7d2fe)' : 'var(--c64748b)', fontSize: 16, lineHeight: 1,
             }}>
             ▤
             {waiting > 0 && (
@@ -418,9 +418,9 @@ export function InboxView() {
               <button key={src.key} onClick={() => setSource(src.key)} title={src.label} aria-label={src.label}
                 style={{
                   position: 'relative', width: 34, height: 34, borderRadius: 9, cursor: 'pointer',
-                  background: on ? '#312e81' : 'transparent',
+                  background: on ? 'var(--c312e81)' : 'transparent',
                   border: `1px solid ${on ? '#6366f1' : 'transparent'}`,
-                  color: on ? '#c7d2fe' : '#64748b', fontSize: 16, lineHeight: 1,
+                  color: on ? 'var(--cc7d2fe)' : 'var(--c64748b)', fontSize: 16, lineHeight: 1,
                 }}>
                 <span style={{ position: 'absolute', left: 3, top: 7, bottom: 7, width: 3, borderRadius: 2, background: pageColor(src.key.split('|')[0]).bg }} />
                 {channelMark(src.channel)}
@@ -434,17 +434,17 @@ export function InboxView() {
 
         {/* Conversation list */}
         <div style={{
-          borderRight: narrow ? 'none' : '1px solid #1e293b', flexDirection: 'column', minWidth: 0,
+          borderRight: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0,
           // On a phone, picking a customer replaces the list with the chat.
           display: (narrow && openId) ? 'none' : 'flex',
         }}>
-          <div style={{ padding: '9px 10px', borderBottom: '1px solid #1e293b' }}>
+          <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--c1e293b)' }}>
             <input value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder={vi ? 'Tìm khách…' : 'Search…'}
               style={{ ...ui.input, fontSize: 12, padding: '6px 9px' }} />
           </div>
 
-          <div style={{ display: 'flex', gap: 4, padding: '7px 8px', borderBottom: '1px solid #1e293b', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4, padding: '7px 8px', borderBottom: '1px solid var(--c1e293b)', flexWrap: 'wrap' }}>
             {([
               ['all', vi ? 'Tất cả' : 'All'],
               ['waiting', vi ? 'Đang chờ' : 'Waiting'],
@@ -454,8 +454,8 @@ export function InboxView() {
             ] as [InboxFilter, string][]).map(([key, label]) => (
               <button key={key} onClick={() => setFilter(key)}
                 style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
-                  borderColor: filter === key ? '#6366f1' : '#334155',
-                  color: filter === key ? '#c7d2fe' : '#94a3b8' }}>
+                  borderColor: filter === key ? '#6366f1' : 'var(--c334155)',
+                  color: filter === key ? 'var(--cc7d2fe)' : 'var(--c94a3b8)' }}>
                 {label}
                 {/* The number is on this chip and nowhere else. A follow-up
                     nobody can see the count of is a diary left in a drawer. */}
@@ -469,17 +469,17 @@ export function InboxView() {
           {/* Label filter. Only drawn once the salon has made a label — an
               empty row of nothing is worse than no row. */}
           {labels.length > 0 && (
-            <div style={{ display: 'flex', gap: 4, padding: '0 8px 7px', borderBottom: '1px solid #1e293b', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 4, padding: '0 8px 7px', borderBottom: '1px solid var(--c1e293b)', flexWrap: 'wrap', alignItems: 'center' }}>
               <button onClick={() => setLabelId(null)}
                 style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
-                  borderColor: labelId === null ? '#6366f1' : '#334155',
-                  color: labelId === null ? '#c7d2fe' : '#64748b' }}>{vi ? 'Mọi nhãn' : 'Any label'}</button>
+                  borderColor: labelId === null ? '#6366f1' : 'var(--c334155)',
+                  color: labelId === null ? 'var(--cc7d2fe)' : 'var(--c64748b)' }}>{vi ? 'Mọi nhãn' : 'Any label'}</button>
               {labels.map((l) => (
                 <button key={l.id} onClick={() => setLabelId(labelId === l.id ? null : l.id)}
                   style={{
-                    border: `1px solid ${labelId === l.id ? l.color : '#334155'}`,
+                    border: `1px solid ${labelId === l.id ? l.color : 'var(--c334155)'}`,
                     background: labelId === l.id ? l.color : 'transparent',
-                    color: labelId === l.id ? '#fff' : '#94a3b8',
+                    color: labelId === l.id ? '#fff' : 'var(--c94a3b8)',
                     borderRadius: 999, padding: '2px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600,
                   }}>{l.name}</button>
               ))}
@@ -488,18 +488,18 @@ export function InboxView() {
 
           <div style={{ overflowY: 'auto', flex: 1, maxHeight: narrow ? '70vh' : 'min(58vh, 520px)' }}>
             {listErr && (
-              <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: '#450a0a', border: '1px solid #7f1d1d' }}>
-                <p style={{ margin: '0 0 4px', fontSize: 12, color: '#fecaca', fontWeight: 700 }}>
+              <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: 'var(--c450a0a)', border: '1px solid var(--c7f1d1d)' }}>
+                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--cfecaca)', fontWeight: 700 }}>
                   {vi ? 'Không tải được danh sách hội thoại' : 'Could not load conversations'}
                 </p>
-                <p style={{ margin: '0 0 6px', fontSize: 11, color: '#fca5a5', wordBreak: 'break-word' }}>{listErr}</p>
+                <p style={{ margin: '0 0 6px', fontSize: 11, color: 'var(--cfca5a5)', wordBreak: 'break-word' }}>{listErr}</p>
                 <button onClick={() => void loadList()} style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px' }}>
                   {vi ? 'Thử lại' : 'Retry'}
                 </button>
               </div>
             )}
             {!sorted.length && !listErr && (
-              <p style={{ color: '#64748b', fontSize: 13, padding: 16, margin: 0 }}>
+              <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: 16, margin: 0 }}>
                 {filter === 'waiting'
                   ? (vi ? 'Không ai đang chờ. Tốt.' : 'Nobody is waiting. Good.')
                   : rows.length === 0
@@ -514,22 +514,22 @@ export function InboxView() {
               return (
                 <button key={r.id} onClick={() => { setOpenId(r.id); void loadThread(r.id); }}
                   style={{ width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
-                    background: on ? '#1e293b' : 'transparent', border: 'none',
+                    background: on ? 'var(--c1e293b)' : 'transparent', border: 'none',
                     borderLeft: `2px solid ${on ? '#6366f1' : 'transparent'}`,
-                    borderBottom: '1px solid #1e293b', padding: '9px 11px' }}>
+                    borderBottom: '1px solid var(--c1e293b)', padding: '9px 11px' }}>
                   <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
                     <Avatar row={r} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {displayName(r, vi)}
                         </span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b', flexShrink: 0 }}>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>
                           {new Date(r.lastMessageAt || r.updatedAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {r.unread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
                       </div>
-                      <p style={{ margin: '0 0 5px', fontSize: 12, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
+                      <p style={{ margin: '0 0 5px', fontSize: 12, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                         {pill(st.tone, st.text)}
                         {/* The Page, named and in its own colour. Only while
@@ -561,7 +561,7 @@ export function InboxView() {
                           }}>{l.name}</span>
                         ))}
                         {(r.labels?.length ?? 0) > 3 && (
-                          <span style={{ fontSize: 10, color: '#64748b' }}>+{(r.labels?.length ?? 0) - 3}</span>
+                          <span style={{ fontSize: 10, color: 'var(--c64748b)' }}>+{(r.labels?.length ?? 0) - 3}</span>
                         )}
                       </div>
                     </div>
@@ -580,13 +580,13 @@ export function InboxView() {
           display: (narrow && (!openId || showInfo)) ? 'none' : 'flex',
         }}>
           {!detail && (
-            <p style={{ color: '#64748b', fontSize: 13, padding: 20, margin: 0 }}>
+            <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: 20, margin: 0 }}>
               {vi ? 'Chọn một hội thoại bên trái để trả lời.' : 'Pick a conversation on the left.'}
             </p>
           )}
 
           {detail && (<>
-            <div style={{ padding: '9px 13px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', alignItems: 'center', gap: 9 }}>
               {narrow && (
                 <button onClick={() => { setOpenId(null); setDetail(null); setShowInfo(false); }}
                   aria-label={vi ? 'Quay lại danh sách' : 'Back to list'}
@@ -603,12 +603,12 @@ export function InboxView() {
                 <p
                   onClick={() => void renameThread()}
                   title={vi ? 'Bấm để đặt tên khách' : 'Click to set the name'}
-                  style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
+                  style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
                 >
                   {displayName(detail, vi)}
-                  {!detail.senderName && <span style={{ color: '#64748b', fontWeight: 400, fontSize: 12 }}> ✎</span>}
+                  {!detail.senderName && <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}> ✎</span>}
                 </p>
-                <p style={{ margin: 0, fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <p style={{ margin: 0, fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span>{channelLabel(detail.channel).text.replace(/^\S+\s/, '')}</span>
                   {detail.pageName && (
                     <span style={{ background: pageColor(detail.pageId).bg, color: pageColor(detail.pageId).fg, borderRadius: 5, padding: '1px 6px', fontWeight: 600 }}>{detail.pageName}</span>
@@ -632,13 +632,13 @@ export function InboxView() {
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 180, maxHeight: 'min(46vh, 420px)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, background: '#0b1220' }}>
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 180, maxHeight: 'min(46vh, 420px)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
               {detail.history.map((t, i) => {
                 const mine = t.role === 'assistant';
                 return (
                   <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
-                    <div style={{ background: mine ? (t.manual ? '#1d4ed8' : '#3730a3') : '#1e293b', color: '#e2e8f0', borderRadius: 12, padding: '7px 11px', fontSize: 13, whiteSpace: 'pre-wrap' }}>{t.content}</div>
-                    <p style={{ margin: '3px 2px 0', fontSize: 11, color: '#64748b', textAlign: mine ? 'right' : 'left' }}>
+                    <div style={{ background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--c1e293b)', color: 'var(--ce2e8f0)', borderRadius: 12, padding: '7px 11px', fontSize: 13, whiteSpace: 'pre-wrap' }}>{t.content}</div>
+                    <p style={{ margin: '3px 2px 0', fontSize: 11, color: 'var(--c64748b)', textAlign: mine ? 'right' : 'left' }}>
                       {/* Who said it. A staff reply and a bot reply looking
                           identical is how nobody could tell what the bot had
                           already promised a customer. */}
@@ -652,7 +652,7 @@ export function InboxView() {
             </div>
 
             {!!detail.canned?.length && !notice.blocked && (
-              <div style={{ borderTop: '1px solid #1e293b', padding: '8px 10px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: '8px 10px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {detail.canned.map((q) => (
                   <button key={q.label} title={q.text}
                     onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
@@ -662,12 +662,12 @@ export function InboxView() {
             )}
 
             {notice.text && (
-              <div style={{ borderTop: '1px solid #1e293b', padding: '7px 13px', fontSize: 12,
-                color: notice.blocked ? '#fca5a5' : '#fcd34d',
+              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: '7px 13px', fontSize: 12,
+                color: notice.blocked ? 'var(--cfca5a5)' : 'var(--cfcd34d)',
                 background: notice.blocked ? 'rgba(127,29,29,0.25)' : 'rgba(120,53,15,0.25)' }}>{notice.text}</div>
             )}
 
-            <div style={{ borderTop: '1px solid #1e293b', padding: 10, display: 'flex', gap: 8 }}>
+            <div style={{ borderTop: '1px solid var(--c1e293b)', padding: 10, display: 'flex', gap: 8 }}>
               <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                 placeholder={notice.blocked ? (vi ? 'Không gửi được — quá 24 giờ' : 'Cannot send — past 24 hours') : (vi ? `Nhắn cho ${displayName(detail, vi)}…` : 'Message the customer…')}
@@ -684,8 +684,8 @@ export function InboxView() {
             you glance at while typing, not things that belong in the flow of
             the conversation. */}
         <div style={{
-          borderLeft: narrow ? 'none' : '1px solid #1e293b', flexDirection: 'column', minWidth: 0,
-          background: '#0f172a', overflowY: 'auto', maxHeight: narrow ? '75vh' : 'min(78vh, 700px)',
+          borderLeft: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0,
+          background: 'var(--c0f172a)', overflowY: 'auto', maxHeight: narrow ? '75vh' : 'min(78vh, 700px)',
           // On a phone the notes, labels and follow-up live behind the ⓘ button
           // in the conversation header rather than in a fourth column.
           display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : 'flex',
@@ -697,12 +697,12 @@ export function InboxView() {
             </button>
           )}
           {!detail ? (
-            <p style={{ color: '#64748b', fontSize: 12, padding: 14, margin: 0 }}>
+            <p style={{ color: 'var(--c64748b)', fontSize: 12, padding: 14, margin: 0 }}>
               {vi ? 'Thông tin khách hiện ở đây.' : 'Customer details appear here.'}
             </p>
           ) : (<>
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid #1e293b' }}>
-              <p style={{ margin: '0 0 8px', fontSize: 11, color: '#64748b' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
+              <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--c64748b)' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
               {detail.customer ? (
                 <div style={{ display: 'grid', gap: 8 }}>
                   {detail.customer.nextAt && <Stat label={vi ? 'Lần tới' : 'Next'} value={new Date(detail.customer.nextAt).toLocaleString(uiLocale())} />}
@@ -711,7 +711,7 @@ export function InboxView() {
                   {detail.customer.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={detail.customer.phone} />}
                 </div>
               ) : (
-                <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>
                   {/* Deliberately empty rather than guessed. Matching on a name
                       would show one customer another customer's spending. */}
                   {vi
@@ -722,9 +722,9 @@ export function InboxView() {
             </div>
 
             {/* Labels: where this conversation stands. */}
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>{vi ? 'NHÃN' : 'LABELS'}</span>
+                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'NHÃN' : 'LABELS'}</span>
                 <button onClick={() => setShowLabelForm((v) => !v)}
                   style={{ ...ghostBtn, marginLeft: 'auto', fontSize: 11, padding: '1px 7px' }}>
                   {showLabelForm ? (vi ? 'Đóng' : 'Close') : (vi ? '+ Nhãn mới' : '+ New')}
@@ -742,7 +742,7 @@ export function InboxView() {
                     {LABEL_COLORS.map((c) => (
                       <button key={c} onClick={() => setNewColor(c)} aria-label={c}
                         style={{ width: 20, height: 20, borderRadius: '50%', background: c, cursor: 'pointer',
-                          border: newColor === c ? '2px solid #e2e8f0' : '2px solid transparent' }} />
+                          border: newColor === c ? '2px solid var(--ce2e8f0)' : '2px solid transparent' }} />
                     ))}
                   </div>
                   <button onClick={() => void createLabel()} disabled={busy || !newLabel.trim()}
@@ -753,7 +753,7 @@ export function InboxView() {
               {!labels.length && !showLabelForm && (
                 // Nothing is seeded on purpose — the stages of a sale differ in
                 // every salon, and an invented default would sit unused forever.
-                <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>
                   {vi ? 'Chưa có nhãn nào. Tạo nhãn theo cách tiệm bạn bán hàng: "Đã báo giá", "Chờ chốt", "Không quan tâm".'
                       : 'No labels yet. Create the stages your salon actually uses.'}
                 </p>
@@ -766,9 +766,9 @@ export function InboxView() {
                     <button key={l.id} onClick={() => void toggleLabel(l.id, !on)} disabled={busy}
                       title={on ? (vi ? 'Bỏ nhãn' : 'Remove') : (vi ? 'Gắn nhãn' : 'Apply')}
                       style={{
-                        border: `1px solid ${on ? l.color : '#334155'}`,
+                        border: `1px solid ${on ? l.color : 'var(--c334155)'}`,
                         background: on ? l.color : 'transparent',
-                        color: on ? '#fff' : '#94a3b8',
+                        color: on ? '#fff' : 'var(--c94a3b8)',
                         borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
                       }}>{on ? '✓ ' : ''}{l.name}</button>
                   );
@@ -778,9 +778,9 @@ export function InboxView() {
 
             {/* Follow-up: WHEN to come back. Deliberately not a label — a label
                 is true forever and so cannot remind anybody of anything. */}
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>{vi ? 'HẸN THEO DÕI' : 'FOLLOW-UP'}</span>
+                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'HẸN THEO DÕI' : 'FOLLOW-UP'}</span>
                 {followUpState(detail.followUpAt) !== 'none' && (
                   <span style={{
                     background: FOLLOWUP_TONE[followUpState(detail.followUpAt)].bg,
@@ -794,7 +794,7 @@ export function InboxView() {
                 value={toLocalInput(detail.followUpAt)}
                 onChange={(e) => void setFollowUp(e.target.value)}
                 disabled={busy}
-                style={{ ...ui.input, fontSize: 12, padding: '5px 8px', colorScheme: 'dark' }} />
+                style={{ ...ui.input, fontSize: 12, padding: '5px 8px'}} />
 
               <div style={{ display: 'flex', gap: 5, marginTop: 7, flexWrap: 'wrap' }}>
                 {/* The three answers a receptionist actually gives. Typing a
@@ -816,7 +816,7 @@ export function InboxView() {
                 ))}
                 {detail.followUpAt && (
                   <button onClick={() => void setFollowUp('')} disabled={busy}
-                    style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px', color: '#f87171', borderColor: '#7f1d1d' }}>
+                    style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px', color: 'var(--cf87171)', borderColor: 'var(--c7f1d1d)' }}>
                     {vi ? 'Xoá hẹn' : 'Clear'}
                   </button>
                 )}
@@ -824,8 +824,8 @@ export function InboxView() {
             </div>
 
             <div style={{ padding: '11px 13px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, color: '#fcd34d', fontWeight: 700 }}>{vi ? 'GHI CHÚ NỘI BỘ' : 'INTERNAL NOTES'}</span>
-              <span style={{ fontSize: 10.5, color: '#64748b' }}>{vi ? '· khách không thấy' : '· customer cannot see these'}</span>
+              <span style={{ fontSize: 11, color: 'var(--cfcd34d)', fontWeight: 700 }}>{vi ? 'GHI CHÚ NỘI BỘ' : 'INTERNAL NOTES'}</span>
+              <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{vi ? '· khách không thấy' : '· customer cannot see these'}</span>
             </div>
 
             <div style={{ padding: '0 13px 10px' }}>
@@ -835,17 +835,17 @@ export function InboxView() {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
                 placeholder={vi ? 'Nhập ghi chú (Enter để lưu)' : 'Add a note (Enter to save)'}
                 rows={2}
-                style={{ ...ui.input, width: '100%', fontSize: 12, resize: 'vertical', minHeight: 38, borderColor: '#78350f', background: 'rgba(120,53,15,0.12)' }}
+                style={{ ...ui.input, width: '100%', fontSize: 12, resize: 'vertical', minHeight: 38, borderColor: 'var(--c78350f)', background: 'rgba(120,53,15,0.12)' }}
               />
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', maxHeight: 'min(40vh, 340px)', padding: '0 13px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
               {!detail.notes?.length && (
-                <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>
               )}
               {detail.notes?.map((n) => (
-                <div key={n.id} style={{ background: 'rgba(120,53,15,0.18)', border: '1px solid #78350f', borderRadius: 8, padding: '7px 9px' }}>
-                  <p style={{ margin: 0, fontSize: 12.5, color: '#fde68a', whiteSpace: 'pre-wrap' }}>{n.text}</p>
+                <div key={n.id} style={{ background: 'rgba(120,53,15,0.18)', border: '1px solid var(--c78350f)', borderRadius: 8, padding: '7px 9px' }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--cfde68a)', whiteSpace: 'pre-wrap' }}>{n.text}</p>
                   <p style={{ margin: '4px 0 0', fontSize: 10.5, color: '#a16207', display: 'flex', gap: 6 }}>
                     <span>{n.authorName}</span>
                     <span>·</span>
@@ -869,8 +869,8 @@ export function InboxView() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>{label}</p>
-      <p style={{ margin: 0, fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>{value}</p>
+      <p style={{ margin: 0, fontSize: 11, color: 'var(--c64748b)' }}>{label}</p>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{value}</p>
     </div>
   );
 }

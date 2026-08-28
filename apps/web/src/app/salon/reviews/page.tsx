@@ -97,7 +97,7 @@ function Inner() {
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('rv.title')}</h1>
-      <p style={{ color: '#94a3b8', margin: '0 0 18px', fontSize: 14 }}>{t('rv.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 18px', fontSize: 14 }}>{t('rv.subtitle')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
 
@@ -118,13 +118,13 @@ function Inner() {
       </div>
       {isMobile ? (
         <MList>
-          {board.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('rv.noStaff')}</p>}
+          {board.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('rv.noStaff')}</p>}
           {board.map((s, i) => (
             <MCard key={s.id}>
               <MHead right={s.earnedMonth > 0 ? <span style={{ fontSize: 18 }}>{medal(i)}</span> : null}>
-                {s.name}{s.flagged && <span style={{ marginLeft: 6, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}
+                {s.name}{s.flagged && <span style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}
               </MHead>
-              <MRow label={t('rv.colEarned')}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: '#64748b', fontSize: 12 }}>{t('rv.pts')}</span></MRow>
+              <MRow label={t('rv.colEarned')}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></MRow>
               <MRow label={t('rv.colBalance')}>{s.balance}</MRow>
               <MRow label={t('rv.colSends')}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</MRow>
               <MRow label={t('rv.colFeedbacks')}>{s.feedbackMonth}</MRow>
@@ -132,15 +132,15 @@ function Inner() {
               <MActions>
                 <button onClick={() => adjust(s.id, 10)} style={miniBtn}>+10</button>
                 <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: '#ef4444' }}>{t('rv.redeem50')}</button>
-                <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: '#64748b', color: '#94a3b8' }}>{t('rv.reset')}</button>
+                <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: 'var(--c64748b)', color: 'var(--c94a3b8)' }}>{t('rv.reset')}</button>
               </MActions>
             </MCard>
           ))}
         </MList>
       ) : (
-        <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+        <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead><tr style={{ background: '#1e293b' }}>
+          <thead><tr style={{ background: 'var(--c1e293b)' }}>
             <th style={{ ...ui.th, width: 44 }}>#</th>
             <th style={ui.th}>{t('rv.colTech')}</th>
             <th style={ui.th} title={t('rv.colEarnedT')}>{t('rv.colEarned')}</th>
@@ -153,10 +153,10 @@ function Inner() {
           <tbody>
             {board.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('rv.noStaff')}</td></tr>}
             {board.map((s, i) => (
-              <tr key={s.id} style={{ borderTop: '1px solid #334155' }}>
+              <tr key={s.id} style={{ borderTop: '1px solid var(--c334155)' }}>
                 <td style={{ ...ui.td, textAlign: 'center' }}>{s.earnedMonth > 0 ? medal(i) : '—'}</td>
-                <td style={ui.td}>{s.name}{s.flagged && <span title={t('rv.checkTitle')} style={{ marginLeft: 6, background: '#7f1d1d', color: '#fecaca', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}</td>
-                <td style={ui.td}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: '#64748b', fontSize: 12 }}>{t('rv.pts')}</span></td>
+                <td style={ui.td}>{s.name}{s.flagged && <span title={t('rv.checkTitle')} style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}</td>
+                <td style={ui.td}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></td>
                 <td style={ui.td}>{s.balance}</td>
                 <td style={ui.td}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</td>
                 <td style={ui.td}>{s.feedbackMonth}</td>
@@ -165,7 +165,7 @@ function Inner() {
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => adjust(s.id, 10)} style={miniBtn}>+10</button>
                     <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: '#ef4444' }}>{t('rv.redeem50')}</button>
-                    <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: '#64748b', color: '#94a3b8' }}>{t('rv.reset')}</button>
+                    <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: 'var(--c64748b)', color: 'var(--c94a3b8)' }}>{t('rv.reset')}</button>
                   </div>
                 </td>
               </tr>
@@ -174,7 +174,7 @@ function Inner() {
         </table>
         </div>
       )}
-      <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>
         {lang === 'vi'
           ? <><strong>Đã kiếm</strong> = điểm nhận trong {boardLabel || 'tháng này'}; <strong>Số dư</strong> = điểm tích luỹ có thể đổi. Đổi tháng bằng mũi tên ở trên.</>
           : <><strong>Earned</strong> = points gained in {boardLabel || 'this month'}; <strong>Balance</strong> = lifetime points available to redeem. Switch months with the arrows above.</>}
@@ -182,40 +182,40 @@ function Inner() {
 
       <h2 style={{ fontSize: 16, margin: '24px 0 10px' }}>{t('rv.recentFeedback')}</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {feedback.length === 0 && <p style={{ color: '#94a3b8', fontSize: 14 }}>{t('rv.noFeedback')}</p>}
+        {feedback.length === 0 && <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{t('rv.noFeedback')}</p>}
         {fbPage.paged.map((f) => (
           <div key={f.id} style={{ ...ui.card, padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: '#334155' }}>{'★'.repeat(5 - f.rating)}</span></span>
-              <span style={{ color: '#64748b' }}>{new Date(f.createdAt).toLocaleString(uiLocale())}</span>
+              <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: 'var(--c334155)' }}>{'★'.repeat(5 - f.rating)}</span></span>
+              <span style={{ color: 'var(--c64748b)' }}>{new Date(f.createdAt).toLocaleString(uiLocale())}</span>
             </div>
-            <div style={{ fontSize: 13, color: '#cbd5e1', marginTop: 4 }}>
+            <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 4 }}>
               {f.staff ? `${f.staff.firstName} ${f.staff.lastName ?? ''}`.trim() : t('rv.salon')} · {f.customer?.phone ?? f.customer?.firstName ?? t('rv.anonymous')}
               {f.verified
                 ? <span style={{ marginLeft: 8, color: '#22c55e', fontSize: 11 }}>{t('rv.verified')}</span>
                 : <span style={{ marginLeft: 8, color: '#f59e0b', fontSize: 11 }}>{t('rv.noMatch')}</span>}
-              {f.invitedToGoogle && <span style={{ marginLeft: 8, color: '#818cf8', fontSize: 11 }}>{t('rv.invited')}</span>}
+              {f.invitedToGoogle && <span style={{ marginLeft: 8, color: 'var(--c818cf8)', fontSize: 11 }}>{t('rv.invited')}</span>}
             </div>
-            {f.comment && <div style={{ fontSize: 14, marginTop: 6, color: '#e2e8f0' }}>“{f.comment}”</div>}
+            {f.comment && <div style={{ fontSize: 14, marginTop: 6, color: 'var(--ce2e8f0)' }}>“{f.comment}”</div>}
           </div>
         ))}
         <Pager paged={fbPage} />
       </div>
 
-      <h2 style={{ fontSize: 16, margin: '24px 0 10px' }}>{t('rv.sendLog')} <span style={{ color: '#64748b', fontSize: 12, fontWeight: 400 }}>{t('rv.sendLogSub')}</span></h2>
-      <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+      <h2 style={{ fontSize: 16, margin: '24px 0 10px' }}>{t('rv.sendLog')} <span style={{ color: 'var(--c64748b)', fontSize: 12, fontWeight: 400 }}>{t('rv.sendLogSub')}</span></h2>
+      <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead><tr style={{ background: '#1e293b' }}>
+          <thead><tr style={{ background: 'var(--c1e293b)' }}>
             <th style={ui.th}>{t('rv.sWhen')}</th><th style={ui.th}>{t('rv.sTech')}</th><th style={ui.th}>{t('rv.sDevice')}</th><th style={ui.th}>{t('rv.sCounted')}</th><th style={ui.th}>{t('rv.sReason')}</th>
           </tr></thead>
           <tbody>
             {sends.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('rv.noSends')}</td></tr>}
             {sendsPage.paged.map((r) => (
-              <tr key={r.id} style={{ borderTop: '1px solid #334155' }}>
-                <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(r.createdAt).toLocaleString(uiLocale())}</td>
+              <tr key={r.id} style={{ borderTop: '1px solid var(--c334155)' }}>
+                <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(r.createdAt).toLocaleString(uiLocale())}</td>
                 <td style={ui.td}>{r.staff}</td>
-                <td style={{ ...ui.td, color: '#64748b' }}>{r.device}</td>
-                <td style={ui.td}>{r.counted ? <span style={{ color: '#22c55e', fontWeight: 600 }}>{t('rv.plusPts')}</span> : <span style={{ color: '#94a3b8' }}>—</span>}</td>
+                <td style={{ ...ui.td, color: 'var(--c64748b)' }}>{r.device}</td>
+                <td style={ui.td}>{r.counted ? <span style={{ color: '#22c55e', fontWeight: 600 }}>{t('rv.plusPts')}</span> : <span style={{ color: 'var(--c94a3b8)' }}>—</span>}</td>
                 <td style={ui.td}>{reasonLabel(r.reason, lang)}</td>
               </tr>
             ))}
@@ -236,20 +236,20 @@ function CleanupTools({ onWipe, onCleanup }: { onWipe: () => void; onCleanup: (f
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   return (
-    <div style={{ marginTop: 24, border: '1px solid #7f1d1d', borderRadius: 12, padding: 16, background: '#1f1416' }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+    <div style={{ marginTop: 24, border: '1px solid var(--c7f1d1d)', borderRadius: 12, padding: 16, background: '#1f1416' }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--cfca5a5)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('rv.cleanupTitle')}
       </button>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px' }}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 12px' }}>
             {lang === 'vi'
-              ? <>Dùng để xoá dữ liệu bạn tạo khi thử nghiệm. <strong style={{ color: '#fca5a5' }}>Các thao tác này xoá dữ liệu vĩnh viễn và không thể hoàn tác.</strong></>
-              : <>Use these to clear data you created while testing. <strong style={{ color: '#fca5a5' }}>These permanently delete data and cannot be undone.</strong></>}
+              ? <>Dùng để xoá dữ liệu bạn tạo khi thử nghiệm. <strong style={{ color: 'var(--cfca5a5)' }}>Các thao tác này xoá dữ liệu vĩnh viễn và không thể hoàn tác.</strong></>
+              : <>Use these to clear data you created while testing. <strong style={{ color: 'var(--cfca5a5)' }}>These permanently delete data and cannot be undone.</strong></>}
           </p>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-            <label><span style={ui.label}>{t('rv.from')}</span><input lang="en-US" type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
-            <label><span style={ui.label}>{t('rv.to')}</span><input lang="en-US" type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...ui.input, colorScheme: 'dark' }} /></label>
+            <label><span style={ui.label}>{t('rv.from')}</span><input lang="en-US" type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...ui.input}} /></label>
+            <label><span style={ui.label}>{t('rv.to')}</span><input lang="en-US" type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...ui.input}} /></label>
             <button onClick={() => onCleanup(from, to)} style={{ ...miniBtn, borderColor: '#f97316', color: '#f97316', padding: '9px 14px' }}>{t('rv.deleteRange')}</button>
           </div>
           <button onClick={onWipe} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: '#b91c1c', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
@@ -270,14 +270,14 @@ function AdminReviewQr({ slug, enabled, hasGoogle }: { slug: string; enabled: bo
   const qr = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(url)}`;
   const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ } };
   return (
-    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 14, padding: 16, marginTop: 16, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 14, padding: 16, marginTop: 16, display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 10, flexShrink: 0 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={qr} alt="Salon review QR" width={150} height={150} style={{ display: 'block' }} />
       </div>
       <div style={{ minWidth: 220, flex: 1 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}>🔗 Salon review QR — test &amp; front desk</div>
-        <div style={{ fontSize: 12.5, color: '#94a3b8', margin: '5px 0 10px', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>🔗 Salon review QR — test &amp; front desk</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '5px 0 10px', lineHeight: 1.5 }}>
           Scan to test the customer flow, or print it for the counter. Not tied to a specific tech.
           {!enabled && <span style={{ color: '#f59e0b' }}> Turn the program ON above to use it.</span>}
           {enabled && !hasGoogle && <span style={{ color: '#f59e0b' }}> Add your Place ID / review link above so it opens Google.</span>}
@@ -285,7 +285,7 @@ function AdminReviewQr({ slug, enabled, hasGoogle }: { slug: string; enabled: bo
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...miniBtn, textDecoration: 'none', display: 'inline-block' }}>Open ↗</a>
           <button onClick={copy} style={{ ...miniBtn, ...(copied ? { background: '#16a34a', color: '#fff', borderColor: '#16a34a' } : {}) }}>{copied ? '✓ Copied' : 'Copy link'}</button>
-          <code style={{ fontSize: 11.5, color: '#64748b', wordBreak: 'break-all' }}>{url}</code>
+          <code style={{ fontSize: 11.5, color: 'var(--c64748b)', wordBreak: 'break-all' }}>{url}</code>
         </div>
       </div>
     </div>
@@ -365,12 +365,12 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
       </div>
       {err && <div style={ui.banner}>{err}</div>}
 
-      <div style={{ marginBottom: 14, padding: 14, background: '#0f172a', borderRadius: 12, border: '1px solid #334155' }}>
+      <div style={{ marginBottom: 14, padding: 14, background: 'var(--c0f172a)', borderRadius: 12, border: '1px solid var(--c334155)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <Toggle on={f.postVisitEnabled} onChange={(v) => setF({ ...f, postVisitEnabled: v })} />
-          <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{lang === 'vi' ? '🤖 Tự xin review khi khách đang làm' : '🤖 Auto review request (mid-visit)'}</span>
+          <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? '🤖 Tự xin review khi khách đang làm' : '🤖 Auto review request (mid-visit)'}</span>
         </div>
-        <p style={{ color: '#94a3b8', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
           {lang === 'vi'
             ? 'Sau khi khách check-in một lúc (đang ngồi làm, lúc hong móng) hệ thống tự gửi SMS + email cảm ơn kèm nút đánh giá Google — thợ/chủ không phải đi xin. Gửi 1 lần mỗi lượt. Cần điền Google Place ID ở dưới.'
             : 'A while after check-in (while the customer is still in the chair) the system auto-sends a thank-you SMS + email with a one-tap Google review button — no staff has to ask. Once per visit. Needs the Google Place ID below.'}
@@ -385,7 +385,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}><input type="checkbox" checked={f.postVisitSms} onChange={(e) => setF({ ...f, postVisitSms: e.target.checked })} disabled={!f.postVisitEnabled} /> SMS</label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}><input type="checkbox" checked={f.postVisitEmail} onChange={(e) => setF({ ...f, postVisitEmail: e.target.checked })} disabled={!f.postVisitEnabled} /> Email</label>
         </div>
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.5 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.5 }}>
           {lang === 'vi' ? 'Khuyên: 25 phút (giữa buổi). SMS mở nhanh nhất. Link nhảy thẳng vào app đánh giá Google.' : 'Tip: 25 min (mid-service). SMS opens fastest. The link jumps straight into the Google review app.'}
         </p>
       </div>
@@ -394,25 +394,25 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         <button type="button" onClick={() => setF({ ...f, reviewMode: 'direct' })}
           style={modeCard(f.reviewMode === 'direct')}>
           <div style={{ fontWeight: 700 }}>{t('rv.modeDirect')}</div>
-          <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>{t('rv.modeDirectDesc')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{t('rv.modeDirectDesc')}</div>
         </button>
         <button type="button" onClick={() => setF({ ...f, reviewMode: 'rate_first' })}
           style={modeCard(f.reviewMode === 'rate_first')}>
           <div style={{ fontWeight: 700 }}>{t('rv.modeRate')}</div>
-          <div style={{ fontSize: 12.5, color: '#94a3b8', marginTop: 4 }}>{t('rv.modeRateDesc')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{t('rv.modeRateDesc')}</div>
         </button>
       </div>
 
       {f.reviewMode === 'direct' && (
-        <div style={{ marginBottom: 12, padding: 12, background: '#0f172a', borderRadius: 10, border: '1px solid #334155' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1', marginBottom: 8 }}>{t('rv.rewardPerSend')}</div>
+        <div style={{ marginBottom: 12, padding: 12, background: 'var(--c0f172a)', borderRadius: 10, border: '1px solid var(--c334155)' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('rv.rewardPerSend')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
             <label><span style={ui.label}>{t('rv.pointsPerSend')}</span><input style={ui.input} type="number" min={0} value={f.staffPointsPerSend} onChange={(e) => setF({ ...f, staffPointsPerSend: e.target.value })} /></label>
             <label><span style={ui.label}>{t('rv.deviceCooldown')}</span><input style={ui.input} type="number" min={0} value={f.sendDedupHours} onChange={(e) => setF({ ...f, sendDedupHours: e.target.value })} /></label>
             <label><span style={ui.label}>{t('rv.hardCap')}</span><input style={ui.input} type="number" min={0} value={f.sendDailyCap} onChange={(e) => setF({ ...f, sendDailyCap: e.target.value })} /></label>
           </div>
 
-          <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1', margin: '14px 0 8px' }}>{t('rv.antiFraud')}</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', margin: '14px 0 8px' }}>{t('rv.antiFraud')}</div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <Toggle on={f.anchorToVisits} onChange={(v) => setF({ ...f, anchorToVisits: v })} />
             <span style={{ fontSize: 14 }}>{t('rv.anchor')}</span>
@@ -425,7 +425,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
             <span style={ui.label}>{t('rv.buffer')}</span>
             <input style={ui.input} type="number" min={0} value={f.visitBuffer} onChange={(e) => setF({ ...f, visitBuffer: e.target.value })} disabled={!f.anchorToVisits} />
           </label>
-          <p style={{ color: '#64748b', fontSize: 12, margin: '10px 0 0' }}>{t('rv.antiFraudNote1')}</p>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '10px 0 0' }}>{t('rv.antiFraudNote1')}</p>
         </div>
       )}
 
@@ -433,13 +433,13 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         <span style={ui.label}>{t('rv.placeId')}</span>
         <input style={ui.input} value={f.googlePlaceId} onChange={(e) => setF({ ...f, googlePlaceId: e.target.value })} placeholder={t('rv.placeIdPh')} />
       </label>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '0 0 6px' }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 6px' }}>
         {lang === 'vi'
-          ? <>Dùng Place ID giúp đánh giá mở trong <strong>ứng dụng Google Maps</strong> của khách (nơi họ đã đăng nhập) thay vì màn hình đăng nhập trình duyệt.{' '}<a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener noreferrer" style={{ color: '#818cf8' }}>{t('rv.findPlaceId')}</a>{' '}Tìm tên tiệm, sao chép ID bắt đầu bằng <code style={{ color: '#cbd5e1' }}>ChIJ…</code> — hoặc dán thẳng link review (dạng <code style={{ color: '#cbd5e1' }}>g.page/…</code> hay <code style={{ color: '#cbd5e1' }}>…/review</code>) cũng được.</>
-          : <>Using a Place ID lets the review open in the customer&apos;s <strong>Google Maps app</strong> (where they&apos;re already signed in) instead of a browser login screen.{' '}<a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener noreferrer" style={{ color: '#818cf8' }}>{t('rv.findPlaceId')}</a>{' '}Search your salon name, copy the ID that starts with <code style={{ color: '#cbd5e1' }}>ChIJ…</code> — or just paste your review link (<code style={{ color: '#cbd5e1' }}>g.page/…</code> or <code style={{ color: '#cbd5e1' }}>…/review</code>) instead.</>}
+          ? <>Dùng Place ID giúp đánh giá mở trong <strong>ứng dụng Google Maps</strong> của khách (nơi họ đã đăng nhập) thay vì màn hình đăng nhập trình duyệt.{' '}<a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c818cf8)' }}>{t('rv.findPlaceId')}</a>{' '}Tìm tên tiệm, sao chép ID bắt đầu bằng <code style={{ color: 'var(--ccbd5e1)' }}>ChIJ…</code> — hoặc dán thẳng link review (dạng <code style={{ color: 'var(--ccbd5e1)' }}>g.page/…</code> hay <code style={{ color: 'var(--ccbd5e1)' }}>…/review</code>) cũng được.</>
+          : <>Using a Place ID lets the review open in the customer&apos;s <strong>Google Maps app</strong> (where they&apos;re already signed in) instead of a browser login screen.{' '}<a href="https://developers.google.com/maps/documentation/places/web-service/place-id" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c818cf8)' }}>{t('rv.findPlaceId')}</a>{' '}Search your salon name, copy the ID that starts with <code style={{ color: 'var(--ccbd5e1)' }}>ChIJ…</code> — or just paste your review link (<code style={{ color: 'var(--ccbd5e1)' }}>g.page/…</code> or <code style={{ color: 'var(--ccbd5e1)' }}>…/review</code>) instead.</>}
       </p>
       <details style={{ marginBottom: 12 }}>
-        <summary style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 12 }}>{t('rv.noPlaceId')}</summary>
+        <summary style={{ cursor: 'pointer', color: 'var(--c94a3b8)', fontSize: 12 }}>{t('rv.noPlaceId')}</summary>
         <input style={{ ...ui.input, marginTop: 6 }} value={f.googleReviewUrl} onChange={(e) => setF({ ...f, googleReviewUrl: e.target.value })} placeholder={t('rv.reviewUrlPh')} />
       </details>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
@@ -452,10 +452,10 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
           </select>
         </label>
       </div>
-      <p style={{ color: '#64748b', fontSize: 12, margin: '10px 0 0' }}>{t('rv.policyNote')}</p>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '10px 0 0' }}>{t('rv.policyNote')}</p>
 
-      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #334155' }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: '#cbd5e1', marginBottom: 6 }}>{t('rv.antiFraud')}</div>
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c334155)' }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 6 }}>{t('rv.antiFraud')}</div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <Toggle on={f.requireRealVisit} onChange={(v) => setF({ ...f, requireRealVisit: v })} />
           <span style={{ fontSize: 14 }}>{t('rv.requireVisit')}</span>
@@ -465,7 +465,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
           <label><span style={ui.label}>{t('rv.maxRewarded')}</span><input style={ui.input} type="number" min={1} value={f.dailyCapPerStaff} onChange={(e) => setF({ ...f, dailyCapPerStaff: e.target.value })} /></label>
           <label><span style={ui.label}>{t('rv.clientCooldown')}</span><input style={ui.input} type="number" min={1} value={f.dedupDays} onChange={(e) => setF({ ...f, dedupDays: e.target.value })} /></label>
         </div>
-        <p style={{ color: '#64748b', fontSize: 12, margin: '8px 0 0' }}>{t('rv.antiFraudNote2')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>{t('rv.antiFraudNote2')}</p>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
         <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? t('rv.saving') : t('rv.saveSettings')}</button>
@@ -478,20 +478,20 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button type="button" onClick={() => onChange(!on)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
-      <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? '#6366f1' : '#475569', position: 'relative', display: 'inline-block' }}>
+      <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? '#6366f1' : 'var(--c475569)', position: 'relative', display: 'inline-block' }}>
         <span style={{ position: 'absolute', top: 2, left: on ? 18 : 2, width: 18, height: 18, borderRadius: '50%', background: 'white' }} />
       </span>
     </button>
   );
 }
 
-function SalonShellLoading() { const { lang } = useLang(); return <p style={{ color: '#94a3b8' }}>{tr('rv.loading', lang)}</p>; }
+function SalonShellLoading() { const { lang } = useLang(); return <p style={{ color: 'var(--c94a3b8)' }}>{tr('rv.loading', lang)}</p>; }
 
-const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer' };
+const miniBtn: React.CSSProperties = { padding: '4px 10px', borderRadius: 6, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 12, cursor: 'pointer' };
 function modeCard(active: boolean): React.CSSProperties {
-  return { textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', background: active ? '#312e81' : 'transparent', border: `1px solid ${active ? '#6366f1' : '#334155'}`, color: '#e2e8f0' };
+  return { textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', background: active ? 'var(--c312e81)' : 'transparent', border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`, color: 'var(--ce2e8f0)' };
 }
-const monthNavBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 8, border: '1px solid #475569', background: '#1e293b', color: '#e2e8f0', fontSize: 16, cursor: 'pointer', lineHeight: 1 };
+const monthNavBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 8, border: '1px solid var(--c475569)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 16, cursor: 'pointer', lineHeight: 1 };
 function currentYm(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 function shiftYm(ym: string, delta: number): string {
   const [y, m] = ym.split('-').map(Number);
@@ -502,12 +502,12 @@ function medal(rank: number): string { return rank === 0 ? '🥇' : rank === 1 ?
 function reasonLabel(r: string | null, lang: Lang): React.ReactNode {
   const map: Record<string, { k: string; c: string }> = {
     ok: { k: 'rv.rOk', c: '#22c55e' },
-    dedup: { k: 'rv.rDedup', c: '#94a3b8' },
+    dedup: { k: 'rv.rDedup', c: 'var(--c94a3b8)' },
     'off-hours': { k: 'rv.rOffHours', c: '#f97316' },
     cap: { k: 'rv.rCap', c: '#f97316' },
     'over-visits': { k: 'rv.rOverVisits', c: '#f97316' },
-    disabled: { k: 'rv.rDisabled', c: '#94a3b8' },
+    disabled: { k: 'rv.rDisabled', c: 'var(--c94a3b8)' },
   };
   const m = r ? map[r] : null;
-  return <span style={{ color: m?.c ?? '#94a3b8', fontSize: 13 }}>{m ? tr(m.k, lang) : (r || '—')}</span>;
+  return <span style={{ color: m?.c ?? 'var(--c94a3b8)', fontSize: 13 }}>{m ? tr(m.k, lang) : (r || '—')}</span>;
 }

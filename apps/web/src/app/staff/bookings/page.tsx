@@ -29,7 +29,7 @@ const STATUS_COLORS: Record<string, string> = {
   CONFIRMED: '#22c55e',
   ARRIVED: '#0ea5e9',
   COMPLETED: '#a855f7',
-  CANCELLED: '#94a3b8',
+  CANCELLED: 'var(--c94a3b8)',
   NO_SHOW: '#ef4444',
 };
 // A cancelled / no-show booking still shows, but never counts as work to do.
@@ -133,7 +133,7 @@ function Inner() {
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString(vi ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' });
 
   const row = (b: Booking, withDate = false) => {
-    const colour = STATUS_COLORS[b.status] ?? '#94a3b8';
+    const colour = STATUS_COLORS[b.status] ?? 'var(--c94a3b8)';
     const dead = DEAD.includes(b.status);
     const d = new Date(b.startTime);
     return (
@@ -141,16 +141,16 @@ function Inner() {
         <div style={{ width: 4, background: colour, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0, padding: '12px 14px 12px 2px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>{hhmm(b.startTime)}</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{hhmm(b.startTime)}</span>
             {withDate && (
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#a5b4fc', background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '2px 8px' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ca5b4fc)', background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '2px 8px' }}>
                 {d.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' })}
               </span>
             )}
-            <span style={{ fontSize: 15, fontWeight: 600, color: '#cbd5e1', minWidth: 0 }}>{b.service?.name ?? 'Service'}</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)', minWidth: 0 }}>{b.service?.name ?? 'Service'}</span>
           </div>
-          <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 3 }}>{name(b.customer)}</div>
-          {b.notes && <div style={{ color: '#64748b', fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>“{b.notes}”</div>}
+          <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 3 }}>{name(b.customer)}</div>
+          {b.notes && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>“{b.notes}”</div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <span style={{ color: colour, border: `1px solid ${colour}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{b.status}</span>
             {b.status === 'ASSIGNED' && (
@@ -185,8 +185,8 @@ function Inner() {
   const tab = (key: 'cal' | 'list', label: string) => (
     <button onClick={() => setMode(key)}
       style={{ padding: '7px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-        border: mode === key ? '1px solid #6366f1' : '1px solid #334155',
-        background: mode === key ? '#6366f1' : 'transparent', color: mode === key ? '#fff' : '#cbd5e1' }}>
+        border: mode === key ? '1px solid #6366f1' : '1px solid var(--c334155)',
+        background: mode === key ? '#6366f1' : 'transparent', color: mode === key ? '#fff' : 'var(--ccbd5e1)' }}>
       {label}
     </button>
   );
@@ -204,7 +204,7 @@ function Inner() {
       {pending > 0 && (
         <div style={{ ...ui.card, marginBottom: 12, borderColor: '#3b82f6', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 18 }}>🔔</span>
-          <span style={{ color: '#e2e8f0', fontSize: 14 }}>
+          <span style={{ color: 'var(--ce2e8f0)', fontSize: 14 }}>
             {vi ? <><b>{pending}</b> lịch hẹn đang chờ bạn nhận.</> : <><b>{pending}</b> booking{pending === 1 ? '' : 's'} waiting for you to accept.</>}
           </span>
         </div>
@@ -212,19 +212,19 @@ function Inner() {
 
       {mode === 'list' && (
         <div style={{ display: 'grid', gap: 10 }}>
-          {loading ? <p style={{ color: '#94a3b8' }}>Loading…</p> : bookings.length === 0 ? (
-            <div style={{ ...ui.card, color: '#94a3b8', textAlign: 'center', padding: '28px 16px' }}>
+          {loading ? <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p> : bookings.length === 0 ? (
+            <div style={{ ...ui.card, color: 'var(--c94a3b8)', textAlign: 'center', padding: '28px 16px' }}>
               {vi ? 'Bạn chưa có lịch hẹn nào.' : 'You have no bookings yet.'}
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>{vi ? 'Sắp tới' : 'Upcoming'} ({upcoming.length})</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{vi ? 'Sắp tới' : 'Upcoming'} ({upcoming.length})</div>
               {upcoming.length === 0
-                ? <div style={{ ...ui.card, color: '#64748b', fontSize: 13 }}>{vi ? 'Không có lịch hẹn sắp tới.' : 'Nothing coming up.'}</div>
+                ? <div style={{ ...ui.card, color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Không có lịch hẹn sắp tới.' : 'Nothing coming up.'}</div>
                 : upcoming.map((b) => row(b, true))}
               {past.length > 0 && (
                 <>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginTop: 8 }}>{vi ? 'Đã qua' : 'Past'} ({past.length})</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginTop: 8 }}>{vi ? 'Đã qua' : 'Past'} ({past.length})</div>
                   {past.slice(0, 20).map((b) => row(b, true))}
                 </>
               )}
@@ -237,7 +237,7 @@ function Inner() {
       {/* Month header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <button onClick={() => shift(-1)} style={navBtn} aria-label="Previous month">‹</button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, color: '#e2e8f0', textTransform: 'capitalize' }}>{monthName}</div>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>{monthName}</div>
         <button onClick={() => shift(1)} style={navBtn} aria-label="Next month">›</button>
         <button onClick={jumpToday} style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 13, fontWeight: 700 }}>
           {vi ? 'Hôm nay' : 'Today'}
@@ -253,8 +253,8 @@ function Inner() {
           {dayNames.map((d, i) => {
             const weekend = i >= 5;
             return (
-              <div key={d} style={{ background: '#1e293b', textAlign: 'center', padding: '9px 0', fontSize: 11.5,
-                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 700, color: weekend ? '#8ea2c4' : '#94a3b8' }}>{d}</div>
+              <div key={d} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5,
+                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 700, color: weekend ? '#8ea2c4' : 'var(--c94a3b8)' }}>{d}</div>
             );
           })}
           {cells.map((d, i) => {
@@ -264,20 +264,20 @@ function Inner() {
             const on = sameDay(d, picked);
             const dow = d.getDay();
             const weekend = dow === 0 || dow === 6;
-            const bg = isToday ? '#151f38' : weekend ? '#0d1526' : '#0f172a';
+            const bg = isToday ? '#151f38' : weekend ? '#0d1526' : 'var(--c0f172a)';
             return (
               <div key={i} onClick={() => setPicked(d)}
                 style={{ background: bg, minHeight: 116, minWidth: 0, overflow: 'hidden', padding: 7, cursor: 'pointer',
                   boxShadow: on ? 'inset 0 0 0 2px #6366f1' : isToday ? 'inset 0 0 0 1.5px #4f46e5' : undefined }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
                   <span style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999,
-                    fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : '#cbd5e1',
+                    fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : 'var(--ccbd5e1)',
                     background: isToday ? '#6366f1' : 'transparent' }}>{d.getDate()}</span>
-                  {list.length > 0 && <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>{list.length}</span>}
+                  {list.length > 0 && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', fontWeight: 700 }}>{list.length}</span>}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {list.slice(0, 4).map((b) => {
-                    const colour = STATUS_COLORS[b.status] ?? '#94a3b8';
+                    const colour = STATUS_COLORS[b.status] ?? 'var(--c94a3b8)';
                     const dead = DEAD.includes(b.status);
                     return (
                       <div key={b.id} title={`${b.status} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
@@ -292,7 +292,7 @@ function Inner() {
                     );
                   })}
                   {list.length > 4 && (
-                    <div style={{ fontSize: 10.5, color: '#818cf8', fontWeight: 600, padding: '2px 4px 0' }}>
+                    <div style={{ fontSize: 10.5, color: 'var(--c818cf8)', fontWeight: 600, padding: '2px 4px 0' }}>
                       +{list.length - 4} {vi ? 'nữa' : 'more'}
                     </div>
                   )}
@@ -305,24 +305,24 @@ function Inner() {
 
       {/* The day the tech tapped */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', textTransform: 'capitalize' }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>
           {picked.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
         </span>
-        <span style={{ fontSize: 12, color: '#64748b' }}>
+        <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>
           {dayList.length} {vi ? 'lịch hẹn' : dayList.length === 1 ? 'booking' : 'bookings'}
         </span>
       </div>
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>Loading…</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>
       ) : dayList.length === 0 ? (
         <div style={{ ...ui.card, padding: 16 }}>
-          <p style={{ margin: 0, color: '#94a3b8', fontSize: 14 }}>
+          <p style={{ margin: 0, color: 'var(--c94a3b8)', fontSize: 14 }}>
             {vi ? 'Ngày này bạn không có lịch hẹn nào.' : 'Nothing booked for you on this day.'}
           </p>
           {upcoming.length > 0 && (
             <>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', margin: '14px 0 8px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '14px 0 8px' }}>
                 {vi ? 'Lịch hẹn sắp tới của bạn' : 'Your next bookings'}
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
@@ -331,14 +331,14 @@ function Inner() {
                   return (
                     <button key={b.id} onClick={() => { setPicked(d); setView(new Date(d.getFullYear(), d.getMonth(), 1)); }}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                        border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', textAlign: 'left' }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: '#a5b4fc', flexShrink: 0 }}>
+                        border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', textAlign: 'left' }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--ca5b4fc)', flexShrink: 0 }}>
                         {d.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' })} · {hhmm(b.startTime)}
                       </span>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {b.service?.name ?? 'Service'} · {name(b.customer)}
                       </span>
-                      <span style={{ color: '#64748b', flexShrink: 0 }}>›</span>
+                      <span style={{ color: 'var(--c64748b)', flexShrink: 0 }}>›</span>
                     </button>
                   );
                 })}
@@ -357,8 +357,8 @@ function Inner() {
 }
 
 const navBtn: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: 8, border: '1px solid #334155',
-  background: '#0f172a', color: '#e2e8f0', fontSize: 18, cursor: 'pointer', lineHeight: 1,
+  width: 36, height: 36, borderRadius: 8, border: '1px solid var(--c334155)',
+  background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 18, cursor: 'pointer', lineHeight: 1,
 };
 const acceptBtn: React.CSSProperties = {
   padding: '6px 16px', borderRadius: 8, border: 'none', background: '#22c55e',

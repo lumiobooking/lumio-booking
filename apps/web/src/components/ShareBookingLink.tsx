@@ -54,7 +54,7 @@ export function ShareBookingLink() {
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
-          border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 14,
+          border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 14,
         }}
       >
         <span aria-hidden>🔗</span> Booking link
@@ -64,18 +64,18 @@ export function ShareBookingLink() {
         <div
           style={{
             position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, zIndex: 60,
-            background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: 12,
+            background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 12,
             boxShadow: '0 10px 30px rgba(0,0,0,.5)',
           }}
         >
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Your public booking page</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>Your public booking page</div>
           <input
             readOnly
             value={url}
             onFocus={(e) => e.currentTarget.select()}
             style={{
               width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8,
-              border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: 13,
+              border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13,
             }}
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -94,7 +94,7 @@ export function ShareBookingLink() {
               rel="noopener noreferrer"
               style={{
                 flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center', textDecoration: 'none', fontSize: 13,
-                border: '1px solid #334155', background: 'transparent', color: '#e2e8f0',
+                border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)',
               }}
             >
               Open

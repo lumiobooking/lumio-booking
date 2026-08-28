@@ -17,7 +17,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0b1120',
+  themeColor: 'var(--c0b1120)',
 };
 
 export default function CheckInLayout({ children }: { children: React.ReactNode }) {

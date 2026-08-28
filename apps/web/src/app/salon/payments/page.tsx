@@ -24,7 +24,7 @@ interface Payment {
   createdAt: string;
 }
 
-const COLORS: Record<string, string> = { PAID: '#22c55e', PENDING: '#eab308', FAILED: '#ef4444', REFUNDED: '#94a3b8' };
+const COLORS: Record<string, string> = { PAID: '#22c55e', PENDING: '#eab308', FAILED: '#ef4444', REFUNDED: 'var(--c94a3b8)' };
 
 export default function PaymentsPage() {
   return (
@@ -78,14 +78,14 @@ function Inner() {
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('pm.title')}</h1>
-      <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>
+      <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>
         {visible.length} {t('pm.paymentsWord')} · {formatPrice(totalPaid)} {t('pm.collected')}
       </p>
       {/* This page is HISTORY only — connecting card readers lives elsewhere and
           salon owners kept looking for it here, so point the way explicitly. */}
-      <p style={{ color: '#64748b', fontSize: 12.5, marginTop: 4 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12.5, marginTop: 4 }}>
         {lang === 'vi' ? 'Trang này chỉ là lịch sử thanh toán. Kết nối máy cà thẻ (Square, Dejavoo…) ở mục ' : 'This page is payment history only. Connect card readers (Square, Dejavoo…) under '}
-        <Link href="/salon/payment-terminals" style={{ color: '#a5b4fc' }}>Card terminals →</Link>
+        <Link href="/salon/payment-terminals" style={{ color: 'var(--ca5b4fc)' }}>Card terminals →</Link>
       </p>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
@@ -96,14 +96,14 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
 
       {loading ? (
-        <p style={{ color: '#94a3b8' }}>{t('pm.loading')}</p>
+        <p style={{ color: 'var(--c94a3b8)' }}>{t('pm.loading')}</p>
       ) : isMobile ? (
         <>
           <MList>
-            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('pm.empty')}</p>}
+            {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pm.empty')}</p>}
             {pg.paged.map((p) => (
               <MCard key={p.id}>
-                <MHead right={<span style={{ color: COLORS[p.status] ?? '#94a3b8', fontWeight: 700, fontSize: 13 }}>{p.status}</span>}>
+                <MHead right={<span style={{ color: COLORS[p.status] ?? 'var(--c94a3b8)', fontWeight: 700, fontSize: 13 }}>{p.status}</span>}>
                   {formatPrice(p.amountCents, p.currency)}
                 </MHead>
                 <MRow label={t('pm.colDate')}>{new Date(p.createdAt).toLocaleString(uiLocale())}</MRow>
@@ -120,10 +120,10 @@ function Inner() {
       ) : (
         <div style={{ marginTop: 12 }}>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/payments/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#1e293b' }}>
+              <tr style={{ background: 'var(--c1e293b)' }}>
                 <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('pm.colDate')}</th>
                 <th style={ui.th}>{t('pm.colAmount')}</th>
@@ -138,15 +138,15 @@ function Inner() {
                 <tr><td style={ui.td} colSpan={7}>{t('pm.empty')}</td></tr>
               )}
               {pg.paged.map((p) => (
-                <tr key={p.id} style={{ borderTop: '1px solid #334155', background: bulk.has(p.id) ? '#1e1b4b' : undefined }}>
+                <tr key={p.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(p.id) ? 'var(--c1e1b4b)' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(p.createdAt).toLocaleString(uiLocale())}</td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(p.createdAt).toLocaleString(uiLocale())}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
                   <td style={ui.td}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</td>
                   <td style={ui.td}>
-                    <span style={{ color: COLORS[p.status] ?? '#94a3b8', fontWeight: 600 }}>{p.status}</span>
+                    <span style={{ color: COLORS[p.status] ?? 'var(--c94a3b8)', fontWeight: 600 }}>{p.status}</span>
                   </td>
-                  <td style={{ ...ui.td, color: '#94a3b8' }}>{p.provider}</td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{p.provider}</td>
                   <td style={ui.td}><button onClick={() => removePayment(p)} style={ui.dangerBtn}>{t('pm.delete')}</button></td>
                 </tr>
               ))}

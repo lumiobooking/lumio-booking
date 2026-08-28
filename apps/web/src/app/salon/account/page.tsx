@@ -60,10 +60,10 @@ function Inner() {
   return (
     <section style={{ maxWidth: 520 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('ac.title')}</h1>
-      <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 0 }}>{t('ac.subtitle')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{t('ac.subtitle')}</p>
 
       {err && <div style={ui.banner}>{err}</div>}
-      {msg && <div style={{ background: '#064e3b', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
       <form onSubmit={save} style={ui.card}>
         <label style={{ display: 'block', marginBottom: 12 }}>
@@ -71,7 +71,7 @@ function Inner() {
           <input style={ui.input} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
         </label>
 
-        <div style={{ borderTop: '1px solid #334155', margin: '6px 0 12px', paddingTop: 12, fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>{t('ac.changePw')}</div>
+        <div style={{ borderTop: '1px solid var(--c334155)', margin: '6px 0 12px', paddingTop: 12, fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600 }}>{t('ac.changePw')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <label><span style={ui.label}>{t('ac.newPw')}</span>
             <input style={ui.input} type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t('ac.newPwPh')} /></label>

@@ -52,14 +52,14 @@ export default function LoginPage() {
         style={{
           width: '100%',
           maxWidth: 380,
-          background: '#1e293b',
-          border: '1px solid #334155',
+          background: 'var(--c1e293b)',
+          border: '1px solid var(--c334155)',
           borderRadius: 12,
           padding: 28,
         }}
       >
         <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Lumio Booking</h1>
-        <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 14 }}>Sign in to the admin console</p>
+        <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>Sign in to the admin console</p>
 
         <label style={labelStyle}>Email</label>
         <input
@@ -82,8 +82,8 @@ export default function LoginPage() {
         {error && (
           <div
             style={{
-              background: '#7f1d1d',
-              color: '#fecaca',
+              background: 'var(--c7f1d1d)',
+              color: 'var(--cfecaca)',
               padding: '8px 12px',
               borderRadius: 8,
               fontSize: 13,
@@ -111,7 +111,7 @@ export default function LoginPage() {
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: 13,
-  color: '#cbd5e1',
+  color: 'var(--ccbd5e1)',
   margin: '14px 0 6px',
 };
 
@@ -120,9 +120,9 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
   padding: '10px 12px',
   borderRadius: 8,
-  border: '1px solid #475569',
-  background: '#0f172a',
-  color: '#e2e8f0',
+  border: '1px solid var(--c475569)',
+  background: 'var(--c0f172a)',
+  color: 'var(--ce2e8f0)',
   fontSize: 14,
 };
 
@@ -145,8 +145,8 @@ const displayLinkStyle: React.CSSProperties = {
   marginTop: 16,
   padding: '10px 12px',
   borderRadius: 8,
-  border: '1px solid #334155',
-  background: '#0f172a',
+  border: '1px solid var(--c334155)',
+  background: 'var(--c0f172a)',
   color: '#a5f3fc',
   fontWeight: 600,
   fontSize: 13,

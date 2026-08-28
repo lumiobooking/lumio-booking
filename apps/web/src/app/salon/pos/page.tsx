@@ -60,7 +60,7 @@ export default function PosPage() {
   const { lang } = useLang();
   return (
     <SalonShell>
-      <Suspense fallback={<p style={{ color: '#94a3b8' }}>{tr('po.loadingReg', lang)}</p>}>
+      <Suspense fallback={<p style={{ color: 'var(--c94a3b8)' }}>{tr('po.loadingReg', lang)}</p>}>
         <Register />
       </Suspense>
     </SalonShell>
@@ -1193,11 +1193,11 @@ function Register() {
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, flexShrink: 0,
           marginBottom: wide ? 0 : 16,
-          ...(wide ? { borderTop: '1px solid #334155', paddingTop: 10 } : null),
+          ...(wide ? { borderTop: '1px solid var(--c334155)', paddingTop: 10 } : null),
         }}>
           <h1 style={{ fontSize: wide ? 16 : 22, margin: 0 }}>{t('po.title')}</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: wide ? 8 : 14, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#cbd5e1', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
               <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
               🖨️ {t('po.printReception')}
             </label>
@@ -1210,7 +1210,7 @@ function Register() {
               </>
             )}
             {!isMobile && (
-              <button onClick={toggleFull} title={t('po.fullHint')} style={{ ...ghost, ...(fullscreen ? { borderColor: '#4f46e5', color: '#c7d2fe' } : null) }}>
+              <button onClick={toggleFull} title={t('po.fullHint')} style={{ ...ghost, ...(fullscreen ? { borderColor: '#4f46e5', color: 'var(--cc7d2fe)' } : null) }}>
                 {fullscreen ? `✕ ${t('po.fullOff')}` : `⛶ ${t('po.fullOn')}`}
               </button>
             )}
@@ -1221,24 +1221,24 @@ function Register() {
   const banners = (
     <>
         {appointmentId && (
-          <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
+          <div style={{ background: 'var(--c1e293b)', border: '1px solid #4f46e5', color: 'var(--cc7d2fe)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
             {t('po.checkoutBanner').replace('{for}', bookingCustomer ? t('po.checkoutFor').replace('{name}', bookingCustomer) : '')}
           </div>
         )}
         {!appointmentId && customerId && bookingCustomer && (
-          <div style={{ background: '#1e293b', border: '1px solid #4f46e5', color: '#c7d2fe', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
+          <div style={{ background: 'var(--c1e293b)', border: '1px solid #4f46e5', color: 'var(--cc7d2fe)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
             {t('po.newSaleA')}<strong>{bookingCustomer}</strong>{t('po.newSaleB')}
           </div>
         )}
         {error && <div style={ui.banner}>{error}</div>}
-        {okMsg && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
+        {okMsg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
         {!online && (
-          <div style={{ background: '#78350f', color: '#fde68a', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ background: 'var(--c78350f)', color: 'var(--cfde68a)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>📴</span> {t('po.offlineMode')}
           </div>
         )}
         {pendingSync > 0 && (
-          <div style={{ background: '#1e293b', border: '1px solid #475569', color: '#cbd5e1', padding: '8px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c475569)', color: 'var(--ccbd5e1)', padding: '8px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span>⏳ {t('po.pendingSync').replace('{n}', String(pendingSync))}</span>
             {online && <button onClick={syncPending} style={{ ...ghost, padding: '6px 12px', fontSize: 13 }}>{t('po.syncNow')}</button>}
           </div>
@@ -1246,7 +1246,7 @@ function Register() {
     </>
   );
 
-  if (loading) return <p style={{ color: '#94a3b8' }}>{t('po.loadingReg')}</p>;
+  if (loading) return <p style={{ color: 'var(--c94a3b8)' }}>{t('po.loadingReg')}</p>;
 
   return (
     <section style={{
@@ -1255,11 +1255,11 @@ function Register() {
       // so the pay button can never be scrolled away.
       ...(wide && !fullscreen ? { height: 'calc(100vh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
       // Full screen: cover the shell entirely — no sidebar, no page header.
-      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', background: '#0b1120', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', background: 'var(--c0b1120)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
     }}>
       <style>{`
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
-        .pos-card:hover { border-color: #6366f1 !important; background: #1e293b !important; }
+        .pos-card:hover { border-color: #6366f1 !important; background: var(--c1e293b) !important; }
         .pos-card:active { transform: scale(.97); }
       `}</style>
       {!wide && headerBar}
@@ -1307,7 +1307,7 @@ function Register() {
 
           {/* Search */}
           <div style={{ position: 'relative', marginBottom: 12 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#64748b', pointerEvents: 'none' }}>🔍</span>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--c64748b)', pointerEvents: 'none' }}>🔍</span>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -1315,7 +1315,7 @@ function Register() {
               style={{ ...ui.input, width: '100%', padding: '10px 34px', fontSize: 14, boxSizing: 'border-box' }}
             />
             {query && (
-              <button onClick={() => setQuery('')} aria-label="clear" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+              <button onClick={() => setQuery('')} aria-label="clear" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
             )}
           </div>
 
@@ -1358,7 +1358,7 @@ function Register() {
             {/* Add-ons, grouped by parent service */}
             {tab === 'ADDON' && (
               addons.length === 0 ? (
-                <p style={mutedP}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: '#818cf8' }}>{t('po.servicesLink')}</a>.</p>
+                <p style={mutedP}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: 'var(--c818cf8)' }}>{t('po.servicesLink')}</a>.</p>
               ) : addonGroups.length === 0 ? (
                 <EmptyState text={`${t('po.noMatch')} "${query}"`} />
               ) : (
@@ -1383,7 +1383,7 @@ function Register() {
             {/* Products */}
             {tab === 'PRODUCT' && (
               products.length === 0 ? (
-                <p style={mutedP}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: '#818cf8' }}>{t('po.addSome')}</a></p>
+                <p style={mutedP}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: 'var(--c818cf8)' }}>{t('po.addSome')}</a></p>
               ) : productsF.length === 0 ? (
                 <EmptyState text={`${t('po.noMatch')} "${query}"`} />
               ) : (
@@ -1392,7 +1392,7 @@ function Register() {
                     <button key={p.id} onClick={() => addProduct(p)} className="pos-card" style={catBtn}>
                       <span style={cardTitle}>{p.name}</span>
                       <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
-                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? '#94a3b8' : '#ef4444' }}>{t('po.stock')}: {p.stockQty}</span>}
+                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? 'var(--c94a3b8)' : '#ef4444' }}>{t('po.stock')}: {p.stockQty}</span>}
                     </button>
                   ))}
                 </div>
@@ -1434,39 +1434,39 @@ function Register() {
           />
 
           {cart.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontSize: 14, ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null) }}>{t('po.tapToAdd')}</p>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 14, ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null) }}>{t('po.tapToAdd')}</p>
           ) : (
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 10, marginBottom: wide ? 8 : 12,
               ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto', paddingRight: 4 } : null),
             }}>
               {cart.map((l) => (
-                <div key={l.uid} style={{ borderBottom: '1px solid #334155', paddingBottom: 7 }}>
+                <div key={l.uid} style={{ borderBottom: '1px solid var(--c334155)', paddingBottom: 7 }}>
                   {/* Row 1: what it is + what it costs — the two things read together. */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.name}>
-                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>{t('po.addonBadge')}</span>}
+                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>{t('po.addonBadge')}</span>}
                       {l.name}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
                       {l.discountPercent > 0 && (
                         <>
-                          <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
+                          <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
                           <span style={{ background: '#ef4444', color: '#fff', borderRadius: 5, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>-{l.discountPercent}%</span>
                         </>
                       )}
-                      <span style={{ color: '#94a3b8', fontSize: 12 }}>$</span>
+                      <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>$</span>
                       <input
                         type="number" min={0} step="0.01" inputMode="decimal"
                         title={t('po.editPriceHint')}
                         value={fromMinorUnits(l.unitPriceCents, currency)}
                         onChange={(e) => setLinePrice(l.uid, e.target.value)}
                         onFocus={(e) => e.currentTarget.select()}
-                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? '#22c55e' : '#e2e8f0', fontWeight: 600 }}
+                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? '#22c55e' : 'var(--ce2e8f0)', fontWeight: 600 }}
                       />
-                      {l.quantity > 1 && <span style={{ color: '#64748b', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
+                      {l.quantity > 1 && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
                       {catalogPrice(l) != null && catalogPrice(l) !== l.unitPriceCents && (
-                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}>↺</button>
+                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}>↺</button>
                       )}
                       <button onClick={() => removeLine(l.uid)} title={t('po.clear')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, padding: '0 2px' }}>×</button>
                     </div>
@@ -1504,12 +1504,12 @@ function Register() {
             flex: '0 0 auto', marginTop: 'auto',
             marginLeft: -20, marginRight: -20, marginBottom: -20,
             paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
-            background: '#111827', borderTop: '1px solid #334155', borderRadius: '0 0 12px 12px',
+            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
           } : {
             position: 'sticky', bottom: -20, zIndex: 3, marginTop: 'auto',
             marginLeft: -20, marginRight: -20, marginBottom: -20,
             paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
-            background: '#111827', borderTop: '1px solid #334155', borderRadius: '0 0 12px 12px',
+            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
           }}>
           {/* Totals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
@@ -1518,14 +1518,14 @@ function Register() {
                 coming off this ticket", and both used to eat a full row each.
                 The discount takes either a flat amount or a percent — the
                 cashier picks with the $ / % switch instead of doing the math. */}
-            <div style={{ background: '#0f172a', border: '1px solid #223047', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
+            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: '#94a3b8', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
                 {promo ? (
                   <>
                     <span style={{ flex: 1, minWidth: 0, color: '#22c55e', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${promo.code} · ${promo.label}`}>{promo.code} · {promo.label}</span>
                     {money.promoCents > 0 && <span style={{ color: '#22c55e', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>−{formatPrice(money.promoCents, currency)}</span>}
-                    <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                    <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>✕</button>
                   </>
                 ) : (
                   <>
@@ -1546,14 +1546,14 @@ function Register() {
                   </>
                 )}
               </div>
-              {promoErr && <div style={{ color: '#f87171', fontSize: 12 }}>{promoErr}</div>}
+              {promoErr && <div style={{ color: 'var(--cf87171)', fontSize: 12 }}>{promoErr}</div>}
               {promo && !promo.appliesDiscount && (
                 <div style={{ color: '#fbbf24', fontSize: 12 }}>{t('po.promoGift')}</div>
               )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: '#94a3b8', fontSize: 12.5, width: 72, flexShrink: 0 }}>✂️ {t('po.discountLbl')}</span>
-                <div style={{ display: 'flex', gap: 2, background: '#111827', border: '1px solid #223047', borderRadius: 8, padding: 2, flexShrink: 0 }}>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>✂️ {t('po.discountLbl')}</span>
+                <div style={{ display: 'flex', gap: 2, background: 'var(--c111827)', border: '1px solid var(--c223047)', borderRadius: 8, padding: 2, flexShrink: 0 }}>
                   {([['AMOUNT', uiCurrencySymbol(), t('po.discByAmount')], ['PERCENT', '%', t('po.discByPercent')]] as const).map(([m, sym, hint]) => (
                     <button
                       key={m}
@@ -1563,7 +1563,7 @@ function Register() {
                         width: 30, padding: '4px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700,
                         border: '1px solid ' + (discountMode === m ? '#4f46e5' : 'transparent'),
                         background: discountMode === m ? '#4f46e5' : 'transparent',
-                        color: discountMode === m ? '#fff' : '#94a3b8',
+                        color: discountMode === m ? '#fff' : 'var(--c94a3b8)',
                       }}
                     >{sym}</button>
                   ))}
@@ -1581,12 +1581,12 @@ function Register() {
                   <span style={{
                     position: 'absolute', top: '50%', transform: 'translateY(-50%)',
                     ...(discountMode === 'PERCENT' ? { right: 9 } : { left: 9 }),
-                    fontSize: 12.5, fontWeight: 700, color: orderDiscount ? '#94a3b8' : '#475569', pointerEvents: 'none',
+                    fontSize: 12.5, fontWeight: 700, color: orderDiscount ? 'var(--c94a3b8)' : 'var(--c475569)', pointerEvents: 'none',
                   }}>{discountMode === 'PERCENT' ? '%' : uiCurrencySymbol()}</span>
                 </div>
                 <span
                   title={discountMode === 'PERCENT' && money.typedDiscount > 0 ? `${orderDiscount}% × ${formatPrice(money.subtotal, currency)}` : undefined}
-                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? '#22c55e' : '#475569', flexShrink: 0 }}
+                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? '#22c55e' : 'var(--c475569)', flexShrink: 0 }}
                 >
                   {money.typedDiscount > 0 ? `−${formatPrice(money.typedDiscount, currency)}` : '—'}
                 </span>
@@ -1615,7 +1615,7 @@ function Register() {
                 <span>{t('po.youSaved')}</span><span>−{formatPrice(money.savings, currency)}</span>
               </div>
             )}
-            <div style={{ borderTop: '1px solid #334155', marginTop: 4, paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 4, paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{t('po.total')}</span>
               <span style={{ color: '#22c55e', fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{formatPrice(money.total, currency)}</span>
             </div>
@@ -1625,7 +1625,7 @@ function Register() {
           {online && (
             <div style={{ marginBottom: 8 }}>
               {giftCard ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
                   <span style={{ fontSize: 13, color: '#a5f3fc' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
                   <button onClick={() => setGiftCard(null)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{t('po.gcRemove')}</button>
                 </div>
@@ -1653,26 +1653,26 @@ function Register() {
           {tipTechs.length > 0 && !tipOpen && (
             <button
               onClick={() => setTipOpen(true)}
-              style={{ marginBottom: 12, width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px dashed #334155', background: 'transparent', color: '#64748b', fontSize: 12, cursor: 'pointer', textAlign: 'left' }}
+              style={{ marginBottom: 12, width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--c64748b)', fontSize: 12, cursor: 'pointer', textAlign: 'left' }}
             >
               💸 {t('po.tipTitle')}
             </button>
           )}
           {tipTechs.length > 0 && tipOpen && (
-            <div style={{ marginBottom: 12, border: '1px solid #155e75', borderRadius: 10, padding: 10, background: '#0f172a' }}>
+            <div style={{ marginBottom: 12, border: '1px solid #155e75', borderRadius: 10, padding: 10, background: 'var(--c0f172a)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#a5f3fc' }}>💸 {t('po.tipTitle')}</div>
-                <button onClick={() => setTipOpen(false)} aria-label="close" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#64748b', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                <button onClick={() => setTipOpen(false)} aria-label="close" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--c64748b)', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
               </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>{t('po.tipQrAfterNote')}</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 8 }}>{t('po.tipQrAfterNote')}</div>
+              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 8 }}>
                 {t('po.tipSuggest')}: 15% {formatPrice(Math.round(money.subtotal * 0.15), currency)} · 18% {formatPrice(Math.round(money.subtotal * 0.18), currency)} · 20% {formatPrice(Math.round(money.subtotal * 0.2), currency)}
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 {tipTechs.map((s) => (
                   <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 3, width: 150 }}>
-                    <span style={{ fontSize: 13, color: '#e2e8f0', textAlign: 'center', fontWeight: 600 }}>{s.firstName} {s.lastName ?? ''}</span>
-                    {s.tipHandle && <span style={{ fontSize: 11, color: '#64748b', textAlign: 'center' }}>{s.tipHandle}</span>}
+                    <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', textAlign: 'center', fontWeight: 600 }}>{s.firstName} {s.lastName ?? ''}</span>
+                    {s.tipHandle && <span style={{ fontSize: 11, color: 'var(--c64748b)', textAlign: 'center' }}>{s.tipHandle}</span>}
                     <div style={{ display: 'flex', gap: 4, marginTop: 4, width: '100%' }}>
                       <input
                         type="number" min={0} step="0.01" placeholder="$"
@@ -1690,7 +1690,7 @@ function Register() {
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>{t('po.tipLogHint')}</div>
+              <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 8 }}>{t('po.tipLogHint')}</div>
             </div>
           )}
 
@@ -1704,7 +1704,7 @@ function Register() {
                 // squeezed into one row is six buttons nobody can hit correctly
                 // in a hurry — so it wraps into rows of three instead.
                 display: 'grid', gridTemplateColumns: `repeat(${Math.min(tillMethods.length, 3)}, 1fr)`,
-                gap: 6, background: '#0f172a', border: '1px solid #223047', borderRadius: 12, padding: 4,
+                gap: 6, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 12, padding: 4,
               }}>
                 {tillMethods.map((m) => [
                   m,
@@ -1718,7 +1718,7 @@ function Register() {
             )}
             {split && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px' }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: '#c7d2fe' }}>➗ {t('po.splitTitle')}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cc7d2fe)' }}>➗ {t('po.splitTitle')}</span>
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
@@ -1734,14 +1734,14 @@ function Register() {
                     setParts([{ method: 'CASH', amount: fromMinorUnits(money.due, currency) }, { method: 'CARD', amount: '' }]);
                   }
                 }}
-                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: split ? '#c7d2fe' : '#64748b', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '2px 4px', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: split ? 'var(--cc7d2fe)' : 'var(--c64748b)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '2px 4px', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                 {split ? t('po.splitOff') : `➗ ${t('po.splitOn')}`}
               </button>
             </div>
           </div>
 
           {split && (
-            <div style={{ border: '1px solid #334155', borderRadius: 10, padding: 10, marginBottom: 10 }}>
+            <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginBottom: 10 }}>
               {parts.map((p, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                   <select value={p.method} onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, method: e.target.value as PayMethod } : x))}
@@ -1759,14 +1759,14 @@ function Register() {
                     const rest = Math.max(0, money.due - others);
                     setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: fromMinorUnits(rest, currency) } : x));
                   }} style={{ ...chip, whiteSpace: 'nowrap' }}>{t('po.splitRest')}</button>
-                  {parts.length > 2 && <button onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} style={{ ...chip, color: '#f87171', borderColor: '#7f1d1d' }}>✕</button>}
+                  {parts.length > 2 && <button onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} style={{ ...chip, color: 'var(--cf87171)', borderColor: 'var(--c7f1d1d)' }}>✕</button>}
                 </div>
               ))}
               {parts.length < 4 && (
                 <button onClick={() => setParts((ps) => [...ps, { method: 'CARD', amount: '' }])} style={{ ...chip, marginBottom: 8 }}>+ {t('po.splitAdd')}</button>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid #334155', paddingTop: 8 }}>
-                <span style={{ color: '#94a3b8' }}>{money.splitRemaining > 0 ? t('po.splitRemaining') : t('po.change')}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid var(--c334155)', paddingTop: 8 }}>
+                <span style={{ color: 'var(--c94a3b8)' }}>{money.splitRemaining > 0 ? t('po.splitRemaining') : t('po.change')}</span>
                 <span style={{ color: money.splitRemaining > 0 ? '#f59e0b' : '#22c55e' }}>
                   {formatPrice(Math.abs(money.splitRemaining), currency)}
                 </span>
@@ -1785,7 +1785,7 @@ function Register() {
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: '#94a3b8' }}>{t('po.cashReceived')}</span>
+                <span style={{ color: 'var(--c94a3b8)' }}>{t('po.cashReceived')}</span>
                 <input type="number" min={0} step="0.01" value={tendered} onChange={(e) => setTendered(e.target.value)} style={{ ...ui.input, width: 120, padding: '6px 8px', textAlign: 'right' }} />
               </div>
               {money.tenderedCents > 0 && (
@@ -1797,17 +1797,17 @@ function Register() {
           )}
           {payMethod === 'CARD' && (
             <div style={{ marginBottom: 10 }}>
-              <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>{t('po.cardHint').replace('{x}', formatPrice(money.due, currency))}</p>
+              <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: 0 }}>{t('po.cardHint').replace('{x}', formatPrice(money.due, currency))}</p>
               {hubConn && (
-                <div style={{ marginTop: 8, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 10, fontSize: 13, color: '#e2e8f0' }}>
+                <div style={{ marginTop: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 10, fontSize: 13, color: 'var(--ce2e8f0)' }}>
                   {hubReaders.length > 1 ? (
-                    <span>💳 <select value={hubReader} onChange={(e) => setHubReader(e.target.value)} style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '4px 8px' }}>
+                    <span>💳 <select value={hubReader} onChange={(e) => setHubReader(e.target.value)} style={{ background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', border: '1px solid var(--c334155)', borderRadius: 6, padding: '4px 8px' }}>
                       {hubReaders.map((r) => <option key={r.id} value={r.externalReaderId}>{(r.label || r.externalReaderId) + ' (' + r.status + ')'}</option>)}
                     </select></span>
                   ) : (
                     <span>💳 {hubReaders.find((r) => r.externalReaderId === hubReader)?.label || 'Terminal'} {hubReader ? '● ready' : '— no reader'}</span>
                   )}
-                  <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>The charge is sent to this reader when you press Pay.</div>
+                  <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 4 }}>The charge is sent to this reader when you press Pay.</div>
                 </div>
               )}
             </div>
@@ -1828,18 +1828,18 @@ function Register() {
                 const info = d.instructions ?? (payMethod === 'TRANSFER' ? transferInfo : '');
                 const qr = d.qrUrl ?? (payMethod === 'TRANSFER' ? transferQr : '');
                 return info || qr ? (
-                <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{t('po.transferShow').replace('{x}', formatPrice(money.due, currency))}</div>
-                  {info && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#e2e8f0', margin: 0 }}>{info}</pre>}
+                <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>{t('po.transferShow').replace('{x}', formatPrice(money.due, currency))}</div>
+                  {info && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: 'var(--ce2e8f0)', margin: 0 }}>{info}</pre>}
                   {qr && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={qr} alt={`${payMethod} QR`} style={{ width: 140, height: 140, objectFit: 'contain', marginTop: 10, background: '#fff', borderRadius: 8, padding: 4 }} />
                   )}
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>{t('po.transferAfter')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8 }}>{t('po.transferAfter')}</div>
                 </div>
                 ) : (
-                <p style={{ color: '#94a3b8', fontSize: 13 }}>
-                  {t('po.transferNoneA')}<a href="/salon/settings" style={{ color: '#818cf8' }}>{t('po.transferSettingsLink')}</a>{t('po.transferNoneB')}
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>
+                  {t('po.transferNoneA')}<a href="/salon/settings" style={{ color: 'var(--c818cf8)' }}>{t('po.transferSettingsLink')}</a>{t('po.transferNoneB')}
                 </p>
                 );
               })()}
@@ -1851,9 +1851,9 @@ function Register() {
           {charging && (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, textAlign: 'center' }}>
               <div style={{ fontSize: 46 }}>💳</div>
-              <div style={{ color: '#e2e8f0', fontSize: 18, marginTop: 12 }}>{t('po.cardWaiting')}</div>
-              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>{t('po.cardFollow')}</div>
-              {cardWait > 0 && <div style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>{cardWait}s</div>}
+              <div style={{ color: 'var(--ce2e8f0)', fontSize: 18, marginTop: 12 }}>{t('po.cardWaiting')}</div>
+              <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 6 }}>{t('po.cardFollow')}</div>
+              {cardWait > 0 && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{cardWait}s</div>}
             </div>
           )}
 
@@ -1861,10 +1861,10 @@ function Register() {
               cashier can do here is look at the terminal, not press pay again. */}
           {cardStuck && (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.94)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 24 }}>
-              <div style={{ maxWidth: 460, background: '#0f172a', border: '1px solid #f59e0b', borderRadius: 14, padding: 22 }}>
+              <div style={{ maxWidth: 460, background: 'var(--c0f172a)', border: '1px solid #f59e0b', borderRadius: 14, padding: 22 }}>
                 <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
-                <p style={{ color: '#e2e8f0', fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{t('po.cardUnknownBody')}</p>
-                {cardStuck.note && <p style={{ color: '#94a3b8', fontSize: 12 }}>{cardStuck.note}</p>}
+                <p style={{ color: 'var(--ce2e8f0)', fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{t('po.cardUnknownBody')}</p>
+                {cardStuck.note && <p style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{cardStuck.note}</p>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                   <button
                     onClick={async () => {
@@ -1907,9 +1907,9 @@ function Register() {
 
       {/* Mobile: sticky total + go-to-ticket bar so checkout is one tap away. */}
       {isMobile && mobileView === 'catalog' && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', zIndex: 45, background: '#111827', borderTop: '1px solid #334155', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', zIndex: 45, background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>{cart.length} {t('po.itemsWord')}</div>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{cart.length} {t('po.itemsWord')}</div>
             <div style={{ fontSize: 19, fontWeight: 800, color: '#22c55e' }}>{formatPrice(money.total, currency)}</div>
           </div>
           <button onClick={() => setMobileView('ticket')} style={{ ...ui.primaryBtn, padding: '12px 20px', fontSize: 15, whiteSpace: 'nowrap' }}>{t('po.viewTicket')} →</button>
@@ -1929,17 +1929,17 @@ function Register() {
       {showHeld && typeof document !== 'undefined' && createPortal(
         <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #1e293b' }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0' }}>{lang === 'vi' ? 'Bill đang giữ' : 'Held bills'} {heldBills.length ? `(${heldBills.length})` : ''}</div>
-              <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, cursor: 'pointer' }}>×</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--c1e293b)' }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Bill đang giữ' : 'Held bills'} {heldBills.length ? `(${heldBills.length})` : ''}</div>
+              <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
             <div style={{ padding: 12 }}>
-              {heldBills.length === 0 ? <div style={{ color: '#64748b', fontSize: 13, padding: 8 }}>{lang === 'vi' ? 'Chưa có bill nào được giữ.' : 'No held bills.'}</div>
+              {heldBills.length === 0 ? <div style={{ color: 'var(--c64748b)', fontSize: 13, padding: 8 }}>{lang === 'vi' ? 'Chưa có bill nào được giữ.' : 'No held bills.'}</div>
                 : heldBills.map((h) => (
-                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px', borderBottom: '1px solid #1e293b' }}>
+                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px', borderBottom: '1px solid var(--c1e293b)' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.label || 'Walk-in'}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatPrice(h.totalCents, currency)} · {new Date(h.createdAt).toLocaleTimeString(lang === 'vi' ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' })}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.label || 'Walk-in'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{formatPrice(h.totalCents, currency)} · {new Date(h.createdAt).toLocaleTimeString(lang === 'vi' ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' })}</div>
                     </div>
                     <button onClick={() => recall(h)} style={{ ...ui.primaryBtn, padding: '7px 14px' }}>{lang === 'vi' ? 'Mở lại' : 'Recall'}</button>
                     <button onClick={() => deleteHeld(h.id)} aria-label="delete" style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 18, cursor: 'pointer' }}>×</button>
@@ -1967,12 +1967,12 @@ function IpadPairPanel({ session, onRotate, onClose, t }: {
   const qrSrc = pairUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(pairUrl)}` : '';
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 16, padding: 22, width: 'min(94vw, 430px)', color: '#e2e8f0', boxShadow: '0 30px 80px rgba(0,0,0,0.5)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 16, padding: 22, width: 'min(94vw, 430px)', color: 'var(--ce2e8f0)', boxShadow: '0 30px 80px rgba(0,0,0,0.5)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <h3 style={{ margin: 0, fontSize: 17 }}>📱 {t('po.ipadTitle')}</h3>
-          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
-        <p style={{ margin: '0 0 14px', fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{t('po.ipadStep')}</p>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{t('po.ipadStep')}</p>
         {qrSrc && !qrFailed && (
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1980,15 +1980,15 @@ function IpadPairPanel({ session, onRotate, onClose, t }: {
           </div>
         )}
         <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('po.ipadOpenOn')} <strong style={{ color: '#e2e8f0' }}>{displayUrl}</strong></div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('po.ipadCodeLabel')}</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('po.ipadOpenOn')} <strong style={{ color: 'var(--ce2e8f0)' }}>{displayUrl}</strong></div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('po.ipadCodeLabel')}</div>
           <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: 6, color: '#a5f3fc', fontFamily: 'monospace' }}>{code}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
           <button onClick={() => { if (pairUrl) { navigator.clipboard?.writeText(pairUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={{ ...ghost, padding: '8px 14px', fontSize: 13 }}>{copied ? '✓' : t('po.ipadCopyLink')}</button>
           <button onClick={onRotate} style={{ ...ghost, padding: '8px 14px', fontSize: 13 }}>{t('po.ipadNewCode')}</button>
         </div>
-        <p style={{ margin: '14px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>{t('po.ipadNote')}</p>
+        <p style={{ margin: '14px 0 0', fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>{t('po.ipadNote')}</p>
       </div>
     </div>
   );
@@ -2000,7 +2000,7 @@ function CatPrice({ priceCents, discountPercent, currency }: { priceCents: numbe
   const netP = Math.round((priceCents * (100 - d)) / 100);
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-      <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: 11 }}>{formatPrice(priceCents, currency)}</span>
+      <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 11 }}>{formatPrice(priceCents, currency)}</span>
       <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netP, currency)}</span>
       <span style={{ background: '#ef4444', color: '#fff', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 700 }}>-{d}%</span>
     </span>
@@ -2010,7 +2010,7 @@ function CatPrice({ priceCents, discountPercent, currency }: { priceCents: numbe
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-      <span style={{ color: '#94a3b8' }}>{label}</span><span>{value}</span>
+      <span style={{ color: 'var(--c94a3b8)' }}>{label}</span><span>{value}</span>
     </div>
   );
 }
@@ -2045,50 +2045,50 @@ function escapeHtml(s: string) {
 /** One third of the payment segmented control. Fixed height, never wraps. */
 const payTab = (active: boolean): React.CSSProperties => ({
   height: 46, padding: '0 6px', borderRadius: 9, border: 'none', cursor: 'pointer',
-  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#cbd5e1',
+  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--ccbd5e1)',
   fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
 });
 const tabBtn = (active: boolean): React.CSSProperties => ({
-  flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + (active ? '#6366f1' : '#334155'),
-  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#cbd5e1', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid ' + (active ? '#6366f1' : 'var(--c334155)'),
+  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--ccbd5e1)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
 });
 const catBtn: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-start', textAlign: 'left', justifyContent: 'space-between',
-  minHeight: 74, padding: '12px', borderRadius: 10, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', cursor: 'pointer', fontSize: 13,
+  minHeight: 74, padding: '12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 13,
 };
 const catGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(142px, 1fr))', gap: 10 };
-const cardTitle: React.CSSProperties = { fontWeight: 600, fontSize: 13, lineHeight: 1.3, color: '#f1f5f9' };
-const cardMeta: React.CSSProperties = { fontSize: 11, color: '#64748b' };
-const mutedP: React.CSSProperties = { color: '#94a3b8', fontSize: 13 };
+const cardTitle: React.CSSProperties = { fontWeight: 600, fontSize: 13, lineHeight: 1.3, color: 'var(--cf1f5f9)' };
+const cardMeta: React.CSSProperties = { fontSize: 11, color: 'var(--c64748b)' };
+const mutedP: React.CSSProperties = { color: 'var(--c94a3b8)', fontSize: 13 };
 const chipSel = (active: boolean): React.CSSProperties => ({
-  padding: '5px 12px', borderRadius: 999, border: '1px solid ' + (active ? '#6366f1' : '#334155'),
-  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#cbd5e1', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+  padding: '5px 12px', borderRadius: 999, border: '1px solid ' + (active ? '#6366f1' : 'var(--c334155)'),
+  background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--ccbd5e1)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
 });
 
 function TabCount({ n, active }: { n: number; active: boolean }) {
-  return <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.22)' : '#1e293b', color: active ? '#fff' : '#94a3b8' }}>{n}</span>;
+  return <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.22)' : 'var(--c1e293b)', color: active ? '#fff' : 'var(--c94a3b8)' }}>{n}</span>;
 }
 function GroupHeader({ label, count }: { label: string; count: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
-      <span style={{ fontSize: 11, color: '#64748b' }}>· {count}</span>
-      <div style={{ flex: 1, height: 1, background: '#1e293b' }} />
+      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>· {count}</span>
+      <div style={{ flex: 1, height: 1, background: 'var(--c1e293b)' }} />
     </div>
   );
 }
 function EmptyState({ text }: { text: string }) {
-  return <div style={{ color: '#64748b', fontSize: 14, textAlign: 'center', padding: '36px 12px' }}>{text}</div>;
+  return <div style={{ color: 'var(--c64748b)', fontSize: 14, textAlign: 'center', padding: '36px 12px' }}>{text}</div>;
 }
 const qtyBtn: React.CSSProperties = {
-  width: 24, height: 24, borderRadius: 6, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 14, lineHeight: 1,
+  width: 24, height: 24, borderRadius: 6, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 14, lineHeight: 1,
 };
 const chip: React.CSSProperties = {
-  padding: '5px 10px', borderRadius: 999, border: '1px solid #475569', background: '#0f172a', color: '#cbd5e1', fontSize: 12, cursor: 'pointer',
+  padding: '5px 10px', borderRadius: 999, border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12, cursor: 'pointer',
 };
 const ghost: React.CSSProperties = {
-  padding: '10px 14px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', fontSize: 14, cursor: 'pointer',
+  padding: '10px 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14, cursor: 'pointer',
 };
 
 function hitLabel(c: CustomerHit): string {
@@ -2142,13 +2142,13 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
   // Attached state — show who's on the ticket + points + clear.
   if (customerId) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 8, padding: '8px 10px', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--c0f172a)', border: '1px solid #4f46e5', borderRadius: 8, padding: '8px 10px', marginBottom: 12 }}>
         <span style={{ fontSize: 15 }}>👤</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customerLabel || t('po.custAttached')}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customerLabel || t('po.custAttached')}</div>
           <div style={{ fontSize: 11, color: '#eab308' }}>⭐ {t('po.custPoints').replace('{n}', String(customerPoints))}</div>
         </div>
-        <button onClick={onClear} title={t('po.custRemove')} style={{ background: 'none', border: '1px solid #475569', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontSize: 13, padding: '3px 8px' }}>✕</button>
+        <button onClick={onClear} title={t('po.custRemove')} style={{ background: 'none', border: '1px solid var(--c475569)', borderRadius: 6, color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 13, padding: '3px 8px' }}>✕</button>
       </div>
     );
   }
@@ -2156,21 +2156,21 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
   // Quick-add form.
   if (adding) {
     return (
-      <form onSubmit={quickAdd} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: 10, marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>{t('po.custNew')}</div>
+      <form onSubmit={quickAdd} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('po.custNew')}</div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
           <input value={nf.firstName} onChange={(e) => setNf({ ...nf, firstName: e.target.value })} placeholder={t('po.custName')} style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
           <input value={nf.phone} onChange={(e) => setNf({ ...nf, phone: e.target.value })} placeholder={t('po.custPhone')} inputMode="tel" autoFocus style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>🎂 {t('po.custBirthday')}</span>
+          <span style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>🎂 {t('po.custBirthday')}</span>
           <input lang="en-US" type="date" value={nf.birthDate} onChange={(e) => setNf({ ...nf, birthDate: e.target.value })} style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>✉️ {t('po.custEmail')}</span>
+          <span style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>✉️ {t('po.custEmail')}</span>
           <input type="email" value={nf.email} onChange={(e) => setNf({ ...nf, email: e.target.value })} placeholder="name@email.com" style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
         </div>
-        {err && <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 6 }}>{err}</div>}
+        {err && <div style={{ color: 'var(--cfca5a5)', fontSize: 12, marginBottom: 6 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 6 }}>
           <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 13 }}>{busy ? t('po.custSaving') : t('po.custSave')}</button>
           <button type="button" onClick={() => { setAdding(false); setErr(null); }} style={{ ...ghost, padding: '7px 12px', fontSize: 13 }}>{t('po.custCancel')}</button>
@@ -2187,10 +2187,10 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
         <button type="button" onClick={() => { setAdding(true); setErr(null); }} style={{ ...ghost, padding: '8px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>＋ {t('po.custAdd')}</button>
       </div>
       {results && results.length > 0 && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#1e293b', border: '1px solid #475569', borderRadius: 8, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: 'var(--c1e293b)', border: '1px solid var(--c475569)', borderRadius: 8, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
           {results.map((c) => (
             <button key={c.id} type="button" onClick={() => { onPick(c.id, hitLabel(c), c.loyaltyPoints ?? 0); setResults(null); setQ(''); }}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 'none', borderBottom: '1px solid #334155', color: '#e2e8f0', cursor: 'pointer', fontSize: 13 }}>
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 'none', borderBottom: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 13 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hitLabel(c)}</span>
               <span style={{ color: '#eab308', fontSize: 11, whiteSpace: 'nowrap' }}>⭐ {c.loyaltyPoints ?? 0}</span>
             </button>
@@ -2198,8 +2198,8 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
         </div>
       )}
       {results && results.length === 0 && q.trim().length >= 2 && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: '#1e293b', border: '1px solid #475569', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#94a3b8' }}>
-          {t('po.custNone')} <button type="button" onClick={() => { setAdding(true); setNf({ firstName: '', phone: q.replace(/[^\d+]/g, ''), email: '', birthDate: '' }); }} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 12, padding: 0 }}>＋ {t('po.custAdd')}</button>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: 'var(--c1e293b)', border: '1px solid var(--c475569)', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: 'var(--c94a3b8)' }}>
+          {t('po.custNone')} <button type="button" onClick={() => { setAdding(true); setNf({ firstName: '', phone: q.replace(/[^\d+]/g, ''), email: '', birthDate: '' }); }} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', cursor: 'pointer', fontSize: 12, padding: 0 }}>＋ {t('po.custAdd')}</button>
         </div>
       )}
     </div>

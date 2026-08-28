@@ -27,7 +27,7 @@ interface Order {
 }
 interface Staff { id: string; firstName: string; lastName: string | null }
 
-const STATUS_COLORS: Record<string, string> = { PAID: '#22c55e', OPEN: '#eab308', VOID: '#94a3b8', REFUNDED: '#f97316' };
+const STATUS_COLORS: Record<string, string> = { PAID: '#22c55e', OPEN: '#eab308', VOID: 'var(--c94a3b8)', REFUNDED: '#f97316' };
 const METHOD_LABEL: Record<string, string> = { CASH: 'Cash', CARD: 'Card', OTHER: 'Transfer' };
 
 export default function OrdersPage() {
@@ -138,7 +138,7 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: 22, margin: 0 }}>{t('or.title')}</h1>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 14 }}>{visible.length} {t('or.ordersWord')} · {formatPrice(paidTotal, 'USD')} {t('or.collected')}</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{visible.length} {t('or.ordersWord')} · {formatPrice(paidTotal, 'USD')} {t('or.collected')}</p>
         </div>
         <a href="/salon/pos" style={{ ...ui.primaryBtn, textDecoration: 'none' }}>{t('or.newSale')}</a>
       </div>
@@ -157,10 +157,10 @@ function Inner() {
         <DateRangeBar range={range} />
       </div>
 
-      {loading && orders.length === 0 ? <p style={{ color: '#94a3b8' }}>{t('or.loading')}</p> : isMobile ? (
+      {loading && orders.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{t('or.loading')}</p> : isMobile ? (
         <>
           <MList>
-            {visible.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t('or.empty')}</p>}
+            {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('or.empty')}</p>}
             {pg.paged.map((o) => (
               <MCard key={o.id}>
                 <MHead right={<span style={{ color: STATUS_COLORS[o.status], border: `1px solid ${STATUS_COLORS[o.status]}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{o.status}</span>}>
@@ -182,9 +182,9 @@ function Inner() {
       ) : (
         <div>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/pos/orders/${id}`, { method: 'DELETE', token }), load)} />
-          <div style={{ border: '1px solid #334155', borderRadius: 12, overflowX: 'auto' }}>
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead><tr style={{ background: '#1e293b' }}>
+            <thead><tr style={{ background: 'var(--c1e293b)' }}>
               <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
               <th style={ui.th}>#</th><th style={ui.th}>{t('or.colDate')}</th><th style={ui.th}>{t('or.colItems')}</th>
               <th style={ui.th}>{t('or.colTotal')}</th><th style={ui.th}>{t('or.colMethod')}</th><th style={ui.th}>{t('or.colStatus')}</th><th style={ui.th}>{t('or.colActions')}</th>
@@ -193,13 +193,13 @@ function Inner() {
               {visible.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('or.empty')}</td></tr>}
               {pg.paged.map((o) => (
                 <Fragment key={o.id}>
-                  <tr style={{ borderTop: '1px solid #334155', cursor: 'pointer', background: bulk.has(o.id) ? '#1e1b4b' : undefined }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
+                  <tr style={{ borderTop: '1px solid var(--c334155)', cursor: 'pointer', background: bulk.has(o.id) ? 'var(--c1e1b4b)' : undefined }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
                     <td style={{ ...ui.td, width: 34 }} onClick={(e) => e.stopPropagation()}><BulkRowBox on={bulk.has(o.id)} onChange={() => bulk.toggle(o.id)} /></td>
                     <td style={ui.td}>#{o.orderNumber}</td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{new Date(o.createdAt).toLocaleString(uiLocale())}</td>
-                    <td style={{ ...ui.td, color: '#cbd5e1' }}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? <span style={{ marginLeft: 6, fontSize: 11, color: '#818cf8' }}>{t('or.fromBooking')}</span> : null}</td>
+                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(o.createdAt).toLocaleString(uiLocale())}</td>
+                    <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--c818cf8)' }}>{t('or.fromBooking')}</span> : null}</td>
                     <td style={ui.td}>{formatPrice(o.totalCents, o.currency)}</td>
-                    <td style={{ ...ui.td, color: '#94a3b8' }}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</td>
+                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</td>
                     <td style={ui.td}><span style={{ color: STATUS_COLORS[o.status], border: `1px solid ${STATUS_COLORS[o.status]}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{o.status}</span></td>
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
@@ -210,20 +210,20 @@ function Inner() {
                     </td>
                   </tr>
                   {openId === o.id && (
-                    <tr><td colSpan={8} style={{ padding: 16, background: '#0f172a' }}>
+                    <tr><td colSpan={8} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 520 }}>
                         {o.items.map((l) => (
-                          <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid #1f2937', paddingBottom: 4 }}>
-                            <span>{l.quantity}× {l.name}<span style={{ color: '#64748b' }}> · {staffName(l.staffMemberId)}</span>{l.tipCents ? <span style={{ color: '#a855f7' }}> · {t('or.tip')} {formatPrice(l.tipCents, o.currency)}</span> : null}</span>
+                          <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--c1f2937)', paddingBottom: 4 }}>
+                            <span>{l.quantity}× {l.name}<span style={{ color: 'var(--c64748b)' }}> · {staffName(l.staffMemberId)}</span>{l.tipCents ? <span style={{ color: '#a855f7' }}> · {t('or.tip')} {formatPrice(l.tipCents, o.currency)}</span> : null}</span>
                             <span>{formatPrice(l.lineTotalCents, o.currency)}</span>
                           </div>
                         ))}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.subtotal')}</span><span>{formatPrice(o.subtotalCents, o.currency)}</span></div>
-                        {o.discountCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.discount')}</span><span>-{formatPrice(o.discountCents, o.currency)}</span></div>}
-                        {o.taxCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.tax')}</span><span>{formatPrice(o.taxCents, o.currency)}</span></div>}
-                        {o.tipCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.tips')}</span><span>{formatPrice(o.tipCents, o.currency)}</span></div>}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.subtotal')}</span><span>{formatPrice(o.subtotalCents, o.currency)}</span></div>
+                        {o.discountCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.discount')}</span><span>-{formatPrice(o.discountCents, o.currency)}</span></div>}
+                        {o.taxCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.tax')}</span><span>{formatPrice(o.taxCents, o.currency)}</span></div>}
+                        {o.tipCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.tips')}</span><span>{formatPrice(o.tipCents, o.currency)}</span></div>}
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>{t('or.total')}</span><span style={{ color: '#22c55e' }}>{formatPrice(o.totalCents, o.currency)}</span></div>
-                        {o.changeCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}><span>{t('or.change')}</span><span>{formatPrice(o.changeCents, o.currency)}</span></div>}
+                        {o.changeCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.change')}</span><span>{formatPrice(o.changeCents, o.currency)}</span></div>}
                       </div>
                     </td></tr>
                   )}
@@ -242,5 +242,5 @@ function Inner() {
 function esc(s: string) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)); }
 
 const tiny: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 8, border: '1px solid #475569', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer',
+  padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer',
 };

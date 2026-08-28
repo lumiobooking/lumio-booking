@@ -190,7 +190,7 @@ function Inner() {
   const b = data?.blended;
   const showBlended = (b?.totalSpendCents ?? 0) > 0;
 
-  if (loading && !data) return <section><h2 style={{ fontSize: 18 }}>{T('Báo cáo tháng', 'Monthly report')}</h2><p style={{ color: '#94a3b8' }}>Loading…</p></section>;
+  if (loading && !data) return <section><h2 style={{ fontSize: 18 }}>{T('Báo cáo tháng', 'Monthly report')}</h2><p style={{ color: 'var(--c94a3b8)' }}>Loading…</p></section>;
 
   return (
     <section style={{ maxWidth: 1040, margin: '0 auto' }}>
@@ -198,15 +198,15 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
           <h2 style={{ fontSize: 18, margin: 0 }}>{T('Báo cáo marketing tháng', 'Monthly marketing report')}</h2>
-          <p style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: 13 }}>{T('Nhập chi phí + công việc → AI viết nháp → duyệt → gửi khách.', 'Enter spend + work → AI drafts it → review → send to the client.')}</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 13 }}>{T('Nhập chi phí + công việc → AI viết nháp → duyệt → gửi khách.', 'Enter spend + work → AI drafts it → review → send to the client.')}</p>
         </div>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={dateInput} />
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ ...ui.banner, background: '#064e3b', borderColor: '#059669', color: '#d1fae5' }}>{msg}</div>}
+      {msg && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)' }}>{msg}</div>}
 
-      <div style={{ display: 'inline-flex', background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 3, marginBottom: 16 }}>
+      <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, marginBottom: 16 }}>
         <button onClick={() => setMode('view')} style={segBtn(mode === 'view')}>{T('Xem báo cáo', 'View report')}</button>
         <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chỉnh sửa', 'Edit')}</button>
       </div>
@@ -222,7 +222,7 @@ function Inner() {
         <Kpi label={T('Chi phí / khách mới', 'Cost / new customer')} value={showBlended && b?.costPerNewCustomerCents != null ? money(b.costPerNewCustomerCents) : '—'} hint={showBlended ? undefined : T('cần nhập chi phí', 'enter spend')} />
         <Kpi label={T('Mỗi $1 chi → doanh thu', 'Revenue per $1')} value={showBlended && b?.revenuePerSpend != null ? `$${b.revenuePerSpend}` : '—'} accent="#22c55e" hint={showBlended ? undefined : T('cần nhập chi phí', 'enter spend')} />
       </div>
-      <p style={{ color: '#64748b', fontSize: 11.5, margin: '-6px 0 16px', lineHeight: 1.5 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 16px', lineHeight: 1.5 }}>
         {T('Chỉ số tổng hợp (blended): tổng chi ÷ kết quả thật. Chưa tách được "quảng cáo nào ra booking nào" — phần đó cần gắn UTM (Giai đoạn 2).',
            'Blended metrics: total spend ÷ real outcome. We cannot yet attribute a specific ad to a specific booking — that needs UTM (Phase 2).')}
       </p>
@@ -233,10 +233,10 @@ function Inner() {
       {/* TikTok manual entry — until the TikTok API is connected */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={cardTitle}>{T('TikTok — nhập số liệu tay', 'TikTok — manual numbers')}</div>
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>{T('Nhập số của CẢ THÁNG (đầu tháng → cuối tháng). Hệ thống tự so với tháng trước và AI phân tích. Dùng tạm khi chưa duyệt API TikTok — nối API xong sẽ tự thay số.', 'Enter WHOLE-MONTH totals (1st to last day). The system compares vs last month and AI analyses. Use until the TikTok API is approved — connecting the API later replaces these.')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>{T('Nhập số của CẢ THÁNG (đầu tháng → cuối tháng). Hệ thống tự so với tháng trước và AI phân tích. Dùng tạm khi chưa duyệt API TikTok — nối API xong sẽ tự thay số.', 'Enter WHOLE-MONTH totals (1st to last day). The system compares vs last month and AI analyses. Use until the TikTok API is approved — connecting the API later replaces these.')}</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
           {(([['followers', T('Follower (tổng)', 'Followers (total)')], ['newFollowers', T('Follower mới', 'New followers')], ['views', T('Tổng lượt xem', 'Total views')], ['engagement', T('Tổng tương tác', 'Total engagement')], ['postsCount', T('Số video đăng', 'Videos posted')]]) as [keyof typeof tt, string][]).map(([k, label]) => (
-            <label key={k} style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}
+            <label key={k} style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}
               <input type="number" inputMode="numeric" value={tt[k]} onChange={(e) => setTt({ ...tt, [k]: e.target.value })} style={{ ...inp, marginTop: 4 }} />
             </label>
           ))}
@@ -250,7 +250,7 @@ function Inner() {
           <div style={cardTitle}>{T('Google — Đánh giá', 'Google — Reviews')}</div>
           {(() => {
             const rv = data?.gbp?.reviews;
-            if (!rv) return <span style={{ fontSize: 11, color: '#64748b', border: '1px solid #334155', borderRadius: 999, padding: '1px 9px' }}>{T('chưa có số', 'no data')}</span>;
+            if (!rv) return <span style={{ fontSize: 11, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 9px' }}>{T('chưa có số', 'no data')}</span>;
             const auto = rv.manual !== true;
             return (
               <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto ? '#22c55e' : '#f59e0b', border: `1px solid ${auto ? '#22c55e' : '#f59e0b'}` }}>
@@ -259,7 +259,7 @@ function Inner() {
             );
           })()}
         </div>
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 10px', lineHeight: 1.5 }}>
           {data?.gbp?.reviews && data.gbp.reviews.manual !== true
             ? T('Số này tự tính từ các đánh giá Google đã đồng bộ trong mục "Google reviews" (điểm trung bình, tổng số, review mới trong tháng, review ≤2★). Chỉ nhập tay nếu muốn ghi đè.',
                 'These figures are computed from the Google reviews already synced in "Google reviews" (average rating, total, new this month, ≤2★). Type below only to override.')
@@ -268,14 +268,14 @@ function Inner() {
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
           {(([['rating', T('Điểm trung bình (vd 4.8)', 'Avg rating (e.g. 4.8)')], ['totalReviews', T('Tổng số review', 'Total reviews')], ['newReviews', T('Review mới trong tháng', 'New reviews this month')], ['badReviews', T('Review xấu (≤2★)', 'Bad reviews (≤2★)')]]) as [keyof typeof gr, string][]).map(([k, label]) => (
-            <label key={k} style={{ fontSize: 11.5, color: '#94a3b8' }}>{label}
+            <label key={k} style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}
               <input type="number" inputMode="decimal" value={gr[k]} onChange={(e) => setGr({ ...gr, [k]: e.target.value })} style={{ ...inp, marginTop: 4 }} />
             </label>
           ))}
         </div>
         <button onClick={saveGbpReviews} disabled={busy === 'grev'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'grev' ? '…' : T('Lưu đánh giá Google', 'Save Google reviews')}</button>
         {data?.gbp?.reviews?.syncedAt && data.gbp.reviews.manual !== true && (
-          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 10 }}>
+          <span style={{ fontSize: 11, color: 'var(--c64748b)', marginLeft: 10 }}>
             {T('cập nhật ', 'updated ')}{new Date(data.gbp.reviews.syncedAt).toLocaleString(vi ? 'vi-VN' : uiLocale())}
           </span>
         )}
@@ -285,15 +285,15 @@ function Inner() {
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div style={cardTitle}>{T('Chi phí từng kênh', 'Spend per channel')}</div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c94a3b8)', cursor: 'pointer' }}>
             <input type="checkbox" checked={showMetrics} onChange={(e) => setShowMetrics(e.target.checked)} />
             {T('Thêm reach / click / lead', 'Add reach / clicks / leads')}
           </label>
         </div>
-        <p style={{ color: '#64748b', fontSize: 11.5, margin: '2px 0 10px' }}>{T('Chỉ cần nhập chi phí. Kênh nào không chạy thì để trống.', 'Just enter spend. Leave channels you did not run blank.')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 10px' }}>{T('Chỉ cần nhập chi phí. Kênh nào không chạy thì để trống.', 'Just enter spend. Leave channels you did not run blank.')}</p>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: showMetrics ? 520 : 260 }}>
-            <thead><tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+            <thead><tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
               <th style={th}>{T('Kênh', 'Channel')}</th><th style={th}>{T('Chi phí', 'Spend')}</th>
               {showMetrics && <><th style={th}>Reach</th><th style={th}>Clicks</th><th style={th}>Leads</th></>}
             </tr></thead>
@@ -302,7 +302,7 @@ function Inner() {
                 const r = spendDraft[ch] ?? { channel: ch, amountCents: 0 };
                 const set = (p: Partial<SpendRow>) => setSpendDraft((d) => ({ ...d, [ch]: { ...r, ...p } }));
                 return (
-                  <tr key={ch} style={{ borderTop: '1px solid #1e293b' }}>
+                  <tr key={ch} style={{ borderTop: '1px solid var(--c1e293b)' }}>
                     <td style={td}>{CH_LABEL[ch]}</td>
                     <td style={td}><input type="number" min={0} step="0.01" value={r.amountCents ? r.amountCents / 100 : ''} placeholder="0" onChange={(e) => set({ amountCents: Math.round(parseFloat(e.target.value || '0') * 100) })} style={numInput} /></td>
                     {showMetrics && <>
@@ -329,11 +329,11 @@ function Inner() {
           <input value={wTitle} onChange={(e) => setWTitle(e.target.value)} placeholder={T('Ví dụ: Đăng 12 bài FB/IG', 'e.g. Posted 12 FB/IG posts')} style={{ ...dateInput, flex: 1, minWidth: 200 }} />
           <button onClick={addWork} disabled={busy === 'work' || !wTitle.trim()} style={ui.primaryBtn}>{T('Thêm', 'Add')}</button>
         </div>
-        {(data?.workLog ?? []).length === 0 ? <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>{T('Chưa có công việc nào.', 'No work logged yet.')}</p> : (
+        {(data?.workLog ?? []).length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: 0 }}>{T('Chưa có công việc nào.', 'No work logged yet.')}</p> : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {data!.workLog.map((w) => (
-              <li key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid #1e293b', fontSize: 13 }}>
-                <span><span style={{ color: '#818cf8', fontSize: 11, textTransform: 'uppercase', marginRight: 8 }}>{w.category}</span>{w.title}</span>
+              <li key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--c1e293b)', fontSize: 13 }}>
+                <span><span style={{ color: 'var(--c818cf8)', fontSize: 11, textTransform: 'uppercase', marginRight: 8 }}>{w.category}</span>{w.title}</span>
                 <button onClick={() => delWork(w.id)} style={{ ...ui.dangerBtn, padding: '3px 9px', fontSize: 11 }}>×</button>
               </li>
             ))}
@@ -366,20 +366,20 @@ function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean
       review: ['#f59e0b', T('Chờ duyệt', 'In review')],
       approved: ['#22c55e', T('Đã duyệt', 'Approved')],
       sent: ['#6366f1', T('Đã gửi', 'Sent')],
-      draft: ['#94a3b8', 'Draft'],
+      draft: ['var(--c94a3b8)', 'Draft'],
     };
-    const [color, label] = st ? (map[st] ?? ['#94a3b8', st]) : ['#475569', T('Chưa có nháp', 'No draft')];
+    const [color, label] = st ? (map[st] ?? ['var(--c94a3b8)', st]) : ['var(--c475569)', T('Chưa có nháp', 'No draft')];
     return <span style={{ color, border: `1px solid ${color}`, borderRadius: 999, padding: '1px 9px', fontSize: 11, fontWeight: 700 }}>{label}</span>;
   };
   return (
     <div style={{ ...ui.card, marginTop: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>{T('Báo cáo tự động cuối tháng', 'Month-end auto-report')}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto.enabled ? '#22c55e' : '#94a3b8', border: `1px solid ${auto.enabled ? '#22c55e' : '#475569'}` }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{T('Báo cáo tự động cuối tháng', 'Month-end auto-report')}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto.enabled ? '#22c55e' : 'var(--c94a3b8)', border: `1px solid ${auto.enabled ? '#22c55e' : 'var(--c475569)'}` }}>
           {auto.enabled ? T('ĐANG BẬT', 'ON') : T('ĐANG TẮT', 'OFF')}
         </span>
       </div>
-      <p style={{ fontSize: 11.5, color: '#64748b', margin: '0 0 10px', lineHeight: 1.5 }}>
+      <p style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '0 0 10px', lineHeight: 1.5 }}>
         {auto.enabled
           ? T('Đầu tháng hệ thống tự kéo số từ các kênh đã kết nối, viết nháp báo cáo của tháng vừa kết thúc và gửi email báo cho quản lý. Nháp luôn ở trạng thái Chờ duyệt — không có gì đến tay khách trước khi bạn bấm Duyệt.',
               'At the start of each month the system pulls numbers from connected channels, drafts the report for the month that just ended and emails the salon admins. Drafts always stay In review — nothing reaches a client until you approve.')
@@ -387,20 +387,20 @@ function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {auto.months.map((m) => (
-          <div key={m.month} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: '#cbd5e1', borderTop: '1px solid #1e293b', paddingTop: 6 }}>
+          <div key={m.month} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--ccbd5e1)', borderTop: '1px solid var(--c1e293b)', paddingTop: 6 }}>
             <span style={{ minWidth: 120, fontWeight: 600 }}>{m.label}</span>
             {statusChip(m.status)}
-            <span style={{ color: '#64748b', fontSize: 11.5 }}>
+            <span style={{ color: 'var(--c64748b)', fontSize: 11.5 }}>
               {m.status ? T('nháp ngày ', 'drafted ') + fmtDate(m.createdAt) : T('không có dữ liệu để viết báo cáo', 'no activity to report on')}
               {m.approvedAt ? T(' · duyệt ', ' · approved ') + fmtDate(m.approvedAt) : ''}
             </span>
-            {m.status && <button onClick={() => onOpen(m.month)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #334155', color: '#a5b4fc', borderRadius: 999, padding: '3px 11px', fontSize: 11.5, cursor: 'pointer', fontWeight: 600 }}>{T('Mở', 'Open')}</button>}
+            {m.status && <button onClick={() => onOpen(m.month)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--c334155)', color: 'var(--ca5b4fc)', borderRadius: 999, padding: '3px 11px', fontSize: 11.5, cursor: 'pointer', fontWeight: 600 }}>{T('Mở', 'Open')}</button>}
           </div>
         ))}
       </div>
       {auto.lastNotice && (
-        <p style={{ fontSize: 11, color: '#64748b', margin: '10px 0 0' }}>
-          {T('Email báo nháp gần nhất: ', 'Last draft notice: ')}<b style={{ color: '#94a3b8' }}>{auto.lastNotice.recipient}</b>
+        <p style={{ fontSize: 11, color: 'var(--c64748b)', margin: '10px 0 0' }}>
+          {T('Email báo nháp gần nhất: ', 'Last draft notice: ')}<b style={{ color: 'var(--c94a3b8)' }}>{auto.lastNotice.recipient}</b>
           {' · '}{fmtDate(auto.lastNotice.at)}{' · '}{auto.lastNotice.status}
         </p>
       )}
@@ -439,14 +439,14 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
     return (
       <div style={{ ...ui.card }}>
         <div style={cardTitle}>{T('Báo cáo tháng', 'Monthly report')}</div>
-        <p style={{ color: '#94a3b8', fontSize: 13 }}>{T('Nhập chi phí & công việc ở trên, rồi bấm nút để AI viết nháp báo cáo song ngữ.', 'Enter spend & work above, then let AI draft the bilingual report.')}</p>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{T('Nhập chi phí & công việc ở trên, rồi bấm nút để AI viết nháp báo cáo song ngữ.', 'Enter spend & work above, then let AI draft the bilingual report.')}</p>
         <button onClick={onGenerate} disabled={busy === 'gen'} style={ui.primaryBtn}>{busy === 'gen' ? T('Đang tạo…', 'Generating…') : T('Tạo báo cáo bằng AI', 'Generate with AI')}</button>
       </div>
     );
   }
 
   const status = report.status;
-  const badge = { review: ['#f59e0b', T('Chờ duyệt', 'In review')], approved: ['#22c55e', T('Đã duyệt', 'Approved')], sent: ['#6366f1', T('Đã gửi', 'Sent')], draft: ['#94a3b8', 'Draft'] }[status] ?? ['#94a3b8', status];
+  const badge = { review: ['#f59e0b', T('Chờ duyệt', 'In review')], approved: ['#22c55e', T('Đã duyệt', 'Approved')], sent: ['#6366f1', T('Đã gửi', 'Sent')], draft: ['var(--c94a3b8)', 'Draft'] }[status] ?? ['var(--c94a3b8)', status];
 
   return (
     <div style={{ ...ui.card }}>
@@ -460,12 +460,12 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
         </div>
       </div>
 
-      {report.content._aiUnavailable && <div style={{ ...ui.banner, background: '#422006', borderColor: '#b45309', color: '#fde68a', marginBottom: 12 }}>{T('AI không viết được nháp: ', 'AI could not draft: ')}<b>{report.content._aiError || 'unknown'}</b>{T(' — nhập nhận xét tay bên dưới.', ' — write the notes manually below.')}</div>}
+      {report.content._aiUnavailable && <div style={{ ...ui.banner, background: '#422006', borderColor: '#b45309', color: 'var(--cfde68a)', marginBottom: 12 }}>{T('AI không viết được nháp: ', 'AI could not draft: ')}<b>{report.content._aiError || 'unknown'}</b>{T(' — nhập nhận xét tay bên dưới.', ' — write the notes manually below.')}</div>}
 
-      <p style={{ fontSize: 11.5, color: '#64748b', margin: '0 0 10px' }}>{T('AI đã điền sẵn — chỉ sửa nếu cần rồi bấm Duyệt. Đang sửa bản ', 'AI filled this in — edit only if needed, then Approve. Editing the ')}<b style={{ color: '#a5b4fc' }}>{vi ? 'Tiếng Việt' : 'English'}</b>{T('; bấm VI/EN ở góc trên để sửa bản kia.', ' version; use VI/EN at the top to edit the other.')}</p>
+      <p style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '0 0 10px' }}>{T('AI đã điền sẵn — chỉ sửa nếu cần rồi bấm Duyệt. Đang sửa bản ', 'AI filled this in — edit only if needed, then Approve. Editing the ')}<b style={{ color: 'var(--ca5b4fc)' }}>{vi ? 'Tiếng Việt' : 'English'}</b>{T('; bấm VI/EN ở góc trên để sửa bản kia.', ' version; use VI/EN at the top to edit the other.')}</p>
 
-      <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderRadius: 8, padding: 10, marginBottom: 12 }}>
-        <label style={{ ...lbl, color: '#a5b4fc', fontWeight: 700 }}>{T('★ Điều quan trọng nhất tháng này (khách đọc đầu tiên)', '★ The one most important message (client reads first)')}</label>
+      <div style={{ background: 'var(--c0f172a)', border: '1px solid #4f46e5', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+        <label style={{ ...lbl, color: 'var(--ca5b4fc)', fontWeight: 700 }}>{T('★ Điều quan trọng nhất tháng này (khách đọc đầu tiên)', '★ The one most important message (client reads first)')}</label>
         {vi
           ? <input style={ta} value={c.headline?.vi ?? ''} onChange={(e) => setC({ ...c, headline: { vi: e.target.value, en: c.headline?.en ?? '' } })} placeholder="Ví dụ: Doanh thu tăng 31% nhờ Google Maps" />
           : <input style={ta} value={c.headline?.en ?? ''} onChange={(e) => setC({ ...c, headline: { vi: c.headline?.vi ?? '', en: e.target.value } })} placeholder="e.g. Revenue up 31%, driven by Google Maps" />}
@@ -1001,10 +1001,10 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
 
 function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
-    <div style={{ background: '#111827', border: '1px solid #1e293b', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? '#fff' }}>{value}</div>
-      {hint && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{hint}</div>}
+    <div style={{ background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 12, padding: '12px 14px' }}>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? 'var(--cf8fafc)' }}>{value}</div>
+      {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>
   );
 }
@@ -1038,61 +1038,61 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={cardTitle}>{T('Kênh kết nối (tự đồng bộ chi phí)', 'Connected channels (auto-sync spend)')}</div>
-      <p style={{ color: '#64748b', fontSize: 11.5, margin: '4px 0 12px', lineHeight: 1.5 }}>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '4px 0 12px', lineHeight: 1.5 }}>
         {T('Chỉ cần ID tài khoản (act_… / locations/…) — token để trống nếu Lumio đã cấu hình token chung của agency trên server. Dán token riêng chỉ khi tiệm tự quản lý quảng cáo.', 'Just the account ID (act_… / locations/…) — leave the token blank if the agency-wide token is configured on the server. Paste a token only when the salon runs its own ads.')}
       </p>
       {err && <div style={{ ...ui.banner, marginBottom: 10 }}>{err}</div>}
-      {note && <div style={{ ...ui.banner, background: '#064e3b', borderColor: '#059669', color: '#d1fae5', marginBottom: 10 }}>{note}</div>}
+      {note && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)', marginBottom: 10 }}>{note}</div>}
       {chs.map((c) => (
-        <div key={c.platform} style={{ borderTop: '1px solid #1e293b', padding: '10px 0' }}>
+        <div key={c.platform} style={{ borderTop: '1px solid var(--c1e293b)', padding: '10px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', gap: 8 }}>
               {c.label}
-              {!c.enabled && <span style={{ fontSize: 10.5, color: '#94a3b8', border: '1px solid #334155', borderRadius: 999, padding: '1px 8px' }}>{T('sắp có', 'coming soon')}</span>}
+              {!c.enabled && <span style={{ fontSize: 10.5, color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 8px' }}>{T('sắp có', 'coming soon')}</span>}
               {c.connected && !c.keyHint?.startsWith('LINKED:') && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '1px 8px' }}>{T('đã kết nối', 'connected')}</span>}
               {/* A linked channel explains itself. A bare green tick reads as
                   "somebody set this up here"; this one says which existing
                   connection it is riding on, so nobody hunts for settings that
                   do not exist on this page. */}
-              {c.keyHint === 'LINKED:messenger' && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #166534', background: '#052e16', borderRadius: 999, padding: '1px 8px' }}>{T('✓ tự dùng kết nối Messenger AI', '✓ using the Messenger AI connection')}</span>}
-              {c.keyHint === 'LINKED:google-reviews' && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #166534', background: '#052e16', borderRadius: 999, padding: '1px 8px' }}>{T('✓ tự dùng kết nối Google Reviews', '✓ using the Google Reviews connection')}</span>}
-              {c.status === 'ERROR' && <span style={{ fontSize: 10.5, color: '#f87171', border: '1px solid #f87171', borderRadius: 999, padding: '1px 8px' }}>{T('lỗi', 'error')}</span>}
+              {c.keyHint === 'LINKED:messenger' && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid var(--c166534)', background: 'var(--c052e16)', borderRadius: 999, padding: '1px 8px' }}>{T('✓ tự dùng kết nối Messenger AI', '✓ using the Messenger AI connection')}</span>}
+              {c.keyHint === 'LINKED:google-reviews' && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid var(--c166534)', background: 'var(--c052e16)', borderRadius: 999, padding: '1px 8px' }}>{T('✓ tự dùng kết nối Google Reviews', '✓ using the Google Reviews connection')}</span>}
+              {c.status === 'ERROR' && <span style={{ fontSize: 10.5, color: 'var(--cf87171)', border: '1px solid var(--cf87171)', borderRadius: 999, padding: '1px 8px' }}>{T('lỗi', 'error')}</span>}
             </span>
             <span style={{ display: 'flex', gap: 6 }}>
               {c.enabled && !c.connected && <button onClick={() => { setOpenP(openP === c.platform ? null : c.platform); setErr(null); setNote(null); }} style={miniBtn}>{openP === c.platform ? T('Đóng', 'Close') : T('Kết nối', 'Connect')}</button>}
               {c.connected && <>
                 <button onClick={() => test(c.platform)} disabled={busy === c.platform} style={miniBtn}>{T('Kiểm tra', 'Test')}</button>
-                <button onClick={() => sync(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#6366f1', color: '#c7d2fe' }}>{busy === c.platform ? '…' : T('Đồng bộ', 'Sync')}</button>
+                <button onClick={() => sync(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{busy === c.platform ? '…' : T('Đồng bộ', 'Sync')}</button>
                 {c.keyHint?.startsWith('LINKED:')
                   /* Nothing to disconnect HERE — the credentials live on the
                      Messenger AI / Google Reviews screen. Removing them there
                      removes them here. What CAN be done here is overriding
                      with this page's own credentials, which then win. */
                   ? <button onClick={() => { setOpenP(openP === c.platform ? null : c.platform); setErr(null); setNote(null); }} style={miniBtn}>{openP === c.platform ? T('Đóng', 'Close') : T('Dùng token riêng', 'Use own token')}</button>
-                  : <button onClick={() => disconnect(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#7f1d1d', color: '#fca5a5' }}>{T('Ngắt', 'Remove')}</button>}
+                  : <button onClick={() => disconnect(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)' }}>{T('Ngắt', 'Remove')}</button>}
               </>}
             </span>
           </div>
-          {c.connected && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+          {c.connected && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 4 }}>
             {c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString(uiLocale()) : ''}{c.lastError ? ' · ' + c.lastError : ''}
-            {c.keyHint === 'LINKED:messenger' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/messenger" style={{ color: '#818cf8' }}>Messenger AI</a></>}
-            {c.keyHint === 'LINKED:google-reviews' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/reviews-replies" style={{ color: '#818cf8' }}>Google Reviews</a></>}
+            {c.keyHint === 'LINKED:messenger' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/messenger" style={{ color: 'var(--c818cf8)' }}>Messenger AI</a></>}
+            {c.keyHint === 'LINKED:google-reviews' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/reviews-replies" style={{ color: 'var(--c818cf8)' }}>Google Reviews</a></>}
           </div>}
           {openP === c.platform && (
-            <div style={{ marginTop: 8, background: '#0f172a', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
+            <div style={{ marginTop: 8, background: 'var(--c0f172a)', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
               <input style={inp} name="lumio-account-id" autoComplete="off" placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID — vd: 17202153832315858041' : c.platform === 'tiktok' ? T('Bỏ trống — TikTok nhận diện qua token', 'Leave blank — TikTok is identified by the token') : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
               {c.platform === 'meta_social'
-                ? <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('Token do Lumio cấu hình sẵn trên server — chỉ cần Page ID/username. Instagram tự nhận từ Trang đã liên kết.', 'The token is pre-configured on the Lumio server — just the Page ID/username. Instagram is auto-detected from the linked Page.')}</div>
+                ? <div style={{ fontSize: 10.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>{T('Token do Lumio cấu hình sẵn trên server — chỉ cần Page ID/username. Instagram tự nhận từ Trang đã liên kết.', 'The token is pre-configured on the Lumio server — just the Page ID/username. Instagram is auto-detected from the linked Page.')}</div>
                 : c.platform === 'tiktok' ? null
                 : <input style={inp} type="password" placeholder={T('Access token', 'Access token')} value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} autoComplete="off" />}
               {c.platform === 'gbp' && <>
-                <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('CHỈ cần Location ID — token Google đã cấu hình sẵn trên server (dùng chung cho mọi salon). Để trống 3 ô dưới. Chỉ điền nếu salon tự dùng tài khoản Google riêng.', 'Just the Location ID — the Google token is pre-configured on the server (shared for all salons). Leave the 3 fields below blank. Only fill them if the salon uses its own Google account.')}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>{T('CHỈ cần Location ID — token Google đã cấu hình sẵn trên server (dùng chung cho mọi salon). Để trống 3 ô dưới. Chỉ điền nếu salon tự dùng tài khoản Google riêng.', 'Just the Location ID — the Google token is pre-configured on the server (shared for all salons). Leave the 3 fields below blank. Only fill them if the salon uses its own Google account.')}</div>
                 <input style={inp} type="password" placeholder="Refresh token" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} autoComplete="off" />
                 <input style={inp} placeholder="OAuth Client ID" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} />
                 <input style={inp} type="password" placeholder="OAuth Client Secret" value={f.clientSecret} onChange={(e) => setF({ ...f, clientSecret: e.target.value })} autoComplete="off" />
               </>}
               {c.platform === 'tiktok' && <>
-                <div style={{ fontSize: 10.5, color: '#64748b', lineHeight: 1.5 }}>{T('Dán Refresh token TikTok của salon — client key/secret đã cấu hình trên server. Ô Account ID để trống.', 'Paste the salon TikTok Refresh token — client key/secret are on the server. Leave Account ID blank.')}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>{T('Dán Refresh token TikTok của salon — client key/secret đã cấu hình trên server. Ô Account ID để trống.', 'Paste the salon TikTok Refresh token — client key/secret are on the server. Leave Account ID blank.')}</div>
                 <input style={inp} type="password" placeholder="TikTok Refresh token" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} autoComplete="off" />
               </>}
               <button onClick={() => connect(c.platform)} disabled={busy === c.platform || (!f.externalAccountId && !f.refreshToken && !f.token)} style={{ ...ui.primaryBtn, justifySelf: 'start' }}>{busy === c.platform ? '…' : T('Lưu & kiểm tra', 'Save & verify')}</button>
@@ -1109,22 +1109,22 @@ function PostRowView({ p, T }: { p: PostRow; T: (v: string, e: string) => string
   const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
   const typeLabel = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : T('Ảnh', 'Photo');
   const num = (n: number | null) => (n == null ? null : Number(n).toLocaleString(uiLocale()));
-  const stat = (label: string, v: number | null) => (v == null ? null : <span key={label} style={{ whiteSpace: 'nowrap' }}><b style={{ color: '#f8fafc' }}>{num(v)}</b> <span style={{ color: '#64748b' }}>{label}</span></span>);
+  const stat = (label: string, v: number | null) => (v == null ? null : <span key={label} style={{ whiteSpace: 'nowrap' }}><b style={{ color: 'var(--cf8fafc)' }}>{num(v)}</b> <span style={{ color: 'var(--c64748b)' }}>{label}</span></span>);
   const stats = [stat(T('thích', 'likes'), p.likes), stat(T('bl', 'cmts'), p.comments), stat('reach', p.reach), stat(T('xem', 'views'), p.views), stat(T('lưu', 'saved'), p.saved), stat('share', p.shares)].filter(Boolean);
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '8px 10px' }}>
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '8px 10px' }}>
       {img
-        ? <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: `#1e293b center/cover no-repeat url(${p.thumbnail})` }} />
-        : <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: '#1e293b', display: 'grid', placeItems: 'center', fontSize: 18 }}>📷</span>}
+        ? <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: `var(--c1e293b) center/cover no-repeat url(${p.thumbnail})` }} />
+        : <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: 'var(--c1e293b)', display: 'grid', placeItems: 'center', fontSize: 18 }}>📷</span>}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: '#a5b4fc', background: '#1e293b', borderRadius: 4, padding: '1px 6px' }}>{typeLabel}</span>
-          <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>{dt}</span>
-          {p.caption && <span style={{ fontSize: 11.5, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caption}</span>}
+          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--ca5b4fc)', background: 'var(--c1e293b)', borderRadius: 4, padding: '1px 6px' }}>{typeLabel}</span>
+          <span style={{ fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>{dt}</span>
+          {p.caption && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caption}</span>}
         </div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4, fontSize: 11.5, color: '#e2e8f0' }}>{stats.length ? stats : <span style={{ color: '#64748b', fontSize: 11 }}>{T('chưa có số liệu', 'no metrics')}</span>}</div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4, fontSize: 11.5, color: 'var(--ce2e8f0)' }}>{stats.length ? stats : <span style={{ color: 'var(--c64748b)', fontSize: 11 }}>{T('chưa có số liệu', 'no metrics')}</span>}</div>
       </div>
-      {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" style={{ color: '#818cf8', fontSize: 11, textDecoration: 'none', flexShrink: 0 }}>{T('Xem', 'Open')} ↗</a>}
+      {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" style={{ color: 'var(--c818cf8)', fontSize: 11, textDecoration: 'none', flexShrink: 0 }}>{T('Xem', 'Open')} ↗</a>}
     </div>
   );
 }
@@ -1147,7 +1147,7 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 }
 
 function AudienceSection({ a, T }: { a: { gender?: Record<string, number>; age?: Record<string, number> }; T: (v: string, e: string) => string }) {
-  const order: [string, string, string][] = [['F', T('Nữ', 'Female'), '#e1306c'], ['M', T('Nam', 'Male'), '#3b82f6'], ['U', T('Khác', 'Other'), '#94a3b8']];
+  const order: [string, string, string][] = [['F', T('Nữ', 'Female'), '#e1306c'], ['M', T('Nam', 'Male'), '#3b82f6'], ['U', T('Khác', 'Other'), 'var(--c94a3b8)']];
   const g = a.gender || {};
   const gTotal = Object.values(g).reduce((x, y) => x + y, 0) || 1;
   const gPct = order.map(([k, label, col]) => ({ label, col, pct: Math.round(((g[k] || 0) / gTotal) * 1000) / 10 })).filter((x) => x.pct > 0);
@@ -1162,22 +1162,22 @@ function AudienceSection({ a, T }: { a: { gender?: Record<string, number>; age?:
       <div style={pvL}>{T('ĐỐI TƯỢNG INSTAGRAM', 'INSTAGRAM AUDIENCE')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
         {gPct.length > 0 && (
-          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: 12, display: 'flex', gap: 14, alignItems: 'center' }}>
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: 12, display: 'flex', gap: 14, alignItems: 'center' }}>
             <div style={{ width: 74, height: 74, borderRadius: '50%', flexShrink: 0, background: `conic-gradient(${stops})`, WebkitMask: 'radial-gradient(circle 22px at center, transparent 98%, #000 100%)', mask: 'radial-gradient(circle 22px at center, transparent 98%, #000 100%)' }} />
             <div style={{ fontSize: 12, flex: 1 }}>
-              <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 4 }}>{T('Giới tính', 'Gender')}</div>
-              {gPct.map((x) => <div key={x.label} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '3px 0' }}><span style={{ width: 9, height: 9, borderRadius: 2, background: x.col }} /><span style={{ color: '#cbd5e1' }}>{x.label}</span><b style={{ color: '#f8fafc', marginLeft: 'auto' }}>{x.pct}%</b></div>)}
+              <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Giới tính', 'Gender')}</div>
+              {gPct.map((x) => <div key={x.label} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '3px 0' }}><span style={{ width: 9, height: 9, borderRadius: 2, background: x.col }} /><span style={{ color: 'var(--ccbd5e1)' }}>{x.label}</span><b style={{ color: 'var(--cf8fafc)', marginLeft: 'auto' }}>{x.pct}%</b></div>)}
             </div>
           </div>
         )}
         {ageKeys.length > 0 && (
-          <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: 12 }}>
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>{T('Độ tuổi', 'Age')}</div>
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 6 }}>{T('Độ tuổi', 'Age')}</div>
             {ageKeys.map((k) => { const pct = Math.round(((ageMap[k] || 0) / ageTotal) * 1000) / 10; return (
               <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '3px 0' }}>
-                <span style={{ width: 42, fontSize: 11, color: '#94a3b8' }}>{k}</span>
-                <span style={{ flex: 1, height: 8, background: '#1e293b', borderRadius: 4, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${pct}%`, background: '#818cf8' }} /></span>
-                <span style={{ width: 38, fontSize: 11, color: '#e2e8f0', textAlign: 'right' }}>{pct}%</span>
+                <span style={{ width: 42, fontSize: 11, color: 'var(--c94a3b8)' }}>{k}</span>
+                <span style={{ flex: 1, height: 8, background: 'var(--c1e293b)', borderRadius: 4, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${pct}%`, background: 'var(--c818cf8)' }} /></span>
+                <span style={{ width: 38, fontSize: 11, color: 'var(--ce2e8f0)', textAlign: 'right' }}>{pct}%</span>
               </div>
             ); })}
           </div>
@@ -1194,11 +1194,11 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
   const color = isTt ? '#25f4ee' : isIg ? '#e1306c' : '#1877f2';
   const fmt = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
   const arrow = (dl?: SocialDelta | null) =>
-    dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 10.5, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'}{Math.abs(dl.pct)}%</span> : null;
+    dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 10.5, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'}{Math.abs(dl.pct)}%</span> : null;
   const Stat = (label: string, val: number | null, dl?: SocialDelta | null) => (
     <div key={label} style={{ textAlign: 'center', flex: 1, minWidth: 62 }}>
-      <div style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>{fmt(val)}</div>
-      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf8fafc)' }}>{fmt(val)}</div>
+      <div style={{ fontSize: 10.5, color: 'var(--c94a3b8)' }}>{label}</div>
       <div style={{ minHeight: 14 }}>{arrow(dl)}</div>
     </div>
   );
@@ -1224,17 +1224,17 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
     for (const m of ms) cum.push(m.followers);
   }
   return (
-    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px' }}>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <span style={{ width: 9, height: 9, borderRadius: 3, background: color, display: 'inline-block' }} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{name}</span>
-        {s.postsCount != null && <span style={{ fontSize: 10.5, color: '#64748b', marginLeft: 'auto' }}>{s.postsCount} {T('bài', 'posts')}</span>}
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{name}</span>
+        {s.postsCount != null && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>{s.postsCount} {T('bài', 'posts')}</span>}
       </div>
       {empty
-        ? <div style={{ fontSize: 11.5, color: '#64748b' }}>{T('Chưa có số liệu tháng này.', 'No data for this month yet.')}</div>
+        ? <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Chưa có số liệu tháng này.', 'No data for this month yet.')}</div>
         : <>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{stats}</div>
-            {engRate != null && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>{T('Tỉ lệ tương tác', 'Engagement rate')}: <b style={{ color: '#e2e8f0' }}>{engRate}%</b></div>}
+            {engRate != null && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 8 }}>{T('Tỉ lệ tương tác', 'Engagement rate')}: <b style={{ color: 'var(--ce2e8f0)' }}>{engRate}%</b></div>}
             {cum.length > 1 && <Sparkline data={cum} color={color} />}
           </>}
     </div>
@@ -1242,7 +1242,7 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
 }
 
 function MktTabs({ vi, active }: { vi: boolean; active: 'monthly' | 'live' }) {
-  const tab = (on: boolean): CSSProperties => ({ padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: on ? 700 : 500, textDecoration: 'none', color: on ? '#fff' : '#94a3b8', background: on ? '#6366f1' : 'transparent', border: on ? 'none' : '1px solid #334155' });
+  const tab = (on: boolean): CSSProperties => ({ padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: on ? 700 : 500, textDecoration: 'none', color: on ? '#fff' : 'var(--c94a3b8)', background: on ? '#6366f1' : 'transparent', border: on ? 'none' : '1px solid var(--c334155)' });
   return (
     <div style={{ display: 'inline-flex', gap: 6, marginBottom: 14 }}>
       <a href="/salon/marketing/monthly" style={tab(active === 'monthly')}>{vi ? 'Báo cáo tháng' : 'Monthly report'}</a>
@@ -1251,20 +1251,20 @@ function MktTabs({ vi, active }: { vi: boolean; active: 'monthly' | 'live' }) {
   );
 }
 const VERDICT: Record<string, [string, string, string]> = {
-  good: ['#22c55e', '#052e16', 'Tốt'],
+  good: ['#22c55e', 'var(--c052e16)', 'Tốt'],
   ok: ['#3b82f6', '#0b1e3a', 'Ổn'],
   weak: ['#f59e0b', '#3a2606', 'Yếu'],
-  nodata: ['#64748b', '#1e293b', 'Chưa đủ dữ liệu'],
+  nodata: ['var(--c64748b)', 'var(--c1e293b)', 'Chưa đủ dữ liệu'],
 };
 const CH_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác' };
 
 function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) {
   const fmt = (n: number | null | undefined) => (n == null ? '\u2014' : Number(n).toLocaleString(uiLocale()));
-  const arrow = (d?: SocialDelta | null) => (d && d.pct != null ? <span style={{ color: d.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 10.5, fontWeight: 700 }}>{d.pct >= 0 ? '\u25B2' : '\u25BC'}{Math.abs(d.pct)}%</span> : null);
+  const arrow = (d?: SocialDelta | null) => (d && d.pct != null ? <span style={{ color: d.pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 10.5, fontWeight: 700 }}>{d.pct >= 0 ? '\u25B2' : '\u25BC'}{Math.abs(d.pct)}%</span> : null);
   const Stat = (label: string, val: number | null | undefined, d?: SocialDelta | null) => (
     <div key={label} style={{ textAlign: 'center', flex: 1, minWidth: 80 }}>
-      <div style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>{fmt(val)}</div>
-      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf8fafc)' }}>{fmt(val)}</div>
+      <div style={{ fontSize: 10.5, color: 'var(--c94a3b8)' }}>{label}</div>
       <div style={{ minHeight: 14 }}>{arrow(d)}</div>
     </div>
   );
@@ -1274,15 +1274,15 @@ function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) 
     const pct = totImp > 0 ? Math.round(((val || 0) / totImp) * 100) : 0;
     return (
       <div style={{ margin: '4px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8' }}><span>{label}</span><b style={{ color: '#e2e8f0' }}>{fmt(val)} · {pct}%</b></div>
-        <div style={{ height: 7, background: '#1e293b', borderRadius: 4, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${pct}%`, background: color }} /></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--c94a3b8)' }}><span>{label}</span><b style={{ color: 'var(--ce2e8f0)' }}>{fmt(val)} · {pct}%</b></div>
+        <div style={{ height: 7, background: 'var(--c1e293b)', borderRadius: 4, overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${pct}%`, background: color }} /></div>
       </div>
     );
   };
   const kw = (g.keywords || []).slice(0, 6);
   return (
-    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, padding: '12px 14px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: '#1a73e8' }} /><span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>Google Business Profile (Maps)</span></div>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: '#1a73e8' }} /><span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>Google Business Profile (Maps)</span></div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {Stat(T('L\u01b0\u1ee3t xem', 'Views'), g.impressions, v.impressions)}
         {Stat(T('G\u1ecdi', 'Calls'), g.calls, v.calls)}
@@ -1293,13 +1293,13 @@ function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) 
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 10 }}>
         <div>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{T('Ngu\u1ed3n hi\u1ec3n th\u1ecb', 'Where seen')}</div>
+          <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 2 }}>{T('Ngu\u1ed3n hi\u1ec3n th\u1ecb', 'Where seen')}</div>
           {bar(T('T\u00ecm ki\u1ebfm', 'Search'), g.searchImpr, '#4285F4')}
           {bar('Maps', g.mapsImpr, '#34A853')}
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>{T('T\u1eeb kho\u00e1 kh\u00e1ch t\u00ecm', 'Top searches')}</div>
-          {kw.length ? kw.map((k, i) => (<div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#cbd5e1', margin: '2px 0' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.keyword}</span><b style={{ color: '#e2e8f0', marginLeft: 8 }}>{fmt(k.count)}</b></div>)) : <div style={{ fontSize: 11, color: '#64748b' }}>{T('Ch\u01b0a c\u00f3', 'None')}</div>}
+          <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 2 }}>{T('T\u1eeb kho\u00e1 kh\u00e1ch t\u00ecm', 'Top searches')}</div>
+          {kw.length ? kw.map((k, i) => (<div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--ccbd5e1)', margin: '2px 0' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.keyword}</span><b style={{ color: 'var(--ce2e8f0)', marginLeft: 8 }}>{fmt(k.count)}</b></div>)) : <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Ch\u01b0a c\u00f3', 'None')}</div>}
         </div>
       </div>
     </div>
@@ -1307,15 +1307,15 @@ function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) 
 }
 
 function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Monthly | null; content: Content | null; vi: boolean; money: (n: number) => string; onEdit: () => void; onPrint: () => void; T: (v: string, e: string) => string }) {
-  if (!data) return <p style={{ color: '#94a3b8' }}>Loading…</p>;
+  if (!data) return <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>;
   const L = (it?: Item) => (vi ? (it?.vi || it?.en) : (it?.en || it?.vi)) || '';
   const o = data.outcome; const b = data.blended; const d = data.deltas;
   const eff = data.effectiveness || 'organic';
-  const effMap: Record<string, [string, string]> = { good: ['#059669', T('Hiệu quả tốt', 'Performing well')], ok: ['#2563eb', T('Đang có hiệu quả', 'On track')], weak: ['#d97706', T('Cần cải thiện', 'Needs work')], low: ['#d97706', T('Cần cải thiện', 'Needs work')], organic: ['#64748b', T('Tăng trưởng tự nhiên', 'Organic growth')] };
+  const effMap: Record<string, [string, string]> = { good: ['#059669', T('Hiệu quả tốt', 'Performing well')], ok: ['#2563eb', T('Đang có hiệu quả', 'On track')], weak: ['#d97706', T('Cần cải thiện', 'Needs work')], low: ['#d97706', T('Cần cải thiện', 'Needs work')], organic: ['var(--c64748b)', T('Tăng trưởng tự nhiên', 'Organic growth')] };
   const [effColor, effLabel] = effMap[eff] ?? effMap.organic;
   const hasReport = !!content && !content._aiUnavailable && (!!L(content.headline) || !!L(content.tldr) || (content.plan ?? []).length > 0 || (content.channels ?? []).length > 0);
 
-  const arrow = (dl?: Delta) => dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : '#f87171', fontSize: 11, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'} {Math.abs(dl.pct)}%</span> : null;
+  const arrow = (dl?: Delta) => dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 11, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'} {Math.abs(dl.pct)}%</span> : null;
   const spendRows = (data.spend ?? []).filter((x) => x.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
   const spendByCh: Record<string, SpendRow> = {}; (data.spend ?? []).forEach((x) => { spendByCh[x.channel] = x; });
   const vLabel = (v: string) => T(({ good: 'Tốt', ok: 'Ổn', weak: 'Yếu', nodata: 'Chưa đủ dữ liệu' } as Record<string, string>)[v] || v, ({ good: 'Good', ok: 'OK', weak: 'Weak', nodata: 'No data' } as Record<string, string>)[v] || v);
@@ -1334,55 +1334,58 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
     const chip = (label: string, dl: Delta | null, perf: boolean) => {
       if (!dl || dl.pct == null || (dl.value === dl.prev)) return null;
       const up = dl.pct >= 0;
-      const col = !perf ? '#94a3b8' : up ? '#22c55e' : '#f87171';
+      const col = !perf ? 'var(--c94a3b8)' : up ? '#22c55e' : 'var(--cf87171)';
       return <span key={label} style={{ color: col, fontSize: 11, fontWeight: 700, marginRight: 8 }}>{label} {up ? '▲' : '▼'}{Math.abs(dl.pct)}%</span>;
     };
     const chips = [chip(T('Chi', 'Spend'), tr.spend, false), chip('Reach', tr.reach, true), chip('Click', tr.clicks, true), chip(T('Liên hệ', 'Leads'), tr.leads, true)].filter(Boolean);
     if (chips.length === 0) return null;
-    return <div style={{ marginTop: 4 }}>{chips}<span style={{ color: '#475569', fontSize: 10.5 }}>{T('so tháng trước', 'vs last month')}</span></div>;
+    return <div style={{ marginTop: 4 }}>{chips}<span style={{ color: 'var(--c475569)', fontSize: 10.5 }}>{T('so tháng trước', 'vs last month')}</span></div>;
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1120, width: '100%', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ background: effColor, color: '#fff', borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>{effLabel}</span>
-        <button onClick={onPrint} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' }}>{T('Xuất PDF / In', 'Export PDF / Print')}</button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+          <button onClick={onPrint} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}>{T('Xuất PDF / In', 'Export PDF / Print')}</button>
+          <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Trong bản in: nút ✏️ sửa được từng chữ, từng số trước khi gửi khách', 'In the print view: ✏️ lets you edit every word before it goes out')}</span>
+        </div>
       </div>
 
-      {L(content?.headline) && <div style={{ fontSize: 20, fontWeight: 800, color: '#f8fafc', lineHeight: 1.35 }}>{L(content?.headline)}</div>}
+      {L(content?.headline) && <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.35 }}>{L(content?.headline)}</div>}
 
       {L(content?.tldr) && (
-        <div style={{ background: '#0f172a', border: '1px solid #4f46e5', borderLeft: '4px solid #6366f1', borderRadius: 10, padding: '12px 15px' }}>
-          <div style={{ fontSize: 11, color: '#a5b4fc', fontWeight: 700, letterSpacing: 0.3, marginBottom: 4 }}>{T('TÓM TẮT CHO CHỦ TIỆM', 'EXECUTIVE SUMMARY')}</div>
-          <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.6 }}>{L(content?.tldr)}</div>
+        <div style={{ background: 'var(--c0f172a)', border: '1px solid #4f46e5', borderLeft: '4px solid #6366f1', borderRadius: 10, padding: '12px 15px' }}>
+          <div style={{ fontSize: 11, color: 'var(--ca5b4fc)', fontWeight: 700, letterSpacing: 0.3, marginBottom: 4 }}>{T('TÓM TẮT CHO CHỦ TIỆM', 'EXECUTIVE SUMMARY')}</div>
+          <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.6 }}>{L(content?.tldr)}</div>
         </div>
       )}
 
       {/* Pillar 1 + 2 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-        <div style={pv}><div style={pvL}>① {T('ĐÃ CHI', 'SPENT')}</div><div style={pvBig}>{money(b?.totalSpendCents ?? 0)} <span style={{ fontSize: 12, verticalAlign: 'middle' }}>{arrow(d?.spendCents)}</span></div>{spendRows.length > 0 && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{spendRows.map((x) => `${CH_NAME[x.channel] || x.channel} ${money(x.amountCents)}`).join(' · ')}</div>}{(() => {
+        <div style={pv}><div style={pvL}>① {T('ĐÃ CHI', 'SPENT')}</div><div style={pvBig}>{money(b?.totalSpendCents ?? 0)} <span style={{ fontSize: 12, verticalAlign: 'middle' }}>{arrow(d?.spendCents)}</span></div>{spendRows.length > 0 && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>{spendRows.map((x) => `${CH_NAME[x.channel] || x.channel} ${money(x.amountCents)}`).join(' · ')}</div>}{(() => {
           const tot = (k: 'reach' | 'clicks') => (data.channelTrends ?? []).reduce((a, t) => { const dl = t[k]; return { v: a.v + (dl?.value ?? 0), p: a.p + (dl?.prev ?? 0) }; }, { v: 0, p: 0 });
           const mk = (label: string, o: { v: number; p: number }) => {
             if (o.v === 0 && o.p === 0) return null;
             const pct = o.p > 0 ? Math.round(((o.v - o.p) / o.p) * 100) : null;
-            return <span key={label} style={{ marginRight: 10 }}>{label} <b style={{ color: '#e2e8f0' }}>{o.v.toLocaleString()}</b>{pct != null && <span style={{ color: pct >= 0 ? '#22c55e' : '#f87171', fontSize: 11, fontWeight: 700 }}> {pct >= 0 ? '▲' : '▼'}{Math.abs(pct)}%</span>}</span>;
+            return <span key={label} style={{ marginRight: 10 }}>{label} <b style={{ color: 'var(--ce2e8f0)' }}>{o.v.toLocaleString()}</b>{pct != null && <span style={{ color: pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 11, fontWeight: 700 }}> {pct >= 0 ? '▲' : '▼'}{Math.abs(pct)}%</span>}</span>;
           };
           const r2 = mk(T('Hiển thị', 'Reach'), tot('reach')); const c2 = mk('Click', tot('clicks'));
-          return (r2 || c2) ? <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>{r2}{c2}</div> : null;
+          return (r2 || c2) ? <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>{r2}{c2}</div> : null;
         })()}</div>
         <div style={pv}><div style={pvL}>② {T('MANG VỀ', 'RESULTS')}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             {[[String(o.totals.bookings), T('lượt đặt', 'bookings'), d?.bookings, false], [String(o.totals.showed), T('đã đến', 'showed'), d?.showed, false], [String(o.newCustomers), T('khách mới', 'new'), d?.newCustomers, false], [money(o.totals.revenueCents), T('doanh thu', 'revenue'), d?.revenueCents, true]].map((x, i) => (
               <div key={i} style={{ flex: 1, minWidth: 70, textAlign: 'center' }}>
-                <div style={{ fontSize: 21, fontWeight: 800, color: x[3] ? '#22c55e' : '#f8fafc' }}>{x[0] as string}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>{x[1] as string}</div>
+                <div style={{ fontSize: 21, fontWeight: 800, color: x[3] ? '#22c55e' : 'var(--cf8fafc)' }}>{x[0] as string}</div>
+                <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{x[1] as string}</div>
                 <div>{arrow(x[2] as Delta)}</div>
               </div>
             ))}
           </div>
           {(o.gbp?.bookings ?? 0) > 0 && (
-            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, borderTop: '1px solid #1e293b', paddingTop: 6 }}>
-              {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: '#e2e8f0' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: '#22c55e' }}>{money(o.gbp!.revenueCents)}</b>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8, borderTop: '1px solid var(--c1e293b)', paddingTop: 6 }}>
+              {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: 'var(--ce2e8f0)' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: '#22c55e' }}>{money(o.gbp!.revenueCents)}</b>
             </div>
           )}
         </div>
@@ -1390,9 +1393,9 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
 
       {/* Pillar 3 */}
       {b && b.revenuePerSpend != null && (
-        <div style={{ background: '#052e16', border: '1px solid #059669', borderRadius: 12, padding: '12px 16px' }}>
-          <div style={{ fontSize: 12, color: '#6ee7b7', fontWeight: 600, marginBottom: 3 }}>③ {T('HIỆU QUẢ', 'EFFECTIVENESS')}</div>
-          <div style={{ fontSize: 15, color: '#d1fae5' }}>{T('Mỗi', 'Every')} <b>$1</b> {T('chi ra', 'spent')} → <b>${b.revenuePerSpend}</b> {T('doanh thu', 'revenue')}{b.costPerNewCustomerCents != null && <> · {T('chi phí mỗi khách mới', 'cost / new customer')}: <b>{money(b.costPerNewCustomerCents)}</b></>}</div>
+        <div style={{ background: 'var(--c052e16)', border: '1px solid #059669', borderRadius: 12, padding: '12px 16px' }}>
+          <div style={{ fontSize: 12, color: 'var(--c6ee7b7)', fontWeight: 600, marginBottom: 3 }}>③ {T('HIỆU QUẢ', 'EFFECTIVENESS')}</div>
+          <div style={{ fontSize: 15, color: 'var(--cd1fae5)' }}>{T('Mỗi', 'Every')} <b>$1</b> {T('chi ra', 'spent')} → <b>${b.revenuePerSpend}</b> {T('doanh thu', 'revenue')}{b.costPerNewCustomerCents != null && <> · {T('chi phí mỗi khách mới', 'cost / new customer')}: <b>{money(b.costPerNewCustomerCents)}</b></>}</div>
         </div>
       )}
 
@@ -1408,11 +1411,11 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
             const label = x.platform === 'facebook' ? T('CHI TIẾT BÀI FACEBOOK', 'FACEBOOK POSTS') : x.platform === 'tiktok' ? T('VIDEO TIKTOK', 'TIKTOK VIDEOS') : T('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS');
             return (
               <div key={x.platform} style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700, marginBottom: 6 }}>{label} <span style={{ color: '#475569' }}>· {posts.length}</span></div>
+                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, marginBottom: 6 }}>{label} <span style={{ color: 'var(--c475569)' }}>· {posts.length}</span></div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {posts.slice(0, 12).map((p, i) => <PostRowView key={p.id || i} p={p} T={T} />)}
                 </div>
-                {posts.length > 12 && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{T(`+ ${posts.length - 12} bài khác`, `+ ${posts.length - 12} more posts`)}</div>}
+                {posts.length > 12 && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 6 }}>{T(`+ ${posts.length - 12} bài khác`, `+ ${posts.length - 12} more posts`)}</div>}
               </div>
             );
           })}
@@ -1426,9 +1429,9 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
             const fbI = (data.socialInsights ?? []).find((x) => x.platform === 'facebook');
             const dbg = fbI?.fbDebug;
             if (!dbg) return null;
-            return <div style={{ fontSize: 10.5, color: dbg.error ? '#f59e0b' : '#64748b', marginTop: 6 }}>{T('Facebook: đọc được', 'Facebook: read')} <b>{dbg.count}</b> {T('bài', 'posts')}{dbg.error ? ` · ${dbg.error}` : (dbg.count === 0 ? T(' (Page chưa có bài trong tháng)', ' (no page posts this month)') : '')}</div>;
+            return <div style={{ fontSize: 10.5, color: dbg.error ? '#f59e0b' : 'var(--c64748b)', marginTop: 6 }}>{T('Facebook: đọc được', 'Facebook: read')} <b>{dbg.count}</b> {T('bài', 'posts')}{dbg.error ? ` · ${dbg.error}` : (dbg.count === 0 ? T(' (Page chưa có bài trong tháng)', ' (no page posts this month)') : '')}</div>;
           })()}
-          <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--c475569)', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',
                'Organic (non-paid) numbers pulled directly from Facebook/Instagram. A blank means Meta no longer provides that metric.')}
           </div>
@@ -1440,7 +1443,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
         <div style={pv}>
           <div style={pvL}>{T('K\u00caNH GOOGLE MAPS (BUSINESS PROFILE)', 'GOOGLE MAPS (BUSINESS PROFILE)')}</div>
           <div style={{ marginTop: 8 }}><GbpCard g={data.gbp} T={T} /></div>
-          <div style={{ fontSize: 10.5, color: '#475569', marginTop: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--c475569)', marginTop: 8, lineHeight: 1.5 }}>
             {T('S\u1ed1 li\u1ec7u l\u1ea5y tr\u1ef1c ti\u1ebfp t\u1eeb Google Business Profile. Xu\u1ea5t PDF \u0111\u1ec3 xem deck GBP \u0111\u1ea7y \u0111\u1ee7 (xu h\u01b0\u1edbng, t\u1ef7 l\u1ec7 h\u00e0nh \u0111\u1ed9ng, \u0111\u1ec1 xu\u1ea5t, m\u1ee5c ti\u00eau).',
                'Pulled directly from Google Business Profile. Export PDF for the full GBP deck (trend, action rate, recommendations, goals).')}
           </div>
@@ -1460,9 +1463,9 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ background: col, color: '#04121f', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{CH_NAME[c.name] || c.name}</span>
                     <span style={{ fontSize: 11, color: col, fontWeight: 700 }}>{vLabel(c.verdict)}</span>
-                    {metrics && <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 'auto' }}>{metrics}</span>}
+                    {metrics && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginLeft: 'auto' }}>{metrics}</span>}
                   </div>
-                  <div style={{ fontSize: 13, color: '#e2e8f0', marginTop: 5 }}>{vi ? c.vi : (c.en || c.vi)}</div>
+                  <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', marginTop: 5 }}>{vi ? c.vi : (c.en || c.vi)}</div>
                   {chTrendChips(c.name)}
                 </div>
               );
@@ -1475,7 +1478,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
       {hasReport && (content?.highlights ?? []).length > 0 && (
         <div style={pv}>
           <div style={pvL}>{T('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', gap: 5 }}>
             {content!.highlights!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#22c55e', fontWeight: 700 }}>✓</span><span>{L(x)}</span></div>)}
           </div>
         </div>
@@ -1485,7 +1488,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
       {hasReport && (content?.issues ?? []).length > 0 && (
         <div style={{ ...pv, border: '1px solid #b45309' }}>
           <div style={{ ...pvL, color: '#fbbf24' }}>{T('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', gap: 5 }}>
             {content!.issues!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#f59e0b', fontWeight: 700 }}>▲</span><span>{L(x)}</span></div>)}
           </div>
         </div>
@@ -1494,18 +1497,18 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
       {/* Pillar 4: work done + roadmap */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
         <div style={pv}><div style={pvL}>④ {T('ĐÃ LÀM GÌ', 'WHAT WE DID')}</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0' }}>{(data.workLog ?? []).length === 0 ? <span style={{ color: '#64748b' }}>{T('Chưa ghi', 'None logged')}</span> : data.workLog.map((w) => <div key={w.id} style={{ margin: '4px 0' }}>✓ {w.title}</div>)}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ce2e8f0)' }}>{(data.workLog ?? []).length === 0 ? <span style={{ color: 'var(--c64748b)' }}>{T('Chưa ghi', 'None logged')}</span> : data.workLog.map((w) => <div key={w.id} style={{ margin: '4px 0' }}>✓ {w.title}</div>)}</div>
         </div>
-        <div style={{ ...pv, border: '1px solid #6366f1' }}><div style={{ ...pvL, color: '#a5b4fc' }}>{T('LỘ TRÌNH THÁNG SAU', 'NEXT-MONTH ROADMAP')}</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: '#e2e8f0' }}>{(content?.plan ?? []).length === 0 ? <span style={{ color: '#64748b' }}>—</span> : content!.plan!.map((x, i) => <div key={i} style={{ margin: '5px 0', display: 'flex', gap: 8 }}><span style={{ color: '#818cf8', fontWeight: 700 }}>{i + 1}</span><span>{L(x)}</span></div>)}</div>
+        <div style={{ ...pv, border: '1px solid #6366f1' }}><div style={{ ...pvL, color: 'var(--ca5b4fc)' }}>{T('LỘ TRÌNH THÁNG SAU', 'NEXT-MONTH ROADMAP')}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ce2e8f0)' }}>{(content?.plan ?? []).length === 0 ? <span style={{ color: 'var(--c64748b)' }}>—</span> : content!.plan!.map((x, i) => <div key={i} style={{ margin: '5px 0', display: 'flex', gap: 8 }}><span style={{ color: 'var(--c818cf8)', fontWeight: 700 }}>{i + 1}</span><span>{L(x)}</span></div>)}</div>
         </div>
       </div>
 
-      {L(content?.summary) && <div style={{ fontSize: 13, color: '#cbd5e1', background: '#0f172a', borderRadius: 10, padding: '11px 13px', lineHeight: 1.6 }}>{L(content?.summary)}</div>}
+      {L(content?.summary) && <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', background: 'var(--c0f172a)', borderRadius: 10, padding: '11px 13px', lineHeight: 1.6 }}>{L(content?.summary)}</div>}
 
       {!hasReport && (
         <div style={{ ...pv, textAlign: 'center', padding: 20 }}>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 10px' }}>{T('Chưa có báo cáo phân tích cho tháng này. Sang "Chỉnh sửa" để nhập chi phí/công việc rồi bấm Tạo báo cáo (AI phân tích từng kênh + lộ trình).', 'No analysis report for this month yet. Go to "Edit" to enter spend/work, then Generate (AI evaluates each channel + roadmap).')}</p>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px' }}>{T('Chưa có báo cáo phân tích cho tháng này. Sang "Chỉnh sửa" để nhập chi phí/công việc rồi bấm Tạo báo cáo (AI phân tích từng kênh + lộ trình).', 'No analysis report for this month yet. Go to "Edit" to enter spend/work, then Generate (AI evaluates each channel + roadmap).')}</p>
           <button onClick={onEdit} style={ui.primaryBtn}>{T('Sang Chỉnh sửa', 'Go to Edit')}</button>
         </div>
       )}
@@ -1513,17 +1516,17 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
   );
 }
 
-const pv: CSSProperties = { background: '#111a2c', border: '1px solid #22304d', borderRadius: 14, padding: '15px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.22)' };
+const pv: CSSProperties = { background: 'var(--c111a2c)', border: '1px solid #22304d', borderRadius: 14, padding: '15px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.22)' };
 const pvL: CSSProperties = { fontSize: 11, color: '#93a4c4', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', borderLeft: '3px solid #6366f1', paddingLeft: 9, lineHeight: 1.2 };
-const pvBig: CSSProperties = { fontSize: 28, fontWeight: 800, color: '#f8fafc', marginTop: 6, letterSpacing: -0.5 };
-const segBtn = (on: boolean): CSSProperties => ({ padding: '7px 18px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : '#94a3b8', fontSize: 13, fontWeight: on ? 700 : 500, cursor: 'pointer' });
-const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: '#cbd5e1' };
-const dateInput: CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 13 };
-const numInput: CSSProperties = { width: 90, background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 13 };
+const pvBig: CSSProperties = { fontSize: 28, fontWeight: 800, color: 'var(--cf8fafc)', marginTop: 6, letterSpacing: -0.5 };
+const segBtn = (on: boolean): CSSProperties => ({ padding: '7px 18px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--c94a3b8)', fontSize: 13, fontWeight: on ? 700 : 500, cursor: 'pointer' });
+const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' };
+const dateInput: CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '7px 10px', fontSize: 13 };
+const numInput: CSSProperties = { width: 90, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 6, padding: '5px 8px', fontSize: 13 };
 const th: CSSProperties = { padding: '6px 8px', fontWeight: 600, fontSize: 12 };
 const td: CSSProperties = { padding: '5px 8px' };
-const lbl: CSSProperties = { display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 };
-const ta: CSSProperties = { width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 8, padding: '8px 10px', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' };
-const ghost: CSSProperties = { padding: '8px 12px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 13, cursor: 'pointer' };
-const miniBtn: CSSProperties = { padding: '5px 11px', borderRadius: 7, border: '1px solid #334155', background: 'transparent', color: '#e2e8f0', fontSize: 12, cursor: 'pointer' };
-const inp: CSSProperties = { background: '#111827', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 7, padding: '7px 10px', fontSize: 13 };
+const lbl: CSSProperties = { display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 };
+const ta: CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '8px 10px', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' };
+const ghost: CSSProperties = { padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' };
+const miniBtn: CSSProperties = { padding: '5px 11px', borderRadius: 7, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12, cursor: 'pointer' };
+const inp: CSSProperties = { background: 'var(--c111827)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 7, padding: '7px 10px', fontSize: 13 };

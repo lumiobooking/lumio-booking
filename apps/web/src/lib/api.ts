@@ -1,4 +1,6 @@
 // Thin client for the Lumio Booking backend API.
+import { writeKind, successText, cacheable, cacheKey, GetCache, SLOW_NOTICE_MS, slowText } from './api-feedback';
+import { notify } from './feedback';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 
 // Multi-branch: the salon owner/manager's currently selected branch. Read fresh
@@ -128,19 +130,51 @@ export function apiStream(
   return () => ctrl.abort();
 }
 
+// The 15-second GET memory. Navigating back to a page you left five seconds
+// ago should not feel like visiting it for the first time. Any write wipes it
+// wholesale — see api-feedback.ts for the reasoning behind both numbers.
+const getCache = new GetCache();
+
+/** The language the toasts speak. The i18n hook lives in React; this does not,
+ *  so the provider tells us once and we remember. Defaults to Vietnamese. */
+let toastVi = true;
+export function setFeedbackLang(vi: boolean) { toastVi = vi; }
+
 export async function apiFetch<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', token, body } = options;
 
   const branch = activeBranchId();
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(branch ? { 'X-Branch-Id': branch } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+
+  // Serve a fresh-enough GET from memory: hopping between two screens stops
+  // re-downloading a world that is seconds old from a server an ocean away.
+  const key = cacheKey(path, token, branch);
+  if (cacheable(method, path)) {
+    const hit = getCache.get(key);
+    if (hit.hit) return hit.data as T;
+  }
+
+  // If the answer takes long enough that the app starts to look dead, say WHY.
+  // Render spins the API down when idle; the first request of the morning can
+  // take tens of seconds, and a wordless spinner that long reads as "broken".
+  const slowTimer = setTimeout(() => notify('info', slowText(toastVi)), SLOW_NOTICE_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(branch ? { 'X-Branch-Id': branch } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    clearTimeout(slowTimer);
+    notify('error', toastVi ? 'Mất kết nối mạng' : 'Network error');
+    throw e;
+  }
+  clearTimeout(slowTimer);
 
   const data = await res.json().catch(() => null);
 
@@ -153,7 +187,20 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
     const message =
       (data && typeof data === 'object' && 'message' in data && String((data as any).message)) ||
       `Request failed (${res.status})`;
+    // EVERY failure is announced, even where a page also shows its own banner.
+    // The complaint this answers is "I pressed it and nothing told me anything"
+    // — an error that only lands in a corner of one page is exactly that.
+    if (method !== 'GET' && !(res.status === 401 && token)) notify('error', message);
     throw new ApiError(message, res.status, data);
+  }
+
+  if (method === 'GET') {
+    if (cacheable(method, path)) getCache.set(key, data);
+  } else {
+    // The world changed: every remembered answer is now suspect.
+    getCache.clear();
+    // The receipt. Only for things a person did on purpose — see writeKind.
+    if (writeKind(method, path) === 'announce') notify('success', successText(path, toastVi));
   }
 
   return data as T;

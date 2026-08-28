@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { setFeedbackLang } from './api';
 import { applyCurrency, onUiCurrencyChange } from './ui-currency';
 
 export type Lang = 'en' | 'vi';
@@ -26,6 +27,10 @@ export function LangProvider({ children }: { children: ReactNode }) {
   // first paint.
   const [, bump] = useState(0);
   useEffect(() => onUiCurrencyChange(() => bump((n) => n + 1)), []);
+  // The API client's toasts speak whatever the app speaks. It is a plain
+  // module with no access to this context, so the provider tells it.
+  useEffect(() => { setFeedbackLang(lang === 'vi'); }, [lang]);
+
   return <Ctx.Provider value={{ lang, setLang }}>{children}</Ctx.Provider>;
 }
 

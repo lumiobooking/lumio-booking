@@ -4,6 +4,8 @@ import { AuthProvider } from '../lib/auth';
 import { LangProvider } from '../lib/i18n';
 import { PwaRegister } from '../components/PwaRegister';
 import { themeCss } from '../lib/theme';
+import { FeedbackToasts } from '../components/FeedbackToasts';
+import { NavProgress } from '../components/NavProgress';
 
 export const metadata = {
   title: 'Lumio Booking',
@@ -54,6 +56,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       >
         <AuthProvider><LangProvider>{children}</LangProvider></AuthProvider>
         <PwaRegister />
+        <NavProgress />
+        <FeedbackToasts />
       </body>
     </html>
   );

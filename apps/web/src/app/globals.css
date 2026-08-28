@@ -93,3 +93,45 @@ button {
   background: var(--c334155);
   border-radius: 8px;
 }
+
+/* ===========================================================================
+ * Action feedback — every control in the product answers the finger.
+ * Inline styles cannot express :active/:disabled/:focus-visible, so the one
+ * global stylesheet does it for all ~100 screens at once. This is the direct
+ * fix for "bấm vào không biết được hay chưa".
+ * =========================================================================== */
+button {
+  transition: transform 0.06s ease, opacity 0.12s ease, filter 0.12s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.965);
+  filter: brightness(1.18);
+}
+html[data-theme='light'] button:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+a { transition: opacity 0.1s ease; }
+a:active { opacity: 0.6; }
+/* Keyboard users get the same answer sighted-mouse users get. */
+:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes lumio-toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes lumio-nav-slide {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+@keyframes lumio-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}

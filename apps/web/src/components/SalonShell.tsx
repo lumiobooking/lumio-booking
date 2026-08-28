@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useCallback, useEffect, useState 
 import { InboxAlerts } from './InboxAlerts';
 import { ThemeToggle } from './ThemeToggle';
 import { NavIcon } from './NavIcon';
+import { canSee, isSupportOnly, gateText } from '../lib/support-gate';
 import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -182,7 +183,14 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // back to "all" so upgrading never locks the owner out.
   const caps: string[] = user?.capabilities ?? (user && (user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN') ? ALL_CAPS : []);
   const hasSalonAccess = caps.length > 0;
-  const can = (href: string) => { const c = HREF_CAP[href]; return !c || caps.includes(c); };
+  const isSupport = !!user?.supportSession;
+  // Two gates, one verdict. Capabilities say what the PLAN allows; the support
+  // gate says what belongs to the AGENCY. The salon's menu only shows what
+  // passes both — Google reviews being the one agency-family route that stays.
+  const can = (href: string) => {
+    if (!canSee(href, isSupport)) return false;
+    const c = HREF_CAP[href]; return !c || caps.includes(c);
+  };
   // Staff with salon access are assumed POS-entitled (the owner's plan applies);
   // only the owner's own view is gated by the cached plan flag.
   const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
@@ -265,6 +273,17 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   // Lumio SUPPORT session: a thin, always-visible strip so the employee can
   // never forget WHICH salon they are inside — and one tap takes them home.
+  // The door itself. Hiding the menu is politeness; this is the rule — a salon
+  // account that navigates straight to an agency route sees who runs it and
+  // how to ask, never a half-working screen it was not meant to operate.
+  const gated = (!isSupport && isSupportOnly(pathname)) ? (
+    <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center', background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 14, padding: '36px 28px' }}>
+      <div style={{ fontSize: 34, marginBottom: 10 }}>🛠</div>
+      <h2 style={{ margin: '0 0 10px', fontSize: 19, color: 'var(--cf8fafc)' }}>{gateText(lang === 'vi').title}</h2>
+      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'var(--c94a3b8)' }}>{gateText(lang === 'vi').body}</p>
+    </div>
+  ) : children;
+
   const supportBanner = user?.supportSession ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
       <span style={{ fontWeight: 700 }}>🛠 Lumio Support</span>
@@ -420,7 +439,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           </>
         )}
 
-        <main style={{ padding: '18px 16px 88px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{children}</main>
+        <main style={{ padding: '18px 16px 88px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{gated}</main>
         <MobileTabBar />
       </div>
     );
@@ -449,10 +468,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
             <span>{navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu' : 'Collapse menu')}</span>
           </button>
           <ThemeToggle />
-          <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} />
+          {isSupport && <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} />}
           <NotificationBell />
         </header>
-        <main style={{ padding: '22px 32px 40px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{children}</main>
+        <main style={{ padding: '22px 32px 40px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{gated}</main>
       </div>
     </div>
   );

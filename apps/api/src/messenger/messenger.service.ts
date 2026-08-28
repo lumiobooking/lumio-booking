@@ -953,6 +953,12 @@ export class MessengerService implements OnModuleInit {
     }
 
     const localTurns = (Array.isArray(row.history) ? row.history : []) as Turn[];
+    // 'partial' = the fast paint (never asked Meta) · 'meta' = full transcript
+    // · 'local' = asked Meta and was REFUSED, showing our 12-turn buffer. The
+    // inbox tells the person which one they are reading — twelve messages
+    // silently pretending to be the whole story is how someone re-asks a
+    // question the customer answered last week.
+    let historySource: 'partial' | 'meta' | 'local' = full ? 'local' : 'partial';
 
     // Read the real transcript from Meta. The local buffer is the fallback, not
     // the source — see fetchMetaHistory for why they are different things.
@@ -967,6 +973,7 @@ export class MessengerService implements OnModuleInit {
           String(row.pageId), tok, String(row.senderId),
           (row as { channel?: string }).channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER',
         );
+        if (meta && meta.length) historySource = 'meta';
         turns = mergeHistory(meta as never, localTurns as never) as unknown as Turn[];
       }
     }
@@ -1005,6 +1012,7 @@ export class MessengerService implements OnModuleInit {
 
     return {
       ...row,
+      historySource,
       labels: ((row as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
       notes,
       canned,
@@ -3200,11 +3208,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // this is a single request rather than a walk over every conversation.
       const url = `${GRAPH}/${encodeURIComponent(pageId)}/conversations`
         + `?platform=${platform}&user_id=${encodeURIComponent(psid)}`
-        + `&fields=messages.limit(60){message,from,created_time}`
+        + `&fields=messages.limit(100){message,from,created_time}`
         + `&access_token=${encodeURIComponent(pageToken)}`;
       const r = await fetch(url);
       const j = (await r.json().catch(() => ({}))) as {
-        data?: { messages?: { data?: { message?: string; created_time?: string; from?: { id?: string } }[] } }[];
+        data?: { messages?: { data?: { message?: string; created_time?: string; from?: { id?: string } }[]; paging?: { next?: string } } }[];
         error?: { message?: string };
       };
       if (j.error) {
@@ -3213,6 +3221,18 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       const msgs = j.data?.[0]?.messages?.data;
       if (!Array.isArray(msgs)) return null;
+
+      // One more page when there is one — 200 messages covers months of a
+      // salon conversation. "Không đầy đủ" was the owner's exact complaint,
+      // and 60 was an arbitrary first guess, not a limit Meta imposes.
+      const next = j.data?.[0]?.messages?.paging?.next;
+      if (next && msgs.length >= 100) {
+        try {
+          const r2 = await fetch(next);
+          const j2 = (await r2.json().catch(() => ({}))) as { data?: { message?: string; created_time?: string; from?: { id?: string } }[] };
+          if (Array.isArray(j2.data)) msgs.push(...j2.data.slice(0, 100));
+        } catch { /* the first hundred still stand */ }
+      }
 
       const turns: Turn[] = msgs
         .filter((m) => String(m?.message ?? '').trim())

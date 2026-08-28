@@ -41,6 +41,9 @@ interface CustomerCtx {
 }
 interface ThreadDetail extends InboxRow {
   history: Turn[];
+  /** 'meta' = full transcript · 'local' = Meta refused, 12-turn buffer only ·
+   *  'partial' = the fast first paint, full answer still on its way. */
+  historySource?: 'partial' | 'meta' | 'local';
   customer: CustomerCtx | null;
   replyWindow?: { open: boolean; minutesLeft: number | null };
   /** Taken from the facts the salon already wrote for the bot — one source, two
@@ -415,7 +418,13 @@ export function InboxView() {
         ...(narrow ? {
           width: '100vw', marginLeft: 'calc(50% - 50vw)',
           border: 'none', borderRadius: 0,
-          height: cardH ?? undefined, gridTemplateRows: 'minmax(0,1fr)',
+          height: cardH ?? undefined,
+          // Flex, not grid, on the phone. The grid version declared ONE
+          // flexible row — which the browser handed to the first child, the
+          // source strip, squashing it to a clipped sliver while the list
+          // took leftovers. In a column of [strip, one visible pane], flex
+          // says it directly: strip keeps its size, the pane gets the rest.
+          display: 'flex', flexDirection: 'column' as const,
         } : {}) }}>
         {/* No fixed height on the card. It used to be 74vh, but the card's TOP
             already sits well down the page — support banner, heading, whatever
@@ -433,7 +442,7 @@ export function InboxView() {
         <div style={{
           background: 'var(--c0b1220)', gap: 6, display: (narrow && openId) ? 'none' : 'flex',
           ...(narrow
-            ? { flexDirection: 'row', padding: '8px 10px', borderBottom: '1px solid var(--c1e293b)', overflowX: 'auto', alignItems: 'center' }
+            ? { flexDirection: 'row', padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, flexShrink: 0, minHeight: 54, alignItems: 'center' }
             : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid var(--c1e293b)', alignItems: 'center' }),
         }}>
           <button onClick={() => setSource('any')} title={vi ? 'Tất cả nguồn' : 'All sources'} aria-label={vi ? 'Tất cả nguồn' : 'All sources'}
@@ -474,6 +483,7 @@ export function InboxView() {
           borderRight: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0,
           // On a phone, picking a customer replaces the list with the chat.
           display: (narrow && openId) ? 'none' : 'flex',
+          ...(narrow ? { flex: '1 1 0%', minHeight: 0 } : {}),
         }}>
           <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--c1e293b)' }}>
             <input value={query} onChange={(e) => setQuery(e.target.value)}
@@ -626,6 +636,7 @@ export function InboxView() {
           // On a phone this IS the screen once a customer is picked, and it is
           // hidden until then — never a half-width chat beside a half-width list.
           display: (narrow && (!openId || showInfo)) ? 'none' : 'flex',
+          ...(narrow ? { flex: '1 1 0%', minHeight: 0 } : {}),
         }}>
           {!detail && (
             <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: 20, margin: 0 }}>
@@ -668,7 +679,10 @@ export function InboxView() {
                     what the list already showed, and "Done" lives on in the ⓘ
                     panel — on a 390px screen every extra button here is paid
                     for with letters of the customer's name. */}
-                {!narrow && pill(stateLabel(detail, vi).tone, stateLabel(detail, vi).text)}
+                {/* The status stays on the phone too — the owner asked for it
+                    by name. Who holds this conversation is the one fact a
+                    person needs before typing. */}
+                {pill(stateLabel(detail, vi).tone, stateLabel(detail, vi).text)}
                 {(state === 'human' || state === 'unclaimed')
                   ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10 } : {}) }}>{vi ? 'Trả bot' : 'To bot'}</button>
                   : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' } : {}) }}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
@@ -679,12 +693,22 @@ export function InboxView() {
                   // Labels, follow-up and notes are a column on a desktop and a
                   // panel behind this button on a phone. Same content either way.
                   <button onClick={() => setShowInfo(true)} style={{ ...ghostBtn, padding: '9px 13px', fontSize: 15, borderRadius: 10 }}
-                    title={vi ? 'Nhãn · hẹn · ghi chú' : 'Labels · follow-up · notes'}>ⓘ</button>
+                    title={vi ? 'Nhãn · hẹn · ghi chú' : 'Labels · follow-up · notes'}>ⓘ {vi ? 'Ghi chú' : 'Notes'}</button>
                 )}
               </div>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: narrow ? 0 : 180, maxHeight: narrow ? undefined : 'min(46vh, 420px)', padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
+              {/* Twelve messages must never pretend to be the whole story.
+                  When Meta refused the transcript, say so and offer the retry
+                  — silence here is how somebody re-asks a question the
+                  customer answered last week. */}
+              {detail.historySource === 'local' && (
+                <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--c1e293b)', borderRadius: 8, padding: '6px 12px' }}>
+                  {vi ? 'Chỉ đang hiện các tin gần nhất — chưa tải được toàn bộ lịch sử từ Meta.' : 'Showing recent messages only — Meta did not return the full history.'}
+                  <button onClick={() => void loadThread(detail.id)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', fontWeight: 700, cursor: 'pointer', fontSize: 11.5 }}>{vi ? 'Thử lại' : 'Retry'}</button>
+                </div>
+              )}
               {detail.history.map((t, i) => {
                 const mine = t.role === 'assistant';
                 return (
@@ -753,6 +777,7 @@ export function InboxView() {
           // On a phone the notes, labels and follow-up live behind the ⓘ button
           // in the conversation header rather than in a fourth column.
           display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : 'flex',
+          ...(narrow ? { flex: '1 1 0%' } : {}),
         }}>
           {narrow && (
             <button onClick={() => setShowInfo(false)}

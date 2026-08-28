@@ -165,18 +165,29 @@ export function InboxView() {
 
   const loadThread = useCallback(async (id: string) => {
     if (!token) return;
+    // Being called IS the declaration that this conversation is now open.
+    // Waiting for React to re-render and refresh the ref instead leaves a gap:
+    // an answer served from the 15-second cache arrives before that render,
+    // finds the ref still holding the previous id, and gets discarded.
+    openRef.current = id;
     try {
       // Two asks. The first never touches Meta and answers in one database
       // hop — the conversation paints at the speed of a click. The second
       // brings the full Meta transcript and the name backfill; by the time a
       // person has read the first two bubbles it has quietly replaced the rest.
+      //
+      // The gate for BOTH is "is this still the conversation on screen?" —
+      // checked against openRef, the id of the row the person clicked last.
+      // The first version of this guard compared against the PREVIOUS detail
+      // instead, which reads as sensible and is exactly backwards: with A on
+      // screen, B's answer arrived, "B ≠ A" → keep A — every click after the
+      // first was silently discarded, the bug reported as "nhấn vào tin khác
+      // không được".
       const quick = await apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token });
-      setDetail((cur) => (cur && cur.id !== quick.id ? cur : quick));
+      if (openRef.current === id) setDetail(quick);
       void apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
       const fullD = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token });
-      // The person may have clicked another conversation while Meta answered —
-      // a late reply must never overwrite the thread they are LOOKING at now.
-      setDetail((cur) => (cur && cur.id === fullD.id ? fullD : cur));
+      if (openRef.current === id) setDetail(fullD);
     } catch (e) { setErr(String(e)); }
   }, [token]);
 

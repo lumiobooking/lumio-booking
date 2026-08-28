@@ -848,7 +848,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
        /* Lining, equal-width digits: numbers in columns land in columns. */
        font-variant-numeric:tabular-nums}
   @media print{body{background:#fff;width:auto}}
-  .sheet{width:281mm;min-height:188mm;background:#fff;padding:9mm 11mm 6mm;display:flex;flex-direction:column;page-break-after:always;margin:0 auto}
+  .sheet{width:281mm;min-height:188mm;background:#fff;padding:9mm 11mm 6mm;display:flex;flex-direction:column;page-break-after:always;margin:0 auto;overflow:hidden}
   @media screen{.sheet{margin:10px auto;border:1px solid #dbe2ee;border-radius:10px}}
   .sheet:last-of-type{page-break-after:auto}
   .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
@@ -856,7 +856,13 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   .rule{height:3px;border-radius:2px;background:linear-gradient(90deg,#4f46e5,#e1306c 55%,#f59e0b);margin:8px 0 1px;flex-shrink:0}
   .chip{display:inline-grid;place-items:center;min-width:44px;height:34px;border-radius:9px;font-weight:800;font-size:15px;padding:0 10px}
   .grid{display:grid;gap:10px;margin-top:10px;break-inside:avoid}
-  .panel{background:#fff;border:1px solid #e3e8f2;border-radius:12px;padding:12px 14px;break-inside:avoid;margin-top:10px}
+  /* THE line that keeps the columns honest. A grid item's default min-width is
+     its content's min width, so one unwrappable line (a post caption, a long
+     number) inflates its column past the fraction it was given — the content
+     panel then swallowed the ads panel's space and pushed the audience panel
+     clean off the edge of the sheet. min-width:0 lets fr do its arithmetic. */
+  .grid>*{min-width:0}
+  .panel{background:#fff;border:1px solid #e3e8f2;border-radius:12px;padding:12px 14px;break-inside:avoid;margin-top:10px;overflow:hidden}
   .grid .panel{margin-top:0} /* the grid's gap already spaces these */
   .sec{display:flex;align-items:center;gap:8px;margin-bottom:9px}
   .sec-n{width:21px;height:21px;border-radius:6px;background:#eef2ff;color:#4338ca;font-size:11px;font-weight:800;display:grid;place-items:center;flex-shrink:0}
@@ -896,8 +902,18 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       if(h>MAX){ el.style.zoom=Math.max(0.6,(MAX-6)/h); }
     }
   }
+  // The zoom exists to squeeze a sheet onto PAPER. It used to stay applied
+  // after the print dialog closed, so on screen one sheet rendered at 88% and
+  // the next at 100% — pages of visibly different sizes, which reads as the
+  // layout jumping around. Paper gets the fit; the screen goes back to 1:1.
+  function clearFit(){
+    var ps=document.querySelectorAll('.sheet');
+    for(var i=0;i<ps.length;i++){ ps[i].style.zoom=''; }
+  }
+  window.onbeforeprint=fitPages;
+  window.onafterprint=clearFit;
   var printed=false;
-  function printOnce(){ if(printed) return; printed=true; fitPages(); window.print(); }
+  function printOnce(){ if(printed) return; printed=true; fitPages(); window.print(); clearFit(); }
   window.onload=function(){
     var ready=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();
     ready.then(function(){

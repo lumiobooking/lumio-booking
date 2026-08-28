@@ -520,8 +520,12 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const up = dl.pct >= 0;
     return `<span class="t-cap" style="color:${up ? '#059669' : '#dc2626'};font-weight:700">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
   };
-  const bignum = (val: string, label: string, dl?: Delta, green?: boolean) =>
-    `<div style="flex:1;min-width:78px;text-align:center"><div class="t-num" style="font-weight:800;color:${green ? '#059669' : '#111827'};line-height:1.15">${val}</div><div class="t-body" style="color:#6b7280;margin-top:2px">${label}</div><div class="t-cap" style="">${arrow(dl)}</div></div>`;
+  // The value prints in ink for everyone. It used to paint revenue green
+  // unconditionally, so a month that earned 35$ against 200$ of spend still
+  // glowed "good" — the delta arrow is where the judgement lives. `tone` exists
+  // for the one number that IS a verdict by definition (ROAS).
+  const bignum = (val: string, label: string, dl?: Delta, tone?: string) =>
+    `<div style="flex:1;min-width:86px;text-align:center"><div class="t-num" style="color:${tone || '#0b1f3a'}">${val}</div><div class="t-cap" style="color:#64748b;margin-top:3px">${label}</div><div class="t-cap" style="min-height:14px">${arrow(dl)}</div></div>`;
 
   const CH: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: t('Khác', 'Other') };
   const spendRows = (data.spend ?? []).filter((x) => x.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
@@ -556,7 +560,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   };
   const channelsHtml = (c.channels ?? []).map((ch) => {
     const col = vColor[ch.verdict] || '#6b7280'; const met = chMet(ch.name);
-    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:9px 13px;margin:0 0 9px;break-inside:avoid;-webkit-column-break-inside:avoid"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="t-body" style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span class="t-cap" style="color:#6b7280">${esc(met)}</span>` : ''}</div><div class="t-body" style="color:#374151;font-weight:400;margin-top:3px">${esc(L(ch))}</div>${chTrendTxt(ch.name)}</div>`;
+    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:9px 13px;margin:0;break-inside:avoid"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="t-body" style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span class="t-cap" style="color:#6b7280">${esc(met)}</span>` : ''}</div><div class="t-body" style="color:#374151;font-weight:400;margin-top:3px">${esc(L(ch))}</div>${chTrendTxt(ch.name)}</div>`;
   }).join('');
   const hiHtml = (c.highlights ?? []).map((x) => `<div style="margin:3px 0">✓ ${esc(L(x))}</div>`).join('');
   const issHtml = (c.issues ?? []).map((x) => `<div style="margin:3px 0">▲ ${esc(L(x))}</div>`).join('');
@@ -598,8 +602,24 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const tt = S.find((x) => x.platform === 'tiktok');
   const fnum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
   const arS = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span class="t-cap" style="color:${dl.pct >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
-  const engR = (x?: SocialInsight) => { if (!x || x.engagement == null) return '—'; const denom = x.reach || x.followers; return denom ? `${Math.round((x.engagement / denom) * 1000) / 10}%` : '—'; };
-  const panel = (title: string, inner: string) => `<div style="background:#fff;border:1px solid #e6e9f0;border-radius:14px;padding:15px 17px"><div class="t-h3" style="color:#0B1F3A;text-transform:uppercase;border-left:4px solid #1e3a8a;padding-left:10px;margin-bottom:12px">${title}</div>${inner}</div>`;
+  // Engagement ÷ reach, else ÷ views, else ÷ followers. TikTok has no reach,
+  // and dividing by its 21 followers printed "1209.5%" in a client report — one
+  // impossible number and every other number on the page stops being believed.
+  // A rate that still comes out above 100% prints as an em-dash for the same
+  // reason.
+  const engR = (x?: SocialInsight) => {
+    if (!x || x.engagement == null) return '—';
+    const denom = x.reach || x.views || x.followers;
+    if (!denom) return '—';
+    const r = Math.round((x.engagement / denom) * 1000) / 10;
+    return r > 100 ? '—' : `${r}%`;
+  };
+  // ONE numbering system. The old template mixed three glyph families on a
+  // single page (◆ for some sections, ①② for others, ◎ for a third kind) —
+  // which reads as three different documents stitched together. Every section
+  // is now a numbered chip + tracked small caps, numbered per page.
+  const panel = (n: string, title: string, inner: string) =>
+    `<div class="panel"><div class="sec">${n ? `<span class="sec-n">${n}</span>` : ''}<span class="sec-t">${title}</span></div>${inner}</div>`;
   const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined, tv?: string, tdv?: SocialDelta | null) =>
     `<tr><td class="t-body" style="padding:7px 2px;color:#475569;border-top:1px solid #eef1f6">${label}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color:#0f2a52;border-top:1px solid #eef1f6">${fv} ${arS(fd)}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color:#0f2a52;border-top:1px solid #eef1f6">${iv} ${arS(idv)}</td>${tt ? `<td style="padding:7px 2px;text-align:right;font-weight:700;color:#0f2a52;border-top:1px solid #eef1f6">${tv ?? '—'} ${arS(tdv)}</td>` : ''}</tr>`;
   const perfTable = `<table style="width:100%;border-collapse:collapse">
@@ -618,11 +638,37 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const fbMs = fb?.monthlySeries ?? [];
   const cumF: number[] = fbMs.length > 1 ? fbMs.map((m) => m.followers) : [];
   const igMs = ig?.monthlySeries ?? [];
-  if (cumA.length < 2 && igMs.length > 1) { for (const m of igMs) cumA.push(m.followers); }
-  const sparkD = (arr: number[], color: string) => { if (arr.length < 2) return ''; const w = 260, h = 54, pd = 4; const mn = Math.min(...arr), mx = Math.max(...arr), sp = mx - mn || 1; const pts = arr.map((v, i) => `${(pd + (i / (arr.length - 1)) * (w - 2 * pd)).toFixed(1)},${(h - pd - ((v - mn) / sp) * (h - 2 * pd)).toFixed(1)}`).join(' '); return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:50px;margin-top:6px"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`; };
+  let igMonthly = false;
+  if (cumA.length < 2 && igMs.length > 1) { igMonthly = true; cumA.length = 0; for (const m of igMs) cumA.push(m.followers); }
+  // A line with no numbers on it is decoration, not a chart. This one carries
+  // the first and last values, a dot on today, a soft area fill, and month
+  // captions when the series is monthly — the four things that let a reader
+  // answer "from what, to what, over when" without leaving the panel.
+  const sparkD = (arr: number[], color: string, months?: string[]) => {
+    if (arr.length < 2) return '';
+    const w = 260, h = 72, pd = 10, top = 13, bot = months?.length ? 15 : 6;
+    const mn = Math.min(...arr), mx = Math.max(...arr), sp = mx - mn || 1;
+    const X = (i: number) => pd + (i / (arr.length - 1)) * (w - 2 * pd);
+    const Y = (v: number) => top + (1 - (v - mn) / sp) * (h - top - bot - 6);
+    const pts = arr.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const base = (h - bot).toFixed(1);
+    const mLb = (m: string) => (m && m.length >= 7 ? `${m.slice(5, 7)}/${m.slice(2, 4)}` : m);
+    const labels = months?.length
+      ? `<text x="${pd}" y="${h - 3}" font-size="8.5" fill="#8a97ad">${mLb(months[0])}</text><text x="${w - pd}" y="${h - 3}" font-size="8.5" fill="#8a97ad" text-anchor="end">${mLb(months[months.length - 1])}</text>`
+      : '';
+    return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:64px;margin-top:6px">
+      <line x1="${pd}" y1="${base}" x2="${w - pd}" y2="${base}" stroke="#e3e8f2" stroke-width="1"/>
+      <polygon points="${pd},${base} ${pts} ${(w - pd).toFixed(1)},${base}" fill="${color}" opacity="0.09"/>
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${X(arr.length - 1).toFixed(1)}" cy="${Y(arr[arr.length - 1]).toFixed(1)}" r="2.6" fill="${color}"/>
+      <text x="${X(0).toFixed(1)}" y="${(Y(arr[0]) - 5).toFixed(1)}" font-size="9" font-weight="700" fill="#64748b">${fnum(arr[0])}</text>
+      <text x="${X(arr.length - 1).toFixed(1)}" y="${(Y(arr[arr.length - 1]) - 5).toFixed(1)}" font-size="9" font-weight="700" fill="${color}" text-anchor="end">${fnum(arr[arr.length - 1])}</text>
+      ${labels}
+    </svg>`;
+  };
   const growth = `<div style="display:flex;gap:16px">
-    <div style="flex:1"><div class="t-h3" style="color:#1877f2;font-weight:800;">Facebook</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div class="t-cap" style="color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumF.length > 1 ? sparkD(cumF, '#1877f2') : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
-    <div style="flex:1"><div class="t-h3" style="color:#e1306c;font-weight:800;">Instagram</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div class="t-cap" style="color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumA.length > 1 ? sparkD(cumA, '#e1306c') : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
+    <div style="flex:1"><div class="t-h3" style="color:#1877f2;font-weight:800;">Facebook</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div class="t-cap" style="color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumF.length > 1 ? sparkD(cumF, '#1877f2', fbMs.map((m) => m.month)) : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
+    <div style="flex:1"><div class="t-h3" style="color:#e1306c;font-weight:800;">Instagram</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div class="t-cap" style="color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumA.length > 1 ? sparkD(cumA, '#e1306c', igMonthly ? igMs.map((m) => m.month) : undefined) : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
   </div>`;
   const igP = ig?.posts ?? [];
   const reels = igP.filter((x) => x.type === 'reel' || x.type === 'video').length;
@@ -680,7 +726,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const kw = (g.keywords || []).slice(0, 6);
     const kwPanel = kw.length ? `<div class="t-body" style="">${kw.map((k) => `<div style="display:flex;justify-content:space-between;margin:2px 0;color:#475569"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.keyword)}</span><b style="color:#0f2a52;flex-shrink:0;margin-left:8px">${fnum(k.count)}</b></div>`).join('')}</div>` : `<div class="empty">${t('Chưa có dữ liệu từ khoá tháng này.', 'No keyword data this month.')}</div>`;
     const impSeries = (g.series || []).map((x) => x.impressions || 0);
-    const trendPanel = impSeries.length > 1 ? sparkD(impSeries, '#1a73e8') : `<div class="empty">${t('Cần ≥2 tháng đồng bộ để vẽ xu hướng.', 'Need ≥2 synced months for a trend.')}</div>`;
+    const trendPanel = impSeries.length > 1 ? sparkD(impSeries, '#1a73e8', (g.series || []).map((x) => x.month)) : `<div class="empty">${t('Cần ≥2 tháng đồng bộ để vẽ xu hướng.', 'Need ≥2 synced months for a trend.')}</div>`;
     const actRate = (val: number | null | undefined) => (totImp > 0 && val != null ? Math.round((val / totImp) * 1000) / 10 : null);
     const actBar = (label: string, val: number | null | undefined, color: string) => { const r = actRate(val); return `<div style="margin:4px 0"><div class="t-body" style="display:flex;justify-content:space-between;color:#475569"><span>${esc(label)}</span><b style="color:#0f2a52">${r != null ? r + '%' : '—'}</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${r || 0}%;background:${color}"></span></div></div>`; };
     const actionPanel = `${actBar(t('Gọi điện', 'Calls'), g.calls, '#4285F4')}${actBar(t('Chỉ đường', 'Directions'), g.directions, '#34A853')}${actBar(t('Truy cập web', 'Website'), g.websiteClicks, '#FBBC05')}${actBar(t('Đặt lịch', 'Bookings'), g.bookings, '#EA4335')}`;
@@ -704,91 +750,150 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       ? t('Khách tìm chủ yếu qua Tìm kiếm — tối ưu từ khoá dịch vụ trong mô tả hồ sơ.', 'Most discovery is via Search — optimise service keywords in the profile description.')
       : t('Khách chủ yếu thấy trên Maps — thêm ảnh mới & cập nhật giờ mở cửa để nổi bật.', 'Most views are on Maps — add fresh photos & keep hours updated to stand out.'));
     const recPanel = `<div class="t-body" style="line-height:1.5">${recs.map((r) => `<div style="margin:3px 0;color:#334155">• ${esc(r)}</div>`).join('')}</div>`;
-    gbpHtml = `<div class="brk"></div><div class="page">
-    <div style="background:linear-gradient(120deg,#1a73e8,#174ea6);color:#fff;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center">
-      <div><div class="t-cap" style="display:inline-block;background:rgba(255,255,255,.16);border-radius:6px;padding:2px 9px;font-weight:700;letter-spacing:1.4px;opacity:.9">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div>
-      <div class="t-title" style="font-weight:800;margin-top:5px;line-height:1.1">GOOGLE BUSINESS PROFILE</div>
-      <div class="t-body" style="opacity:.85;margin-top:3px;font-weight:400">${t('Tháng', 'Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div></div>
-      <span class="t-num2" style="width:46px;height:46px;border-radius:12px;background:#fff;display:grid;place-items:center;font-weight:800;color:#1a73e8">G</span>
+    gbpHtml = `
+    ${panel('01', t('TỔNG QUAN HIỆU QUẢ GBP', 'GBP PERFORMANCE'), overview)}
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+      ${panel('02', t('NGUỒN HIỂN THỊ', 'WHERE SEEN'), sourcePanel)}
+      ${panel('03', t('TỪ KHOÁ KHÁCH TÌM', 'TOP SEARCHES'), kwPanel)}
+      ${panel('04', t('XU HƯỚNG LƯỢT XEM', 'VIEWS TREND'), trendPanel)}
     </div>
-    <div style="margin-top:10px">${panel('① ' + t('TỔNG QUAN HIỆU QUẢ GBP', 'GBP PERFORMANCE'), overview)}</div>
-    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px">
-      ${panel('② ' + t('NGUỒN HIỂN THỊ', 'WHERE SEEN'), sourcePanel)}
-      ${panel('◎ ' + t('TỪ KHOÁ KHÁCH TÌM', 'TOP SEARCHES'), kwPanel)}
-      ${panel('③ ' + t('XU HƯỚNG LƯỢT XEM', 'VIEWS TREND'), trendPanel)}
-    </div>
-    <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
-      ${panel('④ ' + t('TỶ LỆ HÀNH ĐỘNG', 'ACTION RATE'), actionPanel)}
-      ${panel('⑤ ' + t('ĐÁNH GIÁ & XẾP HẠNG', 'REVIEWS'), reviewPanel)}
-    </div>
-    <div class="t-cap" style="color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu Google Business Profile lấy trực tiếp từ Google · Một số chỉ số (Profile Strength, tách nguồn tìm kiếm) Google không mở qua API · Lumio duyệt trước khi gửi.', 'Google Business Profile data pulled directly from Google · Some metrics (Profile Strength, search-source split) are not exposed via the API · Reviewed by Lumio.')}</div></div>`;
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      ${panel('05', t('TỶ LỆ HÀNH ĐỘNG', 'ACTION RATE'), actionPanel)}
+      ${panel('06', t('ĐÁNH GIÁ & XẾP HẠNG', 'REVIEWS'), reviewPanel)}
+    </div>`;
   }
-  const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents, true)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum('$' + b.revenuePerSpend, t('Doanh thu / $1', 'Revenue / $1'), undefined, true) : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div class="t-body" style="color:#475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color:#059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div class="t-body" style="color:#6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Facebook & Instagram', 'Facebook & Instagram report')} ${data.month}</title><style>
-  @page{size:A4 landscape;margin:8mm}
-  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f2a52;margin:0 auto;padding:0;background:#eef2f8;width:281mm}
-  @media print{body{background:#fff;width:auto}}
-  .grid{display:grid;gap:14px;break-inside:avoid}
-  .page{border:1.5px solid #cdd6e6;border-radius:16px;background:#f6f8fb;padding:18px 20px}
-  .brk{page-break-before:always;height:0}
-  body{line-height:1.5}
-  table{width:100%;border-collapse:collapse}
-  td{vertical-align:middle}
-  /* Type scale — every size in this document comes from here, nowhere else. */
-  .t-title{font-size:33px;font-weight:800;letter-spacing:.2px;line-height:1.12}
-  .t-num  {font-size:31px;font-weight:800;line-height:1.12}
-  .t-num2 {font-size:24px;font-weight:800;line-height:1.15}
-  .t-h2   {font-size:20px;font-weight:800;letter-spacing:.3px}
-  .t-h3   {font-size:17px;font-weight:800;letter-spacing:.3px}
-  .t-body {font-size:15.5px;font-weight:400}
-  .t-cap  {font-size:13.5px;font-weight:400}
-  .muted{color:#7a8ba6;line-height:1.5}
-  .empty{color:#8496b0;background:#f7f9fc;border:1px dashed #dde4ef;border-radius:10px;padding:16px 14px;text-align:center}
-  </style></head><body>
-  <div class="page">
-  <div style="background:linear-gradient(120deg,#0f2a52,#1e3a8a);color:#fff;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px">
-    <div>
-      <div class="t-cap" style="display:inline-block;background:rgba(255,255,255,.16);border-radius:6px;padding:2px 9px;font-weight:700;letter-spacing:1.4px;opacity:.9">${t('BÁO CÁO CUỐI THÁNG', 'MONTHLY REPORT')}</div>
-      <div class="t-title" style="font-weight:800;letter-spacing:.2px;margin-top:5px;line-height:1.1">${esc(salonName || t('Báo cáo Marketing', 'Marketing Report'))}</div>
-      <div class="t-body" style="opacity:.85;margin-top:3px">${t('Báo cáo Marketing tổng hợp · Tháng', 'Marketing report · Month')} ${data.month} · ${t('bởi Lumio Agency', 'by Lumio Agency')}</div>
+  const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum(String(b.revenuePerSpend) + '×', 'ROAS', undefined, b.revenuePerSpend >= 1 ? '#059669' : '#d97706') : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div class="t-body" style="color:#475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color:#059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div class="t-body" style="color:#6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
+  // "Tháng 08/2026", not the raw "2026-08" — a client report speaks the
+  // client's calendar, not the database's.
+  const [yy, mm] = String(data.month || '').split('-');
+  const monthLabel = vi ? `Tháng ${mm}/${yy}` : `${mm}/${yy}`;
+
+  /**
+   * Every sheet gets the SAME header and the SAME footer.
+   *
+   * The header is ink on a light band, never white-on-navy. The previous
+   * template put white text on a gradient, and because browsers do not print
+   * backgrounds unless asked, the gradient vanished and every title in the
+   * exported PDF came out pale grey on white — the single biggest reason the
+   * old report read as unfinished. print-color-adjust is now set too, but the
+   * design no longer DEPENDS on a background surviving: worst case it loses a
+   * tint, never the words.
+   */
+  const sheetHead = (kicker: string, chip: string) => `
+    <div class="head">
+      <div style="min-width:0">
+        <div class="kick">${kicker}</div>
+        <div class="t-title">${esc(salonName || t('Báo cáo Marketing', 'Marketing Report'))}</div>
+        <div class="t-cap" style="color:#64748b;margin-top:3px">Facebook · Instagram · TikTok · Google · ${monthLabel} · <b style="color:${effColor}">${effLabel}</b></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        ${chip}
+        <div class="t-cap" style="color:#8a97ad;margin-top:4px">Lumio Agency</div>
+      </div>
     </div>
-    <div class="t-cap" style="text-align:right;opacity:.8"><div class="t-body" style="font-weight:800">Lumio Agency</div><div style="margin-top:2px">Facebook · Instagram · TikTok · Google</div></div>
-  </div>
+    <div class="rule"></div>`;
+  const lumioChip = `<span class="chip" style="background:#eef2ff;color:#4338ca">Lumio</span>`;
+  const gChip = `<span class="chip" style="background:#e8f0fe;color:#1a73e8">G</span>`;
 
-  <div style="margin-top:10px">${panel('◆ ' + t('KẾT QUẢ KINH DOANH THÁNG', 'BUSINESS RESULTS THIS MONTH'), bizNums)}</div>
+  // The footer says where the numbers came from — and which page you hold.
+  // Page numbers are the cheapest professionalism there is, and the old export
+  // had none.
+  const sheetFoot = (note: string) => `<div class="foot"><span style="min-width:0">${note}</span><span class="pg" style="flex-shrink:0"></span></div>`;
 
-  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
-    ${panel('① ' + t('TỔNG QUAN HIỆU QUẢ', 'PERFORMANCE OVERVIEW'), perfTable)}
-    ${panel('② ' + t('TĂNG TRƯỞNG NGƯỜI THEO DÕI', 'FOLLOWER GROWTH'), growth)}
-  </div>
+  const orgNote = t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.');
+  const gbpNote = t('Số liệu Google Business Profile lấy trực tiếp từ Google · Một số chỉ số Google không mở qua API · Lumio duyệt trước khi gửi.', 'Google Business Profile data pulled directly from Google · Some metrics are not exposed via the API · Reviewed by Lumio.');
 
-  <div class="grid" style="grid-template-columns:1.3fr 1fr 1fr;margin-top:10px">
-    ${panel('③ ' + t('NỘI DUNG', 'CONTENT'), contentPanel)}
-    ${panel('④ ' + t('HIỆU QUẢ QUẢNG CÁO', 'ADS'), adsPanel)}
-    ${panel('⑤ ' + t('ĐỐI TƯỢNG (IG)', 'AUDIENCE (IG)'), audiencePanel)}
-  </div>
+  // Sheet 1 — the numbers. "Đánh giá từng kênh" used to sit at the bottom of
+  // this page and is precisely what overflowed: the export grew a ghost page
+  // holding one floating footer line. It belongs with the assessment anyway —
+  // page 1 states facts, the closing page passes judgement.
+  const sheet1 = `<div class="sheet">
+    ${sheetHead(t('BÁO CÁO MARKETING THÁNG', 'MONTHLY MARKETING REPORT'), lumioChip)}
+    ${panel('01', t('KẾT QUẢ KINH DOANH THÁNG', 'BUSINESS RESULTS'), bizNums)}
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      ${panel('02', t('TỔNG QUAN HIỆU QUẢ', 'PERFORMANCE OVERVIEW'), perfTable)}
+      ${panel('03', t('TĂNG TRƯỞNG NGƯỜI THEO DÕI', 'FOLLOWER GROWTH'), growth)}
+    </div>
+    <div class="grid" style="grid-template-columns:1.3fr 1fr 1fr">
+      ${panel('04', t('NỘI DUNG', 'CONTENT'), contentPanel)}
+      ${panel('05', t('QUẢNG CÁO', 'ADS'), adsPanel)}
+      ${panel('06', t('ĐỐI TƯỢNG (IG)', 'AUDIENCE (IG)'), audiencePanel)}
+    </div>
+    ${sheetFoot(orgNote)}
+  </div>`;
 
-  ${channelsHtml ? `<div style="margin-top:14px">${panel('◆ ' + t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION'), `<div style="column-count:2;column-gap:22px">${channelsHtml}</div>`)}</div>` : ''}
+  const gbpSheet = gbpHtml ? `<div class="sheet">
+    ${sheetHead(t('GOOGLE BUSINESS PROFILE — HIỆN DIỆN TRÊN GOOGLE & MAPS', 'GOOGLE BUSINESS PROFILE'), gChip)}
+    ${gbpHtml}
+    ${sheetFoot(gbpNote)}
+  </div>` : '';
 
+  const summarySheet = `<div class="sheet">
+    ${sheetHead(t('TỔNG KẾT & KẾ HOẠCH THÁNG TỚI — TẤT CẢ KÊNH', 'SUMMARY & NEXT-MONTH PLAN'), lumioChip)}
+    ${channelsHtml ? panel('01', t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION'), `<div class="grid" style="grid-template-columns:1fr 1fr">${channelsHtml}</div>`) : ''}
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      ${panel('02', t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div class="t-body" style="font-weight:700;color:#166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div class="t-body" style="font-weight:700;color:#b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}
+      ${panel('03', t('INSIGHT NỔI BẬT', 'KEY INSIGHTS'), insightsBox)}
+    </div>
+    ${panel('04', t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN'), kehoachHtml)}
+    ${sheetFoot(t('AI tổng hợp từ số liệu thật của tháng · Lumio Agency duyệt trước khi gửi khách.', 'AI-drafted from the month’s real numbers · reviewed by Lumio Agency before sending.'))}
+  </div>`;
 
-  <div class="t-cap" style="color:#94a3b8;margin-top:10px;text-align:center">${t('Số liệu organic lấy trực tiếp từ Facebook/Instagram · Meta đã ngừng một số chỉ số Facebook · AI tổng hợp, Lumio duyệt trước khi gửi.', 'Organic data pulled directly from Facebook/Instagram · Meta discontinued some Facebook metrics · AI-summarised, reviewed by Lumio.')}</div>
-  </div>
-  ${gbpHtml}
-  <div class="page">
-  <div class="t-h2" style="background:#0f2a52;color:#fff;border-radius:10px;padding:11px 16px;font-weight:800;letter-spacing:.3px">${t('TỔNG KẾT & KẾ HOẠCH THÁNG TỚI — TẤT CẢ KÊNH', 'SUMMARY & NEXT-MONTH PLAN — ALL CHANNELS')}</div>
-  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
-    ${panel('◆ ' + t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div class="t-body" style="font-weight:700;color:#166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div class="t-body" style="font-weight:700;color:#b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}
-    ${panel('◎ ' + t('INSIGHT NỔI BẬT', 'KEY INSIGHTS'), insightsBox)}
-  </div>
-  <div style="margin-top:10px">${panel('◎ ' + t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN & DIRECTION'), kehoachHtml)}</div>
-  </div>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${t('Báo cáo Marketing', 'Marketing report')} — ${esc(salonName || '')} — ${data.month}</title><style>
+  @page{size:A4 landscape;margin:8mm}
+  /* Without this line the browser strips every background at print time —
+     which is exactly how the last export shipped with grey ghost titles. */
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1f2a3d;margin:0 auto;padding:0;background:#eef2f8;width:281mm;line-height:1.45;
+       /* Lining, equal-width digits: numbers in columns land in columns. */
+       font-variant-numeric:tabular-nums}
+  @media print{body{background:#fff;width:auto}}
+  .sheet{width:281mm;min-height:188mm;background:#fff;padding:9mm 11mm 6mm;display:flex;flex-direction:column;page-break-after:always;margin:0 auto}
+  @media screen{.sheet{margin:10px auto;border:1px solid #dbe2ee;border-radius:10px}}
+  .sheet:last-of-type{page-break-after:auto}
+  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+  .kick{font-size:10.5px;font-weight:800;letter-spacing:2.2px;color:#4f46e5;text-transform:uppercase}
+  .rule{height:3px;border-radius:2px;background:linear-gradient(90deg,#4f46e5,#e1306c 55%,#f59e0b);margin:8px 0 1px;flex-shrink:0}
+  .chip{display:inline-grid;place-items:center;min-width:44px;height:34px;border-radius:9px;font-weight:800;font-size:15px;padding:0 10px}
+  .grid{display:grid;gap:10px;margin-top:10px;break-inside:avoid}
+  .panel{background:#fff;border:1px solid #e3e8f2;border-radius:12px;padding:12px 14px;break-inside:avoid;margin-top:10px}
+  .grid .panel{margin-top:0} /* the grid's gap already spaces these */
+  .sec{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .sec-n{width:21px;height:21px;border-radius:6px;background:#eef2ff;color:#4338ca;font-size:11px;font-weight:800;display:grid;place-items:center;flex-shrink:0}
+  .sec-t{font-size:12px;font-weight:800;letter-spacing:1.1px;color:#0b1f3a;text-transform:uppercase}
+  table{width:100%;border-collapse:collapse} td{vertical-align:middle}
+  /* Type scale — print sizes, not screen sizes. Every size comes from here. */
+  .t-title{font-size:27px;font-weight:800;color:#0b1f3a;letter-spacing:.2px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t-num  {font-size:24px;font-weight:800;line-height:1.12}
+  .t-num2 {font-size:19px;font-weight:800;line-height:1.15}
+  .t-h2   {font-size:16px;font-weight:800}
+  .t-h3   {font-size:13px;font-weight:800;letter-spacing:.3px}
+  .t-body {font-size:12.5px;font-weight:400}
+  .t-cap  {font-size:11px;font-weight:400}
+  .muted{color:#7a8ba6;line-height:1.5}
+  .empty{color:#8496b0;background:#f7f9fc;border:1px dashed #dde4ef;border-radius:10px;padding:14px 12px;text-align:center;font-size:12px}
+  .foot{margin-top:auto;padding-top:7px;border-top:1px solid #e8edf5;display:flex;justify-content:space-between;align-items:baseline;gap:16px;color:#8a97ad;font-size:10px}
+  </style></head><body>
+  ${sheet1}
+  ${gbpSheet}
+  ${summarySheet}
   <script>
+  // Page numbers — filled here because only the assembled document knows how
+  // many sheets it has (the Google page appears only when the salon has GBP).
+  (function(){
+    var ps=document.querySelectorAll('.pg'), n=ps.length;
+    for(var i=0;i<n;i++){ ps[i].textContent='Lumio Agency · ${t('Trang', 'Page')} '+(i+1)+'/'+n; }
+  })();
+  // Safety net, not the layout: if a sheet still overflows the printable
+  // 194mm, shrink IT (not the whole document) until it fits. The old version
+  // relied on this alone, measured against the full height, and a single
+  // footer line spilling over produced a nearly blank ghost page in the PDF.
   function fitPages(){
-    var MM=96/25.4, MAX=(210-16)*MM; /* A4 landscape printable height = 194mm */
-    var ps=document.querySelectorAll('.page');
+    var MM=96/25.4, MAX=190*MM;
+    var ps=document.querySelectorAll('.sheet');
     for(var i=0;i<ps.length;i++){
       var el=ps[i]; el.style.zoom=''; var h=el.getBoundingClientRect().height;
-      if(h>MAX){ var f=Math.max(0.6,(MAX-4)/h); el.style.zoom=f; }
+      if(h>MAX){ el.style.zoom=Math.max(0.6,(MAX-6)/h); }
     }
   }
   var printed=false;
@@ -798,7 +903,6 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     function go(){ if(++c>=n){ setTimeout(printOnce,150); } }
     if(!n){ printOnce(); return; }
     for(var k=0;k<n;k++){ var m=i[k]; if(m.complete)go(); else { m.onload=go; m.onerror=go; } }
-    /* safety net if an image never resolves — printOnce() ignores the second call */
     setTimeout(printOnce,2500);
   };
   </script></body></html>`;

@@ -235,7 +235,7 @@ export class MetaSocialConnector implements SocialConnector {
   /** Facebook post breakdown for the month. Page-level Insights are deprecated,
    *  but per-post like/comment/share COUNTS still come from node-edge summaries
    *  (published_posts, falling back to /feed) — so FB engagement is still real. */
-  private async fbPostBreakdown(pageId: string, since: string, until: string, token: string): Promise<{ posts: PostInsight[]; status: number; error: string | null }> {
+  private async fbPostBreakdown(pageId: string, since: string, until: string, token: string): Promise<{ posts: PostInsight[]; monthCount: number | null; status: number; error: string | null }> {
     const from = new Date(`${since}T00:00:00Z`).getTime();
     const to = new Date(`${until}T23:59:59Z`).getTime();
     const s = Math.floor(from / 1000), u = Math.floor(to / 1000);
@@ -274,7 +274,20 @@ export class MetaSocialConnector implements SocialConnector {
       } catch (e) { if (!error) error = String((e as Error).message).slice(0, 120); }
     }
     let list = collected;
-    list = list.filter((m) => { const t = Date.parse(String((m as { created_time?: string }).created_time || '')); return !Number.isFinite(t) || (t >= from && t <= to); }).slice(0, 40);
+    // STRICT month filter. The old rule kept anything whose date failed to
+    // parse — and Reels carry `updated_time`, not `created_time`, so every
+    // Reel the page ever posted passed as "this month" forever. That is how a
+    // salon read "Tổng bài 40" twelve months in a row. A post that cannot
+    // prove its month does not belong in a monthly count.
+    list = list.filter((m) => {
+      const mm = m as { created_time?: string; updated_time?: string };
+      const t = Date.parse(String(mm.created_time || mm.updated_time || ''));
+      return Number.isFinite(t) && t >= from && t <= to;
+    });
+    // The true monthly count, taken BEFORE the display cap: the report says
+    // how many were posted, the list shows at most 40 of them.
+    const fbMonthCount = list.length;
+    list = list.slice(0, 40);
     const posts: PostInsight[] = list.map((m: any) => {
       const likes = numOrNull(m?.likes?.summary?.total_count);
       const comments = numOrNull(m?.comments?.summary?.total_count);
@@ -306,7 +319,7 @@ export class MetaSocialConnector implements SocialConnector {
       } catch { /* views/cover unavailable */ }
     }));
     posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
-    return { posts, status, error };
+    return { posts, monthCount: error && !posts.length ? null : fbMonthCount, status, error };
   }
 
   // ---- Organic pull --------------------------------------------------------
@@ -353,7 +366,7 @@ export class MetaSocialConnector implements SocialConnector {
       views: fbViewsSum ?? fbViews,
       engagement: fbEngSum ?? fbEngRaw,
       profileViews: null,
-      postsCount: fbPostList.length || null,
+      postsCount: fbRes.monthCount,
       posts: fbPostList,
       raw: { pageId, name: page.name ?? null, fbDebug: { count: fbPostList.length, status: fbRes.status, error: fbRes.error } },
     };
@@ -381,7 +394,11 @@ export class MetaSocialConnector implements SocialConnector {
         views: igViews,
         engagement: igEngagement,
         profileViews: igProfileViews,
-        postsCount: igPostList.length || numOrNull(igNode?.media_count),
+        // Zero posts this month is a real answer and it prints as 0. The old
+        // fallback swapped in media_count — the account's LIFETIME total — the
+        // moment a month was quiet, which is a different number wearing the
+        // same label.
+        postsCount: igPostList.length,
         posts: igPostList,
         series: igSeries,
         audience: igAud,

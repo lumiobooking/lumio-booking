@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SourceDot } from '../../../components/SourceChip';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
@@ -246,7 +247,10 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
                             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
                               {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
                             </span>
-                            {paid > 0 && <span title={formatPrice(paid, b.currency)} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                              <SourceDot b={b} vi={true} />
+                              {paid > 0 && <span title={formatPrice(paid, b.currency)} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />}
+                            </span>
                           </div>
                           {h > 48 && b.priceCents > 0 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</div>}
                         </div>

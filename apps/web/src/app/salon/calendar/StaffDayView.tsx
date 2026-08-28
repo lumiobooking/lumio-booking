@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { SourceDot } from '../../../components/SourceChip';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
@@ -282,7 +283,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                             <span style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
                               {b.partySize != null && b.partySize > 1 && <span title={t('cal.dParty')} style={{ fontSize: 9, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'var(--c475569)', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>×{b.partySize}</span>}
                               {paid > 0 && <span title={`${dep} · ${formatPrice(paid, b.currency)}`} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />}
-                              {sm && <span title={sm.full} style={{ color: 'var(--c94a3b8)', display: 'inline-flex', alignItems: 'center' }}>{sm.icon}</span>}
+                              <SourceDot b={b} vi={true} />
                             </span>
                           </div>
                           {h > 48 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</div>}

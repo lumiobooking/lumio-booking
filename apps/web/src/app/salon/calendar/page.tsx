@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SourceChip, SourceDot } from '../../../components/SourceChip';
+import { srcKey, srcMetaOf, sourceCounts } from '../../../lib/booking-sources';
 import { SalonShell } from '../../../components/SalonShell';
 import { FloorView } from '../../../components/FloorView';
 import { useAuth } from '../../../lib/auth';
@@ -29,6 +31,7 @@ interface Booking {
   currency: string;
   notes: string | null;
   source?: string | null;
+  utmSource?: string | null;
   device?: string | null;
   partySize?: number;
   // Shared by everyone booked together, so four rows at 2 PM can be drawn as
@@ -179,18 +182,26 @@ function Inner() {
   }, []);
 
   const days = useMemo(() => buildMonth(view), [view]);
+  /** Legend filter: null = every source. One click isolates a channel across
+   *  all three views at once; clicking it again lets everyone back in. */
+  const [srcFilter, setSrcFilter] = useState<string | null>(null);
+  const bySource = useMemo(
+    () => (srcFilter ? bookings.filter((b) => srcKey(b) === srcFilter) : bookings),
+    [bookings, srcFilter],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return bookings;
+    if (!q) return bySource;
     const qd = q.replace(/\D/g, '');
-    return bookings.filter((b) => {
+    return bySource.filter((b) => {
       const c = b.customer;
       const nm = c ? (c.firstName + ' ' + (c.lastName ?? '')).toLowerCase() : '';
       const ph = (c?.phone ?? '').replace(/\D/g, '');
       const em = (c?.email ?? '').toLowerCase();
       return nm.includes(q) || em.includes(q) || (!!qd && ph.includes(qd));
     });
-  }, [bookings, search]);
+  }, [bySource, search]);
   const byDay = useMemo(() => {
     const map = new Map<string, Booking[]>();
     for (const b of filtered) {
@@ -311,6 +322,30 @@ function Inner() {
         <input ref={monthInputRef} type="month" value={`${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`} onChange={onMonthPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
         <input ref={dayInputRef} type="date" value={cellKey(dayDate)} onChange={onDayPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
       </div>
+
+      {/* The row the owner asked for by name: every source, counted, for the
+          range on screen. "Google Maps 4 · Facebook 7 · Gọi điện 3" — the
+          watching happens HERE, not in a report at the end of the month. One
+          click isolates a channel in all three views; the same click frees it. */}
+      {(() => {
+        const legend = sourceCounts(bookings);
+        if (!legend.length) return null;
+        return (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{lang === 'vi' ? 'Nguồn khách' : 'Sources'}</span>
+            {legend.map(({ meta, count }) => (
+              <SourceChip key={meta.key} meta={meta} count={count} vi={lang === 'vi'}
+                active={srcFilter === meta.key}
+                onClick={() => setSrcFilter(srcFilter === meta.key ? null : meta.key)} />
+            ))}
+            {srcFilter && (
+              <button onClick={() => setSrcFilter(null)} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                {lang === 'vi' ? '✕ Bỏ lọc' : '✕ Clear'}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Row 3: search + full screen */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -439,7 +474,7 @@ function Inner() {
                           onClick={() => setSelected(b)}
                           onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                           style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5, background: `${m.color}1f`, borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.55 : 1, overflow: 'hidden' }}>
-                          {(() => { const sm = sourceMeta(b.source); return sm ? <span style={{ flexShrink: 0, fontSize: 10 }} title={t(sm.key)}>{sm.icon}</span> : null; })()}
+                          <SourceDot b={b} vi={lang === 'vi'} />
                           <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
                           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cdbe2ea)', textDecoration: strike }}>{name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}</span>
                         </div>
@@ -809,7 +844,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         {active && <QuickEdit b={b} onAction={onAction} />}
-        {(() => { const sm = sourceMeta(b.source); return sm ? <DetailRow label={t('cal.dSource')} value={`${sm.icon} ${t(sm.key)}`} /> : null; })()}
+        <DetailRow label={t('cal.dSource')} value={<SourceChip b={b} vi={lang === 'vi'} />} />
         {(() => { const dm = deviceMeta(b.device); return dm ? <DetailRow label={t('cal.dDevice')} value={`${dm.icon} ${t(dm.key)}`} /> : null; })()}
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
         {b.partySize != null && b.partySize > 1 && <DetailRow label={t('cal.dParty')} value={String(b.partySize)} />}
@@ -1096,7 +1131,7 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
       <span style={{ color: 'var(--c94a3b8)' }}>{label}</span>

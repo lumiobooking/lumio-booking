@@ -1983,6 +1983,7 @@ export class MessengerService implements OnModuleInit {
         closing: (conn as unknown as { closing?: string | null }).closing ?? null,
         agentName: (conn as unknown as { agentName?: string | null }).agentName ?? null,
         bizIntro: (conn as unknown as { bizIntro?: string | null }).bizIntro ?? null,
+        channel: ((fresh as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger',
         senderId,
         pageToken: conn.pageToken,
         memory,
@@ -2019,7 +2020,7 @@ export class MessengerService implements OnModuleInit {
     aiInstruction: string,
     history: Turn[],
     userText: string,
-    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number } = { mode: 'booking', leadEmail: null },
+    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return 'Thanks for reaching out! A team member will reply to you shortly. 💕';
@@ -2874,7 +2875,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     tz: string,
     name: string,
     input: Record<string, unknown>,
-    ctx?: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string },
+    ctx?: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; channel?: string },
   ): Promise<string> {
     try {
       if (name === 'save_lead') {
@@ -3054,7 +3055,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           serviceId, startTime, customerFirstName: firstName, customerPhone: phone,
           ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
         } as CreateBookingDto;
-        const booking = await this.bookings.createForTenant(tenantId, dto, null, 'messenger');
+        // The door is the THREAD's channel, not the module's name. Instagram
+        // bookings used to be filed as 'messenger', which meant the owner's
+        // "how much does Instagram bring in?" was unanswerable by design.
+        const booking = await this.bookings.createForTenant(tenantId, dto, null, ctx?.channel === 'instagram' ? 'instagram' : 'messenger');
         const b = booking as { id?: string; customerId?: string | null };
         // The one moment this page-scoped id and a real customer are provably
         // the same person: they just gave a name and a phone and a Customer row

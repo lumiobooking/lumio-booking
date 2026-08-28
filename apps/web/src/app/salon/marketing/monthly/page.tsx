@@ -88,6 +88,21 @@ function Inner() {
   const [gr, setGr] = useState<{ rating: string; totalReviews: string; newReviews: string; badReviews: string }>({ rating: '', totalReviews: '', newReviews: '', badReviews: '' });
   const money = (c: number) => formatPrice(c, currency);
 
+  // "Tải Word" — the same report as the print view, as a real .docx the owner
+  // can rebalance freely. Charts are painted on canvas at click time; the docx
+  // library itself is dynamically imported so report readers who never export
+  // don't download it.
+  const [wordBusy, setWordBusy] = useState(false);
+  const exportWord = async () => {
+    if (!data || wordBusy) return;
+    setWordBusy(true);
+    try {
+      const { downloadReportDocx } = await import('../../../../lib/docx');
+      await downloadReportDocx({ data, content: report?.content ?? {}, vi, salonName, month, money });
+    } catch (e) { setError(e instanceof Error ? e.message : 'docx error'); }
+    finally { setWordBusy(false); }
+  };
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -211,7 +226,7 @@ function Inner() {
         <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chỉnh sửa', 'Edit')}</button>
       </div>
 
-      {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money, salonName)} T={T} />}
+      {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money, salonName)} onWord={exportWord} wordBusy={wordBusy} T={T} />}
 
       {mode === 'edit' && (<>
 
@@ -1314,7 +1329,7 @@ function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) 
   );
 }
 
-function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Monthly | null; content: Content | null; vi: boolean; money: (n: number) => string; onEdit: () => void; onPrint: () => void; T: (v: string, e: string) => string }) {
+function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBusy, T }: { data: Monthly | null; content: Content | null; vi: boolean; money: (n: number) => string; onEdit: () => void; onPrint: () => void; onWord: () => void; wordBusy: boolean; T: (v: string, e: string) => string }) {
   if (!data) return <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>;
   const L = (it?: Item) => (vi ? (it?.vi || it?.en) : (it?.en || it?.vi)) || '';
   const o = data.outcome; const b = data.blended; const d = data.deltas;
@@ -1355,8 +1370,11 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, T }: { data: Mo
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ background: effColor, color: '#fff', borderRadius: 20, padding: '5px 14px', fontSize: 13, fontWeight: 700 }}>{effLabel}</span>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-          <button onClick={onPrint} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}>{T('Xuất PDF / In', 'Export PDF / Print')}</button>
-          <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Trong bản in: nút ✏️ sửa được từng chữ, từng số trước khi gửi khách', 'In the print view: ✏️ lets you edit every word before it goes out')}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onWord} disabled={wordBusy} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: wordBusy ? 'wait' : 'pointer', opacity: wordBusy ? 0.6 : 1 }}>{wordBusy ? T('Đang tạo…', 'Building…') : T('Tải Word (.docx)', 'Download Word')}</button>
+            <button onClick={onPrint} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}>{T('Xuất PDF / In', 'Export PDF / Print')}</button>
+          </div>
+          <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Word: chỉnh chữ, bảng, bố cục tự do · Trong bản in: nút ✏️ sửa từng chữ trước khi gửi khách', 'Word: freely edit text & tables · Print view: ✏️ edits every word before it goes out')}</span>
         </div>
       </div>
 

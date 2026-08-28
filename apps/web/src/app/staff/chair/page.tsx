@@ -228,7 +228,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
         )}
       </div>
 
-      <div style={{ border: '1px solid #263041', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }}>
+      <div style={{ border: '1px solid var(--c263041)', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }}>
         {items.length === 0 ? (
           <div style={{ padding: '12px 14px', color: 'var(--c64748b)', fontSize: 13 }}>{t('wi.noLines')}</div>
         ) : items.map((it) => (

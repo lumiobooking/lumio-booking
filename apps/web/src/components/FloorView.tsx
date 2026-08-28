@@ -381,7 +381,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
           </div>
         </div>
         <div style={{ padding: 16 }}>
-          <div style={{ border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ border: '1px solid var(--c263041)', borderRadius: 10, overflow: 'hidden' }}>
             {items.length === 0 ? <div style={{ padding: 12, color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Chưa có dịch vụ.' : 'No services yet.'}</div>
               : items.map((it) => (
                 <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)' }}>

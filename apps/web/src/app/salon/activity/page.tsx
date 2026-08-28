@@ -136,7 +136,7 @@ function Inner() {
                     role={clickable ? 'button' : undefined}
                     tabIndex={clickable ? 0 : undefined}
                     aria-label={clickable ? L('Xem chi tiết', 'View details') : undefined}
-                    style={{ display: 'flex', gap: 12, alignItems: 'center', background: hovered ? '#243044' : 'var(--c1e293b)', border: `1px solid ${hovered ? '#3b4a63' : '#223047'}`, borderRadius: 12, padding: '11px 13px', cursor: clickable ? 'pointer' : 'default', transition: 'background .12s, border-color .12s' }}
+                    style={{ display: 'flex', gap: 12, alignItems: 'center', background: hovered ? 'var(--c243044)' : 'var(--c1e293b)', border: `1px solid ${hovered ? '#3b4a63' : 'var(--c223047)'}`, borderRadius: 12, padding: '11px 13px', cursor: clickable ? 'pointer' : 'default', transition: 'background .12s, border-color .12s' }}
                   >
                     <span style={{ width: 38, height: 38, borderRadius: 11, background: m.bg, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

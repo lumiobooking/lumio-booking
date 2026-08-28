@@ -249,22 +249,22 @@ function Inner() {
           read the month at a glance instead of decoding a number badge. */}
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 12, marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, minWidth: 680,
-          background: '#243044', border: '1px solid #243044', borderRadius: 12, overflow: 'hidden' }}>
+          background: 'var(--c243044)', border: '1px solid var(--c243044)', borderRadius: 12, overflow: 'hidden' }}>
           {dayNames.map((d, i) => {
             const weekend = i >= 5;
             return (
               <div key={d} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5,
-                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 700, color: weekend ? '#8ea2c4' : 'var(--c94a3b8)' }}>{d}</div>
+                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 700, color: weekend ? 'var(--c8ea2c4)' : 'var(--c94a3b8)' }}>{d}</div>
             );
           })}
           {cells.map((d, i) => {
-            if (!d) return <div key={i} style={{ background: '#0b1322', minHeight: 116, opacity: 0.5 }} />;
+            if (!d) return <div key={i} style={{ background: 'var(--c0b1322)', minHeight: 116, opacity: 0.5 }} />;
             const list = byDay.get(ymd(d)) ?? [];
             const isToday = sameDay(d, today);
             const on = sameDay(d, picked);
             const dow = d.getDay();
             const weekend = dow === 0 || dow === 6;
-            const bg = isToday ? '#151f38' : weekend ? '#0d1526' : 'var(--c0f172a)';
+            const bg = isToday ? 'var(--c151f38)' : weekend ? 'var(--c0d1526)' : 'var(--c0f172a)';
             return (
               <div key={i} onClick={() => setPicked(d)}
                 style={{ background: bg, minHeight: 116, minWidth: 0, overflow: 'hidden', padding: 7, cursor: 'pointer',
@@ -285,7 +285,7 @@ function Inner() {
                           background: `${colour}1f`, borderLeft: `3px solid ${colour}`, opacity: dead ? 0.55 : 1, overflow: 'hidden',
                           textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
                         <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: colour, flexShrink: 0 }}>{hhmm(b.startTime)}</span>
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#dbe2ea' }}>
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cdbe2ea)' }}>
                           {name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}
                         </span>
                       </div>

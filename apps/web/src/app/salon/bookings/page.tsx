@@ -383,7 +383,7 @@ function BookingsInner() {
                 if (open) {
                   for (const m of members) {
                     rows.push(
-                      <tr key={m.id} style={{ borderTop: '1px dashed #26324a', background: bulk.has(m.id) ? 'var(--c1e1b4b)' : '#0d1526' }}>
+                      <tr key={m.id} style={{ borderTop: '1px dashed #26324a', background: bulk.has(m.id) ? 'var(--c1e1b4b)' : 'var(--c0d1526)' }}>
                         <td style={{ ...ui.td, width: 34, boxShadow: 'inset 3px 0 0 #4338ca' }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
                         <td style={ui.td}></td>
                         <td style={ui.td}>
@@ -514,7 +514,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
       {menu && (
         <>
           <div onClick={() => setMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', top: 36, left: 0, zIndex: 41, minWidth: 190, background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 10, boxShadow: '0 14px 40px rgba(0,0,0,.5)', padding: 5 }}>
+          <div style={{ position: 'absolute', top: 36, left: 0, zIndex: 41, minWidth: 190, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, boxShadow: '0 14px 40px rgba(0,0,0,.5)', padding: 5 }}>
             {active && groupSize > 1 && (
               <>
                 <MenuItem
@@ -558,7 +558,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
   const lines = (b.addons ?? []).filter((a) => a?.kind === 'service' && a.id);
   const selStyle: React.CSSProperties = { ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 140, flexShrink: 0 };
   return (
-    <div style={{ background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 10, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 250 }}>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 250 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {b.service?.name ?? '—'}
@@ -567,7 +567,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
         <select
           value={b.assignedStaff?.id ?? ''}
           onChange={(e) => { if (e.target.value) onAction('assign', { staffId: e.target.value }); }}
-          style={{ ...selStyle, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: '#7c5c22' }) }}
+          style={{ ...selStyle, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: 'var(--c7c5c22)' }) }}
         >
           <option value="" disabled>{t('cal.linePick')}</option>
           {live.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}

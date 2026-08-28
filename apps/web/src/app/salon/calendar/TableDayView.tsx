@@ -237,7 +237,7 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
                       return (
                         <div key={b.id} draggable={!dim} onDragStart={(ev) => { setDragId(b.id); ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.id); }} onDragEnd={() => { setDragId(null); setOverCol(null); }}
                           onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.partySize ?? 1}p`}
-                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? '#18202f' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
+                          style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? 'var(--c18202f)' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
                             <span style={{ fontSize: 10.5, fontWeight: 700, color: cc, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
                             <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'var(--c334155)', borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap' }}>{b.partySize ?? 1}p</span>

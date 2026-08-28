@@ -100,7 +100,7 @@ function Inner() {
                   const st = STATE[it.state] ?? STATE.off;
                   const t = testing[it.key];
                   return (
-                    <div key={it.key} style={{ background: '#111a2c', border: `1px solid ${it.state === 'error' ? 'var(--c7f1d1d)' : 'var(--c1e293b)'}`, borderRadius: 12, padding: '12px 14px' }}>
+                    <div key={it.key} style={{ background: 'var(--c111a2c)', border: `1px solid ${it.state === 'error' ? 'var(--c7f1d1d)' : 'var(--c1e293b)'}`, borderRadius: 12, padding: '12px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.color}`, borderRadius: 999, padding: '2px 10px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{T(st.vi, st.en)}</span>
                         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--cf1f5f9)' }}>{it.name}</span>

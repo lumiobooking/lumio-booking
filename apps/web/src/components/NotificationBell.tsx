@@ -94,8 +94,8 @@ export function NotificationBell() {
   const bellBtn: CSSProperties = { position: 'relative', width: 40, height: 40, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 };
   const badgeStyle: CSSProperties = { position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid var(--c111827)' };
   const panel: CSSProperties = isMobile
-    ? { position: 'fixed', top: 64, right: 8, left: 8, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '74vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
-    : { position: 'fixed', top: 58, right: 22, width: 382, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '76vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
+    ? { position: 'fixed', top: 64, right: 8, left: 8, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '74vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', top: 58, right: 22, width: 382, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '76vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
 
   return (
     <>

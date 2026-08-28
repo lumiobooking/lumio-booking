@@ -82,7 +82,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
   const statusColor = STATUS_COLOR[status] ?? 'var(--c94a3b8)';
 
   const overlay: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.72)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 200 };
-  const card: CSSProperties = { width: '100%', maxWidth: 460, background: 'var(--c0f172a)', border: '1px solid #223047', borderRadius: isMobile ? '18px 18px 0 0' : 16, padding: '16px 18px 20px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 -8px 40px rgba(0,0,0,0.5)' };
+  const card: CSSProperties = { width: '100%', maxWidth: 460, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: isMobile ? '18px 18px 0 0' : 16, padding: '16px 18px 20px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 -8px 40px rgba(0,0,0,0.5)' };
 
   const Row = ({ label, children }: { label: string; children: ReactNode }) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '10px 0', borderTop: '1px solid var(--c1e293b)' }}>

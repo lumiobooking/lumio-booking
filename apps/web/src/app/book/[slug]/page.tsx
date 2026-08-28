@@ -2145,7 +2145,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           <span>{bt("Total")}</span><span>{fmt(totalCents)}</span>
         </div>
         {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
-          <div style={{ fontSize: 12, color: '#7c5c22', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: 'var(--c7c5c22)', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>
             🎁 Visit reward: we check your visit count automatically (by phone/email) and the matching discount is applied to your booking price.
           </div>
         )}
@@ -2461,7 +2461,7 @@ function ProgramBanner({ fv, gr }: {
   return (
     <div style={{ background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 12, padding: '10px 14px', margin: '10px 0 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
       {lines.map((l, i) => (
-        <div key={i} style={{ fontSize: 12.5, color: '#7c5c22', fontWeight: 600, lineHeight: 1.5 }}>{l}</div>
+        <div key={i} style={{ fontSize: 12.5, color: 'var(--c7c5c22)', fontWeight: 600, lineHeight: 1.5 }}>{l}</div>
       ))}
     </div>
   );

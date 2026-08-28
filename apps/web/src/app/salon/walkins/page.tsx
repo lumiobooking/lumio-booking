@@ -559,7 +559,7 @@ function Inner() {
                     return <div style={{ color: 'var(--c64748b)', fontSize: 12, margin: '6px 0 10px' }}>{w.service?.name ?? t('wi.noService')}</div>;
                   }
                   return (
-                    <div style={{ margin: '8px 0 10px', border: '1px solid #263041', borderRadius: 8, overflow: 'hidden' }}>
+                    <div style={{ margin: '8px 0 10px', border: '1px solid var(--c263041)', borderRadius: 8, overflow: 'hidden' }}>
                       {items.map((it) => (
                         <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--c1e293b)' }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
@@ -761,7 +761,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
         </div>
 
         <div style={{ padding: 16 }}>
-          <div style={{ border: '1px solid #263041', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ border: '1px solid var(--c263041)', borderRadius: 10, overflow: 'hidden' }}>
             {items.length === 0 ? (
               <div style={{ padding: '12px', color: 'var(--c64748b)', fontSize: 13 }}>{t('wi.noLines')}</div>
             ) : items.map((it) => (

@@ -89,6 +89,29 @@ export const TOKENS: Record<string, string> = {
   '#fde68a': '#92400e',
   '#fef3c7': '#78350f',
 
+  // ---- calendar's own neutrals ---------------------------------------------
+  // The calendar grew a private slate ramp (grid lines, weekend cells, the
+  // today tint, dimmed cancelled chips) that the first sweep never saw — which
+  // is why light mode showed a patchwork of white cells inside night-blue
+  // gaps. Same rule as everything else: dark value IS the current pixel,
+  // light value follows Google Calendar's grammar — today gets an indigo
+  // tint, out-of-month and weekends get a barely-greyer white, never a
+  // different theme.
+  '#223047': '#dfe6f0', // tracks / deep borders
+  '#243044': '#dfe6f0', // month-grid lines
+  '#263041': '#e3e9f2',
+  '#273449': '#e8edf5', // hover rows, dividers
+  '#0b1322': '#f3f6fb', // cells outside the month
+  '#0d1526': '#f7f9fd', // weekend cells
+  '#111a2c': '#ffffff', // event cards
+  '#151f38': '#eef2ff', // TODAY — indigo-tinted, both themes say "you are here"
+  '#161f30': '#eef1f6', // cancelled/no-show chip
+  '#18202f': '#eef1f6', // dimmed events in the day views
+  '#8ea2c4': '#607399', // weekend column header
+  '#93a4bd': '#5f7189', // small chip text
+  '#dbe2ea': '#26374d', // customer name inside an event chip
+  '#7c5c22': '#e2c684', // amber border on the unassigned-staff picker
+
   // ---- blue family ---------------------------------------------------------
   '#172554': '#e3edfd',
   '#1e3a8a': '#dbeafe',
@@ -135,9 +158,9 @@ export function resolve(hex: string, theme: 'dark' | 'light'): string {
 }
 
 /** The pairs the product actually draws — the spec walks every one. */
-export const TEXT_TOKENS = ['#94a3b8', '#cbd5e1', '#e2e8f0', '#f1f5f9', '#f8fafc'] as const;
-export const MUTED_TOKENS = ['#64748b'] as const;
-export const SURFACE_TOKENS = ['#0b1120', '#0b1220', '#0f172a', '#111827', '#1e293b'] as const;
+export const TEXT_TOKENS = ['#94a3b8', '#cbd5e1', '#e2e8f0', '#f1f5f9', '#f8fafc', '#dbe2ea'] as const;
+export const MUTED_TOKENS = ['#64748b', '#8ea2c4', '#93a4bd'] as const;
+export const SURFACE_TOKENS = ['#0b1120', '#0b1220', '#0f172a', '#111827', '#1e293b', '#0b1322', '#0d1526', '#111a2c', '#151f38', '#161f30'] as const;
 export const CHIP_PAIRS: [string, string][] = [
   ['#312e81', '#c7d2fe'], ['#1e1b4b', '#a5b4fc'],
   ['#064e3b', '#6ee7b7'], ['#052e16', '#86efac'], ['#14532d', '#bbf7d0'],

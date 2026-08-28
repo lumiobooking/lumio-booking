@@ -404,12 +404,12 @@ function Inner() {
       ) : (
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 12 }}>
       <style>{`.cal-ev{transition:filter .12s ease}.cal-ev:hover{filter:brightness(1.2)}`}</style>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, minWidth: 680, background: '#243044', border: '1px solid #243044', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, minWidth: 680, background: 'var(--c243044)', border: '1px solid var(--c243044)', borderRadius: 12, overflow: 'hidden' }}>
         {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
           const weekend = dow === 0 || dow === 6;
           const todayCol = today.getDay() === dow;
           return (
-            <div key={dow} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: todayCol ? 'var(--ca5b4fc)' : weekend ? '#8ea2c4' : 'var(--c94a3b8)', fontWeight: 700 }}>{DAY_LABEL[lang][dow]}</div>
+            <div key={dow} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: todayCol ? 'var(--ca5b4fc)' : weekend ? 'var(--c8ea2c4)' : 'var(--c94a3b8)', fontWeight: 700 }}>{DAY_LABEL[lang][dow]}</div>
           );
         })}
         {days.map((d, i) => {
@@ -417,7 +417,7 @@ function Inner() {
           const isToday = !!d && d.getTime() === today.getTime();
           const dow = d ? d.getDay() : -1;
           const weekend = dow === 0 || dow === 6;
-          const cellBg = !d ? '#0b1322' : isToday ? '#151f38' : weekend ? '#0d1526' : 'var(--c0f172a)';
+          const cellBg = !d ? 'var(--c0b1322)' : isToday ? 'var(--c151f38)' : weekend ? 'var(--c0d1526)' : 'var(--c0f172a)';
           return (
             <div key={i} style={{ background: cellBg, minHeight: 116, minWidth: 0, overflow: 'hidden', padding: 7, opacity: d ? 1 : 0.5, boxShadow: isToday ? 'inset 0 0 0 1.5px #4f46e5' : undefined }}>
               {d && (
@@ -441,7 +441,7 @@ function Inner() {
                           style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5, background: `${m.color}1f`, borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.55 : 1, overflow: 'hidden' }}>
                           {(() => { const sm = sourceMeta(b.source); return sm ? <span style={{ flexShrink: 0, fontSize: 10 }} title={t(sm.key)}>{sm.icon}</span> : null; })()}
                           <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
-                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#dbe2ea', textDecoration: strike }}>{name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}</span>
+                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cdbe2ea)', textDecoration: strike }}>{name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}</span>
                         </div>
                       );
                     })}
@@ -468,14 +468,14 @@ function Inner() {
             {/* click-away backdrop (right-click also closes) */}
             <div onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
             <div style={{ position: 'fixed', top, left, zIndex: 61, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, minWidth: 190, boxShadow: '0 14px 34px rgba(0,0,0,0.55)', padding: 4 }}>
-              <div style={{ padding: '7px 12px 6px', fontSize: 11.5, color: 'var(--c94a3b8)', borderBottom: '1px solid #273449', marginBottom: 3, maxWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ padding: '7px 12px 6px', fontSize: 11.5, color: 'var(--c94a3b8)', borderBottom: '1px solid var(--c273449)', marginBottom: 3, maxWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {fmtT(b.startTime)} · {name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}
               </div>
               <CtxItem label={`👁 ${lang === 'vi' ? 'Xem chi tiết' : 'View details'}`} onClick={() => { setSelected(b); close(); }} />
               {canArrive && <CtxItem label={`🙋 ${t('cal.arrive')}`} onClick={() => { close(); action(b.id, 'arrive'); }} />}
               {isActive && <CtxItem label={`✅ ${t('cal.complete')}`} onClick={() => { close(); action(b.id, 'complete'); }} />}
               {isActive && <CtxItem color="#f59e0b" label={`✖ ${t('cal.cancel')}`} onClick={() => { close(); action(b.id, 'cancel'); }} />}
-              <div style={{ borderTop: '1px solid #273449', margin: '3px 0' }} />
+              <div style={{ borderTop: '1px solid var(--c273449)', margin: '3px 0' }} />
               <CtxItem color="var(--cf87171)" label={`🗑 ${lang === 'vi' ? 'Xóa booking' : 'Delete booking'}`} onClick={() => { close(); removeBooking(b.id); }} />
             </div>
           </>
@@ -614,7 +614,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
               return (
                 <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${svcLabel(b)}`}
                   style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 4px)`, width: `calc(${w}% - 8px)`,
-                    background: dim ? '#161f30' : `linear-gradient(180deg, ${m.color}26, ${m.color}12)`,
+                    background: dim ? 'var(--c161f30)' : `linear-gradient(180deg, ${m.color}26, ${m.color}12)`,
                     border: `1px solid ${m.color}55`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
                     boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.35)',
                     padding: wide ? '0 12px' : '5px 9px', overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
@@ -718,7 +718,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                   const isNext = b.id === nextId;
                   return (
                     <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card"
-                      style={{ background: dim ? '#161f30' : '#111a2c', border: `1px solid ${m.color}44`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
+                      style={{ background: dim ? 'var(--c161f30)' : 'var(--c111a2c)', border: `1px solid ${m.color}44`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
                         padding: '10px 12px', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
                         boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.3)',
                         display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -760,7 +760,7 @@ function CtxItem({ label, onClick, color }: { label: string; onClick: () => void
     <div
       onClick={onClick}
       style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, color: color ?? 'var(--ce2e8f0)', cursor: 'pointer', borderRadius: 6, whiteSpace: 'nowrap' }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = '#273449'; }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--c273449)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
       {label}
@@ -1058,7 +1058,7 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
           <select
             value={b.assignedStaff?.id ?? ''}
             onChange={(e) => { if (e.target.value) onAction(b.id, 'assign', { staffId: e.target.value }); }}
-            style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: '#7c5c22' }) }}
+            style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: 'var(--c7c5c22)' }) }}
           >
             <option value="" disabled>{tr('cal.linePick', lang)}</option>
             {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
@@ -1145,7 +1145,7 @@ function OriginChip({ b, t }: { b: Booking; t: (k: string) => string }) {
   return (
     <span title={[sm ? t(sm.key) : '', dm ? t(dm.key) : ''].filter(Boolean).join(' · ')}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 10, fontWeight: 700,
-        color: '#93a4bd', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+        color: 'var(--c93a4bd)', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>
       {sm && <span>{sm.icon}</span>}
       {sm && <span>{t(sm.key)}</span>}
       {dm && <span style={{ opacity: 0.85 }}>{dm.icon}</span>}

@@ -250,19 +250,16 @@ export default function TenantsPage() {
           <thead>
             <tr style={{ background: 'var(--c1e293b)', textAlign: 'left' }}>
               <th style={th}>Name</th>
-              <th style={th}>Market</th>
-              <th style={th}>Slug</th>
               <th style={th}>Status</th>
               <th style={th}>Plan</th>
               <th style={th}>Users</th>
-              <th style={th}>Created</th>
               <th style={th}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td style={td} colSpan={8}>
+                <td style={td} colSpan={5}>
                   No salons in this range.
                 </td>
               </tr>
@@ -270,35 +267,39 @@ export default function TenantsPage() {
             {pg.paged.map((t) => (
               <Fragment key={t.id}>
               <tr style={{ borderTop: '1px solid var(--c334155)' }}>
-                <td style={td}>{t.name}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }} title={marketOption(t.market).label}>{marketTag(t.market)}</td>
-                <td style={{ ...td, color: 'var(--c94a3b8)' }}>{t.slug}</td>
+                <td style={td}>
+                  <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'normal', minWidth: 140 }}>{t.name}</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 3, fontSize: 12, color: 'var(--c64748b)' }}>
+                    <span title={marketOption(t.market).label}>{marketTag(t.market)}</span>
+                    <span>{t.slug}</span>
+                    <span>· {new Date(t.createdAt).toLocaleDateString(uiLocale())}</span>
+                  </div>
+                </td>
                 <td style={td}>
                   <StatusBadge status={t.status} />
                 </td>
                 <td style={td}>
-                  <select
-                    value={t.planId ?? ''}
-                    onChange={(e) => changePlan(t.id, e.target.value)}
-                    style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 110 }}
-                  >
-                    <option value="">— No plan —</option>
-                    {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <select
-                    value={t.businessType ?? 'SALON'}
-                    onChange={(e) => changeBiz(t.id, e.target.value)}
-                    style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 110, marginTop: 6 }}
-                    title="Business type"
-                  >
-                    <option value="SALON">Salon</option>
-                    <option value="RESTAURANT">Restaurant</option>
-                  </select>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <select
+                      value={t.planId ?? ''}
+                      onChange={(e) => changePlan(t.id, e.target.value)}
+                      style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 96 }}
+                    >
+                      <option value="">— No plan —</option>
+                      {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <select
+                      value={t.businessType ?? 'SALON'}
+                      onChange={(e) => changeBiz(t.id, e.target.value)}
+                      style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 96 }}
+                      title="Business type"
+                    >
+                      <option value="SALON">Salon</option>
+                      <option value="RESTAURANT">Restaurant</option>
+                    </select>
+                  </div>
                 </td>
                 <td style={td}>{t._count?.users ?? '-'}</td>
-                <td style={{ ...td, color: 'var(--c94a3b8)' }}>
-                  {new Date(t.createdAt).toLocaleDateString(uiLocale())}
-                </td>
                 <td style={td}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
                     <button onClick={() => setEditId(editId === t.id ? null : t.id)} style={{ ...primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === t.id ? 'var(--c475569)' : '#6366f1' }}>
@@ -315,7 +316,7 @@ export default function TenantsPage() {
               </tr>
               {editId === t.id && (
                 <tr>
-                  <td colSpan={7} style={{ padding: 16, background: 'var(--c0f172a)' }}>
+                  <td colSpan={5} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                     <TenantEditPanel token={token} tenant={t} usage={voiceUsage.find((u) => u.tenantId === t.id)} onSaved={loadData} />
                   </td>
                 </tr>
@@ -863,8 +864,8 @@ function Centered({ children }: { children: ReactNodeLike }) {
 
 type ReactNodeLike = React.ReactNode;
 
-const th: React.CSSProperties = { padding: '12px 14px', fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' };
-const td: React.CSSProperties = { padding: '12px 14px', whiteSpace: 'nowrap', verticalAlign: 'middle' };
+const th: React.CSSProperties = { padding: '10px 12px', fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' };
+const td: React.CSSProperties = { padding: '10px 12px', whiteSpace: 'nowrap', verticalAlign: 'middle' };
 const inp: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',

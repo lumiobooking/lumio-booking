@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor } from './voice-lang';
+import { isTransientStatus } from '../messenger/agent-fallback';
 import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
@@ -620,7 +621,10 @@ export class VoiceService {
   ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null };
-    if (!key) return { reply: 'Thank you for calling. A team member will call you back shortly. Goodbye.', done: true, booked: false, appointmentId: null };
+    if (!key) {
+      this.logger.error('ANTHROPIC_API_KEY is not set on this service — the voice agent cannot think. Every call will fail until it is added.');
+      throw new Error('no-anthropic-key');
+    }
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true },
@@ -692,6 +696,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
       { role: 'user', content: userText },
     ];
 
+    let apiRetried = false;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -707,8 +712,14 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         signal: AbortSignal.timeout(9_000),
       });
       if (!res.ok) {
-        this.logger.warn(`Anthropic ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
-        return { reply: 'Sorry, I am having trouble right now. Please call again shortly. Goodbye.', done: true, booked: acc.booked, appointmentId: acc.appointmentId };
+        this.logger.warn(`Anthropic voice ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
+        if (!apiRetried && isTransientStatus(res.status)) {
+          apiRetried = true;
+          await new Promise((r) => setTimeout(r, 1200));
+          loop -= 1;
+          continue;
+        }
+        throw new Error(`anthropic ${res.status}`);
       }
       const data = (await res.json()) as { stop_reason?: string; content?: AnthropicBlock[] };
       const blocks = data.content || [];

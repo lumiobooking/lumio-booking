@@ -33,9 +33,13 @@ function makeSvc(overrides: { line?: Record<string, unknown>; call?: Record<stri
       updateMany: async () => ({ count: 1 }),
     },
     voiceLine: { findUnique: async () => line },
-    tenant: { findUnique: async () => ({ name: 'Family Smart Homes', timezone: 'America/Los_Angeles' }) },
+    tenant: { findUnique: async () => ({ name: 'Family Smart Homes', timezone: 'America/Los_Angeles', contactPhone: null, contactEmail: null, businessType: 'REAL_ESTATE' }) },
+    service: { findMany: async () => [{ id: 's1', name: 'Consultation call', priceCents: 0, durationMinutes: 30, currency: 'USD' }] },
+    messengerConnection: { findUnique: async () => null },
+    setting: { findFirst: async () => null },
   };
-  const svc = new VoiceService(prisma as never, {} as never, {} as never, {} as never);
+  const settings = { getBookingRules: async () => ({ businessHours: [], minLeadHours: 0, maxAdvanceDays: 0 }) };
+  const svc = new VoiceService(prisma as never, {} as never, settings as never, {} as never);
   return { svc, io };
 }
 
@@ -156,5 +160,55 @@ describe('an English conversation turn stays exactly English', () => {
     expect(xml).toContain('language="en-US"');
     expect(xml).not.toContain('lg=');
     expect(xml).not.toContain('vi-VN');
+  });
+});
+
+
+// ---- the REAL brain, with Anthropic faked at the network edge ---------------
+// Every earlier spec stubbed runAgent, so a crash or a hangup-on-error INSIDE
+// it was invisible until a live caller hit it ("sorry và tắt máy"). These run
+// the genuine method; only fetch is fake.
+describe('the real runAgent under real failure', () => {
+  const okResponse = {
+    ok: true,
+    json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Dạ, em có thể xếp lịch tư vấn cho anh chị ạ.' }] }),
+  } as Response;
+  const err = (status: number) => ({ ok: false, status, text: async () => 'err' }) as Response;
+  let fetchSpy: jest.SpyInstance;
+  beforeEach(() => { process.env.ANTHROPIC_API_KEY = 'test-key'; fetchSpy = jest.spyOn(globalThis, 'fetch' as never); });
+  afterEach(() => { fetchSpy.mockRestore(); delete process.env.ANTHROPIC_API_KEY; });
+
+  it('a healthy reply flows end-to-end through persona + bilingual prompt building', async () => {
+    const { svc } = makeSvc();
+    fetchSpy.mockResolvedValue(okResponse as never);
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'tôi muốn tư vấn mua nhà' }, '0', 'vi-VN');
+    expect(xml).toContain('xếp lịch tư vấn');
+    expect(xml).toContain('language="vi-VN"');
+  });
+
+  it('Anthropic 401 (bad key) = Vietnamese "say that again", NOT an English goodbye hangup', async () => {
+    const { svc } = makeSvc();
+    fetchSpy.mockResolvedValue(err(401) as never);
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'giá bao nhiêu' }, '0', 'vi-VN');
+    expect(xml).toContain('em xử lý hơi chậm');
+    expect(xml).toContain('<Gather');
+    expect(xml).not.toContain('<Hangup/>');
+    expect(xml).not.toMatch(/Sorry, I am having trouble/);
+  });
+
+  it('a MISSING key also stays alive in the caller’s language (and screams in the log)', async () => {
+    const { svc } = makeSvc();
+    delete process.env.ANTHROPIC_API_KEY;
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'alo' }, '0', 'vi-VN');
+    expect(xml).toContain('<Gather');
+    expect(xml).not.toContain('Thank you for calling');
+  });
+
+  it('529 overloaded: one quiet retry, then the reply — the caller never knows', async () => {
+    const { svc } = makeSvc();
+    fetchSpy.mockResolvedValueOnce(err(529) as never).mockResolvedValueOnce(okResponse as never);
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'hẹn thứ ba được không' }, '0', 'vi-VN');
+    expect(xml).toContain('xếp lịch tư vấn');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

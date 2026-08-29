@@ -116,6 +116,11 @@ export class OverviewService {
           startTime: true,
           assignedStaffId: true,
           serviceId: true,
+          // Where each booking came from — the dashboard's source panel counts
+          // these client-side with the same lib the calendar legend uses, so
+          // both screens can never disagree about what "Messenger" means.
+          source: true,
+          utmSource: true,
           assignedStaff: { select: { firstName: true, lastName: true } },
           service: { select: { name: true } },
         },
@@ -335,6 +340,9 @@ export class OverviewService {
 
     return {
       range: { from: dayKey(from), to: dayKey(to) },
+      // Raw (source, utmSource) pairs — tiny, and the web's booking-sources
+      // lib owns ALL classification rules in one place.
+      sourceRows: appts.map((a) => ({ source: a.source ?? null, utmSource: a.utmSource ?? null })),
       kpis: {
         totalBookings,
         revenueCents,

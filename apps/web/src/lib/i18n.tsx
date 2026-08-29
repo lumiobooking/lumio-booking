@@ -348,6 +348,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'db.avgPerBooking': { en: 'Avg {v}/sale', vi: 'TB {v}/lần bán' },
   'db.revAndBookings': { en: 'Revenue & bookings', vi: 'Doanh thu & lượt đặt' },
   'db.bookingStatus': { en: 'Booking status', vi: 'Trạng thái đặt lịch' },
+  'db.sources': { en: 'Booking sources', vi: 'Nguồn đặt lịch' },
+  'db.sourcesHint': { en: 'Where every booking in this range came from', vi: 'Mỗi lịch hẹn trong khoảng này đến từ kênh nào' },
   'db.revByMethod': { en: 'Revenue by payment method', vi: 'Doanh thu theo cách thanh toán' },
   'db.topServices': { en: 'Top services', vi: 'Dịch vụ nổi bật' },
   'db.staffRevenue': { en: 'Staff revenue', vi: 'Doanh thu theo thợ' },

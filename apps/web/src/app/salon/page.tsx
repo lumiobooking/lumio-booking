@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../components/SalonShell';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
+import { sourceCounts } from '../../lib/booking-sources';
+import { SourceChip } from '../../components/SourceChip';
 import { ui, formatPrice } from '../../lib/ui';
 import { useLang, tr } from '../../lib/i18n';
 import { useLiveRefresh } from '../../lib/useLiveRefresh';
@@ -21,6 +23,7 @@ interface Upcoming {
 }
 interface Dashboard {
   range: { from: string; to: string };
+  sourceRows?: { source: string | null; utmSource: string | null }[];
   kpis: {
     totalBookings: number;
     revenueCents: number;
@@ -158,6 +161,14 @@ function Inner() {
             </Card>
           </div>
 
+          {/* Booking sources — the same taxonomy and colors as the calendar
+              legend, so "Messenger" here IS "Messenger" there. */}
+          <div style={{ marginTop: 16 }}>
+            <Card title={t('db.sources')}>
+              <SourcesPanel rows={data.sourceRows ?? []} vi={lang === 'vi'} hint={t('db.sourcesHint')} />
+            </Card>
+          </div>
+
           {/* Top services */}
           <div style={{ marginTop: 16 }}>
             <Card title={t('db.topServices')}>
@@ -215,6 +226,33 @@ function Kpi({ label, value, accent, hint }: { label: string; value: number | st
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
       <div style={{ fontSize: 25, fontWeight: 700, marginTop: 4 }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
+    </div>
+  );
+}
+
+
+/** Where the range's bookings came from: brand chip + count + share bar. */
+function SourcesPanel({ rows, vi, hint }: { rows: { source: string | null; utmSource: string | null }[]; vi: boolean; hint: string }) {
+  const counts = sourceCounts(rows);
+  const total = rows.length || 1;
+  if (!counts.length) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{vi ? 'Chưa có lịch hẹn trong khoảng này.' : 'No bookings in this range.'}</p>;
+  return (
+    <div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '0 0 10px' }}>{hint}</p>
+      {counts.map(({ meta, count }) => {
+        const pct = Math.round((count / total) * 100);
+        return (
+          <div key={meta.key} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '7px 0' }}>
+            <div style={{ flex: '0 0 168px', minWidth: 0 }}>
+              <SourceChip meta={meta} vi={vi} count={count} />
+            </div>
+            <div style={{ flex: 1, height: 8, background: 'var(--c1e293b)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: meta.color, borderRadius: 4 }} />
+            </div>
+            <span style={{ flex: '0 0 44px', textAlign: 'right', fontSize: 12.5, color: 'var(--c94a3b8)', fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

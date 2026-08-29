@@ -844,6 +844,25 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
       .join('\n');
   }
 
+  /** Live health of the ONE Anthropic key the whole platform shares. */
+  async aiDiag(): Promise<{ keyPresent: boolean; model: string; ok: boolean; status: number | null; error: string | null }> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    const model = process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001';
+    if (!key) return { keyPresent: false, model, ok: false, status: null, error: 'ANTHROPIC_API_KEY is not set on this service.' };
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const error = res.ok ? null : (await res.text().catch(() => '')).slice(0, 300);
+      return { keyPresent: true, model, ok: res.ok, status: res.status, error };
+    } catch (e) {
+      return { keyPresent: true, model, ok: false, status: null, error: String(e).slice(0, 200) };
+    }
+  }
+
   // ---- Salon Admin ---------------------------------------------------------
   async get(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);

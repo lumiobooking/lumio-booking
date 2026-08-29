@@ -48,6 +48,15 @@ export class VoiceAdminController {
     return this.svc.provision(dto.tenantId, dto.lumioNumber);
   }
 
+  /** One click answers "is the platform's AI brain alive?" — a real (tiny)
+   *  Anthropic call. Every tenant shares one key: when it dies, EVERY hotline
+   *  and messenger bot degrades at once and each salon looks broken on its
+   *  own. Never returns the key itself. */
+  @Get('ai-diag')
+  aiDiag() {
+    return this.svc.aiDiag();
+  }
+
   @Get('usage')
   usage() {
     return this.svc.usageAll();

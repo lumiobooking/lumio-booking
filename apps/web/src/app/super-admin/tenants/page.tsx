@@ -177,7 +177,7 @@ export default function TenantsPage() {
         }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Salons (Tenants)</h1><MarketBadge /></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Salons (Tenants)</h1><MarketBadge /><AiDiagButton /></div>
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>
             Super Admin · {user.email}
           </p>
@@ -865,6 +865,40 @@ function Centered({ children }: { children: ReactNodeLike }) {
 }
 
 type ReactNodeLike = React.ReactNode;
+
+/**
+ * "Is the platform's AI brain alive?" — one click, one honest answer.
+ * Every tenant shares ONE Anthropic key; when it dies (expired, out of
+ * credit), every hotline and messenger bot degrades at once and each salon
+ * looks individually broken. This button ends the guessing.
+ */
+function AiDiagButton() {
+  const { token } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<string | null>(null);
+  const [ok, setOk] = useState<boolean | null>(null);
+  async function run() {
+    setBusy(true); setRes(null);
+    try {
+      const r = await apiFetch<{ keyPresent: boolean; model: string; ok: boolean; status: number | null; error: string | null }>('/admin/voice/ai-diag', { token });
+      setOk(r.ok);
+      setRes(r.ok
+        ? `✓ AI hoạt động bình thường (${r.model})`
+        : !r.keyPresent
+          ? '✗ ANTHROPIC_API_KEY chưa được cài trên service này — thêm vào Render env.'
+          : `✗ AI CHẾT — Anthropic trả ${r.status ?? 'lỗi mạng'}: ${r.error ?? ''}`.slice(0, 220));
+    } catch (e) { setOk(false); setRes(`✗ ${e instanceof Error ? e.message : 'error'}`); }
+    finally { setBusy(false); }
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <button onClick={run} disabled={busy} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, cursor: busy ? 'wait' : 'pointer' }}>
+        {busy ? 'Đang kiểm tra…' : '🧠 Kiểm tra não AI'}
+      </button>
+      {res && <span style={{ fontSize: 12.5, fontWeight: 700, color: ok ? '#22c55e' : 'var(--cfca5a5)', maxWidth: 520 }}>{res}</span>}
+    </span>
+  );
+}
 
 const th: React.CSSProperties = { padding: '10px 12px', fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' };
 const td: React.CSSProperties = { padding: '10px 12px', whiteSpace: 'nowrap', verticalAlign: 'middle' };

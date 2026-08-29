@@ -30,8 +30,8 @@ export class VoiceWebhookController {
   @Post('turn')
   @HttpCode(200)
   @Header('Content-Type', 'text/xml; charset=utf-8')
-  turn(@Body() body: Record<string, string>, @Query('miss') miss: string) {
-    return this.svc.handleTurn(body || {}, miss || '0');
+  turn(@Body() body: Record<string, string>, @Query('miss') miss: string, @Query('lg') lg?: string) {
+    return this.svc.handleTurn(body || {}, miss || '0', lg);
   }
 
   /** Bilingual menu answer: press 1 / 2 (or speech) chooses the call's language. */

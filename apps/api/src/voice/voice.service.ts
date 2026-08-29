@@ -90,6 +90,8 @@ const MAX_SILENCE = 2; // reprompts before we politely hang up
 @Injectable()
 export class VoiceService {
   private readonly logger = new Logger('Voice');
+  /** Agent failures per active call — three strikes before we say goodbye. */
+  private readonly turnFails = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -116,9 +118,13 @@ export class VoiceService {
   }
   /** Speak `text`, then listen. On silence Twilio falls through to the Redirect
    *  which re-enters /turn with an incremented miss counter. */
-  private sayGather(text: string, miss: number, language: string, voice: string | null): string {
-    const action = `${this.apiBase()}/api/voice/turn`;
-    const redirect = `${this.apiBase()}/api/voice/turn?miss=${miss + 1}`;
+  private sayGather(text: string, miss: number, language: string, voice: string | null, lg?: string | null): string {
+    // `lg` rides the webhook URL so a bilingual call keeps its language even
+    // if persisting it failed — the first live vi caller got English "Sorry…
+    // Goodbye" because the choice was lost between turns.
+    const lgQ = lg ? `lg=${encodeURIComponent(lg)}` : '';
+    const action = `${this.apiBase()}/api/voice/turn${lgQ ? `?${lgQ}` : ''}`;
+    const redirect = `${this.apiBase()}/api/voice/turn?miss=${miss + 1}${lgQ ? `&${lgQ}` : ''}`;
     // Without a language-capable voice, Vietnamese text is read with English
     // phonetics — technically speech, practically noise.
     const v = voiceFor(language, voice);
@@ -445,11 +451,11 @@ export class VoiceService {
     // The menu already disclosed the assistant in English; repeat the
     // disclosure in Vietnamese for callers who picked Vietnamese.
     const open = choice === 'vi-VN' ? `${canned.disclosure(salonName)} ${greeting}` : greeting;
-    return this.sayGather(open, 0, choice, line.voice || null);
+    return this.sayGather(open, 0, choice, line.voice || null, choice);
   }
 
   /** Each subsequent turn: caller's transcribed speech arrives in SpeechResult. */
-  async handleTurn(body: Record<string, string>, missParam: string): Promise<string> {
+  async handleTurn(body: Record<string, string>, missParam: string, lgParam?: string): Promise<string> {
     const callSid = String(body.CallSid || '');
     const speech = String(body.SpeechResult || '').trim();
     const miss = Number(missParam || '0') || 0;
@@ -459,7 +465,9 @@ export class VoiceService {
     if (!call || !line) {
       return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
     }
-    const lang = effectiveLang(line.language, (call as unknown as { language?: string | null }).language);
+    const savedLang = (call as unknown as { language?: string | null }).language || lgParam || null;
+    const lang = effectiveLang(line.language, savedLang);
+    const lgFlag = isBilingual(line.language) ? lang : null;
     const voice = line.voice || null;
     const canned = cannedLines(lang);
 
@@ -469,7 +477,7 @@ export class VoiceService {
         await this.finalize(call.id, 'no_action', null);
         return this.sayHangup(canned.lostYou, voice, lang);
       }
-      return this.sayGather(canned.didntCatch, miss, lang, voice);
+      return this.sayGather(canned.didntCatch, miss, lang, voice, lgFlag);
     }
 
     const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
@@ -487,12 +495,19 @@ export class VoiceService {
     } catch (e) {
       const msg = String(e);
       this.logger.warn(`agent error after ${Date.now() - t0}ms: ${msg.slice(0, 160)}`);
-      if (msg.includes('turn-deadline')) {
-        // Keep listening — do NOT hang up on a slow moment.
-        return this.sayGather(canned.slowRetry, 0, lang, voice);
-      }
-      result = { reply: canned.trouble, done: true, booked: false, appointmentId: null };
+      // ANY failure — deadline, model abort, tool crash — gets a polite
+      // "say that again?" and the call stays ALIVE. Goodbye is only earned by
+      // three failures in one call; one bad moment must not end a customer
+      // conversation in the wrong language ("Sorry… Goodbye" to a vi caller).
+      const fails = (this.turnFails.get(callSid) || 0) + 1;
+      if (this.turnFails.size > 500) this.turnFails.clear();
+      this.turnFails.set(callSid, fails);
+      if (fails < 3) return this.sayGather(canned.slowRetry, 0, lang, voice, lgFlag);
+      this.turnFails.delete(callSid);
+      await this.finalize(call.id, 'error', null);
+      return this.sayHangup(canned.trouble, voice, lang);
     }
+    this.turnFails.delete(callSid);
     this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang}`);
 
     const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
@@ -508,7 +523,7 @@ export class VoiceService {
       if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null);
       return this.sayHangup(result.reply, voice, lang);
     }
-    return this.sayGather(result.reply, 0, lang, voice);
+    return this.sayGather(result.reply, 0, lang, voice, lgFlag);
   }
 
   private async finalize(callId: string, outcome: string, appointmentId: string | null): Promise<void> {

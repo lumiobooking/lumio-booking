@@ -61,7 +61,12 @@ export function menuLines(salonName: string): { en: string; vi: string } {
  * voices carry real vi-VN models; the voice name itself encodes the locale.
  */
 export function voiceFor(lang: string, configuredVoice: string | null | undefined): { voice: string | null; sayLanguage: string | null } {
-  if (configuredVoice) return { voice: configuredVoice, sayLanguage: null };
+  // A configured voice wins ONLY when it can actually speak the turn's
+  // language. On a bilingual line the salon's chosen (English) voice must not
+  // read the Vietnamese half — that is the alice bug reborn through settings.
+  if (configuredVoice && (lang !== 'vi-VN' || /vi-VN/i.test(configuredVoice))) {
+    return { voice: configuredVoice, sayLanguage: null };
+  }
   // Neural defaults: Wavenet vi / Polly Neural en — the closest to a human
   // that plain TwiML <Say> offers, still one line of config per call.
   if (lang === 'vi-VN') return { voice: 'Google.vi-VN-Wavenet-A', sayLanguage: 'vi-VN' };

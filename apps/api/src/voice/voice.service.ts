@@ -453,6 +453,7 @@ export class VoiceService {
     if (!choice && miss < 2) return this.langMenuTwiml(salonName, miss + 1);
     if (!choice) choice = 'en-US';
 
+    this.logger.log(`voice lang chosen ${choice}`);
     await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: choice } as never }).catch(() => undefined);
     const canned = cannedLines(choice);
     // The configured greeting is written in ONE language (usually English).
@@ -503,7 +504,7 @@ export class VoiceService {
       // that dies is worse than one that says "sorry, once more?".
       result = await Promise.race([
         this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang, biline),
-        new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), 11_000); (tm as { unref?: () => void }).unref?.(); }),
+        new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), 9_000); (tm as { unref?: () => void }).unref?.(); }),
       ]);
     } catch (e) {
       const msg = String(e);

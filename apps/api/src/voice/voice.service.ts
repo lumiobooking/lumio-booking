@@ -474,12 +474,26 @@ export class VoiceService {
 
     const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
     let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null };
+    const t0 = Date.now();
     try {
-      result = await this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang);
+      // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
+      // hears dead air, then nothing. The brain gets 11s; past that we ask
+      // them to repeat themselves and the CALL SURVIVES. A phone conversation
+      // that dies is worse than one that says "sorry, once more?".
+      result = await Promise.race([
+        this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang),
+        new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), 11_000); (tm as { unref?: () => void }).unref?.(); }),
+      ]);
     } catch (e) {
-      this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
+      const msg = String(e);
+      this.logger.warn(`agent error after ${Date.now() - t0}ms: ${msg.slice(0, 160)}`);
+      if (msg.includes('turn-deadline')) {
+        // Keep listening — do NOT hang up on a slow moment.
+        return this.sayGather(canned.slowRetry, 0, lang, voice);
+      }
       result = { reply: canned.trouble, done: true, booked: false, appointmentId: null };
     }
+    this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang}`);
 
     const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
     await this.prisma.voiceCall.update({
@@ -646,6 +660,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
           tools,
           messages,
         }),
+        signal: AbortSignal.timeout(9_000),
       });
       if (!res.ok) {
         this.logger.warn(`Anthropic ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);

@@ -49,7 +49,7 @@ describe('what the caller hears', () => {
   });
   it('Vietnamese canned lines exist for every situation the English ones cover', () => {
     const vi = cannedLines('vi-VN'); const en = cannedLines('en-US');
-    for (const k of ['didntCatch', 'lostYou', 'trouble', 'defaultGreeting'] as const) {
+    for (const k of ['didntCatch', 'lostYou', 'trouble', 'defaultGreeting', 'slowRetry'] as const) {
       expect(vi[k]).toBeTruthy();
       expect(vi[k]).not.toBe(en[k]);
     }

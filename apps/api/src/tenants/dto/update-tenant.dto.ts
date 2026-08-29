@@ -41,6 +41,6 @@ export class UpdateTenantDto {
   contactEmail?: string;
 
   @IsOptional()
-  @IsIn(['SALON', 'RESTAURANT'])
-  businessType?: 'SALON' | 'RESTAURANT';
+  @IsIn(['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE'])
+  businessType?: 'SALON' | 'RESTAURANT' | 'REAL_ESTATE' | 'SERVICE';
 }

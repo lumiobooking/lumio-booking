@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { personaFor } from '../common/business-persona';
 import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
@@ -515,8 +516,11 @@ export class VoiceService {
     if (!key) return { reply: 'Thank you for calling. A team member will call you back shortly. Goodbye.', done: true, booked: false, appointmentId: null };
 
     const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true },
+      where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true },
     });
+    // The AI's identity, goal and vocabulary follow the tenant's line of
+    // business — a real-estate caller must never be offered a gel set.
+    const persona = personaFor((tenant as unknown as { businessType?: string } | null)?.businessType);
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
     const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
@@ -537,16 +541,17 @@ export class VoiceService {
         services.map((s) => `- ${s.name} — ${price(s.priceCents)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n')
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
-    const system = `You are the warm, professional phone receptionist for "${salonName}", a nail salon. Your words are read aloud on a live call. Speak naturally like a friendly human receptionist — usually one relaxed sentence, occasionally two; concise and to the point, but never curt, robotic, or scripted. A little warmth ("Of course!", "Happy to help") is good; rambling is not. No lists, no emojis, no special characters, no URLs.
+    const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+    const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. Your words are read aloud on a live call. Speak naturally like a friendly human receptionist — usually one relaxed sentence, occasionally two; concise and to the point, but never curt, robotic, or scripted. A little warmth ("Of course!", "Happy to help") is good; rambling is not. No lists, no emojis, no special characters, no URLs.
 The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
-Goal: book an appointment. You still need their first name, which service they want, and a specific date and time. Ask for what is missing, ONE thing at a time, and confirm details by repeating them back.
-Once you have a first name, a service (use its id from the list below), and a specific date and time, call create_booking. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
-Speak times naturally (for example, "two thirty PM on Friday"). The salon's local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
-Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the salon is closed then and offer the nearest open time.
+${persona.voiceGoal}
+Once you have a first name, a service (use its id from the list below), and a specific date and time for the ${persona.bookableNoun}, call create_booking. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
+Speak times naturally (for example, "two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
+Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the ${persona.venueNoun} is closed then and offer the nearest open time.
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
 Warmth and pace: sound like a caring human, not a script. Use the caller's name once you know it and react naturally ("Great choice!", "Perfect."). When it is time to end, give an unhurried, friendly goodbye: thank them by name, wish them a great day, and invite them to call back anytime. Never clip the goodbye or hang up mid-thought.
 ${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${extra ? 'Salon notes: ' + extra : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: ' + extra : ''}`;
 
     const tools = [
       {

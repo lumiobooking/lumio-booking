@@ -1017,6 +1017,8 @@ model Customer {
 enum BusinessType {
   SALON
   RESTAURANT
+  REAL_ESTATE // lead capture + consultation booking (e.g. Family Smart Homes)
+  SERVICE     // generic local business — appointments or messages
 }
 
 /// A physical table in a restaurant tenant — the bookable resource (like a

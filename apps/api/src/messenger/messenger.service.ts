@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { personaFor } from '../common/business-persona';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
   killsTheLead, dodgesTheQuestion, guessesGender, disclosesBeforeQualifying,
@@ -2064,13 +2065,14 @@ export class MessengerService implements OnModuleInit {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '));
 
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true } });
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true } });
+    const persona = personaFor((tenant as unknown as { businessType?: string } | null)?.businessType);
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
     const infoBlock = await this.systemKnowledge(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-    const bookingSystem = `You are the booking assistant for "${salonName}", a nail salon, chatting with a customer on Facebook Messenger. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
+    const bookingSystem = `You are the booking assistant for "${salonName}", ${persona.identity}, chatting with a customer on Facebook Messenger. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
 Reply in the language the CONVERSATION is held in — judge by the customer's messages as a whole, never the last message alone. Vietnamese customers sprinkle English words ("thank you", "ok", "book") without switching language; one English word never flips a Vietnamese conversation into English. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally.
 KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.

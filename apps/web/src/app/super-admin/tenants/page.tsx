@@ -296,6 +296,8 @@ export default function TenantsPage() {
                     >
                       <option value="SALON">Salon</option>
                       <option value="RESTAURANT">Restaurant</option>
+                      <option value="REAL_ESTATE">Real estate</option>
+                      <option value="SERVICE">Other services</option>
                     </select>
                   </div>
                 </td>

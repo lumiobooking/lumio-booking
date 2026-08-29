@@ -34,6 +34,15 @@ export class VoiceWebhookController {
     return this.svc.handleTurn(body || {}, miss || '0');
   }
 
+  /** Bilingual menu answer: press 1 / 2 (or speech) chooses the call's language. */
+  @Public()
+  @Post('lang')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  lang(@Body() body: Record<string, string>, @Query('miss') miss: string) {
+    return this.svc.handleLang(body || {}, miss || '0');
+  }
+
   /** After we ring the salon's own phones: nobody answered / busy → AI or voicemail. */
   @Public()
   @Post('after-dial')

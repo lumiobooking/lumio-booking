@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
+import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor } from './voice-lang';
 import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
@@ -118,15 +119,35 @@ export class VoiceService {
   private sayGather(text: string, miss: number, language: string, voice: string | null): string {
     const action = `${this.apiBase()}/api/voice/turn`;
     const redirect = `${this.apiBase()}/api/voice/turn?miss=${miss + 1}`;
+    // Without a language-capable voice, Vietnamese text is read with English
+    // phonetics — technically speech, practically noise.
+    const v = voiceFor(language, voice);
+    const langAttr = v.sayLanguage ? ` language="${xml(v.sayLanguage)}"` : '';
     return this.twiml(
       `<Gather input="speech" action="${action}" method="POST" speechTimeout="auto" language="${xml(language)}">` +
-        `<Say${this.sayAttr(voice)}>${xml(text)}</Say>` +
+        `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(text)}</Say>` +
       `</Gather>` +
       `<Redirect method="POST">${redirect}</Redirect>`,
     );
   }
-  private sayHangup(text: string, voice: string | null): string {
-    return this.twiml(`<Say${this.sayAttr(voice)}>${xml(text)}</Say><Pause length="1"/><Hangup/>`);
+
+  /** The bilingual opening menu: each half spoken in its own language. */
+  private langMenuTwiml(salonName: string, miss: number): string {
+    const m = menuLines(salonName);
+    const action = `${this.apiBase()}/api/voice/lang`;
+    const redirect = `${this.apiBase()}/api/voice/lang?miss=${miss + 1}`;
+    return this.twiml(
+      `<Gather input="dtmf speech" numDigits="1" action="${action}" method="POST" speechTimeout="auto" language="en-US">` +
+        `<Say>${xml(m.en)}</Say>` +
+        `<Say voice="alice" language="vi-VN">${xml(m.vi)}</Say>` +
+      `</Gather>` +
+      `<Redirect method="POST">${redirect}</Redirect>`,
+    );
+  }
+  private sayHangup(text: string, voice: string | null, language = 'en-US'): string {
+    const v = voiceFor(language, voice);
+    const langAttr = v.sayLanguage ? ` language="${xml(v.sayLanguage)}"` : '';
+    return this.twiml(`<Say${this.sayAttr(v.voice)}${langAttr}>${xml(text)}</Say><Pause length="1"/><Hangup/>`);
   }
 
   // ---- call routing ---------------------------------------------------------
@@ -323,10 +344,17 @@ export class VoiceService {
       if (u.aiMinutes >= line.includedMinutes) return this.noAnswerTwiml(line, salonName);
     }
 
+    // Bilingual line: ask the caller which language FIRST — recognition is
+    // locked per turn, so the choice must come before any real listening.
+    // (The menu itself already discloses the automated assistant.)
+    if (isBilingual(line.language)) return this.langMenuTwiml(salonName, 0);
+
     // ALWAYS disclose the automated assistant up front (CA/TX AI-disclosure laws).
-    const disclosure = `Hi, thanks for calling ${salonName}! Just so you know, you're speaking with our friendly automated booking assistant.`;
-    const greeting = (line.greeting && line.greeting.trim()) || 'How can I help you book an appointment today?';
-    return this.sayGather(`${disclosure} ${greeting}`, 0, line.language || 'en-US', line.voice || null);
+    const lang = line.language || 'en-US';
+    const canned = cannedLines(lang);
+    const disclosure = canned.disclosure(salonName);
+    const greeting = (line.greeting && line.greeting.trim()) || canned.defaultGreeting;
+    return this.sayGather(`${disclosure} ${greeting}`, 0, lang, line.voice || null);
   }
 
   /**
@@ -395,6 +423,31 @@ export class VoiceService {
     return this.twiml(`<Say${this.sayAttr(line?.voice || null)}>Thank you. We got your message and will call you back shortly. Goodbye.</Say><Hangup/>`);
   }
 
+  /** The caller answered the bilingual menu (digits or speech). */
+  async handleLang(body: Record<string, string>, missParam: string): Promise<string> {
+    const callSid = String(body.CallSid || '');
+    const miss = Number(missParam || '0') || 0;
+    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }) : null;
+    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }) : null;
+    if (!call || !line) return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: call.tenantId }, select: { name: true } });
+    const salonName = tenant?.name || 'our salon';
+
+    let choice = parseLangChoice(body.Digits, body.SpeechResult);
+    if (!choice && miss < 1) return this.langMenuTwiml(salonName, miss);
+    // Second silence/garble → don't hold the caller hostage at a menu:
+    // default to English and get on with the call.
+    if (!choice) choice = 'en-US';
+
+    await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: choice } as never }).catch(() => undefined);
+    const canned = cannedLines(choice);
+    const greeting = (line.greeting && line.greeting.trim()) || canned.defaultGreeting;
+    // The menu already disclosed the assistant in English; repeat the
+    // disclosure in Vietnamese for callers who picked Vietnamese.
+    const open = choice === 'vi-VN' ? `${canned.disclosure(salonName)} ${greeting}` : greeting;
+    return this.sayGather(open, 0, choice, line.voice || null);
+  }
+
   /** Each subsequent turn: caller's transcribed speech arrives in SpeechResult. */
   async handleTurn(body: Record<string, string>, missParam: string): Promise<string> {
     const callSid = String(body.CallSid || '');
@@ -406,25 +459,26 @@ export class VoiceService {
     if (!call || !line) {
       return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
     }
-    const lang = line.language || 'en-US';
+    const lang = effectiveLang(line.language, (call as unknown as { language?: string | null }).language);
     const voice = line.voice || null;
+    const canned = cannedLines(lang);
 
     // No speech captured → reprompt a couple of times, then bow out gracefully.
     if (!speech) {
       if (miss >= MAX_SILENCE) {
         await this.finalize(call.id, 'no_action', null);
-        return this.sayHangup('It looks like I lost you. Please call back any time to book. Goodbye!', voice);
+        return this.sayHangup(canned.lostYou, voice, lang);
       }
-      return this.sayGather("Sorry, I didn't catch that. How can I help you book?", miss, lang, voice);
+      return this.sayGather(canned.didntCatch, miss, lang, voice);
     }
 
     const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
     let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null };
     try {
-      result = await this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech);
+      result = await this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang);
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
-      result = { reply: 'Sorry, I am having trouble right now. A team member will call you back shortly. Goodbye.', done: true, booked: false, appointmentId: null };
+      result = { reply: canned.trouble, done: true, booked: false, appointmentId: null };
     }
 
     const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
@@ -438,7 +492,7 @@ export class VoiceService {
 
     if (result.done) {
       if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null);
-      return this.sayHangup(result.reply, voice);
+      return this.sayHangup(result.reply, voice, lang);
     }
     return this.sayGather(result.reply, 0, lang, voice);
   }
@@ -509,7 +563,7 @@ export class VoiceService {
 
   // ---- AI agent (tool use) — phone-tuned -----------------------------------
   private async runAgent(
-    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string,
+    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US',
   ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     const acc = { wantEnd: false, booked: false, appointmentId: null as string | null };
@@ -551,7 +605,7 @@ Only state hours, prices, services, address and contact details that are given t
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
 Warmth and pace: sound like a caring human, not a script. Use the caller's name once you know it and react naturally ("Great choice!", "Perfect."). When it is time to end, give an unhurried, friendly goodbye: thank them by name, wish them a great day, and invite them to call back anytime. Never clip the goodbye or hang up mid-thought.
 ${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: ' + extra : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: ' + extra : ''}${agentLangRule(lang)}`;
 
     const tools = [
       {

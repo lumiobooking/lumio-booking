@@ -147,6 +147,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
     en: 'We automatically add an “automated assistant” disclosure before your greeting (required by law). Leave blank for the default.',
   },
   language: { vi: 'Ngôn ngữ nghe & nói', en: 'Listening & speaking language' },
+  langBi: { vi: 'Song ngữ — khách chọn đầu cuộc gọi (For English press 1 · Tiếng Việt nhấn 2)', en: 'Bilingual — caller chooses at the start (press 1 EN / 2 VI)' },
   langEn: { vi: 'Tiếng Anh (US)', en: 'English (US)' },
   langVi: { vi: 'Tiếng Việt', en: 'Vietnamese' },
   aiInstruction: { vi: 'Ghi chú thêm cho trợ lý (tùy chọn)', en: 'Extra notes for the assistant (optional)' },
@@ -477,6 +478,7 @@ function Inner() {
         <select value={c.language} onChange={(e) => setC({ ...c, language: e.target.value })} style={{ ...ui.input, marginBottom: 14 }}>
           <option value="en-US">{t('langEn')}</option>
           <option value="vi-VN">{t('langVi')}</option>
+          <option value="bilingual">{t('langBi')}</option>
         </select>
 
         <label style={ui.label}>{t('aiInstruction')}</label>

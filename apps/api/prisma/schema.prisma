@@ -1812,6 +1812,7 @@ model VoiceCall {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   callSid       String? @unique // Twilio Call SID (per-call session key)
+  language      String? // bilingual lines: the language THIS caller chose at the menu
   fromNumber    String? // caller's number (E.164)
   toNumber      String? // the Lumio number dialed
   transcript    Json    @default("[]") // [{role,content}] conversation turns

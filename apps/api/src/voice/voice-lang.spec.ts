@@ -32,6 +32,14 @@ describe('reading the menu answer', () => {
     expect(parseLangChoice('', 'viet')).toBe('vi-VN');
     expect(parseLangChoice('', 'English')).toBe('en-US');
   });
+
+  it('saying the digit counts too — "two"/"hai" happen more than keypresses', () => {
+    expect(parseLangChoice('', 'two')).toBe('vi-VN');
+    expect(parseLangChoice('', 'hai')).toBe('vi-VN');
+    expect(parseLangChoice('', 'one')).toBe('en-US');
+    // a plain greeting must NOT flip the language
+    expect(parseLangChoice('', 'hi')).toBeNull();
+  });
   it('anything else is "no answer", so the menu can repeat once', () => {
     expect(parseLangChoice('5', '')).toBeNull();
     expect(parseLangChoice('', 'uhh')).toBeNull();

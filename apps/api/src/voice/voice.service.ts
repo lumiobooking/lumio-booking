@@ -439,6 +439,7 @@ export class VoiceService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: call.tenantId }, select: { name: true } });
     const salonName = tenant?.name || 'our salon';
 
+    this.logger.log(`voice lang-menu answer digits='${String(body.Digits || '')}' speech='${String(body.SpeechResult || '').slice(0, 40)}' miss=${miss}`);
     let choice = parseLangChoice(body.Digits, body.SpeechResult);
     if (!choice && miss < 1) return this.langMenuTwiml(salonName, miss);
     // Second silence/garble → don't hold the caller hostage at a menu:
@@ -466,10 +467,11 @@ export class VoiceService {
       return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
     }
     const savedLang = (call as unknown as { language?: string | null }).language || lgParam || null;
-    const lang = effectiveLang(line.language, savedLang);
-    const lgFlag = isBilingual(line.language) ? lang : null;
+    const biline = isBilingual(line.language);
+    let lang = effectiveLang(line.language, savedLang);
+    let lgFlag = biline ? lang : null;
     const voice = line.voice || null;
-    const canned = cannedLines(lang);
+    let canned = cannedLines(lang);
 
     // No speech captured → reprompt a couple of times, then bow out gracefully.
     if (!speech) {
@@ -481,7 +483,7 @@ export class VoiceService {
     }
 
     const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
-    let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null };
+    let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null };
     const t0 = Date.now();
     try {
       // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
@@ -489,7 +491,7 @@ export class VoiceService {
       // them to repeat themselves and the CALL SURVIVES. A phone conversation
       // that dies is worse than one that says "sorry, once more?".
       result = await Promise.race([
-        this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang),
+        this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang, biline),
         new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), 11_000); (tm as { unref?: () => void }).unref?.(); }),
       ]);
     } catch (e) {
@@ -508,6 +510,16 @@ export class VoiceService {
       return this.sayHangup(canned.trouble, voice, lang);
     }
     this.turnFails.delete(callSid);
+    // The agent may have DETECTED the caller's language mid-conversation (the
+    // menu's keypress can get lost on some carriers — this is the escape
+    // hatch). Speak this very reply, and listen from now on, in the new one.
+    if (biline && result.langSwitch && result.langSwitch !== lang) {
+      lang = result.langSwitch;
+      lgFlag = lang;
+      canned = cannedLines(lang);
+      await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: lang } as never }).catch(() => undefined);
+      this.logger.log(`voice lang switched mid-call → ${lang}`);
+    }
     this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang}`);
 
     const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
@@ -592,10 +604,10 @@ export class VoiceService {
 
   // ---- AI agent (tool use) — phone-tuned -----------------------------------
   private async runAgent(
-    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US',
-  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null }> {
+    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US', bilingual = false,
+  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null };
+    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null };
     if (!key) return { reply: 'Thank you for calling. A team member will call you back shortly. Goodbye.', done: true, booked: false, appointmentId: null };
 
     const tenant = await this.prisma.tenant.findUnique({
@@ -634,7 +646,7 @@ Only state hours, prices, services, address and contact details that are given t
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
 Warmth and pace: sound like a caring human, not a script. Use the caller's name once you know it and react naturally ("Great choice!", "Perfect."). When it is time to end, give an unhurried, friendly goodbye: thank them by name, wish them a great day, and invite them to call back anytime. Never clip the goodbye or hang up mid-thought.
 ${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: ' + extra : ''}${agentLangRule(lang)}`;
+${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: ' + extra : ''}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
 
     const tools = [
       {
@@ -651,6 +663,11 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
           required: ['customerFirstName', 'serviceId', 'localDateTime'],
         },
       },
+      ...(bilingual ? [{
+        name: 'switch_language',
+        description: 'Switch this call to the given language when the caller speaks it or asks for it. All later replies MUST be in that language.',
+        input_schema: { type: 'object', properties: { language: { type: 'string', enum: ['vi-VN', 'en-US'] } }, required: ['language'] },
+      }] : []),
       {
         name: 'end_call',
         description: 'End the phone call after saying goodbye. Call this when the caller is done (booked and nothing else, question answered, or they said goodbye), or when handing off to a human.',
@@ -695,16 +712,21 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         continue;
       }
       const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
-      return { reply: text || 'How else can I help you book?', done: acc.booked ? false : acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId };
+      return { reply: text || 'How else can I help you book?', done: acc.booked ? false : acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
     }
-    return { reply: 'Thanks for calling! A team member will follow up shortly. Goodbye.', done: true, booked: acc.booked, appointmentId: acc.appointmentId };
+    return { reply: 'Thanks for calling! A team member will follow up shortly. Goodbye.', done: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
   }
 
   private async runTool(
     tenantId: string, tz: string, callerPhone: string, name: string, input: Record<string, unknown>,
-    acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null },
+    acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null },
   ): Promise<string> {
     try {
+      if (name === 'switch_language') {
+        const lg = String(input.language || '');
+        if (lg === 'vi-VN' || lg === 'en-US') { acc.langSwitch = lg; return `SWITCHED. Reply in ${lg === 'vi-VN' ? 'Vietnamese' : 'English'} from now on.`; }
+        return 'ERROR: language must be vi-VN or en-US.';
+      }
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },

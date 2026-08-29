@@ -36,7 +36,11 @@ export function parseLangChoice(digits: string | null | undefined, speech: strin
   if (d === '2') return 'vi-VN';
   const s = String(speech || '').toLowerCase();
   if (/viet/.test(s)) return 'vi-VN';
-  if (/english/.test(s)) return 'en-US';
+  // Callers often SAY the digit instead of pressing it. "hai" through en-US
+  // recognition also lands as "hi"/"high" sometimes, but those collide with a
+  // plain greeting — only unambiguous words count.
+  if (/\b(two|hai)\b/.test(s)) return 'vi-VN';
+  if (/english|\bone\b/.test(s)) return 'en-US';
   return null;
 }
 

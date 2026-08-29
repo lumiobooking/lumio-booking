@@ -455,7 +455,11 @@ export class VoiceService {
 
     await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: choice } as never }).catch(() => undefined);
     const canned = cannedLines(choice);
-    const greeting = (line.greeting && line.greeting.trim()) || canned.defaultGreeting;
+    // The configured greeting is written in ONE language (usually English).
+    // A caller who just chose Vietnamese must not be greeted with it — that
+    // reads as "pressed 2, still got English". Vietnamese gets the canned
+    // Vietnamese opening; English keeps the salon's own wording.
+    const greeting = choice === 'vi-VN' ? canned.defaultGreeting : ((line.greeting && line.greeting.trim()) || canned.defaultGreeting);
     // The menu already disclosed the assistant in English; repeat the
     // disclosure in Vietnamese for callers who picked Vietnamese.
     const open = choice === 'vi-VN' ? `${canned.disclosure(salonName)} ${greeting}` : greeting;

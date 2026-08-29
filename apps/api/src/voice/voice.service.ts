@@ -139,7 +139,7 @@ export class VoiceService {
     return this.twiml(
       `<Gather input="dtmf speech" numDigits="1" action="${action}" method="POST" speechTimeout="auto" language="en-US">` +
         `<Say>${xml(m.en)}</Say>` +
-        `<Say voice="alice" language="vi-VN">${xml(m.vi)}</Say>` +
+        `<Say voice="Google.vi-VN-Standard-A" language="vi-VN">${xml(m.vi)}</Say>` +
       `</Gather>` +
       `<Redirect method="POST">${redirect}</Redirect>`,
     );

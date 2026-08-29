@@ -49,11 +49,16 @@ export function menuLines(salonName: string): { en: string; vi: string } {
   };
 }
 
-/** Twilio's built-in `alice` voice speaks Vietnamese when told the language;
- *  without this a Vietnamese reply is read aloud with English phonetics. */
+/**
+ * Vietnamese needs a voice that actually SPEAKS Vietnamese. The first version
+ * used Twilio's legacy `alice` — whose language list has no vi-VN — so every
+ * Vietnamese sentence was read aloud with English phonetics: pure noise, and
+ * the first live caller said exactly that ("nói tùm lum"). Twilio's Google
+ * voices carry real vi-VN models; the voice name itself encodes the locale.
+ */
 export function voiceFor(lang: string, configuredVoice: string | null | undefined): { voice: string | null; sayLanguage: string | null } {
   if (configuredVoice) return { voice: configuredVoice, sayLanguage: null };
-  if (lang === 'vi-VN') return { voice: 'alice', sayLanguage: 'vi-VN' };
+  if (lang === 'vi-VN') return { voice: 'Google.vi-VN-Standard-A', sayLanguage: 'vi-VN' };
   return { voice: null, sayLanguage: null };
 }
 

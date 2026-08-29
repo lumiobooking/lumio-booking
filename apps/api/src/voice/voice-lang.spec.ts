@@ -64,8 +64,8 @@ describe('what the caller hears', () => {
 });
 
 describe('the mouth matches the language', () => {
-  it('Vietnamese with no configured voice gets alice + language attr', () => {
-    expect(voiceFor('vi-VN', null)).toEqual({ voice: 'alice', sayLanguage: 'vi-VN' });
+  it('Vietnamese gets a REAL Vietnamese voice — alice has no vi-VN and read it as English noise', () => {
+    expect(voiceFor('vi-VN', null)).toEqual({ voice: 'Google.vi-VN-Standard-A', sayLanguage: 'vi-VN' });
   });
   it('a configured voice always wins — the salon’s choice is respected', () => {
     expect(voiceFor('vi-VN', 'Polly.Joanna')).toEqual({ voice: 'Polly.Joanna', sayLanguage: null });

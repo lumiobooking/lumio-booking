@@ -138,8 +138,8 @@ export class VoiceService {
     const redirect = `${this.apiBase()}/api/voice/lang?miss=${miss + 1}`;
     return this.twiml(
       `<Gather input="dtmf speech" numDigits="1" action="${action}" method="POST" speechTimeout="auto" language="en-US">` +
-        `<Say>${xml(m.en)}</Say>` +
-        `<Say voice="Google.vi-VN-Standard-A" language="vi-VN">${xml(m.vi)}</Say>` +
+        `<Say voice="Polly.Joanna-Neural">${xml(m.en)}</Say>` +
+        `<Say voice="Google.vi-VN-Wavenet-A" language="vi-VN">${xml(m.vi)}</Say>` +
       `</Gather>` +
       `<Redirect method="POST">${redirect}</Redirect>`,
     );

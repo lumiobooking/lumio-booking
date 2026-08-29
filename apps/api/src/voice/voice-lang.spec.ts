@@ -64,14 +64,14 @@ describe('what the caller hears', () => {
 });
 
 describe('the mouth matches the language', () => {
-  it('Vietnamese gets a REAL Vietnamese voice — alice has no vi-VN and read it as English noise', () => {
-    expect(voiceFor('vi-VN', null)).toEqual({ voice: 'Google.vi-VN-Standard-A', sayLanguage: 'vi-VN' });
+  it('Vietnamese gets a REAL neural Vietnamese voice — alice has no vi-VN and read it as English noise', () => {
+    expect(voiceFor('vi-VN', null)).toEqual({ voice: 'Google.vi-VN-Wavenet-A', sayLanguage: 'vi-VN' });
   });
   it('a configured voice always wins — the salon’s choice is respected', () => {
     expect(voiceFor('vi-VN', 'Polly.Joanna')).toEqual({ voice: 'Polly.Joanna', sayLanguage: null });
   });
-  it('English keeps today’s default voice untouched', () => {
-    expect(voiceFor('en-US', null)).toEqual({ voice: null, sayLanguage: null });
+  it('English default is neural too — the robotic Twilio default is retired', () => {
+    expect(voiceFor('en-US', null)).toEqual({ voice: 'Polly.Joanna-Neural', sayLanguage: null });
   });
 });
 

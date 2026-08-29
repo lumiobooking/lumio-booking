@@ -58,8 +58,10 @@ export function menuLines(salonName: string): { en: string; vi: string } {
  */
 export function voiceFor(lang: string, configuredVoice: string | null | undefined): { voice: string | null; sayLanguage: string | null } {
   if (configuredVoice) return { voice: configuredVoice, sayLanguage: null };
-  if (lang === 'vi-VN') return { voice: 'Google.vi-VN-Standard-A', sayLanguage: 'vi-VN' };
-  return { voice: null, sayLanguage: null };
+  // Neural defaults: Wavenet vi / Polly Neural en — the closest to a human
+  // that plain TwiML <Say> offers, still one line of config per call.
+  if (lang === 'vi-VN') return { voice: 'Google.vi-VN-Wavenet-A', sayLanguage: 'vi-VN' };
+  return { voice: 'Polly.Joanna-Neural', sayLanguage: null };
 }
 
 /** Canned lines, per language. English keeps today's exact wording. */

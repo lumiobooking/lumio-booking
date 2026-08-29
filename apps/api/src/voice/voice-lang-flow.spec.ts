@@ -237,3 +237,33 @@ describe('a broken database still answers the phone', () => {
     expect(xml).toContain('<Response>');
   });
 });
+
+
+// ---- every TwiML document must be REAL XML --------------------------------
+// The killer bug the whole saga came down to: ?miss=1&lg=vi-VN put a naked
+// ampersand inside the document → Twilio error 12100 "Document parse
+// failure" → its own English apology + hangup, on exactly the turns that
+// carried the language parameter. String asserts never caught it; this does.
+describe('TwiML is valid XML — no naked ampersands, ever', () => {
+  const NAKED_AMP = /&(?!amp;|lt;|gt;|quot;|apos;|#)/;
+  it('the exact response that killed the pressed-2 call is clean', async () => {
+    const { svc } = makeSvc();
+    const xml = await svc.handleLang({ CallSid: 'CA1', Digits: '2' }, '0');
+    expect(xml).not.toMatch(NAKED_AMP);
+    expect(xml).toContain('&amp;lg=vi-VN'); // the redirect carries both params, escaped
+  });
+  it('a Vietnamese turn reply is clean too', async () => {
+    const { svc } = makeSvc();
+    (svc as unknown as { runAgent: unknown }).runAgent = agentOk;
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'alo' }, '0', 'vi-VN');
+    expect(xml).not.toMatch(NAKED_AMP);
+  });
+  it('menu, English turns and hangups are clean', async () => {
+    const { svc } = makeSvc();
+    (svc as unknown as { runAgent: unknown }).runAgent = agentOk;
+    const menu = (svc as unknown as { langMenuTwiml: (n: string, m: number) => string }).langMenuTwiml('A & B Nails', 0);
+    expect(menu).not.toMatch(NAKED_AMP);
+    const en = await svc.handleLang({ CallSid: 'CA1', Digits: '1' }, '0');
+    expect(en).not.toMatch(NAKED_AMP);
+  });
+});

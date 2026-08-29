@@ -148,11 +148,15 @@ export class VoiceService implements OnModuleInit {
     // phonetics — technically speech, practically noise.
     const v = voiceFor(language, voice);
     const langAttr = v.sayLanguage ? ` language="${xml(v.sayLanguage)}"` : '';
+    // The URLs go INSIDE XML: a naked & (miss=1&lg=vi-VN) is invalid markup.
+    // Twilio answered with error 12100 "Document parse failure", spoke its own
+    // English apology and hung up — on every single turn that carried the
+    // language parameter. Everything in a TwiML document gets escaped.
     return this.twiml(
-      `<Gather input="speech" action="${action}" method="POST" speechTimeout="auto" language="${xml(language)}">` +
+      `<Gather input="speech" action="${xml(action)}" method="POST" speechTimeout="auto" language="${xml(language)}">` +
         `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(text)}</Say>` +
       `</Gather>` +
-      `<Redirect method="POST">${redirect}</Redirect>`,
+      `<Redirect method="POST">${xml(redirect)}</Redirect>`,
     );
   }
 
@@ -167,11 +171,11 @@ export class VoiceService implements OnModuleInit {
     const action = `${this.apiBase()}/api/voice/lang?miss=${miss}`;
     const redirect = `${this.apiBase()}/api/voice/lang?miss=${miss + 1}`;
     return this.twiml(
-      `<Gather input="dtmf" numDigits="1" timeout="7" action="${action}" method="POST">` +
+      `<Gather input="dtmf" numDigits="1" timeout="7" action="${xml(action)}" method="POST">` +
         `<Say voice="Polly.Joanna-Neural">${xml(m.en)}</Say>` +
         `<Say voice="Google.vi-VN-Wavenet-A" language="vi-VN">${xml(m.vi)}</Say>` +
       `</Gather>` +
-      `<Redirect method="POST">${redirect}</Redirect>`,
+      `<Redirect method="POST">${xml(redirect)}</Redirect>`,
     );
   }
   private sayHangup(text: string, voice: string | null, language = 'en-US'): string {

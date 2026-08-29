@@ -2622,8 +2622,27 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (!host || /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':')) {
         throw new BadRequestException('That address cannot be read.');
       }
-      const res = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'LumioBot/1.0 (+https://lumiobooking.com)' } }).catch(() => null);
-      if (!res || !res.ok) throw new BadRequestException(`Could not load that page${res ? ` (${res.status})` : ''}.`);
+      // Real-estate and restaurant template sites sit behind Cloudflare-style
+      // bot walls that 403 anything announcing itself as a bot. The owner of
+      // the site is our own customer asking us to read it, so present as the
+      // browser they would use themselves; fall back to a second, plainer
+      // identity before giving up.
+      const browserHeaders = {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+      };
+      let res = await fetch(url, { redirect: 'follow', headers: browserHeaders }).catch(() => null);
+      if (res && !res.ok && [403, 406, 503].includes(res.status)) {
+        res = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'LumioBot/1.0 (+https://lumiobooking.com)', accept: 'text/html' } }).catch(() => res);
+      }
+      if (!res || !res.ok) {
+        throw new BadRequestException(
+          res && [403, 406, 503].includes(res.status)
+            ? `Website này chặn đọc tự động (${res.status}). Dùng nút "Đọc từ Fanpage", hoặc mở website → chọn hết chữ (Ctrl+A, Ctrl+C) → dán vào ô bên dưới rồi bấm Phân loại tự động.`
+            : `Could not load that page${res ? ` (${res.status})` : ''}.`,
+        );
+      }
       const html = (await res.text()).slice(0, 400000);
       raw = html
         .replace(/<script[\s\S]*?<\/script>/gi, ' ')

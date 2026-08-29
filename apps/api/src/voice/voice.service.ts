@@ -137,13 +137,18 @@ export class VoiceService {
     );
   }
 
-  /** The bilingual opening menu: each half spoken in its own language. */
+  /** The bilingual opening menu: each half spoken in its own language.
+   *  KEYPAD ONLY. The first version also listened for speech — and Vietnamese
+   *  callers answer the phone talking ("a lô!"), so the speech capture kept
+   *  finishing the gather BEFORE the keypress: unmatched speech, menu replays,
+   *  they speak again… an endless loop that ended in English. A keypress is
+   *  the one signal background talk cannot fake. */
   private langMenuTwiml(salonName: string, miss: number): string {
     const m = menuLines(salonName);
-    const action = `${this.apiBase()}/api/voice/lang`;
+    const action = `${this.apiBase()}/api/voice/lang?miss=${miss}`;
     const redirect = `${this.apiBase()}/api/voice/lang?miss=${miss + 1}`;
     return this.twiml(
-      `<Gather input="dtmf speech" numDigits="1" action="${action}" method="POST" speechTimeout="auto" language="en-US">` +
+      `<Gather input="dtmf" numDigits="1" timeout="7" action="${action}" method="POST">` +
         `<Say voice="Polly.Joanna-Neural">${xml(m.en)}</Say>` +
         `<Say voice="Google.vi-VN-Wavenet-A" language="vi-VN">${xml(m.vi)}</Say>` +
       `</Gather>` +
@@ -441,9 +446,11 @@ export class VoiceService {
 
     this.logger.log(`voice lang-menu answer digits='${String(body.Digits || '')}' speech='${String(body.SpeechResult || '').slice(0, 40)}' miss=${miss}`);
     let choice = parseLangChoice(body.Digits, body.SpeechResult);
-    if (!choice && miss < 1) return this.langMenuTwiml(salonName, miss);
-    // Second silence/garble → don't hold the caller hostage at a menu:
-    // default to English and get on with the call.
+    // No keypress yet → replay, at most twice, with the retry count IN the
+    // URL (both action and redirect) so a talkative line can never loop the
+    // menu forever. Still nothing → English, and the mid-call
+    // switch_language tool remains the safety net for Vietnamese callers.
+    if (!choice && miss < 2) return this.langMenuTwiml(salonName, miss + 1);
     if (!choice) choice = 'en-US';
 
     await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: choice } as never }).catch(() => undefined);

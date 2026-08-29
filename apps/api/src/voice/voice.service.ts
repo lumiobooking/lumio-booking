@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
@@ -89,8 +89,26 @@ const MAX_TOOL_LOOPS = 5;
 const MAX_SILENCE = 2; // reprompts before we politely hang up
 
 @Injectable()
-export class VoiceService {
+export class VoiceService implements OnModuleInit {
   private readonly logger = new Logger('Voice');
+
+  /**
+   * Self-healing schema for the one column the whole bilingual flow leans on.
+   * The migration adding voice_calls.language failed on its first deploy
+   * (wrong table name) — and if the retry ever didn't stick, EVERY
+   * voiceCall.findUnique (which selects all columns) threw, /lang and /turn
+   * returned 500, and Twilio spoke its own English "application error" and
+   * hung up: the exact "sorry và tắt máy" reported from live calls. Booting
+   * must not depend on migration history being clean.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.prisma.$executeRawUnsafe('ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "language" TEXT');
+      this.logger.log('voice_calls.language ensured');
+    } catch (e) {
+      this.logger.error(`could not ensure voice_calls.language: ${String(e).slice(0, 160)}`);
+    }
+  }
   /** Agent failures per active call — three strikes before we say goodbye. */
   private readonly turnFails = new Map<string, number>();
 
@@ -439,10 +457,10 @@ export class VoiceService {
   async handleLang(body: Record<string, string>, missParam: string): Promise<string> {
     const callSid = String(body.CallSid || '');
     const miss = Number(missParam || '0') || 0;
-    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }) : null;
-    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }) : null;
+    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch((e: unknown) => { this.logger.error(`lang read failed: ${String(e).slice(0, 160)}`); return null; }) : null;
+    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }).catch(() => null) : null;
     if (!call || !line) return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: call.tenantId }, select: { name: true } });
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: call.tenantId }, select: { name: true } }).catch(() => null);
     const salonName = tenant?.name || 'our salon';
 
     this.logger.log(`voice lang-menu answer digits='${String(body.Digits || '')}' speech='${String(body.SpeechResult || '').slice(0, 40)}' miss=${miss}`);
@@ -474,8 +492,8 @@ export class VoiceService {
     const speech = String(body.SpeechResult || '').trim();
     const miss = Number(missParam || '0') || 0;
 
-    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }) : null;
-    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }) : null;
+    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch((e: unknown) => { this.logger.error(`turn read failed: ${String(e).slice(0, 160)}`); return null; }) : null;
+    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }).catch(() => null) : null;
     if (!call || !line) {
       return this.sayHangup('Sorry, something went wrong on our end. Please call again. Goodbye.', null);
     }

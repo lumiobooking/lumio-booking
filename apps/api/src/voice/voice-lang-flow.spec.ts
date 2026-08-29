@@ -212,3 +212,28 @@ describe('the real runAgent under real failure', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
+
+
+// ---- the database itself failing must NEVER become a Twilio 500 -------------
+// A missing column (the failed voice_calls.language migration) made
+// findUnique throw on EVERY /lang and /turn: NestJS 500 → Twilio's own
+// English "application error" + instant hangup. The webhook must always
+// answer with TwiML, whatever the DB does.
+describe('a broken database still answers the phone', () => {
+  it('/lang: read explodes → polite TwiML, not an exception', async () => {
+    const { svc } = makeSvc();
+    (svc as unknown as { prisma: { voiceCall: { findUnique: unknown } } }).prisma.voiceCall.findUnique =
+      async () => { throw new Error('column voice_calls.language does not exist'); };
+    const xml = await svc.handleLang({ CallSid: 'CA1', Digits: '2' }, '0');
+    expect(xml).toContain('<Response>');
+    expect(xml).toContain('<Hangup/>');
+  });
+
+  it('/turn: read explodes → polite TwiML, not an exception', async () => {
+    const { svc } = makeSvc();
+    (svc as unknown as { prisma: { voiceCall: { findUnique: unknown } } }).prisma.voiceCall.findUnique =
+      async () => { throw new Error('column voice_calls.language does not exist'); };
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'alo' }, '0', 'vi-VN');
+    expect(xml).toContain('<Response>');
+  });
+});

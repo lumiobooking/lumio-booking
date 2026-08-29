@@ -6,6 +6,7 @@ import {
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
+import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
 import { InboxEventsService } from './inbox-events.service';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
@@ -1989,6 +1990,7 @@ export class MessengerService implements OnModuleInit {
     const prevAtMs = prevTurn?.at ? new Date(prevTurn.at).getTime() : 0;
     const gapDays = prevAtMs ? Math.floor((Date.now() - prevAtMs) / 86_400_000) : 0;
     let reply: string;
+    let agentFailed = false;
     try {
       const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
@@ -2009,7 +2011,10 @@ export class MessengerService implements OnModuleInit {
       }), 55_000, 'agent');
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
-      reply = 'Thanks for your message! A team member will get back to you shortly. 💕';
+      // The bot could not think. Say so honestly, in the conversation's own
+      // language — and make the "a person will reply" promise TRUE below.
+      agentFailed = true;
+      reply = fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), text].join(' '));
     }
     // A human may have taken over WHILE we were generating (their echo flips
     // handoff on this thread). Sending now would talk over them — drop the
@@ -2030,6 +2035,22 @@ export class MessengerService implements OnModuleInit {
       ? [{ role: 'assistant', content: reply, at: outAt }]
       : [{ role: 'user', content: text, at: inAt }, { role: 'assistant', content: reply, at: outAt }];
     await this.appendTurns(threadId, history, memory, newTurns);
+
+    if (agentFailed) {
+      // The holding line promised a person. Keep the promise: hand the thread
+      // to the humans (auto mode — the bot may reclaim it later if nobody
+      // comes) and raise a staff alarm that a routine "new message" push can
+      // never overwrite. Only after the reply went out — flipping handoff
+      // first would trip the guard above and silence the apology itself.
+      await this.prisma.messengerThread.update({
+        where: { id: threadId },
+        data: { handoff: true, handoffAt: new Date(), handoffMode: 'auto' } as never,
+      }).catch(() => undefined);
+      this.events.publish(conn.tenantId, 'message');
+      const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
+      void this.push.sendToTenant(conn.tenantId, escalationPush(who, true)).catch(() => undefined);
+      await this.audit(conn.tenantId, 'messenger.agent_fallback');
+    }
   }
 
   // ---- AI agent (tool use) -------------------------------------------------
@@ -2041,7 +2062,7 @@ export class MessengerService implements OnModuleInit {
     ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    if (!key) return 'Thanks for reaching out! A team member will reply to you shortly. 💕';
+    if (!key) return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '));
 
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true } });
     const salonName = tenant?.name || 'our salon';
@@ -2326,6 +2347,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
     // One rewrite only: a gate that can loop is a gate that can hang a reply.
     let retried = false;
+    let apiRetried = false;
     let dodgeRetried = false;
     let genderRetried = false;
     let qualifyRetried = false;
@@ -2343,7 +2365,15 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       });
       if (!res.ok) {
         this.logger.warn(`Anthropic ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
-        return 'Thanks! A team member will get back to you shortly. 💕';
+        // Overloaded/5xx is usually a moment, not an outage — one quiet retry
+        // before the customer ever sees a holding line.
+        if (!apiRetried && isTransientStatus(res.status)) {
+          apiRetried = true;
+          await new Promise((r) => setTimeout(r, 1500));
+          loop -= 1;
+          continue;
+        }
+        throw new Error(`anthropic ${res.status}`);
       }
       const data = (await res.json()) as { stop_reason?: string; content?: AnthropicBlock[] };
       const blocks = data.content || [];
@@ -2444,7 +2474,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       return text || 'Got it! How else can I help you book?';
     }
-    return 'Thanks! A team member will follow up with you shortly. 💕';
+    return fallbackText(customerWords);
   }
 
   /**

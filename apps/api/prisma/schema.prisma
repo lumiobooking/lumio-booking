@@ -2608,6 +2608,11 @@ model ContentFormat {
   /// 'hot' rides today's wave, 'steady' always works, 'cold' is resting.
   heat      String  @default("steady")
   active    Boolean @default(true)
+
+  /// Ideas generated from this format — the other half of the relation, which
+  /// Prisma requires and whose absence failed every build.
+  ideas     ContentIdea[]
+
   /// Free-form tags for matching (service names, seasons, moods).
   tags      Json    @default("[]")
   notes     String?

@@ -8,6 +8,7 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
+import { leadDossier, rawMemoryFallback, LeadFacts } from './lead-memory';
 import { InboxEventsService } from './inbox-events.service';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
@@ -58,7 +59,11 @@ export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const MAX_TURNS = 12; // history cap
+// Short-term memory. Twelve was six exchanges — a sales chat about packages
+// passes that before anyone says a price, and everything older then depended
+// on a distiller that could silently fail. Twenty costs a few hundred cached
+// tokens per turn and buys a whole consultation.
+const MAX_TURNS = 20; // history cap
 const MAX_TOOL_LOOPS = 5;
 
 @Injectable()
@@ -1799,9 +1804,22 @@ export class MessengerService implements OnModuleInit {
   }
 
   /** Merge soon-to-be-forgotten turns into the permanent customer profile. */
-  private async distillThreadSummary(threadId: string, prev: string | null, dropped: Turn[]): Promise<void> {
+  private async distillThreadSummary(threadId: string, prevIgnored: string | null, dropped: Turn[]): Promise<void> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    if (!key) return;
+    // Read the CURRENT profile, not the one captured before this ran. People
+    // type in bursts; two distillations racing on the same stale base meant
+    // the second silently erased the first one's facts.
+    const fresh = await this.prisma.messengerThread.findUnique({
+      where: { id: threadId }, select: { summary: true },
+    }).catch(() => null);
+    const prev = (fresh as { summary?: string | null } | null)?.summary ?? prevIgnored;
+
+    // No key / no credit: keep the turns RAW rather than dropping them. A
+    // clumsy profile beats a bot that asks for a phone number twice.
+    if (!key) {
+      await this.saveSummary(threadId, rawMemoryFallback(prev, dropped));
+      return;
+    }
     const lines = dropped.map((t) => `${t.role === 'user' ? 'KHACH' : 'SHOP'}: ${String(t.content).slice(0, 300)}`).join('\n');
     const prompt = `Bạn giữ HỒ SƠ KHÁCH của một hội thoại Messenger dài hạn. Hồ sơ hiện tại:\n${prev || '(trống)'}\n\nCác tin nhắn cũ sắp bị xóa khỏi bộ nhớ ngắn hạn:\n${lines}\n\nViết lại hồ sơ MỚI: gộp cũ + mới, tối đa 120 từ, dạng gạch đầu dòng ngắn — tên khách, SĐT, ngành/tên tiệm, thành phố, gói/dịch vụ đã bàn, thông tin khách đã cung cấp, việc còn dang dở, thái độ/ý định. CHỈ ghi điều đã xuất hiện trong hội thoại, không suy diễn. Trả về đúng nội dung hồ sơ, không lời dẫn.`;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1813,15 +1831,25 @@ export class MessengerService implements OnModuleInit {
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: AbortSignal.timeout(30_000),
-    });
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      this.logger.warn(`memory distill unavailable (${res ? res.status : 'network'}) — banking turns raw`);
+      await this.saveSummary(threadId, rawMemoryFallback(prev, dropped));
+      return;
+    }
     const json = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
     const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
-    if (text) {
-      await this.prisma.messengerThread.update({
-        where: { id: threadId },
-        data: { summary: text.slice(0, 2000) } as never,
-      }).catch(() => undefined);
-    }
+    // Distillation failed (overloaded, unpaid, malformed)? The turns still do
+    // not get to vanish — bank them raw.
+    await this.saveSummary(threadId, text ? text.slice(0, 2000) : rawMemoryFallback(prev, dropped));
+  }
+
+  private async saveSummary(threadId: string, summary: string): Promise<void> {
+    if (!summary.trim()) return;
+    await this.prisma.messengerThread.update({
+      where: { id: threadId },
+      data: { summary: summary.slice(0, 2000) } as never,
+    }).catch(() => undefined);
   }
 
   private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger'): Promise<void> {
@@ -1987,6 +2015,16 @@ export class MessengerService implements OnModuleInit {
     const userAlready = Boolean(lastTurn && lastTurn.role === 'user' && lastTurn.content === text);
     // Long-term memory + how long they were away (returning-customer handling).
     const memory = this.threadSummary(fresh);
+    // The lead row this very bot wrote. It used to be write-only: the agent
+    // saved the customer's name, phone, shop and city and then never saw them
+    // again — so it asked for them a second time, mid-consultation. This is
+    // the most reliable memory in the system (exact, structured, needs no AI),
+    // and now it rides in every prompt.
+    const lead = await this.prisma.salesLead.findFirst({
+      where: { tenantId: conn.tenantId, threadId },
+      orderBy: { createdAt: 'desc' },
+      select: { name: true, phone: true, salonName: true, city: true, interest: true, note: true },
+    }).catch(() => null);
     const prevTurn = userAlready ? history[history.length - 2] : lastTurn;
     const prevAtMs = prevTurn?.at ? new Date(prevTurn.at).getTime() : 0;
     const gapDays = prevAtMs ? Math.floor((Date.now() - prevAtMs) / 86_400_000) : 0;
@@ -2009,6 +2047,7 @@ export class MessengerService implements OnModuleInit {
         pageToken: conn.pageToken,
         memory,
         gapDays,
+        lead,
       }), 55_000, 'agent');
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
@@ -2060,7 +2099,7 @@ export class MessengerService implements OnModuleInit {
     aiInstruction: string,
     history: Turn[],
     userText: string,
-    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string } = { mode: 'booking', leadEmail: null },
+    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '));
@@ -2320,7 +2359,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const gapNote = (ctx.gapDays ?? 0) >= 1
       ? `\nRETURNING CUSTOMER: they last spoke ${ctx.gapDays} day(s) ago and just came back. Do NOT restart with a stranger's greeting, do NOT redo discovery, do NOT re-explain at length. Acknowledge them like someone you know, use the memory and the history above, and answer their new message directly — SHORT.`
       : '';
-    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + closingRule + memoryBlock + gapNote;
+    // The dossier goes LAST so it is the closest thing to the conversation:
+    // exact facts, straight from the database, outranking any recollection.
+    const dossier = leadDossier(ctx.lead);
+    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + closingRule + memoryBlock + gapNote + dossier;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));

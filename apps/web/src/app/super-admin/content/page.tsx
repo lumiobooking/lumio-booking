@@ -126,10 +126,16 @@ export default function ContentConsolePage() {
             <option value="cold">Tạm nghỉ</option>
           </select>
         </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button style={primary} disabled={busy === 'fmt' || !nf.name.trim() || !nf.summary.trim()}
           onClick={() => run('fmt', () => apiFetch('/admin/content/formats', { method: 'POST', token, body: { industry: 'SALON', name: nf.name, summary: nf.summary, hookGuide: nf.hookGuide || null, audience: nf.audience || null, lengthSec: nf.lengthSec ? Number(nf.lengthSec) : null, heat: nf.heat } }).then(() => setNf({ name: '', summary: '', hookGuide: '', lengthSec: '', audience: '', heat: 'steady' })), 'Đã thêm định dạng')}>
           Thêm định dạng
         </button>
+        <button style={ghost} disabled={busy === 'seed'}
+          onClick={() => run('seed', () => apiFetch('/admin/content/formats/seed', { method: 'POST', token, body: { industry: 'SALON' } }), 'Đã nạp bộ định dạng mẫu')}>
+          Nạp 10 định dạng mẫu ngành nail
+        </button>
+        </div>
 
         <div style={{ marginTop: 12 }}>
           {formats.filter((f) => f.active).map((f) => (

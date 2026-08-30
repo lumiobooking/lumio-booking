@@ -370,6 +370,27 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     return { forDate, ideas, trendNotes: notes };
   }
 
+  /**
+   * The half of the playbook that is computed, not written: what is coming and
+   * what to do about the quiet hours. Shown to the salon as its own sections
+   * because "sắp tới có sự kiện gì" and "nên giảm giá thế nào" are questions an
+   * owner asks directly — they should not have to infer the answers from three
+   * content ideas.
+   */
+  async planFor(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    return {
+      events: ctx.signals.events,
+      offer: ctx.revenue.advice,
+      lapsed: ctx.revenue.lapsed,
+      quietSlots: ctx.revenue.loads.slice(0, 3),
+      busySlots: [...ctx.revenue.loads].reverse().slice(0, 3),
+      topYields: ctx.revenue.yields.slice(0, 3),
+      thin: ctx.signals.thin,
+    };
+  }
+
   /** The salon marks progress: filmed, posted, or honestly skipped. */
   async setIdeaStatus(user: AuthenticatedUser, id: string, status: string, resultNote?: string) {
     const tenantId = this.tenantId(user);

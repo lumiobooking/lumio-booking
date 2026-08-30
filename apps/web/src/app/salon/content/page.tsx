@@ -35,6 +35,15 @@ interface Idea {
 }
 interface TrendNote { id: string; title: string; body: string }
 interface Payload { forDate: string; ideas: Idea[]; trendNotes: TrendNote[] }
+interface SeasonEvent { name: string; daysAway: number; note: string }
+interface Offer { kind: string; headline: string; detail: string; discountPct: number; protect: string[]; basis: string }
+interface Plan {
+  events: SeasonEvent[];
+  offer: Offer;
+  lapsed: { count: number; medianDaysAway: number | null };
+  quietSlots: { label: string; fillIndex: number }[];
+  thin: boolean;
+}
 
 export default function ContentTodayPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -47,6 +56,7 @@ function Inner() {
   const T = (v: string, e: string) => (vi ? v : e);
 
   const [data, setData] = useState<Payload | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -56,7 +66,13 @@ function Inner() {
     if (!token) return;
     setLoading(true);
     try {
-      setData(await apiFetch<Payload>('/content/today', { token }));
+      // The plan is computed live and can be slower than the ideas; letting it
+      // fail on its own means a slow booking query never blanks the whole page.
+      const [today, p] = await Promise.all([
+        apiFetch<Payload>('/content/today', { token }),
+        apiFetch<Plan>('/content/plan', { token }).catch(() => null),
+      ]);
+      setData(today); setPlan(p);
       setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setLoading(false); }
@@ -117,6 +133,80 @@ function Inner() {
             {T('Đội Lumio đang chuẩn bị kế hoạch nội dung cho tiệm. Kiểm tra lại sau nhé.',
                'The Lumio team is preparing your plan. Check back shortly.')}
           </div>
+        </div>
+      )}
+
+      {/* ---- what is coming, and what to prepare ---- */}
+      {!!plan?.events?.length && (
+        <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
+            📅 {T('Sắp tới', 'Coming up')}
+          </div>
+          {plan.events.slice(0, 4).map((e) => (
+            <div key={e.name} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid var(--c1e293b)' }}>
+              <div style={{ flex: '0 0 66px' }}>
+                <div style={{ fontSize: 17, fontWeight: 800, color: e.daysAway <= 14 ? '#f59e0b' : 'var(--ca5b4fc)', lineHeight: 1.1 }}>{e.daysAway}</div>
+                <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('ngày nữa', 'days')}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{e.name}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{e.note}</div>
+                {e.daysAway <= 21 && (
+                  <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2 }}>
+                    {T('Nên bắt đầu đăng bài từ bây giờ', 'Start posting about this now')}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ---- the discount decision, straight from the booking book ---- */}
+      {plan?.offer && (
+        <div style={{
+          ...ui.card, marginBottom: 14, padding: 16,
+          borderColor: plan.offer.kind === 'raise-price' ? '#22c55e' : plan.offer.kind === 'hold' ? 'var(--c334155)' : '#6366f1',
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+            💰 {T('Kéo khách & doanh thu', 'Fill the book')}
+          </div>
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: plan.offer.kind === 'raise-price' ? '#22c55e' : 'var(--ca5b4fc)', marginBottom: 5, lineHeight: 1.45 }}>
+            {plan.offer.headline}
+          </div>
+          <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{plan.offer.detail}</div>
+
+          {!!plan.offer.protect?.length && (
+            <div style={{ background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)', borderRadius: 8, padding: '8px 11px', marginTop: 9 }}>
+              <span style={{ fontSize: 12.5, color: 'var(--cfca5a5)' }}>
+                <b>{T('Không giảm giá', 'Do not discount')}:</b> {plan.offer.protect.join(' · ')} — {T('đang gần kín, giảm là mất lãi', 'nearly full; discounting here just costs margin')}
+              </span>
+            </div>
+          )}
+
+          {!!plan.quietSlots?.length && (
+            <div style={{ marginTop: 9 }}>
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>
+                {T('Khung trống nhất', 'Quietest slots')}
+              </div>
+              {plan.quietSlots.map((q) => (
+                <div key={q.label} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
+                  <span style={{ fontSize: 13, color: 'var(--ccbd5e1)', flex: '0 0 128px' }}>{q.label}</span>
+                  <span style={{ flex: 1, height: 7, background: 'var(--c1e293b)', borderRadius: 4, overflow: 'hidden' }}>
+                    <span style={{ display: 'block', height: '100%', width: `${Math.max(3, q.fillIndex)}%`, background: q.fillIndex <= 30 ? '#f59e0b' : '#6366f1' }} />
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--c94a3b8)', flex: '0 0 34px', textAlign: 'right' }}>{q.fillIndex}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!!plan.lapsed?.count && (
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--c1e293b)' }}>
+              {T(`${plan.lapsed.count} khách lâu chưa quay lại`, `${plan.lapsed.count} customers overdue`)}
+              {plan.lapsed.medianDaysAway ? ` · ${T('trung bình', 'median')} ${plan.lapsed.medianDaysAway} ${T('ngày', 'days')}` : ''}
+            </div>
+          )}
         </div>
       )}
 

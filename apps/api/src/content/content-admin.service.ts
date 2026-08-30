@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { NAIL_STARTER_FORMATS } from './starter-formats';
 
 /**
  * The Lumio team's side of the content engine.
@@ -61,6 +62,30 @@ export class ContentAdminService {
     }
     const created = await this.prisma.contentFormat.create({ data });
     return { ok: true, id: created.id };
+  }
+
+  /**
+   * Fill an empty library with the formats that reliably work in this trade.
+   * Skips anything already present by name, so pressing it twice is harmless
+   * and it never overwrites a format the team has tuned.
+   */
+  async seedFormats(industry = 'SALON') {
+    if (industry.toUpperCase() !== 'SALON') throw new BadRequestException('Hiện chỉ có bộ mẫu cho ngành nail');
+    const existing = await this.prisma.contentFormat.findMany({ where: { industry: 'SALON' }, select: { name: true } });
+    const have = new Set(existing.map((e: { name: string }) => e.name.trim().toLowerCase()));
+    let added = 0;
+    for (const f of NAIL_STARTER_FORMATS) {
+      if (have.has(f.name.toLowerCase())) continue;
+      await this.prisma.contentFormat.create({
+        data: {
+          industry: 'SALON', niche: 'nail', name: f.name, summary: f.summary,
+          hookGuide: f.hookGuide, shotList: f.shotList, lengthSec: f.lengthSec,
+          audience: f.audience, heat: f.heat, active: true, tags: f.tags as never,
+        },
+      }).catch(() => undefined);
+      added += 1;
+    }
+    return { added, skipped: NAIL_STARTER_FORMATS.length - added };
   }
 
   async deleteFormat(id: string) {

@@ -23,6 +23,12 @@ export class ContentController {
     return this.svc.forSalon(user, date);
   }
 
+  /** Upcoming events + the discount advice, computed from this salon's book. */
+  @Get('plan')
+  plan(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.planFor(user);
+  }
+
   @Post('ideas/:id/status')
   setStatus(
     @CurrentUser() user: AuthenticatedUser,
@@ -51,6 +57,11 @@ export class ContentAdminController {
   @Post('formats')
   saveFormat(@Body() dto: never) {
     return this.admin.saveFormat(dto);
+  }
+
+  @Post('formats/seed')
+  seedFormats(@Body() dto: { industry?: string }) {
+    return this.admin.seedFormats(dto?.industry ?? 'SALON');
   }
 
   @Delete('formats/:id')

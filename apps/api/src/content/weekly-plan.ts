@@ -23,6 +23,7 @@
 
 import { WEEKDAY_VI, type SlotLoad, type OfferAdvice, type LapsedSignal } from './revenue-signals';
 import type { DatedEvent } from './region-events';
+import { playbookFor, type ContentSource } from './industry-playbook';
 
 export type JobKind = 'film' | 'post' | 'story' | 'offer' | 'winback' | 'engage' | 'rest';
 
@@ -51,6 +52,9 @@ export interface WeekPlan {
   basis: string;
   /** Every-day habits, separate from the dated work. */
   daily: Job[];
+  /** Where today's raw material comes from — the part usually left vague. */
+  sources: ContentSource[];
+  trade: string;
   dataThin: boolean;
 }
 
@@ -87,18 +91,6 @@ export function leadDay(targetWeekday: number): number {
 
 // ---- 2. The week ------------------------------------------------------------
 
-const DAILY_HABITS: Record<string, Job[]> = {
-  SALON: [
-    { kind: 'engage', text: 'Trả lời hết tin nhắn và bình luận còn sót', why: 'Khách nhắn mà chờ quá một buổi là mất — đây là việc rẻ nhất trong ngày', when: 'trước khi mở cửa' },
-    { kind: 'story', text: 'Chụp 1 bộ móng đẹp nhất trong ngày, đăng story ngay', why: 'Story không cần dựng, không cần đẹp — chỉ cần đều. Đây là kho ảnh cho các bài tuần sau', when: 'lúc làm xong' },
-    { kind: 'engage', text: 'Xin 1 khách vui vẻ nhất để lại đánh giá Google', why: 'Một đánh giá mỗi ngày đưa tiệm lên trước đối thủ trên bản đồ — nhanh hơn mọi thứ khác', when: 'lúc thanh toán' },
-  ],
-};
-
-function habitsFor(industry: string): Job[] {
-  return DAILY_HABITS[industry] ?? DAILY_HABITS.SALON;
-}
-
 export function buildWeekPlan(input: {
   today: Date;
   /** 0-6 local weekday; pass it in because the salon's timezone decides. */
@@ -110,6 +102,7 @@ export function buildWeekPlan(input: {
   events?: DatedEvent[];
 }): WeekPlan {
   const industry = (input.industry || 'SALON').toUpperCase();
+  const book = playbookFor(industry);
   const loads = input.loads ?? [];
   const events = input.events ?? [];
   const advice = input.advice ?? null;
@@ -139,26 +132,20 @@ export function buildWeekPlan(input: {
   });
 
   // -- three posts, spaced, each with a job to do ---------------------------
+  // Three posts, each doing a different job — taken from the trade's playbook,
+  // because a restaurant's three posts are not a salon's three posts. Three
+  // posts of the same kind is one post repeated.
   const postDays = [(film.weekday + 1) % 7, (film.weekday + 3) % 7, (film.weekday + 5) % 7];
-  add(postDays[0], {
-    kind: 'post',
-    text: 'Đăng clip 1 — mẫu móng đang được đặt nhiều nhất',
-    why: 'Bài đầu tuần nên là thứ chắc ăn: cái khách đang thật sự chọn, không phải cái mình thích nhất',
-    when: '18:30-20:00',
-  });
-  add(postDays[1], {
-    kind: 'post',
-    text: 'Đăng clip 2 — quy trình hoặc cận cảnh tay nghề',
-    why: 'Đây là bài thuyết phục người đang phân vân giữa tiệm mình và tiệm bên cạnh',
-    when: '18:30-20:00',
-  });
-  add(postDays[2], {
-    kind: 'post',
-    text: 'Đăng clip 3 — trước/sau, hoặc khách phản ứng thật',
-    why: busiest
-      ? `Đăng trước ${WEEKDAY_VI[busiest.weekday]} — khung đông nhất của tiệm — để bài chạy đúng lúc khách đang quyết định`
-      : 'Đăng cuối tuần, lúc khách rảnh và quyết định nhanh nhất',
-    when: '18:30-20:00',
+  book.postTypes.slice(0, 3).forEach((pt, i) => {
+    const last = i === 2;
+    add(postDays[i], {
+      kind: 'post',
+      text: `Đăng clip ${i + 1} — ${pt.label}`,
+      why: last && busiest
+        ? `${pt.job}. Đăng trước ${WEEKDAY_VI[busiest.weekday]} — khung đông nhất của tiệm — để bài chạy đúng lúc khách đang quyết định`
+        : pt.job,
+      when: '18:30-20:00',
+    });
   });
 
   // -- the offer, aimed at a real gap ---------------------------------------
@@ -227,7 +214,7 @@ export function buildWeekPlan(input: {
     ? 'Chưa đủ lịch hẹn để đọc nhịp của tiệm — đây là nhịp mặc định, sẽ tự chỉnh lại sau vài tuần tiệm chạy'
     : `Ngày quay và ngày đăng chọn theo sổ đặt lịch thật của tiệm (${loads.length} khung giờ có dữ liệu)`;
 
-  return { days, focus, basis, daily: habitsFor(industry), dataThin };
+  return { days, focus, basis, daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin };
 }
 
 /** The week as prompt text, so the day's ideas match the week's plan. */

@@ -165,3 +165,49 @@ describe('the prompt version stays consistent with the screen', () => {
     expect(weekPlanToPrompt(plan())).not.toMatch(/Không có việc nội dung/);
   });
 });
+
+describe('each trade gets its own week, not a translated nail one', () => {
+  it('gives a restaurant restaurant posts', () => {
+    const p = plan({ industry: 'RESTAURANT' });
+    const posts = allJobs(p).filter((j) => j.kind === 'post').map((j) => j.text).join(' ');
+    expect(posts).toMatch(/món|bếp|khách thật/i);
+    expect(posts).not.toMatch(/móng/i);
+  });
+
+  it('gives an estate agency house tours, not manicures', () => {
+    const posts = allJobs(plan({ industry: 'REAL_ESTATE' })).filter((j) => j.kind === 'post').map((j) => j.text).join(' ');
+    expect(posts).toMatch(/tour|nhà|khu vực/i);
+    expect(posts).not.toMatch(/móng/i);
+  });
+
+  it('gives the three posts three different jobs', () => {
+    const posts = allJobs(plan()).filter((j) => j.kind === 'post');
+    expect(posts).toHaveLength(3);
+    expect(new Set(posts.map((p) => p.why)).size).toBe(3);
+  });
+
+  it('names where each day’s raw material comes from, with a time to catch it', () => {
+    const p = plan();
+    expect(p.sources.length).toBeGreaterThanOrEqual(3);
+    for (const s of p.sources) {
+      expect(s.when.length).toBeGreaterThan(3);
+      expect(s.why.length).toBeGreaterThan(15);
+    }
+    // The single most perishable moment in a nail salon, and the one most
+    // often missed: the set is only perfect until the customer stands up.
+    expect(p.sources[0].when).toMatch(/trước khi khách trả tiền/);
+  });
+
+  it('gives each trade its own daily habits', () => {
+    const salon = plan().daily.map((j) => j.text).join(' ');
+    const resto = plan({ industry: 'RESTAURANT' }).daily.map((j) => j.text).join(' ');
+    expect(salon).not.toBe(resto);
+    expect(resto).toMatch(/đánh giá|story/i);
+  });
+
+  it('falls back to the salon playbook for a trade it does not know', () => {
+    const p = plan({ industry: 'SOMETHING_NEW' });
+    expect(p.sources.length).toBeGreaterThan(0);
+    expect(allJobs(p).filter((j) => j.kind === 'post')).toHaveLength(3);
+  });
+});

@@ -8,6 +8,7 @@ import { buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-
 import { regionEvents, parseAddress, eventsToPrompt, type ResolvedRegion, type DatedEvent } from './region-events';
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
+import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -310,6 +311,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       '',
       weekPlanToPrompt(week),
       '',
+      // The raw material this trade actually has to hand. Without it the model
+      // reaches for stock ideas ("quay một video giới thiệu tiệm") instead of
+      // the finished set sitting on the table right now.
+      `NGUỒN QUAY CÓ SẴN CỦA ${playbookFor(ctx.industry).trade.toUpperCase()} — ý tưởng phải bắt đầu từ một trong số này:\n`
+        + week.sources.map((s) => `- ${s.label} (${s.when}) — ${s.why}`).join('\n'),
+      '',
       trendLinksToPrompt(),
       '',
       formatBlock,
@@ -460,7 +467,15 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // quietly skewing every suggestion for months.
       region: { label: ctx.region.label, known: ctx.region.regionKnown, market: ctx.region.market },
       events: ctx.events,
+      // The long list: six months out, so a salon can see Tết or the holidays
+      // coming while there is still time to prepare stock and staffing. The
+      // 45-day `events` list above stays the urgent one.
+      calendar: regionEvents(new Date(), {
+        market: ctx.region.market, city: ctx.region.city, region: ctx.region.region,
+      }, { horizonDays: 180 }).events,
       week,
+      videoFeeds: videoFeeds(ctx.industry, ctx.region.market),
+      productWatch: productWatch(ctx.industry),
       // The salon's own numbers steer the trend queries: it is shown Google
       // Trends for the service it actually sells most, not for a generic term
       // someone picked for the whole industry.

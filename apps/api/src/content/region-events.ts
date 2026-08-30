@@ -216,6 +216,47 @@ const BACK_TO_SCHOOL_AUG: Record<string, number> = {
   NY: 90, NJ: 90, CT: 90, MA: 90, RI: 90, NH: 90, VT: 90, ME: 90,
 };
 
+/**
+ * Holidays that exist in some states and not others.
+ *
+ * This is the sharpest answer to "mỗi khu vực có ngày lễ khác nhau". A salon in
+ * Louisiana loses a week to Mardi Gras; one in Utah closes for Pioneer Day; one
+ * in Massachusetts has a Monday marathon holiday that empties the town. None of
+ * those exist for the salon two states over, and a national calendar shows all
+ * of them to everyone or none of them to anyone.
+ *
+ * Only days that change what a local business does are listed. Observances that
+ * pass without anyone leaving the house are noise on this screen, and days with
+ * contested histories are left out because a salon does not need this product
+ * picking that fight for it.
+ *
+ * `at` receives the year and returns a UTC timestamp, so moveable feasts stay
+ * correct forever instead of drifting.
+ */
+const STATE_HOLIDAYS: Record<string, { name: string; at: (y: number) => number; note: string }[]> = {
+  LA: [{
+    name: 'Mardi Gras',
+    // Always 47 days before Easter — the whole city stops, and nails are part
+    // of the costume. Computed, so it never needs updating.
+    at: (y) => easter(y) - 47 * DAY,
+    note: 'Cả vùng nghỉ và ăn mừng — móng theo màu tím/vàng/xanh lá, đặt kín từ tuần trước',
+  }],
+  MA: [{ name: "Patriots' Day", at: (y) => nthWeekday(y, 4, 1, 3), note: 'Ngày marathon Boston — phố đông, nhưng lịch hẹn buổi sáng thường vắng' }],
+  ME: [{ name: "Patriots' Day", at: (y) => nthWeekday(y, 4, 1, 3), note: 'Ngày nghỉ của bang — nhiều gia đình rảnh cả ngày' }],
+  UT: [{ name: 'Pioneer Day', at: (y) => utc(y, 7, 24), note: 'Ngày lễ lớn nhất của bang ngoài Quốc khánh — tiệc, diễu hành, chụp ảnh nhiều' }],
+  HI: [
+    { name: 'King Kamehameha Day', at: (y) => utc(y, 6, 11), note: 'Ngày nghỉ toàn bang, lễ hội và diễu hành' },
+    { name: 'Statehood Day', at: (y) => nthWeekday(y, 8, 5, 3), note: 'Ngày nghỉ của bang, cuối tuần dài' },
+  ],
+  AK: [{ name: "Seward's Day", at: (y) => lastWeekday(y, 3, 1), note: 'Ngày nghỉ của bang — thứ 2 dài, khách rảnh' }],
+  NV: [{ name: 'Nevada Day', at: (y) => lastWeekday(y, 10, 5), note: 'Ngày nghỉ toàn bang, thứ 6 dài trước Halloween' }],
+  RI: [{ name: 'Victory Day', at: (y) => nthWeekday(y, 8, 1, 2), note: 'Ngày nghỉ riêng của Rhode Island — cuối tuần dài giữa tháng 8' }],
+  VT: [{ name: 'Town Meeting Day', at: (y) => nthWeekday(y, 3, 2, 1), note: 'Ngày nghỉ của bang, trường đóng cửa' }],
+  CA: [{ name: 'César Chávez Day', at: (y) => utc(y, 3, 31), note: 'Ngày nghỉ của bang California — trường và cơ quan đóng cửa' }],
+  IL: [{ name: 'Casimir Pulaski Day', at: (y) => nthWeekday(y, 3, 1, 1), note: 'Trường ở Chicago nghỉ — mẹ và con gái rảnh cùng lúc' }],
+  TX: [{ name: 'Texas Independence Day', at: (y) => utc(y, 3, 2), note: 'Ngày của bang — nội dung bám niềm tự hào địa phương chạy rất tốt ở đây' }],
+};
+
 /** Prom lands earlier in the South, later in the Northeast. */
 const PROM_LATE = new Set(['NY','NJ','CT','MA','RI','NH','VT','ME','PA','MI','MN','WI','WA','OR','IL','OH','MD','DE','DC']);
 
@@ -257,8 +298,21 @@ function usSeeds(y: number, r: ResolvedRegion): Seed[] {
     });
   }
 
+  // The Super Bowl has been the second Sunday of February since 2022. It is not
+  // a holiday, but for a local business it behaves like one: the town is home,
+  // the party is on Sunday, and the appointments are on Friday and Saturday.
+  S.push({
+    name: 'Super Bowl',
+    ts: nthWeekday(y, 2, 0, 2),
+    scope: 'national',
+    note: 'Cả nước ở nhà xem — thứ 6 và thứ 7 trước đó là hai ngày bận, chủ nhật thì vắng',
+  });
+
   if (r.regionKnown) {
     const st = r.region as string;
+    for (const h of STATE_HOLIDAYS[st] ?? []) {
+      S.push({ name: h.name, ts: h.at(y), scope: 'regional', note: h.note });
+    }
     const aug = BACK_TO_SCHOOL_AUG[st];
     if (aug !== undefined) {
       const ts = aug === 90 ? nthWeekday(y, 9, 1, 1) + DAY : utc(y, 8, aug);

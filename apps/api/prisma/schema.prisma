@@ -2596,8 +2596,8 @@ model ContentFormat {
   industry  String
   /// Finer than industry when it matters ("nail", "lash", "hair"). Null = whole industry.
   niche     String?
-  name      String  /// "Before / after", "ASMR cận cảnh", "POV khách"
-  summary   String  /// one line the AI can reason with
+  name      String // "Before / after", "ASMR cận cảnh", "POV khách"
+  summary   String // one line the AI can reason with
   /// How to open the first 3 seconds — the single biggest lever on a reel.
   hookGuide String?
   /// Typical shots, so the salon knows what to film without thinking.
@@ -2657,7 +2657,7 @@ model ContentIdea {
 
   formatId  String?
   format    ContentFormat? @relation(fields: [formatId], references: [id], onDelete: SetNull)
-  formatName String?  /// snapshot, so history survives a library edit
+  formatName String? // snapshot, so history survives a library edit
 
   title     String
   hook      String?

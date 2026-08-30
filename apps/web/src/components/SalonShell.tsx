@@ -51,6 +51,7 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/stations', label: 'Chairs', icon: 'chair' },
   ] },
   { id: 'growth', label: 'Marketing & AI', items: [
+    { href: '/salon/content', label: 'Nội dung hôm nay', icon: 'sparkle' },
     { href: '/salon/marketing', label: 'Marketing', icon: 'megaphone' },
     { href: '/salon/marketing/monthly', label: 'Marketing report', icon: 'chart' },
     { href: '/salon/email', label: 'Email marketing', icon: 'mail' },
@@ -94,7 +95,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/calendar': 'calendar', '/salon/bookings': 'bookings', '/salon/walkins': 'walkins',
   '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
-  '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/inventory': 'inventory',
+  '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
   '/salon/trash': 'settings',
   '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/usage-costs': 'billing', '/salon/settings': 'settings',

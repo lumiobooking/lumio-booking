@@ -21,6 +21,7 @@
 /** Route prefixes only a Lumio support session may see. */
 export const SUPPORT_ONLY: string[] = [
   '/salon/marketing',        // covers /salon/marketing/monthly too
+  '/salon/content',          // daily content plan — an agency deliverable
   '/salon/email',
   '/salon/reviews',          // rewards engine — NOT reviews-replies, see below
   '/salon/inbox',

@@ -186,6 +186,9 @@ export default function TenantsPage() {
           <button onClick={() => setShowAccount((s) => !s)} style={ghostBtn}>
             {showAccount ? 'Close' : 'My account'}
           </button>
+          <a href="/super-admin/content" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
+            Nội dung &amp; xu hướng
+          </a>
           <a href="/super-admin/plans" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Manage plans
           </a>

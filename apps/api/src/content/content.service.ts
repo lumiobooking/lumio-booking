@@ -461,7 +461,18 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       region: { label: ctx.region.label, known: ctx.region.regionKnown, market: ctx.region.market },
       events: ctx.events,
       week,
-      trends: trendLinks({ industry: ctx.industry, market: ctx.region.market, region: ctx.region.region, city: ctx.region.city }),
+      // The salon's own numbers steer the trend queries: it is shown Google
+      // Trends for the service it actually sells most, not for a generic term
+      // someone picked for the whole industry.
+      trends: trendLinks({
+        industry: ctx.industry,
+        market: ctx.region.market,
+        region: ctx.region.region,
+        city: ctx.region.city,
+        services: ctx.signals.services.map((s) => ({ name: s.name, count: s.count })),
+        keywords: ctx.signals.keywords.map((k) => ({ keyword: k.keyword, count: k.count })),
+        events: ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway, note: e.note })),
+      }),
       offer: ctx.revenue.advice,
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),

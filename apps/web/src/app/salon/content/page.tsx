@@ -42,7 +42,8 @@ interface SeasonEvent {
 interface Offer { kind: string; headline: string; detail: string; discountPct: number; protect: string[]; basis: string }
 interface Job { kind: string; text: string; why: string; when?: string }
 interface DayPlan { weekday: number; label: string; jobs: Job[] }
-interface TrendLink { key: string; title: string; url: string; what: string; how: string; source: string }
+interface TrendTopic { label: string; why: string; from: 'salon' | 'region' | 'trade' }
+interface TrendLink { key: string; title: string; url: string; what: string; how: string; source: string; topics?: TrendTopic[] }
 interface Plan {
   region: { label: string; known: boolean; market: string };
   events: SeasonEvent[];
@@ -308,6 +309,37 @@ function Inner() {
                   <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
                     <strong style={{ color: '#22c55e' }}>{T('Làm gì', 'Do this')}:</strong> {l.how}
                   </div>
+
+                  {/* Concrete things to search for on that page. Note the
+                      wording: these are instructions, never claims that a
+                      thing IS trending — the tool on the other end of the link
+                      is what decides that, not us. The badge says where each
+                      one came from, so nobody mistakes a trade default for a
+                      reading of this salon's own numbers. */}
+                  {!!l.topics?.length && (
+                    <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px dashed var(--c334155)' }}>
+                      <div style={{ fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 4 }}>
+                        {T('Tìm những chủ đề này', 'Search for these')}
+                      </div>
+                      {l.topics.map((t, i) => (
+                        <div key={i} style={{ marginBottom: i < l.topics!.length - 1 ? 5 : 0 }}>
+                          <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                            <span>• {t.label}</span>
+                            <span style={{
+                              fontSize: 10, padding: '1px 6px', borderRadius: 20,
+                              background: t.from === 'salon' ? 'var(--c14532d)' : t.from === 'region' ? 'var(--c451a03)' : 'var(--c1e293b)',
+                              color: t.from === 'salon' ? 'var(--cbbf7d0)' : t.from === 'region' ? 'var(--cfde68a)' : 'var(--c94a3b8)',
+                            }}>
+                              {t.from === 'salon' ? T('số của tiệm', 'your data')
+                                : t.from === 'region' ? T('khu vực', 'local')
+                                : T('kinh nghiệm ngành', 'trade')}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45, paddingLeft: 11 }}>{t.why}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </a>
               ))}
             </div>

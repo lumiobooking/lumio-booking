@@ -46,6 +46,7 @@ import { GoogleReviewsModule } from './google-reviews/google-reviews.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { MessengerModule } from './messenger/messenger.module';
 import { VoiceModule } from './voice/voice.module';
+import { ContentModule } from './content/content.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
 
@@ -126,6 +127,7 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     // AI voice hotline: the salon forwards its own number (on no-answer) to a
     // Lumio number; Twilio speech + the booking agent answer and book by phone.
     VoiceModule,
+    ContentModule,
     // Automatic invoices: month-end usage overage + plan renewal, emailed with a
     // hosted pay page. Idempotent daily sweep (INVOICES_ENABLED).
     InvoicesModule,

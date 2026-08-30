@@ -27,6 +27,9 @@ const TENANT_PUBLIC_SELECT = {
   market: true,
   timezone: true,
   businessType: true,
+  city: true,
+  region: true,
+  postalCode: true,
   contactEmail: true,
   planId: true,
   subscriptionStatus: true,
@@ -293,6 +296,12 @@ export class TenantsService {
         // rewrite its currency — that would change what real customers are
         // charged. Money stays where the salon set it, under Settings.
         ...(dto.market !== undefined ? { market: dto.market } : {}),
+        // Location. Empty string means "clear it" — a wrong city left in place
+        // skews every content suggestion, so it has to be removable, and the
+        // engine handles null by saying it does not know rather than guessing.
+        ...(dto.city !== undefined ? { city: dto.city.trim() || null } : {}),
+        ...(dto.region !== undefined ? { region: dto.region.trim().toUpperCase() || null } : {}),
+        ...(dto.postalCode !== undefined ? { postalCode: dto.postalCode.trim() || null } : {}),
       },
       select: TENANT_PUBLIC_SELECT,
     });

@@ -184,6 +184,17 @@ model Tenant {
   market   String       @default("US")
   timezone String       @default("UTC")
 
+  /// Where the salon actually stands. Until these are filled the content engine
+  /// has nothing but the market code to reason with, and a nail salon in
+  /// Garden Grove needs a different calendar from one in Boston — different
+  /// school start, different prom weeks, different customers walking past.
+  /// Left null on purpose for existing salons: the engine says "chưa biết khu
+  /// vực" out loud rather than quietly assuming a place.
+  city       String?
+  /// State / province code, uppercase: "CA", "TX", "ON". For VN, the province.
+  region     String?
+  postalCode String?
+
   contactEmail String?
   contactPhone String?
 

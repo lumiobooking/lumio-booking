@@ -5,6 +5,9 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
 import { buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
+import { regionEvents, parseAddress, eventsToPrompt, type ResolvedRegion, type DatedEvent } from './region-events';
+import { trendLinks, trendLinksToPrompt } from './trend-sources';
+import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -45,6 +48,24 @@ export class ContentService {
     }
   }
 
+  /**
+   * Today's weekday where the salon stands, 0 = Sunday.
+   *
+   * It has to be the salon's timezone, not the server's. At 22:00 in California
+   * the server is already on tomorrow in UTC, and a week plan that starts on
+   * the wrong day would tell an owner to film on a day they are closed.
+   */
+  private localWeekday(tz: string, d = new Date()): number {
+    const NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    try {
+      const s = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(d);
+      const i = NAMES.indexOf(s.slice(0, 3));
+      return i >= 0 ? i : d.getUTCDay();
+    } catch {
+      return d.getUTCDay();
+    }
+  }
+
   private monthKey(offset = 0, d = new Date()): string {
     const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + offset, 1));
     return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -61,14 +82,22 @@ export class ContentService {
     industry: string;
     city: string;
     tz: string;
+    region: ResolvedRegion;
+    events: DatedEvent[];
     signals: SignalProfile;
     revenue: RevenueProfile;
     money: (c: number) => string;
   }> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, timezone: true, businessType: true },
-    });
+      // city/region/postalCode may be absent on a database that has not run the
+      // location migration yet; the catch below keeps the whole engine alive
+      // rather than blanking a salon's screen over a missing column.
+      select: { name: true, timezone: true, businessType: true, market: true, city: true, region: true, postalCode: true },
+    }).catch(() => this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, timezone: true, businessType: true, market: true },
+    }).catch(() => null));
     const tz = tenant?.timezone || 'America/Los_Angeles';
     const extra = await this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null);
     const ex = (extra?.value ?? {}) as { address?: string; country?: string };
@@ -153,11 +182,25 @@ export class ContentService {
       select: { name: true, priceCents: true, durationMinutes: true },
     }).catch(() => [] as SvcRow[]) as SvcRow[];
 
+    // Where this salon is. Explicit fields win; otherwise read the address the
+    // owner already typed into settings, so a hundred salons do not have to
+    // re-enter their own city. When neither yields a state, the region stays
+    // unknown and every downstream piece is written to say so.
+    const t = (tenant ?? {}) as { market?: string; city?: string | null; region?: string | null };
+    const fromAddress = parseAddress(ex.address, t.market === 'VN' ? 'VN' : t.market === 'CA' ? 'CA' : 'US');
+    const { region, events } = regionEvents(now, {
+      market: t.market ?? ex.country ?? 'US',
+      city: t.city ?? fromAddress.city,
+      region: t.region ?? fromAddress.region,
+    }, { horizonDays: 45 });
+
     return {
       tenantName: tenant?.name || 'Tiệm',
       industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
-      city: String(ex.address ?? '').split(',').slice(-2).join(',').trim(),
+      city: region.label,
       tz,
+      region,
+      events,
       money,
       signals: buildSignalProfile({
         keywordsNow: (gNow.keywords as never) ?? null,
@@ -242,14 +285,32 @@ LUẬT BẮT BUỘC:
 3. Về khuyến mãi: BÁM ĐÚNG khuyến nghị đã tính sẵn. Không tự nghĩ mức giảm khác, không đề xuất giảm cho khung giờ bị cấm.
 4. Viết tiếng Việt cho chủ tiệm và đội marketing đọc. Riêng "caption" và "hashtags" viết TIẾNG ANH vì khách hàng cuối là người Mỹ.
 5. Ngắn gọn, cụ thể, quay được ngay. Không sáo rỗng.
+6. Về khu vực: chỉ được nhắc tới địa phương nếu phần dữ liệu bên dưới nói rõ tiệm ở đâu. Nếu ghi "chưa rõ khu vực" thì viết trung lập, KHÔNG đoán tên thành phố, bang, trường học hay lễ hội địa phương nào.
+7. Ý tưởng hôm nay phải khớp với việc của hôm nay trong LỊCH TUẦN bên dưới — đừng bảo tiệm quay clip vào ngày lịch ghi là ngày đăng.
 
 TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
 {"ideas":[{"rank":1,"formatName":"...","title":"...","hook":"...","shotList":"cảnh 1 · cảnh 2 · cảnh 3","caption":"...","hashtags":"#... #...","bestTime":"18:30","reason":"..."}]}`;
 
+    const week = buildWeekPlan({
+      today: new Date(),
+      todayWeekday: this.localWeekday(ctx.tz),
+      industry: ctx.industry,
+      loads: ctx.revenue.loads,
+      advice: ctx.revenue.advice,
+      lapsed: ctx.revenue.lapsed,
+      events: ctx.events,
+    });
+
     const userMsg = [
       signalsToPrompt(ctx.signals),
       '',
+      eventsToPrompt(ctx.region, ctx.events),
+      '',
       revenueToPrompt(ctx.revenue, ctx.money),
+      '',
+      weekPlanToPrompt(week),
+      '',
+      trendLinksToPrompt(),
       '',
       formatBlock,
       noteBlock,
@@ -384,8 +445,23 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   async planFor(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const ctx = await this.gather(tenantId);
+    const week = buildWeekPlan({
+      today: new Date(),
+      todayWeekday: this.localWeekday(ctx.tz),
+      industry: ctx.industry,
+      loads: ctx.revenue.loads,
+      advice: ctx.revenue.advice,
+      lapsed: ctx.revenue.lapsed,
+      events: ctx.events,
+    });
     return {
-      events: ctx.signals.events,
+      // Where we think the salon is, and how sure we are. The screen shows this
+      // so a wrong city gets corrected by the person who knows, instead of
+      // quietly skewing every suggestion for months.
+      region: { label: ctx.region.label, known: ctx.region.regionKnown, market: ctx.region.market },
+      events: ctx.events,
+      week,
+      trends: trendLinks({ industry: ctx.industry, market: ctx.region.market, region: ctx.region.region, city: ctx.region.city }),
       offer: ctx.revenue.advice,
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),

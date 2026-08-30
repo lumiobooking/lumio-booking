@@ -1,6 +1,6 @@
 import {
   audienceSignal, buildSignalProfile, keywordSignals, postSignals,
-  seasonEvents, serviceSignals, signalsToPrompt,
+  serviceSignals, signalsToPrompt,
 } from './content-signals';
 
 describe('local search demand', () => {
@@ -115,22 +115,25 @@ describe('who follows this salon', () => {
   });
 });
 
-describe('the seasonal calendar', () => {
-  it('sees back-to-school coming in late August', () => {
-    const e = seasonEvents(new Date('2026-08-30T00:00:00Z'));
-    expect(e[0].name).toBe('Tựu trường');
-    expect(e[0].daysAway).toBe(6);
+describe('the seasonal calendar has moved out of this file', () => {
+  it('is no longer exported from here', () => {
+    // It lived here as one hardcoded list for the whole platform, with Tết
+    // pinned to 17 February — right for 2026, wrong every year after. The
+    // region-aware version in region-events.ts replaced it, and this module
+    // must not keep a second copy: two calendars in one prompt is how a model
+    // quotes the wrong Tết date with total confidence.
+    const mod = require('./content-signals') as Record<string, unknown>;
+    expect(mod.seasonEvents).toBeUndefined();
   });
 
-  it('rolls a passed date into next year instead of showing a negative', () => {
-    const e = seasonEvents(new Date('2026-12-26T00:00:00Z'), { horizonDays: 400 });
-    for (const x of e) expect(x.daysAway).toBeGreaterThanOrEqual(0);
-    expect(e.some((x) => x.name === 'Năm mới')).toBe(true);
+  it('leaves events out of the signal profile entirely', () => {
+    const p = buildSignalProfile({ today: new Date('2026-08-30T00:00:00Z') });
+    expect('events' in p).toBe(false);
   });
 
-  it('only shows what is within the horizon — no planning Tết in June', () => {
-    const e = seasonEvents(new Date('2026-06-15T00:00:00Z'), { horizonDays: 30 });
-    expect(e.every((x) => x.daysAway <= 30)).toBe(true);
+  it('does not print an events section in the prompt', () => {
+    const text = signalsToPrompt(buildSignalProfile({ today: new Date('2026-08-30T00:00:00Z') }));
+    expect(text).not.toContain('SỰ KIỆN SẮP TỚI');
   });
 });
 
@@ -155,7 +158,8 @@ describe('the whole profile, as the AI receives it', () => {
     expect(p).toContain('Dipping Powder');
     expect(p).toContain('Reel/video ăn hơn bài ảnh');
     expect(p).toContain('25-34');
-    expect(p).toContain('Tựu trường');
+    // Events moved to region-events.ts and are appended by eventsToPrompt.
+    expect(p).not.toContain('Tựu trường');
     expect(full.thin).toBe(false);
   });
 

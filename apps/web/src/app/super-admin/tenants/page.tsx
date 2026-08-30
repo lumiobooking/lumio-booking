@@ -19,6 +19,11 @@ interface Tenant {
   contactEmail: string | null;
   businessType?: string;
   market?: string; // US | CA | VN — absent on older rows, which means US
+  // Null until someone fills it in; the content engine then falls back to the
+  // Settings address, and finally to admitting it does not know.
+  city?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
   planId: string | null;
   subscriptionStatus: string;
   createdAt: string;
@@ -383,7 +388,11 @@ function AccountPanel({ token, currentEmail }: { token: string; currentEmail: st
 
 function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; tenant: Tenant; usage?: VoiceUsage; onSaved: () => void }) {
   const currentLoginEmail = tenant.users?.[0]?.email ?? '';
-  const [form, setForm] = useState({ name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone, market: marketOption(tenant.market).code });
+  const [form, setForm] = useState({
+    name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone,
+    market: marketOption(tenant.market).code,
+    city: tenant.city ?? '', region: tenant.region ?? '', postalCode: tenant.postalCode ?? '',
+  });
   const [loginEmail, setLoginEmail] = useState(currentLoginEmail);
   const [pw, setPw] = useState('');
   const [exempt, setExempt] = useState(tenant.billingExempt ?? false);
@@ -472,7 +481,11 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
   async function saveInfo() {
     setBusy(true); setErr(null); setMsg(null);
     try {
-      await apiFetch(`/tenants/${tenant.id}`, { method: 'PATCH', token, body: { name: form.name, contactEmail: form.contactEmail || undefined, timezone: form.timezone, market: form.market } });
+      await apiFetch(`/tenants/${tenant.id}`, { method: 'PATCH', token, body: {
+        name: form.name, contactEmail: form.contactEmail || undefined, timezone: form.timezone, market: form.market,
+        // Sent even when blank: clearing a wrong city has to be possible.
+        city: form.city, region: form.region, postalCode: form.postalCode,
+      } });
       setMsg('✓ Salon info saved');
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); } finally { setBusy(false); }
@@ -524,6 +537,21 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         would change what real customers are charged. Adjust money under the
         salon&apos;s own Settings if it needs to follow.
       </p>
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>Location — drives the content calendar</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px', maxWidth: 560, lineHeight: 1.5 }}>
+          School start weeks, prom season and local holidays differ by state, so the daily
+          content engine needs to know where this salon is. Leave blank and it reads the
+          address from the salon&apos;s Settings; if that cannot be read either, it says
+          &quot;chưa rõ khu vực&quot; on screen rather than guessing a place.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+          <Field label="City"><input style={inp} value={form.city} placeholder="Garden Grove" onChange={(e) => setForm({ ...form, city: e.target.value })} /></Field>
+          <Field label="State / province code"><input style={inp} value={form.region} placeholder="CA" maxLength={8} onChange={(e) => setForm({ ...form, region: e.target.value.toUpperCase() })} /></Field>
+          <Field label="ZIP / postal code"><input style={inp} value={form.postalCode} placeholder="92840" onChange={(e) => setForm({ ...form, postalCode: e.target.value })} /></Field>
+        </div>
+      </div>
+
       <div><button onClick={saveInfo} disabled={busy} style={primaryBtn}>Save salon info</button></div>
 
       <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>

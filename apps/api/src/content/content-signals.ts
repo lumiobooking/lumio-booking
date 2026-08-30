@@ -206,45 +206,16 @@ export function audienceSignal(aud: { gender?: Record<string, number>; age?: Rec
   };
 }
 
-// ---- 5. The calendar nobody has to maintain --------------------------------
-
-export interface SeasonEvent { name: string; daysAway: number; note: string }
-
-/**
- * Seasonal pull, computed rather than curated.
- *
- * Beauty and hospitality demand is ruled by a handful of dates that repeat
- * forever — school going back, prom, the holidays, Tết. Content that lands two
- * to three weeks BEFORE the date is what fills the book, so the window opens
- * early and closes on the day.
- */
-export function seasonEvents(today: Date, opts: { country?: string; horizonDays?: number } = {}): SeasonEvent[] {
-  const horizon = opts.horizonDays ?? 30;
-  const y = today.getUTCFullYear();
-  const at = (m: number, d: number, yy = y) => Date.UTC(yy, m - 1, d);
-  const seeds: { name: string; ts: number; note: string }[] = [
-    { name: 'Tựu trường', ts: at(9, 5), note: 'Phụ huynh và học sinh làm móng trước ngày đầu đi học' },
-    { name: 'Halloween', ts: at(10, 31), note: 'Mẫu móng theo chủ đề, màu tối, nail art vui' },
-    { name: 'Lễ Tạ ơn', ts: at(11, 27), note: 'Tông ấm, gia đình tụ họp, chụp ảnh nhiều' },
-    { name: 'Giáng sinh', ts: at(12, 25), note: 'Mùa cao điểm nhất năm — đặt lịch sớm, gift card' },
-    { name: 'Năm mới', ts: at(1, 1, y + 1), note: 'Móng lấp lánh, tiệc tùng, làm mới bản thân' },
-    { name: 'Tết Nguyên đán', ts: at(2, 17, y + 1), note: 'Khách Việt làm móng đỏ, vàng, cầu may' },
-    { name: 'Valentine', ts: at(2, 14, y + 1), note: 'Tông hồng đỏ, quà tặng, đi đôi' },
-    { name: 'Mùa prom', ts: at(4, 20, y + 1), note: 'Học sinh cấp ba, móng cầu kỳ, đặt theo nhóm' },
-    { name: 'Ngày của Mẹ', ts: at(5, 10, y + 1), note: 'Gift card, mẹ và con gái đi cùng' },
-  ];
-  const now = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  return seeds
-    .map((s) => {
-      // Roll a date that has already passed forward into next year, so the
-      // list is always "what is coming", never "what we missed".
-      let ts = s.ts;
-      if (ts < now) ts = Date.UTC(new Date(ts).getUTCFullYear() + 1, new Date(ts).getUTCMonth(), new Date(ts).getUTCDate());
-      return { name: s.name, daysAway: Math.round((ts - now) / 86_400_000), note: s.note };
-    })
-    .filter((s) => s.daysAway >= 0 && s.daysAway <= horizon)
-    .sort((a, b) => a.daysAway - b.daysAway);
-}
+// ---- 5. (removed) ----------------------------------------------------------
+//
+// The seasonal calendar used to live here, as one hardcoded list shown to every
+// salon on the platform — and with Tết written as a fixed 17 February, which is
+// correct for 2026 and wrong for every year after. It now lives in
+// region-events.ts, where the dates are computed or read from a real table and
+// the answer depends on which state the salon is actually in.
+//
+// It is not re-exported from here on purpose. Two calendars in one prompt is
+// how a model ends up quoting the wrong date for Tết with complete confidence.
 
 // ---- 6. The whole picture, ready for a prompt ------------------------------
 
@@ -253,7 +224,6 @@ export interface SignalProfile {
   services: ServiceSignal[];
   posts: PostSignal;
   audience: AudienceSignal;
-  events: SeasonEvent[];
   /** True when there is genuinely nothing to reason from — say so, don't bluff. */
   thin: boolean;
 }
@@ -272,9 +242,8 @@ export function buildSignalProfile(input: {
   const services = serviceSignals(input.servicesNow, input.servicesPrev);
   const posts = postSignals(input.posts);
   const audience = audienceSignal(input.audience);
-  const events = seasonEvents(input.today ?? new Date(), { country: input.country });
   const thin = !keywords.length && !services.length && posts.verdict === 'not-enough-data' && audience.basis === 'none';
-  return { keywords, services, posts, audience, events, thin };
+  return { keywords, services, posts, audience, thin };
 }
 
 /**
@@ -317,10 +286,8 @@ export function signalsToPrompt(p: SignalProfile): string {
     const bits = [a.topAgeBand ? `đông nhất nhóm ${a.topAgeBand} (${a.topAgePct}%)` : '', a.femalePct !== null ? `${a.femalePct}% nữ` : ''].filter(Boolean);
     if (bits.length) L.push(`NGƯỜI THEO DÕI: ${bits.join(', ')}.`);
   }
-  if (p.events.length) {
-    L.push('SỰ KIỆN SẮP TỚI:');
-    for (const e of p.events) L.push(`- ${e.name}: còn ${e.daysAway} ngày — ${e.note}`);
-  }
+  // Upcoming events are appended separately by eventsToPrompt(), because they
+  // depend on where the salon is and this file only knows what it does.
   if (p.thin) {
     L.push('LƯU Ý: tiệm này chưa có đủ dữ liệu. Gợi ý nội dung nền tảng cho ngành, và NÓI THẲNG trong phần lý do rằng đây là gợi ý chung vì chưa đủ số liệu — tuyệt đối không bịa ra con số.');
   }

@@ -43,4 +43,28 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsIn(['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE'])
   businessType?: 'SALON' | 'RESTAURANT' | 'REAL_ESTATE' | 'SERVICE';
+
+  /**
+   * Where the salon actually stands.
+   *
+   * The content engine reads these to pick the right school calendar, prom
+   * weeks and local holidays. Left empty it falls back to parsing the address
+   * in Settings, and failing that it says "chưa rõ khu vực" instead of guessing
+   * — so filling these in is an improvement, never a prerequisite.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  city?: string;
+
+  /** State / province code, e.g. "CA". Stored uppercase. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  region?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  postalCode?: string;
 }

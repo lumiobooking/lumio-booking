@@ -270,6 +270,7 @@ model Tenant {
   giftCardTransactions GiftCardTransaction[]
   tipLogs              TipLog[]
   voiceLine            VoiceLine?
+  contentIdeas         ContentIdea[]
   voiceCalls           VoiceCall[]
   emailCampaigns       EmailCampaign[]
   emailContacts        EmailContact[]
@@ -2581,3 +2582,105 @@ model TrashItem {
   @@map("trash_items")
 }
 
+/// The format library — the agency's own know-how, versioned.
+///
+/// There is no legitimate API that returns "trending videos for nail salons in
+/// Garden Grove": TikTok's research API is gated to approved academics and
+/// scraping breaks the moment a page changes. So the trend layer is HUMAN: the
+/// Lumio team watches the feeds for half an hour a week and records what is
+/// working as reusable FORMATS. One update reaches every salon in that niche
+/// the next morning — which is exactly the leverage an agency should have.
+model ContentFormat {
+  id        String  @id @default(uuid())
+  /// Which trade this format belongs to: SALON | RESTAURANT | REAL_ESTATE | SERVICE
+  industry  String
+  /// Finer than industry when it matters ("nail", "lash", "hair"). Null = whole industry.
+  niche     String?
+  name      String  /// "Before / after", "ASMR cận cảnh", "POV khách"
+  summary   String  /// one line the AI can reason with
+  /// How to open the first 3 seconds — the single biggest lever on a reel.
+  hookGuide String?
+  /// Typical shots, so the salon knows what to film without thinking.
+  shotList  String?
+  lengthSec Int?
+  /// Who it lands with, so the generator can match it to a salon's real audience.
+  audience  String?
+  /// 'hot' rides today's wave, 'steady' always works, 'cold' is resting.
+  heat      String  @default("steady")
+  active    Boolean @default(true)
+  /// Free-form tags for matching (service names, seasons, moods).
+  tags      Json    @default("[]")
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([industry, heat, active])
+  @@map("content_formats")
+}
+
+/// "What's hot this week" — the fast lane. Written by the Lumio team, read by
+/// every matching salon the next morning, no deploy required.
+model TrendNote {
+  id        String   @id @default(uuid())
+  industry  String
+  niche     String?
+  /// Optional geography: a state, metro or city. Null = everywhere.
+  region    String?
+  title     String
+  body      String
+  /// Notes go stale fast; past this the generator ignores them.
+  expiresAt DateTime?
+  active    Boolean  @default(true)
+  createdByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([industry, active, expiresAt])
+  @@map("trend_notes")
+}
+
+/// One suggested piece of content, for one salon, for one day.
+///
+/// Always tenant-scoped: a salon must never see another salon's plan. Status
+/// walks draft -> published -> filmed/posted (or skipped); the Lumio team owns
+/// the first hop, the salon owns the rest.
+model ContentIdea {
+  id        String @id @default(uuid())
+  tenantId  String
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// The salon's local day this idea is for (YYYY-MM-DD).
+  forDate   String
+  /// draft | published | filmed | posted | skipped
+  status    String @default("draft")
+  /// 1 = the day's priority piece, 2 = quick one, 3 = fallback photo post.
+  rank      Int    @default(1)
+
+  formatId  String?
+  format    ContentFormat? @relation(fields: [formatId], references: [id], onDelete: SetNull)
+  formatName String?  /// snapshot, so history survives a library edit
+
+  title     String
+  hook      String?
+  shotList  String?
+  caption   String?
+  hashtags  String?
+  bestTime  String?
+  /// The "vì sao gợi ý" line — plain-language evidence from the salon's own
+  /// numbers. This is what makes an owner trust the idea instead of ignoring it.
+  reason    String?
+  /// The raw signal snapshot the idea was built from, for auditing and for
+  /// learning which signals actually predict a good post.
+  signals   Json   @default("{}")
+
+  publishedAt DateTime?
+  doneAt      DateTime?
+  /// Set when the salon links what they actually posted, closing the loop.
+  resultNote  String?
+  aiModel     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, forDate])
+  @@index([tenantId, status])
+  @@map("content_ideas")
+}

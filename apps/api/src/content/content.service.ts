@@ -297,13 +297,17 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     };
     let created = 0;
     for (const idea of parsed.slice(0, 3)) {
-      const match = formats.find((f) => f.name.toLowerCase() === String(idea.formatName ?? '').toLowerCase());
+      // Everything in `idea` came out of a model's JSON, so it is `unknown` and
+      // has to be coerced before it touches the database — the same String()
+      // treatment every other field below gets.
+      const rawName = typeof idea.formatName === 'string' ? idea.formatName.trim() : '';
+      const match = formats.find((f) => f.name.toLowerCase() === rawName.toLowerCase());
       await this.prisma.contentIdea.create({
         data: {
           tenantId, forDate, status: 'draft',
           rank: Number(idea.rank) || created + 1,
           formatId: match?.id ?? null,
-          formatName: idea.formatName ?? match?.name ?? null,
+          formatName: (rawName || match?.name || '').slice(0, 200) || null,
           title: String(idea.title ?? '').slice(0, 300) || 'Ý tưởng nội dung',
           hook: idea.hook ? String(idea.hook).slice(0, 500) : null,
           shotList: idea.shotList ? String(idea.shotList).slice(0, 800) : null,

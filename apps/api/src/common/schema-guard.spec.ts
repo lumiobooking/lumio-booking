@@ -77,6 +77,38 @@ describe('every relation has BOTH sides', () => {
   );
 });
 
+describe('nothing untyped reaches Prisma', () => {
+  /**
+   * The generated Prisma client is not available here — `prisma generate`
+   * needs a network download that is refused — so `tsc` in this environment
+   * cannot see that a value is the wrong type for a column. The deploy machine
+   * can, and it says so by failing every service at once.
+   *
+   * Scope note, learned the hard way: I first wrote a second check here that
+   * banned `data: Record<string, unknown>` outright, on the theory that Prisma
+   * rejects an index-signature object. It does not — customers, supplies and
+   * email-campaigns have all been shipping that exact shape for months. The
+   * ban flagged three healthy call sites and would have trained us to ignore
+   * this file. A guard that cries wolf is worse than no guard, so it is gone
+   * and only the rule that caught a real failure remains.
+   */
+  const apiSrc = path.join(__dirname, '..');
+
+  it('values parsed out of model JSON are coerced before they are written', () => {
+    // A model's reply is `Record<string, unknown>`. Every field lifted out of
+    // it must pass through String()/Number()/a typeof guard on the way into a
+    // create() — `idea.formatName ?? null` is `unknown` and fails the build.
+    const src = fs.readFileSync(path.join(apiSrc, 'content/content.service.ts'), 'utf8');
+    const block = /contentIdea\.create\(\{([\s\S]*?)\n\s*\}\)/.exec(src);
+    expect(block).not.toBeNull();
+    const raw = (block as RegExpExecArray)[1]
+      .split(/\r?\n/)
+      .filter((l) => /\bidea\.\w+/.test(l))
+      .filter((l) => !/String\(|Number\(|typeof /.test(l));
+    expect(raw).toEqual([]);
+  });
+});
+
 describe('the content engine tables are wired the way the code expects', () => {
   it('ContentIdea is tenant-scoped — a salon must never read another salon’s plan', () => {
     const body = ALL.get('ContentIdea') ?? '';

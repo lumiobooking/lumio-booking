@@ -161,7 +161,10 @@ export class ContentAdminService {
 
   /** Edit a draft before it goes out — the team's judgement, not the model's. */
   async editIdea(id: string, dto: Partial<{ title: string; hook: string; shotList: string; caption: string; hashtags: string; bestTime: string; reason: string }>) {
-    const data: Record<string, unknown> = {};
+    // Named keys rather than Record<string, unknown>. Both compile — the older
+    // services use the loose form — but this one cannot silently grow a typo'd
+    // key that writes nothing and reports success.
+    const data: Partial<Record<'title' | 'hook' | 'shotList' | 'caption' | 'hashtags' | 'bestTime' | 'reason', string>> = {};
     for (const k of ['title', 'hook', 'shotList', 'caption', 'hashtags', 'bestTime', 'reason'] as const) {
       const v = dto[k];
       if (typeof v === 'string') data[k] = v.slice(0, 1200);

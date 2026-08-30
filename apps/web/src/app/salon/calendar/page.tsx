@@ -32,6 +32,9 @@ interface Booking {
   notes: string | null;
   source?: string | null;
   utmSource?: string | null;
+  attrReferrer?: string | null;
+  cancelledBy?: string | null;
+  cancelledByName?: string | null;
   device?: string | null;
   partySize?: number;
   // Shared by everyone booked together, so four rows at 2 PM can be drawn as
@@ -845,6 +848,16 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         {active && <QuickEdit b={b} onAction={onAction} />}
         <DetailRow label={t('cal.dSource')} value={<SourceChip b={b} vi={lang === 'vi'} />} />
+        {String(b.status).toUpperCase() === 'CANCELLED' && (() => {
+          // "Đã huỷ" must answer BY WHOM — an authorless cancellation starts
+          // arguments at the front desk.
+          const vi = lang === 'vi';
+          const who = b.cancelledBy === 'customer' ? (vi ? 'Khách tự huỷ' : 'Customer (self-service)')
+            : b.cancelledBy === 'ai' ? (vi ? 'Trợ lý AI' : 'AI assistant')
+            : b.cancelledBy === 'staff' ? `${vi ? 'Nhân viên' : 'Staff'}${b.cancelledByName ? ` · ${b.cancelledByName}` : ''}`
+            : (vi ? 'Không rõ (trước bản cập nhật)' : 'Unknown (pre-update)');
+          return <DetailRow label={vi ? 'Huỷ bởi' : 'Cancelled by'} value={<span style={{ color: 'var(--cfca5a5)', fontWeight: 600 }}>{who}</span>} />;
+        })()}
         {(() => { const dm = deviceMeta(b.device); return dm ? <DetailRow label={t('cal.dDevice')} value={`${dm.icon} ${t(dm.key)}`} /> : null; })()}
         <DetailRow label={t('cal.dPrice')} value={formatPrice(b.priceCents, b.currency)} />
         {b.partySize != null && b.partySize > 1 && <DetailRow label={t('cal.dParty')} value={String(b.partySize)} />}

@@ -23,7 +23,7 @@ interface Upcoming {
 }
 interface Dashboard {
   range: { from: string; to: string };
-  sourceRows?: { source: string | null; utmSource: string | null }[];
+  sourceRows?: { source: string | null; utmSource: string | null; attrReferrer?: string | null }[];
   kpis: {
     totalBookings: number;
     revenueCents: number;
@@ -232,7 +232,7 @@ function Kpi({ label, value, accent, hint }: { label: string; value: number | st
 
 
 /** Where the range's bookings came from: brand chip + count + share bar. */
-function SourcesPanel({ rows, vi, hint }: { rows: { source: string | null; utmSource: string | null }[]; vi: boolean; hint: string }) {
+function SourcesPanel({ rows, vi, hint }: { rows: { source: string | null; utmSource: string | null; attrReferrer?: string | null }[]; vi: boolean; hint: string }) {
   const counts = sourceCounts(rows);
   const total = rows.length || 1;
   if (!counts.length) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{vi ? 'Chưa có lịch hẹn trong khoảng này.' : 'No bookings in this range.'}</p>;

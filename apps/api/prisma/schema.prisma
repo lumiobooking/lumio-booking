@@ -1150,6 +1150,10 @@ model Appointment {
   arrivedAt   DateTime? // customer checked in at the salon
   reviewReqSentAt DateTime? // post-visit review request (thank-you + Google link) sent once, mid-service
   cancelledAt DateTime?
+  // WHO cancelled — 'customer' (self-service link), 'staff' (+ name), 'ai'.
+  // "Đã huỷ" without an author starts arguments at the front desk.
+  cancelledBy     String?
+  cancelledByName String?
   completedAt DateTime?
 
   // No-show reduction: timestamps so each automated reminder fires at most once.

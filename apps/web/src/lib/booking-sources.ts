@@ -56,6 +56,24 @@ export const SOURCE_ORDER: SourceKey[] = [
 
 /** The referrers a utm_source can name. Checked longest-first where it
  *  matters: "ig" must not be found inside "assign". */
+/**
+ * Organic clicks carry no UTM — but the booking page has been snapshotting
+ * document.referrer into attrReferrer all along. A customer who found the
+ * salon on Google and tapped the Lumio link IS Google traffic; leaving the
+ * chip at "Link Lumio" hides exactly the answer the owner pays ads to learn.
+ */
+function refineFromReferrer(ref: string | null | undefined): SourceKey | null {
+  const raw = String(ref ?? '').trim();
+  if (!raw) return null;
+  let host = '';
+  try { host = new URL(raw).hostname.toLowerCase(); } catch { return null; }
+  if (/(^|\.)google\./.test(host) || host.includes('googleusercontent')) return 'gmap';
+  if (/(^|\.)(facebook\.com|fb\.com|fb\.me)$/.test(host) || host.endsWith('.facebook.com')) return 'facebook';
+  if (host.includes('instagram')) return 'instagram';
+  if (host.includes('zalo')) return 'zalo';
+  return null;
+}
+
 function refineFromUtm(utm: string): SourceKey | null {
   const v = utm.toLowerCase();
   if (/\bfb\b|facebook|fbclid/.test(v)) return 'facebook';
@@ -72,7 +90,7 @@ function refineFromUtm(utm: string): SourceKey | null {
  * booking with a stray utm stays Messenger — the thread is stronger evidence
  * than a parameter someone pasted into a link.
  */
-export function srcKey(b: { source?: string | null; utmSource?: string | null }): SourceKey {
+export function srcKey(b: { source?: string | null; utmSource?: string | null; attrReferrer?: string | null }): SourceKey {
   const s = String(b?.source ?? '').trim().toLowerCase();
 
   if (s === 'instagram' || s === 'ig') return 'instagram';
@@ -84,7 +102,9 @@ export function srcKey(b: { source?: string | null; utmSource?: string | null })
   if (s === 'gmap' || s === 'google' || s === 'gbp' || s === 'rwg' || s === 'reserve_with_google') return 'gmap';
 
   const utm = String(b?.utmSource ?? '').trim();
-  const refined = utm ? refineFromUtm(utm) : null;
+  // UTM is a deliberate statement and wins; the referrer is the organic truth
+  // when nobody tagged the link.
+  const refined = (utm ? refineFromUtm(utm) : null) ?? refineFromReferrer(b?.attrReferrer);
 
   if (s === 'plugin' || s === 'website' || s === 'wordpress') return refined ?? 'website';
   if (s === 'hosted' || s === 'lumiolink' || s === 'link') return refined ?? 'lumiolink';
@@ -92,7 +112,7 @@ export function srcKey(b: { source?: string | null; utmSource?: string | null })
   return refined ?? 'online';
 }
 
-export function srcMetaOf(b: { source?: string | null; utmSource?: string | null }): SourceMeta {
+export function srcMetaOf(b: { source?: string | null; utmSource?: string | null; attrReferrer?: string | null }): SourceMeta {
   return SOURCE_META[srcKey(b)];
 }
 
@@ -102,7 +122,7 @@ export function srcMetaOf(b: { source?: string | null; utmSource?: string | null
  * eleven zeros is a form, not information.
  */
 export function sourceCounts(
-  rows: Array<{ source?: string | null; utmSource?: string | null }>,
+  rows: Array<{ source?: string | null; utmSource?: string | null; attrReferrer?: string | null }>,
 ): Array<{ meta: SourceMeta; count: number }> {
   const tally = new Map<SourceKey, number>();
   for (const b of rows ?? []) {

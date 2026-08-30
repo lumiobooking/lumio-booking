@@ -121,6 +121,7 @@ export class OverviewService {
           // both screens can never disagree about what "Messenger" means.
           source: true,
           utmSource: true,
+          attrReferrer: true,
           assignedStaff: { select: { firstName: true, lastName: true } },
           service: { select: { name: true } },
         },
@@ -342,7 +343,7 @@ export class OverviewService {
       range: { from: dayKey(from), to: dayKey(to) },
       // Raw (source, utmSource) pairs — tiny, and the web's booking-sources
       // lib owns ALL classification rules in one place.
-      sourceRows: appts.map((a) => ({ source: a.source ?? null, utmSource: a.utmSource ?? null })),
+      sourceRows: appts.map((a) => ({ source: a.source ?? null, utmSource: a.utmSource ?? null, attrReferrer: a.attrReferrer ?? null })),
       kpis: {
         totalBookings,
         revenueCents,

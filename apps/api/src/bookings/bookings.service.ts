@@ -1650,18 +1650,27 @@ export class BookingsService {
    *  - not-yet-collected (PENDING) -> FAILED (voided, can't be marked paid)
    * (No-show keeps its money — that path uses noShow(), not cancel().)
    */
+
+  /** The human-readable name of the acting user, for "cancelled by" stamps. */
+  private async actorName(userId: string | null): Promise<string | null> {
+    if (!userId) return null;
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, email: true } }).catch(() => null);
+    if (!u) return null;
+    return [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || null;
+  }
+
   async cancel(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     await this.getById(user, id); // enforces tenant ownership / 404
-    return this.cancelForTenant(tenantId, id, user.userId);
+    return this.cancelForTenant(tenantId, id, user.userId, 'staff', await this.actorName(user.userId));
   }
 
   /** Cancel + settle money, scoped to a tenant (admin or token-based customer cancel). */
-  async cancelForTenant(tenantId: string, id: string, actorUserId: string | null) {
+  async cancelForTenant(tenantId: string, id: string, actorUserId: string | null, by: 'staff' | 'customer' | 'ai' = 'customer', byName: string | null = null) {
     await this.prisma.$transaction(async (tx) => {
       await tx.appointment.updateMany({
         where: { id, tenantId },
-        data: { status: AppointmentStatus.CANCELLED, cancelledAt: new Date() },
+        data: { status: AppointmentStatus.CANCELLED, cancelledAt: new Date(), cancelledBy: by, cancelledByName: byName } as never,
       });
       await tx.payment.updateMany({
         where: { tenantId, appointmentId: id, status: PaymentStatus.PAID },
@@ -1826,7 +1835,17 @@ export class BookingsService {
     const data: Prisma.AppointmentUpdateManyMutationInput = { status };
     if (status === AppointmentStatus.ARRIVED) data.arrivedAt = now;
     if (status === AppointmentStatus.COMPLETED) data.completedAt = now;
-    if (status === AppointmentStatus.CANCELLED) data.cancelledAt = now;
+    if (status === AppointmentStatus.CANCELLED) {
+      data.cancelledAt = now;
+      // The dropdown is a staff tool — stamp the author so "Đã huỷ" always
+      // answers "by whom?".
+      (data as Record<string, unknown>).cancelledBy = 'staff';
+      (data as Record<string, unknown>).cancelledByName = await this.actorName(user.userId);
+    }
+    if (a.status === AppointmentStatus.CANCELLED && status !== AppointmentStatus.CANCELLED) {
+      (data as Record<string, unknown>).cancelledBy = null;
+      (data as Record<string, unknown>).cancelledByName = null;
+    }
     // Reopening clears the finished stamp so reports stop counting it.
     if (wasCompleted && !willComplete) data.completedAt = null;
     await this.prisma.appointment.updateMany({ where: { id, tenantId }, data });

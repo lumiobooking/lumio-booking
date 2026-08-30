@@ -95,3 +95,26 @@ describe('the palette itself', () => {
     }
   });
 });
+
+
+describe('the referrer tells the organic truth', () => {
+  it('a Google search click into the Lumio link IS Google traffic', () => {
+    expect(srcKey({ source: 'hosted', attrReferrer: 'https://www.google.com/' })).toBe('gmap');
+  });
+  it('Facebook and Instagram referrers land on their own chips', () => {
+    expect(srcKey({ source: 'hosted', attrReferrer: 'https://l.facebook.com/l.php?u=x' })).toBe('facebook');
+    expect(srcKey({ source: 'plugin', attrReferrer: 'https://www.instagram.com/' })).toBe('instagram');
+  });
+  it('a deliberate UTM beats the referrer', () => {
+    expect(srcKey({ source: 'hosted', utmSource: 'zalo', attrReferrer: 'https://www.google.com/' })).toBe('zalo');
+  });
+  it('named doors ignore the referrer — a Messenger booking stays Messenger', () => {
+    expect(srcKey({ source: 'messenger', attrReferrer: 'https://www.google.com/' })).toBe('messenger');
+  });
+  it('garbage or missing referrers change nothing', () => {
+    expect(srcKey({ source: 'hosted', attrReferrer: 'not a url' })).toBe('lumiolink');
+    expect(srcKey({ source: 'hosted', attrReferrer: '' })).toBe('lumiolink');
+    // the salon's own site linking to its own booking page is not a "source"
+    expect(srcKey({ source: 'hosted', attrReferrer: 'https://familysmarthomes.com/book' })).toBe('lumiolink');
+  });
+});

@@ -15,6 +15,7 @@ import { fetchCensus, describeArea, type CensusResult } from './census';
 import { leadTime, cpaCeiling, budgetPlan, runWindow, platformPick, adAudiences } from './ads-plan';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
+import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -837,6 +838,124 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       city: ctx.region.city,
       region: ctx.region.region,
     });
+  }
+
+  /**
+   * Fill in what the business is, by reading what it already published.
+   *
+   * The form asking an owner to type six fields was the wrong answer to a real
+   * problem: the business had already said all of this on its own website and
+   * its own Facebook page, and both were already connected to this platform.
+   * Asking again is asking someone to re-enter data we hold.
+   *
+   * It DRAFTS, it does not save. Everything downstream — the content, the ad
+   * targeting, what the hotline tells a customer — is derived from these
+   * sentences, so a model's reading of a marketing page is a proposal for a
+   * person to correct, never a fact to act on. The draft comes back with the
+   * source named, so the reviewer can see where each line came from.
+   */
+  async scanProfile(user: AuthenticatedUser): Promise<{
+    draft: Record<string, string>; sources: string[]; warnings: string[];
+  }> {
+    const tenantId = this.tenantId(user);
+    const warnings: string[] = [];
+    const sources: string[] = [];
+    const chunks: string[] = [];
+
+    const extra = await this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null);
+    const website = String(((extra?.value ?? {}) as { website?: string }).website ?? '').trim();
+
+    if (website) {
+      try {
+        const r = await readWebsite(website);
+        chunks.push(`--- ${r.source} ---\n${r.text}`);
+        sources.push(r.source);
+      } catch (e) {
+        warnings.push(e instanceof SiteReadError ? e.message : 'Không đọc được website.');
+      }
+    } else {
+      warnings.push('Chưa có địa chỉ website trong phần cài đặt tiệm.');
+    }
+
+    const loose = this.prisma as unknown as Record<string, { findUnique?: (a: unknown) => Promise<unknown>; findFirst?: (a: unknown) => Promise<unknown> }>;
+    const conn = await loose.messengerConnection?.findUnique?.({ where: { tenantId } }).catch(() => null) as { pageId?: string | null; pageToken?: string | null } | null;
+    const pg = await loose.messengerPage?.findFirst?.({ where: { tenantId }, orderBy: { createdAt: 'asc' } }).catch(() => null) as { pageId?: string | null; pageToken?: string | null } | null;
+    const page = conn?.pageId && conn?.pageToken ? conn : pg?.pageId && pg?.pageToken ? pg : null;
+    if (page?.pageId && page?.pageToken) {
+      try {
+        const r = await readFacebookPage(page.pageId, page.pageToken);
+        chunks.push(`--- ${r.source} ---\n${r.text}`);
+        sources.push(r.source);
+      } catch (e) {
+        warnings.push(e instanceof SiteReadError ? e.message : 'Không đọc được fanpage.');
+      }
+    } else {
+      warnings.push('Chưa kết nối Facebook Page.');
+    }
+
+    // The salon's own service list, which is a fact rather than a claim.
+    const services = await this.prisma.service.findMany({
+      where: { tenantId, isActive: true }, select: { name: true, description: true }, take: 40,
+    }).catch(() => []) as { name: string; description: string | null }[];
+    if (services.length) {
+      chunks.push(`--- Dịch vụ đã khai trong hệ thống ---\n${services.map((s) => `${s.name}${s.description ? `: ${s.description}` : ''}`).join('\n')}`);
+      sources.push(`${services.length} dịch vụ trong hệ thống`);
+    }
+
+    if (!chunks.length) {
+      return {
+        draft: {},
+        sources,
+        warnings: [...warnings, 'Không có nguồn nào đọc được — cần điền tay, hoặc thêm website vào cài đặt tiệm rồi quét lại.'],
+      };
+    }
+
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) return { draft: {}, sources, warnings: [...warnings, 'Chưa cấu hình AI trên bản này nên chưa tự điền được.'] };
+
+    const system = `Bạn đọc tài liệu của một doanh nghiệp và điền một hồ sơ ngắn về chính doanh nghiệp đó.
+
+LUẬT:
+1. CHỈ dùng những gì có trong tài liệu. Không suy đoán, không thêm thắt cho đầy đủ.
+2. Ô nào tài liệu không nói tới thì để CHUỖI RỖNG. Một ô trống trung thực có ích hơn một câu nghe hợp lý mà sai.
+3. Phân biệt DOANH NGHIỆP NÀY với KHÁCH HÀNG CỦA HỌ. Một công ty marketing phục vụ tiệm nail KHÔNG PHẢI là tiệm nail — đây là nhầm lẫn nguy hiểm nhất, hãy đọc kỹ.
+4. "whoWeServe" chỉ điền khi tài liệu nói rõ họ phục vụ ai. Không suy ra từ ngôn ngữ trang web hay từ tên.
+5. Viết tiếng Việt, ngắn gọn, mỗi ô 1-2 câu.
+
+TRẢ VỀ JSON THUẦN:
+{"whatWeDo":"...","whoWeServe":"...","languages":"...","serviceArea":"...","edge":"...","avoid":""}`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 1200,
+        system,
+        messages: [{ role: 'user', content: chunks.join('\n\n').slice(0, 30_000) }],
+      }),
+      signal: AbortSignal.timeout(45_000),
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      return { draft: {}, sources, warnings: [...warnings, 'Đọc được nội dung nhưng AI chưa phân tích được. Thử lại sau ít phút.'] };
+    }
+    const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
+    const braced = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    let parsed: Record<string, unknown> = {};
+    try { parsed = JSON.parse(braced) as Record<string, unknown>; } catch { /* handled below */ }
+
+    const FIELDS = ['whatWeDo', 'whoWeServe', 'languages', 'serviceArea', 'edge', 'avoid'];
+    const draft: Record<string, string> = {};
+    for (const f of FIELDS) {
+      const v = parsed[f];
+      draft[f] = typeof v === 'string' ? v.trim().slice(0, 600) : '';
+    }
+    if (!draft.whatWeDo) {
+      warnings.push('Đọc được nguồn nhưng chưa rút ra được mô tả rõ ràng — kiểm tra lại và sửa tay.');
+    }
+    return { draft, sources, warnings };
   }
 
   /** The salon marks progress: filmed, posted, or honestly skipped. */

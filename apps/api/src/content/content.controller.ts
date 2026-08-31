@@ -40,6 +40,18 @@ export class ContentController {
     return this.svc.refreshFor(user);
   }
 
+  /**
+   * Read the business's own website and Facebook Page and propose the profile.
+   *
+   * Drafts only. Everything downstream — content, ad targeting, what the
+   * hotline says to a customer — is derived from these sentences, so a model's
+   * reading of a marketing page is a proposal to correct, not a fact to act on.
+   */
+  @Post('profile/scan')
+  scanProfile(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.scanProfile(user);
+  }
+
   @Post('ideas/:id/status')
   setStatus(
     @CurrentUser() user: AuthenticatedUser,

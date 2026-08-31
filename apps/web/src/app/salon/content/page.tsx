@@ -128,6 +128,8 @@ function Inner() {
   const [editProfile, setEditProfile] = useState(false);
   const [pf, setPf] = useState({ whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '' });
   const [savingPf, setSavingPf] = useState(false);
+  const [scanningPf, setScanningPf] = useState(false);
+  const [pfScan, setPfScan] = useState<{ sources: string[]; warnings: string[] } | null>(null);
   const isMobile = useIsMobile(900);
 
   const load = useCallback(async () => {
@@ -207,6 +209,36 @@ function Inner() {
       setTimeout(() => setRefreshMsg(null), 8000);
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setSavingPf(false); }
+  }
+
+  /**
+   * Read the business's own website and Facebook Page instead of asking.
+   *
+   * The six-field form was the wrong answer to a real problem: the business had
+   * already published all of this, and both sources were already connected to
+   * this platform. The result lands in the form as a DRAFT — a model's reading
+   * of a marketing page is a proposal to correct, not a fact to save silently,
+   * because everything downstream is derived from these sentences.
+   */
+  async function scanProfile() {
+    if (scanningPf) return;
+    setScanningPf(true); setPfScan(null); setError(null);
+    try {
+      const r = await apiFetch<{ draft: Record<string, string>; sources: string[]; warnings: string[] }>(
+        '/content/profile/scan', { method: 'POST', token },
+      );
+      setPf((cur) => {
+        const next = { ...cur };
+        for (const k of Object.keys(next) as (keyof typeof next)[]) {
+          // Never overwrite something a person already wrote.
+          if (!next[k] && r.draft?.[k]) next[k] = r.draft[k];
+        }
+        return next;
+      });
+      setPfScan({ sources: r.sources ?? [], warnings: r.warnings ?? [] });
+      setEditProfile(true);
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+    finally { setScanningPf(false); }
   }
 
   async function copy(id: string, text: string) {
@@ -391,6 +423,33 @@ function Inner() {
                        'Everything below is derived from this. Without it the system has only a four-value industry code to reason from, and the advice comes out fluent and wrong.')}
                   </div>
 
+                  {/* Read what the business already published, rather than
+                      asking it to type what it already said. */}
+                  <div style={{ marginBottom: 12 }}>
+                    <button onClick={scanProfile} disabled={scanningPf} style={{ ...ui.primaryBtn, opacity: scanningPf ? 0.6 : 1 }}>
+                      {scanningPf
+                        ? T('Đang đọc website & fanpage…', 'Reading website & page…')
+                        : `↻ ${T('Tự điền từ website & fanpage', 'Fill from website & page')}`}
+                    </button>
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 5, lineHeight: 1.5 }}>
+                      {T('Đọc website trong cài đặt tiệm và trang Facebook đã kết nối. Kết quả điền vào ô bên dưới dạng NHÁP — anh đọc lại rồi mới lưu.',
+                         'Reads the website in your settings and the connected Facebook Page. The result lands below as a draft to review before saving.')}
+                    </div>
+                  </div>
+
+                  {pfScan && (
+                    <div style={{ marginBottom: 12 }}>
+                      {!!pfScan.sources.length && (
+                        <div style={{ fontSize: 12, color: 'var(--cbbf7d0)', lineHeight: 1.5, marginBottom: 3 }}>
+                          {T('Đã đọc', 'Read from')}: {pfScan.sources.join(' · ')}
+                        </div>
+                      )}
+                      {pfScan.warnings.map((w, i) => (
+                        <div key={i} style={{ fontSize: 12, color: '#f59e0b', lineHeight: 1.5 }}>⚠ {w}</div>
+                      ))}
+                    </div>
+                  )}
+
                   {([
                     ['whatWeDo', T('Doanh nghiệp làm gì', 'What you do'), T('VD: Dịch vụ marketing cho doanh nghiệp của người Việt tại Mỹ', 'e.g. Marketing services for Vietnamese-owned businesses in the US')],
                     ['whoWeServe', T('Phục vụ ai', 'Who you serve'), T('VD: Chủ tiệm nail, nhà hàng người Việt ở Texas và California', 'e.g. Vietnamese salon and restaurant owners in TX and CA')],
@@ -444,9 +503,14 @@ function Inner() {
                         </div>
                       )}
                     </div>
-                    <button onClick={() => setEditProfile(true)} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>
-                      {T('Sửa', 'Edit')}
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button onClick={scanProfile} disabled={scanningPf} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)', whiteSpace: 'nowrap', opacity: scanningPf ? 0.6 : 1 }}>
+                        {scanningPf ? T('Đang đọc…', 'Reading…') : T('Quét lại', 'Rescan')}
+                      </button>
+                      <button onClick={() => setEditProfile(true)} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>
+                        {T('Sửa', 'Edit')}
+                      </button>
+                    </div>
                   </div>
 
                   {!!plan.identity.gaps.length && (

@@ -2063,8 +2063,16 @@ function Inner() {
             // Bounded to the viewport so the column cannot outgrow the screen —
             // a sticky element taller than the window scrolls away, taking the
             // chat with it, which is the one thing a docked chat must not do.
-            maxHeight: 'calc(100vh - 16px)',
+            // The summary cards scroll inside their own strip; the thread keeps
+            // its height, because reading three messages at a time is what made
+            // the first version useless.
+            height: 'calc(100vh - 16px)',
+            overflow: 'hidden',
           }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 12,
+              overflowY: 'auto', flex: '0 1 auto', minHeight: 0,
+            }}>
             {regionCard}
             {plan?.week && (
               <div style={{ ...ui.card, padding: 14 }}>
@@ -2112,10 +2120,12 @@ function Inner() {
               </div>
             )}
 
+            </div>
+
             {/* The shared thread, docked. Last in the column so the plan's own
-                cards stay at the top where the eye starts, and it fills the
-                space they leave — which on this screen was empty anyway. */}
-            <TeamChatDock token={token} unread={unread.total} vi={vi} />
+                cards stay at the top where the eye starts, and it takes the rest
+                of the height — which on this screen was empty anyway. */}
+            <TeamChatDock token={token} unread={unread.total} vi={vi} salonName={plan?.identity?.label} />
           </aside>
         )}
       </div>

@@ -9,9 +9,14 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
  * WHY IT IS NOT THE EXISTING INBOX
  *
  * The Messenger inbox is the salon talking to the people who book with it. This
- * is the salon talking to US. Putting them in one list would sit "nên nâng giá
- * Thứ 5 lên" next to a customer asking about opening hours, and sooner or later
- * somebody replies to the wrong one — in public, as the salon.
+ * is the salon talking to the marketing team that works for it. Putting them in
+ * one list would sit "nên nâng giá Thứ 5 lên" next to a customer asking about
+ * opening hours, and sooner or later somebody replies to the wrong one — in
+ * public, as the salon.
+ *
+ * "Internal" is the wrong word for it and the screens no longer use it: this is
+ * an agency talking to its CLIENT. What it is private from is the salon's own
+ * customers, not from the salon.
  *
  * WHY ONE TABLE FOR COMMENTS AND FOR THE SHARED WINDOW
  *

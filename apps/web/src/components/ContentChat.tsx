@@ -136,6 +136,35 @@ function Composer({ onSend, sending, placeholder, big }: {
   );
 }
 
+/**
+ * Who is on the other end, from the reader's side.
+ *
+ * The first version said "Talk to Lumio · Internal — customers never see this"
+ * to everybody, and both halves were wrong. "Internal" reads as "inside my own
+ * company", when this is a staff member talking to a CLIENT — the salon. And
+ * the salon does not want a label naming itself; it wants to know it is talking
+ * to the people who run its marketing.
+ *
+ * So the header names the OTHER side: the salon sees its marketing team, the
+ * team sees the salon.
+ */
+function counterpart(side: 'lumio' | 'salon', salonName: string | undefined, vi: boolean): {
+  title: string; sub: string;
+} {
+  if (side === 'lumio') {
+    return {
+      title: salonName || (vi ? 'Tiệm' : 'The salon'),
+      sub: vi ? 'Trao đổi công việc với tiệm' : 'Working thread with this salon',
+    };
+  }
+  return {
+    title: vi ? 'Đội marketing' : 'Your marketing team',
+    sub: vi
+      ? 'Riêng giữa tiệm và đội marketing — khách của tiệm không thấy'
+      : 'Between you and your marketing team — your customers never see this',
+  };
+}
+
 /** Shared by both shapes: load a thread, send into it, keep it fresh. */
 function useThread(token: string | null, subject: string, open: boolean) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -188,32 +217,47 @@ export function ItemComments({ token, subject, unread, labelVi, vi }: {
 
   return (
     <div style={{ marginTop: 8 }}>
+      {/* Big enough to see and to press.
+          The first version was a 12px grey pill that read "Discuss" — on a busy
+          card it disappeared entirely, and a comment box nobody notices is a
+          comment box nobody uses. It is now a full-width bar in the accent
+          colour, 40px tall, and it says what it will show. */}
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
-          padding: '4px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 12,
-          border: '1px solid var(--c334155)', background: 'transparent',
-          color: unread ? 'var(--ca5b4fc)' : 'var(--c64748b)',
-          display: 'inline-flex', alignItems: 'center', gap: 6,
+          width: '100%', minHeight: 40, padding: '9px 13px', borderRadius: 10,
+          cursor: 'pointer', fontSize: 13.5, fontWeight: 600, textAlign: 'left',
+          border: `1px solid ${unread ? '#ef4444' : '#6366f1'}`,
+          background: open ? '#6366f1' : 'var(--c1e1b4b)',
+          color: open ? 'var(--cf8fafc)' : 'var(--ca5b4fc)',
+          display: 'flex', alignItems: 'center', gap: 8,
         }}
       >
-        💬 {labelVi ?? (vi ? 'Trao đổi' : 'Discuss')}
-        {!!count && (
+        <span style={{ fontSize: 15 }}>💬</span>
+        <span style={{ flex: 1 }}>
+          {labelVi ?? (vi ? 'Trao đổi về mục này' : 'Discuss this')}
+          {!open && count > 0 && (
+            <span style={{ fontWeight: 400, opacity: 0.85 }}>
+              {' · '}{count} {vi ? 'tin' : count === 1 ? 'message' : 'messages'}
+            </span>
+          )}
+        </span>
+        {!!unread && (
           <span style={{
-            fontSize: 10.5, fontWeight: 700, minWidth: 17, height: 17, borderRadius: 20,
+            fontSize: 11, fontWeight: 700, minWidth: 20, height: 20, borderRadius: 20,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: unread ? '#ef4444' : 'var(--c334155)',
-            color: unread ? 'var(--cf8fafc)' : 'var(--c94a3b8)', padding: '0 5px',
-          }}>{count}</span>
+            background: '#ef4444', color: 'var(--cf8fafc)', padding: '0 6px',
+          }}>{unread}</span>
         )}
+        <span style={{ fontSize: 12, opacity: 0.7 }}>{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <div style={{
-          marginTop: 8, padding: 10, borderRadius: 10,
-          background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+          marginTop: 8, padding: 12, borderRadius: 10,
+          background: 'var(--c0f172a)', border: '1px solid #6366f1',
         }}>
-          <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 8 }}>
+          <div style={{ minHeight: 150, maxHeight: 420, overflowY: 'auto', marginBottom: 10 }}>
             <Bubbles
               messages={messages}
               mine={side}
@@ -245,12 +289,15 @@ export function ItemComments({ token, subject, unread, labelVi, vi }: {
  * On a phone there is no sidebar, so it stays a button that opens full screen —
  * see TeamChatWindow below.
  */
-export function TeamChatDock({ token, unread, vi, height }: {
+export function TeamChatDock({ token, unread, vi, height, salonName }: {
   token: string | null; unread: number; vi: boolean;
   /** Omit to fill whatever the sidebar has left. */
   height?: number;
+  /** Shown to the TEAM side, so a staff member knows whose thread this is. */
+  salonName?: string;
 }) {
   const { messages, side, sending, send } = useThread(token, 'general', true);
+  const who = counterpart(side, salonName, vi);
 
   return (
     <div style={{
@@ -258,7 +305,10 @@ export function TeamChatDock({ token, unread, vi, height }: {
       // Fills the column rather than claiming a fixed slice of it: the cards
       // above vary in height from salon to salon, and a hardcoded 420px is
       // either a gap under the chat or a chat pushed off the screen.
-      ...(height ? { height } : { flex: '1 1 auto', minHeight: 260 }),
+      // 420 minimum. The first version bottomed out at 260 and the reading area
+      // came out barely three messages tall — a thread you cannot see is a
+      // thread you scroll instead of read, and this is where the work happens.
+      ...(height ? { height } : { flex: '1 1 auto', minHeight: 420 }),
       borderRadius: 12, overflow: 'hidden',
       background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
     }}>
@@ -267,13 +317,13 @@ export function TeamChatDock({ token, unread, vi, height }: {
         borderBottom: '1px solid var(--c334155)', flex: '0 0 auto',
         background: 'var(--c1e293b)',
       }}>
-        <span style={{ fontSize: 14 }}>💬</span>
+        <span style={{ fontSize: 15 }}>💬</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-            {vi ? 'Trao đổi với Lumio' : 'Talk to Lumio'}
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {who.title}
           </div>
-          <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>
-            {vi ? 'Nội bộ — khách không thấy' : 'Internal — customers never see this'}
+          <div style={{ fontSize: 10.5, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {who.sub}
           </div>
         </div>
         {unread > 0 && (
@@ -289,9 +339,13 @@ export function TeamChatDock({ token, unread, vi, height }: {
         <Bubbles
           messages={messages}
           mine={side}
-          empty={vi
-            ? 'Chưa có tin nhắn nào. Đây là chỗ tiệm và team Lumio trao đổi về nội dung, quảng cáo, kế hoạch.'
-            : 'No messages yet. This is where the salon and the Lumio team talk about content, ads and the plan.'}
+          empty={side === 'lumio'
+            ? (vi
+              ? 'Chưa có tin nhắn nào. Nhắn cho tiệm ở đây về nội dung, quảng cáo và kế hoạch tuần.'
+              : 'No messages yet. Write to the salon here about content, ads and the weekly plan.')
+            : (vi
+              ? 'Chưa có tin nhắn nào. Nhắn cho đội marketing ở đây — hỏi về bài đăng, quảng cáo, hay kế hoạch tuần này.'
+              : 'No messages yet. Write to your marketing team here — about posts, ads, or this week’s plan.')}
         />
       </div>
 
@@ -300,7 +354,9 @@ export function TeamChatDock({ token, unread, vi, height }: {
           onSend={send}
           sending={sending}
           big={false}
-          placeholder={vi ? 'Nhắn cho team Lumio…' : 'Message the Lumio team…'}
+          placeholder={side === 'lumio'
+            ? (vi ? `Nhắn cho ${salonName || 'tiệm'}…` : 'Message the salon…')
+            : (vi ? 'Nhắn cho đội marketing…' : 'Message your marketing team…')}
         />
       </div>
     </div>
@@ -364,10 +420,10 @@ export function TeamChatWindow({ token, unread, vi }: {
             <span style={{ fontSize: 15 }}>💬</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-                {vi ? 'Trao đổi với Lumio' : 'Talk to Lumio'}
+                {counterpart(side, undefined, vi).title}
               </div>
               <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>
-                {vi ? 'Nội bộ — khách của tiệm không thấy' : 'Internal — your customers never see this'}
+                {counterpart(side, undefined, vi).sub}
               </div>
             </div>
             <button
@@ -385,8 +441,8 @@ export function TeamChatWindow({ token, unread, vi }: {
               messages={messages}
               mine={side}
               empty={vi
-                ? 'Chưa có tin nhắn nào. Đây là chỗ trao đổi giữa tiệm và team Lumio về nội dung, quảng cáo, kế hoạch — riêng tư, khách không thấy.'
-                : 'No messages yet. This is where the salon and the Lumio team talk about content, ads and the plan — private, never seen by customers.'}
+                ? 'Chưa có tin nhắn nào. Nhắn cho đội marketing ở đây — hỏi về bài đăng, quảng cáo, hay kế hoạch tuần này. Khách của tiệm không thấy phần này.'
+                : 'No messages yet. Write to your marketing team here — about posts, ads, or this week’s plan. Your customers never see it.'}
             />
           </div>
 
@@ -399,7 +455,7 @@ export function TeamChatWindow({ token, unread, vi }: {
               onSend={send}
               sending={sending}
               big={isMobile}
-              placeholder={vi ? 'Nhắn cho team Lumio…' : 'Message the Lumio team…'}
+              placeholder={vi ? 'Nhắn cho đội marketing…' : 'Message your marketing team…'}
             />
           </div>
         </div>

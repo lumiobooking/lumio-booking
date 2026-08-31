@@ -26,6 +26,8 @@ interface Idea {
   id: string;
   rank: number;
   status: string;
+  /** Where it went up. Empty until somebody pastes it. */
+  postedUrl?: string | null;
   formatName: string | null;
   title: string;
   hook: string | null;
@@ -70,6 +72,13 @@ interface ChannelReport {
   verdict: 'builds' | 'convenience' | 'fading' | 'weak' | 'unproven';
   says: string;
 }
+interface AdSetSpec { name: string; who: string; where: string; when: string; exclude: string | null }
+interface CampaignSpec {
+  name: string; objective: string;
+  adSets: AdSetSpec[];
+  creative: { headlines: string[]; descriptions: string[]; cta: string; landing: string; visual: string };
+  budgetLine: string; before: string[]; measure: string[]; warnings: string[];
+}
 interface PlatformPlan {
   platform: string; label: string; rank: number;
   status: 'spend' | 'later' | 'hold' | 'unproven';
@@ -77,12 +86,20 @@ interface PlatformPlan {
   ceiling: string | null; daily: string | null; total: string | null;
   days: number; bookingsToBreakEven: number | null;
   how: string[]; watch: string;
+  /** The build sheet, only for the campaign we are telling them to run. */
+  spec: CampaignSpec | null;
 }
 interface TargetSegment { key: string; label: string; size: number; basis: string; why: string; targeting: string[] }
+interface WeekOutcome {
+  plannedJobs: number; doneJobs: number; posted: number; postedWithLink: number;
+  bookings: number; newCustomers: number; revenueCents: number; reviews: number;
+}
 interface WeekRow {
   weekKey: string; label: string; startDate: string;
   stageKey: string | null; stageStep: number | null;
   focus: string; edited: boolean; editedByName: string | null; editedAt: string | null;
+  approvedAt: string | null; approvedByName: string | null;
+  outcome: WeekOutcome | null; outcomeLine: string | null; deltaLine: string | null;
 }
 interface PlainStep { key: string; icon: string; title: string; line: string; action: string | null; why: string }
 interface MarketPlan {
@@ -131,7 +148,10 @@ interface Plan {
     stage: { key: string; step: number; title: string; goal: string; why: string; exitWhen: string; progress: { done: number; need: number; label: string } | null } | null;
     teamNote?: string;
   };
-  weekMeta: { weekKey: string; label: string; edited: boolean; editedByName: string | null; editedAt: string | null; canEdit: boolean } | null;
+  weekMeta: {
+    weekKey: string; label: string; edited: boolean; editedByName: string | null; editedAt: string | null;
+    canEdit: boolean; approvedAt: string | null; approvedByName: string | null;
+  } | null;
   calendar: SeasonEvent[];
   videoFeeds: FeedLink[];
   productWatch: FeedLink[];
@@ -291,6 +311,23 @@ export default function ContentTodayPage() {
   return <SalonShell><Inner /></SalonShell>;
 }
 
+/**
+ * One labelled line of the campaign build sheet.
+ *
+ * A build sheet is read while looking at another screen — Ads Manager on one
+ * side, this on the other — so the label has to be findable at a glance rather
+ * than buried in a paragraph.
+ */
+function SpecRow({ k, vi, children }: { k: string; vi: boolean; children: React.ReactNode }) {
+  void vi;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 3 }}>{k}</div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
 function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
@@ -320,6 +357,9 @@ function Inner() {
   const [draftFocus, setDraftFocus] = useState('');
   const [draftNote, setDraftNote] = useState('');
   const [savingWeek, setSavingWeek] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [linkFor, setLinkFor] = useState<string | null>(null);
+  const [linkDraft, setLinkDraft] = useState('');
   const [unread, setUnread] = useState<{ total: number; bySubject: Record<string, number> }>({ total: 0, bySubject: {} });
   const isMobile = useIsMobile(900);
 
@@ -360,15 +400,44 @@ function Inner() {
     if (plan?.identity?.profile) setPf({ ...plan.identity.profile });
   }, [plan?.identity?.profile]);
 
-  async function mark(id: string, status: string) {
+  async function mark(id: string, status: string, postedUrl?: string) {
     setBusy(id);
     try {
-      await apiFetch(`/content/ideas/${id}/status`, { method: 'POST', token, body: { status } });
+      await apiFetch(`/content/ideas/${id}/status`, {
+        method: 'POST', token, body: postedUrl === undefined ? { status } : { status, postedUrl },
+      });
       // Update in place: a full reload would scroll a phone back to the top,
       // losing the card the person was standing in front of.
-      setData((d) => (d ? { ...d, ideas: d.ideas.map((i) => (i.id === id ? { ...i, status } : i)) } : d));
+      setData((d) => (d ? {
+        ...d,
+        ideas: d.ideas.map((i) => (i.id === id
+          ? { ...i, status, ...(postedUrl === undefined ? {} : { postedUrl }) }
+          : i)),
+      } : d));
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setBusy(null); }
+  }
+
+  /**
+   * The salon says "yes, run this week".
+   *
+   * Written on the week row, not sent as a chat message: an approval that lives
+   * in a thread is an approval nobody can find on the Friday somebody asks
+   * whether the budget was agreed.
+   */
+  async function approveWeek() {
+    const key = plan?.weekMeta?.weekKey;
+    if (!key || approving) return;
+    setApproving(true);
+    try {
+      const r = await apiFetch<{ approvedAt: string }>(
+        `/content/weeks/${encodeURIComponent(key)}/approve`, { method: 'POST', token },
+      );
+      setPlan((p) => (p && p.weekMeta
+        ? { ...p, weekMeta: { ...p.weekMeta, approvedAt: r.approvedAt, approvedByName: T('Tiệm', 'Salon') } }
+        : p));
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+    finally { setApproving(false); }
   }
 
   /**
@@ -541,6 +610,20 @@ function Inner() {
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
     { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣' },
   ];
+
+  /**
+   * Where each roadmap stage's work is done.
+   *
+   * The stage card used to end with a sentence like "mở tab Quảng cáo & SEO" —
+   * an instruction to navigate, printed on a screen that could simply navigate.
+   */
+  const STAGE_TAB: Record<string, { tab: TabId; label: string }> = {
+    foundation: { tab: 'today', label: T('Làm nội dung hôm nay', 'Today’s content') },
+    reactivate: { tab: 'audience', label: T('Xem khách lâu chưa quay lại', 'See the customers to win back') },
+    'fill-gap': { tab: 'audience', label: T('Xem khung trống & ưu đãi', 'Quiet slots and offers') },
+    acquire: { tab: 'ads', label: T('Xem kế hoạch quảng cáo', 'Open the ads plan') },
+    keep: { tab: 'audience', label: T('Xem cách giữ khách', 'How to keep them coming back') },
+  };
 
   const STATE_STYLE: Record<string, { bg: string; fg: string; text: string }> = {
     pass: { bg: 'var(--c14532d)', fg: 'var(--cbbf7d0)', text: T('Đạt', 'Pass') },
@@ -922,6 +1005,77 @@ function Inner() {
                         </button>
                       )}
                     </div>
+
+                    {/* ---- where it went up ----
+                        A post nobody can open is a post nobody can check. The
+                        link is what turns "we posted 8 things" into 8 things a
+                        client can click, and it is the only field in the weekly
+                        record that is verifiable from outside this system. */}
+                    {done && (
+                      <div style={{ marginTop: 9 }}>
+                        {idea.postedUrl && linkFor !== idea.id ? (
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <a
+                              href={idea.postedUrl} target="_blank" rel="noopener noreferrer"
+                              style={{ fontSize: 12.5, color: 'var(--c60a5fa)', wordBreak: 'break-all' }}
+                            >
+                              🔗 {T('Xem bài đã đăng', 'Open the post')}
+                            </a>
+                            <button
+                              onClick={() => { setLinkFor(idea.id); setLinkDraft(idea.postedUrl ?? ''); }}
+                              style={{ fontSize: 11.5, background: 'transparent', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', padding: 0 }}
+                            >
+                              {T('sửa', 'edit')}
+                            </button>
+                          </div>
+                        ) : linkFor === idea.id ? (
+                          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                            <input
+                              value={linkDraft}
+                              onChange={(e) => setLinkDraft(e.target.value)}
+                              placeholder="https://facebook.com/..."
+                              autoFocus
+                              style={{
+                                flex: '1 1 200px', minHeight: 40, padding: '9px 11px', borderRadius: 8, fontSize: 13,
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            />
+                            <button
+                              onClick={async () => {
+                                await mark(idea.id, 'posted', linkDraft.trim());
+                                setLinkFor(null);
+                              }}
+                              disabled={busy === idea.id || !/^https:\/\//i.test(linkDraft.trim())}
+                              style={{
+                                minHeight: 40, padding: '9px 15px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                                border: 'none', cursor: 'pointer',
+                                background: /^https:\/\//i.test(linkDraft.trim()) ? '#6366f1' : 'var(--c334155)',
+                                color: /^https:\/\//i.test(linkDraft.trim()) ? '#fff' : 'var(--c64748b)',
+                              }}
+                            >
+                              {T('Lưu link', 'Save link')}
+                            </button>
+                            <button
+                              onClick={() => setLinkFor(null)}
+                              style={{ minHeight: 40, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' }}
+                            >
+                              {T('Huỷ', 'Cancel')}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setLinkFor(idea.id); setLinkDraft(''); }}
+                            style={{
+                              fontSize: 12.5, padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
+                              border: '1px dashed var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)',
+                            }}
+                          >
+                            🔗 {T('Dán link bài đã đăng', 'Paste the link to the post')}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     <ItemComments
                       token={token}
                       subject={`idea:${idea.id}`}
@@ -954,6 +1108,65 @@ function Inner() {
                     <WeekChip key={w.weekKey} active={viewWeek === w.weekKey} onClick={() => { setViewWeek(w.weekKey); setEditing(false); }}>
                       {w.label}{w.edited ? ' ✎' : ''}
                     </WeekChip>
+                  ))}
+                </div>
+              )}
+
+              {/* ---- what the last weeks produced ----
+                   The archive used to hold intentions and nothing else: open
+                   week 35 and you saw what was meant to happen, never what did.
+                   The work and the numbers sit side by side with no arrow drawn
+                   between them — nothing in this data can prove the post caused
+                   the booking, and a figure that looks like proof and is not is
+                   the one a client spends money on. */}
+              {weeks.some((w) => w.outcome) && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    📊 {T('Các tuần đã qua làm được gì', 'What the past weeks produced')}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
+                    {T('Việc đã làm và số liệu của tiệm đặt cạnh nhau. Hệ thống KHÔNG kết luận bài đăng tạo ra booking — không dữ liệu nào chứng minh được điều đó.',
+                       'Work done and the salon’s numbers, side by side. The system does not claim the posts caused the bookings — nothing here can prove that.')}
+                  </div>
+                  {weeks.filter((w) => w.outcome).slice(0, 6).map((w) => (
+                    <div key={w.weekKey} style={{
+                      display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap',
+                      padding: '10px 12px', marginBottom: 7, borderRadius: 9,
+                      background: 'var(--c1e293b)', border: '1px solid var(--c334155)',
+                    }}>
+                      <button
+                        onClick={() => { setViewWeek(w.weekKey); setEditing(false); }}
+                        style={{
+                          fontSize: 12.5, fontWeight: 700, color: 'var(--ca5b4fc)', cursor: 'pointer',
+                          background: 'transparent', border: 'none', padding: 0, flex: '0 0 92px', textAlign: 'left',
+                        }}
+                      >{w.label}</button>
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>{w.outcomeLine}</div>
+                        {w.deltaLine && (
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{w.deltaLine}</div>
+                        )}
+                        {w.focus && (
+                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 3, lineHeight: 1.45 }}>
+                            {T('Trọng tâm', 'Focus')}: {w.focus}
+                          </div>
+                        )}
+                      </div>
+                      {w.outcome && w.outcome.plannedJobs > 0 && (
+                        <div style={{ flex: '0 0 74px' }}>
+                          <div style={{ height: 6, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${Math.min(100, Math.round((w.outcome.doneJobs / w.outcome.plannedJobs) * 100))}%`,
+                              height: '100%',
+                              background: w.outcome.doneJobs >= w.outcome.plannedJobs * 0.7 ? '#22c55e' : '#f59e0b',
+                            }} />
+                          </div>
+                          <div style={{ fontSize: 10.5, color: 'var(--c64748b)', marginTop: 3 }}>
+                            {w.outcome.doneJobs}/{w.outcome.plannedJobs} {T('việc', 'jobs')}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -992,6 +1205,29 @@ function Inner() {
                       >
                         {editing ? T('Đóng', 'Close') : T('✎ Sửa kế hoạch', '✎ Edit plan')}
                       </button>
+                    )}
+                    {/* The salon's half of the same bar: it cannot rewrite the
+                        plan, but it can say yes to it. Approval written on the
+                        week row, not into the chat — an approval buried in a
+                        thread is one nobody can find on the Friday somebody
+                        asks whether the budget was agreed. */}
+                    {!isPast && plan?.weekMeta && !plan.weekMeta.canEdit && !plan.weekMeta.approvedAt && (
+                      <button
+                        onClick={approveWeek}
+                        disabled={approving}
+                        style={{
+                          fontSize: 12.5, padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
+                          border: 'none', background: '#22c55e', color: '#052e16', fontWeight: 700,
+                        }}
+                      >
+                        {approving ? T('Đang lưu…', 'Saving…') : T('✓ Duyệt kế hoạch tuần', '✓ Approve this week')}
+                      </button>
+                    )}
+                    {!isPast && plan?.weekMeta?.approvedAt && (
+                      <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
+                        ✓ {T('Tiệm đã duyệt', 'Approved by the salon')}
+                        {plan.weekMeta.approvedByName ? ` — ${plan.weekMeta.approvedByName}` : ''}
+                      </span>
                     )}
                   </div>
                   {plan?.weekMeta?.edited && !isPast && (
@@ -1114,6 +1350,26 @@ function Inner() {
                       <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 7 }}>
                         <b>{T('Xong giai đoạn này khi', 'Done when')}:</b> {shown.stage.exitWhen}
                       </div>
+
+                      {/* The stage said what to do and then left the reader to
+                          find the screen that does it. Every stage now carries
+                          the door: one press, no hunting through six tabs. */}
+                      {(() => {
+                        const go = STAGE_TAB[shown.stage.key];
+                        if (!go) return null;
+                        return (
+                          <button
+                            onClick={() => setTab(go.tab)}
+                            style={{
+                              marginTop: 9, width: '100%', minHeight: 40, borderRadius: 9, cursor: 'pointer',
+                              border: '1px solid #6366f1', background: 'transparent',
+                              color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 600,
+                            }}
+                          >
+                            {go.label} →
+                          </button>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -1140,6 +1396,22 @@ function Inner() {
                                 )}
                               </div>
                             ))}
+                            {/* Today's row is the one the salon is standing in
+                                front of. It links to the actual drafted post,
+                                so the week stops being a list of instructions
+                                with no way to act on them. */}
+                            {i === 0 && !empty && !isPast && !!data?.ideas?.length && (
+                              <button
+                                onClick={() => setTab('today')}
+                                style={{
+                                  marginTop: 7, padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+                                  border: '1px solid var(--c475569)', background: 'transparent',
+                                  color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600,
+                                }}
+                              >
+                                {T('Mở bài viết đã soạn cho hôm nay', 'Open today’s drafted post')} →
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1888,6 +2160,119 @@ function Inner() {
                         }}>
                           <b style={{ color: '#f59e0b' }}>{T('Đo thế nào', 'How to check')}:</b> {p.watch}
                         </div>
+
+                        {/* ---- the form, filled in ----
+                            The plan above says where to spend, how much, and
+                            when to stop. This is what a person types into Ads
+                            Manager: the campaign name, the objective, who goes
+                            in each ad set, the words in the ad. Only rendered
+                            for the campaign we are telling them to run — a
+                            build sheet under a "hold" is how a hold gets built
+                            by mistake. */}
+                        {p.spec && (
+                          <details style={{ marginTop: 9 }}>
+                            <summary style={{
+                              cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--ca5b4fc)',
+                              padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)',
+                              border: '1px solid #6366f1', listStyle: 'none',
+                            }}>
+                              🛠️ {T('Dựng chiến dịch này — từng bước', 'Build this campaign — step by step')}
+                            </summary>
+                            <div style={{ padding: '10px 2px 2px' }}>
+                              <SpecRow k={T('Tên chiến dịch', 'Campaign name')} vi={vi}>
+                                <code style={{
+                                  fontSize: 12.5, color: '#22c55e', background: 'var(--c0f172a)',
+                                  padding: '4px 8px', borderRadius: 6, wordBreak: 'break-all',
+                                }}>{p.spec.name}</code>
+                                <button
+                                  onClick={() => { navigator.clipboard?.writeText(p.spec!.name); setCopied(p.spec!.name); setTimeout(() => setCopied(null), 1500); }}
+                                  style={{ marginLeft: 8, fontSize: 11.5, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer' }}
+                                >
+                                  {copied === p.spec.name ? T('Đã chép', 'Copied') : T('Chép', 'Copy')}
+                                </button>
+                              </SpecRow>
+
+                              <SpecRow k={T('Mục tiêu chiến dịch', 'Objective')} vi={vi}>
+                                <span style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55 }}>{p.spec.objective}</span>
+                              </SpecRow>
+
+                              <SpecRow k={T('Ngân sách', 'Budget')} vi={vi}>
+                                <span style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55 }}>{p.spec.budgetLine}</span>
+                              </SpecRow>
+
+                              {p.spec.adSets.map((a, ai) => (
+                                <div key={a.name} style={{
+                                  marginTop: 8, padding: '9px 11px', borderRadius: 8,
+                                  background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+                                }}>
+                                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc' }}>
+                                    {T('Nhóm quảng cáo', 'Ad set')} {ai + 1}: <code style={{ color: '#22c55e' }}>{a.name}</code>
+                                  </div>
+                                  {[[T('Ai', 'Who'), a.who], [T('Ở đâu', 'Where'), a.where], [T('Khi nào', 'When'), a.when], [T('Loại trừ', 'Exclude'), a.exclude]]
+                                    .filter(([, v]) => v)
+                                    .map(([k, v]) => (
+                                      <div key={k as string} style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 3 }}>
+                                        <b style={{ color: 'var(--c94a3b8)' }}>{k}:</b> {v}
+                                      </div>
+                                    ))}
+                                </div>
+                              ))}
+
+                              <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#a5b4fc', marginBottom: 4 }}>
+                                  {T('Nội dung quảng cáo', 'The ad itself')}
+                                </div>
+                                <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 6, lineHeight: 1.5 }}>
+                                  {T('Chỉ dùng những gì tiệm khai và sổ ghi được. Không có câu "tốt nhất", "uy tín nhất" — mình bịa ra thì tiệm là người chịu trách nhiệm.',
+                                     'Built only from what the salon declared and the book recorded. No “best in town” — an invented claim becomes the salon’s claim.')}
+                                </div>
+                                {p.spec.creative.headlines.map((h) => (
+                                  <div key={h} style={{ fontSize: 13, color: 'var(--ce2e8f0)', padding: '2px 0' }}>
+                                    ▸ {h} <span style={{ color: 'var(--c64748b)', fontSize: 11 }}>({h.length})</span>
+                                  </div>
+                                ))}
+                                {p.spec.creative.descriptions.map((d) => (
+                                  <div key={d} style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', padding: '2px 0', lineHeight: 1.5 }}>
+                                    · {d} <span style={{ color: 'var(--c64748b)', fontSize: 11 }}>({d.length})</span>
+                                  </div>
+                                ))}
+                                <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', marginTop: 5, lineHeight: 1.55 }}>
+                                  <b style={{ color: 'var(--c94a3b8)' }}>{T('Nút', 'CTA')}:</b> {p.spec.creative.cta}
+                                </div>
+                                <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
+                                  <b style={{ color: 'var(--c94a3b8)' }}>{T('Bấm vào đi đâu', 'Landing')}:</b> {p.spec.creative.landing}
+                                </div>
+                                <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
+                                  <b style={{ color: 'var(--c94a3b8)' }}>{T('Hình/clip', 'Visual')}:</b> {p.spec.creative.visual}
+                                </div>
+                              </div>
+
+                              <SpecRow k={T('Làm trước khi bật', 'Before you turn it on')} vi={vi}>
+                                <div>
+                                  {p.spec.before.map((b) => (
+                                    <div key={b} style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, padding: '2px 0' }}>☐ {b}</div>
+                                  ))}
+                                </div>
+                              </SpecRow>
+
+                              <SpecRow k={T('Đo vào ngày nào', 'When to check')} vi={vi}>
+                                <div>
+                                  {p.spec.measure.map((m) => (
+                                    <div key={m} style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, padding: '2px 0' }}>• {m}</div>
+                                  ))}
+                                </div>
+                              </SpecRow>
+
+                              {!!p.spec.warnings.length && (
+                                <div style={{ marginTop: 8, padding: '8px 11px', borderRadius: 8, background: 'var(--c451a03)', border: '1px solid #f59e0b' }}>
+                                  {p.spec.warnings.map((w) => (
+                                    <div key={w} style={{ fontSize: 12, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {w}</div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </details>
+                        )}
                       </div>
                     );
                   })}
@@ -2109,7 +2494,11 @@ function Inner() {
                 </button>
               </div>
             )}
-            {plan?.offer && (
+            {/* The same discount headline used to sit here AND on Today AND
+                above the break-even sums — three copies of one sentence, which
+                reads as three separate recommendations. It stays where the work
+                is, and this rail only carries it on the tabs that do not. */}
+            {plan?.offer && tab !== 'today' && tab !== 'audience' && (
               <div style={{ ...ui.card, padding: 14, borderColor: plan.offer.kind === 'raise-price' ? '#22c55e' : 'var(--c334155)' }}>
                 <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
                   {T('Khuyến mãi', 'Discount call')}
@@ -2117,6 +2506,12 @@ function Inner() {
                 <div style={{ fontSize: 13.5, color: plan.offer.kind === 'raise-price' ? '#22c55e' : 'var(--ca5b4fc)', lineHeight: 1.5 }}>
                   {plan.offer.headline}
                 </div>
+                <button
+                  onClick={() => setTab('audience')}
+                  style={{ ...ui.primaryBtn, marginTop: 10, width: '100%', background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)' }}
+                >
+                  {T('Xem tính lãi & cách làm', 'See the maths and the plays')}
+                </button>
               </div>
             )}
 

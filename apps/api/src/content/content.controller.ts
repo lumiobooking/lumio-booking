@@ -127,9 +127,22 @@ export class ContentController {
   setStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() dto: { status: string; resultNote?: string },
+    @Body() dto: { status: string; resultNote?: string; postedUrl?: string },
   ) {
-    return this.svc.setIdeaStatus(user, id, dto?.status, dto?.resultNote);
+    return this.svc.setIdeaStatus(user, id, dto?.status, dto?.resultNote, dto?.postedUrl);
+  }
+
+  /**
+   * The salon accepting the week the team wrote.
+   *
+   * Deliberately the SALON's action, and the mirror of editing being the
+   * team's: the team proposes, the client agrees. A plan nobody agreed to is a
+   * document, not a commitment, and an agency that cannot point at the moment
+   * of agreement is an agency arguing about scope in month three.
+   */
+  @Post('weeks/:key/approve')
+  approveWeek(@CurrentUser() user: AuthenticatedUser, @Param('key') key: string) {
+    return this.svc.approveWeek(user, key);
   }
 }
 

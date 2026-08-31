@@ -2691,6 +2691,20 @@ model ContentWeek {
   generated Json    @default("{}")
   /// The Lumio team's version. Null until somebody edits. Shown when present.
   edited       Json?
+
+  /// What the week actually PRODUCED, frozen once the week is past.
+  ///
+  /// Without this the archive holds intentions and nothing else: open week 35
+  /// and you see what was meant to happen, never what did. An agency whose
+  /// record is a list of intentions cannot answer the only question a client
+  /// really asks — did any of it work.
+  outcome      Json?
+  outcomeAt    DateTime?
+
+  /// The SALON accepting the plan. The team proposes, the client agrees; a
+  /// plan nobody agreed to is a document, not a commitment.
+  approvedAt     DateTime?
+  approvedByName String?
   editedById   String?
   editedByName String?
   editedAt     DateTime?
@@ -2848,6 +2862,9 @@ model ContentIdea {
   doneAt      DateTime?
   /// Set when the salon links what they actually posted, closing the loop.
   resultNote  String?
+  /// The link to the post that actually went out. This is what turns "đã đăng"
+  /// from a checkbox into something anybody can open and check.
+  postedUrl   String?
   aiModel     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -51,8 +51,11 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // Freeze each salon's week, so the archive exists whether or not anybody
       // opened the screen. A plan nobody looked at is still the plan that was
       // in force, and next Monday it is the only record of it.
-      const w = await this.content.keepAllWeeks().catch(() => ({ kept: 0 }));
+      const w = await this.content.keepAllWeeks().catch(() => ({ kept: 0, outcomes: 0 }));
       if (w.kept) this.logger.log(`Week plan archived for ${w.kept} salon(s).`);
+      // The results of a finished week, written once. Without this the archive
+      // holds intentions and never says whether any of them worked.
+      if (w.outcomes) this.logger.log(`Week results recorded for ${w.outcomes} salon(s).`);
     } catch (e) {
       this.logger.warn(`planner tick failed: ${String(e).slice(0, 160)}`);
     } finally {

@@ -7,6 +7,7 @@ import { formatMoneyShort, localeForCountry } from '../common/money';
 import { marketOf } from '../common/markets';
 import { bookingChannel } from '../common/booking-channel';
 import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
+import { buildCampaignSpec } from './campaign-spec';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
 import { buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
 import { regionEvents, eventsToPrompt, type ResolvedRegion, type DatedEvent } from './region-events';
@@ -15,6 +16,7 @@ import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
+import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
@@ -491,6 +493,26 @@ export class ContentService {
   }
 
 
+
+  /** The salon's own currency formatter, without gathering the whole context. */
+  private async moneyFor(tenantId: string): Promise<(c: number) => string> {
+    const [tenant, rules, extra] = await Promise.all([
+      // `market` is on the deployed schema but missing from the Prisma client
+      // this was written against — the same cast the rest of this file uses.
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true, market: true } as never })
+        .catch(() => null) as Promise<{ timezone?: string | null; market?: string | null } | null>,
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'booking_rules' }, select: { value: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null),
+    ]);
+    const currency = String((rules?.value as { currency?: string } | null)?.currency || '').trim().toUpperCase()
+      || marketOf((tenant as { market?: string } | null)?.market).currency;
+    const locale = localeForCountry(
+      String(((extra?.value ?? {}) as { country?: string }).country ?? ''),
+      tenant?.timezone ?? null,
+    );
+    return (c: number) => formatMoneyShort(c, currency, locale);
+  }
+
   // ---- the week, kept ------------------------------------------------------
 
   /**
@@ -516,7 +538,10 @@ export class ContentService {
     tenantId: string,
     tz: string,
     plan: Awaited<ReturnType<ContentService['weekPlanFor']>>,
-  ): Promise<{ weekKey: string; edited: boolean; editedByName: string | null; editedAt: Date | null }> {
+  ): Promise<{
+    weekKey: string; edited: boolean; editedByName: string | null; editedAt: Date | null;
+    approvedAt: Date | null; approvedByName: string | null;
+  }> {
     const key = weekKey(new Date(), tz);
     const start = weekStart(new Date(), tz);
     const loose = this.prisma as unknown as Record<string, {
@@ -526,7 +551,10 @@ export class ContentService {
     }>;
     const row = await loose.contentWeek?.findFirst({
       where: { tenantId, weekKey: key },
-    }).catch(() => null) as { id: string; edited?: unknown; editedByName?: string | null; editedAt?: Date | null } | null;
+    }).catch(() => null) as {
+      id: string; edited?: unknown; editedByName?: string | null; editedAt?: Date | null;
+      approvedAt?: Date | null; approvedByName?: string | null;
+    } | null;
 
     const data = {
       startDate: start,
@@ -537,7 +565,7 @@ export class ContentService {
 
     if (!row) {
       await loose.contentWeek?.create({ data: { tenantId, weekKey: key, ...data } }).catch(() => undefined);
-      return { weekKey: key, edited: false, editedByName: null, editedAt: null };
+      return { weekKey: key, edited: false, editedByName: null, editedAt: null, approvedAt: null, approvedByName: null };
     }
     // Current week: keep the generated side fresh. The edit is untouched.
     await loose.contentWeek?.update({ where: { id: row.id }, data }).catch(() => undefined);
@@ -546,6 +574,11 @@ export class ContentService {
       edited: Boolean(row.edited),
       editedByName: row.editedByName ?? null,
       editedAt: row.editedAt ?? null,
+      // Whether the salon has said "yes, run this". The team needs to see it
+      // before spending the week's budget, and the salon needs somewhere to
+      // say it other than a chat message nobody re-reads.
+      approvedAt: row.approvedAt ?? null,
+      approvedByName: row.approvedByName ?? null,
     };
   }
 
@@ -560,12 +593,15 @@ export class ContentService {
       select: {
         weekKey: true, startDate: true, stageKey: true, stageStep: true,
         editedByName: true, editedAt: true, generated: true, edited: true,
+        outcome: true, approvedAt: true, approvedByName: true,
       },
     }).catch(() => []) as {
       weekKey: string; startDate: string; stageKey: string | null; stageStep: number | null;
       editedByName: string | null; editedAt: Date | null;
       generated: { focus?: string } | null; edited: { focus?: string } | null;
+      outcome: WeekOutcome | null; approvedAt: Date | null; approvedByName: string | null;
     }[];
+    const money = await this.moneyFor(this.tenantId(user)).catch(() => (c: number) => `$${Math.round(c / 100)}`);
     return (rows ?? []).map((r) => ({
       weekKey: r.weekKey,
       label: weekLabel(r.weekKey),
@@ -576,6 +612,13 @@ export class ContentService {
       edited: Boolean(r.edited),
       editedByName: r.editedByName,
       editedAt: r.editedAt,
+      approvedAt: r.approvedAt,
+      approvedByName: r.approvedByName,
+      // What the week produced, in one line — the half the archive used to
+      // be missing. Absent for the current week, which has not finished.
+      outcome: r.outcome,
+      outcomeLine: r.outcome ? describeOutcome(r.outcome, money) : null,
+      deltaLine: r.outcome ? describeDelta(r.outcome) : null,
     }));
   }
 
@@ -662,13 +705,14 @@ export class ContentService {
    * A plan nobody looked at is still the plan that was in force that week, and
    * next Monday this row is the only record that it existed.
    */
-  async keepAllWeeks(): Promise<{ kept: number }> {
+  async keepAllWeeks(): Promise<{ kept: number; outcomes: number }> {
     const tenants = await this.prisma.tenant.findMany({
       where: { status: 'ACTIVE', deletedAt: null } as never,
       select: { id: true, timezone: true },
       take: 500,
     }).catch(() => []) as { id: string; timezone: string | null }[];
     let kept = 0;
+    let outcomes = 0;
     for (const t of tenants) {
       const ctx = await this.gather(t.id).catch(() => null);
       if (!ctx) continue;
@@ -676,8 +720,131 @@ export class ContentService {
       if (!plan) continue;
       const r = await this.keepWeek(t.id, t.timezone || ctx.tz, plan).catch(() => null);
       if (r) kept += 1;
+      outcomes += await this.keepOutcome(t.id, t.timezone || ctx.tz).catch(() => 0);
     }
-    return { kept };
+    return { kept, outcomes };
+  }
+
+
+  /**
+   * Freeze what a PAST week produced, once, and never again.
+   *
+   * Written when the week has rolled over and the row has no outcome yet. Once
+   * written it is never recomputed: the point of the record is what was true
+   * then, and a figure that keeps moving is not a record of anything.
+   */
+  private async keepOutcome(tenantId: string, tz: string): Promise<number> {
+    const loose = this.prisma as unknown as Record<string, {
+      findMany: (a: unknown) => Promise<unknown>;
+      update: (a: unknown) => Promise<unknown>;
+      count?: (a: unknown) => Promise<number>;
+    }>;
+    const rows = await loose.contentWeek?.findMany({
+      where: { tenantId, outcome: null },
+      orderBy: { startDate: 'desc' },
+      take: 8,
+      select: { id: true, weekKey: true, startDate: true, generated: true, edited: true },
+    }).catch(() => []) as {
+      id: string; weekKey: string; startDate: string;
+      generated: { days?: { jobs?: { kind?: string }[] }[] } | null;
+      edited: { days?: { jobs?: { kind?: string }[] }[] } | null;
+    }[];
+
+    let written = 0;
+    for (const w of rows ?? []) {
+      if (!isPastWeek(w.weekKey, new Date(), tz)) continue;
+
+      const start = new Date(`${w.startDate}T00:00:00Z`);
+      const end = new Date(start.getTime() + 7 * 86_400_000);
+      const prevStart = new Date(start.getTime() - 7 * 86_400_000);
+
+      type Row = { priceCents: number | null; customerId: string | null; startTime: Date };
+      const window = async (from: Date, to: Date) => await this.prisma.appointment.findMany({
+        where: { tenantId, startTime: { gte: from, lt: to }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
+        select: { priceCents: true, customerId: true, startTime: true },
+        take: 5000,
+      }).catch(() => [] as Row[]) as Row[];
+
+      const [cur, prev] = await Promise.all([window(start, end), window(prevStart, start)]);
+
+      // A first visit means the customer had NOTHING before this appointment —
+      // checked against the whole book, not against the week, or every customer
+      // would look new every Monday.
+      const ids = Array.from(new Set([...cur, ...prev].map((r) => r.customerId).filter(Boolean))) as string[];
+      const earliest = new Map<string, number>();
+      if (ids.length) {
+        const hist = await this.prisma.appointment.findMany({
+          where: { tenantId, customerId: { in: ids }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
+          select: { customerId: true, startTime: true },
+          take: 20000,
+        }).catch(() => []) as { customerId: string | null; startTime: Date }[];
+        for (const h of hist) {
+          if (!h.customerId) continue;
+          const t = h.startTime.getTime();
+          earliest.set(h.customerId, Math.min(earliest.get(h.customerId) ?? t, t));
+        }
+      }
+      const shape = (rows2: Row[]) => rows2.map((r) => ({
+        priceCents: r.priceCents ?? 0,
+        isFirstVisit: Boolean(r.customerId) && earliest.get(r.customerId as string) === r.startTime.getTime(),
+      }));
+
+      const days = ((w.edited ?? w.generated)?.days ?? []) as { jobs?: { kind?: string }[] }[];
+      // Rest days are deliberate, not work. Counting them would make a quiet
+      // week look like a week somebody ignored.
+      const plannedJobs = days.reduce((n, d) => n + (d.jobs ?? []).filter((j) => j.kind !== 'rest').length, 0);
+
+      const dates: string[] = [];
+      for (let k = 0; k < 7; k += 1) {
+        dates.push(new Date(start.getTime() + k * 86_400_000).toISOString().slice(0, 10));
+      }
+      const looseIdea = this.prisma as unknown as Record<string, { findMany: (a: unknown) => Promise<unknown> }>;
+      const ideas = await looseIdea.contentIdea?.findMany({
+        where: { tenantId, forDate: { in: dates } },
+        select: { status: true, postedUrl: true },
+        take: 200,
+      }).catch(() => []) as { status: string; postedUrl: string | null }[];
+
+      const reviewsIn = async (from: Date, to: Date) => (await loose.googleReview?.count?.({
+        where: { tenantId, createdAt: { gte: from, lt: to } },
+      }).catch(() => 0)) ?? 0;
+      const [reviews, prevReviews] = await Promise.all([
+        reviewsIn(start, end), reviewsIn(prevStart, start),
+      ]);
+
+      const outcome = buildWeekOutcome({
+        weekKey: w.weekKey,
+        bookings: shape(cur),
+        prevBookings: prev.length || w.startDate ? shape(prev) : null,
+        reviews,
+        prevReviews,
+        plannedJobs,
+        ideas: ideas ?? [],
+      });
+
+      await loose.contentWeek?.update({
+        where: { id: w.id },
+        data: { outcome: outcome as never, outcomeAt: new Date() },
+      }).catch(() => undefined);
+      written += 1;
+    }
+    return written;
+  }
+
+  /** The salon accepting the week the team wrote. */
+  async approveWeek(user: AuthenticatedUser, key: string) {
+    const tenantId = this.tenantId(user);
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>; update: (a: unknown) => Promise<unknown>;
+    }>;
+    const row = await loose.contentWeek?.findFirst({ where: { tenantId, weekKey: key }, select: { id: true } })
+      .catch(() => null) as { id: string } | null;
+    if (!row) throw new NotFoundException('Chưa có kế hoạch nào được lưu cho tuần này.');
+    await loose.contentWeek?.update({
+      where: { id: row.id },
+      data: { approvedAt: new Date(), approvedByName: user.email ?? 'Tiệm' },
+    }).catch(() => undefined);
+    return { ok: true, weekKey: key, approvedAt: new Date() };
   }
 
   // ---- generating ---------------------------------------------------------
@@ -1368,6 +1535,30 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         ceiling: p.ceilingCents !== null ? ctx.money(p.ceilingCents) : null,
         daily: p.dailyCents !== null ? ctx.money(p.dailyCents) : null,
         total: p.totalCents !== null ? ctx.money(p.totalCents) : null,
+        // The form, filled in — but only for the campaign we are actually
+        // telling them to run. Printing a full build sheet for a platform the
+        // plan says to leave alone is how a "hold" gets built by mistake.
+        spec: p.dailyCents !== null
+          ? buildCampaignSpec({
+            platform: p.platform,
+            businessName: ctx.identity.label ?? null,
+            city: ctx.region.city,
+            region: ctx.region.region,
+            topServiceName: ctx.revenue.yields[0]?.name ?? ctx.signals.services[0]?.name ?? null,
+            offerHeadline: null,
+            reviewCount,
+            bookingUrl: null,
+            lapsedCount: ctx.revenue.lapsed.count,
+            runDayLabels: window.labels.run,
+            quietLabel: quiet[0]?.label ?? null,
+            dailyCents: p.dailyCents,
+            days: p.days,
+            ceilingCents: p.ceilingCents,
+            targetBookings: p.bookingsToBreakEven,
+            weekKey: weekKey(new Date(), ctx.tz),
+            money: ctx.money,
+          })
+          : null,
       })),
       audiences: adAudiences({
         lapsedCount: ctx.revenue.lapsed.count,
@@ -1603,14 +1794,24 @@ TRẢ VỀ JSON THUẦN:
   }
 
   /** The salon marks progress: filmed, posted, or honestly skipped. */
-  async setIdeaStatus(user: AuthenticatedUser, id: string, status: string, resultNote?: string) {
+  async setIdeaStatus(user: AuthenticatedUser, id: string, status: string, resultNote?: string, postedUrl?: string) {
     const tenantId = this.tenantId(user);
     const ALLOWED = ['published', 'filmed', 'posted', 'skipped'];
     if (!ALLOWED.includes(status)) throw new BadRequestException('Trạng thái không hợp lệ');
     const done = status === 'posted' || status === 'filmed';
     const r = await this.prisma.contentIdea.updateMany({
       where: { id, tenantId },
-      data: { status, doneAt: done ? new Date() : null, ...(resultNote ? { resultNote: resultNote.slice(0, 500) } : {}) },
+      data: {
+        status,
+        doneAt: done ? new Date() : null,
+        ...(resultNote ? { resultNote: resultNote.slice(0, 500) } : {}),
+        // The link is what turns "đã đăng" from a checkbox into something
+        // anybody can open. Only https, because a checkbox that stores
+        // "facebook" helps nobody find the post six weeks later.
+        ...(postedUrl && /^https:\/\/\S+$/.test(postedUrl.trim())
+          ? { postedUrl: postedUrl.trim().slice(0, 600) }
+          : {}),
+      } as never,
     });
     if (!r.count) throw new NotFoundException('Không tìm thấy ý tưởng');
     return { ok: true, status };

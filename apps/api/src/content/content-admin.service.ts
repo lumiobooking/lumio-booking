@@ -139,7 +139,7 @@ export class ContentAdminService {
       return Array.isArray(r) ? (r as CountRow[]) : [];
     };
 
-    const [menuCounts, tableCounts, formatCounts, extras] = await Promise.all([
+    const [menuCounts, tableCounts, formatCounts, extras, profiles] = await Promise.all([
       groupCount('menuItem'),
       groupCount('restaurantTable'),
       (async (): Promise<IndustryRow[]> => {
@@ -148,10 +148,15 @@ export class ContentAdminService {
       })(),
       this.prisma.setting.findMany({ where: { key: 'company_extra' }, select: { tenantId: true, value: true } })
         .catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
+      this.prisma.setting.findMany({ where: { key: 'business_profile' }, select: { tenantId: true, value: true } })
+        .catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
     ]);
     const menuBy = new Map<string, number>(menuCounts.map((m) => [m.tenantId, m._count?._all ?? 0]));
     const tableBy = new Map<string, number>(tableCounts.map((m) => [m.tenantId, m._count?._all ?? 0]));
     const formatBy = new Map<string, number>(formatCounts.map((m) => [m.industry, m._count?._all ?? 0]));
+    const profileBy = new Map<string, string>(
+      profiles.map((e) => [e.tenantId, String((e.value as { whatWeDo?: string } | null)?.whatWeDo ?? '')]),
+    );
     const siteBy = new Map<string, string>(
       extras.map((e) => [e.tenantId, String((e.value as { website?: string } | null)?.website ?? '')]),
     );
@@ -163,6 +168,7 @@ export class ContentAdminService {
         menuItemCount: menuBy.get(t.id) ?? 0,
         tableCount: tableBy.get(t.id) ?? 0,
         website: siteBy.get(t.id) ?? null,
+        declaredWhatWeDo: profileBy.get(t.id) ?? null,
         currentIndustry: t.businessType,
       });
       return {

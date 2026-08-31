@@ -87,6 +87,21 @@ export class SettingsController {
     return this.settings.updateAnalytics(user, dto);
   }
 
+  /**
+   * What the business is, in its own words.
+   *
+   * The salon owns this, not Super Admin: they are the only ones who know who
+   * they serve, and the engines that used to guess it from a four-value enum
+   * now read this first.
+   */
+  @Patch('business-profile')
+  updateBusinessProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { whatWeDo?: string; whoWeServe?: string; languages?: string; serviceArea?: string; edge?: string; avoid?: string },
+  ) {
+    return this.settings.updateBusinessProfile(user, dto);
+  }
+
   @Patch('rebooking')
   updateRebooking(@CurrentUser() user: AuthenticatedUser, @Body() dto: { enabled?: boolean; daysAfter?: number; email?: boolean; sms?: boolean }) {
     return this.settings.updateRebooking(user, dto);

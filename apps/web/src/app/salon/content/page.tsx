@@ -76,6 +76,12 @@ interface TrendLink { key: string; title: string; url: string; what: string; how
 interface Plan {
   region: { label: string; known: boolean; market: string };
   industry: { code: string; trade: string };
+  identity: {
+    label: string; declared: boolean; filled: number;
+    profile: { whatWeDo: string; whoWeServe: string; languages: string; serviceArea: string; edge: string; avoid: string };
+    provenance: string[];
+    gaps: { field: string; label: string; cost: string }[];
+  };
   events: SeasonEvent[];
   week: { days: DayPlan[]; focus: string; basis: string; daily: Job[]; sources: ContentSource[]; trade: string; dataThin: boolean };
   calendar: SeasonEvent[];
@@ -119,6 +125,9 @@ function Inner() {
   const [tab, setTab] = useState<TabId>('today');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+  const [editProfile, setEditProfile] = useState(false);
+  const [pf, setPf] = useState({ whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '' });
+  const [savingPf, setSavingPf] = useState(false);
   const isMobile = useIsMobile(900);
 
   const load = useCallback(async () => {
@@ -137,6 +146,9 @@ function Inner() {
     finally { setLoading(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (plan?.identity?.profile) setPf({ ...plan.identity.profile });
+  }, [plan?.identity?.profile]);
 
   async function mark(id: string, status: string) {
     setBusy(id);
@@ -175,6 +187,28 @@ function Inner() {
     } finally { setRefreshing(false); }
   }
 
+  /**
+   * Save what the business says it is.
+   *
+   * This is the field that decides everything else on the page. A four-value
+   * industry code cannot describe a marketing agency serving Vietnamese
+   * families, and while that code was the only input the advice came out
+   * fluent and wrong.
+   */
+  async function saveProfile() {
+    if (savingPf) return;
+    setSavingPf(true);
+    try {
+      await apiFetch('/settings/business-profile', { method: 'PATCH', token, body: pf });
+      setEditProfile(false);
+      await load();
+      setRefreshMsg(T('Đã lưu mô tả doanh nghiệp. Bấm "Cập nhật ngay" để gợi ý viết lại theo mô tả mới.',
+                      'Saved. Press "Refresh now" to redraft against it.'));
+      setTimeout(() => setRefreshMsg(null), 8000);
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+    finally { setSavingPf(false); }
+  }
+
   async function copy(id: string, text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -211,12 +245,23 @@ function Inner() {
       {/* The trade is shown even when the region is not, because a business set
           to the wrong industry gets nail advice forever and nothing on screen
           would have said so. */}
-      {plan.industry && (
+      {/* The business's OWN sentence, not the four-value enum.
+          An enum printed as a heading is what let "ngành nail" sit on top of a
+          marketing agency's screen while every suggestion below it came out
+          wrong and nothing on the page showed why. */}
+      {plan.identity?.declared ? (
         <span style={{
-          fontSize: 11, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+          fontSize: 11.5, padding: '2px 8px', borderRadius: 20,
           background: 'var(--c1e293b)', color: '#a5b4fc', border: '1px solid var(--c334155)',
         }}>
-          {plan.industry.trade}
+          {plan.identity.label}
+        </span>
+      ) : (
+        <span style={{
+          fontSize: 11.5, padding: '2px 8px', borderRadius: 20,
+          background: 'var(--c451a03)', color: 'var(--cfde68a)', border: '1px solid var(--c92400e)',
+        }}>
+          {T('Chưa khai báo ngành nghề', 'Business not described yet')}
         </span>
       )}
       {plan.region.known ? (
@@ -327,6 +372,95 @@ function Inner() {
         <div style={{ minWidth: 0 }}>
           {tab === 'today' && (
             <>
+              {/* ---- what this business is ----
+                  Shown first and loudly while it is missing, because every
+                  other suggestion on this screen is derived from it. The system
+                  used to fall back to a four-value industry code, which cannot
+                  express "marketing for Vietnamese-owned businesses in the US"
+                  — so it silently produced nail-salon advice instead. */}
+              {(!plan?.identity?.declared || editProfile) && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: 16,
+                  borderColor: plan?.identity?.declared ? 'var(--c334155)' : '#f59e0b',
+                }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                    🏷️ {T('Doanh nghiệp này làm gì?', 'What is this business?')}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginBottom: 10 }}>
+                    {T('Mọi gợi ý bên dưới đều dựa vào phần này. Chưa điền thì hệ thống chỉ còn một mã ngành bốn giá trị để đoán — và gợi ý sẽ nghe hợp lý nhưng sai nghề.',
+                       'Everything below is derived from this. Without it the system has only a four-value industry code to reason from, and the advice comes out fluent and wrong.')}
+                  </div>
+
+                  {([
+                    ['whatWeDo', T('Doanh nghiệp làm gì', 'What you do'), T('VD: Dịch vụ marketing cho doanh nghiệp của người Việt tại Mỹ', 'e.g. Marketing services for Vietnamese-owned businesses in the US')],
+                    ['whoWeServe', T('Phục vụ ai', 'Who you serve'), T('VD: Chủ tiệm nail, nhà hàng người Việt ở Texas và California', 'e.g. Vietnamese salon and restaurant owners in TX and CA')],
+                    ['languages', T('Ngôn ngữ', 'Languages'), T('VD: Tiếng Việt, English', 'e.g. Vietnamese, English')],
+                    ['serviceArea', T('Khu vực phục vụ', 'Service area'), T('VD: Toàn nước Mỹ, làm từ xa — hoặc: bán kính 5 dặm quanh tiệm', 'e.g. Nationwide, remote — or: 5-mile radius')],
+                    ['edge', T('Điểm khác biệt', 'What sets you apart'), T('Vì sao khách chọn mình thay vì chỗ khác', 'Why customers choose you')],
+                    ['avoid', T('KHÔNG được giả định điều gì', 'Never assume'), T('VD: Đây KHÔNG phải tiệm nail — đừng gợi ý nội dung ngành nail', 'e.g. This is NOT a nail salon')],
+                  ] as const).map(([k, label, ph]) => (
+                    <div key={k} style={{ marginBottom: 9 }}>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 3 }}>{label}</div>
+                      <textarea
+                        value={pf[k]}
+                        placeholder={ph}
+                        rows={k === 'whatWeDo' || k === 'whoWeServe' ? 2 : 1}
+                        onChange={(e) => setPf({ ...pf, [k]: e.target.value })}
+                        style={{ ...ui.input, resize: 'vertical', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                  ))}
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <button onClick={saveProfile} disabled={savingPf} style={{ ...ui.primaryBtn, opacity: savingPf ? 0.6 : 1 }}>
+                      {savingPf ? T('Đang lưu…', 'Saving…') : T('Lưu mô tả', 'Save')}
+                    </button>
+                    {plan?.identity?.declared && (
+                      <button onClick={() => setEditProfile(false)} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)' }}>
+                        {T('Đóng', 'Close')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Declared: a quiet summary with the provenance, and a way back in. */}
+              {plan?.identity?.declared && !editProfile && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 14 }}>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--c64748b)', marginBottom: 3 }}>
+                        {T('Hệ thống đang hiểu doanh nghiệp này là', 'The system understands this business as')}
+                      </div>
+                      <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.55 }}>{plan.identity.profile.whatWeDo}</div>
+                      {plan.identity.profile.whoWeServe && (
+                        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>
+                          {T('Phục vụ', 'Serving')}: {plan.identity.profile.whoWeServe}
+                        </div>
+                      )}
+                      {!!plan.identity.provenance.length && (
+                        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 4 }}>
+                          {T('Nguồn', 'From')}: {plan.identity.provenance.join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => setEditProfile(true)} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>
+                      {T('Sửa', 'Edit')}
+                    </button>
+                  </div>
+
+                  {!!plan.identity.gaps.length && (
+                    <div style={{ marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--c1e293b)' }}>
+                      {plan.identity.gaps.slice(0, 2).map((g) => (
+                        <div key={g.field} style={{ fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5, marginBottom: 2 }}>
+                          {T('Còn thiếu', 'Missing')} — {g.label}: {g.cost}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {data?.trendNotes?.map((n) => (
                 <div key={n.id} style={{ background: 'var(--c451a03)', border: '1px solid var(--c92400e)', borderRadius: 10, padding: '11px 14px', marginBottom: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfcd34d)', marginBottom: 3 }}>🔥 {n.title}</div>

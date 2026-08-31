@@ -157,3 +157,39 @@ describe('the gap list is ordered by consequence, not by effort', () => {
     expect(g.find((x) => x.key === 'industry')).toBeUndefined();
   });
 });
+
+describe('a written description outranks every heuristic here', () => {
+  it('reads the business’s own words with the highest weight', () => {
+    const d = detectIndustry({
+      tenantName: 'Lumio Agency',
+      declaredWhatWeDo: 'Dịch vụ marketing cho doanh nghiệp của người Việt tại Mỹ',
+      serviceNames: ['Gói quản lý fanpage', 'Chạy quảng cáo'],
+      currentIndustry: 'SALON',
+    });
+    // Not nail, whatever the neighbouring clients are.
+    expect(d.detected).not.toBe('SALON');
+  });
+
+  it('refuses to propose an industry change against a written description', () => {
+    // Overruling the only authoritative source with a keyword score would be
+    // exactly the failure this whole file was rewritten to stop.
+    const d = detectIndustry({
+      tenantName: 'X',
+      declaredWhatWeDo: 'Chúng tôi làm dịch vụ marketing cho các tiệm nail của người Việt tại Mỹ',
+      serviceNames: ['Gel X', 'Pedicure', 'Dipping Powder'],
+      currentIndustry: 'SERVICE',
+    });
+    // The nail words are all about the CLIENTS, not this business.
+    expect(d.confidence).not.toBe('high');
+  });
+
+  it('still detects normally when nothing was declared', () => {
+    const d = detectIndustry({
+      tenantName: 'Lux Nail Spa',
+      serviceNames: ['Gel X', 'Pedicure', 'Dipping Powder'],
+      currentIndustry: 'SALON',
+    });
+    expect(d.detected).toBe('SALON');
+    expect(d.confidence).toBe('high');
+  });
+});

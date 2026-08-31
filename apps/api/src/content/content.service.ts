@@ -14,6 +14,7 @@ import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo
 import { fetchCensus, describeArea, type CensusResult } from './census';
 import { leadTime, cpaCeiling, budgetPlan, runWindow, platformPick, adAudiences } from './ads-plan';
 import { buildSeoReport } from './seo-local';
+import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -94,6 +95,7 @@ export class ContentService {
     revenue: RevenueProfile;
     audience: AudienceProfile;
     promo: PromoAdvice;
+    identity: ResolvedIdentity;
     nearbyZips: string | null;
     sourceCounts: Record<string, number>;
     lead: ReturnType<typeof leadTime>;
@@ -111,6 +113,14 @@ export class ContentService {
     }).catch(() => null));
     const tz = tenant?.timezone || 'America/Los_Angeles';
     const extra = await this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null);
+    // What the business says it is, and what the setup learned from its website
+    // and fanpage. Read BEFORE anything keyed off businessType, because a
+    // four-value enum cannot describe a business and these can.
+    const profileRow = await this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null);
+    const looseP = this.prisma as unknown as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>;
+    const conn = await looseP.messengerConnection?.findFirst({
+      where: { tenantId }, select: { bizIntro: true, aiInstruction: true },
+    }).catch(() => null) as { bizIntro?: string | null; aiInstruction?: string | null } | null;
     const ex = (extra?.value ?? {}) as { address?: string; country?: string };
     const locale = localeForCountry(ex.country ?? '', tz);
     const money = (c: number) => formatMoneyShort(c, 'USD', locale);
@@ -244,6 +254,18 @@ export class ContentService {
     // unknown and every downstream piece is written to say so.
     const t = (tenant ?? {}) as { market?: string; city?: string | null; region?: string | null };
     const fromAddress = parseAddress(ex.address, t.market === 'VN' ? 'VN' : t.market === 'CA' ? 'CA' : 'US');
+    const identity = resolveIdentity({
+      declared: (profileRow?.value ?? null) as Record<string, string> | null,
+      bizIntro: conn?.bizIntro ?? null,
+      aiInstruction: conn?.aiInstruction ?? null,
+      website: (ex as { website?: string }).website ?? null,
+      tenantName: tenant?.name ?? null,
+      serviceNames: services.map((s2) => s2.name),
+      city: (tenant as { city?: string | null } | null)?.city ?? fromAddress.city,
+      region: (tenant as { region?: string | null } | null)?.region ?? fromAddress.region,
+      industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
+    });
+
     const { region, events } = regionEvents(now, {
       market: t.market ?? ex.country ?? 'US',
       city: t.city ?? fromAddress.city,
@@ -283,6 +305,7 @@ export class ContentService {
       revenue,
       audience: buildAudienceProfile(visitRows, now.getTime()),
       promo,
+      identity,
       sourceCounts,
       lead,
       nearbyZips: [
@@ -378,6 +401,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     });
 
     const userMsg = [
+      // First, and phrased as an override. The model will otherwise reason from
+      // the industry bucket further down — a bucket is far easier to
+      // pattern-match than a sentence, and that is exactly how a marketing
+      // agency ended up being given nail-salon advice.
+      identityToPrompt(ctx.identity, ctx.industry),
+      '',
       signalsToPrompt(ctx.signals),
       '',
       eventsToPrompt(ctx.region, ctx.events),
@@ -571,6 +600,16 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // two causes — the industry not being set, or the industry being set and
       // ignored — and only one line of UI tells them apart.
       industry: { code: ctx.industry, trade: playbookFor(ctx.industry).trade },
+      // The label the screen shows. The business's own sentence when it has
+      // given one; the enum is demoted to a footnote beside it.
+      identity: {
+        label: ctx.identity.label,
+        declared: ctx.identity.declared,
+        filled: ctx.identity.filled,
+        profile: ctx.identity.profile,
+        provenance: ctx.identity.provenance,
+        gaps: ctx.identity.gaps,
+      },
       events: ctx.events,
       // The long list: six months out, so a salon can see Tết or the holidays
       // coming while there is still time to prepare stock and staffing. The

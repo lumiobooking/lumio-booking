@@ -171,6 +171,32 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
 
 export const REVIEW_SETTINGS_KEY = 'review_settings';
 export const ANALYTICS_SETTINGS_KEY = 'analytics_settings';
+
+/**
+ * What the business is, written by the business.
+ *
+ * The content, ads and SEO engines used to reason from `businessType` — four
+ * values for every company on the platform. A marketing agency serving
+ * Vietnamese families is "SERVICE" under that scheme, which is true and tells
+ * you nothing, so the advice came out plausible and wrong. These fields are
+ * where a business says what a four-value enum cannot, and the engines read
+ * them ahead of the enum.
+ *
+ * `whoWeServe` in particular is a fact only the business has. Nothing in this
+ * codebase may infer it from a name, a postcode or the language of a chatbot.
+ */
+export interface BusinessProfileSettings {
+  whatWeDo: string;
+  whoWeServe: string;
+  languages: string;
+  serviceArea: string;
+  edge: string;
+  avoid: string;
+}
+export const BUSINESS_PROFILE_KEY = 'business_profile';
+export const DEFAULT_BUSINESS_PROFILE: BusinessProfileSettings = {
+  whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '',
+};
 export const REBOOKING_SETTINGS_KEY = 'rebooking_settings';
 
 /** Auto "time for a refill" reminder N days after a visit (retention). */

@@ -63,6 +63,7 @@ import {
   GROUP_DISCOUNT_KEY,
   DEFAULT_GROUP_DISCOUNT,
   GroupDiscount,
+  BUSINESS_PROFILE_KEY, DEFAULT_BUSINESS_PROFILE, BusinessProfileSettings,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -185,6 +186,35 @@ export class SettingsService {
 
   async getAnalyticsSettings(tenantId: string): Promise<AnalyticsSettings> {
     return this.readKey<AnalyticsSettings>(tenantId, ANALYTICS_SETTINGS_KEY, DEFAULT_ANALYTICS_SETTINGS);
+  }
+
+  async getBusinessProfile(tenantId: string): Promise<BusinessProfileSettings> {
+    return this.readKey<BusinessProfileSettings>(tenantId, BUSINESS_PROFILE_KEY, DEFAULT_BUSINESS_PROFILE);
+  }
+
+  /**
+   * Save what the business says it is.
+   *
+   * Free text, trimmed and capped, with no validation beyond length — the whole
+   * point of these fields is to hold what a four-value enum could not, so
+   * constraining their shape would recreate the problem in a new form.
+   */
+  async updateBusinessProfile(user: AuthenticatedUser, dto: Partial<BusinessProfileSettings>) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.getBusinessProfile(tenantId);
+    const take = (v: unknown, fallback: string, max = 600) =>
+      typeof v === 'string' ? v.trim().slice(0, max) : fallback;
+    const next: BusinessProfileSettings = {
+      whatWeDo: take(dto.whatWeDo, cur.whatWeDo),
+      whoWeServe: take(dto.whoWeServe, cur.whoWeServe),
+      languages: take(dto.languages, cur.languages, 120),
+      serviceArea: take(dto.serviceArea, cur.serviceArea, 200),
+      edge: take(dto.edge, cur.edge),
+      avoid: take(dto.avoid, cur.avoid),
+    };
+    await this.writeKey(tenantId, BUSINESS_PROFILE_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.business_profile_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
   }
 
   async getRebookingSettings(tenantId: string): Promise<RebookingSettings> {
@@ -843,6 +873,7 @@ export class SettingsService {
       reminders: await this.getReminderSettings(tenantId),
       deposit: await this.getDepositSettings(tenantId),
       analytics: await this.getAnalyticsSettings(tenantId),
+      businessProfile: await this.getBusinessProfile(tenantId),
       rebooking: await this.getRebookingSettings(tenantId),
       gmailRedirectUri: this.gmailRedirectUri(),
     };

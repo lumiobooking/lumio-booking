@@ -37,6 +37,15 @@ export interface DetectInput {
   /** Dining tables registered. Structural, and almost never a false positive. */
   tableCount?: number;
   website?: string | null;
+  /**
+   * What the business declared about itself.
+   *
+   * Weighted highest of all the text fields: a sentence the owner wrote is a
+   * better description of the business than anything inferred from a menu.
+   * Lumio Agency — "dịch vụ marketing cho người Việt tại Mỹ" — would have been
+   * visible here on day one had this field existed.
+   */
+  declaredWhatWeDo?: string | null;
   currentIndustry?: string | null;
 }
 
@@ -110,6 +119,7 @@ export function detectIndustry(input: DetectInput): Detection {
   // outrank a domain. The name is the easiest thing to choose for marketing
   // reasons and therefore the least reliable thing to reason from.
   const fields: { text: string[]; mult: number; where: string }[] = [
+    { text: [String(input.declaredWhatWeDo ?? '')], mult: 4, where: 'mô tả tiệm tự khai' },
     { text: services, mult: 3, where: 'dịch vụ' },
     { text: menu, mult: 3, where: 'thực đơn' },
     { text: [String(input.tenantName ?? '')], mult: 1, where: 'tên tiệm' },
@@ -146,6 +156,13 @@ export function detectIndustry(input: DetectInput): Detection {
 
   const detected = confidence === 'none' ? null : top.k;
   const agrees = detected !== null && detected === current;
+
+  // A declared description outranks every heuristic here. Suggesting an
+  // industry change to a business that has said in sentences what it does would
+  // be this file overruling the only authoritative source it has.
+  if (String(input.declaredWhatWeDo ?? '').trim().length > 20 && confidence === 'high' && detected !== current) {
+    confidence = 'low';
+  }
 
   const summary = detected === null
     ? 'Chưa đủ dữ liệu để đoán ngành. Tiệm chưa có dịch vụ hay thực đơn nào đáng kể — cần đặt tay.'

@@ -58,7 +58,14 @@ async function bootstrap() {
 
   // Backend API listens on port 8005 (frontend dashboard uses 3005)
   const port = Number(config.get<string>('PORT') ?? 8005);
-  await app.listen(port);
+  // Bind every interface explicitly.
+  //
+  // Without a host, Node picks a default that varies with the platform's IPv6
+  // setup, and a host whose probe arrives over the interface we did not bind
+  // sees a connection that never answers — which is reported as a health-check
+  // timeout, not as a refusal, so it reads like a slow app rather than a
+  // missing listener. One argument removes the whole class of doubt.
+  await app.listen(port, '0.0.0.0');
 
   Logger.log(`Lumio Booking API is running on http://localhost:${port}/api`, 'Bootstrap');
 }

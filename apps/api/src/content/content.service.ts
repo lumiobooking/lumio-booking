@@ -470,6 +470,17 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
    * variations underneath were all written and tested and simply never ran.
    */
   async generateAll(industry?: string | null): Promise<{ tenants: number; created: number }> {
+    // Checked once, here, rather than once per tenant inside the loop.
+    //
+    // The Vietnam deployment has no Anthropic key and is not meant to have one,
+    // so the hourly run was printing an ERROR line for every active tenant,
+    // every hour, forever. Log noise at that volume is not harmless: it buries
+    // the lines that matter, and an ERROR that is expected teaches everyone to
+    // ignore ERRORs.
+    if (!process.env.ANTHROPIC_API_KEY) {
+      this.logger.log('Content planner idle: no ANTHROPIC_API_KEY on this deployment.');
+      return { tenants: 0, created: 0 };
+    }
     const where: Record<string, unknown> = { status: 'ACTIVE', deletedAt: null };
     if (industry) where.businessType = industry;
     const tenants = await this.prisma.tenant.findMany({

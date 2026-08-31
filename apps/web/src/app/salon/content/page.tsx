@@ -20,7 +20,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
-import { ItemComments, TeamChatWindow } from '../../../components/ContentChat';
+import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 
 interface Idea {
   id: string;
@@ -558,10 +558,10 @@ function Inner() {
 
   return (
     <section style={{ maxWidth: 1180, margin: '0 auto', width: '100%' }}>
-      {/* The shared window. Always reachable, never in the way — and on a phone
-          it opens full-screen, because a chat pinned into a corner of a 375px
-          display is a chat nobody types in. */}
-      <TeamChatWindow token={token} unread={unread.total} vi={vi} />
+      {/* On a phone there is no sidebar to dock into, so the shared thread is
+          a button that opens full screen. On a desktop it lives in the sidebar
+          instead — see the aside below. */}
+      {isMobile && <TeamChatWindow token={token} unread={unread.total} vi={vi} />}
 
       <div style={{
         display: 'flex', gap: 12, alignItems: 'flex-start',
@@ -2058,7 +2058,13 @@ function Inner() {
         </div>
 
         {!isMobile && (
-          <aside style={{ position: 'sticky', top: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <aside style={{
+            position: 'sticky', top: 8, display: 'flex', flexDirection: 'column', gap: 12,
+            // Bounded to the viewport so the column cannot outgrow the screen —
+            // a sticky element taller than the window scrolls away, taking the
+            // chat with it, which is the one thing a docked chat must not do.
+            maxHeight: 'calc(100vh - 16px)',
+          }}>
             {regionCard}
             {plan?.week && (
               <div style={{ ...ui.card, padding: 14 }}>
@@ -2105,6 +2111,11 @@ function Inner() {
                 </div>
               </div>
             )}
+
+            {/* The shared thread, docked. Last in the column so the plan's own
+                cards stay at the top where the eye starts, and it fills the
+                space they leave — which on this screen was empty anyway. */}
+            <TeamChatDock token={token} unread={unread.total} vi={vi} />
           </aside>
         )}
       </div>

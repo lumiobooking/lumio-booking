@@ -8,22 +8,31 @@ import { useIsMobile } from '../lib/responsive';
 /**
  * The conversation between the Lumio team and the salon, about the work.
  *
- * TWO SHAPES, ONE COMPONENT
+ * THREE SHAPES, ONE THREAD ENGINE
  *
- * `variant="inline"` is the comment thread under one item — an idea, a week, an
- * ad plan. `variant="window"` is the shared window: a floating button that
- * opens a full conversation, and on a phone it takes the whole screen, because
- * a chat squeezed into a corner of a 375px display is a chat nobody types in.
+ *   ItemComments   — the comments under one item: an idea, a week, the ad plan.
+ *   TeamChatDock   — the shared thread, docked in the sidebar on a desktop.
+ *   TeamChatWindow — the same shared thread on a phone, as a full-screen sheet.
  *
- * They are one component because they are one conversation with two addresses.
- * Two components would drift, and the drift always lands on the phone.
+ * They share useThread, because they are one conversation with three addresses.
+ * Separate implementations would drift, and the drift always lands on the phone.
  *
- * DESIGNED FOR THE PHONE FIRST
+ * WHY THE DESKTOP ONE IS DOCKED, NOT FLOATING
  *
- * The owner reads this standing in the salon. So: a sheet that fills the screen
- * rather than a floating box, a send button big enough for a thumb, the newest
- * message in view without scrolling, and a composer that does not sit under the
- * on-screen keyboard.
+ * A floating bubble was the first attempt and it was the wrong shape. The point
+ * of the shared window is working THROUGH the plan together — read a line on
+ * the left, say something about it on the right. A bubble has to be opened, and
+ * once open it covers the very thing being discussed. Docked into the sidebar
+ * column it is always visible, needs no click before typing, and the plan stays
+ * readable beside it.
+ *
+ * AND WHY THE PHONE ONE IS NOT
+ *
+ * At 375px there is no sidebar to dock into, and a chat pinned into a corner of
+ * that screen is a chat nobody types in — which matters most here, because the
+ * phone is where the owner writes, standing in the salon. So: a sheet that
+ * fills the screen, a send button big enough for a thumb, the newest message in
+ * view without scrolling, and a composer clear of the on-screen keyboard.
  */
 
 export interface ChatMessage {
@@ -146,6 +155,17 @@ function useThread(token: string | null, subject: string, open: boolean) {
 
   useEffect(() => { load(); }, [load]);
 
+  // A reply should arrive without anybody pressing refresh. Twenty seconds is
+  // slow enough to be free and fast enough that a conversation feels live; the
+  // tab is skipped while hidden so a forgotten window costs nothing.
+  useEffect(() => {
+    if (!token || !open) return undefined;
+    const t = setInterval(() => {
+      if (typeof document === 'undefined' || !document.hidden) void load();
+    }, 20_000);
+    return () => clearInterval(t);
+  }, [token, open, load]);
+
   const send = async (body: string) => {
     if (!token) return;
     setSending(true);
@@ -213,11 +233,86 @@ export function ItemComments({ token, subject, unread, labelVi, vi }: {
 }
 
 /**
- * The shared window: one thread for everything that belongs to no single item.
+ * The shared thread, DOCKED into the sidebar.
  *
- * A floating button, and on a phone the sheet fills the screen. A chat pinned
- * into a 320px corner on a 375px display is a chat nobody writes in — and this
- * one exists precisely so the owner can write while standing in the salon.
+ * A floating bubble was the wrong shape for this. The point of the shared
+ * window is working THROUGH the plan together — read a line on the left, say
+ * something about it on the right — and a bubble you have to open, which then
+ * covers the thing you are discussing, breaks exactly that. So on a desktop it
+ * is a panel in the sidebar column: always open, always visible, no click
+ * before you can type.
+ *
+ * On a phone there is no sidebar, so it stays a button that opens full screen —
+ * see TeamChatWindow below.
+ */
+export function TeamChatDock({ token, unread, vi, height }: {
+  token: string | null; unread: number; vi: boolean;
+  /** Omit to fill whatever the sidebar has left. */
+  height?: number;
+}) {
+  const { messages, side, sending, send } = useThread(token, 'general', true);
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      // Fills the column rather than claiming a fixed slice of it: the cards
+      // above vary in height from salon to salon, and a hardcoded 420px is
+      // either a gap under the chat or a chat pushed off the screen.
+      ...(height ? { height } : { flex: '1 1 auto', minHeight: 260 }),
+      borderRadius: 12, overflow: 'hidden',
+      background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
+        borderBottom: '1px solid var(--c334155)', flex: '0 0 auto',
+        background: 'var(--c1e293b)',
+      }}>
+        <span style={{ fontSize: 14 }}>💬</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+            {vi ? 'Trao đổi với Lumio' : 'Talk to Lumio'}
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>
+            {vi ? 'Nội bộ — khách không thấy' : 'Internal — customers never see this'}
+          </div>
+        </div>
+        {unread > 0 && (
+          <span style={{
+            minWidth: 20, height: 20, borderRadius: 20, background: '#ef4444',
+            color: 'var(--cf8fafc)', fontSize: 11, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px',
+          }}>{unread > 9 ? '9+' : unread}</span>
+        )}
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+        <Bubbles
+          messages={messages}
+          mine={side}
+          empty={vi
+            ? 'Chưa có tin nhắn nào. Đây là chỗ tiệm và team Lumio trao đổi về nội dung, quảng cáo, kế hoạch.'
+            : 'No messages yet. This is where the salon and the Lumio team talk about content, ads and the plan.'}
+        />
+      </div>
+
+      <div style={{ flex: '0 0 auto', padding: 10, borderTop: '1px solid var(--c334155)' }}>
+        <Composer
+          onSend={send}
+          sending={sending}
+          big={false}
+          placeholder={vi ? 'Nhắn cho team Lumio…' : 'Message the Lumio team…'}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The same thread on a phone: a button that opens full screen.
+ *
+ * There is no sidebar to dock into at 375px, and a chat pinned into a corner of
+ * that screen is a chat nobody types in — which matters most here, because this
+ * is the one the owner writes standing in the salon.
  */
 export function TeamChatWindow({ token, unread, vi }: {
   token: string | null; unread: number; vi: boolean;

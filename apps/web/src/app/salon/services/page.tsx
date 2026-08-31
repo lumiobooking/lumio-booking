@@ -8,9 +8,9 @@ import { compressImageToFit } from '../../../lib/image';
 import { ui, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
-import { moveItem, orderSignature } from '../../../lib/reorder';
+import { useRowDrag } from '../../../lib/useRowDrag';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
-import { SearchBox, matchesQuery, usePaged, Pager } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Service {
@@ -59,7 +59,6 @@ function ServicesInner() {
   const [showImport, setShowImport] = useState(false);
   const [filling, setFilling] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
-  const [showOrder, setShowOrder] = useState(false);
   // Currency is a salon-level setting (Settings -> Payments). The whole Services
   // screen formats prices with it, so changing the currency there is reflected here.
   const [money, setMoney] = useState({ code: 'USD', symbol: '$', pos: 'before', decimals: 2 });
@@ -140,8 +139,19 @@ function ServicesInner() {
   const visible = services.filter((s) =>
     matchesQuery(`${s.name} ${s.description ?? ''}`, q) &&
     (catFilter === 'all' || (catFilter === 'none' ? !s.categoryId : s.categoryId === catFilter)));
-  const pg = usePaged(visible, 25);
-  const bulk = useBulkSelect(pg.paged.map((r) => r.id));
+  // No pagination on this table.
+  //
+  // It is a menu, and a menu is a thing you arrange. Slicing it into pages of
+  // twenty-five meant the row on page 3 could never be dragged to position 1 —
+  // and "tu do sap xep vi tri" is exactly that move. Search and the category
+  // chips already narrow the list; sixty-six rows of text is an ordinary admin
+  // table, not a performance problem.
+  const drag = useRowDrag(visible, async (ids) => {
+    await apiFetch('/services/reorder', { method: 'PATCH', token, body: { ids } });
+    await load();
+  });
+  const rows = drag.order;
+  const bulk = useBulkSelect(rows.map((r) => r.id));
 
   async function fillImages(overwrite: boolean) {
     const ask = overwrite
@@ -166,11 +176,6 @@ function ServicesInner() {
             title={lang === 'vi' ? 'Tự thêm ảnh nail/spa mẫu cho các dịch vụ chưa có ảnh (dùng khi demo)' : 'Auto-add sample nail/spa photos to services without an image (for demos)'}
             style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', opacity: filling ? 0.6 : 1 }}>
             {filling ? (lang === 'vi' ? 'Đang thêm ảnh…' : 'Adding…') : (lang === 'vi' ? '🖼 Ảnh mẫu' : '🖼 Sample images')}
-          </button>
-          <button onClick={() => { setShowOrder((s) => !s); setShowForm(false); setShowImport(false); }}
-            title={lang === 'vi' ? 'Kéo thả để đổi thứ tự dịch vụ hiện trên trang đặt lịch' : 'Drag to change the order customers see'}
-            style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: showOrder ? '#6366f1' : 'transparent', border: '1px solid #6366f1', color: showOrder ? '#fff' : 'var(--ca5b4fc)' }}>
-            {showOrder ? (lang === 'vi' ? '✓ Xong' : '✓ Done') : (lang === 'vi' ? '↕ Kéo sắp xếp' : '↕ Drag to reorder')}
           </button>
           <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid var(--c475569)' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
@@ -222,37 +227,25 @@ function ServicesInner() {
 
       {loading ? (
         <p style={{ color: 'var(--c94a3b8)' }}>{t('sv.loading')}</p>
-      ) : showOrder ? (
-        /* The list the owner is looking at becomes the list they drag.
-           A separate panel above the table was the wrong answer: they asked to
-           grab a row and move it, and the row they mean is the one on screen.
-           Pagination is off in here so any service can reach any position — a
-           drag that cannot cross a page boundary is not "tự do sắp xếp". */
-        <ReorderPanel
-          token={token!}
-          services={visible}
-          catName={catName}
-          fmt={fmt}
-          lang={lang}
-          onSaved={async () => { await load(); }}
-        />
       ) : isMobile ? (
-        <>
+        <div {...drag.containerProps}>
+          <DragHint saved={drag.saved} lang={lang} />
           <MList>
-            {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('sv.empty')}</p>}
-            {pg.paged.map((s) => (
-              <ServiceCard key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} />
+            {rows.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('sv.empty')}</p>}
+            {rows.map((s, i) => (
+              <ServiceCard key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} onGrab={drag.grab(i)} dragging={drag.dragIdx === i} />
             ))}
           </MList>
-          <Pager paged={pg} />
-        </>
+        </div>
       ) : (
-        <div>
+        <div {...drag.containerProps}>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/services/${id}`, { method: 'DELETE', token }), load)} />
+          <DragHint saved={drag.saved} lang={lang} />
           <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--c1e293b)' }}>
+                <th style={{ ...ui.th, width: 26 }} aria-label="drag" />
                 <th style={{ ...ui.th, width: 34 }}><BulkAllBox on={bulk.allOn} onChange={bulk.toggleAll} /></th>
                 <th style={ui.th}>{t('sv.colName')}</th>
                 <th style={{ ...ui.th, whiteSpace: 'nowrap' }}>{t('sv.colCategory')}</th>
@@ -263,19 +256,18 @@ function ServicesInner() {
               </tr>
             </thead>
             <tbody>
-              {visible.length === 0 && (
+              {rows.length === 0 && (
                 <tr>
-                  <td style={ui.td} colSpan={7}>
+                  <td style={ui.td} colSpan={8}>
                     {t('sv.empty')}
                   </td>
                 </tr>
               )}
-              {pg.paged.map((s) => (
-                <FragmentRow key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} selected={bulk.has(s.id)} onSelect={() => bulk.toggle(s.id)} />
+              {rows.map((s, i) => (
+                <FragmentRow key={s.id} service={s} token={token!} categories={categories} staff={staff} catName={catName} fmt={fmt} onToggle={() => toggleActive(s)} onDelete={() => remove(s.id)} onSaved={load} selected={bulk.has(s.id)} onSelect={() => bulk.toggle(s.id)} onGrab={drag.grab(i)} dragging={drag.dragIdx === i} />
               ))}
             </tbody>
           </table>
-          <div style={{ padding: '0 14px 12px' }}><Pager paged={pg} /></div>
           </div>
         </div>
       )}
@@ -298,194 +290,33 @@ function ServicesInner() {
  * arrows are also simply more precise for "move this one up by one", which is
  * the actual request — "phải thứ tự từ 1 đến 3".
  */
-function ReorderPanel({ token, services, catName, fmt, lang, onSaved }: {
-  token: string; services: Service[]; lang: string;
-  catName: (id?: string | null) => string;
-  fmt: (cents: number) => string;
-  onSaved: () => Promise<void>;
-}) {
-  const [order, setOrder] = useState<Service[]>(services);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [err, setErr] = useState<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Re-seed only when the SET of services really changes.
-  //
-  // This was `[services]`, and `services` is rebuilt by .filter() on every
-  // parent render — so the effect fired constantly and reset the list the
-  // instant anything was dragged. The panel looked completely dead, which is
-  // exactly what it was. A signature of the ids is stable across renders and
-  // still changes when the filter switches or the saved order comes back.
-  const sig = orderSignature(services.map((s) => s.id));
-  useEffect(() => {
-    setOrder(services);
-    setState('idle');
-    // `services` is intentionally not a dependency — see above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig]);
-
-  const persist = useCallback(async (rows: Service[]) => {
-    setState('saving'); setErr(null);
-    try {
-      await apiFetch('/services/reorder', { method: 'PATCH', token, body: { ids: rows.map((s) => s.id) } });
-      setState('saved');
-      await onSaved();
-    } catch (e) {
-      setState('error');
-      setErr(e instanceof Error ? e.message : 'Could not save the order');
-    }
-  }, [token, onSaved]);
-
-  /** Move a row, then save shortly after the dragging stops. */
-  const move = useCallback((from: number, to: number) => {
-    setOrder((cur) => {
-      const next = moveItem(cur, from, to);
-      if (next.every((x, i) => cur[i] === x)) return cur;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      // Saved for them rather than behind a button they have to remember. The
-      // delay is so a drag across five positions is one request, not five.
-      saveTimer.current = setTimeout(() => { void persist(next); }, 700);
-      return next;
-    });
-  }, [persist]);
-
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
-
-  // Pointer events, not the HTML5 drag API.
-  //
-  // Two reasons, both of which made the first version fail for real people:
-  // HTML5 drag does not fire at all on a touch screen, and in Firefox a
-  // dragstart without dataTransfer.setData never starts a drag. Pointer events
-  // are one code path for mouse, trackpad, finger and stylus alike.
-  const rowIndexAt = (clientY: number): number | null => {
-    const rows = Array.from(listRef.current?.querySelectorAll('[data-row]') ?? []);
-    for (let i = 0; i < rows.length; i += 1) {
-      const r = (rows[i] as HTMLElement).getBoundingClientRect();
-      if (clientY >= r.top && clientY <= r.bottom) return i;
-    }
-    return null;
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (dragIdx === null) return;
-    e.preventDefault();
-    const over = rowIndexAt(e.clientY);
-    if (over !== null && over !== dragIdx) {
-      move(dragIdx, over);
-      setDragIdx(over);
-    }
-  };
-
-  const statusText = state === 'saving'
-    ? (lang === 'vi' ? 'Đang lưu…' : 'Saving…')
-    : state === 'saved'
-      ? (lang === 'vi' ? '✓ Đã lưu' : '✓ Saved')
-      : '';
-
-  const cell: React.CSSProperties = { fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' };
-
-  return (
-    <div>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        flexWrap: 'wrap', gap: 8, marginBottom: 10, padding: '10px 12px',
-        borderRadius: 10, background: 'var(--c1e293b)', border: '1px solid #6366f1',
-      }}>
-        <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>
-          {lang === 'vi'
-            ? <>Giữ chuột vào <b>⠿</b> rồi kéo lên/xuống. Tự lưu — đây là thứ tự khách thấy khi đặt lịch.</>
-            : <>Hold <b>⠿</b> and drag. Saves itself — this is the order customers see.</>}
-        </div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: state === 'saving' ? 'var(--c94a3b8)' : '#22c55e', minHeight: 18 }}>
-          {statusText}
-        </div>
-      </div>
-      {err && <div style={ui.banner}>{err}</div>}
-      {order.length === 0 && (
-        <div style={{ fontSize: 13, color: 'var(--c64748b)', padding: 12 }}>
-          {lang === 'vi' ? 'Không có dịch vụ nào trong nhóm này.' : 'No services in this group.'}
-        </div>
-      )}
-      <div
-        ref={listRef}
-        onPointerMove={onPointerMove}
-        onPointerUp={() => setDragIdx(null)}
-        onPointerCancel={() => setDragIdx(null)}
-        style={{
-          border: '1px solid var(--c334155)', borderRadius: 12, overflow: 'hidden',
-          touchAction: dragIdx === null ? 'auto' : 'none',
-        }}
-      >
-        {order.map((s, i) => (
-          <div
-            key={s.id}
-            data-row=""
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
-              borderTop: i ? '1px solid var(--c1e293b)' : 'none',
-              background: dragIdx === i ? 'var(--c334155)' : 'transparent',
-              boxShadow: dragIdx === i ? '0 6px 18px rgba(0,0,0,.35)' : 'none',
-            }}
-          >
-            <span
-              onPointerDown={(e) => {
-                (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-                setDragIdx(i);
-              }}
-              title={lang === 'vi' ? 'Giữ và kéo' : 'Hold and drag'}
-              style={{
-                color: dragIdx === i ? '#a5b4fc' : 'var(--c64748b)', fontSize: 18,
-                cursor: 'grab', padding: '4px 6px', touchAction: 'none', userSelect: 'none',
-              }}
-            >⠿</span>
-            <span style={{
-              minWidth: 30, textAlign: 'center', fontSize: 12, fontWeight: 700,
-              color: '#a5b4fc', background: 'var(--c0f172a)', borderRadius: 6, padding: '3px 0',
-            }}>{i + 1}</span>
-            <span style={{ flex: 1, fontSize: 14, color: 'var(--ce2e8f0)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {s.name}
-              {s.isFeatured && (
-                <span style={{ fontSize: 9.5, marginLeft: 6, padding: '1px 6px', borderRadius: 20, background: '#facc15', color: '#000', fontWeight: 700 }}>POPULAR</span>
-              )}
-            </span>
-            <span style={{ ...cell, flex: '0 0 130px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{catName(s.categoryId)}</span>
-            <span style={{ ...cell, flex: '0 0 66px' }}>{s.durationMinutes} min</span>
-            <span style={{ ...cell, flex: '0 0 72px', color: 'var(--ce2e8f0)' }}>{fmt(s.priceCents)}</span>
-            {!s.isActive && (
-              <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 20, padding: '1px 7px' }}>
-                {lang === 'vi' ? 'Ẩn' : 'Hidden'}
-              </span>
-            )}
-            <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0}
-              aria-label={lang === 'vi' ? 'Lên' : 'Move up'}
-              style={{ ...arrowBtn, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
-            <button type="button" onClick={() => move(i, i + 1)} disabled={i === order.length - 1}
-              aria-label={lang === 'vi' ? 'Xuống' : 'Move down'}
-              style={{ ...arrowBtn, opacity: i === order.length - 1 ? 0.3 : 1 }}>↓</button>
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 8 }}>
-        {lang === 'vi'
-          ? `${order.length} dịch vụ — hiện hết, không chia trang, để kéo được từ cuối lên đầu.`
-          : `${order.length} services — all on one page so any row can reach any position.`}
-      </div>
-    </div>
-  );
-}
-
-const arrowBtn: React.CSSProperties = {
-  width: 30, height: 28, borderRadius: 7, cursor: 'pointer',
-  border: '1px solid var(--c475569)', background: 'transparent',
-  color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1,
-};
 
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
 
-function FragmentRow({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved, selected, onSelect }: {
+
+/** The one line telling an owner the rows move, plus the save state. */
+function DragHint({ saved, lang }: { saved: string; lang: string }) {
+  const text = saved === 'saving'
+    ? (lang === 'vi' ? 'Đang lưu thứ tự…' : 'Saving order…')
+    : saved === 'saved'
+      ? (lang === 'vi' ? '✓ Đã lưu thứ tự — trang đặt lịch cập nhật ngay' : '✓ Order saved — the booking page is updated')
+      : saved === 'error'
+        ? (lang === 'vi' ? '✕ Chưa lưu được thứ tự' : '✕ Could not save the order')
+        : (lang === 'vi' ? 'Giữ chuột vào ⠿ ở đầu dòng rồi kéo lên/xuống để đổi thứ tự. Tự lưu.' : 'Hold ⠿ at the start of a row and drag. Saves itself.');
+  return (
+    <div style={{
+      fontSize: 12.5, marginBottom: 8, padding: '7px 11px', borderRadius: 8,
+      background: saved === 'saved' ? 'var(--c14532d)' : 'var(--c1e293b)',
+      color: saved === 'saved' ? '#bbf7d0' : saved === 'error' ? 'var(--cfca5a5)' : 'var(--c94a3b8)',
+      border: '1px solid var(--c334155)',
+    }}>{text}</div>
+  );
+}
+
+
+function FragmentRow({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved, selected, onSelect, onGrab, dragging }: {
   service: Service; token: string; categories: Category[]; staff: Staff[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void; selected?: boolean; onSelect?: () => void;
+  onGrab?: (e: React.PointerEvent) => void; dragging?: boolean;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -493,7 +324,27 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
   const [editing, setEditing] = useState(false);
   return (
     <>
-      <tr style={{ borderTop: '1px solid var(--c334155)', background: selected ? 'var(--c1e1b4b)' : undefined }}>
+      <tr
+        data-row=""
+        style={{
+          borderTop: '1px solid var(--c334155)',
+          background: dragging ? 'var(--c334155)' : selected ? 'var(--c1e1b4b)' : undefined,
+        }}
+      >
+        {/* The handle is always here. It used to live behind a "Kéo sắp xếp"
+            button in the header, and a feature you have to find is a feature
+            that does not exist for the person who scrolled past it. */}
+        <td style={{ ...ui.td, width: 26, padding: '0 0 0 8px' }}>
+          <span
+            onPointerDown={onGrab}
+            title={lang === 'vi' ? 'Giữ và kéo để đổi thứ tự' : 'Hold and drag to reorder'}
+            style={{
+              display: 'inline-block', color: dragging ? '#a5b4fc' : 'var(--c64748b)',
+              fontSize: 17, cursor: 'grab', padding: '6px 4px',
+              touchAction: 'none', userSelect: 'none',
+            }}
+          >⠿</span>
+        </td>
         <td style={{ ...ui.td, width: 34 }}>{onSelect && <BulkRowBox on={!!selected} onChange={onSelect} />}</td>
         <td style={ui.td}>
           <div>
@@ -534,14 +385,14 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
       </tr>
       {editing && (
         <tr>
-          <td colSpan={6} style={{ padding: 0, background: 'var(--c0f172a)' }}>
+          <td colSpan={7} style={{ padding: 0, background: 'var(--c0f172a)' }}>
             <EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} />
           </td>
         </tr>
       )}
       {open && (
         <tr>
-          <td colSpan={6} style={{ padding: 0, background: 'var(--c0f172a)' }}>
+          <td colSpan={7} style={{ padding: 0, background: 'var(--c0f172a)' }}>
             <AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} />
           </td>
         </tr>
@@ -551,8 +402,9 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
 }
 
 /** Mobile card equivalent of FragmentRow (the table renders <tr>; this renders a card). */
-function ServiceCard({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved }: {
+function ServiceCard({ service: s, token, categories, staff, catName, fmt, onToggle, onDelete, onSaved, onGrab, dragging }: {
   service: Service; token: string; categories: Category[]; staff: Staff[]; catName: (id?: string | null) => string; fmt: (cents: number) => string; onToggle: () => void; onDelete: () => void; onSaved: () => void;
+  onGrab?: (e: React.PointerEvent) => void; dragging?: boolean;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -560,8 +412,15 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
   const [editing, setEditing] = useState(false);
   return (
     <>
+      <div data-row="" style={{ opacity: dragging ? 0.7 : 1 }}>
       <MCard>
         <MHead right={<button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : 'var(--c64748b)'}`, color: s.isActive ? '#22c55e' : 'var(--c94a3b8)', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>{s.isActive ? t('sv.active') : t('sv.inactive')}</button>}>
+          {/* Same handle as the desktop table. A phone cannot use the HTML5
+              drag API at all, which is why this is a pointer handle. */}
+          <span
+            onPointerDown={onGrab}
+            style={{ color: dragging ? '#a5b4fc' : 'var(--c64748b)', fontSize: 16, cursor: 'grab', paddingRight: 8, touchAction: 'none', userSelect: 'none' }}
+          >⠿</span>
           {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: 'var(--c1f2937)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
         </MHead>
         {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
@@ -582,6 +441,7 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
           <button onClick={onDelete} style={actBtn('#b91c1c')}>{t('sv.delete')}</button>
         </MActions>
       </MCard>
+      </div>
       {editing && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} /></div>}
       {open && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} /></div>}
     </>

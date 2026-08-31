@@ -460,10 +460,20 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     return [];
   }
 
-  /** Draft for every active salon of an industry — the scheduler's entry point. */
-  async generateAll(industry = 'SALON'): Promise<{ tenants: number; created: number }> {
+  /**
+   * Draft for every active tenant — the scheduler's entry point.
+   *
+   * `industry` is now a FILTER, not a requirement, and it defaults to nothing.
+   * It used to default to 'SALON', and the scheduler passed 'SALON' explicitly,
+   * which meant a restaurant or an estate agency on this platform never had a
+   * single idea generated for it — not a bad idea, none at all. The industry
+   * variations underneath were all written and tested and simply never ran.
+   */
+  async generateAll(industry?: string | null): Promise<{ tenants: number; created: number }> {
+    const where: Record<string, unknown> = { status: 'ACTIVE', deletedAt: null };
+    if (industry) where.businessType = industry;
     const tenants = await this.prisma.tenant.findMany({
-      where: { status: 'ACTIVE', deletedAt: null, businessType: industry } as never,
+      where: where as never,
       select: { id: true },
     }).catch(() => []) as { id: string }[];
     let created = 0;
@@ -519,6 +529,11 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // so a wrong city gets corrected by the person who knows, instead of
       // quietly skewing every suggestion for months.
       region: { label: ctx.region.label, known: ctx.region.regionKnown, market: ctx.region.market },
+      // The trade this engine thinks the business is in. On screen next to the
+      // region, because "everything looks like a nail salon" is a symptom with
+      // two causes — the industry not being set, or the industry being set and
+      // ignored — and only one line of UI tells them apart.
+      industry: { code: ctx.industry, trade: playbookFor(ctx.industry).trade },
       events: ctx.events,
       // The long list: six months out, so a salon can see Tết or the holidays
       // coming while there is still time to prepare stock and staffing. The

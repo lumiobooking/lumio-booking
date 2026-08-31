@@ -39,7 +39,9 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.running) return; // a slow run must not stack on itself
     this.running = true;
     try {
-      const r = await this.content.generateAll('SALON');
+      // Every industry, not just nail. Passing 'SALON' here is what silently
+      // starved every non-salon client of content for as long as this ran.
+      const r = await this.content.generateAll();
       if (r.created) this.logger.log(`Drafted ${r.created} ideas across ${r.tenants} salons.`);
     } catch (e) {
       this.logger.warn(`planner tick failed: ${String(e).slice(0, 160)}`);

@@ -63,6 +63,7 @@ interface TrendTopic { label: string; why: string; from: 'salon' | 'region' | 't
 interface TrendLink { key: string; title: string; url: string; what: string; how: string; source: string; topics?: TrendTopic[] }
 interface Plan {
   region: { label: string; known: boolean; market: string };
+  industry: { code: string; trade: string };
   events: SeasonEvent[];
   week: { days: DayPlan[]; focus: string; basis: string; daily: Job[]; sources: ContentSource[]; trade: string; dataThin: boolean };
   calendar: SeasonEvent[];
@@ -193,6 +194,17 @@ function Inner() {
       lineHeight: 1.5,
     }}>
       <span>📍</span>
+      {/* The trade is shown even when the region is not, because a business set
+          to the wrong industry gets nail advice forever and nothing on screen
+          would have said so. */}
+      {plan.industry && (
+        <span style={{
+          fontSize: 11, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+          background: 'var(--c1e293b)', color: '#a5b4fc', border: '1px solid var(--c334155)',
+        }}>
+          {plan.industry.trade}
+        </span>
+      )}
       {plan.region.known ? (
         <span>{T('Gợi ý theo khu vực', 'Tailored for')} <strong style={{ color: 'var(--ce2e8f0)' }}>{plan.region.label}</strong></span>
       ) : (

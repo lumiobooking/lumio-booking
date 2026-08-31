@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
-import { NAIL_STARTER_FORMATS } from './starter-formats';
+import { STARTER_FORMATS } from './starter-formats';
 
 /**
  * The Lumio team's side of the content engine.
@@ -70,22 +70,26 @@ export class ContentAdminService {
    * and it never overwrites a format the team has tuned.
    */
   async seedFormats(industry = 'SALON') {
-    if (industry.toUpperCase() !== 'SALON') throw new BadRequestException('Hiện chỉ có bộ mẫu cho ngành nail');
-    const existing = await this.prisma.contentFormat.findMany({ where: { industry: 'SALON' }, select: { name: true } });
+    const IND = industry.toUpperCase();
+    const seeds = STARTER_FORMATS[IND];
+    if (!seeds?.length) {
+      throw new BadRequestException(`Chưa có bộ mẫu cho ngành ${IND}. Các ngành đang có: ${Object.keys(STARTER_FORMATS).join(', ')}`);
+    }
+    const existing = await this.prisma.contentFormat.findMany({ where: { industry: IND }, select: { name: true } });
     const have = new Set(existing.map((e: { name: string }) => e.name.trim().toLowerCase()));
     let added = 0;
-    for (const f of NAIL_STARTER_FORMATS) {
+    for (const f of seeds) {
       if (have.has(f.name.toLowerCase())) continue;
       await this.prisma.contentFormat.create({
         data: {
-          industry: 'SALON', niche: 'nail', name: f.name, summary: f.summary,
+          industry: IND, niche: IND === 'SALON' ? 'nail' : null, name: f.name, summary: f.summary,
           hookGuide: f.hookGuide, shotList: f.shotList, lengthSec: f.lengthSec,
           audience: f.audience, heat: f.heat, active: true, tags: f.tags as never,
         },
       }).catch(() => undefined);
       added += 1;
     }
-    return { added, skipped: NAIL_STARTER_FORMATS.length - added };
+    return { added, skipped: seeds.length - added };
   }
 
   async deleteFormat(id: string) {

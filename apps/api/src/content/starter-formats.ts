@@ -126,3 +126,145 @@ export const NAIL_STARTER_FORMATS: StarterFormat[] = [
     tags: ['testimonial', 'social-proof'],
   },
 ];
+
+/**
+ * Starter libraries for the other trades.
+ *
+ * These exist because of a real failure: the format library shipped with nail
+ * formats only, and the generator is told to pick FROM the library. A
+ * restaurant or an estate agency therefore got an empty library, fell through
+ * to "tự đề xuất định dạng phổ biến của ngành", and produced exactly the
+ * generic output this whole system was built to avoid. An empty library is not
+ * a neutral starting point — it is a silent instruction to improvise.
+ *
+ * Deliberately shorter than the nail set. These are opening positions from the
+ * trade, and the Lumio team is expected to replace them with what it sees
+ * working; pretending to ten well-tested formats for a trade we have not run
+ * campaigns in would be false confidence dressed as a seed file.
+ */
+export const RESTAURANT_STARTER_FORMATS: StarterFormat[] = [
+  {
+    name: 'Một món, quay kỹ',
+    summary: 'Một món duy nhất từ lúc ra bếp tới miếng đầu tiên. Ngắn, không lời thoại, chỉ tiếng thật.',
+    hookGuide: 'Ba giây đầu là khoảnh khắc nóng nhất: hơi bốc lên, nước sốt chan xuống, dao cắt vào. Không quay mặt người, không quay biển hiệu.',
+    shotList: 'Cận lúc ra bếp còn khói · rót/chan/cắt · miếng đầu tiên',
+    lengthSec: 15,
+    audience: 'Người đang đói và đang lướt điện thoại trong bán kính vài dặm',
+    heat: 'hot',
+    tags: ['food', 'signature', 'asmr'],
+  },
+  {
+    name: 'Bếp lúc cao điểm',
+    summary: 'Nhịp làm việc thật của bếp giờ đông. Cho thấy tay nghề và sự tấp nập cùng lúc.',
+    hookGuide: 'Mở bằng cảnh chảo lửa hoặc nhiều đơn treo trên dây — thứ chứng minh quán đang đông mà không cần nói.',
+    shotList: 'Toàn cảnh bếp · tay đầu bếp thao tác nhanh · món hoàn thiện đẩy ra',
+    lengthSec: 25,
+    audience: 'Khách chọn quán vì tin người nấu',
+    heat: 'steady',
+    tags: ['kitchen', 'behind-the-scenes'],
+  },
+  {
+    name: 'Món đặc biệt hôm nay',
+    summary: 'Lý do để khách quen quay lại tuần này thay vì tuần sau.',
+    hookGuide: 'Nói thẳng tên món và giá trong ba giây đầu. Đây là bài thông báo, không phải bài nghệ thuật.',
+    shotList: 'Món trên bàn · một câu về nguyên liệu · dòng chữ ghi giá và hạn',
+    lengthSec: 15,
+    audience: 'Khách quen đang nghĩ trưa nay ăn gì',
+    heat: 'steady',
+    tags: ['special', 'daily'],
+  },
+  {
+    name: 'Khách thật, phản ứng thật',
+    summary: 'Bàn đông và một câu nhận xét ngắn của khách. Bằng chứng xã hội mạnh hơn mọi lời tự khen.',
+    hookGuide: 'Mở bằng tiếng ồn của quán đông — âm thanh làm việc đó nhanh hơn hình.',
+    shotList: 'Toàn cảnh bàn đông · khách gắp miếng đầu · một câu nhận xét',
+    lengthSec: 20,
+    audience: 'Người lạ đang phân vân giữa quán này và quán bên cạnh',
+    heat: 'steady',
+    tags: ['social-proof', 'ugc'],
+  },
+];
+
+export const REAL_ESTATE_STARTER_FORMATS: StarterFormat[] = [
+  {
+    name: 'Tour nhà quay dọc',
+    summary: 'Đi một vòng căn nhà, quay dọc, không cắt vụn. Dạng được xem hết nhiều nhất ngành này.',
+    hookGuide: 'Ba giây đầu là điểm mạnh nhất của căn nhà, không phải cửa ra vào. Kèm giá và số phòng ngay trên màn hình.',
+    shotList: 'Điểm đặc biệt nhất · bếp · phòng ngủ chính · sân sau · một câu chốt về khu vực',
+    lengthSec: 45,
+    audience: 'Người đang tìm nhà trong vùng',
+    heat: 'hot',
+    tags: ['tour', 'listing'],
+  },
+  {
+    name: 'Trả lời một câu hỏi thật',
+    summary: 'Một câu khách vừa hỏi hôm nay, trả lời thẳng trong 30 giây.',
+    hookGuide: 'Mở bằng chính câu hỏi đó, nguyên văn. Người đang tìm câu trả lời sẽ dừng lại ở đúng câu chữ của họ.',
+    shotList: 'Nói thẳng vào máy · một con số cụ thể hiện trên màn hình · bước tiếp theo cần làm',
+    lengthSec: 30,
+    audience: 'Người mua lần đầu, đang tìm hiểu trước khi tìm môi giới',
+    heat: 'steady',
+    tags: ['faq', 'authority'],
+  },
+  {
+    name: 'Giới thiệu khu vực',
+    summary: 'Khu này sống ra sao: trường, quán, đường đi làm. Người mua chọn khu trước, chọn nhà sau.',
+    hookGuide: 'Mở bằng tên khu và một con số thật — giá trung bình, hoặc thời gian tới trung tâm.',
+    shotList: 'Đường phố · một địa điểm quen thuộc · một câu về giá trung bình khu',
+    lengthSec: 35,
+    audience: 'Người đang cân nhắc chuyển tới khu này',
+    heat: 'steady',
+    tags: ['neighbourhood', 'local'],
+  },
+  {
+    name: 'Vừa bán xong',
+    summary: 'Căn vừa chốt, bao lâu thì bán được, và vì sao. Bằng chứng năng lực, không phải khoe.',
+    hookGuide: 'Mở bằng số ngày trên thị trường. Con số làm việc thuyết phục nhanh hơn lời nói.',
+    shotList: 'Biển đã bán · một cảnh trong nhà · một câu về điều đã làm nên khác biệt',
+    lengthSec: 25,
+    audience: 'Chủ nhà đang cân nhắc bán',
+    heat: 'steady',
+    tags: ['proof', 'seller-lead'],
+  },
+];
+
+export const SERVICE_STARTER_FORMATS: StarterFormat[] = [
+  {
+    name: 'Trước và sau một ca thật',
+    summary: 'Hiện trạng, vài giây làm việc, kết quả. Bằng chứng cụ thể thay cho lời quảng cáo.',
+    hookGuide: 'Ba giây đầu là hiện trạng tệ nhất, không che giấu. Đó là thứ giữ người xem lại.',
+    shotList: 'Hiện trạng · thao tác chính · kết quả cuối',
+    lengthSec: 20,
+    audience: 'Người đang có đúng vấn đề đó trong nhà',
+    heat: 'hot',
+    tags: ['transformation', 'proof'],
+  },
+  {
+    name: 'Giải thích một thắc mắc thường gặp',
+    summary: 'Câu khách hay hỏi nhất, trả lời trong 30 giây, không vòng vo.',
+    hookGuide: 'Mở bằng chính câu hỏi. Người đang tìm câu trả lời dừng lại ở câu chữ của họ.',
+    shotList: 'Nói thẳng vào máy · minh hoạ bằng đồ nghề thật · bước tiếp theo',
+    lengthSec: 30,
+    audience: 'Người đang tìm hiểu trước khi gọi thợ',
+    heat: 'steady',
+    tags: ['faq', 'trust'],
+  },
+  {
+    name: 'Người làm và cách làm',
+    summary: 'Ai sẽ tới nhà mình. Tạo niềm tin vào người, không chỉ vào dịch vụ.',
+    hookGuide: 'Mở bằng tay đang làm việc, không phải bằng lời chào.',
+    shotList: 'Chuẩn bị đồ nghề · thao tác chính · một câu nhắn ngắn',
+    lengthSec: 25,
+    audience: 'Khách hộ gia đình, cân nhắc cho người lạ vào nhà',
+    heat: 'steady',
+    tags: ['trust', 'team'],
+  },
+];
+
+/** Every seeded library, by industry — the map seedFormats reads. */
+export const STARTER_FORMATS: Record<string, StarterFormat[]> = {
+  SALON: NAIL_STARTER_FORMATS,
+  RESTAURANT: RESTAURANT_STARTER_FORMATS,
+  REAL_ESTATE: REAL_ESTATE_STARTER_FORMATS,
+  SERVICE: SERVICE_STARTER_FORMATS,
+};

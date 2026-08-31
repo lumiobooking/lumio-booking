@@ -121,7 +121,7 @@ export class ContentAdminController {
   @Post('generate')
   generate(@Body() dto: { tenantId?: string; industry?: string; force?: boolean }) {
     if (dto?.tenantId) return this.svc.generateForTenant(dto.tenantId, { force: dto.force });
-    return this.svc.generateAll(dto?.industry ?? 'SALON');
+    return this.svc.generateAll(dto?.industry || null);
   }
 
   /**

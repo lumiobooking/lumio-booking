@@ -37,6 +37,7 @@
 
 import type { AreaAudience, AgeBand } from './census-audience';
 import { adultsIn } from './census-audience';
+import { money0, share, type PlainStep } from './plain';
 
 export interface TargetSegment {
   key: string;
@@ -67,7 +68,9 @@ export interface MarketPlan {
   penetrationVerdict: 'easy' | 'realistic' | 'stretch' | 'impossible' | 'unknown';
   /** Most that can be spent over the window and still pay back. */
   maxSpendCents: number | null;
-  /** The argument, in order, each line carrying its own number. */
+  /** The argument, in order: what it is, what to do, and why if asked. */
+  steps: PlainStep[];
+  /** Flattened one-liners, for the prompt and for anything that wants text. */
   reasoning: string[];
   /** Stated every time. */
   limits: string[];
@@ -146,6 +149,13 @@ export function buildMarketPlan(i: MarketInput): MarketPlan {
       adults: null, segments: [], primary: null, affordable: null,
       capacity: i.openSlots ?? null, penetrationPct: null, penetrationVerdict: 'unknown',
       maxSpendCents: null,
+      steps: [{
+        key: 'market', icon: '📍',
+        title: 'Chưa có số liệu khu vực',
+        line: 'Hệ thống đang lấy dân số quanh tiệm, chạy nền mỗi giờ.',
+        action: null,
+        why: a.notes.join(' ') || 'Chưa lấy được dữ liệu từ Cục Thống kê Mỹ.',
+      }],
       reasoning: [
         'Chưa có số liệu dân cư nên chưa xác định được tệp mục tiêu từ thị trường.',
         ...a.notes,
@@ -269,45 +279,93 @@ export function buildMarketPlan(i: MarketInput): MarketPlan {
   const maxSpendCents = capacity && i.cpaCeilingCents ? capacity * i.cpaCeilingCents : null;
 
   // ---- the argument, in order ---------------------------------------------
-  const reasoning: string[] = [];
-  reasoning.push(`Quanh ${where} có ${n(adults)} người trưởng thành trong các ZIP của tiệm.`);
+  //
+  // Three layers per block, and the order is the point: what it IS, then what
+  // to DO, then — only if asked — how it was worked out. The old version put
+  // the derivation in the same sentence as the finding, so every line carried
+  // its own methodology and an owner had to read a paragraph to learn one
+  // thing. They are not marketing people; they have a shop to run.
+  const steps: PlainStep[] = [];
+
+  steps.push({
+    key: 'market', icon: '📍',
+    title: 'Khu vực quanh tiệm',
+    line: `${n(adults)} người trưởng thành sống trong các mã ZIP của tiệm.`,
+    action: null,
+    why: `Đếm từ điều tra dân số Mỹ (ACS 5 năm${a.year ? ` ${a.year}` : ''}), bảng B01001, cộng theo các ZIP của tiệm. Đây là số người thật đang sống ở đó, không phải số khách của tiệm.`,
+  });
+
   if (primary) {
-    reasoning.push(`Tệp mục tiêu: ${primary.label} — ${n(primary.size)} người. ${primary.basis}`);
+    steps.push({
+      key: 'target', icon: '🎯',
+      title: 'Nên nhắm vào ai',
+      line: `${primary.label} — ${n(primary.size)} người.`,
+      action: `Đặt đúng tệp này trong trình quản lý quảng cáo: ${primary.targeting[0]}`,
+      why: `${primary.basis} ${primary.why}`,
+    });
   }
+
   if (affordable) {
-    reasoning.push(
-      `${affordable.pct}% hộ gia đình ở đây có thu nhập từ $${n(affordable.usd)}/năm trở lên (${n(affordable.households)} hộ). `
-      + (i.firstVisitTicketCents
-        ? `Hoá đơn lần đầu của tiệm là ${i.money(i.firstVisitTicketCents)} — ${affordable.pct >= 50
-          ? 'thấp so với sức chi của vùng, nên dư địa nằm ở bán thêm dịch vụ cao cấp chứ không phải ở giảm giá.'
-          : 'phù hợp với sức chi của vùng; giữ giá và cạnh tranh bằng chỗ trống đúng giờ khách cần.'}`
-        : 'Chưa đủ lịch hẹn để biết hoá đơn lần đầu của tiệm, nên chưa đối chiếu được giá với sức chi của vùng.'),
-    );
+    const rich = affordable.pct >= 50;
+    steps.push({
+      key: 'price', icon: '💵',
+      title: 'Giá của tiệm so với vùng',
+      line: i.firstVisitTicketCents
+        ? `${affordable.pct}% hộ ở đây thu nhập trên $${n(affordable.usd)}/năm. Khách mới của tiệm trả trung bình ${money0(i.firstVisitTicketCents, i.money)}.`
+        : `${affordable.pct}% hộ ở đây thu nhập trên $${n(affordable.usd)}/năm.`,
+      action: !i.firstVisitTicketCents
+        ? null
+        : rich
+          ? 'Đừng giảm giá. Thêm một dịch vụ cao cấp vào menu và mời khách nâng cấp — vùng này trả nổi.'
+          : 'Giữ nguyên giá. Cạnh tranh bằng việc có chỗ trống đúng giờ khách cần, không bằng giá rẻ hơn.',
+      why: `Số hộ theo mức thu nhập lấy từ bảng B19001 của điều tra dân số (${n(affordable.households)} hộ). `
+        + (i.firstVisitTicketCents
+          ? 'Hoá đơn khách mới lấy từ lần đầu tiên của mỗi khách trong sổ của tiệm. Vùng chi mạnh mà giá tiệm thấp nghĩa là dư địa nằm ở bán thêm, không phải ở giảm giá.'
+          : 'Chưa đủ lịch hẹn để biết khách mới trả bao nhiêu, nên chưa so được với sức chi của vùng.'),
+    });
   }
-  if (capacity !== null && primary && penetrationPct !== null) {
+
+  if (capacity !== null && primary) {
     const v = penetrationVerdict;
-    reasoning.push(
-      `Tiệm còn chỗ cho ${capacity} lượt khách mới trong ${i.campaignDays} ngày. Lấp hết chỗ đó cần ${penetrationPct}% của tệp mục tiêu. `
-      + (v === 'easy'
-        ? 'Dưới nửa phần trăm — thị trường thừa sức nuôi số chỗ trống này, nút thắt là ở chỗ tiếp cận chứ không phải ở quy mô thị trường.'
-        : v === 'realistic'
-          ? 'Trong tầm với của một chiến dịch địa phương chạy đều.'
-          : v === 'stretch'
-            ? 'Cao. Đạt được nhưng cần nội dung tốt và giá thầu cạnh tranh; đừng kỳ vọng lấp hết trong hai tuần đầu.'
-            : 'Quá cao để mua bằng quảng cáo. Chỗ trống nhiều hơn thứ tệp này nuôi nổi — mở rộng bán kính, thêm dịch vụ, hoặc lấp bằng khách cũ trước khi chi tiền cho người lạ.'),
-    );
+    steps.push({
+      key: 'capacity', icon: '🪑',
+      title: 'Tiệm nhận thêm được bao nhiêu khách',
+      line: `Còn chỗ cho ${capacity} khách mới trong ${i.campaignDays} ngày — cần ${share(capacity, primary.size)}.`,
+      action: v === 'impossible'
+        ? 'Chưa chạy quảng cáo. Mời khách cũ quay lại trước — rẻ hơn nhiều và lấp được chỗ trống này.'
+        : v === 'stretch'
+          ? 'Chạy được, nhưng đừng kỳ vọng lấp hết trong hai tuần đầu.'
+          : 'Con số này nằm trong tầm với — vấn đề là tiếp cận đúng người, không phải thiếu người.',
+      why: v === 'impossible'
+        ? 'Số chỗ trống nhiều hơn thứ tệp này nuôi nổi. Muốn lấp hết thì phải mở rộng bán kính hoặc thêm dịch vụ, chứ không phải chi thêm tiền.'
+        : 'Chỗ trống đếm từ các khung giờ vắng nhất của tiệm trong 4 tuần qua, quy đổi theo thời lượng dịch vụ trung bình và tính cho đúng 2 tuần chiến dịch.',
+    });
   }
+
   if (maxSpendCents && i.cpaCeilingCents) {
-    reasoning.push(
-      `Trần chi cho ${i.campaignDays} ngày: ${i.money(maxSpendCents)} — bằng ${capacity} chỗ trống × ${i.money(i.cpaCeilingCents)} lãi gộp mỗi khách mới. `
-      + 'Chi hơn mức đó không thể hoàn vốn dù mọi đồng đều ra khách, vì không còn ghế để ngồi. Đây là TRẦN, không phải mức đề xuất: bắt đầu nhỏ để đo giá mỗi booking thật, rồi tăng dần về phía trần khi con số đó nằm dưới ngưỡng.',
-    );
+    steps.push({
+      key: 'budget', icon: '💰',
+      title: `Tối đa nên chi trong ${i.campaignDays} ngày`,
+      line: `${money0(maxSpendCents, i.money)} — và chỉ khi mỗi khách mới tốn dưới ${money0(i.cpaCeilingCents, i.money)}.`,
+      action: `Bắt đầu nhỏ. Sau 3 ngày, lấy tiền đã chi chia cho số khách mới: dưới ${money0(i.cpaCeilingCents, i.money)} thì tăng dần, trên thì tắt.`,
+      why: `${capacity} chỗ trống × ${money0(i.cpaCeilingCents, i.money)} tiền lãi mỗi khách mới = ${money0(maxSpendCents, i.money)}. `
+        + 'Chi hơn mức đó thì dù mọi đồng đều ra khách vẫn không hoàn vốn, vì không còn ghế trống để ngồi. '
+        + 'Tiền lãi mỗi khách = hoá đơn lần đầu trừ phần trả cho thợ.',
+    });
   } else if (!i.cpaCeilingCents) {
-    reasoning.push('Chưa có biên lãi nên chưa tính được trần chi. Thị trường nói được nhắm vào ai; chỉ số liệu của chính tiệm mới nói được trả bao nhiêu là còn lãi.');
+    steps.push({
+      key: 'budget', icon: '💰',
+      title: 'Chưa tính được nên chi bao nhiêu',
+      line: 'Còn thiếu tỷ lệ ăn chia với thợ.',
+      action: 'Điền tỷ lệ ăn chia trong hồ sơ từng thợ (Nhân sự → sửa thợ). Xong là có ngay con số nên chi.',
+      why: 'Dân số nói được nhắm vào ai, nhưng không nói được tiệm trả bao nhiêu một khách thì còn lãi. Chỉ số liệu của chính tiệm mới trả lời được, và tỷ lệ ăn chia là mảnh còn thiếu.',
+    });
   }
+
+  const reasoning = steps.map((st) => `${st.line}${st.action ? ` → ${st.action}` : ''}`);
 
   return {
     adults, segments, primary, affordable, capacity,
-    penetrationPct, penetrationVerdict, maxSpendCents, reasoning, limits,
+    penetrationPct, penetrationVerdict, maxSpendCents, steps, reasoning, limits,
   };
 }

@@ -78,6 +78,7 @@ interface PlatformPlan {
   how: string[]; watch: string;
 }
 interface TargetSegment { key: string; label: string; size: number; basis: string; why: string; targeting: string[] }
+interface PlainStep { key: string; icon: string; title: string; line: string; action: string | null; why: string }
 interface MarketPlan {
   adults: number | null;
   segments: TargetSegment[];
@@ -87,6 +88,7 @@ interface MarketPlan {
   penetrationPct: number | null;
   penetrationVerdict: string;
   maxSpend: string | null;
+  steps: PlainStep[];
   reasoning: string[];
   limits: string[];
 }
@@ -141,6 +143,111 @@ type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads';
 const JOB_ICON: Record<string, string> = {
   film: '🎬', post: '📤', story: '📸', offer: '🏷️', winback: '💬', engage: '💚', rest: '·',
 };
+
+
+/**
+ * One piece of advice, in the order a person reads it.
+ *
+ * What it IS, then what to DO, and the working only if they ask. The old
+ * version put the derivation inside the same sentence as the finding, so every
+ * line carried its own methodology — five dense paragraphs where an owner
+ * wanted five short answers. They run a shop; they are not marketing people,
+ * and a dashboard that has to be studied is a dashboard nobody opens twice.
+ */
+function StepCard({ step, T }: { step: PlainStep; T: (vi: string, en: string) => string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{
+      padding: '11px 13px', marginBottom: 8, borderRadius: 10,
+      background: 'var(--c1e293b)', border: '1px solid var(--c334155)',
+    }}>
+      <div style={{ display: 'flex', gap: 9, alignItems: 'baseline' }}>
+        <span style={{ fontSize: 15 }}>{step.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+            {step.title}
+          </div>
+          <div style={{ fontSize: 14.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 2 }}>
+            {step.line}
+          </div>
+          {step.action && (
+            <div style={{
+              fontSize: 13, color: '#bbf7d0', lineHeight: 1.55, marginTop: 7,
+              padding: '7px 10px', borderRadius: 8, background: 'var(--c14532d)',
+            }}>
+              <b>{T('Làm gì', 'Do this')}:</b> {step.action}
+            </div>
+          )}
+          {step.why && (
+            <>
+              <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                style={{
+                  marginTop: 6, padding: 0, border: 'none', background: 'transparent',
+                  color: 'var(--c64748b)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline',
+                }}
+              >
+                {open ? T('Ẩn cách tính', 'Hide the working') : T('Vì sao?', 'Why?')}
+              </button>
+              {open && (
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 5 }}>
+                  {step.why}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+/** One link of the strategy chain: the finding, what follows, working on demand. */
+function BriefStepRow({ step: st, index: i, T }: {
+  step: BriefStep; index: number; T: (vi: string, en: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: 'flex', gap: 11, padding: '10px 0', borderTop: i ? '1px solid var(--c1e293b)' : 'none' }}>
+      <div style={{
+        flex: '0 0 26px', height: 26, borderRadius: '50%', background: 'var(--c1e293b)',
+        color: '#a5b4fc', fontSize: 13, fontWeight: 700, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+      }}>{i + 1}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{st.title}</span>
+          {st.confidence === 'assumed' && (
+            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)' }}>
+              {T('ước tính', 'estimate')}
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>{st.finding}</div>
+        <div style={{ fontSize: 12.5, color: '#22c55e', lineHeight: 1.55, marginTop: 4 }}>→ {st.soWhat}</div>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            marginTop: 5, padding: 0, border: 'none', background: 'transparent',
+            color: 'var(--c64748b)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline',
+          }}
+        >
+          {open ? T('Ẩn cách tính', 'Hide the working') : T('Vì sao?', 'Why?')}
+        </button>
+        {open && (
+          <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55, marginTop: 4 }}>
+            {T('Căn cứ', 'Basis')}: {st.basis}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 export default function ContentTodayPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -1189,11 +1296,7 @@ function Inner() {
                     </div>
                   )}
 
-                  {plan.market.reasoning.map((r, i) => (
-                    <div key={i} style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginBottom: 7 }}>
-                      <span style={{ color: '#6366f1', fontWeight: 700 }}>{i + 1}.</span> {r}
-                    </div>
-                  ))}
+                  {plan.market.steps.map((st) => <StepCard key={st.key} step={st} T={T} />)}
 
                   {plan.market.maxSpend && (
                     <div style={{
@@ -1266,27 +1369,12 @@ function Inner() {
                     color: plan.brief.complete ? '#a5b4fc' : 'var(--cfde68a)',
                   }}>{plan.brief.headline}</div>
 
+                  {/* The finding and what follows from it stay visible; the
+                      derivation moves behind "Vì sao?". Three lines per item on
+                      a phone is a wall, and the middle one — what to DO — was
+                      the line getting lost in it. */}
                   {plan.brief.steps.map((st, i) => (
-                    <div key={st.key} style={{ display: 'flex', gap: 11, padding: '10px 0', borderTop: i ? '1px solid var(--c1e293b)' : 'none' }}>
-                      <div style={{
-                        flex: '0 0 26px', height: 26, borderRadius: '50%', background: 'var(--c1e293b)',
-                        color: '#a5b4fc', fontSize: 13, fontWeight: 700, display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
-                      }}>{i + 1}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{st.title}</div>
-                        <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>{st.finding}</div>
-                        <div style={{ fontSize: 12.5, color: '#22c55e', lineHeight: 1.55, marginTop: 4 }}>→ {st.soWhat}</div>
-                        <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 3, fontStyle: 'italic' }}>
-                          {T('Căn cứ', 'Basis')}: {st.basis}
-                          {st.confidence === 'assumed' && (
-                            <span style={{ fontSize: 10, marginLeft: 5, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)', fontStyle: 'normal' }}>
-                              {T('ước tính', 'estimate')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <BriefStepRow key={st.key} step={st} index={i} T={T} />
                   ))}
 
                   {!!plan.brief.missing.length && (

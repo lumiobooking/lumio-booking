@@ -29,6 +29,8 @@
  * multiplies two guesses together and calls the product a finding.
  */
 
+import { money0 } from './plain';
+
 export type Confidence = 'measured' | 'assumed' | 'unknown';
 
 export interface BriefStep {
@@ -133,8 +135,8 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
       basis: `Cục Thống kê Mỹ, khảo sát ACS 5 năm${i.censusYear ? ` (${i.censusYear})` : ''}`,
       confidence: 'measured',
       soWhat: i.areaMedianIncome && i.areaMedianIncome >= 90_000
-        ? 'Vùng này chịu được giá — nghĩa là cạnh tranh bằng giảm giá ở đây là bỏ tiền đi, và ngân sách nên mua sự chú ý chứ không mua giá rẻ.'
-        : 'Mức thu nhập này định hình cách chào giá, nhưng chưa nói được ai trong số đó là khách của tiệm — bước sau mới trả lời.',
+        ? 'Vùng này trả nổi giá cao hơn. Đừng cạnh tranh bằng giảm giá ở đây.'
+        : 'Mức thu nhập này định hình cách chào giá. Ai trong số đó là khách của tiệm thì bước sau mới trả lời.',
     });
   } else {
     missing.push({
@@ -157,7 +159,7 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
   // confused constantly.
   if (!i.audienceThin && i.customerCount >= 20) {
     const biggest = [...i.segments].sort((a, b) => b.count - a.count)[0];
-    const ticket = biggest ? i.money(biggest.avgTicketCents) : null;
+    const ticket = biggest ? money0(biggest.avgTicketCents, i.money) : null;
     steps.push({
       key: 'audience', order: 2, title: 'Tệp khách thật của tiệm',
       finding: `${i.customerCount} khách có lịch sử. Nhóm đông nhất là "${biggest?.label ?? '—'}" với ${biggest?.count ?? 0} người`
@@ -222,7 +224,7 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
         ? 'Nguồn được ghi trên từng booking'
         : `Nguồn được ghi trên từng booking — đọc được ${attributed}/${total} booking (${coveragePct}%), phần còn lại không mang theo nguồn`,
       confidence: 'measured',
-      soWhat: 'Kênh đang mang khách về miễn phí là kênh mua khách rẻ nhất khi trả tiền: ảnh, đánh giá và lời chào ở đó đã được chứng minh hợp với đúng tệp này. Đó là kênh chạy trước.',
+      soWhat: 'Kênh đang tự mang khách về miễn phí cũng là kênh mua khách rẻ nhất. Chạy kênh đó trước.',
     });
   } else {
     missing.push({
@@ -239,7 +241,7 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
   if (i.cpaCeilingCents && i.grossMarginPct) {
     steps.push({
       key: 'value', order: 5, title: 'Một khách mới đáng chi bao nhiêu',
-      finding: `Tối đa ${i.money(i.cpaCeilingCents)} cho mỗi booking, tính từ hoá đơn trung bình và biên lãi ~${i.grossMarginPct}%.`
+      finding: `Tối đa ${money0(i.cpaCeilingCents, i.money)} cho mỗi booking, tính từ hoá đơn trung bình và biên lãi ~${i.grossMarginPct}%.`
         + (i.marginSource === 'assumed' ? ' Biên lãi này là ƯỚC TÍNH theo mặt bằng ngành, chưa phải số của tiệm.' : ''),
       basis: i.marginSource === 'staff'
         ? 'Hoá đơn trung bình trong sổ × biên lãi suy từ tỷ lệ ăn chia trên hồ sơ thợ'
@@ -249,7 +251,7 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
       // An estimate must not be labelled the same as a measurement, even when
       // the arithmetic on top of it is identical.
       confidence: i.marginSource === 'assumed' ? 'assumed' : 'measured',
-      soWhat: 'Đây là ngưỡng dừng, không phải mục tiêu. Ngày thứ ba lấy tiền đã chi chia cho số booking; vượt ngưỡng thì tắt, đừng chờ hết tháng.',
+      soWhat: 'Đây là ngưỡng DỪNG, không phải mục tiêu. Ngày thứ 3: tiền đã chi ÷ số booking. Vượt ngưỡng thì tắt ngay.',
     });
   } else {
     missing.push({
@@ -265,7 +267,7 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
   if (complete) {
     steps.push({
       key: 'spend', order: 6, title: 'Chi bao nhiêu, ngày nào',
-      finding: `${i.money(i.budgetTotalCents as number)} trong ${i.budgetDays} ngày`
+      finding: `${money0(i.budgetTotalCents as number, i.money)} trong ${i.budgetDays} ngày`
         + (i.bookingsToBreakEven ? `, cần ${i.bookingsToBreakEven} booking để hoà vốn.` : '.')
         + ` Bật: ${i.runDayLabels.join(', ')}.`
         + (i.pauseDayLabels.length ? ` Tắt: ${i.pauseDayLabels.join(', ')}.` : ''),

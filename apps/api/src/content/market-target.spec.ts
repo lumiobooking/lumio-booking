@@ -49,12 +49,11 @@ describe('the target is sized from the market, not from the booking book', () =>
     expect(p.primary!.basis).toMatch(/B01001/);
   });
 
-  it('reasons outward-in: market, then target, then capacity, then money', () => {
-    const joined = p.reasoning.join(' ');
-    expect(p.reasoning[0]).toMatch(/người trưởng thành/);
-    expect(joined).toMatch(/Tệp mục tiêu/);
-    expect(joined).toMatch(/chỗ trống/);
-    expect(joined).toMatch(/Trần chi/);
+  it('reasons outward-in: market, then target, then price, then capacity, then money', () => {
+    // The ORDER is the argument. Assert the sequence of blocks rather than the
+    // wording inside them, so rewriting a sentence for clarity does not fail a
+    // test that is about structure.
+    expect(p.steps.map((s) => s.key)).toEqual(['market', 'target', 'price', 'capacity', 'budget']);
   });
 
   it('gives targeting anyone can type into the ad platform', () => {
@@ -103,16 +102,22 @@ describe('what the business says about itself outranks its industry code', () =>
 describe('penetration replaces the market-share figure it refuses to invent', () => {
   it('says what share of the target the empty chairs represent', () => {
     const p = plan();
-    // 20 seats ÷ 6,200 women 25-54 = 0.32%
+    // 20 seats out of 6,200 women 25-54 = 0.32% — a true number nobody can
+    // picture, so the line says "20 người trong 6,200" instead.
     expect(p.penetrationPct).toBe(0.32);
     expect(p.penetrationVerdict).toBe('easy');
-    expect(p.reasoning.join(' ')).toMatch(/nút thắt là ở chỗ tiếp cận/);
+    const cap = p.steps.find((s) => s.key === 'capacity')!;
+    expect(cap.line).toMatch(/20 người trong 6,200/);
+    expect(cap.action).toMatch(/tầm với/);
   });
 
   it('calls it impossible when the chairs outnumber what the segment can feed', () => {
     const p = plan({ openSlots: 900 });
     expect(p.penetrationVerdict).toBe('impossible');
-    expect(p.reasoning.join(' ')).toMatch(/mở rộng bán kính/);
+    const cap = p.steps.find((s) => s.key === 'capacity')!;
+    // The action must be the cheap move, not "spend more".
+    expect(cap.action).toMatch(/khách cũ quay lại/);
+    expect(cap.why).toMatch(/mở rộng bán kính/);
   });
 
   it('never claims a market share', () => {
@@ -125,17 +130,26 @@ describe('penetration replaces the market-share figure it refuses to invent', ()
 describe('the budget ceiling comes from capacity × margin, and says it is a ceiling', () => {
   it('multiplies the seats it can fill by what a new customer is worth', () => {
     expect(plan().maxSpendCents).toBe(20 * 2_250);
-    expect(plan().reasoning.join(' ')).toMatch(/Đây là TRẦN, không phải mức đề xuất/);
+    const b = plan().steps.find((s) => s.key === 'budget')!;
+    // The line carries the number; the "start small, measure, then scale"
+    // procedure is the ACTION, where an owner will actually look for it.
+    expect(b.line).toMatch(/\$450/);
+    expect(b.action).toMatch(/Bắt đầu nhỏ/);
+    expect(b.action).toMatch(/Sau 3 ngày/);
   });
 
-  it('explains why spending past it cannot pay back', () => {
-    expect(plan().reasoning.join(' ')).toMatch(/không còn ghế để ngồi/);
+  it('explains why spending past it cannot pay back — in the working, not the headline', () => {
+    const b = plan().steps.find((s) => s.key === 'budget')!;
+    expect(b.why).toMatch(/không còn ghế trống để ngồi/);
+    expect(b.line.length).toBeLessThan(110);
   });
 
-  it('refuses a ceiling without a margin, and says which side the gap is on', () => {
+  it('refuses a ceiling without a margin, and points at one screen', () => {
     const p = plan({ cpaCeilingCents: null });
     expect(p.maxSpendCents).toBeNull();
-    expect(p.reasoning.join(' ')).toMatch(/Thị trường nói được nhắm vào ai/);
+    const b = p.steps.find((s) => s.key === 'budget')!;
+    expect(b.action).toMatch(/Nhân sự → sửa thợ/);
+    expect(b.why).toMatch(/Dân số nói được nhắm vào ai/);
   });
 
   it('never forecasts bookings from a budget', () => {
@@ -145,8 +159,9 @@ describe('the budget ceiling comes from capacity × margin, and says it is a cei
 
 describe('price is read against the area, not against a feeling', () => {
   it('calls a low ticket in a rich area an upsell opportunity, not a discount one', () => {
-    const p = plan({ firstVisitTicketCents: 4_000 });
-    expect(p.reasoning.join(' ')).toMatch(/dư địa nằm ở bán thêm dịch vụ cao cấp chứ không phải ở giảm giá/);
+    const price = plan({ firstVisitTicketCents: 4_000 }).steps.find((s) => s.key === 'price')!;
+    expect(price.action).toMatch(/Đừng giảm giá/);
+    expect(price.action).toMatch(/nâng cấp/);
   });
 
   it('picks the income line from the shop’s own ticket', () => {
@@ -155,8 +170,10 @@ describe('price is read against the area, not against a feeling', () => {
     expect(plan({ firstVisitTicketCents: 3_000 }).affordable!.usd).toBe(75_000);
   });
 
-  it('says so plainly when it has no ticket to compare', () => {
-    expect(plan({ firstVisitTicketCents: null }).reasoning.join(' ')).toMatch(/Chưa đủ lịch hẹn để biết hoá đơn lần đầu/);
+  it('says so plainly when it has no ticket to compare, and offers no advice it cannot support', () => {
+    const price = plan({ firstVisitTicketCents: null }).steps.find((s) => s.key === 'price')!;
+    expect(price.action).toBeNull();
+    expect(price.why).toMatch(/Chưa đủ lịch hẹn/);
   });
 });
 

@@ -54,11 +54,22 @@ describe('the brief is a chain, in order', () => {
     }
   });
 
+  it('keeps "what follows" short enough to read on a phone', () => {
+    // These lines are the ones an owner acts on. A clause too many and the
+    // instruction is lost inside the justification for it.
+    for (const s of b.steps) expect(s.soWhat.length).toBeLessThanOrEqual(200);
+  });
+
+  it('never prints cents on a figure derived from a margin', () => {
+    const text = b.steps.map((s) => s.finding).join(' ');
+    expect(text).not.toMatch(/\$\d+\.\d\d\b/);
+  });
+
   it('links each step to the next rather than listing facts', () => {
     // The lead time exists in this brief to justify the ad days, and says so.
     expect(step(b, 'behaviour')!.soWhat).toMatch(/NGÀY chạy quảng cáo/);
-    expect(step(b, 'channel')!.soWhat).toMatch(/chạy trước/);
-    expect(step(b, 'value')!.soWhat).toMatch(/ngưỡng dừng/);
+    expect(step(b, 'channel')!.soWhat).toMatch(/[Cc]hạy kênh đó trước/);
+    expect(step(b, "value")!.soWhat).toMatch(/ngưỡng D[ỪừU]NG|ngưỡng dừng/i);
   });
 
   it('reaches a spending recommendation only when the chain is whole', () => {
@@ -157,7 +168,7 @@ describe('it says plainly what it cannot know', () => {
 describe('the wording follows the numbers, not a template', () => {
   it('reads a high-income area as price-tolerant, and says what follows', () => {
     const rich = strip({ areaMedianIncome: 120_000 });
-    expect(step(rich, 'market')!.soWhat).toMatch(/cạnh tranh bằng giảm giá ở đây là bỏ tiền đi/);
+    expect(step(rich, 'market')!.soWhat).toMatch(/[Đđ]ừng cạnh tranh bằng giảm giá/);
   });
 
   it('does not make that claim about a modest-income area', () => {

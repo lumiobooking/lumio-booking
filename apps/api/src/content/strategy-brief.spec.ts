@@ -173,3 +173,32 @@ describe('the wording follows the numbers, not a template', () => {
     expect(step(strip({ lapsedCount: 3 }), 'audience')!.soWhat).not.toMatch(/rẻ nhất để nhắm/);
   });
 });
+
+describe('an estimated margin is never dressed as a measurement', () => {
+  it('marks the value step assumed and says so in the finding', () => {
+    const b = strip({ marginSource: 'assumed' });
+    const v = step(b, 'value')!;
+    expect(v.confidence).toBe('assumed');
+    expect(v.finding).toMatch(/ƯỚC TÍNH/);
+    expect(v.basis).toMatch(/ƯỚC TÍNH/);
+  });
+
+  it('credits the staff records when the rate came from payroll', () => {
+    const v = step(strip({ marginSource: 'staff' }), 'value')!;
+    expect(v.confidence).toBe('measured');
+    expect(v.basis).toMatch(/hồ sơ thợ/);
+    expect(v.finding).not.toMatch(/ƯỚC TÍNH/);
+  });
+
+  it('leaves an entered rate unqualified', () => {
+    const v = step(strip({ marginSource: 'entered' }), 'value')!;
+    expect(v.confidence).toBe('measured');
+    expect(v.basis).toMatch(/do tiệm khai/);
+  });
+
+  it('still reaches a spending recommendation on an assumed margin', () => {
+    // Refusing to advise at all was the old behaviour and it helped nobody.
+    // The fix is the label, not the silence.
+    expect(strip({ marginSource: 'assumed' }).complete).toBe(true);
+  });
+});

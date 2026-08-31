@@ -66,7 +66,7 @@ interface SeoCheck { key: string; title: string; state: 'pass' | 'warn' | 'fail'
 interface Seo { checks: SeoCheck[]; failing: number; headline: string; blindSpots: string[] }
 interface PromoPlay { key: string; name: string; offer: string; why: string; useWhen: string; avoidWhen: string; cost: 'low' | 'medium' | 'high' }
 interface Promo {
-  margin: { commissionPct: number | null; grossMarginPct: number | null; source: string };
+  margin: { commissionPct: number | null; grossMarginPct: number | null; source: string; note?: string };
   ceiling: number | null;
   proposed: { discountPct: number; liftNeededPct: number | null; impossible: boolean; verdict: string; plain: string } | null;
   plays: PromoPlay[];
@@ -1026,7 +1026,14 @@ function Inner() {
                     <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{T('Biên lãi gộp', 'Gross margin')}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: '#22c55e' }}>{plan.promo.margin.grossMarginPct}%</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: plan.promo.margin.source === 'assumed' ? '#f59e0b' : '#22c55e' }}>
+                          {plan.promo.margin.grossMarginPct}%
+                          {plan.promo.margin.source === 'assumed' && (
+                            <span style={{ fontSize: 10, marginLeft: 5, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)', verticalAlign: 'middle' }}>
+                              {T('ước tính', 'estimate')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{T('Giảm tối đa nên dùng', 'Safe ceiling')}</div>
@@ -1134,6 +1141,11 @@ function Inner() {
                         <div style={{ fontSize: 12.5, color: '#22c55e', lineHeight: 1.55, marginTop: 4 }}>→ {st.soWhat}</div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 3, fontStyle: 'italic' }}>
                           {T('Căn cứ', 'Basis')}: {st.basis}
+                          {st.confidence === 'assumed' && (
+                            <span style={{ fontSize: 10, marginLeft: 5, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)', fontStyle: 'normal' }}>
+                              {T('ước tính', 'estimate')}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

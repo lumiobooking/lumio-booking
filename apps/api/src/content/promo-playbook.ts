@@ -59,12 +59,38 @@ export interface PromoPlay {
 }
 
 export interface MarginBasis {
-  /** Share of revenue paid to the technician, 0-100. Null = not entered. */
+  /** Share of revenue paid to the technician, 0-100. Null = not known. */
   commissionPct: number | null;
   /** Gross margin implied by it, 0-100. Null when unknown. */
   grossMarginPct: number | null;
-  source: 'entered' | 'unknown';
+  /**
+   * Where the rate came from, and it travels with every number derived from it.
+   *
+   *   'entered' — someone typed it for this business. Authoritative.
+   *   'staff'   — averaged from the commission rates already on the staff
+   *               records, which the shop set up for payroll. Measured, not
+   *               guessed: the salon is paying these rates every week.
+   *   'assumed' — a trade default, because nothing else was available. Every
+   *               figure computed from it is labelled, on screen and in the
+   *               brief, so nobody mistakes it for arithmetic about their shop.
+   */
+  source: 'entered' | 'staff' | 'assumed' | 'unknown';
+  /** One line naming the origin, for the screen. */
+  note: string;
 }
+
+/**
+ * The trade default, used only when the shop's own data cannot answer.
+ *
+ * 55% is the middle of the range commonly paid to nail technicians in the US
+ * (roughly 50-60). Naming a number at all is a change of position: I argued
+ * before that a made-up margin produces a break-even that looks like arithmetic
+ * and is not. That objection is answered not by refusing to help, but by making
+ * the assumption impossible to mistake for a measurement — the source travels
+ * with the number, the screen says "ước tính", and a shop that disagrees has one
+ * field to correct.
+ */
+export const ASSUMED_COMMISSION_PCT = 55;
 
 /**
  * Gross margin from the commission rate.
@@ -73,13 +99,31 @@ export interface MarginBasis {
  * break-even, and a made-up break-even is worse than no number at all: it looks
  * like arithmetic, so it gets believed.
  */
-export function marginBasis(commissionPct?: number | null): MarginBasis {
-  const c = typeof commissionPct === 'number' && commissionPct > 0 && commissionPct < 100
-    ? Math.round(commissionPct)
-    : null;
-  return c === null
-    ? { commissionPct: null, grossMarginPct: null, source: 'unknown' }
-    : { commissionPct: c, grossMarginPct: 100 - c, source: 'entered' };
+export function marginBasis(
+  commissionPct?: number | null,
+  opts: { staffAvgPct?: number | null; allowAssumed?: boolean } = {},
+): MarginBasis {
+  const ok = (v?: number | null) => typeof v === 'number' && v > 0 && v < 100;
+
+  if (ok(commissionPct)) {
+    const c = Math.round(commissionPct as number);
+    return { commissionPct: c, grossMarginPct: 100 - c, source: 'entered', note: `Tỷ lệ ăn chia ${c}% do đội Lumio nhập cho tiệm này.` };
+  }
+  // The shop already set a rate per technician for payroll. It is paying those
+  // rates every week, which makes it a measurement rather than an estimate —
+  // and it means nobody has to type the number a second time.
+  if (ok(opts.staffAvgPct)) {
+    const c = Math.round(opts.staffAvgPct as number);
+    return { commissionPct: c, grossMarginPct: 100 - c, source: 'staff', note: `Tỷ lệ ăn chia ${c}% lấy trung bình từ hồ sơ thợ đang làm (dùng cho tính lương).` };
+  }
+  if (opts.allowAssumed) {
+    const c = ASSUMED_COMMISSION_PCT;
+    return {
+      commissionPct: c, grossMarginPct: 100 - c, source: 'assumed',
+      note: `ƯỚC TÍNH ${c}% — chưa có tỷ lệ ăn chia trong hệ thống và hồ sơ thợ chưa khai. Mọi con số tiền bên dưới đều dựa trên ước tính này; sửa lại ở hồ sơ thợ hoặc Super Admin để có số đúng.`,
+    };
+  }
+  return { commissionPct: null, grossMarginPct: null, source: 'unknown', note: 'Chưa biết biên lãi.' };
 }
 
 export interface BreakEven {
@@ -252,10 +296,13 @@ export interface PromoAdvice {
 export function promoAdvice(input: {
   industry?: string | null;
   commissionPct?: number | null;
+  /** Average commission across active staff — the shop's own payroll setup. */
+  staffAvgPct?: number | null;
+  allowAssumed?: boolean;
   /** The discount the revenue engine wants to run, if any. */
   proposedDiscountPct?: number | null;
 }): PromoAdvice {
-  const margin = marginBasis(input.commissionPct);
+  const margin = marginBasis(input.commissionPct, { staffAvgPct: input.staffAvgPct, allowAssumed: input.allowAssumed });
   const ceiling = safeDiscount(margin.grossMarginPct);
   const proposed = typeof input.proposedDiscountPct === 'number' && input.proposedDiscountPct > 0
     ? breakEven(input.proposedDiscountPct, margin.grossMarginPct)
@@ -268,8 +315,8 @@ export function promoAdvice(input: {
     .map((p) => p.name);
 
   const note = margin.source === 'unknown'
-    ? 'Chưa nhập tỷ lệ ăn chia thợ nên chưa tính được điểm hoà vốn. Một con số biên lãi bịa ra sẽ tạo ra một điểm hoà vốn bịa ra — mà cái đó trông giống phép tính nên rất dễ bị tin.'
-    : `Biên lãi gộp ước tính ${margin.grossMarginPct}% (thợ ăn ${margin.commissionPct}%). Mọi con số hoà vốn bên dưới tính từ đây.`;
+    ? 'Chưa có tỷ lệ ăn chia thợ ở bất kỳ đâu trong hệ thống nên chưa tính được điểm hoà vốn.'
+    : `${margin.note} Biên lãi gộp ${margin.grossMarginPct}%; mọi con số hoà vốn bên dưới tính từ đây.`;
 
   return { margin, ceiling, proposed, plays, tryFirst, note };
 }
@@ -312,6 +359,9 @@ export function promoToPrompt(a: PromoAdvice): string {
   if (a.margin.source === 'unknown') {
     L.push('- Chưa biết biên lãi của tiệm. TUYỆT ĐỐI không đề xuất mức giảm cụ thể nào.');
   } else {
+    if (a.margin.source === 'assumed') {
+      L.push(`- LƯU Ý: biên lãi ${a.margin.grossMarginPct}% là ƯỚC TÍNH theo mặt bằng ngành, chưa phải số của tiệm. Khi nhắc tới mức giảm, phải ghi rõ đây là ước tính.`);
+    }
     L.push(`- Biên lãi gộp ~${a.margin.grossMarginPct}%. Không bao giờ đề xuất giảm quá ${a.ceiling}%.`);
     L.push(`- Giảm bằng hoặc hơn ${a.margin.grossMarginPct}% là lỗ dù bán bao nhiêu — không được đề xuất.`);
   }

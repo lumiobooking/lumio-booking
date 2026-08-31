@@ -274,10 +274,27 @@ export class ContentService {
       region: t.region ?? fromAddress.region,
     }, { horizonDays: 45 });
 
+    // The commission rate the shop is already paying, from the staff records it
+    // set up for payroll. Nobody types it twice, and it is a measurement rather
+    // than an estimate: these are the rates going out every week.
+    const staffRows = await this.prisma.staffMember.findMany({
+      where: { tenantId, isActive: true },
+      select: { commissionPercent: true } as never,
+      take: 100,
+    }).catch(() => []) as unknown as { commissionPercent?: number | null }[];
+    const rates = staffRows.map((r) => Number(r.commissionPercent ?? 0)).filter((n) => n > 0 && n < 100);
+    const staffAvgPct = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
+
     const revenue = buildRevenueProfile({ bookings: bookingRows, customers, services });
     const promo = promoAdvice({
       industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
       commissionPct: (tenant as { commissionPct?: number | null } | null)?.commissionPct ?? null,
+      staffAvgPct,
+      // Falling back to a trade default rather than refusing. The objection to
+      // an assumed margin was never the assumption — it was an assumption that
+      // reads like a measurement. The source travels with every figure derived
+      // from it and the screen says "ước tính", so it cannot be mistaken.
+      allowAssumed: true,
       proposedDiscountPct: revenue.advice.discountPct || null,
     });
 
@@ -310,9 +327,14 @@ export class ContentService {
       identity,
       sourceCounts,
       lead,
+      // ZIPs, in order of authority, and never asked for twice: the field
+      // someone filled, the extra ZIPs the team added, then the one sitting in
+      // the shop's own address. The address has been there since setup — asking
+      // for the ZIP separately was asking for data we already had.
       nearbyZips: [
         (tenant as { postalCode?: string | null } | null)?.postalCode ?? '',
         (tenant as { nearbyZips?: string | null } | null)?.nearbyZips ?? '',
+        fromAddress.postalCode ?? '',
       ].filter(Boolean).join(',') || null,
     };
   }
@@ -518,6 +540,32 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   }
 
   /**
+   * Warm the area figures for every tenant, off the page-load path.
+   *
+   * The Census is a third party and must never sit in front of a salon opening
+   * a screen, so `planFor` reads the cache and stops. Something still has to
+   * fill that cache, and a button somebody remembers to press is not a
+   * mechanism. This runs on the hourly tick, skips anything already fresh, and
+   * stays quiet about failure beyond the log — a demographics lookup that did
+   * not work is not a reason to disturb anyone.
+   */
+  async warmAreas(): Promise<{ warmed: number }> {
+    const tenants = await this.prisma.tenant.findMany({
+      where: { status: 'ACTIVE', deletedAt: null } as never,
+      select: { id: true },
+      take: 500,
+    }).catch(() => []) as { id: string }[];
+    let warmed = 0;
+    for (const t of tenants) {
+      const zips = await this.gather(t.id).then((c) => c.nearbyZips).catch(() => null);
+      if (!zips) continue;
+      const r = await this.areaFor(t.id, zips, { allowFetch: true }).catch(() => null);
+      if (r?.ok) warmed += 1;
+    }
+    return { warmed };
+  }
+
+  /**
    * Draft for every active tenant — the scheduler's entry point.
    *
    * `industry` is now a FILTER, not a requirement, and it defaults to nothing.
@@ -673,6 +721,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         busyLabels: [...ctx.revenue.loads].reverse().slice(0, 2).map((l) => l.label),
         sourceCounts: ctx.sourceCounts,
         grossMarginPct: ctx.promo.margin.grossMarginPct,
+        marginSource: ctx.promo.margin.source,
         cpaCeilingCents: ads?.ceiling.strictCents ?? null,
         budgetTotalCents: ads?.budget.totalCents ?? null,
         budgetDays: ads?.budget.days ?? 14,

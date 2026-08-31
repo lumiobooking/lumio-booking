@@ -94,6 +94,8 @@ export interface BriefInput {
 
   /** Money. */
   grossMarginPct: number | null;
+  /** Where the margin came from — it changes what this step may claim. */
+  marginSource?: 'entered' | 'staff' | 'assumed' | 'unknown';
   cpaCeilingCents: number | null;
   budgetTotalCents: number | null;
   budgetDays: number;
@@ -218,9 +220,16 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
   if (i.cpaCeilingCents && i.grossMarginPct) {
     steps.push({
       key: 'value', order: 5, title: 'Một khách mới đáng chi bao nhiêu',
-      finding: `Tối đa ${i.money(i.cpaCeilingCents)} cho mỗi booking, tính từ hoá đơn trung bình và biên lãi ~${i.grossMarginPct}%.`,
-      basis: 'Hoá đơn trung bình trong sổ × biên lãi do tiệm khai',
-      confidence: 'measured',
+      finding: `Tối đa ${i.money(i.cpaCeilingCents)} cho mỗi booking, tính từ hoá đơn trung bình và biên lãi ~${i.grossMarginPct}%.`
+        + (i.marginSource === 'assumed' ? ' Biên lãi này là ƯỚC TÍNH theo mặt bằng ngành, chưa phải số của tiệm.' : ''),
+      basis: i.marginSource === 'staff'
+        ? 'Hoá đơn trung bình trong sổ × biên lãi suy từ tỷ lệ ăn chia trên hồ sơ thợ'
+        : i.marginSource === 'assumed'
+          ? 'Hoá đơn trung bình trong sổ × biên lãi ƯỚC TÍNH theo ngành'
+          : 'Hoá đơn trung bình trong sổ × biên lãi do tiệm khai',
+      // An estimate must not be labelled the same as a measurement, even when
+      // the arithmetic on top of it is identical.
+      confidence: i.marginSource === 'assumed' ? 'assumed' : 'measured',
       soWhat: 'Đây là ngưỡng dừng, không phải mục tiêu. Ngày thứ ba lấy tiền đã chi chia cho số booking; vượt ngưỡng thì tắt, đừng chờ hết tháng.',
     });
   } else {

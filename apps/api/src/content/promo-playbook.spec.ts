@@ -100,7 +100,7 @@ describe('the advice leads with the cheap plays, not the discount', () => {
     const blind = promoAdvice({ industry: 'SALON', commissionPct: null, proposedDiscountPct: 20 });
     expect(blind.ceiling).toBeNull();
     expect(blind.proposed?.verdict).toBe('unknown');
-    expect(blind.note).toMatch(/bịa ra/);
+    expect(blind.note).toMatch(/Chưa có tỷ lệ ăn chia/);
   });
 
   it('gives each trade its own plays', () => {
@@ -193,5 +193,60 @@ describe('a proposed discount is cut down to what the margin survives', () => {
     const a = advice();
     capAdvice(a, promoAdvice({ commissionPct: 70 }));
     expect(a.discountPct).toBeLessThan(20);
+  });
+});
+
+describe('the margin comes from the shop before it comes from a default', () => {
+  it('prefers a rate someone entered for this business', () => {
+    const m = marginBasis(60, { staffAvgPct: 45, allowAssumed: true });
+    expect(m.commissionPct).toBe(60);
+    expect(m.source).toBe('entered');
+  });
+
+  it('falls back to the rates already on the staff records', () => {
+    // These are the rates the shop pays every week for payroll. Reading them is
+    // a measurement; asking the owner to type the same number again is not.
+    const m = marginBasis(null, { staffAvgPct: 55, allowAssumed: true });
+    expect(m.source).toBe('staff');
+    expect(m.grossMarginPct).toBe(45);
+    expect(m.note).toMatch(/hồ sơ thợ/);
+  });
+
+  it('labels a trade default as an estimate, loudly, in the note itself', () => {
+    // The objection to an assumed margin was never the assumption — it was an
+    // assumption that reads like a measurement. So the label travels with it.
+    const m = marginBasis(null, { allowAssumed: true });
+    expect(m.source).toBe('assumed');
+    expect(m.commissionPct).toBe(55);
+    expect(m.note).toMatch(/ƯỚC TÍNH/);
+    expect(m.note).toMatch(/sửa lại/);
+  });
+
+  it('still refuses entirely when assuming is not permitted', () => {
+    const m = marginBasis(null, {});
+    expect(m.source).toBe('unknown');
+    expect(m.grossMarginPct).toBeNull();
+  });
+
+  it('ignores nonsense staff rates rather than averaging them in', () => {
+    for (const bad of [0, 100, -5, 150]) {
+      expect(marginBasis(null, { staffAvgPct: bad }).source).not.toBe('staff');
+    }
+  });
+
+  it('warns the model when the margin it is reasoning from is assumed', () => {
+    const p = promoToPrompt(promoAdvice({ commissionPct: null, allowAssumed: true }));
+    expect(p).toMatch(/ƯỚC TÍNH theo mặt bằng ngành/);
+    expect(p).toMatch(/phải ghi rõ đây là ước tính/);
+  });
+
+  it('says nothing about estimates when the rate is real', () => {
+    const p = promoToPrompt(promoAdvice({ commissionPct: 60, allowAssumed: true }));
+    expect(p).not.toMatch(/ƯỚC TÍNH/);
+  });
+
+  it('carries the origin into the advice note the screen shows', () => {
+    expect(promoAdvice({ staffAvgPct: 50, allowAssumed: true }).note).toMatch(/hồ sơ thợ/);
+    expect(promoAdvice({ allowAssumed: true }).note).toMatch(/ƯỚC TÍNH/);
   });
 });

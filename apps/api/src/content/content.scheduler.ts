@@ -43,6 +43,11 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // starved every non-salon client of content for as long as this ran.
       const r = await this.content.generateAll();
       if (r.created) this.logger.log(`Drafted ${r.created} ideas across ${r.tenants} salons.`);
+      // Area demographics, filled here rather than on a page load. Cached for a
+      // month, so almost every tick skips every tenant; the point is that no
+      // human has to remember to press anything.
+      const a = await this.content.warmAreas().catch(() => ({ warmed: 0 }));
+      if (a.warmed) this.logger.log(`Area figures refreshed for ${a.warmed} salon(s).`);
     } catch (e) {
       this.logger.warn(`planner tick failed: ${String(e).slice(0, 160)}`);
     } finally {

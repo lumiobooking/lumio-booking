@@ -170,7 +170,7 @@ function ServicesInner() {
           <button onClick={() => { setShowOrder((s) => !s); setShowForm(false); setShowImport(false); }}
             title={lang === 'vi' ? 'Kéo thả để đổi thứ tự dịch vụ hiện trên trang đặt lịch' : 'Drag to change the order customers see'}
             style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: showOrder ? '#6366f1' : 'transparent', border: '1px solid #6366f1', color: showOrder ? '#fff' : 'var(--ca5b4fc)' }}>
-            {showOrder ? (lang === 'vi' ? 'Đóng' : 'Close') : (lang === 'vi' ? '↕ Thứ tự hiển thị' : '↕ Display order')}
+            {showOrder ? (lang === 'vi' ? '✓ Xong' : '✓ Done') : (lang === 'vi' ? '↕ Kéo sắp xếp' : '↕ Drag to reorder')}
           </button>
           <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid var(--c475569)' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
@@ -207,16 +207,6 @@ function ServicesInner() {
         </div>
       )}
 
-      {showOrder && (
-        <ReorderPanel
-          token={token!}
-          services={visible}
-          scope={catFilter === 'all' ? (lang === 'vi' ? 'toàn bộ menu' : 'the whole menu') : (catFilter === 'none' ? (lang === 'vi' ? 'nhóm chưa phân loại' : 'uncategorised') : catName(catFilter))}
-          lang={lang}
-          onSaved={async () => { await load(); }}
-        />
-      )}
-
       {showForm && (
         <CreateServiceForm
           token={token!}
@@ -232,6 +222,20 @@ function ServicesInner() {
 
       {loading ? (
         <p style={{ color: 'var(--c94a3b8)' }}>{t('sv.loading')}</p>
+      ) : showOrder ? (
+        /* The list the owner is looking at becomes the list they drag.
+           A separate panel above the table was the wrong answer: they asked to
+           grab a row and move it, and the row they mean is the one on screen.
+           Pagination is off in here so any service can reach any position — a
+           drag that cannot cross a page boundary is not "tự do sắp xếp". */
+        <ReorderPanel
+          token={token!}
+          services={visible}
+          catName={catName}
+          fmt={fmt}
+          lang={lang}
+          onSaved={async () => { await load(); }}
+        />
       ) : isMobile ? (
         <>
           <MList>
@@ -294,8 +298,10 @@ function ServicesInner() {
  * arrows are also simply more precise for "move this one up by one", which is
  * the actual request — "phải thứ tự từ 1 đến 3".
  */
-function ReorderPanel({ token, services, scope, lang, onSaved }: {
-  token: string; services: Service[]; scope: string; lang: string;
+function ReorderPanel({ token, services, catName, fmt, lang, onSaved }: {
+  token: string; services: Service[]; lang: string;
+  catName: (id?: string | null) => string;
+  fmt: (cents: number) => string;
   onSaved: () => Promise<void>;
 }) {
   const [order, setOrder] = useState<Service[]>(services);
@@ -336,7 +342,7 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
   const move = useCallback((from: number, to: number) => {
     setOrder((cur) => {
       const next = moveItem(cur, from, to);
-      if (next === cur || next.every((x, i) => cur[i] === x)) return cur;
+      if (next.every((x, i) => cur[i] === x)) return cur;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       // Saved for them rather than behind a button they have to remember. The
       // delay is so a drag across five positions is one request, not five.
@@ -349,7 +355,7 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
 
   // Pointer events, not the HTML5 drag API.
   //
-  // Two reasons, both of which made the old version fail for real people:
+  // Two reasons, both of which made the first version fail for real people:
   // HTML5 drag does not fire at all on a touch screen, and in Firefox a
   // dragstart without dataTransfer.setData never starts a drag. Pointer events
   // are one code path for mouse, trackpad, finger and stylus alike.
@@ -375,27 +381,30 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
   const statusText = state === 'saving'
     ? (lang === 'vi' ? 'Đang lưu…' : 'Saving…')
     : state === 'saved'
-      ? (lang === 'vi' ? '✓ Đã lưu — trang đặt lịch cập nhật ngay' : '✓ Saved — the booking page is updated')
+      ? (lang === 'vi' ? '✓ Đã lưu' : '✓ Saved')
       : '';
 
+  const cell: React.CSSProperties = { fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' };
+
   return (
-    <div style={{ border: '1px solid #6366f1', borderRadius: 12, padding: 14, marginBottom: 16, background: 'var(--c0f172a)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-          {lang === 'vi' ? `Thứ tự hiển thị — ${scope}` : `Display order — ${scope}`}
+    <div>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        flexWrap: 'wrap', gap: 8, marginBottom: 10, padding: '10px 12px',
+        borderRadius: 10, background: 'var(--c1e293b)', border: '1px solid #6366f1',
+      }}>
+        <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>
+          {lang === 'vi'
+            ? <>Giữ chuột vào <b>⠿</b> rồi kéo lên/xuống. Tự lưu — đây là thứ tự khách thấy khi đặt lịch.</>
+            : <>Hold <b>⠿</b> and drag. Saves itself — this is the order customers see.</>}
         </div>
-        <div style={{ fontSize: 12.5, color: state === 'saving' ? 'var(--c94a3b8)' : '#22c55e', minHeight: 18 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: state === 'saving' ? 'var(--c94a3b8)' : '#22c55e', minHeight: 18 }}>
           {statusText}
         </div>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
-        {lang === 'vi'
-          ? 'Giữ vào ⠿ rồi kéo lên/xuống để đổi vị trí — hoặc bấm mũi tên. Tự lưu, không cần bấm nút. Đây chính là thứ tự khách nhìn thấy khi đặt lịch.'
-          : 'Hold ⠿ and drag, or use the arrows. Saves itself. This is the order customers see when booking.'}
-      </div>
       {err && <div style={ui.banner}>{err}</div>}
       {order.length === 0 && (
-        <div style={{ fontSize: 13, color: 'var(--c64748b)' }}>
+        <div style={{ fontSize: 13, color: 'var(--c64748b)', padding: 12 }}>
           {lang === 'vi' ? 'Không có dịch vụ nào trong nhóm này.' : 'No services in this group.'}
         </div>
       )}
@@ -404,17 +413,19 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
         onPointerMove={onPointerMove}
         onPointerUp={() => setDragIdx(null)}
         onPointerCancel={() => setDragIdx(null)}
-        style={{ touchAction: dragIdx === null ? 'auto' : 'none' }}
+        style={{
+          border: '1px solid var(--c334155)', borderRadius: 12, overflow: 'hidden',
+          touchAction: dragIdx === null ? 'auto' : 'none',
+        }}
       >
         {order.map((s, i) => (
           <div
             key={s.id}
             data-row=""
             style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 11px', marginBottom: 6, borderRadius: 9,
-              background: dragIdx === i ? 'var(--c334155)' : 'var(--c1e293b)',
-              border: `1px solid ${dragIdx === i ? '#6366f1' : 'var(--c334155)'}`,
+              display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
+              borderTop: i ? '1px solid var(--c1e293b)' : 'none',
+              background: dragIdx === i ? 'var(--c334155)' : 'transparent',
               boxShadow: dragIdx === i ? '0 6px 18px rgba(0,0,0,.35)' : 'none',
             }}
           >
@@ -425,17 +436,23 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
               }}
               title={lang === 'vi' ? 'Giữ và kéo' : 'Hold and drag'}
               style={{
-                color: dragIdx === i ? '#a5b4fc' : 'var(--c64748b)', fontSize: 17,
+                color: dragIdx === i ? '#a5b4fc' : 'var(--c64748b)', fontSize: 18,
                 cursor: 'grab', padding: '4px 6px', touchAction: 'none', userSelect: 'none',
               }}
             >⠿</span>
             <span style={{
-              minWidth: 26, textAlign: 'center', fontSize: 12, fontWeight: 700,
-              color: '#a5b4fc', background: 'var(--c0f172a)', borderRadius: 6, padding: '2px 0',
+              minWidth: 30, textAlign: 'center', fontSize: 12, fontWeight: 700,
+              color: '#a5b4fc', background: 'var(--c0f172a)', borderRadius: 6, padding: '3px 0',
             }}>{i + 1}</span>
-            <span style={{ flex: 1, fontSize: 13.5, color: 'var(--ce2e8f0)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ flex: 1, fontSize: 14, color: 'var(--ce2e8f0)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {s.name}
+              {s.isFeatured && (
+                <span style={{ fontSize: 9.5, marginLeft: 6, padding: '1px 6px', borderRadius: 20, background: '#facc15', color: '#000', fontWeight: 700 }}>POPULAR</span>
+              )}
             </span>
+            <span style={{ ...cell, flex: '0 0 130px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{catName(s.categoryId)}</span>
+            <span style={{ ...cell, flex: '0 0 66px' }}>{s.durationMinutes} min</span>
+            <span style={{ ...cell, flex: '0 0 72px', color: 'var(--ce2e8f0)' }}>{fmt(s.priceCents)}</span>
             {!s.isActive && (
               <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 20, padding: '1px 7px' }}>
                 {lang === 'vi' ? 'Ẩn' : 'Hidden'}
@@ -449,6 +466,11 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
               style={{ ...arrowBtn, opacity: i === order.length - 1 ? 0.3 : 1 }}>↓</button>
           </div>
         ))}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 8 }}>
+        {lang === 'vi'
+          ? `${order.length} dịch vụ — hiện hết, không chia trang, để kéo được từ cuối lên đầu.`
+          : `${order.length} services — all on one page so any row can reach any position.`}
       </div>
     </div>
   );

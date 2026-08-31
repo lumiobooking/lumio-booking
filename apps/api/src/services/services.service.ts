@@ -83,8 +83,11 @@ export class ServicesService {
    * computes its own numbers will eventually send two rows the same one, and
    * then the order depends on the tie-break again. Here the list is the order.
    *
-   * Anything the salon did not send keeps its place after the ones it did, so
-   * dragging inside one category cannot silently reshuffle another.
+   * Rows NOT in the list keep whatever sortOrder they already had — this only
+   * promises the relative order of the rows it was given. That is the right
+   * promise, because the booking page groups by category before it sorts: a
+   * salon dragging inside "Gel-X" cares that Gel-X comes out right, and the
+   * numbers it shares with "Acrylic" are never compared against each other.
    */
   async reorderServices(user: AuthenticatedUser, ids: string[]): Promise<{ ordered: number }> {
     const tenantId = this.tenantId(user);

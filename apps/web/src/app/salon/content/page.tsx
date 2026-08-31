@@ -19,6 +19,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { useIsMobile } from '../../../lib/responsive';
 
 interface Idea {
   id: string;
@@ -60,6 +61,8 @@ interface Plan {
   thin: boolean;
 }
 
+type TabId = 'today' | 'week' | 'trends' | 'calendar';
+
 /** One icon per kind of job, so the week reads at a glance on a phone. */
 const JOB_ICON: Record<string, string> = {
   film: '🎬', post: '📤', story: '📸', offer: '🏷️', winback: '💬', engage: '💚', rest: '·',
@@ -81,6 +84,10 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>('today');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+  const isMobile = useIsMobile(900);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -110,6 +117,32 @@ function Inner() {
     finally { setBusy(null); }
   }
 
+  /**
+   * Redraft on demand instead of waiting for the 6am run.
+   *
+   * Capped server-side at five a day per salon — every press is a real API call
+   * — and the remaining count comes back with the response so the button can
+   * say how many are left rather than failing silently on the sixth press.
+   */
+  async function refreshIdeas() {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshMsg(null);
+    try {
+      const r = await apiFetch<{ created: number; left: number; skipped?: string }>(
+        '/content/refresh', { method: 'POST', token },
+      );
+      await load();
+      setTab('today');
+      setRefreshMsg(r.created
+        ? T(`Đã tạo ${r.created} ý tưởng mới · còn ${r.left} lượt hôm nay`, `${r.created} new ideas · ${r.left} refreshes left today`)
+        : T('Chưa tạo được ý tưởng mới — thử lại sau ít phút', 'Could not draft new ideas — try again shortly'));
+      setTimeout(() => setRefreshMsg(null), 6000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'error');
+    } finally { setRefreshing(false); }
+  }
+
   async function copy(id: string, text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -123,476 +156,610 @@ function Inner() {
     : T('Đăng bù khi bận', 'Fallback if busy'));
   const rankColor = (r: number) => (r === 1 ? '#6366f1' : r === 2 ? '#8b5cf6' : '#22c55e');
 
-  return (
-    <section style={{ maxWidth: 720, margin: '0 auto', width: '100%' }}>
-      <h1 style={{ fontSize: 22, margin: '0 0 4px', color: 'var(--ce2e8f0)' }}>
-        {T('Nội dung hôm nay', "Today's content")}
-      </h1>
-      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 13.5 }}>
-        {data?.forDate ? new Date(`${data.forDate}T00:00:00`).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }) : ''}
-        {' · '}{T('Lumio Agency gợi ý dựa trên số liệu thật của tiệm', 'Suggested from your own numbers')}
-      </p>
+  /**
+   * Where we think the salon is.
+   *
+   * A wrong guess about the neighbourhood quietly skews every suggestion on
+   * this page, and the person reading it is the one who can correct it in a
+   * sentence. Defined once and placed twice: in the sidebar on a desktop,
+   * above the tabs on a phone. An earlier draft of this layout put it in the
+   * sidebar only, which dropped the "we do not know your city" warning on
+   * exactly the device most people read this on.
+   */
+  const regionCard = plan?.region ? (
+    <div style={{
+      display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap',
+      fontSize: 12.5, marginBottom: 14, padding: '10px 12px', borderRadius: 9,
+      background: plan.region.known ? 'var(--c1e293b)' : 'var(--c451a03)',
+      border: `1px solid ${plan.region.known ? 'var(--c334155)' : 'var(--c92400e)'}`,
+      color: plan.region.known ? 'var(--c94a3b8)' : 'var(--cfde68a)',
+      lineHeight: 1.5,
+    }}>
+      <span>📍</span>
+      {plan.region.known ? (
+        <span>{T('Gợi ý theo khu vực', 'Tailored for')} <strong style={{ color: 'var(--ce2e8f0)' }}>{plan.region.label}</strong></span>
+      ) : (
+        <span style={{ flex: 1, minWidth: 0 }}>
+          {T('Chưa biết tiệm ở thành phố nào, nên lịch sự kiện chỉ có các dịp chung. Điền thành phố và bang trong Super Admin để nhận gợi ý sát khu vực.',
+             'We do not know this salon’s city yet, so only nationwide dates are shown. Fill in the city and state in Super Admin.')}
+        </span>
+      )}
+    </div>
+  ) : null;
 
-      {/* Where we think the salon is. Shown because a wrong guess about the
-          neighbourhood quietly skews every suggestion below it, and the person
-          reading this is the one who can correct it in a sentence. */}
-      {plan?.region && (
-        <div style={{
-          display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
-          fontSize: 12.5, marginBottom: 14, padding: '8px 12px', borderRadius: 8,
-          background: plan.region.known ? 'var(--c1e293b)' : 'var(--c451a03)',
-          border: `1px solid ${plan.region.known ? 'var(--c334155)' : 'var(--c92400e)'}`,
-          color: plan.region.known ? 'var(--c94a3b8)' : 'var(--cfde68a)',
-        }}>
-          <span>📍</span>
-          {plan.region.known ? (
-            <span>{T('Gợi ý theo khu vực', 'Tailored for')} <strong style={{ color: 'var(--ce2e8f0)' }}>{plan.region.label}</strong></span>
-          ) : (
-            <span>
-              {T('Chưa biết tiệm ở thành phố nào, nên phần lịch sự kiện chỉ có các dịp chung. Báo đội Lumio điền giúp thành phố và bang để nhận gợi ý sát khu vực.',
-                 'We do not know this salon’s city yet, so only nationwide dates are shown. Ask the Lumio team to fill in the city and state.')}
-            </span>
-          )}
+  const TABS: { id: TabId; label: string; icon: string }[] = [
+    { id: 'today', label: T('Hôm nay', 'Today'), icon: '✍️' },
+    { id: 'week', label: T('Tuần này', 'This week'), icon: '🗓️' },
+    { id: 'trends', label: T('Xu hướng', 'Trends'), icon: '📈' },
+    { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
+  ];
+
+  return (
+    <section style={{ maxWidth: 1180, margin: '0 auto', width: '100%' }}>
+      <div style={{
+        display: 'flex', gap: 12, alignItems: 'flex-start',
+        justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 12,
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: isMobile ? 20 : 23, margin: '0 0 3px', color: 'var(--ce2e8f0)' }}>
+            {T('Nội dung hôm nay', "Today's content")}
+          </h1>
+          <p style={{ color: 'var(--c94a3b8)', margin: 0, fontSize: 13 }}>
+            {data?.forDate ? new Date(`${data.forDate}T00:00:00`).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }) : ''}
+            {plan?.region?.known ? ` · ${plan.region.label}` : ''}
+          </p>
+        </div>
+        <button
+          onClick={refreshIdeas}
+          disabled={refreshing}
+          style={{
+            ...ui.primaryBtn, padding: '10px 16px', fontSize: 13.5,
+            opacity: refreshing ? 0.6 : 1, cursor: refreshing ? 'wait' : 'pointer',
+          }}
+        >
+          {refreshing ? T('Đang tạo lại…', 'Drafting…') : `↻ ${T('Cập nhật ngay', 'Refresh now')}`}
+        </button>
+      </div>
+
+      {refreshMsg && (
+        <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '9px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+          {refreshMsg}
         </div>
       )}
 
-      {error && <div style={ui.banner}>{error}</div>}
+      {error && <div style={{ ...ui.banner, marginBottom: 12 }}>{error}</div>}
 
-      {data?.trendNotes?.map((n) => (
-        <div key={n.id} style={{ background: 'var(--c451a03)', border: '1px solid var(--c92400e)', borderRadius: 10, padding: '11px 14px', marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfcd34d)', marginBottom: 3 }}>🔥 {n.title}</div>
-          <div style={{ fontSize: 13, color: 'var(--cfde68a)', lineHeight: 1.55 }}>{n.body}</div>
-        </div>
-      ))}
+      {isMobile && regionCard}
+
+      {/* This screen outgrew a single scroll: on a phone the holiday calendar
+          sat six swipes below the ideas, so nobody ever reached it. Four tabs,
+          and the one that matters most opens first. */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, overflowX: 'auto', paddingBottom: 2 }}>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              flex: isMobile ? '1 0 auto' : '0 0 auto',
+              padding: isMobile ? '9px 12px' : '9px 16px',
+              borderRadius: 9, cursor: 'pointer', whiteSpace: 'nowrap',
+              fontSize: 13.5, fontWeight: tab === t.id ? 700 : 500,
+              border: `1px solid ${tab === t.id ? '#6366f1' : 'var(--c334155)'}`,
+              background: tab === t.id ? '#6366f1' : 'var(--c1e293b)',
+              color: tab === t.id ? '#fff' : 'var(--c94a3b8)',
+            }}
+          >
+            <span style={{ marginRight: 5 }}>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
 
       {loading && <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{T('Đang tải…', 'Loading…')}</p>}
 
-      {!loading && !data?.ideas?.length && (
-        <div style={{ ...ui.card, textAlign: 'center', padding: '28px 20px' }}>
-          <div style={{ fontSize: 15, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
-            {T('Hôm nay chưa có gợi ý', 'No plan for today yet')}
-          </div>
-          <div style={{ fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
-            {T('Đội Lumio đang chuẩn bị kế hoạch nội dung cho tiệm. Kiểm tra lại sau nhé.',
-               'The Lumio team is preparing your plan. Check back shortly.')}
-          </div>
-        </div>
-      )}
-
-      {/* ---- what is coming, and what to prepare ---- */}
-      {!!plan?.events?.length && (
-        <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
-            📅 {T('Sắp tới', 'Coming up')}
-          </div>
-          {plan.events.slice(0, 4).map((e) => (
-            <div key={e.name} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid var(--c1e293b)' }}>
-              <div style={{ flex: '0 0 66px' }}>
-                <div style={{ fontSize: e.daysAway < 0 ? 13 : 17, fontWeight: 800, color: e.daysAway <= 14 ? '#f59e0b' : 'var(--ca5b4fc)', lineHeight: 1.1 }}>
-                  {e.daysAway < 0 ? T('Đang diễn ra', 'On now') : e.daysAway}
+      {/* Desktop keeps a standing summary beside the work, so the region, the
+          week's aim and the discount verdict never scroll out of sight. A phone
+          has no room for two columns, so that summary folds back into the tabs
+          it was drawn from. */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 300px',
+        gap: 16, alignItems: 'start',
+      }}>
+        <div style={{ minWidth: 0 }}>
+          {tab === 'today' && (
+            <>
+              {data?.trendNotes?.map((n) => (
+                <div key={n.id} style={{ background: 'var(--c451a03)', border: '1px solid var(--c92400e)', borderRadius: 10, padding: '11px 14px', marginBottom: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfcd34d)', marginBottom: 3 }}>🔥 {n.title}</div>
+                  <div style={{ fontSize: 13, color: 'var(--cfde68a)', lineHeight: 1.55 }}>{n.body}</div>
                 </div>
-                {e.daysAway >= 0 && <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('ngày nữa', 'days')}</div>}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{e.name}</div>
-                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{e.note}</div>
-                {e.daysAway <= 21 && e.daysAway >= 0 && (
-                  <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2 }}>
-                    {T('Nên bắt đầu đăng bài từ bây giờ', 'Start posting about this now')}
+              ))}
+              {!loading && !data?.ideas?.length && (
+                <div style={{ ...ui.card, textAlign: 'center', padding: '28px 20px' }}>
+                  <div style={{ fontSize: 15, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    {T('Hôm nay chưa có gợi ý', 'No plan for today yet')}
                   </div>
-                )}
-                {/* An approximate date must never be read as a fact — school
-                    start weeks differ by district, not just by state. */}
-                {e.precision === 'approximate' && e.caveat && (
-                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 3, fontStyle: 'italic' }}>
-                    {T('Ngày ước lượng', 'Approximate')} — {e.caveat}
+                  <div style={{ fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
+                    {T('Đội Lumio đang chuẩn bị kế hoạch nội dung cho tiệm. Kiểm tra lại sau nhé.',
+                       'The Lumio team is preparing your plan. Check back shortly.')}
                   </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+                </div>
+              )}
+              {data?.ideas?.map((idea) => {
+                const done = idea.status === 'filmed' || idea.status === 'posted';
+                const skipped = idea.status === 'skipped';
+                return (
+                  <div key={idea.id} style={{
+                    ...ui.card, marginBottom: 14, padding: 16,
+                    opacity: skipped ? 0.55 : 1,
+                    borderColor: done ? '#22c55e' : 'var(--c334155)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 9 }}>
+                      <span style={{ background: rankColor(idea.rank), color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>
+                        {rankLabel(idea.rank)}
+                      </span>
+                      {idea.formatName && (
+                        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{idea.formatName}</span>
+                      )}
+                      {idea.bestTime && (
+                        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c94a3b8)' }}>
+                          🕐 {idea.bestTime}
+                        </span>
+                      )}
+                    </div>
 
-      {/* ---- the week as work, not as advice ----
-           Days come from this salon's own book: it films on its quietest open
-           day and posts the offer two days before its emptiest block. When the
-           book is too thin to say that, the card says so instead of dressing a
-           default up as analysis. */}
-      {!!plan?.week?.days?.length && (
-        <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-            🗓️ {T('Tuần này làm gì', 'This week')}
-          </div>
-          <div style={{ fontSize: 13, color: '#a5b4fc', marginBottom: 4 }}>{plan.week.focus}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.week.basis}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginBottom: 8 }}>
+                      {idea.title}
+                    </div>
 
-          {plan.week.days.map((d, i) => {
-            const empty = d.jobs.every((j) => j.kind === 'rest');
-            return (
-              <div key={d.weekday} style={{
-                padding: '9px 0', borderTop: '1px solid var(--c1e293b)',
-                opacity: empty ? 0.55 : 1,
-              }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-                  <div style={{ flex: '0 0 76px', fontSize: 13, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--c94a3b8)' }}>
-                    {i === 0 ? T('Hôm nay', 'Today') : d.label}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {d.jobs.map((j, k) => (
-                      <div key={k} style={{ marginBottom: k < d.jobs.length - 1 ? 8 : 0 }}>
-                        <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>
-                          <span style={{ marginRight: 6 }}>{JOB_ICON[j.kind] ?? '•'}</span>{j.text}
-                          {j.when && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {j.when}</span>}
+                    {idea.hook && (
+                      <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 10 }}>
+                        <b style={{ color: 'var(--ca5b4fc)' }}>{T('Mở đầu 3 giây', 'First 3 seconds')}:</b> {idea.hook}
+                      </div>
+                    )}
+
+                    {idea.shotList && (
+                      <div style={{ background: 'var(--c1e293b)', borderRadius: 8, padding: '9px 12px', marginBottom: 10 }}>
+                        <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                          {T('Cần quay', 'Shots')}
                         </div>
-                        {j.kind !== 'rest' && (
-                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 1 }}>{j.why}</div>
+                        <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.6 }}>{idea.shotList}</div>
+                      </div>
+                    )}
+
+                    {idea.caption && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.6 }}>Caption</span>
+                          <button
+                            onClick={() => copy(idea.id, `${idea.caption}${idea.hashtags ? `\n\n${idea.hashtags}` : ''}`)}
+                            style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: copied === idea.id ? '#22c55e' : 'var(--ca5b4fc)', fontSize: 12, cursor: 'pointer' }}
+                          >
+                            {copied === idea.id ? T('✓ Đã chép', '✓ Copied') : T('Chép', 'Copy')}
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{idea.caption}</div>
+                        {idea.hashtags && (
+                          <div style={{ fontSize: 12.5, color: 'var(--c60a5fa)', marginTop: 5, lineHeight: 1.5 }}>{idea.hashtags}</div>
                         )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                    )}
 
-          {/* Where today's clip comes FROM. The most common reason a content
-              plan dies is not laziness — it is standing in the salon at 6pm
-              with nothing filmed and no idea what to point the phone at. */}
-          {!!plan.week.sources?.length && (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-                {T('Quay từ đâu', 'What to film')}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 6 }}>
-                {T(`Nguồn có sẵn của ${plan.week.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}
-              </div>
-              {plan.week.sources.map((s, k) => (
-                <div key={k} style={{ padding: '5px 0' }}>
-                  <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
-                    • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45, paddingLeft: 11 }}>{s.why}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!!plan.week.daily?.length && (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
-                {T('Mỗi ngày, dù bận cỡ nào', 'Every day, however busy')}
-              </div>
-              {plan.week.daily.map((j, k) => (
-                <div key={k} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
-                  <span style={{ flex: '0 0 auto' }}>{JOB_ICON[j.kind] ?? '•'}</span>
-                  <div>
-                    <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
-                      {j.text}{j.when && <span style={{ color: 'var(--c64748b)' }}> · {j.when}</span>}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{j.why}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ---- trend sources ----
-           Deep links into the real tools, filtered to this salon's country,
-           state and trade. Never a link to an individual clip: a fabricated
-           video URL costs the salon a click and costs this screen its
-           credibility. Human-picked clips arrive as trend notes above. */}
-      {!!plan?.trends?.weekly?.length && (
-        <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-            📈 {T('Xu hướng đang chạy', 'What is trending')}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
-            {plan.trends.regionKnown
-              ? T('Đã lọc sẵn theo ngành và khu vực của tiệm. Mở ra là thấy số liệu hôm nay.',
-                  'Pre-filtered to your trade and area. Live data, not a snapshot.')
-              : T('Đang lọc theo cả nước vì chưa biết tiệm ở bang nào.',
-                  'Filtered nationwide — we do not know the state yet.')}
-          </div>
-
-          {([['weekly', T('Tuần này', 'This week')], ['monthly', T('Tháng này', 'This month')]] as const).map(([bucket, label]) => (
-            <div key={bucket} style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>{label}</div>
-              {plan.trends[bucket].map((l) => (
-                <a
-                  key={l.key}
-                  href={l.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'block', textDecoration: 'none', padding: '9px 11px', marginBottom: 7,
-                    borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
-                  }}
-                >
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: '#a5b4fc' }}>{l.title} ↗</div>
-                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
-                    <strong style={{ color: '#22c55e' }}>{T('Làm gì', 'Do this')}:</strong> {l.how}
-                  </div>
-
-                  {/* Concrete things to search for on that page. Note the
-                      wording: these are instructions, never claims that a
-                      thing IS trending — the tool on the other end of the link
-                      is what decides that, not us. The badge says where each
-                      one came from, so nobody mistakes a trade default for a
-                      reading of this salon's own numbers. */}
-                  {!!l.topics?.length && (
-                    <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px dashed var(--c334155)' }}>
-                      <div style={{ fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 4 }}>
-                        {T('Tìm những chủ đề này', 'Search for these')}
+                    {idea.reason && (
+                      <div style={{ background: 'var(--c172554)', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
+                        <span style={{ fontSize: 12, color: 'var(--c93c5fd)', fontWeight: 700 }}>{T('Vì sao gợi ý', 'Why this')}: </span>
+                        <span style={{ fontSize: 12.5, color: 'var(--cbfdbfe)', lineHeight: 1.6 }}>{idea.reason}</span>
                       </div>
-                      {l.topics.map((t, i) => (
-                        <div key={i} style={{ marginBottom: i < l.topics!.length - 1 ? 5 : 0 }}>
-                          <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                            <span>• {t.label}</span>
-                            <span style={{
-                              fontSize: 10, padding: '1px 6px', borderRadius: 20,
-                              background: t.from === 'salon' ? 'var(--c14532d)' : t.from === 'region' ? 'var(--c451a03)' : 'var(--c1e293b)',
-                              color: t.from === 'salon' ? 'var(--cbbf7d0)' : t.from === 'region' ? 'var(--cfde68a)' : 'var(--c94a3b8)',
-                            }}>
-                              {t.from === 'salon' ? T('số của tiệm', 'your data')
-                                : t.from === 'region' ? T('khu vực', 'local')
-                                : T('kinh nghiệm ngành', 'trade')}
-                            </span>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => mark(idea.id, done ? 'published' : 'posted')}
+                        disabled={busy === idea.id}
+                        style={{
+                          flex: '1 1 auto', minHeight: 42, padding: '10px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                          border: done ? '1px solid #22c55e' : 'none',
+                          background: done ? 'transparent' : '#6366f1',
+                          color: done ? '#22c55e' : '#fff',
+                        }}
+                      >
+                        {done ? T('✓ Đã đăng', '✓ Posted') : T('Đánh dấu đã đăng', 'Mark as posted')}
+                      </button>
+                      {!done && (
+                        <button
+                          onClick={() => mark(idea.id, skipped ? 'published' : 'skipped')}
+                          disabled={busy === idea.id}
+                          style={{ minHeight: 42, padding: '10px 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5, cursor: 'pointer' }}
+                        >
+                          {skipped ? T('Bỏ qua ✓', 'Skipped ✓') : T('Bỏ qua', 'Skip')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+          {tab === 'week' && (
+            <>
+              {/* ---- the week as work, not as advice ----
+                   Days come from this salon's own book: it films on its quietest open
+                   day and posts the offer two days before its emptiest block. When the
+                   book is too thin to say that, the card says so instead of dressing a
+                   default up as analysis. */}
+              {!!plan?.week?.days?.length && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    🗓️ {T('Tuần này làm gì', 'This week')}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#a5b4fc', marginBottom: 4 }}>{plan.week.focus}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.week.basis}</div>
+
+                  {plan.week.days.map((d, i) => {
+                    const empty = d.jobs.every((j) => j.kind === 'rest');
+                    return (
+                      <div key={d.weekday} style={{
+                        padding: '9px 0', borderTop: '1px solid var(--c1e293b)',
+                        opacity: empty ? 0.55 : 1,
+                      }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                          <div style={{ flex: '0 0 76px', fontSize: 13, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--c94a3b8)' }}>
+                            {i === 0 ? T('Hôm nay', 'Today') : d.label}
                           </div>
-                          <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45, paddingLeft: 11 }}>{t.why}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {d.jobs.map((j, k) => (
+                              <div key={k} style={{ marginBottom: k < d.jobs.length - 1 ? 8 : 0 }}>
+                                <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>
+                                  <span style={{ marginRight: 6 }}>{JOB_ICON[j.kind] ?? '•'}</span>{j.text}
+                                  {j.when && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {j.when}</span>}
+                                </div>
+                                {j.kind !== 'rest' && (
+                                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 1 }}>{j.why}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Where today's clip comes FROM. The most common reason a content
+                      plan dies is not laziness — it is standing in the salon at 6pm
+                      with nothing filmed and no idea what to point the phone at. */}
+                  {!!plan.week.sources?.length && (
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                        {T('Quay từ đâu', 'What to film')}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 6 }}>
+                        {T(`Nguồn có sẵn của ${plan.week.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}
+                      </div>
+                      {plan.week.sources.map((s, k) => (
+                        <div key={k} style={{ padding: '5px 0' }}>
+                          <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
+                            • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
+                          </div>
+                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45, paddingLeft: 11 }}>{s.why}</div>
                         </div>
                       ))}
                     </div>
                   )}
-                </a>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
 
-      {/* ---- clip and product feeds ----
-           Hashtag pages and sales rankings, never a link to one specific clip:
-           a specific clip would have to be invented, and would be dead within a
-           week even if it were not. These pages compute the answer themselves,
-           every time they are opened. */}
-      {(!!plan?.videoFeeds?.length || !!plan?.productWatch?.length) && (
-        <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
-            🎥 {T('Clip & sản phẩm đang chạy trong ngành', 'Clips & products in your trade')}
-          </div>
-          {[
-            [T('Xem clip đang lên', 'Trending clips'), plan?.videoFeeds ?? []] as const,
-            [T('Sản phẩm đang bán chạy', 'Products selling now'), plan?.productWatch ?? []] as const,
-          ].filter(([, rows]) => rows.length).map(([label, rows]) => (
-            <div key={label} style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>{label}</div>
-              {rows.map((l) => (
-                <a key={l.key} href={l.url} target="_blank" rel="noopener noreferrer" style={{
-                  display: 'block', textDecoration: 'none', padding: '9px 11px', marginBottom: 7,
-                  borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
+                  {!!plan.week.daily?.length && (
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                        {T('Mỗi ngày, dù bận cỡ nào', 'Every day, however busy')}
+                      </div>
+                      {plan.week.daily.map((j, k) => (
+                        <div key={k} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
+                          <span style={{ flex: '0 0 auto' }}>{JOB_ICON[j.kind] ?? '•'}</span>
+                          <div>
+                            <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
+                              {j.text}{j.when && <span style={{ color: 'var(--c64748b)' }}> · {j.when}</span>}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{j.why}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* ---- the discount decision, straight from the booking book ---- */}
+              {plan?.offer && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: 16,
+                  borderColor: plan.offer.kind === 'raise-price' ? '#22c55e' : plan.offer.kind === 'hold' ? 'var(--c334155)' : '#6366f1',
                 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: '#a5b4fc' }}>{l.title} ↗</div>
-                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
-                    <strong style={{ color: '#22c55e' }}>{T('Nên làm theo', 'Copy this')}:</strong> {l.how}
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    💰 {T('Kéo khách & doanh thu', 'Fill the book')}
                   </div>
-                </a>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+                  <div style={{ fontSize: 14.5, fontWeight: 600, color: plan.offer.kind === 'raise-price' ? '#22c55e' : 'var(--ca5b4fc)', marginBottom: 5, lineHeight: 1.45 }}>
+                    {plan.offer.headline}
+                  </div>
+                  <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{plan.offer.detail}</div>
 
-      {/* ---- the six-month calendar ----
-           Separate from "Sắp tới" on purpose: that card is what to act on this
-           month, this one is what to order stock and book staff for. */}
-      {!!plan?.calendar?.length && (
-        <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-            📆 {T('Lịch ngày lễ 6 tháng tới', 'Next six months')}
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 8, lineHeight: 1.5 }}>
-            {plan.region?.known
-              ? T(`Đã lọc theo ${plan.region.label} — ngày lễ riêng của bang cũng nằm trong này`, `Filtered for ${plan.region.label}`)
-              : T('Chỉ gồm dịp áp dụng ở mọi nơi, vì chưa biết tiệm ở bang nào', 'Nationwide dates only — state unknown')}
-          </div>
-          {plan.calendar.map((e) => (
-            <div key={`${e.name}-${e.daysAway}`} style={{
-              display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0',
-              borderTop: '1px solid var(--c1e293b)',
-            }}>
-              <div style={{ flex: '0 0 92px', fontSize: 12, color: e.daysAway <= 30 ? '#f59e0b' : 'var(--c64748b)' }}>
-                {e.daysAway < 0 ? T('đang diễn ra', 'on now') : `${e.daysAway} ${T('ngày', 'days')}`}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>
-                  {e.name}
-                  {e.scope === 'regional' && (
-                    <span style={{ fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)' }}>
-                      {T('riêng khu vực', 'local')}
-                    </span>
+                  {!!plan.offer.protect?.length && (
+                    <div style={{ background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)', borderRadius: 8, padding: '8px 11px', marginTop: 9 }}>
+                      <span style={{ fontSize: 12.5, color: 'var(--cfca5a5)' }}>
+                        <b>{T('Không giảm giá', 'Do not discount')}:</b> {plan.offer.protect.join(' · ')} — {T('đang gần kín, giảm là mất lãi', 'nearly full; discounting here just costs margin')}
+                      </span>
+                    </div>
                   )}
-                  {e.scope === 'cultural' && (
-                    <span style={{ fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 20, background: 'var(--c1e293b)', color: 'var(--c94a3b8)' }}>
-                      {T('tuỳ tệp khách', 'if it fits')}
-                    </span>
+
+                  {!!plan.quietSlots?.length && (
+                    <div style={{ marginTop: 9 }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>
+                        {T('Khung trống nhất', 'Quietest slots')}
+                      </div>
+                      {plan.quietSlots.map((q) => (
+                        <div key={q.label} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
+                          <span style={{ fontSize: 13, color: 'var(--ccbd5e1)', flex: '0 0 128px' }}>{q.label}</span>
+                          <span style={{ flex: 1, height: 7, background: 'var(--c1e293b)', borderRadius: 4, overflow: 'hidden' }}>
+                            <span style={{ display: 'block', height: '100%', width: `${Math.max(3, q.fillIndex)}%`, background: q.fillIndex <= 30 ? '#f59e0b' : '#6366f1' }} />
+                          </span>
+                          <span style={{ fontSize: 12, color: 'var(--c94a3b8)', flex: '0 0 34px', textAlign: 'right' }}>{q.fillIndex}%</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  {e.precision === 'approximate' && (
-                    <span style={{ fontSize: 10, marginLeft: 6, color: 'var(--c64748b)' }}>{T('· ngày ước lượng', '· approx')}</span>
+
+                  {!!plan.lapsed?.count && (
+                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--c1e293b)' }}>
+                      {T(`${plan.lapsed.count} khách lâu chưa quay lại`, `${plan.lapsed.count} customers overdue`)}
+                      {plan.lapsed.medianDaysAway ? ` · ${T('trung bình', 'median')} ${plan.lapsed.medianDaysAway} ${T('ngày', 'days')}` : ''}
+                    </div>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>{e.note}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ---- the discount decision, straight from the booking book ---- */}
-      {plan?.offer && (
-        <div style={{
-          ...ui.card, marginBottom: 14, padding: 16,
-          borderColor: plan.offer.kind === 'raise-price' ? '#22c55e' : plan.offer.kind === 'hold' ? 'var(--c334155)' : '#6366f1',
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
-            💰 {T('Kéo khách & doanh thu', 'Fill the book')}
-          </div>
-          <div style={{ fontSize: 14.5, fontWeight: 600, color: plan.offer.kind === 'raise-price' ? '#22c55e' : 'var(--ca5b4fc)', marginBottom: 5, lineHeight: 1.45 }}>
-            {plan.offer.headline}
-          </div>
-          <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{plan.offer.detail}</div>
-
-          {!!plan.offer.protect?.length && (
-            <div style={{ background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)', borderRadius: 8, padding: '8px 11px', marginTop: 9 }}>
-              <span style={{ fontSize: 12.5, color: 'var(--cfca5a5)' }}>
-                <b>{T('Không giảm giá', 'Do not discount')}:</b> {plan.offer.protect.join(' · ')} — {T('đang gần kín, giảm là mất lãi', 'nearly full; discounting here just costs margin')}
-              </span>
-            </div>
-          )}
-
-          {!!plan.quietSlots?.length && (
-            <div style={{ marginTop: 9 }}>
-              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>
-                {T('Khung trống nhất', 'Quietest slots')}
-              </div>
-              {plan.quietSlots.map((q) => (
-                <div key={q.label} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
-                  <span style={{ fontSize: 13, color: 'var(--ccbd5e1)', flex: '0 0 128px' }}>{q.label}</span>
-                  <span style={{ flex: 1, height: 7, background: 'var(--c1e293b)', borderRadius: 4, overflow: 'hidden' }}>
-                    <span style={{ display: 'block', height: '100%', width: `${Math.max(3, q.fillIndex)}%`, background: q.fillIndex <= 30 ? '#f59e0b' : '#6366f1' }} />
-                  </span>
-                  <span style={{ fontSize: 12, color: 'var(--c94a3b8)', flex: '0 0 34px', textAlign: 'right' }}>{q.fillIndex}%</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!!plan.lapsed?.count && (
-            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--c1e293b)' }}>
-              {T(`${plan.lapsed.count} khách lâu chưa quay lại`, `${plan.lapsed.count} customers overdue`)}
-              {plan.lapsed.medianDaysAway ? ` · ${T('trung bình', 'median')} ${plan.lapsed.medianDaysAway} ${T('ngày', 'days')}` : ''}
-            </div>
-          )}
-        </div>
-      )}
-
-      {data?.ideas?.map((idea) => {
-        const done = idea.status === 'filmed' || idea.status === 'posted';
-        const skipped = idea.status === 'skipped';
-        return (
-          <div key={idea.id} style={{
-            ...ui.card, marginBottom: 14, padding: 16,
-            opacity: skipped ? 0.55 : 1,
-            borderColor: done ? '#22c55e' : 'var(--c334155)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 9 }}>
-              <span style={{ background: rankColor(idea.rank), color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>
-                {rankLabel(idea.rank)}
-              </span>
-              {idea.formatName && (
-                <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{idea.formatName}</span>
               )}
-              {idea.bestTime && (
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c94a3b8)' }}>
-                  🕐 {idea.bestTime}
-                </span>
+            </>
+          )}
+          {tab === 'trends' && (
+            <>
+              {/* ---- trend sources ----
+                   Deep links into the real tools, filtered to this salon's country,
+                   state and trade. Never a link to an individual clip: a fabricated
+                   video URL costs the salon a click and costs this screen its
+                   credibility. Human-picked clips arrive as trend notes above. */}
+              {!!plan?.trends?.weekly?.length && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    📈 {T('Xu hướng đang chạy', 'What is trending')}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
+                    {plan.trends.regionKnown
+                      ? T('Đã lọc sẵn theo ngành và khu vực của tiệm. Mở ra là thấy số liệu hôm nay.',
+                          'Pre-filtered to your trade and area. Live data, not a snapshot.')
+                      : T('Đang lọc theo cả nước vì chưa biết tiệm ở bang nào.',
+                          'Filtered nationwide — we do not know the state yet.')}
+                  </div>
+
+                  {([['weekly', T('Tuần này', 'This week')], ['monthly', T('Tháng này', 'This month')]] as const).map(([bucket, label]) => (
+                    <div key={bucket} style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>{label}</div>
+                      {plan.trends[bucket].map((l) => (
+                        <a
+                          key={l.key}
+                          href={l.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'block', textDecoration: 'none', padding: '9px 11px', marginBottom: 7,
+                            borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
+                          }}
+                        >
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#a5b4fc' }}>{l.title} ↗</div>
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
+                          <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
+                            <strong style={{ color: '#22c55e' }}>{T('Làm gì', 'Do this')}:</strong> {l.how}
+                          </div>
+
+                          {/* Concrete things to search for on that page. Note the
+                              wording: these are instructions, never claims that a
+                              thing IS trending — the tool on the other end of the link
+                              is what decides that, not us. The badge says where each
+                              one came from, so nobody mistakes a trade default for a
+                              reading of this salon's own numbers. */}
+                          {!!l.topics?.length && (
+                            <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px dashed var(--c334155)' }}>
+                              <div style={{ fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 4 }}>
+                                {T('Tìm những chủ đề này', 'Search for these')}
+                              </div>
+                              {l.topics.map((t, i) => (
+                                <div key={i} style={{ marginBottom: i < l.topics!.length - 1 ? 5 : 0 }}>
+                                  <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                                    <span>• {t.label}</span>
+                                    <span style={{
+                                      fontSize: 10, padding: '1px 6px', borderRadius: 20,
+                                      background: t.from === 'salon' ? 'var(--c14532d)' : t.from === 'region' ? 'var(--c451a03)' : 'var(--c1e293b)',
+                                      color: t.from === 'salon' ? 'var(--cbbf7d0)' : t.from === 'region' ? 'var(--cfde68a)' : 'var(--c94a3b8)',
+                                    }}>
+                                      {t.from === 'salon' ? T('số của tiệm', 'your data')
+                                        : t.from === 'region' ? T('khu vực', 'local')
+                                        : T('kinh nghiệm ngành', 'trade')}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45, paddingLeft: 11 }}>{t.why}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </a>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               )}
-            </div>
-
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginBottom: 8 }}>
-              {idea.title}
-            </div>
-
-            {idea.hook && (
-              <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 10 }}>
-                <b style={{ color: 'var(--ca5b4fc)' }}>{T('Mở đầu 3 giây', 'First 3 seconds')}:</b> {idea.hook}
-              </div>
-            )}
-
-            {idea.shotList && (
-              <div style={{ background: 'var(--c1e293b)', borderRadius: 8, padding: '9px 12px', marginBottom: 10 }}>
-                <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                  {T('Cần quay', 'Shots')}
+              {/* ---- clip and product feeds ----
+                   Hashtag pages and sales rankings, never a link to one specific clip:
+                   a specific clip would have to be invented, and would be dead within a
+                   week even if it were not. These pages compute the answer themselves,
+                   every time they are opened. */}
+              {(!!plan?.videoFeeds?.length || !!plan?.productWatch?.length) && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
+                    🎥 {T('Clip & sản phẩm đang chạy trong ngành', 'Clips & products in your trade')}
+                  </div>
+                  {[
+                    [T('Xem clip đang lên', 'Trending clips'), plan?.videoFeeds ?? []] as const,
+                    [T('Sản phẩm đang bán chạy', 'Products selling now'), plan?.productWatch ?? []] as const,
+                  ].filter(([, rows]) => rows.length).map(([label, rows]) => (
+                    <div key={label} style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>{label}</div>
+                      {rows.map((l) => (
+                        <a key={l.key} href={l.url} target="_blank" rel="noopener noreferrer" style={{
+                          display: 'block', textDecoration: 'none', padding: '9px 11px', marginBottom: 7,
+                          borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
+                        }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#a5b4fc' }}>{l.title} ↗</div>
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
+                          <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
+                            <strong style={{ color: '#22c55e' }}>{T('Nên làm theo', 'Copy this')}:</strong> {l.how}
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  ))}
                 </div>
-                <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.6 }}>{idea.shotList}</div>
-              </div>
-            )}
-
-            {idea.caption && (
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.6 }}>Caption</span>
-                  <button
-                    onClick={() => copy(idea.id, `${idea.caption}${idea.hashtags ? `\n\n${idea.hashtags}` : ''}`)}
-                    style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: copied === idea.id ? '#22c55e' : 'var(--ca5b4fc)', fontSize: 12, cursor: 'pointer' }}
-                  >
-                    {copied === idea.id ? T('✓ Đã chép', '✓ Copied') : T('Chép', 'Copy')}
-                  </button>
+              )}
+            </>
+          )}
+          {tab === 'calendar' && (
+            <>
+              {/* ---- what is coming, and what to prepare ---- */}
+              {!!plan?.events?.length && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
+                    📅 {T('Sắp tới', 'Coming up')}
+                  </div>
+                  {plan.events.slice(0, 4).map((e) => (
+                    <div key={e.name} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                      <div style={{ flex: '0 0 66px' }}>
+                        <div style={{ fontSize: e.daysAway < 0 ? 13 : 17, fontWeight: 800, color: e.daysAway <= 14 ? '#f59e0b' : 'var(--ca5b4fc)', lineHeight: 1.1 }}>
+                          {e.daysAway < 0 ? T('Đang diễn ra', 'On now') : e.daysAway}
+                        </div>
+                        {e.daysAway >= 0 && <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('ngày nữa', 'days')}</div>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{e.name}</div>
+                        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{e.note}</div>
+                        {e.daysAway <= 21 && e.daysAway >= 0 && (
+                          <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2 }}>
+                            {T('Nên bắt đầu đăng bài từ bây giờ', 'Start posting about this now')}
+                          </div>
+                        )}
+                        {/* An approximate date must never be read as a fact — school
+                            start weeks differ by district, not just by state. */}
+                        {e.precision === 'approximate' && e.caveat && (
+                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 3, fontStyle: 'italic' }}>
+                            {T('Ngày ước lượng', 'Approximate')} — {e.caveat}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{idea.caption}</div>
-                {idea.hashtags && (
-                  <div style={{ fontSize: 12.5, color: 'var(--c60a5fa)', marginTop: 5, lineHeight: 1.5 }}>{idea.hashtags}</div>
-                )}
-              </div>
-            )}
+              )}
+              {/* ---- the six-month calendar ----
+                   Separate from "Sắp tới" on purpose: that card is what to act on this
+                   month, this one is what to order stock and book staff for. */}
+              {!!plan?.calendar?.length && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    📆 {T('Lịch ngày lễ 6 tháng tới', 'Next six months')}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 8, lineHeight: 1.5 }}>
+                    {plan.region?.known
+                      ? T(`Đã lọc theo ${plan.region.label} — ngày lễ riêng của bang cũng nằm trong này`, `Filtered for ${plan.region.label}`)
+                      : T('Chỉ gồm dịp áp dụng ở mọi nơi, vì chưa biết tiệm ở bang nào', 'Nationwide dates only — state unknown')}
+                  </div>
+                  {plan.calendar.map((e) => (
+                    <div key={`${e.name}-${e.daysAway}`} style={{
+                      display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0',
+                      borderTop: '1px solid var(--c1e293b)',
+                    }}>
+                      <div style={{ flex: '0 0 92px', fontSize: 12, color: e.daysAway <= 30 ? '#f59e0b' : 'var(--c64748b)' }}>
+                        {e.daysAway < 0 ? T('đang diễn ra', 'on now') : `${e.daysAway} ${T('ngày', 'days')}`}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>
+                          {e.name}
+                          {e.scope === 'regional' && (
+                            <span style={{ fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)' }}>
+                              {T('riêng khu vực', 'local')}
+                            </span>
+                          )}
+                          {e.scope === 'cultural' && (
+                            <span style={{ fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 20, background: 'var(--c1e293b)', color: 'var(--c94a3b8)' }}>
+                              {T('tuỳ tệp khách', 'if it fits')}
+                            </span>
+                          )}
+                          {e.precision === 'approximate' && (
+                            <span style={{ fontSize: 10, marginLeft: 6, color: 'var(--c64748b)' }}>{T('· ngày ước lượng', '· approx')}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>{e.note}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-            {idea.reason && (
-              <div style={{ background: 'var(--c172554)', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
-                <span style={{ fontSize: 12, color: 'var(--c93c5fd)', fontWeight: 700 }}>{T('Vì sao gợi ý', 'Why this')}: </span>
-                <span style={{ fontSize: 12.5, color: 'var(--cbfdbfe)', lineHeight: 1.6 }}>{idea.reason}</span>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button
-                onClick={() => mark(idea.id, done ? 'published' : 'posted')}
-                disabled={busy === idea.id}
-                style={{
-                  flex: '1 1 auto', minHeight: 42, padding: '10px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                  border: done ? '1px solid #22c55e' : 'none',
-                  background: done ? 'transparent' : '#6366f1',
-                  color: done ? '#22c55e' : '#fff',
-                }}
-              >
-                {done ? T('✓ Đã đăng', '✓ Posted') : T('Đánh dấu đã đăng', 'Mark as posted')}
-              </button>
-              {!done && (
+        {!isMobile && (
+          <aside style={{ position: 'sticky', top: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {regionCard}
+            {plan?.week && (
+              <div style={{ ...ui.card, padding: 14 }}>
+                <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
+                  {T('Trọng tâm tuần', 'This week’s aim')}
+                </div>
+                <div style={{ fontSize: 13.5, color: '#a5b4fc', lineHeight: 1.5 }}>{plan.week.focus}</div>
                 <button
-                  onClick={() => mark(idea.id, skipped ? 'published' : 'skipped')}
-                  disabled={busy === idea.id}
-                  style={{ minHeight: 42, padding: '10px 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5, cursor: 'pointer' }}
+                  onClick={() => setTab('week')}
+                  style={{ ...ui.primaryBtn, marginTop: 10, width: '100%', background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)' }}
                 >
-                  {skipped ? T('Bỏ qua ✓', 'Skipped ✓') : T('Bỏ qua', 'Skip')}
+                  {T('Xem kế hoạch tuần', 'Open the week')}
                 </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
+              </div>
+            )}
+            {!!plan?.events?.length && (
+              <div style={{ ...ui.card, padding: 14 }}>
+                <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>
+                  {T('Sắp tới', 'Coming up')}
+                </div>
+                {plan.events.slice(0, 3).map((e) => (
+                  <div key={e.name} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: 13 }}>
+                    <span style={{ flex: '0 0 60px', color: e.daysAway <= 14 ? '#f59e0b' : 'var(--c64748b)', fontSize: 12 }}>
+                      {e.daysAway < 0 ? T('đang có', 'on now') : `${e.daysAway} ${T('ngày', 'd')}`}
+                    </span>
+                    <span style={{ color: 'var(--ce2e8f0)', minWidth: 0 }}>{e.name}</span>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setTab('calendar')}
+                  style={{ ...ui.primaryBtn, marginTop: 8, width: '100%', background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)' }}
+                >
+                  {T('Xem lịch 6 tháng', 'Six-month calendar')}
+                </button>
+              </div>
+            )}
+            {plan?.offer && (
+              <div style={{ ...ui.card, padding: 14, borderColor: plan.offer.kind === 'raise-price' ? '#22c55e' : 'var(--c334155)' }}>
+                <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
+                  {T('Khuyến mãi', 'Discount call')}
+                </div>
+                <div style={{ fontSize: 13.5, color: plan.offer.kind === 'raise-price' ? '#22c55e' : 'var(--ca5b4fc)', lineHeight: 1.5 }}>
+                  {plan.offer.headline}
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
+      </div>
     </section>
   );
 }

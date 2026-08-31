@@ -130,3 +130,87 @@ describe('the plan it returns is shaped the way the screen expects', () => {
     expect(plan.week.dataThin).toBe(true);
   });
 });
+
+/**
+ * The manual refresh button.
+ *
+ * Every press spends a real API call, so the interesting cases are not the
+ * happy path — they are the sixth press, the crash halfway through, and the
+ * salon next door.
+ */
+describe('refresh is capped, counted, and scoped', () => {
+  function prismaWith(setting: unknown, queries: Query[] = []) {
+    const model = (name: string) =>
+      new Proxy({}, {
+        get: (_t, op: string) => (args: Record<string, unknown> = {}) => {
+          queries.push({ model: name, op, args });
+          if (name === 'setting' && (op === 'findFirst' || op === 'findUnique')) return Promise.resolve(setting);
+          if (op === 'findUnique' && name === 'tenant') return Promise.resolve({ timezone: 'America/Los_Angeles', name: 'X', businessType: 'SALON', market: 'US' });
+          if (op === 'findMany') return Promise.resolve([]);
+          if (op === 'updateMany') return Promise.resolve({ count: 3 });
+          return Promise.resolve({ id: 'row-1' });
+        },
+      });
+    return new Proxy({}, { get: (_t, name: string) => model(name) }) as never;
+  }
+  const svcWith = (setting: unknown, q: Query[] = []) =>
+    new ContentService(prismaWith(setting, q), { get: async () => null } as never);
+
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
+  it('refuses the sixth press of the day, in words a person can act on', async () => {
+    const svc = svcWith({ id: 's1', value: { date: today, count: 5 } });
+    await expect(svc.refreshFor(userOf('t1'))).rejects.toThrow(/5 lần hôm nay/);
+  });
+
+  it('lets yesterday’s count go — the cap is daily, not lifetime', async () => {
+    const q: Query[] = [];
+    const svc = svcWith({ id: 's1', value: { date: '2020-01-01', count: 99 } }, q);
+    const r = await svc.refreshFor(userOf('t1'));
+    expect(r.left).toBe(4);
+    expect(q.some((x) => x.model === 'setting' && x.op === 'update')).toBe(true);
+  });
+
+  it('counts the attempt BEFORE drafting, so a crash cannot buy a free retry', async () => {
+    // Proved by removing the API key: drafting bails out immediately, and the
+    // counter must STILL have been written. An earlier version of this test
+    // wrapped the assertion in `if (drafted >= 0)`, which meant it quietly
+    // asserted nothing on exactly this path — the one that matters.
+    const old = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      const q: Query[] = [];
+      const r = await svcWith(null, q).refreshFor(userOf('t1'));
+      expect(r.created).toBe(0);
+      const wrote = q.find((x) => x.model === 'setting' && (x.op === 'create' || x.op === 'update'));
+      expect(wrote).toBeTruthy();
+      expect(r.left).toBe(4);
+    } finally { if (old) process.env.ANTHROPIC_API_KEY = old; }
+  });
+
+  it('reads and writes the counter under this tenant only', async () => {
+    const q: Query[] = [];
+    await svcWith(null, q).refreshFor(userOf('tenant-aaa'));
+    for (const call of q.filter((x) => x.model === 'setting')) {
+      const w = wheres(call.args);
+      const d = (call.args as { data?: Record<string, unknown> }).data;
+      const fenced = w.some((x) => x.tenantId === 'tenant-aaa') || d?.tenantId === 'tenant-aaa' || w.some((x) => x.id === 's1');
+      expect(fenced).toBe(true);
+    }
+  });
+
+  it('says nothing was created when the model is unavailable, instead of pretending', async () => {
+    const old = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      const r = await svcWith(null).refreshFor(userOf('t1'));
+      expect(r.created).toBe(0);
+      expect(r.skipped).toBe('no-api-key');
+    } finally { if (old) process.env.ANTHROPIC_API_KEY = old; }
+  });
+
+  it('still refuses without a tenant context', async () => {
+    const noTenant = { userId: 'u1', role: 'SUPER_ADMIN' } as unknown as AuthenticatedUser;
+    await expect(svcWith(null).refreshFor(noTenant)).rejects.toThrow();
+  });
+});

@@ -29,6 +29,17 @@ export class ContentController {
     return this.svc.planFor(user);
   }
 
+  /**
+   * Redraft today's ideas now instead of waiting for the 6am run.
+   *
+   * Capped per tenant per day inside the service — every press costs a real API
+   * call, and a button with no ceiling is a bill with no ceiling.
+   */
+  @Post('refresh')
+  refresh(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.refreshFor(user);
+  }
+
   @Post('ideas/:id/status')
   setStatus(
     @CurrentUser() user: AuthenticatedUser,

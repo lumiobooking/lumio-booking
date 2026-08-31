@@ -497,6 +497,53 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     };
   }
 
+  /**
+   * Redraft today's ideas on demand.
+   *
+   * `/salon/content` is a support-only screen — only a Lumio session ever opens
+   * it — so the person pressing this is the agency, and making them wait for
+   * tomorrow's 6am run to see a change would be absurd. It therefore drafts AND
+   * publishes in one step, skipping the review queue that exists to protect the
+   * salon from unreviewed drafts. There is no salon here to protect.
+   *
+   * Two guards, because this spends money on every press:
+   *   - a daily cap per tenant, held in the settings table so a restart cannot
+   *     reset it into a free-for-all;
+   *   - the cap counts ATTEMPTS, not successes. A failing model that is retried
+   *     forty times costs exactly as much as a working one.
+   */
+  async refreshFor(user: AuthenticatedUser): Promise<{ created: number; left: number; skipped?: string }> {
+    const tenantId = this.tenantId(user);
+    const LIMIT = 5;
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone
+      || 'America/Los_Angeles';
+    const today = this.localDay(tz);
+
+    const row = await this.prisma.setting.findFirst({
+      where: { tenantId, key: 'content_manual_refresh' }, select: { id: true, value: true },
+    }).catch(() => null);
+    const state = (row?.value ?? {}) as { date?: string; count?: number };
+    const used = state.date === today ? Number(state.count) || 0 : 0;
+    if (used >= LIMIT) {
+      throw new BadRequestException(`Đã tạo lại ${LIMIT} lần hôm nay — chờ tới ngày mai, hoặc sửa tay ý tưởng đang có.`);
+    }
+
+    // Count the attempt BEFORE running it: a crash halfway through has already
+    // cost the API call, and must not hand back a free retry.
+    const next = { date: today, count: used + 1 };
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } }).catch(() => undefined);
+    else await this.prisma.setting.create({ data: { tenantId, key: 'content_manual_refresh', value: next as never } }).catch(() => undefined);
+
+    const r = await this.generateForTenant(tenantId, { force: true });
+    if (r.created) {
+      await this.prisma.contentIdea.updateMany({
+        where: { tenantId, forDate: today, status: 'draft' },
+        data: { status: 'published', publishedAt: new Date() },
+      }).catch(() => undefined);
+    }
+    return { created: r.created, left: LIMIT - next.count, ...(r.skipped ? { skipped: r.skipped } : {}) };
+  }
+
   /** The salon marks progress: filmed, posted, or honestly skipped. */
   async setIdeaStatus(user: AuthenticatedUser, id: string, status: string, resultNote?: string) {
     const tenantId = this.tenantId(user);

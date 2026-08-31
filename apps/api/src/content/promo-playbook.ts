@@ -120,7 +120,7 @@ export function marginBasis(
     const c = ASSUMED_COMMISSION_PCT;
     return {
       commissionPct: c, grossMarginPct: 100 - c, source: 'assumed',
-      note: `ƯỚC TÍNH ${c}% — chưa có tỷ lệ ăn chia trong hệ thống và hồ sơ thợ chưa khai. Mọi con số tiền bên dưới đều dựa trên ước tính này; sửa lại ở hồ sơ thợ hoặc Super Admin để có số đúng.`,
+      note: `ƯỚC TÍNH ${c}% — hồ sơ thợ chưa khai tỷ lệ ăn chia. Mọi con số tiền bên dưới đều dựa trên ước tính này; điền tỷ lệ trong Nhân sự → sửa thợ là có số đúng.`,
     };
   }
   return { commissionPct: null, grossMarginPct: null, source: 'unknown', note: 'Chưa biết biên lãi.' };
@@ -147,7 +147,7 @@ export function breakEven(discountPct: number, grossMarginPct: number | null): B
   if (grossMarginPct === null) {
     return {
       discountPct: d, liftNeededPct: null, impossible: false, verdict: 'unknown',
-      plain: 'Chưa biết biên lãi của tiệm nên chưa tính được cần thêm bao nhiêu khách. Nhập tỷ lệ ăn chia thợ ở Super Admin.',
+      plain: 'Chưa biết biên lãi của tiệm nên chưa tính được cần thêm bao nhiêu khách. Điền tỷ lệ ăn chia trong hồ sơ thợ (Nhân sự → sửa thợ).',
     };
   }
   const m = Math.max(1, Math.min(99, Math.round(grossMarginPct)));

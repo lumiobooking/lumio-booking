@@ -136,9 +136,12 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
       key: 'market',
       what: 'Quy mô dân cư quanh tiệm',
       unlocks: 'Biết được thị trường có bao nhiêu người thì mới nói được ngân sách này đang với tới bao nhiêu phần trăm trong đó.',
+      // Addressed to the shop, in the shop's own screens. The old copy pointed
+      // at Super Admin — a screen the shop cannot open — for a ZIP the shop had
+      // already typed into its address.
       how: i.regionKnown
-        ? 'Điền mã ZIP của tiệm và các ZIP lân cận ở Super Admin, rồi bấm quét dân cư.'
-        : 'Điền thành phố, bang và ZIP cho tiệm ở Super Admin.',
+        ? 'Hệ thống đang tự lấy số liệu theo mã ZIP của tiệm, chạy nền mỗi giờ. Muốn rộng hơn thì thêm ZIP lân cận trong cài đặt.'
+        : 'Thêm địa chỉ có mã ZIP ở Cài đặt tiệm → Thông tin công ty, hoặc bấm "Quét & học tự động" để lấy từ website/fanpage.',
     });
   }
 
@@ -237,7 +240,7 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
       key: 'value',
       what: 'Biên lãi của tiệm',
       unlocks: 'Không có nó thì không có ngưỡng dừng, và một chiến dịch không có ngưỡng dừng là một chiến dịch không biết mình lãi hay lỗ.',
-      how: 'Nhập tỷ lệ ăn chia thợ ở Super Admin. Biên lãi gộp ≈ 100 trừ tỷ lệ đó.',
+      how: 'Điền tỷ lệ ăn chia trong hồ sơ từng thợ (Nhân sự → sửa thợ). Biên lãi gộp ≈ 100 trừ tỷ lệ đó.',
     });
   }
 

@@ -121,7 +121,12 @@ describe('failure is reported, never faked', () => {
     const impl = (async () => { called = true; return { ok: true, status: 200, text: async () => GOOD }; }) as unknown as FetchLike;
     const r = await fetchCensus('', { fetchImpl: impl });
     expect(called).toBe(false);
-    expect(r.error).toMatch(/Điền ZIP/);
+    // The message must point the SHOP at a screen the shop can open. It used to
+    // say "Super Admin", which is our staff's screen — an instruction the person
+    // reading it cannot carry out.
+    expect(r.error).toMatch(/ZIP/);
+    expect(r.error).toMatch(/Cài đặt tiệm/);
+    expect(r.error).not.toMatch(/Super Admin/i);
   });
 });
 

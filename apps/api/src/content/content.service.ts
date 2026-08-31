@@ -5,7 +5,8 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
 import { buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
-import { regionEvents, parseAddress, eventsToPrompt, type ResolvedRegion, type DatedEvent } from './region-events';
+import { regionEvents, eventsToPrompt, type ResolvedRegion, type DatedEvent } from './region-events';
+import { resolveShopLocation, type ResolvedShopLocation } from './shop-location';
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
@@ -92,6 +93,8 @@ export class ContentService {
     city: string;
     tz: string;
     region: ResolvedRegion;
+    /** Where the region came from, so the screen can name its own source. */
+    loc: ResolvedShopLocation;
     events: DatedEvent[];
     signals: SignalProfile;
     revenue: RevenueProfile;
@@ -250,12 +253,21 @@ export class ContentService {
       select: { name: true, priceCents: true, durationMinutes: true },
     }).catch(() => [] as SvcRow[]) as SvcRow[];
 
-    // Where this salon is. Explicit fields win; otherwise read the address the
-    // owner already typed into settings, so a hundred salons do not have to
-    // re-enter their own city. When neither yields a state, the region stays
-    // unknown and every downstream piece is written to say so.
+    // Where this salon is, from what the salon itself already holds: its own
+    // record, the address in its settings, the service area the scan read off
+    // its website, and finally the ZIP — which pins the state on its own.
+    // Nothing here waits on our staff typing anything, because a tenant whose
+    // calendar depends on Super Admin has no calendar on its first day.
     const t = (tenant ?? {}) as { market?: string; city?: string | null; region?: string | null };
-    const fromAddress = parseAddress(ex.address, t.market === 'VN' ? 'VN' : t.market === 'CA' ? 'CA' : 'US');
+    const loc = resolveShopLocation({
+      market: t.market ?? ex.country,
+      tenantCity: t.city,
+      tenantRegion: t.region,
+      tenantPostal: (tenant as { postalCode?: string | null } | null)?.postalCode,
+      nearbyZips: (tenant as { nearbyZips?: string | null } | null)?.nearbyZips,
+      address: ex.address,
+      serviceArea: (profileRow?.value as { serviceArea?: string } | null)?.serviceArea,
+    });
     const identity = resolveIdentity({
       declared: (profileRow?.value ?? null) as Record<string, string> | null,
       bizIntro: conn?.bizIntro ?? null,
@@ -263,15 +275,15 @@ export class ContentService {
       website: (ex as { website?: string }).website ?? null,
       tenantName: tenant?.name ?? null,
       serviceNames: services.map((s2) => s2.name),
-      city: (tenant as { city?: string | null } | null)?.city ?? fromAddress.city,
-      region: (tenant as { region?: string | null } | null)?.region ?? fromAddress.region,
+      city: loc.city,
+      region: loc.region,
       industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
     });
 
     const { region, events } = regionEvents(now, {
       market: t.market ?? ex.country ?? 'US',
-      city: t.city ?? fromAddress.city,
-      region: t.region ?? fromAddress.region,
+      city: loc.city,
+      region: loc.region,
     }, { horizonDays: 45 });
 
     // The commission rate the shop is already paying, from the staff records it
@@ -309,6 +321,7 @@ export class ContentService {
       city: region.label,
       tz,
       region,
+      loc,
       events,
       money,
       signals: buildSignalProfile({
@@ -328,13 +341,13 @@ export class ContentService {
       sourceCounts,
       lead,
       // ZIPs, in order of authority, and never asked for twice: the field
-      // someone filled, the extra ZIPs the team added, then the one sitting in
-      // the shop's own address. The address has been there since setup — asking
-      // for the ZIP separately was asking for data we already had.
+      // someone filled, the extra ZIPs the team added, then the one the shop's
+      // own address or service area yielded. All of it has been on file since
+      // setup — asking for the ZIP separately was asking for data we hold.
       nearbyZips: [
         (tenant as { postalCode?: string | null } | null)?.postalCode ?? '',
         (tenant as { nearbyZips?: string | null } | null)?.nearbyZips ?? '',
-        fromAddress.postalCode ?? '',
+        loc.postalCode ?? '',
       ].filter(Boolean).join(',') || null,
     };
   }
@@ -557,9 +570,33 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     }).catch(() => []) as { id: string }[];
     let warmed = 0;
     for (const t of tenants) {
-      const zips = await this.gather(t.id).then((c) => c.nearbyZips).catch(() => null);
-      if (!zips) continue;
-      const r = await this.areaFor(t.id, zips, { allowFetch: true }).catch(() => null);
+      const ctx = await this.gather(t.id).catch(() => null);
+      if (!ctx) continue;
+
+      // Write the resolved location back onto the tenant, once.
+      //
+      // The content screen works this out on every read, but the rest of the
+      // platform reads the tenant columns — so a shop whose state lives only in
+      // its address stays "unknown" everywhere else. Filling it here keeps the
+      // read path pure and means nobody has to type a city we already know.
+      // Only ever fills a blank: a value someone entered by hand outranks one
+      // parsed out of an address.
+      if (ctx.loc.region && ctx.loc.source !== 'tenant') {
+        const cur = await this.prisma.tenant.findUnique({
+          where: { id: t.id },
+          select: { city: true, region: true, postalCode: true } as never,
+        }).catch(() => null) as unknown as { city?: string | null; region?: string | null; postalCode?: string | null } | null;
+        const data: Record<string, string> = {};
+        if (cur && !cur.region) data.region = ctx.loc.region;
+        if (cur && !cur.city && ctx.loc.city) data.city = ctx.loc.city;
+        if (cur && !cur.postalCode && ctx.loc.postalCode) data.postalCode = ctx.loc.postalCode;
+        if (Object.keys(data).length) {
+          await this.prisma.tenant.update({ where: { id: t.id }, data: data as never }).catch(() => undefined);
+        }
+      }
+
+      if (!ctx.nearbyZips) continue;
+      const r = await this.areaFor(t.id, ctx.nearbyZips, { allowFetch: true }).catch(() => null);
       if (r?.ok) warmed += 1;
     }
     return { warmed };
@@ -648,7 +685,13 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // Where we think the salon is, and how sure we are. The screen shows this
       // so a wrong city gets corrected by the person who knows, instead of
       // quietly skewing every suggestion for months.
-      region: { label: ctx.region.label, known: ctx.region.regionKnown, market: ctx.region.market },
+      region: {
+        label: ctx.region.label, known: ctx.region.regionKnown, market: ctx.region.market,
+        // Named source when we know, and a fix the SHOP can carry out when we
+        // do not. The old copy sent the owner to a screen only our staff can
+        // open, for data the shop had already given us.
+        source: ctx.loc.sourceLabel, fix: ctx.loc.fix,
+      },
       // The trade this engine thinks the business is in. On screen next to the
       // region, because "everything looks like a nail salon" is a symptom with
       // two causes — the industry not being set, or the industry being set and
@@ -802,7 +845,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   ): Promise<CensusResult & { lines: string[]; cachedAt?: string }> {
     const blank: CensusResult = { ok: false, year: null, zips: [], totalPopulation: null, weightedMedianIncomeUsd: null };
     if (!zips) {
-      return { ...blank, lines: [], error: 'Chưa có mã ZIP. Điền ZIP của tiệm (và các ZIP lân cận) ở Super Admin.' };
+      return { ...blank, lines: [], error: 'Chưa có mã ZIP nào của tiệm. Thêm địa chỉ (có ZIP) ở Cài đặt tiệm → Thông tin công ty, hoặc bấm "Quét & học tự động".' };
     }
     const KEY = 'census_cache';
     const row = await this.prisma.setting.findFirst({ where: { tenantId, key: KEY }, select: { id: true, value: true } }).catch(() => null);
@@ -822,7 +865,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     if (opts.allowFetch === false) {
       return cached.data?.ok
         ? { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at }
-        : { ...blank, lines: [], error: 'Chưa lấy số liệu dân cư cho khu vực này. Bấm quét ở Super Admin để lấy lần đầu.' };
+        : { ...blank, lines: [], error: 'Đang lấy số liệu dân cư cho khu vực này — hệ thống tự chạy nền mỗi giờ, không cần thao tác.' };
     }
 
     const r = await fetchCensus(zips, { apiKey: process.env.CENSUS_API_KEY || null });
@@ -1089,18 +1132,22 @@ TRẢ VỀ JSON THUẦN:
       select: { city: true, region: true, postalCode: true, market: true } as never,
     }).catch(() => null) as unknown as { city?: string | null; region?: string | null; postalCode?: string | null; market?: string | null } | null;
     if (t && !t.region) {
-      const addr = String(((extra?.value ?? {}) as { address?: string }).address ?? '');
-      const fromArea = parseAddress(`${draft.serviceArea} ${addr}`, t.market === 'VN' ? 'VN' : t.market === 'CA' ? 'CA' : 'US');
-      if (fromArea.region) {
+      const found = resolveShopLocation({
+        market: t.market,
+        tenantCity: t.city, tenantPostal: t.postalCode,
+        address: String(((extra?.value ?? {}) as { address?: string }).address ?? ''),
+        serviceArea: merged.serviceArea,
+      });
+      if (found.region) {
         await this.prisma.tenant.update({
           where: { id: tenantId },
           data: {
-            city: t.city || fromArea.city || null,
-            region: fromArea.region,
-            postalCode: t.postalCode || fromArea.postalCode || null,
+            city: t.city || found.city || null,
+            region: found.region,
+            postalCode: t.postalCode || found.postalCode || null,
           } as never,
         }).catch(() => undefined);
-        locationSaved = [fromArea.city, fromArea.region].filter(Boolean).join(', ');
+        locationSaved = [found.city, found.region].filter(Boolean).join(', ');
       }
     }
 

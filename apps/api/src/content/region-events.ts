@@ -142,25 +142,105 @@ export function resolveRegion(input: RegionInput): ResolvedRegion {
 }
 
 /**
+ * The state a US ZIP code belongs to.
+ *
+ * The first three digits of a ZIP are a sectional centre, and sectional centres
+ * do not straddle state lines — so this is a lookup, not a guess. It matters
+ * because a shop that filled in nothing but a ZIP (or whose address parses down
+ * to "…TX 78028" with no readable city) still knows what state it trades in,
+ * and every regional calendar runs on the state rather than the city.
+ *
+ * Unmapped ranges — military APO/FPO, Puerto Rico, Guam — return null instead of
+ * being forced into the nearest state.
+ */
+const ZIP3_STATE: [number, number, string][] = [
+  [5, 5, 'NY'], [10, 27, 'MA'], [28, 29, 'RI'], [30, 38, 'NH'], [39, 49, 'ME'],
+  [50, 59, 'VT'], [60, 69, 'CT'], [70, 89, 'NJ'],
+  [100, 149, 'NY'], [150, 196, 'PA'], [197, 199, 'DE'], [200, 200, 'DC'],
+  [201, 201, 'VA'], [202, 205, 'DC'], [206, 219, 'MD'], [220, 246, 'VA'],
+  [247, 268, 'WV'], [270, 289, 'NC'], [290, 299, 'SC'],
+  [300, 319, 'GA'], [320, 349, 'FL'], [350, 369, 'AL'], [370, 385, 'TN'],
+  [386, 397, 'MS'], [398, 399, 'GA'],
+  [400, 427, 'KY'], [430, 459, 'OH'], [460, 479, 'IN'], [480, 499, 'MI'],
+  [500, 528, 'IA'], [530, 549, 'WI'], [550, 567, 'MN'], [570, 577, 'SD'],
+  [580, 588, 'ND'], [590, 599, 'MT'],
+  [600, 629, 'IL'], [630, 658, 'MO'], [660, 679, 'KS'], [680, 693, 'NE'],
+  [700, 714, 'LA'], [716, 729, 'AR'], [730, 749, 'OK'], [750, 799, 'TX'],
+  [800, 816, 'CO'], [820, 831, 'WY'], [832, 838, 'ID'], [840, 847, 'UT'],
+  [850, 865, 'AZ'], [870, 884, 'NM'], [885, 885, 'TX'], [889, 898, 'NV'],
+  [900, 961, 'CA'], [967, 968, 'HI'], [970, 979, 'OR'], [980, 994, 'WA'],
+  [995, 999, 'AK'],
+];
+
+export function stateFromZip(zip: string | null | undefined): string | null {
+  const m = /\b(\d{5})\b/.exec(String(zip ?? ''));
+  if (!m) return null;
+  const p = Number(m[1].slice(0, 3));
+  for (const [lo, hi, st] of ZIP3_STATE) if (p >= lo && p <= hi) return st;
+  return null;
+}
+
+/** Full state names, because people type "Texas" far more often than "TX". */
+const STATE_BY_NAME: Record<string, string> = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
+  colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA',
+  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA',
+  kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD',
+  massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS',
+  missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV',
+  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+  'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK',
+  oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT',
+  virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
+  wyoming: 'WY', 'washington dc': 'DC', 'district of columbia': 'DC',
+};
+
+// Longest first, so "west virginia" is matched before "virginia".
+const STATE_NAME_RE = new RegExp(
+  `(^|[,\\s])(${Object.keys(STATE_BY_NAME).sort((a, b) => b.length - a.length).join('|')})`
+  + '(\\s*,?\\s*\\d{5}(?:-\\d{4})?)?\\s*$', 'i',
+);
+
+/**
+ * Country names people put at the end of an address.
+ *
+ * "1234 Main St, Kerrville, TX 78028, USA" is how an address gets typed by
+ * someone being thorough, and it used to parse to nothing at all: every pattern
+ * below anchors on the end of the string, and "USA" was sitting there. Losing a
+ * shop's whole calendar to the word "USA" is not strictness, it is a bug.
+ */
+const COUNTRY_TAIL = /(?:,\s*|\s+)(?:u\.?s\.?a\.?|united states(?: of america)?|hoa kỳ|hoa ky|việt nam|viet ?nam)\.?\s*$|,\s*(?:us|mỹ|my|canada)\.?\s*$/i;
+
+/**
  * Pull city and state out of the free-text address salons already filled in.
  *
  * Most salons on the platform typed a full address into settings years ago, so
  * asking a hundred owners to re-enter their own city would be a poor way to
  * spend their evening. This reads what is already there.
  *
- * It is strict on purpose. A parser that returns a state whenever it sees two
- * capital letters will happily decide that "IN" in "NAILS IN THE CITY" is
- * Indiana, and then confidently serve that salon Indiana's school calendar. So
- * a state is only accepted when it sits where a state actually sits: at the end
- * of the address, next to a ZIP, or as the final comma-separated part. Anything
- * less clear returns null and the salon is treated as location-unknown.
+ * It is strict about WHERE a state may appear, and forgiving about HOW it is
+ * written. A parser that returns a state whenever it sees two capital letters
+ * will happily decide that "IN" in "NAILS IN THE CITY" is Indiana, and then
+ * confidently serve that salon Indiana's school calendar — so a state is only
+ * accepted at the end of the address, next to a ZIP, or as the final
+ * comma-separated part. But within those positions it now accepts "Texas" as
+ * readily as "TX", and ignores a trailing "USA", because refusing an address
+ * over its spelling is the same failure as refusing it over its content.
  */
 export function parseAddress(address: string | null | undefined, market: Market = 'US'): {
   city: string | null; region: string | null; postalCode: string | null;
 } {
   const none = { city: null, region: null, postalCode: null };
-  const raw = (address ?? '').trim();
+  let raw = (address ?? '').trim();
   if (!raw || market !== 'US') return none;
+
+  // Normalise before matching: drop the country, spell the state as a code, and
+  // pull a comma out from between the state and its ZIP.
+  for (let i = 0; i < 2 && COUNTRY_TAIL.test(raw); i += 1) raw = raw.replace(COUNTRY_TAIL, '').trim();
+  raw = raw.replace(STATE_NAME_RE, (_m, lead: string, name: string, zip?: string) =>
+    `${lead}${STATE_BY_NAME[name.toLowerCase()]}${zip ?? ''}`);
+  raw = raw.replace(/,\s*(\d{5}(?:-\d{4})?)\s*$/, ' $1').trim();
 
   // "…, Garden Grove, CA 92840" / "… Garden Grove CA 92840-1234"
   const withZip = /(?:^|,)\s*([A-Za-z][A-Za-z .'\-]{1,40}?)[,\s]+([A-Za-z]{2})\s+(\d{5})(?:-\d{4})?\s*$/.exec(raw);
@@ -190,6 +270,12 @@ export function parseAddress(address: string | null | undefined, market: Market 
       return { city: parts[parts.length - 2] || null, region: last, postalCode: null };
     }
   }
+
+  // No state anywhere — but a ZIP is still a location. Hand it back so the
+  // caller can look the state up from it instead of filing the shop as
+  // placeless over a missing two-letter code.
+  const bareZip = /\b(\d{5})(?:-\d{4})?\s*$/.exec(raw);
+  if (bareZip) return { city: null, region: null, postalCode: bareZip[1] };
   return none;
 }
 

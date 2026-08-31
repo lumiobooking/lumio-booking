@@ -137,7 +137,7 @@ export async function fetchCensus(
   const zips = normaliseZips(zipsInput);
   const empty: CensusResult = { ok: false, year: null, zips: [], totalPopulation: null, weightedMedianIncomeUsd: null };
   if (!zips.length) {
-    return { ...empty, error: 'Chưa có mã ZIP nào để tra cứu. Điền ZIP của tiệm ở Super Admin.' };
+    return { ...empty, error: 'Chưa có mã ZIP nào để tra cứu. Thêm địa chỉ có ZIP ở Cài đặt tiệm → Thông tin công ty.' };
   }
 
   const doFetch: FetchLike = opts.fetchImpl

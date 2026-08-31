@@ -219,7 +219,9 @@ describe('the margin comes from the shop before it comes from a default', () => 
     expect(m.source).toBe('assumed');
     expect(m.commissionPct).toBe(55);
     expect(m.note).toMatch(/ƯỚC TÍNH/);
-    expect(m.note).toMatch(/sửa lại/);
+    // And it names the screen the SHOP can fix it in — not ours.
+    expect(m.note).toMatch(/hồ sơ thợ/);
+    expect(m.note).not.toMatch(/Super Admin/i);
   });
 
   it('still refuses entirely when assuming is not permitted', () => {

@@ -77,7 +77,7 @@ interface DayPlan { weekday: number; label: string; jobs: Job[] }
 interface TrendTopic { label: string; why: string; from: 'salon' | 'region' | 'trade' }
 interface TrendLink { key: string; title: string; url: string; what: string; how: string; source: string; topics?: TrendTopic[] }
 interface Plan {
-  region: { label: string; known: boolean; market: string };
+  region: { label: string; known: boolean; market: string; source?: string | null; fix?: string | null };
   industry: { code: string; trade: string };
   identity: {
     label: string; declared: boolean; filled: number;
@@ -310,11 +310,21 @@ function Inner() {
         </span>
       )}
       {plan.region.known ? (
-        <span>{T('Gợi ý theo khu vực', 'Tailored for')} <strong style={{ color: 'var(--ce2e8f0)' }}>{plan.region.label}</strong></span>
+        <span>
+          {T('Gợi ý theo khu vực', 'Tailored for')} <strong style={{ color: 'var(--ce2e8f0)' }}>{plan.region.label}</strong>
+          {/* Where it came from. A location the shop can see the source of is
+              one the shop can correct; an unattributed one is one nobody can
+              argue with. */}
+          {plan.region.source ? (
+            <span style={{ color: 'var(--c64748b)' }}> · {T('lấy từ', 'from')} {plan.region.source}</span>
+          ) : null}
+        </span>
       ) : (
         <span style={{ flex: 1, minWidth: 0 }}>
-          {T('Chưa biết tiệm ở thành phố nào, nên lịch sự kiện chỉ có các dịp chung. Điền thành phố và bang trong Super Admin để nhận gợi ý sát khu vực.',
-             'We do not know this salon’s city yet, so only nationwide dates are shown. Fill in the city and state in Super Admin.')}
+          {T('Chưa xác định được tiệm ở đâu nên lịch sự kiện chỉ có các dịp chung. ',
+             'We cannot place this business yet, so only nationwide dates are shown. ')}
+          {plan.region.fix ?? T('Thêm địa chỉ ở Cài đặt tiệm → Thông tin công ty.',
+                                'Add the address in Salon settings → Company info.')}
         </span>
       )}
     </div>
@@ -1099,7 +1109,8 @@ function Inner() {
                 ) : (
                   <div style={{ fontSize: 13, color: 'var(--cfde68a)', lineHeight: 1.6 }}>
                     {plan?.area?.error
-                      ?? T('Chưa có số liệu khu vực. Điền ZIP của tiệm ở Super Admin.', 'No area data yet — add the ZIP in Super Admin.')}
+                      ?? T('Chưa có số liệu khu vực — hệ thống tự lấy theo ZIP của tiệm, chạy nền mỗi giờ.',
+                           'No area data yet — the system pulls it from the shop’s ZIP hourly.')}
                   </div>
                 )}
               </div>

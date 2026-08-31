@@ -164,3 +164,47 @@ describe('the content engine tables are wired the way the code expects', () => {
     }
   });
 });
+
+describe('nothing shown to a salon sends it to a screen only we can open', () => {
+  /**
+   * Super Admin is OUR staff's console. A salon cannot open it.
+   *
+   * So every "fill this in at Super Admin" the salon reads is an instruction it
+   * is unable to follow, for data it has usually already given us somewhere
+   * else — and the salon's screen sits broken until an employee of ours happens
+   * to notice. That is what "Business not described yet — fill in the city and
+   * state in Super Admin" was: a dead end printed in the salon's own dashboard.
+   *
+   * Comments may say "Super Admin" freely; they explain the system to us. Only
+   * strings the salon can read are checked, and only in the salon-facing engine.
+   */
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(e.name) && !/\.spec\.tsx?$/.test(e.name)) files.push(p);
+    }
+  };
+  walk(path.join(__dirname, '../content'));
+  const salonPage = path.join(__dirname, '../../../web/src/app/salon/content/page.tsx');
+  if (fs.existsSync(salonPage)) files.push(salonPage);
+
+  it('has files to check — an empty sweep would pass silently', () => {
+    expect(files.length).toBeGreaterThan(10);
+  });
+
+  it('never says "Super Admin" inside a string the salon reads', () => {
+    const offenders: string[] = [];
+    for (const f of files) {
+      fs.readFileSync(f, 'utf8').split(/\r?\n/).forEach((line, i) => {
+        const t = line.trim();
+        if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return;
+        if (/['"`][^'"`]*Super Admin/i.test(line)) {
+          offenders.push(`${path.basename(f)}:${i + 1}: ${t}`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});

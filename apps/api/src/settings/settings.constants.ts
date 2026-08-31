@@ -510,6 +510,20 @@ export interface BookingRules {
    * minutes tells every visitor the shop is quiet.
    */
   soonestBar: 'hours' | 'soonest' | 'off';
+
+  /**
+   * Customer self-service rescheduling, from Messenger and the AI hotline.
+   *
+   * `selfRescheduleNoticeHours` is a POLICY, not a measurement, and it is
+   * deliberately NOT the same number as minLeadHours. Booking into an empty
+   * slot an hour from now costs the salon nothing; vacating a committed slot
+   * an hour from now leaves a hole they cannot fill. 24 is the common
+   * convention in the trade — stated as a convention, and one field to change.
+   */
+  selfRescheduleEnabled: boolean;
+  selfRescheduleNoticeHours: number;
+  /** One appointment moved five times is a no-show arriving slowly. */
+  selfRescheduleMaxMoves: number;
 }
 
 const open9to6: DayHours = { closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 };
@@ -518,6 +532,9 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
   slotStepMinutes: 30,
   minLeadHours: 1,
   maxAdvanceDays: 60,
+  selfRescheduleEnabled: true,
+  selfRescheduleNoticeHours: 24,
+  selfRescheduleMaxMoves: 2,
   allowCustomerChooseStaff: true,
   assignmentMode: 'auto',
   currency: 'USD',

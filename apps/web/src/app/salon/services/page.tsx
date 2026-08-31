@@ -9,7 +9,7 @@ import { ui, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/u
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
-import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
+import { SearchBox, matchesQuery, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Service {
@@ -58,6 +58,7 @@ function ServicesInner() {
   const [showImport, setShowImport] = useState(false);
   const [filling, setFilling] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
+  const [showOrder, setShowOrder] = useState(false);
   // Currency is a salon-level setting (Settings -> Payments). The whole Services
   // screen formats prices with it, so changing the currency there is reflected here.
   const [money, setMoney] = useState({ code: 'USD', symbol: '$', pos: 'before', decimals: 2 });
@@ -128,14 +129,16 @@ function ServicesInner() {
 
   const catName = (id?: string | null) => categories.find((c) => c.id === id)?.name ?? '—';
 
-  // Search + category filter, then newest first. (No date filter — a service
-  // menu shouldn't be hidden by when it was created.)
-  const visible = sortNewest(
-    services.filter((s) =>
-      matchesQuery(`${s.name} ${s.description ?? ''}`, q) &&
-      (catFilter === 'all' || (catFilter === 'none' ? !s.categoryId : s.categoryId === catFilter))),
-    (s) => s.createdAt,
-  );
+  // Search + category filter, in the order the CUSTOMER sees.
+  //
+  // This list used to be re-sorted newest-first in the browser, which quietly
+  // undid the order the API had already applied — so the owner arranged the
+  // menu and then looked at a screen that disagreed with the booking page.
+  // The server returns [sortOrder asc, createdAt desc]; leaving it alone is
+  // what makes "Thứ tự hiển thị" mean anything.
+  const visible = services.filter((s) =>
+    matchesQuery(`${s.name} ${s.description ?? ''}`, q) &&
+    (catFilter === 'all' || (catFilter === 'none' ? !s.categoryId : s.categoryId === catFilter)));
   const pg = usePaged(visible, 25);
   const bulk = useBulkSelect(pg.paged.map((r) => r.id));
 
@@ -162,6 +165,11 @@ function ServicesInner() {
             title={lang === 'vi' ? 'Tự thêm ảnh nail/spa mẫu cho các dịch vụ chưa có ảnh (dùng khi demo)' : 'Auto-add sample nail/spa photos to services without an image (for demos)'}
             style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', opacity: filling ? 0.6 : 1 }}>
             {filling ? (lang === 'vi' ? 'Đang thêm ảnh…' : 'Adding…') : (lang === 'vi' ? '🖼 Ảnh mẫu' : '🖼 Sample images')}
+          </button>
+          <button onClick={() => { setShowOrder((s) => !s); setShowForm(false); setShowImport(false); }}
+            title={lang === 'vi' ? 'Kéo thả để đổi thứ tự dịch vụ hiện trên trang đặt lịch' : 'Drag to change the order customers see'}
+            style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: showOrder ? '#6366f1' : 'transparent', border: '1px solid #6366f1', color: showOrder ? '#fff' : 'var(--ca5b4fc)' }}>
+            {showOrder ? (lang === 'vi' ? 'Đóng' : 'Close') : (lang === 'vi' ? '↕ Thứ tự hiển thị' : '↕ Display order')}
           </button>
           <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid var(--c475569)' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
@@ -196,6 +204,16 @@ function ServicesInner() {
           ))}
           <FilterChip active={catFilter === 'none'} onClick={() => setCatFilter('none')}>{t('sv.uncategorised')}</FilterChip>
         </div>
+      )}
+
+      {showOrder && (
+        <ReorderPanel
+          token={token!}
+          services={visible}
+          scope={catFilter === 'all' ? (lang === 'vi' ? 'toàn bộ menu' : 'the whole menu') : (catFilter === 'none' ? (lang === 'vi' ? 'nhóm chưa phân loại' : 'uncategorised') : catName(catFilter))}
+          lang={lang}
+          onSaved={async () => { await load(); }}
+        />
       )}
 
       {showForm && (
@@ -259,6 +277,138 @@ function ServicesInner() {
     </section>
   );
 }
+
+/**
+ * Drag the menu into the order customers see.
+ *
+ * WHY A PANEL AND NOT DRAG HANDLES ON THE TABLE
+ *
+ * The table is searched, filtered and paginated. Dragging row three to the top
+ * of page two means nothing globally, and a control whose effect depends on
+ * which page you are looking at will be used wrongly and blamed correctly. This
+ * shows the current category in ONE list, no pages, and saves the whole list.
+ *
+ * Arrows as well as dragging, and not as an afterthought: HTML5 drag does not
+ * work on a touch screen, and most salon owners open this on a phone. The
+ * arrows are also simply more precise for "move this one up by one", which is
+ * the actual request — "phải thứ tự từ 1 đến 3".
+ */
+function ReorderPanel({ token, services, scope, lang, onSaved }: {
+  token: string; services: Service[]; scope: string; lang: string;
+  onSaved: () => Promise<void>;
+}) {
+  const [order, setOrder] = useState<Service[]>(services);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  // Re-seed when the category filter changes underneath. Keeping a stale list
+  // would let someone save an order for services they are no longer looking at.
+  useEffect(() => { setOrder(services); setDone(false); }, [services]);
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= order.length || from === to) return;
+    const next = [...order];
+    const [row] = next.splice(from, 1);
+    next.splice(to, 0, row);
+    setOrder(next);
+    setDone(false);
+  };
+
+  const dirty = order.some((s, i) => services[i]?.id !== s.id);
+
+  async function save() {
+    setSaving(true); setErr(null);
+    try {
+      await apiFetch('/services/reorder', { method: 'PATCH', token, body: { ids: order.map((s) => s.id) } });
+      await onSaved();
+      setDone(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save the order');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ border: '1px solid #6366f1', borderRadius: 12, padding: 14, marginBottom: 16, background: 'var(--c0f172a)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+          {lang === 'vi' ? `Thứ tự hiển thị — ${scope}` : `Display order — ${scope}`}
+        </div>
+        <button onClick={save} disabled={saving || !dirty}
+          style={{ ...ui.primaryBtn, opacity: saving || !dirty ? 0.5 : 1 }}>
+          {saving ? (lang === 'vi' ? 'Đang lưu…' : 'Saving…') : (lang === 'vi' ? 'Lưu thứ tự' : 'Save order')}
+        </button>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
+        {lang === 'vi'
+          ? 'Kéo thả hoặc bấm mũi tên. Đây chính là thứ tự khách nhìn thấy trên trang đặt lịch và trong Messenger.'
+          : 'Drag or use the arrows. This is the exact order customers see on the booking page and in Messenger.'}
+      </div>
+      {err && <div style={ui.banner}>{err}</div>}
+      {done && !dirty && (
+        <div style={{ fontSize: 12.5, color: '#22c55e', marginBottom: 8 }}>
+          {lang === 'vi' ? '✓ Đã lưu. Trang đặt lịch cập nhật ngay.' : '✓ Saved. The booking page updates immediately.'}
+        </div>
+      )}
+      {order.length === 0 && (
+        <div style={{ fontSize: 13, color: 'var(--c64748b)' }}>
+          {lang === 'vi' ? 'Không có dịch vụ nào trong nhóm này.' : 'No services in this group.'}
+        </div>
+      )}
+      {order.map((s, i) => (
+        <div
+          key={s.id}
+          draggable
+          onDragStart={() => setDragId(s.id)}
+          onDragEnd={() => setDragId(null)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const from = order.findIndex((x) => x.id === dragId);
+            if (from >= 0) move(from, i);
+            setDragId(null);
+          }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 11px', marginBottom: 6, borderRadius: 9,
+            background: dragId === s.id ? 'var(--c334155)' : 'var(--c1e293b)',
+            border: '1px solid var(--c334155)',
+            cursor: 'grab', opacity: dragId === s.id ? 0.6 : 1,
+          }}
+        >
+          <span style={{ color: 'var(--c64748b)', fontSize: 15, cursor: 'grab' }}>⠿</span>
+          <span style={{
+            minWidth: 26, textAlign: 'center', fontSize: 12, fontWeight: 700,
+            color: '#a5b4fc', background: 'var(--c0f172a)', borderRadius: 6, padding: '2px 0',
+          }}>{i + 1}</span>
+          <span style={{ flex: 1, fontSize: 13.5, color: 'var(--ce2e8f0)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {s.name}
+          </span>
+          {!s.isActive && (
+            <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 20, padding: '1px 7px' }}>
+              {lang === 'vi' ? 'Ẩn' : 'Hidden'}
+            </span>
+          )}
+          <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0}
+            aria-label={lang === 'vi' ? 'Lên' : 'Move up'}
+            style={{ ...arrowBtn, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+          <button type="button" onClick={() => move(i, i + 1)} disabled={i === order.length - 1}
+            aria-label={lang === 'vi' ? 'Xuống' : 'Move down'}
+            style={{ ...arrowBtn, opacity: i === order.length - 1 ? 0.3 : 1 }}>↓</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const arrowBtn: React.CSSProperties = {
+  width: 30, height: 28, borderRadius: 7, cursor: 'pointer',
+  border: '1px solid var(--c475569)', background: 'transparent',
+  color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1,
+};
 
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
 

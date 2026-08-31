@@ -208,3 +208,24 @@ describe('nothing shown to a salon sends it to a screen only we can open', () =>
     expect(offenders).toEqual([]);
   });
 });
+
+describe('the self-reschedule column exists in schema AND migration', () => {
+  /**
+   * A column added to schema.prisma with no migration is a build that passes
+   * locally and a runtime error on the deploy — the client knows the field,
+   * the database does not. This sandbox cannot run `prisma migrate`, so the
+   * pairing is checked as text, the same way the relation check is.
+   */
+  it('is declared on Appointment', () => {
+    expect(ALL.get('Appointment')).toMatch(/selfRescheduleCount\s+Int\s+@default\(0\)/);
+  });
+
+  it('has a migration that adds it', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS "selfRescheduleCount"/i);
+  });
+});

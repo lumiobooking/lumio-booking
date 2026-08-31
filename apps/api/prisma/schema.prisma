@@ -1186,6 +1186,13 @@ model Appointment {
   remind2SentAt DateTime? // later reminder (e.g. ~2-3h before) sent
   customerConfirmedAt DateTime? // customer tapped "Confirm" in a reminder
 
+  /// How many times the CUSTOMER has moved this appointment themselves, from
+  /// Messenger or the AI hotline. Counted rather than inferred: a staff
+  /// reschedule and a customer reschedule look identical in the audit log once
+  /// the row has been written, and only one of them should count against the
+  /// self-service limit.
+  selfRescheduleCount Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

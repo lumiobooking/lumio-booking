@@ -13,6 +13,7 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { CreateServiceAddonDto } from './dto/create-addon.dto';
 import { CreateServiceCategoryDto, UpdateServiceCategoryDto } from './dto/category.dto';
+import { ReorderDto } from './dto/reorder.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -37,6 +38,20 @@ export class ServicesController {
   @Get('addons/all')
   listAllAddons(@CurrentUser() user: AuthenticatedUser) {
     return this.servicesService.listAllAddons(user);
+  }
+
+  // Reorder the menu. Declared before :id so "reorder" is never read as an id.
+  // The body is the ORDER — positions are assigned from the array rather than
+  // sent per row, because a client computing its own numbers will eventually
+  // send two rows the same one.
+  @Patch('reorder')
+  reorder(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReorderDto) {
+    return this.servicesService.reorderServices(user, dto.ids);
+  }
+
+  @Patch('categories/reorder')
+  reorderCategories(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReorderDto) {
+    return this.servicesService.reorderCategories(user, dto.ids);
   }
 
   // ---- Categories (menu groups). Declared before :id to avoid collision. ----

@@ -67,6 +67,85 @@ export class ServicesService {
     });
   }
 
+  /**
+   * Put the menu in the order the salon dragged it into.
+   *
+   * WHY AN ENDPOINT AND NOT A NUMBER FIELD
+   *
+   * `sortOrder` has been on the model since the menu was built, and every query
+   * that reads services already orders by it. What was missing was any way for
+   * an owner to SET it: the booking page showed Package 3, then 2, then 1,
+   * because every service was left at the default 0 and the tie broke on
+   * creation time. The owner's complaint — "em để ngược rồi, phải thứ tự từ 1
+   * đến 3" — is a complaint about a field nobody could reach.
+   *
+   * Positions are assigned from the ARRAY, not sent per row. A client that
+   * computes its own numbers will eventually send two rows the same one, and
+   * then the order depends on the tie-break again. Here the list is the order.
+   *
+   * Anything the salon did not send keeps its place after the ones it did, so
+   * dragging inside one category cannot silently reshuffle another.
+   */
+  async reorderServices(user: AuthenticatedUser, ids: string[]): Promise<{ ordered: number }> {
+    const tenantId = this.tenantId(user);
+    const wanted = [...new Set((ids ?? []).map((s) => String(s ?? '').trim()).filter(Boolean))];
+    if (!wanted.length) throw new BadRequestException('No services to order.');
+
+    // Only rows that really belong to this tenant. A foreign id is dropped
+    // rather than written: the tenant boundary is not a place for best effort.
+    const mine = await this.prisma.service.findMany({
+      where: { id: { in: wanted }, tenantId },
+      select: { id: true },
+    });
+    const valid = new Set(mine.map((s) => s.id));
+    const ordered = wanted.filter((id) => valid.has(id));
+    if (!ordered.length) throw new NotFoundException('None of those services belong to this salon.');
+
+    await this.prisma.$transaction(
+      ordered.map((id, i) => this.prisma.service.updateMany({
+        where: { id, tenantId },
+        // Leaving a gap of ten. A later "insert one between these two" then
+        // needs one row written instead of renumbering the whole menu.
+        // `as never`: sortOrder is on the deployed schema but missing from the
+        // Prisma client this was written against — the same cast the rest of
+        // this file already uses for the columns in that gap.
+        data: { sortOrder: (i + 1) * 10 } as never,
+      })),
+    );
+
+    await this.audit.log({
+      tenantId, userId: user.userId,
+      action: 'service.reordered',
+      resourceType: 'service',
+      resourceId: ordered[0],
+      metadata: { count: ordered.length },
+    });
+    return { ordered: ordered.length };
+  }
+
+  /** Same rule for the category strip along the top of the menu. */
+  async reorderCategories(user: AuthenticatedUser, ids: string[]): Promise<{ ordered: number }> {
+    const tenantId = this.tenantId(user);
+    const wanted = [...new Set((ids ?? []).map((s) => String(s ?? '').trim()).filter(Boolean))];
+    if (!wanted.length) throw new BadRequestException('No categories to order.');
+    const mine = await this.prisma.serviceCategory.findMany({
+      where: { id: { in: wanted }, tenantId }, select: { id: true },
+    });
+    const valid = new Set(mine.map((c) => c.id));
+    const ordered = wanted.filter((id) => valid.has(id));
+    if (!ordered.length) throw new NotFoundException('None of those categories belong to this salon.');
+    await this.prisma.$transaction(
+      ordered.map((id, i) => this.prisma.serviceCategory.updateMany({
+        where: { id, tenantId }, data: { sortOrder: (i + 1) * 10 },
+      })),
+    );
+    await this.audit.log({
+      tenantId, userId: user.userId, action: 'service_category.reordered',
+      resourceType: 'service_category', resourceId: ordered[0], metadata: { count: ordered.length },
+    });
+    return { ordered: ordered.length };
+  }
+
   // ---- Categories (menu groups) ------------------------------------------
 
   listCategories(user: AuthenticatedUser) {

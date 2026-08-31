@@ -678,7 +678,7 @@ export class VoiceService implements OnModuleInit {
     const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. Your words are read aloud on a live call. Speak naturally like a friendly human receptionist — usually one relaxed sentence, occasionally two; concise and to the point, but never curt, robotic, or scripted. A little warmth ("Of course!", "Happy to help") is good; rambling is not. No lists, no emojis, no special characters, no URLs.
 The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
 ${persona.voiceGoal}
-Once you have a first name, a service (use its id from the list below), and a specific date and time for the ${persona.bookableNoun}, call create_booking. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
+If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the salon's notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy. Once you have a first name, a service (use its id from the list below), and a specific date and time for the ${persona.bookableNoun}, call create_booking. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
 Speak times naturally (for example, "two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the ${persona.venueNoun} is closed then and offer the nearest open time.
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
@@ -699,6 +699,30 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
             customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
           },
           required: ['customerFirstName', 'serviceId', 'localDateTime'],
+        },
+      },
+      {
+        name: 'find_appointment',
+        description: 'Look up the caller’s upcoming appointments. Defaults to the number they are calling from. ALWAYS call this before saying anything about an existing booking — never answer from memory.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            customerPhone: { type: 'string', description: 'Optional. Only set if they booked under a different number.' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'reschedule_appointment',
+        description: 'Move one of the caller’s appointments to a new time. The tool checks the salon’s notice policy, opening hours and the technician’s diary, and hands back the exact reason when it refuses.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            appointmentId: { type: 'string', description: 'The id from find_appointment. Never guessed, never read aloud.' },
+            localDateTime: { type: 'string', description: 'The NEW salon-local time in ISO form, e.g. 2026-07-10T14:00' },
+            customerPhone: { type: 'string', description: 'Optional. Defaults to the number they are calling from.' },
+          },
+          required: ['appointmentId', 'localDateTime'],
         },
       },
       ...(bilingual ? [{
@@ -812,6 +836,43 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         acc.appointmentId = b.id || null;
         return `SUCCESS. The appointment is booked (id ${b.id}). Warmly confirm the service, day and time back to the caller and let them know a text confirmation is on the way. Do NOT end the call yet: after confirming, ask if there is anything else you can help with, and wait for their reply.`;
       }
+      if (name === 'find_appointment') {
+        const { dial } = await this.localeInfo(tenantId);
+        const phone = toE164(String(input.customerPhone || ''), dial) || toE164(callerPhone, dial);
+        if (!phone) return 'No phone number available; politely ask the caller for the number they booked with.';
+        const rows = await this.bookings.upcomingForPhone(tenantId, phone);
+        if (!rows.length) {
+          return 'No upcoming appointment found for that number. Ask gently whether they booked under a different number; do NOT tell them they have no booking.';
+        }
+        const fmt = (d: Date) => new Intl.DateTimeFormat('en-US', {
+          timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        }).format(d);
+        return JSON.stringify(rows.map((r) => ({
+          appointmentId: r.id, service: r.service?.name ?? '', when: fmt(r.startTime),
+        })));
+      }
+
+      if (name === 'reschedule_appointment') {
+        const id = String(input.appointmentId || '').trim();
+        const local = String(input.localDateTime || '').trim();
+        const { dial: rDial } = await this.localeInfo(tenantId);
+        const phone = toE164(String(input.customerPhone || ''), rDial) || toE164(callerPhone, rDial);
+        if (!id || !local) return 'Missing the appointment or the new time; ask the caller for what is missing.';
+        if (!phone) return 'No phone number available; ask the caller for the number they booked with.';
+        const r = await this.bookings.selfReschedule({
+          tenantId, appointmentId: id, phone, newStartIso: wallToUtcISO(local, tz), by: 'hotline',
+        });
+        if (!r.ok) {
+          // Same rule, same sentence, as the Messenger bot. One policy with two
+          // front doors must not develop two different explanations.
+          return `REFUSED (${r.code}). Tell the caller this, warmly and in your own words, and offer to have a staff member call back — do not invent a different reason: ${r.say}`;
+        }
+        const when = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        }).format(r.startTime as Date);
+        return `SUCCESS. The appointment now sits at ${when} and the salon calendar is already updated. Warmly repeat the new day and time back, say a text confirmation is on the way, then ask if there is anything else — do not end the call yet.`;
+      }
+
       if (name === 'end_call') {
         acc.wantEnd = true;
         return 'Give a warm, unhurried goodbye now, a friendly sentence or two: thank them by name if you know it, wish them a lovely day, and if they booked remind them the text confirmation is coming and that they can call back anytime.';

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { signingSecret } from '../common/secret.util';
@@ -11,6 +12,7 @@ import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
 import { fitsBusinessHours, describeWindows } from '../settings/business-hours';
+import { canSelfReschedule } from './self-reschedule';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -65,6 +67,11 @@ function isValidPhoneNumber(v: string): boolean {
 
 @Injectable()
 export class BookingsService {
+  // Self-service reschedules are executed by a language model on behalf of the
+  // public. Every allow and every refusal is logged with its reason, because
+  // "why did my appointment move" has to be answerable afterwards.
+  private readonly logger = new Logger(BookingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -606,6 +613,199 @@ export class BookingsService {
     }
 
     return appointment;
+  }
+
+  /**
+   * The customer's next appointments, found by their phone number.
+   *
+   * Phone, not name: two people called Anna is normal in a book of two hundred,
+   * and showing one customer another customer's appointment is the worst thing
+   * this feature could do. The number is matched in both its normalised and its
+   * raw form, because rows written before normalisation still hold the text the
+   * customer typed.
+   */
+  async upcomingForPhone(tenantId: string, rawPhone: string, limit = 5) {
+    const phone = (await this.normalizedPhone(tenantId, rawPhone)) ?? '';
+    const raw = String(rawPhone ?? '').trim();
+    if (!phone && !raw) return [];
+    const or: Prisma.CustomerWhereInput[] = [];
+    if (phone) or.push({ phone });
+    if (raw && raw !== phone) or.push({ phone: raw });
+    const customers = await this.prisma.customer.findMany({
+      where: { tenantId, OR: or }, select: { id: true }, take: 5,
+    });
+    if (!customers.length) return [];
+    return this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        customerId: { in: customers.map((c) => c.id) },
+        startTime: { gte: new Date() },
+        status: { in: BookingsService.ACTIONABLE },
+      },
+      select: {
+        id: true, startTime: true, endTime: true, status: true,
+        service: { select: { name: true } },
+        assignedStaff: { select: { firstName: true } },
+      },
+      orderBy: { startTime: 'asc' },
+      take: limit,
+    });
+  }
+
+  /**
+   * A customer moves their own appointment, from Messenger or the AI hotline.
+   *
+   * SEPARATE FROM reschedule() ON PURPOSE
+   *
+   * `reschedule()` is the staff action: someone at the desk who can see the
+   * whole day, who is allowed to overrule the rules, and who is accountable for
+   * it. This one is executed by a language model on behalf of a member of the
+   * public, so every guard the desk provides by being a person has to be
+   * written down: the caller must prove which appointment is theirs, the timing
+   * policy applies, opening hours apply, and the technician must actually be
+   * free.
+   *
+   * The verdict comes from self-reschedule.ts, which knows nothing about
+   * Prisma, so the same rule serves both bots and can be tested without a
+   * database. What is left here is everything that needs the database.
+   */
+  async selfReschedule(input: {
+    tenantId: string;
+    appointmentId: string;
+    /** Proof of ownership. Must match the appointment's customer. */
+    phone: string;
+    newStartIso: string;
+    by: 'messenger' | 'hotline';
+  }): Promise<{ ok: boolean; code: string; say: string; appointment?: unknown; startTime?: Date }> {
+    const { tenantId, appointmentId, by } = input;
+    const rules = await this.settings.getBookingRules(tenantId);
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: {
+        id: true, startTime: true, endTime: true, status: true, assignedStaffId: true,
+        customer: { select: { phone: true } },
+      } as never,
+    }).catch(() => null) as unknown as {
+      id: string; startTime: Date; endTime: Date; status: AppointmentStatus;
+      assignedStaffId: string | null; customer: { phone: string | null } | null;
+      selfRescheduleCount?: number;
+    } | null;
+
+    if (!appt) {
+      return { ok: false, code: 'not-found', say: 'Em không tìm thấy lịch hẹn đó ạ. Anh/chị cho em xin lại số điện thoại đã dùng để đặt nhé.' };
+    }
+
+    // Ownership, checked against the phone rather than trusted from the model.
+    // Without this, a caller who guessed an id could move a stranger's booking.
+    const given = (await this.normalizedPhone(tenantId, input.phone)) ?? String(input.phone ?? '').trim();
+    const owner = (await this.normalizedPhone(tenantId, appt.customer?.phone ?? '')) ?? (appt.customer?.phone ?? '');
+    const digits = (s: string) => s.replace(/\D/g, '');
+    const sameOwner = Boolean(given && owner)
+      && (given === owner || (digits(given).length >= 7 && digits(given).slice(-9) === digits(owner).slice(-9)));
+    if (!sameOwner) {
+      this.logger.warn(`self-reschedule refused (${by}): phone does not match appointment ${appointmentId}`);
+      return { ok: false, code: 'not-owner', say: 'Số điện thoại này không khớp với lịch hẹn đó ạ. Anh/chị kiểm tra giúp em số đã dùng khi đặt nhé.' };
+    }
+
+    const moves = Number((appt as { selfRescheduleCount?: number }).selfRescheduleCount ?? 0);
+    const newStart = new Date(input.newStartIso);
+    const verdict = canSelfReschedule(
+      {
+        enabled: rules.selfRescheduleEnabled !== false,
+        noticeHours: rules.selfRescheduleNoticeHours ?? 24,
+        minLeadHours: rules.minLeadHours ?? 1,
+        maxMoves: rules.selfRescheduleMaxMoves ?? 2,
+      },
+      {
+        now: Date.now(),
+        currentStartMs: appt.startTime.getTime(),
+        newStartMs: newStart.getTime(),
+        maxAdvanceDays: rules.maxAdvanceDays ?? 60,
+        movesSoFar: moves,
+        live: BookingsService.ACTIONABLE.includes(appt.status),
+      },
+    );
+    if (!verdict.allowed) {
+      this.logger.log(`self-reschedule refused (${by}) ${appointmentId}: ${verdict.detail}`);
+      return { ok: false, code: verdict.code, say: verdict.say };
+    }
+
+    const durationMs = appt.endTime.getTime() - appt.startTime.getTime();
+    const newEnd = new Date(newStart.getTime() + durationMs);
+
+    // Opening hours, on the server, for the same reason the public booking path
+    // checks them: the model is choosing a time from a conversation, not from a
+    // slot grid, and nothing else stops it picking 3am on a Sunday.
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const tz = tenant?.timezone || 'UTC';
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(newStart);
+    const wd = parts.find((x) => x.type === 'weekday')?.value ?? '';
+    const hh = Number(parts.find((x) => x.type === 'hour')?.value ?? NaN);
+    const mm = Number(parts.find((x) => x.type === 'minute')?.value ?? NaN);
+    const dayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+    const day = dayIndex >= 0 ? (rules.businessHours ?? [])[dayIndex] : undefined;
+    if (dayIndex >= 0 && Number.isFinite(hh) && Number.isFinite(mm)) {
+      const startMinutes = (hh % 24) * 60 + mm;
+      if (!fitsBusinessHours({ day, startMinutes, durationMin: Math.round(durationMs / 60_000) })) {
+        const open = describeWindows(day);
+        return {
+          ok: false, code: 'closed',
+          say: open === 'closed'
+            ? 'Hôm đó tiệm nghỉ ạ. Anh/chị chọn giúp em một ngày khác nhé?'
+            : `Giờ đó ngoài giờ mở cửa của tiệm (${open}). Anh/chị chọn giúp em một khung trong giờ nhé?`,
+        };
+      }
+    }
+
+    try {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        if (appt.assignedStaffId) {
+          await this.lockStaffSlot(tx, tenantId, appt.assignedStaffId);
+          await this.assertNoOverlap(tx, tenantId, appt.assignedStaffId, newStart, newEnd, appt.id);
+        }
+        await tx.appointment.updateMany({
+          where: { id: appt.id, tenantId },
+          data: {
+            startTime: newStart,
+            endTime: newEnd,
+            // The reminders already sent describe the OLD time. Clearing them
+            // lets the reminder job send fresh ones for the new time; leaving
+            // them would mean the customer's only reminder was for a slot they
+            // no longer hold.
+            remind1SentAt: null,
+            remind2SentAt: null,
+            customerConfirmedAt: null,
+            selfRescheduleCount: moves + 1,
+          } as never,
+        });
+        return tx.appointment.findFirst({ where: { id: appt.id, tenantId }, include: BOOKING_INCLUDE });
+      });
+
+      await this.audit.log({
+        tenantId, userId: null,
+        action: 'booking.self_rescheduled',
+        resourceType: 'appointment',
+        resourceId: appt.id,
+        metadata: { by, from: appt.startTime.toISOString(), to: newStart.toISOString(), move: moves + 1 },
+      });
+      this.logger.log(`self-reschedule OK (${by}) ${appt.id}: ${appt.startTime.toISOString()} -> ${newStart.toISOString()}`);
+
+      // The confirmation now describes a different day. Sending it again is the
+      // point: the customer's written record of the appointment must match the
+      // calendar, and the technician's day just changed.
+      if (updated) this.sendBookingConfirmation(tenantId, updated as never).catch(() => undefined);
+
+      return { ok: true, code: 'ok', say: '', appointment: updated, startTime: newStart };
+    } catch (e) {
+      const msg = String((e as Error).message || e);
+      if (/already booked/i.test(msg)) {
+        return { ok: false, code: 'taken', say: 'Khung giờ đó thợ đã có khách rồi ạ. Anh/chị chọn giúp em một giờ khác nhé?' };
+      }
+      this.logger.warn(`self-reschedule failed (${by}) ${appointmentId}: ${msg.slice(0, 160)}`);
+      return { ok: false, code: 'error', say: 'Em chưa đổi được lịch lúc này. Em nhờ nhân viên gọi lại cho anh/chị ngay nhé.' };
+    }
   }
 
   /**

@@ -80,6 +80,25 @@ export class ContentAdminController {
     return this.admin.deleteFormat(id);
   }
 
+  /**
+   * Read every tenant's own data and list what its setup is missing.
+   *
+   * The answer to "why does every client look like a nail salon": each tenant
+   * defaults to SALON, and nothing on any screen said so. This reads the
+   * services, menus and tables each shop already recorded and reports the
+   * mismatch, with the evidence quoted.
+   */
+  @Get('scan')
+  scan() {
+    return this.admin.scanTenants();
+  }
+
+  /** Apply one detected industry, after a person has read the evidence. */
+  @Post('scan/apply')
+  applyIndustry(@Body() dto: { tenantId: string; industry: string }) {
+    return this.admin.applyIndustry(dto?.tenantId, dto?.industry);
+  }
+
   // weekly trend notes
   @Get('notes')
   notes(@Query('industry') industry?: string) {

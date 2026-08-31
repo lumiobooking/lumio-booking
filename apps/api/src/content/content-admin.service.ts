@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { STARTER_FORMATS } from './starter-formats';
+import { detectIndustry, configGaps } from './industry-detect';
 
 /**
  * The Lumio team's side of the content engine.
@@ -90,6 +91,121 @@ export class ContentAdminService {
       added += 1;
     }
     return { added, skipped: seeds.length - added };
+  }
+
+  /**
+   * Read every tenant's own data and report what its setup is missing.
+   *
+   * This exists because the alternative was asking one person to remember to
+   * set an industry, a state, a commission rate and a format library for every
+   * client, by hand, forever — and the cost of forgetting is invisible: the
+   * screen still fills with plausible advice, it is just advice for the wrong
+   * trade. A scan turns a silent misconfiguration into a list.
+   *
+   * It only ever proposes. Writing businessType would change what the AI
+   * hotline says to that client's real customers, and a confident wrong guess
+   * applied across a hundred tenants is an efficient way to embarrass a hundred
+   * clients at once.
+   */
+  async scanTenants() {
+    type Row = {
+      id: string; name: string; businessType: string; region: string | null;
+      postalCode: string | null; commissionPct: number | null;
+      services: { name: string }[];
+    };
+    const tenants = await this.prisma.tenant.findMany({
+      where: { status: 'ACTIVE', deletedAt: null } as never,
+      select: {
+        id: true, name: true, businessType: true, region: true, postalCode: true, commissionPct: true,
+        services: { where: { isActive: true }, select: { name: true }, take: 40 },
+      } as never,
+      orderBy: { name: 'asc' },
+      take: 500,
+    }).catch(() => []) as unknown as Row[];
+
+    // Counted separately, and through a deliberately loose handle.
+    //
+    // menuItem and restaurantTable exist on the deploy machine's Prisma client
+    // and not on the one this was written against, so a typed access compiles
+    // in exactly one of the two places. Reaching for them by name keeps the
+    // build honest on both, and `groupBy` results are annotated by hand rather
+    // than inferred — inference through a stale client silently degrades to
+    // `{}`, and `{}` flows into a Map and out again as a runtime surprise.
+    type CountRow = { tenantId: string; _count: { _all: number } };
+    type IndustryRow = { industry: string; _count: { _all: number } };
+    const loose = this.prisma as unknown as Record<string, { groupBy: (a: unknown) => Promise<unknown> }>;
+    const groupCount = async (model: string): Promise<CountRow[]> => {
+      const r = await loose[model]?.groupBy({ by: ['tenantId'], _count: { _all: true } }).catch(() => []);
+      return Array.isArray(r) ? (r as CountRow[]) : [];
+    };
+
+    const [menuCounts, tableCounts, formatCounts, extras] = await Promise.all([
+      groupCount('menuItem'),
+      groupCount('restaurantTable'),
+      (async (): Promise<IndustryRow[]> => {
+        const r = await loose.contentFormat?.groupBy({ by: ['industry'], where: { active: true }, _count: { _all: true } }).catch(() => []);
+        return Array.isArray(r) ? (r as IndustryRow[]) : [];
+      })(),
+      this.prisma.setting.findMany({ where: { key: 'company_extra' }, select: { tenantId: true, value: true } })
+        .catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
+    ]);
+    const menuBy = new Map<string, number>(menuCounts.map((m) => [m.tenantId, m._count?._all ?? 0]));
+    const tableBy = new Map<string, number>(tableCounts.map((m) => [m.tenantId, m._count?._all ?? 0]));
+    const formatBy = new Map<string, number>(formatCounts.map((m) => [m.industry, m._count?._all ?? 0]));
+    const siteBy = new Map<string, string>(
+      extras.map((e) => [e.tenantId, String((e.value as { website?: string } | null)?.website ?? '')]),
+    );
+
+    const rows = tenants.map((t) => {
+      const detection = detectIndustry({
+        tenantName: t.name,
+        serviceNames: t.services?.map((s) => s.name) ?? [],
+        menuItemCount: menuBy.get(t.id) ?? 0,
+        tableCount: tableBy.get(t.id) ?? 0,
+        website: siteBy.get(t.id) ?? null,
+        currentIndustry: t.businessType,
+      });
+      return {
+        tenantId: t.id,
+        name: t.name,
+        current: t.businessType,
+        detection,
+        gaps: configGaps({
+          detection,
+          region: t.region,
+          commissionPct: t.commissionPct,
+          postalCode: t.postalCode,
+          formatCount: formatBy.get(t.businessType) ?? 0,
+        }),
+      };
+    });
+
+    return {
+      scanned: rows.length,
+      needsAttention: rows.filter((r) => r.gaps.some((g) => g.severity === 'blocking')).length,
+      wrongIndustry: rows.filter((r) => r.gaps.some((g) => g.key === 'industry')).length,
+      rows,
+    };
+  }
+
+  /**
+   * Apply a detected industry to one tenant.
+   *
+   * One at a time, on purpose. There is no "apply all" here: the point of the
+   * scan is that a person looks at the evidence and agrees, and a bulk button
+   * would quietly turn that into a rubber stamp.
+   */
+  async applyIndustry(tenantId: string, industry: string) {
+    const IND = String(industry ?? '').toUpperCase();
+    if (!['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE'].includes(IND)) {
+      throw new BadRequestException('Ngành không hợp lệ');
+    }
+    const r = await this.prisma.tenant.updateMany({ where: { id: tenantId }, data: { businessType: IND } as never });
+    if (!r.count) throw new NotFoundException('Không tìm thấy tiệm');
+    // Seed that trade's library at the same time: switching industry into an
+    // empty library swaps one broken state for another.
+    const seeded = await this.seedFormats(IND).catch(() => ({ added: 0, skipped: 0 }));
+    return { ok: true, industry: IND, formatsAdded: seeded.added };
   }
 
   async deleteFormat(id: string) {

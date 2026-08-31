@@ -54,6 +54,17 @@ export class UpdateBookingRulesDto {
   @IsOptional() @IsArray() @IsString({ each: true }) daysOff?: string[];
   @IsOptional() @IsIn(['strict', 'flexible']) groupPolicy?: 'strict' | 'flexible';
   @IsOptional() @IsIn(['hours', 'soonest', 'off']) soonestBar?: 'hours' | 'soonest' | 'off';
+  // Customer self-service rescheduling from Messenger and the AI hotline.
+  //
+  // Declared here the same day the fields were added to BookingRules, because
+  // the comment above is about exactly this mistake: a field in BookingRules
+  // and not in the DTO does not get ignored, it makes the whole "Save rules"
+  // button fail with "property … should not exist".
+  @IsOptional() @IsBoolean() selfRescheduleEnabled?: boolean;
+  // Capped at a week. Hours are a policy the salon picks, but a four-digit
+  // typo would silently switch self-service off for every customer.
+  @IsOptional() @IsInt() @Min(0) @Max(168) selfRescheduleNoticeHours?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(10) selfRescheduleMaxMoves?: number;
 }
 
 export class UpdateBrandingDto {

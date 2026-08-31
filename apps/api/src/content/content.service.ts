@@ -16,6 +16,7 @@ import { leadTime, cpaCeiling, budgetPlan, runWindow, platformPick, adAudiences 
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
+import { buildStrategyBrief } from './strategy-brief';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -582,6 +583,10 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   async planFor(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const ctx = await this.gather(tenantId);
+    // Computed once, then shared: the brief needs the same figures the cards
+    // show, and fetching them twice is how two numbers on one screen drift.
+    const area = await this.areaFor(tenantId, ctx.nearbyZips, { allowFetch: false }).catch(() => null);
+    const ads = await this.adsFor(tenantId, ctx).catch(() => null);
     const week = buildWeekPlan({
       today: new Date(),
       todayWeekday: this.localWeekday(ctx.tz),
@@ -640,8 +645,42 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       audience: ctx.audience,
       promo: ctx.promo,
       // Cache only: a salon opening this page must not wait on the Census.
-      area: await this.areaFor(tenantId, ctx.nearbyZips, { allowFetch: false }).catch(() => null),
-      ads: await this.adsFor(tenantId, ctx).catch(() => null),
+      area,
+      ads: ads,
+      // The consultant's chain, assembled from every number above. Placed in
+      // the payload rather than the UI because the argument's ORDER is part of
+      // the reasoning, and a screen that reorders it breaks the logic.
+      brief: buildStrategyBrief({
+        businessLabel: ctx.identity.declared ? ctx.identity.label : ctx.tenantName,
+        declaredWhoWeServe: ctx.identity.profile.whoWeServe || null,
+        serviceArea: ctx.identity.profile.serviceArea || null,
+        regionLabel: ctx.region.label,
+        regionKnown: ctx.region.regionKnown,
+        areaPopulation: area?.ok ? area.totalPopulation : null,
+        areaMedianIncome: area?.ok ? area.weightedMedianIncomeUsd : null,
+        areaZipCount: area?.zips?.length ?? 0,
+        censusYear: area?.year ?? null,
+        customerCount: ctx.audience.totalCustomers,
+        segments: ctx.audience.segments.map((sg) => ({
+          key: sg.key, label: sg.label, count: sg.count,
+          avgTicketCents: sg.avgTicketCents, medianGapDays: sg.medianGapDays, favouriteTime: sg.favouriteTime,
+        })),
+        lapsedCount: ctx.revenue.lapsed.count,
+        audienceThin: ctx.audience.thin,
+        leadDays: ctx.lead.medianDays,
+        leadSample: ctx.lead.sample,
+        quietLabels: ctx.revenue.loads.slice(0, 3).map((l) => l.label),
+        busyLabels: [...ctx.revenue.loads].reverse().slice(0, 2).map((l) => l.label),
+        sourceCounts: ctx.sourceCounts,
+        grossMarginPct: ctx.promo.margin.grossMarginPct,
+        cpaCeilingCents: ads?.ceiling.strictCents ?? null,
+        budgetTotalCents: ads?.budget.totalCents ?? null,
+        budgetDays: ads?.budget.days ?? 14,
+        bookingsToBreakEven: ads?.budget.bookingsToBreakEven ?? null,
+        runDayLabels: ads?.window.labels.run ?? [],
+        pauseDayLabels: ads?.window.labels.pause ?? [],
+        money: ctx.money,
+      }),
       seo: await this.seoFor(tenantId, ctx).catch(() => null),
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),

@@ -59,6 +59,9 @@ interface Ads {
   audiences: AdAudience[];
   money: { ceilingStrict: string | null; ceilingRepeat: string | null; daily: string; total: string };
 }
+interface BriefStep { key: string; order: number; title: string; finding: string; basis: string; confidence: string; soWhat: string }
+interface MissingLink { key: string; what: string; unlocks: string; how: string }
+interface Brief { headline: string; steps: BriefStep[]; missing: MissingLink[]; complete: boolean; limits: string[] }
 interface SeoCheck { key: string; title: string; state: 'pass' | 'warn' | 'fail' | 'unknown'; finding: string; action: string; why: string }
 interface Seo { checks: SeoCheck[]; failing: number; headline: string; blindSpots: string[] }
 interface PromoPlay { key: string; name: string; offer: string; why: string; useWhen: string; avoidWhen: string; cost: 'low' | 'medium' | 'high' }
@@ -92,6 +95,7 @@ interface Plan {
   promo: Promo;
   area: { ok: boolean; lines: string[]; year: number | null; totalPopulation: number | null; error?: string } | null;
   ads: Ads | null;
+  brief: Brief | null;
   seo: Seo | null;
   offer: Offer;
   lapsed: { count: number; medianDaysAway: number | null };
@@ -1029,6 +1033,75 @@ function Inner() {
 
           {tab === 'ads' && (
             <>
+              {/* ---- the brief ----
+                  First, and above the modules, because the modules were the
+                  problem: each correct on its own and together not an argument.
+                  A consultant delivers a chain — this many people, this many
+                  are yours, they behave like this, they arrive through that
+                  door, therefore spend this on those days. Break it anywhere
+                  and the number at the end is just an assertion. */}
+              {plan?.brief && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: 16,
+                  borderColor: plan.brief.complete ? '#6366f1' : '#f59e0b',
+                }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                    🧭 {T('Phân tích chiến lược', 'The strategy')}
+                  </div>
+                  <div style={{
+                    fontSize: 13, lineHeight: 1.6, marginBottom: 12,
+                    color: plan.brief.complete ? '#a5b4fc' : 'var(--cfde68a)',
+                  }}>{plan.brief.headline}</div>
+
+                  {plan.brief.steps.map((st, i) => (
+                    <div key={st.key} style={{ display: 'flex', gap: 11, padding: '10px 0', borderTop: i ? '1px solid var(--c1e293b)' : 'none' }}>
+                      <div style={{
+                        flex: '0 0 26px', height: 26, borderRadius: '50%', background: 'var(--c1e293b)',
+                        color: '#a5b4fc', fontSize: 13, fontWeight: 700, display: 'flex',
+                        alignItems: 'center', justifyContent: 'center',
+                      }}>{i + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{st.title}</div>
+                        <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>{st.finding}</div>
+                        <div style={{ fontSize: 12.5, color: '#22c55e', lineHeight: 1.55, marginTop: 4 }}>→ {st.soWhat}</div>
+                        <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 3, fontStyle: 'italic' }}>
+                          {T('Căn cứ', 'Basis')}: {st.basis}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {!!plan.brief.missing.length && (
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>
+                        {T('Còn thiếu để hoàn chỉnh phân tích', 'Missing links in the chain')}
+                      </div>
+                      {plan.brief.missing.map((m) => (
+                        <div key={m.key} style={{ padding: '7px 10px', marginBottom: 6, borderRadius: 8, background: 'var(--c451a03)' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--cfde68a)' }}>{m.what}</div>
+                          <div style={{ fontSize: 12, color: 'var(--cfde68a)', lineHeight: 1.5, marginTop: 2, opacity: 0.85 }}>{m.unlocks}</div>
+                          <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 3 }}>
+                            <strong style={{ color: '#22c55e' }}>{T('Cách lấy', 'How')}:</strong> {m.how}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Stated, not buried. A brief that quietly slides from what
+                      a household earns to who lives there reads authoritative
+                      and is the reason nobody should trust the rest of it. */}
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
+                    <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--c64748b)', marginBottom: 5 }}>
+                      {T('Phân tích này KHÔNG bao gồm', 'Out of scope')}
+                    </div>
+                    {plan.brief.limits.map((l, i) => (
+                      <div key={i} style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.55, marginBottom: 3 }}>• {l}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* ---- the ceiling, first ----
                   Everything else on this tab is worthless without it: the one
                   number that says when to stop. Deliberately above the budget,

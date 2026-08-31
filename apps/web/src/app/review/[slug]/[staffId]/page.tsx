@@ -134,7 +134,7 @@ export default function ReviewPage() {
               </p>
             </>
           ) : (
-            <p style={{ color: '#b45309', fontSize: 13, textAlign: 'center', background: 'var(--cfef3c7)', borderRadius: 10, padding: 12 }}>
+            <p style={{ color: 'var(--c78350f)', fontSize: 13, textAlign: 'center', background: 'var(--cfef3c7)', borderRadius: 10, padding: 12 }}>
               The salon hasn&apos;t finished setting up Google reviews yet.
             </p>
           )}

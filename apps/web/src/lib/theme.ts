@@ -62,6 +62,19 @@ export const TOKENS: Record<string, string> = {
   '#818cf8': '#4f46e5',
   '#e0e7ff': '#3730a3',
 
+  // ---- pale text that had no token, and therefore could not flip ----------
+  //
+  // Every one of these was written as a raw hex in a style object — pale green
+  // words on a chip whose background DID flip, so at night they read and by
+  // day they vanished into it. A raw hex cannot flip; only a token can.
+  '#a7f3d0': '#047857',
+  '#a5f3fc': '#0e7490',
+  '#cffafe': '#155e75',
+  '#dbeafe': '#1d4ed8',
+  '#fed7aa': '#c2410c',
+  '#fbbf24': '#b45309',
+  '#eab308': '#a16207',
+
   // ---- green family --------------------------------------------------------
   '#052e16': '#e8f8ee',
   '#064e3b': '#d7f2e4',

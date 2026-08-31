@@ -202,7 +202,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
         <span style={{ color: 'var(--c334155)' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.stArrived')}: </span><strong style={{ color: '#10b981' }}>{arrived}</strong></span>
-        {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: '#a7f3d0', background: 'var(--c064e3b)', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}
+        {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}
       </div>
 
       {activeStaff.length > 0 && (

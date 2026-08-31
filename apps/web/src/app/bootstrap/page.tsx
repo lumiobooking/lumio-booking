@@ -58,7 +58,7 @@ export default function BootstrapPage() {
           <p style={{ color: 'var(--c94a3b8)', fontSize: 14, lineHeight: 1.6 }}>
             Tài khoản Super Admin <strong style={{ color: 'var(--ce2e8f0)' }}>{done}</strong> đã sẵn sàng.
           </p>
-          <p style={{ color: '#fbbf24', fontSize: 13, lineHeight: 1.6, marginTop: 14 }}>
+          <p style={{ color: 'var(--cfbbf24)', fontSize: 13, lineHeight: 1.6, marginTop: 14 }}>
             Trang này giờ đã tự khoá — nó chỉ chạy được một lần. Vào Render và{' '}
             <strong>xoá biến <code>BOOTSTRAP_TOKEN</code></strong> để không còn gì thừa nằm lại.
           </p>

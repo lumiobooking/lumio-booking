@@ -102,7 +102,7 @@ function Inner() {
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
       <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 16px', textAlign: 'center' }}>
         When a client wants to tip you, tap <b style={{ color: 'var(--ce2e8f0)' }}>Show to client</b> and turn your phone toward them to scan. Money goes straight to you — the salon never holds it.

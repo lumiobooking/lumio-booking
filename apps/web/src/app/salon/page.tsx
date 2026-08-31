@@ -298,7 +298,7 @@ function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: nu
     { label: t('db.pmCard'), value: pm.card, color: '#3b82f6' },
     { label: t('db.pmTransfer'), value: pm.transfer, color: '#06b6d4' },
     { label: t('db.pmOnline'), value: pm.online, color: '#a855f7' },
-    { label: t('db.pmOnsite'), value: pm.onsite, color: '#eab308' },
+    { label: t('db.pmOnsite'), value: pm.onsite, color: 'var(--ceab308)' },
   ];
   const total = rows.reduce((s, r) => s + r.value, 0);
   if (total === 0) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{t('db.noPayments')}</p>;

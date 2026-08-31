@@ -319,7 +319,7 @@ function Performance() {
                   <MRow label={t('pf.cVisits')}>{r.completed}</MRow>
                   <MRow label={t('pf.cTips')}>{formatPrice(r.tipsCents)}</MRow>
                   <MRow label={t('pf.cRating')}>{r.reviewCount ? <>⭐ {r.rating} <span style={{ color: 'var(--c64748b)' }}>({r.reviewCount})</span></> : '—'}</MRow>
-                  <MRow label={t('pf.cPoints')}>{r.points ? <span style={{ color: '#eab308' }}>{r.points}</span> : '—'}</MRow>
+                  <MRow label={t('pf.cPoints')}>{r.points ? <span style={{ color: 'var(--ceab308)' }}>{r.points}</span> : '—'}</MRow>
                   <MRow label={t('pf.cTop')}>{r.topService ? `${r.topService.name} ×${r.topService.count}` : '—'}</MRow>
                   {r.recent.length > 0 && (
                     <div style={{ marginTop: 6 }}>

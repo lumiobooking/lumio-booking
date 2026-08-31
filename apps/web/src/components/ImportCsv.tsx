@@ -78,7 +78,7 @@ export function ImportCsv({ token, endpoint, header, sample, existing, buildBody
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
             <button onClick={run} disabled={busy || !text.trim()} style={ui.primaryBtn}>{busy ? 'Importing…' : `Import ${rowCount} row${rowCount === 1 ? '' : 's'}`}</button>
             <button onClick={() => setText(sample)} style={ghost}>Load sample</button>
-            {msg && <span style={{ fontSize: 13, color: '#a7f3d0' }}>{msg}</span>}
+            {msg && <span style={{ fontSize: 13, color: 'var(--ca7f3d0)' }}>{msg}</span>}
           </div>
         </div>
       )}

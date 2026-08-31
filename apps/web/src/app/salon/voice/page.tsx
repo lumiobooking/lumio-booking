@@ -335,7 +335,7 @@ function Inner() {
               <label style={ui.label}>{t('numbersLabel')}</label>
               <input value={c.forwardNumbers} onChange={(e) => setC({ ...c, forwardNumbers: e.target.value })}
                 placeholder="+1 403 555 0123, +1 403 555 0456" style={{ ...ui.input, width: '100%' }} />
-              <p style={{ color: '#fbbf24', fontSize: 12, margin: '6px 0 0', lineHeight: 1.5 }}>{t('numbersHint')}</p>
+              <p style={{ color: 'var(--cfbbf24)', fontSize: 12, margin: '6px 0 0', lineHeight: 1.5 }}>{t('numbersHint')}</p>
 
               {c.mode === 'ring_first' && (
                 <div style={{ marginTop: 12 }}>

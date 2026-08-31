@@ -70,7 +70,7 @@ function Inner() {
       <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wl.subA')}<strong>{t('wl.notifyWord')}</strong>{t('wl.subB')}</p>
 
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
       {loading && rows.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{t('wl.loading')}</p> : isMobile ? (
         <>

@@ -458,7 +458,7 @@ function AgentsSection({ token, vi }: { token: string | null; vi: boolean }) {
       {pairCode && (
         <div style={{ background: 'var(--c052e16)', border: '1px solid #22c55e', borderRadius: 8, padding: 12, margin: '8px 0' }}>
           <div style={{ color: 'var(--c86efac)', fontSize: 13 }}>{vi ? 'Nhập mã này vào Bridge/Companion (hết hạn 15 phút):' : 'Enter this code in the Bridge/Companion (expires in 15 min):'}</div>
-          <div style={{ color: '#fff', fontSize: 24, letterSpacing: 4, fontWeight: 700, marginTop: 6 }}>{pairCode}</div>
+          <div style={{ color: 'var(--cf8fafc)', fontSize: 24, letterSpacing: 4, fontWeight: 700, marginTop: 6 }}>{pairCode}</div>
         </div>
       )}
       <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>

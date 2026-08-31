@@ -173,7 +173,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {noChair.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>{vi ? 'Đang làm, chưa có ghế — chọn ghế bên dưới (hoặc kéo vào ô ghế trống):' : 'In service, no chair — pick a chair below (or drag onto a free chair):'}</div>
+          <div style={{ fontSize: 12, color: 'var(--cfcd34d)', marginBottom: 6 }}>{vi ? 'Đang làm, chưa có ghế — chọn ghế bên dưới (hoặc kéo vào ô ghế trống):' : 'In service, no chair — pick a chair below (or drag onto a free chair):'}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {noChair.map((w) => (
               <div key={w.id} style={{ background: 'var(--c1e293b)', border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 12px', minWidth: 200 }}>
@@ -244,7 +244,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {waitingPay.length > 0 && (
         <div style={{ marginTop: 6, marginBottom: 6 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', margin: '0 0 8px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'} ({waitingPay.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfbbf24)', margin: '0 0 8px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'} ({waitingPay.length})</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {waitingPay.map((w) => {
               const total = w.items.reduce((a, it) => a + it.priceCents, 0);
@@ -420,7 +420,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button onClick={onWaitPay} title={vi ? 'Khách xong — rời ghế cho khách mới, giữ bill để tính sau' : 'Free the chair, keep the bill open to pay later'}
-              style={{ ...ui.primaryBtn, flex: 1, background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid #f59e0b', padding: '11px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'}</button>
+              style={{ ...ui.primaryBtn, flex: 1, background: 'rgba(245,158,11,0.15)', color: 'var(--cfbbf24)', border: '1px solid #f59e0b', padding: '11px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'}</button>
             <button
               onClick={() => { if (window.confirm(vi ? 'Kết thúc khách này mà KHÔNG thu tiền? Chỉ dùng khi khách bỏ về hoặc không tính tiền.' : 'Finish this client WITHOUT taking payment? Only use this for a walk-out or a comp.')) onDone(); }}
               title={vi ? 'Kết thúc không thu tiền' : 'Finish without payment'}

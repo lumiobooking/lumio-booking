@@ -378,7 +378,7 @@ const STEPS = [
 ];
 
 const navLink: React.CSSProperties = { color: 'var(--c475569)', textDecoration: 'none', fontSize: 15 };
-const pill: React.CSSProperties = { display: 'inline-block', background: 'var(--ce0e7ff)', color: '#4338ca', fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 999 };
+const pill: React.CSSProperties = { display: 'inline-block', background: 'var(--ce0e7ff)', color: 'var(--c3730a3)', fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 999 };
 const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: 'none', cursor: 'pointer' };
 const ghostBtn: React.CSSProperties = { background: '#fff', color: INK, fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: '1.5px solid var(--ccbd5e1)', cursor: 'pointer' };
 const featureCard: React.CSSProperties = { background: '#fff', border: '1px solid #eef2f7', borderRadius: 16, padding: 24, boxShadow: '0 1px 3px rgba(15,23,42,0.04)' };

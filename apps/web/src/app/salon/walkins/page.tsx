@@ -441,7 +441,7 @@ function Inner() {
                 {pickedIds.map((id) => {
                   const sv = services.find((x) => x.id === id);
                   return (
-                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c1e3a8a)', color: '#dbeafe', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c1e3a8a)', color: 'var(--cdbeafe)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
                       {sv?.name ?? id}
                       <button type="button" onClick={() => setPickedIds((v) => v.filter((x) => x !== id))} style={{ background: 'none', border: 'none', color: 'var(--c93c5fd)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
                     </span>

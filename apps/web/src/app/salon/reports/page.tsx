@@ -463,7 +463,7 @@ function MdTable({ title, rows, money, T }: { title: string; rows: MdRow[]; mone
               <tr key={(r.staffId ?? '') + r.name} style={{ borderTop: '1px solid var(--c1e293b)' }}>
                 <td style={{ padding: '5px 0', color: 'var(--ce2e8f0)' }}>{r.name}</td>
                 <td style={{ padding: '5px 0', textAlign: 'right', color: 'var(--c94a3b8)' }}>{r.lines}</td>
-                <td style={{ padding: '5px 0', textAlign: 'right', color: '#fbbf24', fontWeight: 600 }}>{money(r.discountCents)}</td>
+                <td style={{ padding: '5px 0', textAlign: 'right', color: 'var(--cfbbf24)', fontWeight: 600 }}>{money(r.discountCents)}</td>
               </tr>
             ))}
           </tbody>

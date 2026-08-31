@@ -82,7 +82,7 @@ function Inner() {
   return (
     <form onSubmit={save} style={{ ...ui.card, maxWidth: 520 }}>
       {error && <div style={ui.banner}>{error}</div>}
-      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
       <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600, marginBottom: 4 }}>Profile photo</div>
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 12px' }}>Clients see this when choosing a technician. A clear, square face photo works best.</p>

@@ -273,7 +273,7 @@ function Inner() {
 
       {flash && <div style={{ ...ui.banner, background: 'var(--c14532d)', color: 'var(--cbbf7d0)' }}>{flash}</div>}
       {error && <div style={ui.banner}>{error}</div>}
-      {!s.clientConfigured && <div style={{ ...ui.banner, background: 'var(--c78350f)', color: '#fed7aa' }}>{t('notConfigured')}</div>}
+      {!s.clientConfigured && <div style={{ ...ui.banner, background: 'var(--c78350f)', color: 'var(--cfed7aa)' }}>{t('notConfigured')}</div>}
 
       {/* Connection */}
       <div style={{ ...ui.card, marginBottom: 16 }}>

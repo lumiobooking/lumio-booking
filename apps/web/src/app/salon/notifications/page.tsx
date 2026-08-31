@@ -447,7 +447,7 @@ function HistoryView({ token }: { token: string | null }) {
               <td style={ui.td}>
                 <span style={{ color: COLORS[n.status] ?? 'var(--c94a3b8)', fontWeight: 600 }}>{n.status}</span>
                 {n.status === 'FAILED' && n.error && <div style={{ color: 'var(--cf87171)', fontSize: 11.5, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{n.error}</div>}
-                {n.status !== 'FAILED' && n.provider === 'mock' && <div style={{ color: '#fbbf24', fontSize: 11, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{lang === 'vi' ? '⚠ Chưa gửi thật — chưa kết nối Twilio/email' : '⚠ Not a real send — connect Twilio/email'}</div>}
+                {n.status !== 'FAILED' && n.provider === 'mock' && <div style={{ color: 'var(--cfbbf24)', fontSize: 11, marginTop: 3, maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{lang === 'vi' ? '⚠ Chưa gửi thật — chưa kết nối Twilio/email' : '⚠ Not a real send — connect Twilio/email'}</div>}
               </td>
             </tr>
           ))}

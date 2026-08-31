@@ -1548,7 +1548,7 @@ function Register() {
               </div>
               {promoErr && <div style={{ color: 'var(--cf87171)', fontSize: 12 }}>{promoErr}</div>}
               {promo && !promo.appliesDiscount && (
-                <div style={{ color: '#fbbf24', fontSize: 12 }}>{t('po.promoGift')}</div>
+                <div style={{ color: 'var(--cfbbf24)', fontSize: 12 }}>{t('po.promoGift')}</div>
               )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1597,7 +1597,7 @@ function Register() {
             {money.cardSurcharge > 0 && <Row label={t('po.cardFee').replace('{r}', String(cardSurchargePct))} value={formatPrice(money.cardSurcharge, currency)} />}
             {loyalty.enabled && customerId && online && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#eab308' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
+                <span style={{ color: 'var(--ceab308)' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
                 <input
                   type="number" min={0} value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)}
                   placeholder={t('po.minPts').replace('{n}', String(loyalty.minRedeemPoints))}
@@ -1606,7 +1606,7 @@ function Register() {
               </div>
             )}
             {money.redeemDiscount > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ceab308)' }}>
                 <span>{t('po.pointsDiscount').replace('{n}', String(money.redeemPts))}</span><span>−{formatPrice(money.redeemDiscount, currency)}</span>
               </div>
             )}
@@ -1626,7 +1626,7 @@ function Register() {
             <div style={{ marginBottom: 8 }}>
               {giftCard ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
-                  <span style={{ fontSize: 13, color: '#a5f3fc' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
+                  <span style={{ fontSize: 13, color: 'var(--ca5f3fc)' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
                   <button onClick={() => setGiftCard(null)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{t('po.gcRemove')}</button>
                 </div>
               ) : (
@@ -1661,7 +1661,7 @@ function Register() {
           {tipTechs.length > 0 && tipOpen && (
             <div style={{ marginBottom: 12, border: '1px solid #155e75', borderRadius: 10, padding: 10, background: 'var(--c0f172a)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#a5f3fc' }}>💸 {t('po.tipTitle')}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ca5f3fc)' }}>💸 {t('po.tipTitle')}</div>
                 <button onClick={() => setTipOpen(false)} aria-label="close" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--c64748b)', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
               </div>
               <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 8 }}>{t('po.tipQrAfterNote')}</div>
@@ -1723,7 +1723,7 @@ function Register() {
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
               {!split && cardSurchargeOn && cardSurchargePct > 0 && payMethod === 'CARD' && money.cardSurcharge > 0 && (
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#fbbf24' }}>{t('po.cardFee').replace('{r}', String(cardSurchargePct))}: +{formatPrice(money.cardSurcharge, currency)}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cfbbf24)' }}>{t('po.cardFee').replace('{r}', String(cardSurchargePct))}: +{formatPrice(money.cardSurcharge, currency)}</span>
               )}
               <button
                 onClick={() => {
@@ -1862,7 +1862,7 @@ function Register() {
           {cardStuck && (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.94)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 24 }}>
               <div style={{ maxWidth: 460, background: 'var(--c0f172a)', border: '1px solid #f59e0b', borderRadius: 14, padding: 22 }}>
-                <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
+                <div style={{ color: 'var(--cfbbf24)', fontWeight: 700, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
                 <p style={{ color: 'var(--ce2e8f0)', fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{t('po.cardUnknownBody')}</p>
                 {cardStuck.note && <p style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{cardStuck.note}</p>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
@@ -1982,7 +1982,7 @@ function IpadPairPanel({ session, onRotate, onClose, t }: {
         <div style={{ textAlign: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('po.ipadOpenOn')} <strong style={{ color: 'var(--ce2e8f0)' }}>{displayUrl}</strong></div>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('po.ipadCodeLabel')}</div>
-          <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: 6, color: '#a5f3fc', fontFamily: 'monospace' }}>{code}</div>
+          <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: 6, color: 'var(--ca5f3fc)', fontFamily: 'monospace' }}>{code}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
           <button onClick={() => { if (pairUrl) { navigator.clipboard?.writeText(pairUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={{ ...ghost, padding: '8px 14px', fontSize: 13 }}>{copied ? '✓' : t('po.ipadCopyLink')}</button>
@@ -2146,7 +2146,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
         <span style={{ fontSize: 15 }}>👤</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customerLabel || t('po.custAttached')}</div>
-          <div style={{ fontSize: 11, color: '#eab308' }}>⭐ {t('po.custPoints').replace('{n}', String(customerPoints))}</div>
+          <div style={{ fontSize: 11, color: 'var(--ceab308)' }}>⭐ {t('po.custPoints').replace('{n}', String(customerPoints))}</div>
         </div>
         <button onClick={onClear} title={t('po.custRemove')} style={{ background: 'none', border: '1px solid var(--c475569)', borderRadius: 6, color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 13, padding: '3px 8px' }}>✕</button>
       </div>
@@ -2192,7 +2192,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
             <button key={c.id} type="button" onClick={() => { onPick(c.id, hitLabel(c), c.loyaltyPoints ?? 0); setResults(null); setQ(''); }}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 'none', borderBottom: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', cursor: 'pointer', fontSize: 13 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hitLabel(c)}</span>
-              <span style={{ color: '#eab308', fontSize: 11, whiteSpace: 'nowrap' }}>⭐ {c.loyaltyPoints ?? 0}</span>
+              <span style={{ color: 'var(--ceab308)', fontSize: 11, whiteSpace: 'nowrap' }}>⭐ {c.loyaltyPoints ?? 0}</span>
             </button>
           ))}
         </div>

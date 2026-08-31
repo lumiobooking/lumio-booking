@@ -619,7 +619,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
 
       <Panel
         title={t('se.pay.loyaltyTitle')}
-        badge={data.loyalty?.enabled ? { text: t('se.pay.on'), color: '#eab308' } : { text: t('se.pay.off'), color: 'var(--c64748b)' }}
+        badge={data.loyalty?.enabled ? { text: t('se.pay.on'), color: 'var(--ceab308)' } : { text: t('se.pay.off'), color: 'var(--c64748b)' }}
         hint={t('se.pay.loyaltyHint')}
       >
         <LoyaltyConfig data={data} onSave={onSave} />

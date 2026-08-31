@@ -124,7 +124,7 @@ function Inner() {
               <MHead right={s.earnedMonth > 0 ? <span style={{ fontSize: 18 }}>{medal(i)}</span> : null}>
                 {s.name}{s.flagged && <span style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}
               </MHead>
-              <MRow label={t('rv.colEarned')}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></MRow>
+              <MRow label={t('rv.colEarned')}><strong style={{ color: 'var(--ceab308)' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></MRow>
               <MRow label={t('rv.colBalance')}>{s.balance}</MRow>
               <MRow label={t('rv.colSends')}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</MRow>
               <MRow label={t('rv.colFeedbacks')}>{s.feedbackMonth}</MRow>
@@ -156,7 +156,7 @@ function Inner() {
               <tr key={s.id} style={{ borderTop: '1px solid var(--c334155)' }}>
                 <td style={{ ...ui.td, textAlign: 'center' }}>{s.earnedMonth > 0 ? medal(i) : '—'}</td>
                 <td style={ui.td}>{s.name}{s.flagged && <span title={t('rv.checkTitle')} style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}</td>
-                <td style={ui.td}><strong style={{ color: '#eab308' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></td>
+                <td style={ui.td}><strong style={{ color: 'var(--ceab308)' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></td>
                 <td style={ui.td}>{s.balance}</td>
                 <td style={ui.td}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</td>
                 <td style={ui.td}>{s.feedbackMonth}</td>

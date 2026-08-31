@@ -469,7 +469,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                 <div style={{ padding: 10, display: 'grid', gap: 8 }}>
                   {mine.length > 0 && (
                     <>
-                      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 2px 0' }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--cfbbf24)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 2px 0' }}>
                         {t('⭐ Mẫu của tôi (đã lưu trong hệ thống)', '⭐ My templates (saved)')}
                       </div>
                       {mine.map((tpl) => (
@@ -513,7 +513,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                           <b style={{ color: 'var(--ca5b4fc)' }}>{t('Mục tiêu:', 'Goal:')}</b> {p.goal}
                         </span>
                         <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 3 }}>
-                          <b style={{ color: '#fbbf24' }}>{t('Gửi cho:', 'Send to:')}</b> {p.who}
+                          <b style={{ color: 'var(--cfbbf24)' }}>{t('Gửi cho:', 'Send to:')}</b> {p.who}
                         </span>
                       </button>
                     );

@@ -147,7 +147,7 @@ const displayLinkStyle: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid var(--c334155)',
   background: 'var(--c0f172a)',
-  color: '#a5f3fc',
+  color: 'var(--ca5f3fc)',
   fontWeight: 600,
   fontSize: 13,
   textDecoration: 'none',

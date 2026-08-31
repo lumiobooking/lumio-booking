@@ -83,7 +83,7 @@ function Inner() {
         <div style={{ ...ui.card, border: '1px solid #22c55e', marginBottom: 16 }}>
           <strong style={{ color: '#22c55e' }}>{t('gc.issued')}</strong>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
-            <code style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, background: 'var(--c0f172a)', padding: '8px 14px', borderRadius: 8, color: '#a5f3fc' }}>{justIssued.code}</code>
+            <code style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, background: 'var(--c0f172a)', padding: '8px 14px', borderRadius: 8, color: 'var(--ca5f3fc)' }}>{justIssued.code}</code>
             <span style={{ fontSize: 16, color: 'var(--ce2e8f0)' }}>{formatPrice(justIssued.balanceCents, justIssued.currency)}</span>
             <button onClick={() => navigator.clipboard?.writeText(justIssued.code)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 13 }}>{t('gc.copyCode')}</button>
           </div>
@@ -109,7 +109,7 @@ function Inner() {
               {pg.paged.map((c) => (
                 <Fragment key={c.id}>
                   <tr style={{ borderTop: '1px solid var(--c334155)' }}>
-                    <td style={{ ...ui.td, fontFamily: 'monospace', fontWeight: 700, color: '#a5f3fc' }}>{c.code}</td>
+                    <td style={{ ...ui.td, fontFamily: 'monospace', fontWeight: 700, color: 'var(--ca5f3fc)' }}>{c.code}</td>
                     <td style={ui.td}>
                       <span style={{ fontWeight: 700 }}>{formatPrice(c.balanceCents, c.currency)}</span>
                       <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> / {formatPrice(c.initialCents, c.currency)}</span>

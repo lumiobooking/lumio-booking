@@ -40,7 +40,7 @@ function Inner() {
     <section>
       <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 16, padding: 22, textAlign: 'center', marginBottom: 18 }}>
         <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>Your reward points</div>
-        <div style={{ fontSize: 40, fontWeight: 800, color: '#eab308', margin: '2px 0 14px' }}>{data.rewardPoints}</div>
+        <div style={{ fontSize: 40, fontWeight: 800, color: 'var(--ceab308)', margin: '2px 0 14px' }}>{data.rewardPoints}</div>
 
         <div style={{ background: '#fff', borderRadius: 14, padding: 14, display: 'inline-block' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}

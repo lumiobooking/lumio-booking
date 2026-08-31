@@ -197,7 +197,7 @@ function Inner() {
                     ? <span style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
                     : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                 </MRow>
-                <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
+                <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
                 <MRow label={t('cu.colSince')}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</MRow>
                 <MActions>
                   <button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button>
@@ -244,7 +244,7 @@ function Inner() {
                         ? <span title={t('cu.repeatNoShow')} style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
                         : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                   </td>
-                  <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: '#eab308', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>
+                  <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</td>
                   <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button></td>
                 </tr>

@@ -138,7 +138,7 @@ function Inner() {
         </div>
 
         {t.refundedCents > 0 && (
-          <div style={{ ...meta, marginTop: 6, color: '#fbbf24' }}>
+          <div style={{ ...meta, marginTop: 6, color: 'var(--cfbbf24)' }}>
             {L.refunded}: {formatPrice(t.refundedCents, t.currency)} / {formatPrice(t.amountCents, t.currency)}
           </div>
         )}
@@ -146,7 +146,7 @@ function Inner() {
 
         {t.unresolved && (
           <div style={{ marginTop: 10, background: 'var(--c1e293b)', borderLeft: '3px solid #f59e0b', borderRadius: 6, padding: 10 }}>
-            <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: 13 }}>{L.unresolvedTitle}</div>
+            <div style={{ color: 'var(--cfbbf24)', fontWeight: 700, fontSize: 13 }}>{L.unresolvedTitle}</div>
             <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>{L.unresolvedBody}</div>
           </div>
         )}
@@ -188,7 +188,7 @@ function Inner() {
 
       {unresolved.length > 0 && (
         <div style={{ border: '1px solid #f59e0b', background: '#1c1917', borderRadius: 12, padding: 14, margin: '14px 0' }}>
-          <div style={{ color: '#fbbf24', fontWeight: 700 }}>
+          <div style={{ color: 'var(--cfbbf24)', fontWeight: 700 }}>
             {unresolved.length} {vi ? 'giao dịch chưa rõ kết quả' : 'unresolved payment(s)'}
           </div>
           <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, marginTop: 4, lineHeight: 1.55 }}>{L.unresolvedBody}</div>

@@ -1010,7 +1010,7 @@ const warnBtn: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid #eab308',
   background: 'transparent',
-  color: '#eab308',
+  color: 'var(--ceab308)',
   fontSize: 13,
   cursor: 'pointer',
 };

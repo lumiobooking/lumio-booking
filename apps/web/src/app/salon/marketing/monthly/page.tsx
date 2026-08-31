@@ -1513,7 +1513,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
       {/* Challenges & solutions */}
       {hasReport && (content?.issues ?? []).length > 0 && (
         <div style={{ ...pv, border: '1px solid #b45309' }}>
-          <div style={{ ...pvL, color: '#fbbf24' }}>{T('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div>
+          <div style={{ ...pvL, color: 'var(--cfbbf24)' }}>{T('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div>
           <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', gap: 5 }}>
             {content!.issues!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#f59e0b', fontWeight: 700 }}>▲</span><span>{L(x)}</span></div>)}
           </div>

@@ -217,7 +217,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
           })}
         </select>
         {chairs.length === 0 && (
-          <p style={{ color: '#fbbf24', fontSize: 12, margin: '6px 0 0' }}>
+          <p style={{ color: 'var(--cfbbf24)', fontSize: 12, margin: '6px 0 0' }}>
             {vi ? 'Tiệm chưa khai báo ghế. Nhờ quản lý thêm ở mục Ghế.' : 'No chairs set up yet. Ask your manager to add them under Chairs.'}
           </p>
         )}

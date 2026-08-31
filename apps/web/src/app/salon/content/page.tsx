@@ -172,7 +172,7 @@ function StepCard({ step, T }: { step: PlainStep; T: (vi: string, en: string) =>
           </div>
           {step.action && (
             <div style={{
-              fontSize: 13, color: '#bbf7d0', lineHeight: 1.55, marginTop: 7,
+              fontSize: 13, color: 'var(--cbbf7d0)', lineHeight: 1.55, marginTop: 7,
               padding: '7px 10px', borderRadius: 8, background: 'var(--c14532d)',
             }}>
               <b>{T('Làm gì', 'Do this')}:</b> {step.action}
@@ -214,7 +214,7 @@ function BriefStepRow({ step: st, index: i, T }: {
     <div style={{ display: 'flex', gap: 11, padding: '10px 0', borderTop: i ? '1px solid var(--c1e293b)' : 'none' }}>
       <div style={{
         flex: '0 0 26px', height: 26, borderRadius: '50%', background: 'var(--c1e293b)',
-        color: '#a5b4fc', fontSize: 13, fontWeight: 700, display: 'flex',
+        color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 700, display: 'flex',
         alignItems: 'center', justifyContent: 'center',
       }}>{i + 1}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -436,7 +436,7 @@ function Inner() {
       {plan.identity?.declared ? (
         <span style={{
           fontSize: 11.5, padding: '2px 8px', borderRadius: 20,
-          background: 'var(--c1e293b)', color: '#a5b4fc', border: '1px solid var(--c334155)',
+          background: 'var(--c1e293b)', color: 'var(--ca5b4fc)', border: '1px solid var(--c334155)',
         }}>
           {plan.identity.label}
         </span>
@@ -870,7 +870,7 @@ function Inner() {
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     🗓️ {T('Tuần này làm gì', 'This week')}
                   </div>
-                  <div style={{ fontSize: 13, color: '#a5b4fc', marginBottom: 4 }}>{plan.week.focus}</div>
+                  <div style={{ fontSize: 13, color: 'var(--ca5b4fc)', marginBottom: 4 }}>{plan.week.focus}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.week.basis}</div>
 
                   {plan.week.days.map((d, i) => {
@@ -1027,7 +1027,7 @@ function Inner() {
                             borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
                           }}
                         >
-                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#a5b4fc' }}>{l.title} ↗</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ca5b4fc)' }}>{l.title} ↗</div>
                           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
                           <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
                             <strong style={{ color: '#22c55e' }}>{T('Làm gì', 'Do this')}:</strong> {l.how}
@@ -1090,7 +1090,7 @@ function Inner() {
                           display: 'block', textDecoration: 'none', padding: '9px 11px', marginBottom: 7,
                           borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
                         }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#a5b4fc' }}>{l.title} ↗</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ca5b4fc)' }}>{l.title} ↗</div>
                           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
                           <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
                             <strong style={{ color: '#22c55e' }}>{T('Nên làm theo', 'Copy this')}:</strong> {l.how}
@@ -1120,7 +1120,7 @@ function Inner() {
                     <div key={sg.key} style={{ padding: '8px 0', borderTop: '1px solid var(--c1e293b)' }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{sg.label}</span>
-                        <span style={{ fontSize: 13, color: '#a5b4fc' }}>{sg.count} {T('người', 'people')} · {sg.sharePct}%</span>
+                        <span style={{ fontSize: 13, color: 'var(--ca5b4fc)' }}>{sg.count} {T('người', 'people')} · {sg.sharePct}%</span>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
                         {T('Trung bình', 'Avg')} {money(sg.avgTicketCents)}/{T('lần', 'visit')}
@@ -1186,7 +1186,7 @@ function Inner() {
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{T('Giảm tối đa nên dùng', 'Safe ceiling')}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: '#a5b4fc' }}>{plan.promo.ceiling}%</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ca5b4fc)' }}>{plan.promo.ceiling}%</div>
                       </div>
                     </div>
                   )}
@@ -1282,7 +1282,7 @@ function Inner() {
                       <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 2 }}>
                         {T('NHẮM VÀO', 'PRIMARY TARGET')}
                       </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>{plan.market.primary.label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ca5b4fc)' }}>{plan.market.primary.label}</div>
                       <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--ce2e8f0)', margin: '2px 0' }}>
                         {plan.market.primary.size.toLocaleString('en-US')} <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--c94a3b8)' }}>{T('người', 'people')}</span>
                       </div>
@@ -1462,7 +1462,7 @@ function Inner() {
                     </div>
                     <div>
                       <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Tổng', 'Total')}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: '#a5b4fc' }}>{plan.ads.money.total}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ca5b4fc)' }}>{plan.ads.money.total}</div>
                     </div>
                     {plan.ads.budget.bookingsToBreakEven !== null && (
                       <div>
@@ -1800,7 +1800,7 @@ function Inner() {
                 <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
                   {T('Trọng tâm tuần', 'This week’s aim')}
                 </div>
-                <div style={{ fontSize: 13.5, color: '#a5b4fc', lineHeight: 1.5 }}>{plan.week.focus}</div>
+                <div style={{ fontSize: 13.5, color: 'var(--ca5b4fc)', lineHeight: 1.5 }}>{plan.week.focus}</div>
                 <button
                   onClick={() => setTab('week')}
                   style={{ ...ui.primaryBtn, marginTop: 10, width: '100%', background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)' }}

@@ -63,7 +63,7 @@ function Inner() {
       <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{t('ac.subtitle')}</p>
 
       {err && <div style={ui.banner}>{err}</div>}
-      {msg && <div style={{ background: 'var(--c064e3b)', color: '#a7f3d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
+      {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
       <form onSubmit={save} style={ui.card}>
         <label style={{ display: 'block', marginBottom: 12 }}>

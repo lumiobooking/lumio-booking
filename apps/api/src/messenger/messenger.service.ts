@@ -8,6 +8,8 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
+import { withBookingLink } from './booking-link';
+import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
 import { leadDossier, rawMemoryFallback, LeadFacts } from './lead-memory';
 import { InboxEventsService } from './inbox-events.service';
 import { PushService } from '../push/push.service';
@@ -2099,7 +2101,11 @@ export class MessengerService implements OnModuleInit {
     aiInstruction: string,
     history: Turn[],
     userText: string,
-    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null } = { mode: 'booking', leadEmail: null },
+    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null;
+      /** The visit created during THIS run, so a second service joins it
+       *  instead of becoming a second bill, and so the confirmation link is
+       *  sent whether or not the model remembers to include it. */
+      booked?: OpenVisit } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '));
@@ -2126,7 +2132,7 @@ If the conversation is just starting and the customer hasn't said what they need
 To book you need ONLY: name, phone number, service, and a specific date & time. Collect the missing piece one question at a time — nothing more.
 Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
 Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
-Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking, passing serviceId AND serviceName copied exactly from get_services (include email only if given). After it succeeds, confirm warmly in one line and say a confirmation is on the way.
+Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking ONCE, listing EVERY service for that visit in the "services" array (id and name copied exactly from get_services; include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. After it succeeds, confirm warmly in one line and say a confirmation is on the way.
 If they ask about an EXISTING appointment (time, changes, cancelling), do not guess or state details from memory — say a staff member will check and follow up shortly.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
 As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
@@ -2137,18 +2143,30 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
       { name: 'get_services', description: 'List this salon’s bookable services with their id, name, price and duration.', input_schema: { type: 'object', properties: {}, required: [] } },
       {
         name: 'create_booking',
-        description: 'Create the appointment. Only call once you have the customer name, phone, a chosen service, and a specific local date & time.',
+        description: 'Create ONE appointment for ONE visit. If the customer wants several services in the same visit, list them ALL in `services` in a single call — never call this tool twice for the same visit.',
         input_schema: {
           type: 'object',
           properties: {
             customerFirstName: { type: 'string' },
             customerPhone: { type: 'string' },
-            serviceId: { type: 'string', description: 'The id copied EXACTLY from get_services.' },
-            serviceName: { type: 'string', description: 'The service name exactly as it appears in get_services. Always send this together with serviceId — it is used to recover if the id was mistyped.' },
-            localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00' },
+            services: {
+              type: 'array',
+              description: 'EVERY service for this one visit. Two services = ONE call with two entries here. Two calls would create two appointments and two separate bills for one person in one chair.',
+              items: {
+                type: 'object',
+                properties: {
+                  serviceId: { type: 'string', description: 'The id copied EXACTLY from get_services.' },
+                  serviceName: { type: 'string', description: 'The name exactly as it appears in get_services — used to recover if the id was mistyped.' },
+                },
+                required: ['serviceId', 'serviceName'],
+              },
+            },
+            serviceId: { type: 'string', description: 'Only for a single-service visit; prefer `services`.' },
+            serviceName: { type: 'string', description: 'Only for a single-service visit; prefer `services`.' },
+            localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00. ONE start time for the whole visit — the salon extends the block for the extra services itself.' },
             customerEmail: { type: 'string', description: 'Optional. The customer email for an email confirmation; omit entirely if they did not give one.' },
           },
-          required: ['customerFirstName', 'customerPhone', 'serviceId', 'serviceName', 'localDateTime'],
+          required: ['customerFirstName', 'customerPhone', 'localDateTime'],
         },
       },
       {
@@ -2516,7 +2534,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         });
         continue;
       }
-      return text || 'Got it! How else can I help you book?';
+      return withBookingLink(text || 'Got it! How else can I help you book?', ctx.booked?.url);
     }
     return fallbackText(customerWords);
   }
@@ -2986,7 +3004,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     tz: string,
     name: string,
     input: Record<string, unknown>,
-    ctx?: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; channel?: string },
+    ctx?: {
+      mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null;
+      agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; channel?: string;
+      booked?: OpenVisit;
+    },
   ): Promise<string> {
     try {
       if (name === 'save_lead') {
@@ -3150,20 +3172,42 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const phone = String(input.customerPhone || '').trim();
         const local = String(input.localDateTime || '').trim();
         const email = String(input.customerEmail || '').trim();
-        const rawId = String(input.serviceId || '').trim();
-        const rawName = String(input.serviceName || '').trim();
-        if (!firstName || !phone || (!rawId && !rawName) || !local) return 'Missing required info; ask the customer for what is missing.';
+        // One visit may carry several services — see one-visit.ts.
+        const wanted = servicesAsked(input);
+        if (!firstName || !phone || !wanted.length || !local) return 'Missing required info; ask the customer for what is missing.';
+
         // A 36-character uuid copied by hand is the single most fragile part of
         // this call: one wrong character used to surface to the customer as
         // "that service isn't available", which is both false and unrecoverable.
         // Resolve by name as well, and only give up if neither matches.
-        const serviceId = await this.resolveServiceId(tenantId, rawId, rawName);
-        if (!serviceId) {
-          return `ERROR — no service matches id "${rawId}" or name "${rawName}". Call get_services again and use a name from that list EXACTLY. Do NOT tell the customer the service is unavailable — the salon may well offer it under a slightly different name.`;
+        const ids: string[] = [];
+        for (const s of wanted) {
+          const id = await this.resolveServiceId(tenantId, s.id, s.name);
+          if (!id) {
+            return `ERROR — no service matches id "${s.id}" or name "${s.name}". Call get_services again and use a name from that list EXACTLY. Do NOT tell the customer the service is unavailable — the salon may well offer it under a slightly different name.`;
+          }
+          if (!ids.includes(id)) ids.push(id);
         }
+        const serviceId = ids[0];
         const startTime = wallToUtcISO(local, tz);
+
+        // The model asked to book again for someone it has just booked. When
+        // that second call lands inside the visit already open, it ADDS to that
+        // appointment rather than creating a rival to it — see one-visit.ts.
+        const openBooking = ctx?.booked;
+        if (openBooking && isSameVisit(openBooking, phone, startTime)) {
+          const r = await this.bookings.addServicesToAppointment(tenantId, openBooking.id, ids);
+          if (r.added.length) {
+            openBooking.endMs = new Date((r.appointment as { endTime: Date }).endTime).getTime();
+            this.logger.log(`bot booking MERGED into ${openBooking.id}: +${r.added.join(', ')}`);
+            return `SUCCESS. Added ${r.added.join(', ')} to the SAME appointment (id ${openBooking.id}) — one visit, one bill. Do NOT say it is a second appointment. Confirm all the services together in one warm line.`;
+          }
+          return `SUCCESS. Those services are already on appointment ${openBooking.id}. Confirm them together in one warm line; do not book again.`;
+        }
+
         const dto = {
           serviceId, startTime, customerFirstName: firstName, customerPhone: phone,
+          ...(ids.length > 1 ? { serviceIds: ids } : {}),
           ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
         } as CreateBookingDto;
         // The door is the THREAD's channel, not the module's name. Instagram
@@ -3190,7 +3234,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           } catch { /* best-effort: the booking is already created */ }
         }
         const manageUrl = b.id ? this.bookings.buildApptManageUrl(b.id) : '';
-        return `SUCCESS. Appointment created (id ${b.id}). Confirm the service, date and time back to the customer warmly${manageUrl ? `, and share this link so they can view or cancel their appointment: ${manageUrl}` : ''}.`;
+        // Remember this visit for the rest of the run: the merge check above
+        // reads it, and the link below is appended by US rather than left to
+        // the model to remember.
+        if (b.id && ctx) {
+          ctx.booked = {
+            id: b.id, phone, url: manageUrl,
+            endMs: new Date((booking as { endTime?: Date }).endTime ?? startTime).getTime(),
+          };
+        }
+        return `SUCCESS. Appointment created (id ${b.id})${ids.length > 1 ? ` with ${ids.length} services on ONE bill` : ''}. Confirm the service${ids.length > 1 ? 's' : ''}, date and time back to the customer warmly${manageUrl ? `, and share this link so they can view or cancel their appointment: ${manageUrl}` : ''}.`;
       }
       if (name === 'save_birthday') {
         const phone = String(input.customerPhone || '').trim();

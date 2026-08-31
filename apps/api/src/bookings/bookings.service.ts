@@ -609,6 +609,131 @@ export class BookingsService {
   }
 
   /**
+   * Add services to an appointment that already exists — one visit, one bill.
+   *
+   * WHY THIS EXISTS
+   *
+   * A customer who asks for eyebrow waxing AND an acrylic refill is describing
+   * ONE visit. The Messenger bot could only create single-service bookings, so
+   * it called create twice and the salon got two appointments fifteen minutes
+   * apart, two rows on the calendar, and two separate bills for one person
+   * sitting in one chair. The multi-service path has existed in
+   * createForTenant since it was written; nothing could reach it after the
+   * fact.
+   *
+   * Pricing runs through the SAME discount rules as a fresh booking — each
+   * service keeps its own discount and its own category's weekday promo —
+   * because a service added a minute later must not cost a different amount
+   * from the same service added a minute earlier.
+   *
+   * The appointment grows at the end. That is the only direction it may grow:
+   * moving the start would move an appointment the customer has already been
+   * told about, and the overlap check below is what stops the longer block
+   * running into whatever the technician has next.
+   */
+  async addServicesToAppointment(
+    tenantId: string,
+    appointmentId: string,
+    serviceIds: string[],
+  ): Promise<{ appointment: Awaited<ReturnType<typeof this.prisma.appointment.findFirst>>; added: string[] }> {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      include: { service: true, customer: { select: { phone: true, email: true } } },
+    });
+    if (!appt) throw new NotFoundException('Appointment not found');
+    if (appt.status === AppointmentStatus.CANCELLED || appt.status === AppointmentStatus.COMPLETED) {
+      throw new BadRequestException('That appointment is already closed.');
+    }
+
+    const existing = Array.isArray(appt.addons) ? (appt.addons as unknown as { id?: string }[]) : [];
+    const already = new Set([appt.serviceId, ...existing.map((x) => String(x?.id ?? ''))]);
+    const wanted = [...new Set(serviceIds)].filter((id) => id && !already.has(id));
+    if (!wanted.length) {
+      return { appointment: appt, added: [] };
+    }
+
+    const services = await this.prisma.service.findMany({
+      where: { id: { in: wanted }, tenantId, isActive: true },
+    });
+    // Same rule as createForTenant: fail loudly. Silently dropping one id
+    // produces a bill with fewer services than the customer asked for, which
+    // nobody discovers until the till.
+    if (services.length !== wanted.length) {
+      throw new BadRequestException('One or more selected services are unavailable.');
+    }
+
+    // The real customer, so a first-visit or group tier lands on the added
+    // service exactly as it landed on the primary one. Passing a blank
+    // customer here would quietly price the second service higher than the
+    // first, on the same bill, minutes apart.
+    const programPct = await this.programDiscountPercent(tenantId, {
+      serviceId: appt.serviceId,
+      startTime: appt.startTime.toISOString(),
+      customerFirstName: '',
+      customerPhone: appt.customer?.phone ?? undefined,
+      customerEmail: appt.customer?.email ?? undefined,
+      // Read loosely: partySize is on the deployed schema but absent from the
+      // Prisma client this was written against, and a field access that
+      // compiles in exactly one of the two places is not worth a group tier.
+      partySize: (appt as { partySize?: number }).partySize ?? 1,
+    } as unknown as CreateBookingDto);
+
+    const items: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
+    for (const s of services) {
+      const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
+      const net = Math.round((s.priceCents * (100 - disc)) / 100);
+      const wd = Math.max(await this.promoDiscountPercent(tenantId, appt.startTime, s.categoryId), programPct);
+      items.push({
+        id: s.id, name: s.name, kind: 'service',
+        priceCents: Math.round((net * (100 - wd)) / 100),
+        durationMinutes: s.durationMinutes,
+      });
+    }
+
+    const addedMinutes = items.reduce((sum, x) => sum + x.durationMinutes, 0);
+    const addedPrice = items.reduce((sum, x) => sum + x.priceCents, 0);
+    const end = addMinutes(appt.endTime, addedMinutes);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (appt.assignedStaffId) {
+        await this.lockStaffSlot(tx, tenantId, appt.assignedStaffId);
+        // Excluding this appointment from its own overlap check: it is the one
+        // being extended, and comparing it against itself would always fail.
+        await this.assertNoOverlap(tx, tenantId, appt.assignedStaffId, appt.startTime, end, appt.id);
+      }
+      return tx.appointment.update({
+        where: { id: appt.id },
+        data: {
+          endTime: end,
+          priceCents: appt.priceCents + addedPrice,
+          addons: [...existing, ...items] as unknown as Prisma.InputJsonValue,
+        },
+        include: BOOKING_INCLUDE,
+      });
+    });
+
+    await this.audit.log({
+      tenantId, userId: null,
+      action: 'booking.services_added',
+      resourceType: 'appointment',
+      resourceId: appt.id,
+      metadata: { added: items.map((x) => x.name), addedPriceCents: addedPrice, addedMinutes },
+    });
+
+    // Send the confirmation again, now that it is true.
+    //
+    // The first one went out naming one service and one end time, and both have
+    // just changed. A second message a minute later is mildly annoying; a
+    // confirmation that understates what the customer is booked for — and what
+    // they will be charged — is worse, and the technician needs to know the
+    // block got longer. Fire-and-forget, exactly like the first: the services
+    // are already added and a mail failure must not undo that.
+    this.sendBookingConfirmation(tenantId, updated as never).catch(() => undefined);
+
+    return { appointment: updated, added: items.map((x) => x.name) };
+  }
+
+  /**
    * Notifies the customer and/or the salon admin about a new booking with a
    * polished, branded HTML email and/or SMS, using the salon's templates.
    */

@@ -290,3 +290,36 @@ describe('the team ↔ salon thread is declared in schema AND migration', () => 
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS "content_messages"/i);
   });
 });
+
+describe('the thread state that lets the channel survive a year', () => {
+  /**
+   * Almost everything an inbox row needs is derivable from the messages. Two
+   * things are not, and both are what stop this silting up: WHO is handling a
+   * thread, and whether it is CLOSED. A queue nobody owns is one everybody
+   * assumes somebody else answered; a discussion that can never end becomes a
+   * wall, and a wall gets ignored.
+   */
+  it('carries an owner and a resolution', () => {
+    const body = ALL.get('ContentThread') ?? '';
+    expect(body).toMatch(/assigneeId\s+String\?/);
+    expect(body).toMatch(/resolvedAt\s+DateTime\?/);
+    expect(body).toMatch(/lastMessageAt\s+DateTime/);
+    expect(body).toMatch(/@@unique\(\[tenantId, subject\]\)/);
+  });
+
+  it('can be sorted across salons without touching the messages', () => {
+    // The cross-salon queue orders by this. An index-less sort over every
+    // message in the platform is the query that gets slow in month four.
+    expect(ALL.get('ContentThread')).toMatch(/@@index\(\[lastMessageAt\]\)/);
+  });
+
+  it('has a migration that creates it', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS "content_threads"/i);
+    expect(sql).toMatch(/content_threads_tenantId_subject_key/);
+  });
+});

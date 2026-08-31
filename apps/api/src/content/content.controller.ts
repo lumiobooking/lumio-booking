@@ -78,8 +78,21 @@ export class ContentController {
 
   /** One thread: the shared window, or the comments under one item. */
   @Get('chat')
-  chatList(@CurrentUser() user: AuthenticatedUser, @Query('subject') subject?: string) {
-    return this.chat.list(user, subject ?? 'general');
+  chatList(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('subject') subject?: string,
+    @Query('before') before?: string,
+  ) {
+    return this.chat.list(user, subject ?? 'general', before);
+  }
+
+  /** Close a settled thread, or take it. Team side only (checked in the service). */
+  @Patch('chat/state')
+  chatState(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { subject: string; resolved?: boolean; assignToMe?: boolean },
+  ) {
+    return this.chat.setThreadState(user, dto?.subject, dto ?? {});
   }
 
   /** Unread counts per subject, so the dot lands on the item being discussed. */
@@ -127,7 +140,54 @@ export class ContentAdminController {
   constructor(
     private readonly admin: ContentAdminService,
     private readonly svc: ContentService,
+    private readonly chat: ContentChatService,
   ) {}
+
+  /**
+   * Every conversation across every salon — the team's working queue.
+   *
+   * Without this the only door is one salon's own page, so covering forty
+   * salons would mean opening forty pages to find the three that wrote in.
+   * Nobody does that twice, and a channel the client was told to use but that
+   * nobody answers is worse than one never offered.
+   */
+  @Get('inbox')
+  inbox(@CurrentUser() user: AuthenticatedUser, @Query('filter') filter?: string) {
+    const f = filter === 'mine' || filter === 'all' || filter === 'open' ? filter : 'waiting';
+    return this.chat.inbox(f, user.userId);
+  }
+
+  @Get('inbox/:tenantId')
+  inboxThread(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Query('subject') subject?: string,
+  ) {
+    return this.chat.inboxThread(tenantId, subject ?? 'general', user);
+  }
+
+  /** Close a settled thread from the console, or reopen it. */
+  @Patch('inbox/:tenantId/state')
+  inboxState(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { subject: string; resolved?: boolean; assignToMe?: boolean },
+  ) {
+    return this.chat.setThreadState(
+      { ...user, tenantId, supportSession: true },
+      dto?.subject,
+      dto ?? {},
+    );
+  }
+
+  @Post('inbox/:tenantId')
+  inboxReply(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: SendChatDto,
+  ) {
+    return this.chat.inboxReply(tenantId, dto.subject, dto.body, user);
+  }
 
   // format library
   @Get('formats')

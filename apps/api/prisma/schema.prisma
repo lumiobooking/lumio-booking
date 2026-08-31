@@ -297,6 +297,7 @@ model Tenant {
   contentIdeas         ContentIdea[]
   contentWeeks         ContentWeek[]
   contentMessages      ContentMessage[]
+  contentThreads       ContentThread[]
   voiceCalls           VoiceCall[]
   emailCampaigns       EmailCampaign[]
   emailContacts        EmailContact[]
@@ -391,6 +392,7 @@ model User {
   assignedThreads MessengerThread[] @relation("MessengerThreadAssignee")
   messengerNotes  MessengerNote[]  @relation("MessengerNoteAuthor")
   contentMessages ContentMessage[] @relation("ContentMessageAuthor")
+  contentThreads  ContentThread[]  @relation("ContentThreadAssignee")
 
   @@index([tenantId])
   @@index([role])
@@ -2742,6 +2744,52 @@ model ContentMessage {
   @@index([tenantId, subject, createdAt])
   @@index([tenantId, createdAt])
   @@map("content_messages")
+}
+
+/// The operating state of ONE conversation — who owns it, and whether it is done.
+///
+/// WHY A TABLE AND NOT A FLAG ON THE MESSAGES
+///
+/// Almost everything an inbox row needs can be derived from the messages: the
+/// last reply, who wrote it, how many are unread. Two things cannot, and both
+/// are what makes this survive a year of use rather than silting up:
+///
+///   - WHO IS HANDLING IT. With one staff member it is obvious; with six and
+///     forty salons, an unassigned thread is a thread everybody assumes
+///     somebody else answered.
+///   - WHETHER IT IS DONE. A discussion that can never be closed turns the
+///     inbox into a wall, and a wall gets ignored — at which point the whole
+///     channel is dead whatever the code does.
+///
+/// One row per (tenant, subject), created the first time anyone writes.
+model ContentThread {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Same address space as ContentMessage: 'general' | 'ads' | 'week:…' | 'idea:…'
+  subject String
+
+  /// Which Lumio staff member is answering this one.
+  assigneeId   String?
+  assignee     User?   @relation("ContentThreadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeName String?
+
+  /// Closed by the team when the matter is settled. Reopens on the next reply.
+  resolvedAt     DateTime?
+  resolvedByName String?
+
+  /// Denormalised so the cross-salon inbox can sort without touching messages.
+  lastMessageAt DateTime  @default(now())
+  lastSide      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, subject])
+  @@index([lastMessageAt])
+  @@index([tenantId, resolvedAt])
+  @@map("content_threads")
 }
 
 model TrendNote {

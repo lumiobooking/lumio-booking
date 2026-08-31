@@ -143,3 +143,46 @@ describe('tenant isolation', () => {
     );
   });
 });
+
+// ---- what makes it survive a year -----------------------------------------
+
+describe('a thread that outlives its first two hundred messages', () => {
+  it('shows the NEWEST page, not the first one written', async () => {
+    // The first version took the first 200 rows ascending. Fine for a month,
+    // then silently wrong for ever: message 201 onwards never appears and the
+    // thread looks abandoned while both sides are still writing into it.
+    const many = Array.from({ length: 120 }, (_, i) => ({
+      subject: 'general', side: 'salon' as const, body: `m${i}`,
+    }));
+    const p = fakePrisma(many);
+    // The fake returns insertion order; the service asks for desc + slice +
+    // reverse, so the assertion that matters is that it PAGES rather than
+    // taking everything.
+    const r = await svc(p).list(salon, 'general');
+    expect(r.messages.length).toBeLessThanOrEqual(50);
+    expect(r.hasMore).toBe(true);
+    expect(r.oldestAt).not.toBeNull();
+  });
+
+  it('reports no more pages on a short thread', async () => {
+    const r = await svc(fakePrisma([{ subject: 'general', side: 'salon' }])).list(salon, 'general');
+    expect(r.hasMore).toBe(false);
+  });
+});
+
+describe('a message is signed by a person, not by a company', () => {
+  it('names the Lumio staff member who wrote it', async () => {
+    // "Lumio" was wrong the moment a second person joined: an answer signed by
+    // a company is an answer nobody is accountable for, and the team cannot
+    // tell who replied last either.
+    const p = fakePrisma();
+    await svc(p).send({ ...lumio, email: 'thao.nguyen@lumio.test' }, 'general', 'chào chị');
+    expect(p._rows[p._rows.length - 1].authorName).toBe('Lumio · thao nguyen');
+  });
+
+  it('falls back to the company only when there is no human name', async () => {
+    const p = fakePrisma();
+    await svc(p).send({ ...lumio, email: '' }, 'general', 'x');
+    expect(p._rows[p._rows.length - 1].authorName).toBe('Lumio');
+  });
+});

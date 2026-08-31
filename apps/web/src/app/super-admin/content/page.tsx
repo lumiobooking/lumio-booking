@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { ContentInbox } from '../../../components/ContentInbox';
 
 interface Fmt {
   id: string; industry: string; name: string; summary: string;
@@ -105,6 +106,11 @@ export default function ContentConsolePage() {
       <p style={{ color: 'var(--c94a3b8)', margin: '0 0 20px', fontSize: 14 }}>
         Cập nhật thư viện 30 phút mỗi tuần — mọi tiệm cùng ngành nhận ngay sáng hôm sau.
       </p>
+
+      {/* The queue comes first. A staff member opening this screen needs to see
+          who is waiting before they see anything else — a library edit can wait
+          an hour, an unanswered client cannot. */}
+      <ContentInbox token={token} />
 
       {msg && <div style={{ ...banner, borderColor: '#22c55e', color: '#22c55e' }}>{msg}</div>}
       {err && <div style={{ ...banner, borderColor: '#ef4444', color: 'var(--cfca5a5)' }}>{err}</div>}

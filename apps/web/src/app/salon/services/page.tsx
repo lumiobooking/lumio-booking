@@ -8,6 +8,7 @@ import { compressImageToFit } from '../../../lib/image';
 import { ui, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
+import { moveItem, orderSignature } from '../../../lib/reorder';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
@@ -298,38 +299,84 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
   onSaved: () => Promise<void>;
 }) {
   const [order, setOrder] = useState<Service[]>(services);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Re-seed when the category filter changes underneath. Keeping a stale list
-  // would let someone save an order for services they are no longer looking at.
-  useEffect(() => { setOrder(services); setDone(false); }, [services]);
+  // Re-seed only when the SET of services really changes.
+  //
+  // This was `[services]`, and `services` is rebuilt by .filter() on every
+  // parent render — so the effect fired constantly and reset the list the
+  // instant anything was dragged. The panel looked completely dead, which is
+  // exactly what it was. A signature of the ids is stable across renders and
+  // still changes when the filter switches or the saved order comes back.
+  const sig = orderSignature(services.map((s) => s.id));
+  useEffect(() => {
+    setOrder(services);
+    setState('idle');
+    // `services` is intentionally not a dependency — see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
 
-  const move = (from: number, to: number) => {
-    if (to < 0 || to >= order.length || from === to) return;
-    const next = [...order];
-    const [row] = next.splice(from, 1);
-    next.splice(to, 0, row);
-    setOrder(next);
-    setDone(false);
+  const persist = useCallback(async (rows: Service[]) => {
+    setState('saving'); setErr(null);
+    try {
+      await apiFetch('/services/reorder', { method: 'PATCH', token, body: { ids: rows.map((s) => s.id) } });
+      setState('saved');
+      await onSaved();
+    } catch (e) {
+      setState('error');
+      setErr(e instanceof Error ? e.message : 'Could not save the order');
+    }
+  }, [token, onSaved]);
+
+  /** Move a row, then save shortly after the dragging stops. */
+  const move = useCallback((from: number, to: number) => {
+    setOrder((cur) => {
+      const next = moveItem(cur, from, to);
+      if (next === cur || next.every((x, i) => cur[i] === x)) return cur;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      // Saved for them rather than behind a button they have to remember. The
+      // delay is so a drag across five positions is one request, not five.
+      saveTimer.current = setTimeout(() => { void persist(next); }, 700);
+      return next;
+    });
+  }, [persist]);
+
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+
+  // Pointer events, not the HTML5 drag API.
+  //
+  // Two reasons, both of which made the old version fail for real people:
+  // HTML5 drag does not fire at all on a touch screen, and in Firefox a
+  // dragstart without dataTransfer.setData never starts a drag. Pointer events
+  // are one code path for mouse, trackpad, finger and stylus alike.
+  const rowIndexAt = (clientY: number): number | null => {
+    const rows = Array.from(listRef.current?.querySelectorAll('[data-row]') ?? []);
+    for (let i = 0; i < rows.length; i += 1) {
+      const r = (rows[i] as HTMLElement).getBoundingClientRect();
+      if (clientY >= r.top && clientY <= r.bottom) return i;
+    }
+    return null;
   };
 
-  const dirty = order.some((s, i) => services[i]?.id !== s.id);
-
-  async function save() {
-    setSaving(true); setErr(null);
-    try {
-      await apiFetch('/services/reorder', { method: 'PATCH', token, body: { ids: order.map((s) => s.id) } });
-      await onSaved();
-      setDone(true);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not save the order');
-    } finally {
-      setSaving(false);
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (dragIdx === null) return;
+    e.preventDefault();
+    const over = rowIndexAt(e.clientY);
+    if (over !== null && over !== dragIdx) {
+      move(dragIdx, over);
+      setDragIdx(over);
     }
-  }
+  };
+
+  const statusText = state === 'saving'
+    ? (lang === 'vi' ? 'Đang lưu…' : 'Saving…')
+    : state === 'saved'
+      ? (lang === 'vi' ? '✓ Đã lưu — trang đặt lịch cập nhật ngay' : '✓ Saved — the booking page is updated')
+      : '';
 
   return (
     <div style={{ border: '1px solid #6366f1', borderRadius: 12, padding: 14, marginBottom: 16, background: 'var(--c0f172a)' }}>
@@ -337,69 +384,72 @@ function ReorderPanel({ token, services, scope, lang, onSaved }: {
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
           {lang === 'vi' ? `Thứ tự hiển thị — ${scope}` : `Display order — ${scope}`}
         </div>
-        <button onClick={save} disabled={saving || !dirty}
-          style={{ ...ui.primaryBtn, opacity: saving || !dirty ? 0.5 : 1 }}>
-          {saving ? (lang === 'vi' ? 'Đang lưu…' : 'Saving…') : (lang === 'vi' ? 'Lưu thứ tự' : 'Save order')}
-        </button>
+        <div style={{ fontSize: 12.5, color: state === 'saving' ? 'var(--c94a3b8)' : '#22c55e', minHeight: 18 }}>
+          {statusText}
+        </div>
       </div>
       <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
         {lang === 'vi'
-          ? 'Kéo thả hoặc bấm mũi tên. Đây chính là thứ tự khách nhìn thấy trên trang đặt lịch và trong Messenger.'
-          : 'Drag or use the arrows. This is the exact order customers see on the booking page and in Messenger.'}
+          ? 'Giữ vào ⠿ rồi kéo lên/xuống để đổi vị trí — hoặc bấm mũi tên. Tự lưu, không cần bấm nút. Đây chính là thứ tự khách nhìn thấy khi đặt lịch.'
+          : 'Hold ⠿ and drag, or use the arrows. Saves itself. This is the order customers see when booking.'}
       </div>
       {err && <div style={ui.banner}>{err}</div>}
-      {done && !dirty && (
-        <div style={{ fontSize: 12.5, color: '#22c55e', marginBottom: 8 }}>
-          {lang === 'vi' ? '✓ Đã lưu. Trang đặt lịch cập nhật ngay.' : '✓ Saved. The booking page updates immediately.'}
-        </div>
-      )}
       {order.length === 0 && (
         <div style={{ fontSize: 13, color: 'var(--c64748b)' }}>
           {lang === 'vi' ? 'Không có dịch vụ nào trong nhóm này.' : 'No services in this group.'}
         </div>
       )}
-      {order.map((s, i) => (
-        <div
-          key={s.id}
-          draggable
-          onDragStart={() => setDragId(s.id)}
-          onDragEnd={() => setDragId(null)}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            const from = order.findIndex((x) => x.id === dragId);
-            if (from >= 0) move(from, i);
-            setDragId(null);
-          }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '9px 11px', marginBottom: 6, borderRadius: 9,
-            background: dragId === s.id ? 'var(--c334155)' : 'var(--c1e293b)',
-            border: '1px solid var(--c334155)',
-            cursor: 'grab', opacity: dragId === s.id ? 0.6 : 1,
-          }}
-        >
-          <span style={{ color: 'var(--c64748b)', fontSize: 15, cursor: 'grab' }}>⠿</span>
-          <span style={{
-            minWidth: 26, textAlign: 'center', fontSize: 12, fontWeight: 700,
-            color: '#a5b4fc', background: 'var(--c0f172a)', borderRadius: 6, padding: '2px 0',
-          }}>{i + 1}</span>
-          <span style={{ flex: 1, fontSize: 13.5, color: 'var(--ce2e8f0)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {s.name}
-          </span>
-          {!s.isActive && (
-            <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 20, padding: '1px 7px' }}>
-              {lang === 'vi' ? 'Ẩn' : 'Hidden'}
+      <div
+        ref={listRef}
+        onPointerMove={onPointerMove}
+        onPointerUp={() => setDragIdx(null)}
+        onPointerCancel={() => setDragIdx(null)}
+        style={{ touchAction: dragIdx === null ? 'auto' : 'none' }}
+      >
+        {order.map((s, i) => (
+          <div
+            key={s.id}
+            data-row=""
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 11px', marginBottom: 6, borderRadius: 9,
+              background: dragIdx === i ? 'var(--c334155)' : 'var(--c1e293b)',
+              border: `1px solid ${dragIdx === i ? '#6366f1' : 'var(--c334155)'}`,
+              boxShadow: dragIdx === i ? '0 6px 18px rgba(0,0,0,.35)' : 'none',
+            }}
+          >
+            <span
+              onPointerDown={(e) => {
+                (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+                setDragIdx(i);
+              }}
+              title={lang === 'vi' ? 'Giữ và kéo' : 'Hold and drag'}
+              style={{
+                color: dragIdx === i ? '#a5b4fc' : 'var(--c64748b)', fontSize: 17,
+                cursor: 'grab', padding: '4px 6px', touchAction: 'none', userSelect: 'none',
+              }}
+            >⠿</span>
+            <span style={{
+              minWidth: 26, textAlign: 'center', fontSize: 12, fontWeight: 700,
+              color: '#a5b4fc', background: 'var(--c0f172a)', borderRadius: 6, padding: '2px 0',
+            }}>{i + 1}</span>
+            <span style={{ flex: 1, fontSize: 13.5, color: 'var(--ce2e8f0)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {s.name}
             </span>
-          )}
-          <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0}
-            aria-label={lang === 'vi' ? 'Lên' : 'Move up'}
-            style={{ ...arrowBtn, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
-          <button type="button" onClick={() => move(i, i + 1)} disabled={i === order.length - 1}
-            aria-label={lang === 'vi' ? 'Xuống' : 'Move down'}
-            style={{ ...arrowBtn, opacity: i === order.length - 1 ? 0.3 : 1 }}>↓</button>
-        </div>
-      ))}
+            {!s.isActive && (
+              <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 20, padding: '1px 7px' }}>
+                {lang === 'vi' ? 'Ẩn' : 'Hidden'}
+              </span>
+            )}
+            <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0}
+              aria-label={lang === 'vi' ? 'Lên' : 'Move up'}
+              style={{ ...arrowBtn, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+            <button type="button" onClick={() => move(i, i + 1)} disabled={i === order.length - 1}
+              aria-label={lang === 'vi' ? 'Xuống' : 'Move down'}
+              style={{ ...arrowBtn, opacity: i === order.length - 1 ? 0.3 : 1 }}>↓</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

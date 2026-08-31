@@ -12,6 +12,8 @@ import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
 import { fetchCensus, describeArea, type CensusResult } from './census';
+import { leadTime, cpaCeiling, budgetPlan, runWindow, platformPick, adAudiences } from './ads-plan';
+import { buildSeoReport } from './seo-local';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -93,6 +95,8 @@ export class ContentService {
     audience: AudienceProfile;
     promo: PromoAdvice;
     nearbyZips: string | null;
+    sourceCounts: Record<string, number>;
+    lead: ReturnType<typeof leadTime>;
     money: (c: number) => string;
   }> {
     const tenant = await this.prisma.tenant.findUnique({
@@ -171,14 +175,20 @@ export class ContentService {
     // "what is selling now" and useless for "who comes back": inside two months
     // a customer who visits quarterly looks identical to one who never returned.
     const d365 = new Date(now.getTime() - 365 * 86_400_000);
-    type HistRow = { startTime: Date; priceCents: number | null; customerId: string | null; service: { name: string } | null };
+    type HistRow = {
+      startTime: Date; createdAt: Date; priceCents: number | null; customerId: string | null;
+      source: string | null; utmSource: string | null; service: { name: string } | null;
+    };
     const history: HistRow[] = await this.prisma.appointment.findMany({
       // Walk-ins with no customer record are dropped below in JS rather than in
       // the query: `customerId: { not: null }` types differently across Prisma
       // client versions, and this filter is not worth a build that only fails
       // on the deploy machine.
       where: { tenantId, startTime: { gte: d365 }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
-      select: { startTime: true, priceCents: true, customerId: true, service: { select: { name: true } } },
+      select: {
+        startTime: true, createdAt: true, priceCents: true, customerId: true,
+        source: true, utmSource: true, service: { select: { name: true } },
+      } as never,
       take: 20000,
     }).catch(() => [] as HistRow[]) as HistRow[];
     const visitRows: VisitRow[] = history.filter((h) => h.customerId).map((h) => {
@@ -191,6 +201,20 @@ export class ContentService {
         weekday, hour,
       };
     });
+
+    // Where bookings come from, and how far ahead they are made. Both are read
+    // from rows the platform already writes on every booking — no new tracking.
+    const sourceCounts: Record<string, number> = {};
+    for (const h of history) {
+      const raw = String((h as { source?: string | null }).source ?? '').toLowerCase().trim();
+      const utm = String((h as { utmSource?: string | null }).utmSource ?? '').toLowerCase().trim();
+      const key = utm || raw || 'unknown';
+      sourceCounts[key] = (sourceCounts[key] ?? 0) + 1;
+    }
+    const lead = leadTime(history.map((h) => ({
+      createdAt: (h as { createdAt?: Date }).createdAt?.getTime() ?? h.startTime.getTime(),
+      startTime: h.startTime.getTime(),
+    })));
 
     // Lapsed customers, measured from their own last visit.
     const lastVisit = new Map<string, { at: number; total: number; n: number }>();
@@ -259,6 +283,8 @@ export class ContentService {
       revenue,
       audience: buildAudienceProfile(visitRows, now.getTime()),
       promo,
+      sourceCounts,
+      lead,
       nearbyZips: [
         (tenant as { postalCode?: string | null } | null)?.postalCode ?? '',
         (tenant as { nearbyZips?: string | null } | null)?.nearbyZips ?? '',
@@ -575,6 +601,8 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       promo: ctx.promo,
       // Cache only: a salon opening this page must not wait on the Census.
       area: await this.areaFor(tenantId, ctx.nearbyZips, { allowFetch: false }).catch(() => null),
+      ads: await this.adsFor(tenantId, ctx).catch(() => null),
+      seo: await this.seoFor(tenantId, ctx).catch(() => null),
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),
       busySlots: [...ctx.revenue.loads].reverse().slice(0, 3),
@@ -680,6 +708,96 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       if (cached.data?.ok) return { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at };
     }
     return { ...r, lines: describeArea(r) };
+  }
+
+  /**
+   * Whether to advertise, where, when, and at what price it stops paying.
+   *
+   * Every figure traces to this salon's own book: the ceiling from its ticket
+   * and margin, the run days from how far ahead its customers actually book,
+   * the platform from where its bookings already arrive for free, the audiences
+   * from its own segments. Nothing here forecasts bookings from a budget —
+   * see ads-plan.ts for why that question is unanswerable and what replaces it.
+   */
+  private async adsFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>) {
+    const regulars = ctx.audience.segments.find((s) => s.key === 'regular');
+    const anySeg = ctx.audience.segments[0];
+    const ceiling = cpaCeiling({
+      avgTicketCents: anySeg?.avgTicketCents ?? null,
+      grossMarginPct: ctx.promo.margin.grossMarginPct,
+      medianGapDays: regulars?.medianGapDays ?? anySeg?.medianGapDays ?? null,
+    });
+
+    // Free capacity to aim at: how many appointments would fit in the quiet
+    // blocks over a fortnight, at this salon's own average visit length. A
+    // campaign that needs more customers than there are chairs cannot work, and
+    // that is worth knowing before the money goes out rather than after.
+    const quiet = ctx.revenue.loads.slice(0, 3);
+    const peakMinutes = Math.max(...ctx.revenue.loads.map((l) => l.minutes), 0);
+    const openSlots = peakMinutes > 0
+      ? Math.max(0, Math.round(quiet.reduce((sum, q) => sum + (peakMinutes - q.minutes), 0) / 60) * 2)
+      : null;
+
+    const budget = budgetPlan({ ceiling, openSlots });
+    const window = runWindow({
+      quietWeekdays: quiet.map((q) => q.weekday),
+      busyWeekdays: [...ctx.revenue.loads].reverse().slice(0, 2).map((l) => l.weekday),
+      leadDays: ctx.lead.medianDays,
+    });
+    return {
+      ceiling,
+      budget,
+      window,
+      lead: ctx.lead,
+      platform: platformPick(ctx.sourceCounts),
+      audiences: adAudiences({
+        lapsedCount: ctx.revenue.lapsed.count,
+        customerCount: ctx.audience.totalCustomers,
+        regularCount: regulars?.count ?? 0,
+        city: ctx.region.city,
+        region: ctx.region.region,
+      }),
+      money: {
+        ceilingStrict: ceiling.strictCents !== null ? ctx.money(ceiling.strictCents) : null,
+        ceilingRepeat: ceiling.withRepeatCents !== null ? ctx.money(ceiling.withRepeatCents) : null,
+        daily: ctx.money(budget.dailyCents),
+        total: ctx.money(budget.totalCents),
+      },
+    };
+  }
+
+  /** Local SEO, scored from real reviews and real search terms. */
+  private async seoFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>) {
+    type ReviewRow = { starRating: number; createdAt: Date; reviewCreatedAt: Date | null; repliedAt: Date | null };
+    // Reached by name: googleReview exists on the deploy machine's Prisma
+    // client and not on the one this was written against, so a typed access
+    // compiles in exactly one of the two places.
+    const loose = this.prisma as unknown as Record<string, { findMany: (a: unknown) => Promise<unknown> }>;
+    const reviewsRaw = await loose.googleReview?.findMany({
+      where: { tenantId },
+      select: { starRating: true, createdAt: true, reviewCreatedAt: true, repliedAt: true },
+      take: 500,
+    }).catch(() => []);
+    const reviews: ReviewRow[] = Array.isArray(reviewsRaw) ? (reviewsRaw as ReviewRow[]) : [];
+
+    const services = await this.prisma.service.findMany({
+      where: { tenantId, isActive: true }, select: { name: true }, take: 40,
+    }).catch(() => []) as { name: string }[];
+
+    return buildSeoReport({
+      // Google's own timestamp when we have it: createdAt is when WE synced the
+      // row, which would make every review look brand new on first import.
+      reviews: reviews.map((r) => ({
+        starRating: r.starRating,
+        createdAt: (r.reviewCreatedAt ?? r.createdAt).getTime(),
+        repliedAt: r.repliedAt?.getTime() ?? null,
+      })),
+      keywords: ctx.signals.keywords.map((k) => ({ keyword: k.keyword, count: k.count })),
+      services,
+      sources: ctx.sourceCounts,
+      city: ctx.region.city,
+      region: ctx.region.region,
+    });
   }
 
   /** The salon marks progress: filmed, posted, or honestly skipped. */

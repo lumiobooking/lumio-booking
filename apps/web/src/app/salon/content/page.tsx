@@ -49,6 +49,18 @@ interface Segment {
   avgTicketCents: number; medianGapDays: number | null; favouriteTime: string | null; topService: string | null;
 }
 interface AudienceTarget { segment: string; label: string; why: string; action: string; prize: string }
+interface AdAudience { name: string; who: string; why: string; how: string; order: number; blockedBy?: string }
+interface Ads {
+  ceiling: { strictCents: number | null; withRepeatCents: number | null; visitsPerYear: number | null; plain: string };
+  budget: { dailyCents: number; days: number; totalCents: number; bookingsToBreakEven: number | null; openSlots: number | null; feasible: string; plain: string };
+  window: { runDays: number[]; pauseDays: number[]; labels: { run: string[]; pause: string[] }; why: string };
+  lead: { medianDays: number | null; sample: number; basis: string };
+  platform: { first: string; label: string; why: string; setup: string[]; notYet: string };
+  audiences: AdAudience[];
+  money: { ceilingStrict: string | null; ceilingRepeat: string | null; daily: string; total: string };
+}
+interface SeoCheck { key: string; title: string; state: 'pass' | 'warn' | 'fail' | 'unknown'; finding: string; action: string; why: string }
+interface Seo { checks: SeoCheck[]; failing: number; headline: string; blindSpots: string[] }
 interface PromoPlay { key: string; name: string; offer: string; why: string; useWhen: string; avoidWhen: string; cost: 'low' | 'medium' | 'high' }
 interface Promo {
   margin: { commissionPct: number | null; grossMarginPct: number | null; source: string };
@@ -73,13 +85,15 @@ interface Plan {
   audience: { totalCustomers: number; segments: Segment[]; targets: AudienceTarget[]; thin: boolean; basis: string };
   promo: Promo;
   area: { ok: boolean; lines: string[]; year: number | null; totalPopulation: number | null; error?: string } | null;
+  ads: Ads | null;
+  seo: Seo | null;
   offer: Offer;
   lapsed: { count: number; medianDaysAway: number | null };
   quietSlots: { label: string; fillIndex: number }[];
   thin: boolean;
 }
 
-type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience';
+type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads';
 
 /** One icon per kind of job, so the week reads at a glance on a phone. */
 const JOB_ICON: Record<string, string> = {
@@ -222,7 +236,15 @@ function Inner() {
     { id: 'trends', label: T('Xu hướng', 'Trends'), icon: '📈' },
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
+    { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣' },
   ];
+
+  const STATE_STYLE: Record<string, { bg: string; fg: string; text: string }> = {
+    pass: { bg: 'var(--c14532d)', fg: 'var(--cbbf7d0)', text: T('Đạt', 'Pass') },
+    warn: { bg: 'var(--c451a03)', fg: 'var(--cfde68a)', text: T('Cần siết', 'Tighten') },
+    fail: { bg: 'var(--c450a0a)', fg: 'var(--cfca5a5)', text: T('Đang chặn', 'Blocking') },
+    unknown: { bg: 'var(--c1e293b)', fg: 'var(--c94a3b8)', text: T('Chưa đo được', 'No data') },
+  };
 
   const money = (c: number) => `$${Math.round(c / 100).toLocaleString('en-US')}`;
   const COST_LABEL: Record<string, { text: string; color: string }> = {
@@ -804,6 +826,200 @@ function Inner() {
                   </div>
                 )}
               </div>
+            </>
+          )}
+
+          {tab === 'ads' && (
+            <>
+              {/* ---- the ceiling, first ----
+                  Everything else on this tab is worthless without it: the one
+                  number that says when to stop. Deliberately above the budget,
+                  because a budget read before a ceiling becomes a target. */}
+              {plan?.ads && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    🎚️ {T('Một khách mới đáng chi tối đa bao nhiêu', 'The most a booking may cost')}
+                  </div>
+                  {plan.ads.money.ceilingStrict ? (
+                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Ngưỡng an toàn', 'Hard ceiling')}</div>
+                        <div style={{ fontSize: 26, fontWeight: 800, color: '#22c55e' }}>{plan.ads.money.ceilingStrict}</div>
+                        <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('mỗi booking', 'per booking')}</div>
+                      </div>
+                      {plan.ads.money.ceilingRepeat && (
+                        <div>
+                          <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Nếu khách quay lại đều', 'If they return')}</div>
+                          <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--c94a3b8)' }}>{plan.ads.money.ceilingRepeat}</div>
+                          <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>~{plan.ads.ceiling.visitsPerYear} {T('lần/năm', 'visits/yr')}</div>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                  <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{plan.ads.ceiling.plain}</div>
+                  <div style={{ background: 'var(--c1e293b)', borderRadius: 8, padding: '8px 11px', marginTop: 9, fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55 }}>
+                    <b>{T('Luật dừng', 'Stop rule')}:</b>{' '}
+                    {T('Ngày thứ 3, lấy tiền đã chi chia cho số booking thu được. Vượt ngưỡng trên thì TẮT — đừng chờ hết tháng.',
+                       'On day 3, divide spend by bookings. Above the ceiling, switch it off — do not wait for the month to end.')}
+                  </div>
+                </div>
+              )}
+
+              {/* ---- budget as a test ---- */}
+              {plan?.ads?.budget && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: 16,
+                  borderColor: plan.ads.budget.feasible === 'no' ? '#ef4444' : plan.ads.budget.feasible === 'tight' ? '#f59e0b' : 'var(--c334155)',
+                }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    💵 {T('Ngân sách thử', 'The test budget')}
+                  </div>
+                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Mỗi ngày', 'Daily')}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.ads.money.daily}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Trong', 'For')}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.ads.budget.days} {T('ngày', 'days')}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Tổng', 'Total')}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#a5b4fc' }}>{plan.ads.money.total}</div>
+                    </div>
+                    {plan.ads.budget.bookingsToBreakEven !== null && (
+                      <div>
+                        <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Cần để hoà vốn', 'Break-even')}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#f59e0b' }}>{plan.ads.budget.bookingsToBreakEven} {T('booking', 'bookings')}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{plan.ads.budget.plain}</div>
+                </div>
+              )}
+
+              {/* ---- run days ---- */}
+              {plan?.ads?.window && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    📅 {T('Ngày nào bật, ngày nào tắt', 'Days on, days off')}
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 11.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 4 }}>{T('BẬT', 'ON')}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {plan.ads.window.labels.run.map((d) => (
+                        <span key={d} style={{ fontSize: 13, padding: '4px 10px', borderRadius: 20, background: 'var(--c14532d)', color: 'var(--cbbf7d0)' }}>{d}</span>
+                      ))}
+                    </div>
+                  </div>
+                  {!!plan.ads.window.labels.pause.length && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 4 }}>{T('TẮT', 'OFF')}</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {plan.ads.window.labels.pause.map((d) => (
+                          <span key={d} style={{ fontSize: 13, padding: '4px 10px', borderRadius: 20, background: 'var(--c450a0a)', color: 'var(--cfca5a5)' }}>{d}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>{plan.ads.window.why}</div>
+                  <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 4 }}>{plan.ads.lead.basis}</div>
+                </div>
+              )}
+
+              {/* ---- platform ---- */}
+              {plan?.ads?.platform && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    🧭 {T('Chạy ở đâu trước', 'Where to start')}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#a5b4fc', marginBottom: 5 }}>{plan.ads.platform.label}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 8 }}>{plan.ads.platform.why}</div>
+                  {plan.ads.platform.setup.map((s2, i) => (
+                    <div key={i} style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, padding: '3px 0' }}>• {s2}</div>
+                  ))}
+                  <div style={{ fontSize: 12, color: '#f59e0b', lineHeight: 1.5, marginTop: 7 }}>
+                    <b>{T('Chưa làm', 'Not yet')}:</b> {plan.ads.platform.notYet}
+                  </div>
+                </div>
+              )}
+
+              {/* ---- audiences ---- */}
+              {!!plan?.ads?.audiences?.length && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    👥 {T('Nhắm vào ai', 'Who to target')}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10 }}>
+                    {T('Xếp từ rẻ nhất tới đắt nhất. Tệp mà nền tảng nào cũng gợi ý đầu tiên nằm ở CUỐI.',
+                       'Cheapest first. The one every platform suggests first is last here.')}
+                  </div>
+                  {plan.ads.audiences.map((a) => (
+                    <div key={a.name} style={{
+                      padding: '9px 11px', marginBottom: 7, borderRadius: 9,
+                      background: 'var(--c1e293b)',
+                      border: `1px solid ${a.name.includes('LOẠI TRỪ') ? '#ef4444' : a.blockedBy ? 'var(--c334155)' : '#6366f1'}`,
+                      opacity: a.blockedBy ? 0.75 : 1,
+                    }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: a.name.includes('LOẠI TRỪ') ? 'var(--cfca5a5)' : 'var(--ce2e8f0)' }}>{a.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 1 }}>{a.who}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
+                        <strong style={{ color: '#22c55e' }}>{T('Cách nhắm', 'Targeting')}:</strong> {a.how}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{a.why}</div>
+                      {a.blockedBy && (
+                        <div style={{ fontSize: 11.5, color: '#f59e0b', marginTop: 3 }}>⚠ {a.blockedBy}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ---- local SEO ---- */}
+              {plan?.seo && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    🔍 {T('SEO địa phương', 'Local SEO')}
+                  </div>
+                  <div style={{ fontSize: 13, color: plan.seo.failing ? 'var(--cfca5a5)' : '#22c55e', marginBottom: 10 }}>{plan.seo.headline}</div>
+
+                  {plan.seo.checks.map((c) => {
+                    const st = STATE_STYLE[c.state];
+                    return (
+                      <div key={c.key} style={{ padding: '9px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{c.title}</span>
+                          <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: st.bg, color: st.fg }}>{st.text}</span>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5, marginTop: 2 }}>{c.finding}</div>
+                        {c.action && (
+                          <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 3 }}>
+                            <strong style={{ color: '#22c55e' }}>{T('Làm', 'Do')}:</strong> {c.action}
+                          </div>
+                        )}
+                        {c.why && <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45, marginTop: 2 }}>{c.why}</div>}
+                      </div>
+                    );
+                  })}
+
+                  {/* Said out loud rather than quietly folded into a score. */}
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
+                    <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--c64748b)', marginBottom: 5 }}>
+                      {T('Phần này KHÔNG đo được', 'What this cannot see')}
+                    </div>
+                    {plan.seo.blindSpots.map((b, i) => (
+                      <div key={i} style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55, marginBottom: 3, fontStyle: 'italic' }}>{b}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!plan?.ads && !plan?.seo && (
+                <div style={{ ...ui.card, textAlign: 'center', padding: '26px 20px', color: 'var(--c94a3b8)', fontSize: 13.5, lineHeight: 1.6 }}>
+                  {T('Chưa tính được kế hoạch quảng cáo. Cần tỷ lệ ăn chia thợ và ít nhất vài chục lịch hẹn.',
+                     'No ad plan yet — needs the commission rate and a few dozen bookings.')}
+                </div>
+              )}
             </>
           )}
 

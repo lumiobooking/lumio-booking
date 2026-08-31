@@ -109,6 +109,45 @@ describe('nothing untyped reaches Prisma', () => {
   });
 });
 
+describe('no test is allowed to reach the real API', () => {
+  /**
+   * A test that calls out to Anthropic passes on a laptop with no key and
+   * fails on the deploy machine, which has one — and bills for the privilege
+   * on the way. That is exactly how the content-refresh tests broke a build:
+   * green here, two timeouts there, and real API calls in between.
+   *
+   * So any spec that drives a code path known to call the model must stub
+   * `fetch`. Narrow on purpose: it names the three entry points that do, rather
+   * than trying to guess at every function that might.
+   */
+  const CALLS_MODEL = /\b(refreshFor|generateForTenant|generateAll|runAgent)\s*\(/;
+  const STUBS_FETCH = /spyOn\(\s*globalThis\s*,\s*'fetch'/;
+
+  const specs: string[] = [];
+  (function walk(dir: string) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.spec.ts')) specs.push(p);
+    }
+  })(path.join(__dirname, '..'));
+
+  it('found the spec files', () => {
+    expect(specs.length).toBeGreaterThan(10);
+  });
+
+  it('stubs fetch wherever a spec drives the model', () => {
+    const offenders: string[] = [];
+    for (const f of specs) {
+      const src = fs.readFileSync(f, 'utf8');
+      if (CALLS_MODEL.test(src) && !STUBS_FETCH.test(src)) {
+        offenders.push(path.basename(f));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('the content engine tables are wired the way the code expects', () => {
   it('ContentIdea is tenant-scoped — a salon must never read another salon’s plan', () => {
     const body = ALL.get('ContentIdea') ?? '';

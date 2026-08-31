@@ -139,6 +139,41 @@ describe('the plan it returns is shaped the way the screen expects', () => {
  * salon next door.
  */
 describe('refresh is capped, counted, and scoped', () => {
+  /**
+   * The network is stubbed for this whole block, and that is not a detail.
+   *
+   * The first version of these tests let `refreshFor` run with whatever
+   * ANTHROPIC_API_KEY happened to be in the environment. On this machine there
+   * is none, so drafting bailed out instantly and all fourteen tests passed. On
+   * the deploy machine the key is a REAL one — so the build was making real,
+   * billable calls to Anthropic, with a 60-second timeout and two retries, and
+   * jest killed both tests at its 5-second default. Two failures, one broken
+   * deploy, and an invoice for the privilege.
+   *
+   * `voice-lang-flow.spec.ts` had this right already: set a fake key AND stub
+   * fetch. A test that reaches the internet is not a unit test; it is a
+   * different result on every machine that runs it.
+   */
+  let fetchSpy: jest.SpyInstance;
+  const REPLY = {
+    content: [{ type: 'text', text: JSON.stringify({ ideas: [
+      { rank: 1, formatName: 'Before / after', title: 'A', hook: 'h', shotList: 's', caption: 'c', hashtags: '#a', bestTime: '18:30', reason: 'r' },
+      { rank: 2, formatName: 'ASMR', title: 'B', hook: 'h', shotList: 's', caption: 'c', hashtags: '#b', bestTime: '18:30', reason: 'r' },
+    ] }) }],
+  };
+
+  beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = 'test-key-not-a-real-one';
+    fetchSpy = jest.spyOn(globalThis, 'fetch' as never).mockResolvedValue({
+      ok: true, status: 200, json: async () => REPLY,
+    } as never);
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+
   function prismaWith(setting: unknown, queries: Query[] = []) {
     const model = (name: string) =>
       new Proxy({}, {
@@ -185,6 +220,7 @@ describe('refresh is capped, counted, and scoped', () => {
       const wrote = q.find((x) => x.model === 'setting' && (x.op === 'create' || x.op === 'update'));
       expect(wrote).toBeTruthy();
       expect(r.left).toBe(4);
+      expect(fetchSpy).not.toHaveBeenCalled();
     } finally { if (old) process.env.ANTHROPIC_API_KEY = old; }
   });
 
@@ -206,7 +242,27 @@ describe('refresh is capped, counted, and scoped', () => {
       const r = await svcWith(null).refreshFor(userOf('t1'));
       expect(r.created).toBe(0);
       expect(r.skipped).toBe('no-api-key');
+      expect(fetchSpy).not.toHaveBeenCalled();
     } finally { if (old) process.env.ANTHROPIC_API_KEY = old; }
+  });
+
+  it('drafts and publishes in one step, without touching the network', async () => {
+    const q: Query[] = [];
+    const r = await svcWith(null, q).refreshFor(userOf('t1'));
+    expect(r.created).toBeGreaterThan(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String((fetchSpy.mock.calls[0] as unknown[])[0])).toContain('api.anthropic.com');
+    // Published, not left as a draft: this screen is the agency's own, and
+    // there is no salon here to protect from unreviewed work.
+    const pub = q.find((x) => x.model === 'contentIdea' && x.op === 'updateMany');
+    expect((pub!.args as { data: Record<string, unknown> }).data.status).toBe('published');
+    expect((pub!.args as { where: Record<string, unknown> }).where.tenantId).toBe('t1');
+  });
+
+  it('never lets a unit test reach the real API', () => {
+    // Guarding the guard: if someone removes the fetch stub, this fails loudly
+    // instead of quietly billing a deploy.
+    expect(jest.isMockFunction(globalThis.fetch)).toBe(true);
   });
 
   it('still refuses without a tenant context', async () => {

@@ -77,6 +77,19 @@ interface PlatformPlan {
   days: number; bookingsToBreakEven: number | null;
   how: string[]; watch: string;
 }
+interface TargetSegment { key: string; label: string; size: number; basis: string; why: string; targeting: string[] }
+interface MarketPlan {
+  adults: number | null;
+  segments: TargetSegment[];
+  primary: TargetSegment | null;
+  affordable: { usd: number; households: number; pct: number } | null;
+  capacity: number | null;
+  penetrationPct: number | null;
+  penetrationVerdict: string;
+  maxSpend: string | null;
+  reasoning: string[];
+  limits: string[];
+}
 interface BriefStep { key: string; order: number; title: string; finding: string; basis: string; confidence: string; soWhat: string }
 interface MissingLink { key: string; what: string; unlocks: string; how: string }
 interface Brief { headline: string; steps: BriefStep[]; missing: MissingLink[]; complete: boolean; limits: string[] }
@@ -112,6 +125,7 @@ interface Plan {
   audience: { totalCustomers: number; segments: Segment[]; targets: AudienceTarget[]; thin: boolean; basis: string };
   promo: Promo;
   area: { ok: boolean; lines: string[]; year: number | null; totalPopulation: number | null; error?: string } | null;
+  market: MarketPlan | null;
   ads: Ads | null;
   brief: Brief | null;
   seo: Seo | null;
@@ -1137,6 +1151,101 @@ function Inner() {
 
           {tab === 'ads' && (
             <>
+              {/* ---- the market, first ----
+                  Before anything derived from the booking book. "Who should I
+                  target?" is a question about the tens of thousands of people
+                  who have never been in the book — and a shop with twenty-two
+                  bookings has almost no history to reason from anyway. Sizes
+                  here come from the US Census, not from this shop. */}
+              {plan?.market && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                    🎯 {T('Tệp khách mục tiêu trong khu vực', 'Who to target in this area')}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 12, lineHeight: 1.5 }}>
+                    {T('Đo từ dân cư thật quanh tiệm (Cục Thống kê Mỹ), không phải từ lịch sử booking của tiệm.',
+                       'Sized from the real population around the shop (US Census), not from this shop’s booking history.')}
+                  </div>
+
+                  {plan.market.primary && (
+                    <div style={{
+                      padding: '12px 14px', borderRadius: 10, marginBottom: 12,
+                      background: 'var(--c1e293b)', border: '1px solid #6366f1',
+                    }}>
+                      <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 2 }}>
+                        {T('NHẮM VÀO', 'PRIMARY TARGET')}
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#a5b4fc' }}>{plan.market.primary.label}</div>
+                      <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--ce2e8f0)', margin: '2px 0' }}>
+                        {plan.market.primary.size.toLocaleString('en-US')} <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--c94a3b8)' }}>{T('người', 'people')}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{plan.market.primary.basis}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 6 }}>{plan.market.primary.why}</div>
+                      <div style={{ marginTop: 8 }}>
+                        {plan.market.primary.targeting.map((t2, i) => (
+                          <div key={i} style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, padding: '2px 0' }}>▸ {t2}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {plan.market.reasoning.map((r, i) => (
+                    <div key={i} style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginBottom: 7 }}>
+                      <span style={{ color: '#6366f1', fontWeight: 700 }}>{i + 1}.</span> {r}
+                    </div>
+                  ))}
+
+                  {plan.market.maxSpend && (
+                    <div style={{
+                      display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 10,
+                      padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Trần chi cả đợt', 'Spend ceiling')}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#f59e0b' }}>{plan.market.maxSpend}</div>
+                      </div>
+                      {plan.market.penetrationPct !== null && (
+                        <div>
+                          <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Cần chiếm', 'Share needed')}</div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.market.penetrationPct}%</div>
+                        </div>
+                      )}
+                      {plan.market.capacity !== null && (
+                        <div>
+                          <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Chỗ trống lấp được', 'Seats to fill')}</div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.market.capacity}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {plan.market.segments.length > 1 && (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 6 }}>
+                        {T('Tệp cân nhắc khác', 'Other segments considered')}
+                      </div>
+                      {plan.market.segments.slice(1).map((s2) => (
+                        <div key={s2.key} style={{
+                          padding: '8px 10px', marginBottom: 6, borderRadius: 8,
+                          background: 'var(--c1e293b)', border: '1px solid var(--c334155)',
+                        }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
+                            {s2.label} — {s2.size.toLocaleString('en-US')}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{s2.why}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
+                    {plan.market.limits.map((l, i) => (
+                      <div key={i} style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginBottom: 3 }}>• {l}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* ---- the brief ----
                   First, and above the modules, because the modules were the
                   problem: each correct on its own and together not an argument.

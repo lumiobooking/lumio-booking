@@ -15,7 +15,9 @@ import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
-import { fetchCensus, describeArea, type CensusResult } from './census';
+import { fetchCensus, describeArea, normaliseZips, type CensusResult } from './census';
+import { fetchAreaAudience, type AreaAudience } from './census-audience';
+import { buildMarketPlan } from './market-target';
 import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-plan';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
@@ -673,6 +675,9 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
 
       if (!ctx.nearbyZips) continue;
       const r = await this.areaFor(t.id, ctx.nearbyZips, { allowFetch: true }).catch(() => null);
+      // The demand side warms on the same tick. It is three more requests to a
+      // government API once a month per tenant, off the page-load path.
+      await this.audienceFor(t.id, ctx.nearbyZips, { allowFetch: true, year: r?.year ?? null }).catch(() => null);
       if (r?.ok) warmed += 1;
     }
     return { warmed };
@@ -748,6 +753,27 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     // show, and fetching them twice is how two numbers on one screen drift.
     const area = await this.areaFor(tenantId, ctx.nearbyZips, { allowFetch: false }).catch(() => null);
     const ads = await this.adsFor(tenantId, ctx).catch(() => null);
+    // The demand side. Deliberately built from the Census and the shop's own
+    // description — NOT from its booking history. "Who should I target?" is a
+    // question about the people who have never been in the book, and a shop
+    // with twenty-two bookings has almost no history to reason from anyway.
+    const audience = await this.audienceFor(tenantId, ctx.nearbyZips, { allowFetch: false }).catch(() => null);
+    const market = audience
+      ? buildMarketPlan({
+        area: audience,
+        industry: ctx.industry,
+        declaredWhoWeServe: ctx.identity.profile.whoWeServe || null,
+        declaredWhatWeDo: ctx.identity.profile.whatWeDo || null,
+        firstVisitTicketCents: ctx.firstVisitTicketCents,
+        grossMarginPct: ctx.promo.margin.grossMarginPct,
+        cpaCeilingCents: ads?.ceiling.strictCents ?? null,
+        openSlots: ads?.budget.openSlots ?? null,
+        campaignDays: ads?.budget.days ?? 14,
+        city: ctx.region.city,
+        region: ctx.region.region,
+        money: ctx.money,
+      })
+      : null;
     const week = buildWeekPlan({
       today: new Date(),
       todayWeekday: this.localWeekday(ctx.tz),
@@ -813,6 +839,11 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       promo: ctx.promo,
       // Cache only: a salon opening this page must not wait on the Census.
       area,
+      // Who is out there, before anything about who has already been in.
+      market: market ? {
+        ...market,
+        maxSpend: market.maxSpendCents !== null ? ctx.money(market.maxSpendCents) : null,
+      } : null,
       ads: ads,
       // The consultant's chain, assembled from every number above. Placed in
       // the payload rather than the UI because the argument's ORDER is part of
@@ -955,6 +986,43 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       if (cached.data?.ok) return { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at };
     }
     return { ...r, lines: describeArea(r) };
+  }
+
+  /**
+   * The demand side: who lives around the shop, cached for a month.
+   *
+   * Same discipline as areaFor — page loads read the cache and stop, the hourly
+   * tick fills it. Kept in its own cache key rather than folded into
+   * `census_cache` so that a failure in one does not blank the other: the
+   * headline population figure and the age/income breakdown come from different
+   * Census tables and fail independently.
+   */
+  async audienceFor(
+    tenantId: string,
+    zips: string | null,
+    opts: { allowFetch?: boolean; year?: number | null } = {},
+  ): Promise<AreaAudience | null> {
+    if (!zips) return null;
+    const KEY = 'census_audience_cache';
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: KEY }, select: { id: true, value: true } }).catch(() => null);
+    const cached = (row?.value ?? {}) as { at?: string; zips?: string; data?: AreaAudience };
+    const fresh = cached.at && Date.now() - Date.parse(cached.at) < 30 * 86_400_000;
+    if (fresh && cached.zips === zips && cached.data?.ok) return cached.data;
+    if (opts.allowFetch === false) return cached.data?.ok ? cached.data : null;
+
+    const r = await fetchAreaAudience(normaliseZips(zips), {
+      apiKey: process.env.CENSUS_API_KEY || null,
+      ...(opts.year ? { year: opts.year } : {}),
+    });
+    if (r.ok) {
+      const value = { at: new Date().toISOString(), zips, data: r };
+      if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } }).catch(() => undefined);
+      else await this.prisma.setting.create({ data: { tenantId, key: KEY, value: value as never } }).catch(() => undefined);
+    } else {
+      this.logger.warn(`census audience failed for ${tenantId}: ${r.notes.join(' | ')}`);
+      if (cached.data?.ok) return cached.data;
+    }
+    return r;
   }
 
   /**

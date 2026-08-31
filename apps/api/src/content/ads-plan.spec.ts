@@ -1,4 +1,6 @@
-import { leadTime, cpaCeiling, budgetPlan, runWindow, platformPick, adAudiences } from './ads-plan';
+import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-plan';
+import * as adsPlan from './ads-plan';
+import { BOOKING_CHANNELS } from '../common/booking-channel';
 
 const DAY = 86_400_000;
 const now = Date.UTC(2026, 7, 31);
@@ -68,8 +70,9 @@ describe('the budget is a test to run, never a forecast', () => {
 
   it('says how many bookings break even, and never how many will arrive', () => {
     const p = budgetPlan({ ceiling, openSlots: 40 });
-    // $15 × 14 = $210, ceiling $32 → 7 bookings to break even.
-    expect(p.bookingsToBreakEven).toBe(7);
+    // The budget is now derived: 8 conversions × a $32 ceiling, spread over 14
+    // days. It used to be a flat $15/day for every business on the platform.
+    expect(p.bookingsToBreakEven).toBe(8);
     expect(p.plain).toMatch(/PHÉP ĐO/);
     // The forecast this file refuses to make.
     expect(p.plain).not.toMatch(/sẽ ra|dự kiến sẽ|khoảng \d+ khách sẽ/);
@@ -130,35 +133,26 @@ describe('ad days are derived from the booking lead time', () => {
   });
 });
 
-describe('the platform is chosen from where customers already arrive free', () => {
-  it('picks Google when search already delivers', () => {
-    const p = platformPick({ google: 40, gbp: 20, facebook: 5 });
-    expect(p.first).toBe('google');
-    expect(p.why).toMatch(/miễn phí/);
+describe('the platform ranking lives in channel-plan.ts, not here', () => {
+  // platformPick() was deleted. It ranked platforms from raw arrival counts and
+  // shipped its verdict to the same screen that now shows the ranking built
+  // from acquisition and retention. Two rankers is not redundancy, it is a
+  // contradiction waiting for the week they disagree — with nothing on screen
+  // to tell the owner which card to believe.
+  //
+  // It also counted keys the booking table never writes ('google', 'gbp',
+  // 'organic'), and THESE TESTS PASSED ANYWAY because the fixtures used the
+  // same invented keys. A test that agrees with the code rather than with the
+  // data proves the code consistent with itself and nothing more.
+  it('no longer exports a second platform ranker', () => {
+    expect((adsPlan as Record<string, unknown>).platformPick).toBeUndefined();
   });
 
-  it('picks Meta when social already delivers', () => {
-    const p = platformPick({ google: 4, facebook: 30, messenger: 25 });
-    expect(p.first).toBe('meta');
-    expect(p.setup.join(' ')).toMatch(/retarget/i);
-  });
-
-  it('starts with search when there is no history, and says why', () => {
-    const p = platformPick({});
-    expect(p.first).toBe('google');
-    expect(p.why).toMatch(/Ý định/);
-  });
-
-  it('refuses to run both at once on the first campaign', () => {
-    const p = platformPick({ google: 20, facebook: 19 });
-    expect(p.notYet).toMatch(/hai biến số/);
-  });
-
-  it('always names what it is NOT doing yet, and why', () => {
-    const cases: Record<string, number>[] = [{}, { google: 50 }, { facebook: 50 }, { google: 20, facebook: 19 }];
-    for (const s of cases) {
-      expect(platformPick(s).notYet.length).toBeGreaterThan(25);
+  it('uses only channel keys the booking table really writes', () => {
+    for (const invented of ['google', 'gbp', 'organic']) {
+      expect(BOOKING_CHANNELS).not.toContain(invented as never);
     }
+    expect(BOOKING_CHANNELS).toContain('gmap');
   });
 });
 

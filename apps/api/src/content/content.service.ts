@@ -3,6 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { formatMoneyShort, localeForCountry } from '../common/money';
+import { marketOf } from '../common/markets';
+import { bookingChannel } from '../common/booking-channel';
+import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
 import { buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
 import { regionEvents, eventsToPrompt, type ResolvedRegion, type DatedEvent } from './region-events';
@@ -13,7 +16,7 @@ import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
 import { fetchCensus, describeArea, type CensusResult } from './census';
-import { leadTime, cpaCeiling, budgetPlan, runWindow, platformPick, adAudiences } from './ads-plan';
+import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-plan';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
@@ -103,6 +106,12 @@ export class ContentService {
     identity: ResolvedIdentity;
     nearbyZips: string | null;
     sourceCounts: Record<string, number>;
+    /** Every booking reduced to the facts a channel verdict rests on. */
+    channelBookings: ChannelBooking[];
+    /** What a genuinely new customer pays on the first visit. */
+    firstVisitTicketCents: number | null;
+    /** Minutes an average appointment takes here, from the service list. */
+    avgServiceMinutes: number | null;
     lead: ReturnType<typeof leadTime>;
     money: (c: number) => string;
   }> {
@@ -128,7 +137,19 @@ export class ContentService {
     }).catch(() => null) as { bizIntro?: string | null; aiInstruction?: string | null } | null;
     const ex = (extra?.value ?? {}) as { address?: string; country?: string };
     const locale = localeForCountry(ex.country ?? '', tz);
-    const money = (c: number) => formatMoneyShort(c, 'USD', locale);
+    // The salon's own currency, not USD.
+    //
+    // Every money figure on this screen was formatted as US dollars regardless
+    // of market. On the Vietnam deployment that is wrong twice over: the symbol
+    // is wrong, and USD carries two decimal places while the dong carries none
+    // — so a 200,000₫ manicure printed as $2,000.00. Order of authority: what
+    // the salon set in its booking rules, then its market's default.
+    const rules = await this.prisma.setting.findFirst({
+      where: { tenantId, key: 'booking_rules' }, select: { value: true },
+    }).catch(() => null);
+    const currency = String((rules?.value as { currency?: string } | null)?.currency || '').trim().toUpperCase()
+      || marketOf((tenant as { market?: string } | null)?.market).currency;
+    const money = (c: number) => formatMoneyShort(c, currency, locale);
 
     const thisMonth = this.monthKey(0);
     const lastMonth = this.monthKey(-1);
@@ -192,7 +213,8 @@ export class ContentService {
     const d365 = new Date(now.getTime() - 365 * 86_400_000);
     type HistRow = {
       startTime: Date; createdAt: Date; priceCents: number | null; customerId: string | null;
-      source: string | null; utmSource: string | null; service: { name: string } | null;
+      source: string | null; utmSource: string | null; attrReferrer: string | null;
+      service: { name: string } | null;
     };
     const history: HistRow[] = await this.prisma.appointment.findMany({
       // Walk-ins with no customer record are dropped below in JS rather than in
@@ -202,7 +224,11 @@ export class ContentService {
       where: { tenantId, startTime: { gte: d365 }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
       select: {
         startTime: true, createdAt: true, priceCents: true, customerId: true,
-        source: true, utmSource: true, service: { select: { name: true } },
+        // attrReferrer is the ONLY evidence for an organic arrival: a customer
+        // who found the salon on Google and tapped the booking link carries no
+        // utm at all. Leaving it out of the query is what made every such
+        // booking land in "nguồn chưa rõ" and vanish from the channel tally.
+        source: true, utmSource: true, attrReferrer: true, service: { select: { name: true } },
       } as never,
       take: 20000,
     }).catch(() => [] as HistRow[]) as HistRow[];
@@ -217,15 +243,56 @@ export class ContentService {
       };
     });
 
-    // Where bookings come from, and how far ahead they are made. Both are read
-    // from rows the platform already writes on every booking — no new tracking.
+    // Where bookings come from, resolved the SAME way the calendar resolves it.
+    //
+    // This used to be `utmSource || source`, which is the attribution rule
+    // backwards — a Messenger booking carrying a stray utm was filed under the
+    // utm — and it emitted raw keys ('plugin', 'hosted', 'admin') that the ads
+    // engine then looked for under invented names ('google', 'gbp', 'organic').
+    // The result was a channel report that could not see Google Maps at all.
+    const channels = history.map((h) => bookingChannel({
+      source: h.source, utmSource: h.utmSource, attrReferrer: h.attrReferrer,
+    }));
     const sourceCounts: Record<string, number> = {};
+    for (const c of channels) sourceCounts[c] = (sourceCounts[c] ?? 0) + 1;
+
+    // First-ever visit per customer, and how many times they have been since.
+    // This is what separates a channel that FINDS customers from one that is
+    // merely where the regulars rebook — the distinction the whole ads tab
+    // turns on, and it costs one pass over rows already in memory.
+    const firstVisitAt = new Map<string, number>();
+    const visitCount = new Map<string, number>();
     for (const h of history) {
-      const raw = String((h as { source?: string | null }).source ?? '').toLowerCase().trim();
-      const utm = String((h as { utmSource?: string | null }).utmSource ?? '').toLowerCase().trim();
-      const key = utm || raw || 'unknown';
-      sourceCounts[key] = (sourceCounts[key] ?? 0) + 1;
+      if (!h.customerId) continue;
+      const id = String(h.customerId);
+      const t = h.startTime.getTime();
+      firstVisitAt.set(id, Math.min(firstVisitAt.get(id) ?? t, t));
+      visitCount.set(id, (visitCount.get(id) ?? 0) + 1);
     }
+    const channelBookings: ChannelBooking[] = history.map((h, i) => {
+      const id = h.customerId ? String(h.customerId) : null;
+      return {
+        channel: channels[i],
+        at: h.startTime.getTime(),
+        priceCents: h.priceCents ?? 0,
+        customerId: id,
+        isFirstVisit: Boolean(id) && firstVisitAt.get(id as string) === h.startTime.getTime(),
+        customerVisits: id ? (visitCount.get(id) ?? 1) : 1,
+      };
+    });
+
+    // What a genuinely NEW customer pays on the first visit.
+    //
+    // The CPA ceiling was being taken from `segments[0]` — the largest segment
+    // by head count, whichever that happens to be. When the largest group is
+    // "khách quen" (a higher ticket than a first-timer), the ceiling inflates
+    // and the salon is told it may pay more for a new customer than a new
+    // customer is worth. Ads buy first visits, so the ceiling must be built on
+    // what a first visit is actually worth here.
+    const firstTickets = channelBookings.filter((b) => b.isFirstVisit && b.priceCents > 0).map((b) => b.priceCents);
+    const firstVisitTicketCents = firstTickets.length >= 5
+      ? Math.round(firstTickets.reduce((a, b) => a + b, 0) / firstTickets.length)
+      : null;
     const lead = leadTime(history.map((h) => ({
       createdAt: (h as { createdAt?: Date }).createdAt?.getTime() ?? h.startTime.getTime(),
       startTime: h.startTime.getTime(),
@@ -339,6 +406,15 @@ export class ContentService {
       promo,
       identity,
       sourceCounts,
+      channelBookings,
+      firstVisitTicketCents,
+      // How long an appointment takes HERE. The capacity estimate used to
+      // assume two per hour for every business on the platform, while the
+      // salon's own service list has been sitting right there with the real
+      // durations in it.
+      avgServiceMinutes: services.length
+        ? Math.max(15, Math.round(services.reduce((s2, x) => s2 + (x.durationMinutes || 0), 0) / services.length))
+        : null,
       lead,
       // ZIPs, in order of authority, and never asked for twice: the field
       // someone filled, the extra ZIPs the team added, then the one the shop's
@@ -894,7 +970,10 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     const regulars = ctx.audience.segments.find((s) => s.key === 'regular');
     const anySeg = ctx.audience.segments[0];
     const ceiling = cpaCeiling({
-      avgTicketCents: anySeg?.avgTicketCents ?? null,
+      // A first visit, not the biggest segment's average. Advertising buys
+      // first visits; pricing them at what a regular spends is how a salon
+      // talks itself into paying more for a customer than the customer brings.
+      avgTicketCents: ctx.firstVisitTicketCents ?? anySeg?.avgTicketCents ?? null,
       grossMarginPct: ctx.promo.margin.grossMarginPct,
       medianGapDays: regulars?.medianGapDays ?? anySeg?.medianGapDays ?? null,
     });
@@ -903,10 +982,22 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     // blocks over a fortnight, at this salon's own average visit length. A
     // campaign that needs more customers than there are chairs cannot work, and
     // that is worth knowing before the money goes out rather than after.
+    //
+    // The comment above used to say "at this salon's own average visit length"
+    // while the code divided by 60 and multiplied by 2 — a hardcoded thirty
+    // minutes for every trade on the platform. An estate agency does not book
+    // in half-hours. The service list has the real durations.
+    // The load figures cover 28 days of bookings; a campaign runs 14. Comparing
+    // a fortnight of budget against a month of empty chairs would say there is
+    // twice the room there is, and "feasible" is the check that stops a salon
+    // buying customers it cannot seat.
+    const LOAD_WINDOW_DAYS = 28;
     const quiet = ctx.revenue.loads.slice(0, 3);
     const peakMinutes = Math.max(...ctx.revenue.loads.map((l) => l.minutes), 0);
+    const slotMinutes = ctx.avgServiceMinutes ?? 60;
+    const idleMinutes = quiet.reduce((sum, q) => sum + Math.max(0, peakMinutes - q.minutes), 0);
     const openSlots = peakMinutes > 0
-      ? Math.max(0, Math.round(quiet.reduce((sum, q) => sum + (peakMinutes - q.minutes), 0) / 60) * 2)
+      ? Math.max(0, Math.floor((idleMinutes / slotMinutes) * (CAMPAIGN_DAYS / LOAD_WINDOW_DAYS)))
       : null;
 
     const budget = budgetPlan({ ceiling, openSlots });
@@ -915,12 +1006,54 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       busyWeekdays: [...ctx.revenue.loads].reverse().slice(0, 2).map((l) => l.weekday),
       leadDays: ctx.lead.medianDays,
     });
+    // How each channel is actually performing, and what to do per platform.
+    // Measured on acquisition and retention rather than booking count, because
+    // a channel busy with regulars rebooking is not a channel worth buying.
+    // A paid Google click lands on the Business Profile, so how thin that
+    // profile is belongs in the spending advice, not only in the SEO tab.
+    const loose = this.prisma as unknown as Record<string, { count?: (a: unknown) => Promise<number> }>;
+    const reviewCount = await loose.googleReview?.count?.({ where: { tenantId } }).catch(() => null) ?? null;
+
+    const { reports, coverage, caveat } = channelReports(ctx.channelBookings, Date.now());
+    const plans = platformPlans(reports, {
+      grossMarginPct: ctx.promo.margin.grossMarginPct,
+      firstVisitTicketCents: ctx.firstVisitTicketCents,
+      openSlots,
+      runDayLabels: window.labels.run,
+      pauseDayLabels: window.labels.pause,
+      quietLabels: quiet.map((q) => q.label),
+      leadDays: ctx.lead.medianDays,
+      topServiceName: ctx.revenue.yields[0]?.name ?? ctx.signals.services[0]?.name ?? null,
+      city: ctx.region.city,
+      region: ctx.region.region,
+      lapsedCount: ctx.revenue.lapsed.count,
+      customerCount: ctx.audience.totalCustomers,
+      reviewCount: reviewCount,
+      market: ctx.region.market,
+      money: ctx.money,
+    });
+
     return {
       ceiling,
       budget,
       window,
       lead: ctx.lead,
-      platform: platformPick(ctx.sourceCounts),
+      channels: {
+        reports: reports.map((r) => ({
+          ...r,
+          revenue: ctx.money(r.revenueCents),
+          avgTicket: ctx.money(r.avgTicketCents),
+          valuePerAcquired: r.valuePerAcquiredCents !== null ? ctx.money(r.valuePerAcquiredCents) : null,
+        })),
+        coverage,
+        caveat,
+      },
+      plans: plans.map((p) => ({
+        ...p,
+        ceiling: p.ceilingCents !== null ? ctx.money(p.ceilingCents) : null,
+        daily: p.dailyCents !== null ? ctx.money(p.dailyCents) : null,
+        total: p.totalCents !== null ? ctx.money(p.totalCents) : null,
+      })),
       audiences: adAudiences({
         lapsedCount: ctx.revenue.lapsed.count,
         customerCount: ctx.audience.totalCustomers,

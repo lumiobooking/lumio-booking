@@ -108,11 +108,16 @@ export interface BriefInput {
   money: (cents: number) => string;
 }
 
+// The keys the booking table writes — see common/booking-channel.ts. The old
+// map listed 'google', 'gbp' and 'organic', none of which are ever written, and
+// omitted 'gmap', which is the biggest channel most salons have. A missing key
+// printed the raw string, so the brief's channel step read "gmap: 60 booking".
 const SOURCE_VI: Record<string, string> = {
-  google: 'Google tìm kiếm', gbp: 'Google Maps', organic: 'tìm kiếm tự nhiên',
-  website: 'website', facebook: 'Facebook', instagram: 'Instagram',
-  messenger: 'Messenger', hotline: 'hotline AI', walkin: 'khách vãng lai',
-  unknown: 'chưa ghi nhận nguồn',
+  gmap: 'Google Maps / Tìm kiếm', facebook: 'Facebook', instagram: 'Instagram',
+  messenger: 'Messenger', zalo: 'Zalo', hotline: 'gọi điện',
+  website: 'website tiệm', lumiolink: 'link đặt lịch Lumio',
+  walkin: 'khách vãng lai', staff: 'nhân viên tạo tại tiệm',
+  online: 'đặt online chưa rõ nguồn',
 };
 
 export function buildStrategyBrief(i: BriefInput): StrategyBrief {
@@ -196,17 +201,26 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
 
   // ---- 4. which door they come through ------------------------------------
   const total = Object.values(i.sourceCounts ?? {}).reduce((a, b) => a + b, 0);
+  // 'online' is a booking that came through a web door carrying no utm and no
+  // referrer — a real booking whose channel is genuinely unknown. It must not
+  // rank as a channel, and the shares must be taken against the bookings we can
+  // actually attribute: a percentage of the whole book, computed from a third
+  // of it, is a smaller number wearing a bigger one's clothes.
   const ranked = Object.entries(i.sourceCounts ?? {})
-    .filter(([k]) => k !== 'unknown')
+    .filter(([k]) => k !== 'unknown' && k !== 'online')
     .sort((a, b) => b[1] - a[1]);
-  if (total >= 10 && ranked.length) {
+  const attributed = ranked.reduce((s, [, n]) => s + n, 0);
+  if (attributed >= 10 && ranked.length) {
     const [topKey, topN] = ranked[0];
-    const pct = Math.round((topN / total) * 100);
+    const pct = Math.round((topN / attributed) * 100);
+    const coveragePct = total ? Math.round((attributed / total) * 100) : 0;
     steps.push({
       key: 'channel', order: 4, title: 'Khách đến từ đâu',
-      finding: `${pct}% booking đến từ ${SOURCE_VI[topKey] ?? topKey} (${topN}/${total})`
+      finding: `${pct}% booking đến từ ${SOURCE_VI[topKey] ?? topKey} (${topN}/${attributed})`
         + (ranked[1] ? `, kế tiếp là ${SOURCE_VI[ranked[1][0]] ?? ranked[1][0]} với ${ranked[1][1]}.` : '.'),
-      basis: 'Nguồn được ghi trên từng booking',
+      basis: coveragePct >= 95
+        ? 'Nguồn được ghi trên từng booking'
+        : `Nguồn được ghi trên từng booking — đọc được ${attributed}/${total} booking (${coveragePct}%), phần còn lại không mang theo nguồn`,
       confidence: 'measured',
       soWhat: 'Kênh đang mang khách về miễn phí là kênh mua khách rẻ nhất khi trả tiền: ảnh, đánh giá và lời chào ở đó đã được chứng minh hợp với đúng tệp này. Đó là kênh chạy trước.',
     });
@@ -215,7 +229,9 @@ export function buildStrategyBrief(i: BriefInput): StrategyBrief {
       key: 'channel',
       what: 'Nguồn của các booking',
       unlocks: 'Biết kênh nào đang tự mang khách về thì chọn được nơi tiêu tiền đầu tiên, thay vì rải đều.',
-      how: `Mới có ${total} booking ghi nhận được nguồn. Cần vài chục để đọc được tỷ lệ thật.`,
+      how: total >= 10
+        ? `Có ${total} booking nhưng chỉ ${attributed} ghi nhận được kênh. Gắn UTM vào mọi link đặt lịch chia sẻ ra ngoài, và chọn nguồn khi tạo lịch cho khách gọi điện hoặc vãng lai.`
+        : `Mới có ${total} booking. Cần vài chục để đọc được tỷ lệ thật.`,
     });
   }
 

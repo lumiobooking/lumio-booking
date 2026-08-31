@@ -55,9 +55,27 @@ interface Ads {
   budget: { dailyCents: number; days: number; totalCents: number; bookingsToBreakEven: number | null; openSlots: number | null; feasible: string; plain: string };
   window: { runDays: number[]; pauseDays: number[]; labels: { run: string[]; pause: string[] }; why: string };
   lead: { medianDays: number | null; sample: number; basis: string };
-  platform: { first: string; label: string; why: string; setup: string[]; notYet: string };
+  channels: { reports: ChannelReport[]; coverage: { total: number; attributed: number; pct: number; unknown: number }; caveat: string | null };
+  plans: PlatformPlan[];
   audiences: AdAudience[];
   money: { ceilingStrict: string | null; ceilingRepeat: string | null; daily: string; total: string };
+}
+interface ChannelReport {
+  channel: string; label: string; platform: string;
+  bookings: number; sharePct: number; revenue: string; avgTicket: string;
+  acquired: number; repeatPct: number | null; visitsPerAcquired: number | null;
+  valuePerAcquired: string | null;
+  last90: number; prior90: number; trend: 'up' | 'flat' | 'down' | 'unknown';
+  verdict: 'builds' | 'convenience' | 'fading' | 'weak' | 'unproven';
+  says: string;
+}
+interface PlatformPlan {
+  platform: string; label: string; rank: number;
+  status: 'spend' | 'later' | 'hold' | 'unproven';
+  evidence: string;
+  ceiling: string | null; daily: string | null; total: string | null;
+  days: number; bookingsToBreakEven: number | null;
+  how: string[]; watch: string;
 }
 interface BriefStep { key: string; order: number; title: string; finding: string; basis: string; confidence: string; soWhat: string }
 interface MissingLink { key: string; what: string; unlocks: string; how: string }
@@ -1289,20 +1307,128 @@ function Inner() {
                 </div>
               )}
 
-              {/* ---- platform ---- */}
-              {plan?.ads?.platform && (
+              {/* ---- how each channel is actually performing ----
+                  Judged on who a channel BRINGS, not on how busy it is. Two
+                  channels with the same booking count can be opposite things,
+                  and the count alone hides which. */}
+              {!!plan?.ads?.channels?.reports?.length && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-                    🧭 {T('Chạy ở đâu trước', 'Where to start')}
+                    📊 {T('Từng kênh đang hiệu quả tới đâu', 'How each channel is performing')}
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#a5b4fc', marginBottom: 5 }}>{plan.ads.platform.label}</div>
-                  <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 8 }}>{plan.ads.platform.why}</div>
-                  {plan.ads.platform.setup.map((s2, i) => (
-                    <div key={i} style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, padding: '3px 0' }}>• {s2}</div>
-                  ))}
-                  <div style={{ fontSize: 12, color: '#f59e0b', lineHeight: 1.5, marginTop: 7 }}>
-                    <b>{T('Chưa làm', 'Not yet')}:</b> {plan.ads.platform.notYet}
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
+                    {T('Đo bằng số khách MỚI kênh đó mang về và tỷ lệ họ quay lại — không phải bằng số booking. Một kênh đông khách cũ đặt lại thì không phải kênh đáng chạy quảng cáo.',
+                       'Measured by the new customers a channel brings and how many return — not by booking count.')}
                   </div>
+                  {plan.ads.channels.caveat && (
+                    <div style={{
+                      fontSize: 12, color: 'var(--cfde68a)', lineHeight: 1.55, marginBottom: 10,
+                      padding: '8px 10px', borderRadius: 8, background: 'var(--c451a03)', border: '1px solid var(--c92400e)',
+                    }}>⚠ {plan.ads.channels.caveat}</div>
+                  )}
+                  {plan.ads.channels.reports.map((c) => {
+                    const V: Record<string, { bg: string; fg: string; text: string }> = {
+                      builds: { bg: 'var(--c14532d)', fg: 'var(--cbbf7d0)', text: T('Mang khách mới', 'Brings new') },
+                      convenience: { bg: 'var(--c1e293b)', fg: 'var(--c94a3b8)', text: T('Khách cũ đặt lại', 'Rebooking') },
+                      fading: { bg: 'var(--c451a03)', fg: 'var(--cfde68a)', text: T('Đang giảm', 'Declining') },
+                      weak: { bg: 'var(--c451a03)', fg: 'var(--cfde68a)', text: T('Giữ khách kém', 'Poor retention') },
+                      unproven: { bg: 'var(--c1e293b)', fg: 'var(--c64748b)', text: T('Chưa đủ số liệu', 'Not enough data') },
+                    };
+                    const v = V[c.verdict] ?? V.unproven;
+                    return (
+                      <div key={c.channel} style={{
+                        padding: '10px 12px', marginBottom: 8, borderRadius: 9,
+                        background: 'var(--c1e293b)',
+                        border: `1px solid ${c.verdict === 'builds' ? '#22c55e' : 'var(--c334155)'}`,
+                      }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{c.label}</span>
+                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: v.bg, color: v.fg }}>{v.text}</span>
+                          {c.trend !== 'unknown' && (
+                            <span style={{ fontSize: 11.5, color: c.trend === 'up' ? '#22c55e' : c.trend === 'down' ? 'var(--cfca5a5)' : 'var(--c64748b)' }}>
+                              {c.trend === 'up' ? '↑' : c.trend === 'down' ? '↓' : '→'} {c.last90} {T('vs', 'vs')} {c.prior90} {T('(90 ngày)', '(90d)')}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>
+                          {[
+                            { k: T('Booking', 'Bookings'), v: `${c.bookings} (${c.sharePct}%)` },
+                            { k: T('Khách lần đầu', 'New customers'), v: String(c.acquired) },
+                            { k: T('Quay lại', 'Return rate'), v: c.repeatPct !== null ? `${c.repeatPct}%` : '—' },
+                            { k: T('Hoá đơn TB', 'Avg ticket'), v: c.avgTicket },
+                            { k: T('Giá trị mỗi khách', 'Value per customer'), v: c.valuePerAcquired ?? '—' },
+                          ].map((m) => (
+                            <div key={m.k}>
+                              <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{m.k}</div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{m.v}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>{c.says}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ---- what to do on each platform ---- */}
+              {!!plan?.ads?.plans?.length && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    💸 {T('Chạy gì, bao nhiêu, trên từng nền tảng', 'What to run on each platform')}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
+                    {T('Ngân sách tính từ ngưỡng chi mỗi booking của chính kênh đó — không phải một con số chung. Chỉ nền tảng số 1 có ngân sách: mở hai kênh cùng lúc thì không biết kênh nào tạo ra kết quả.',
+                       'Budget derived from each platform’s own break-even, not a flat number. Only rank 1 gets a budget.')}
+                  </div>
+                  {plan.ads.plans.map((p) => {
+                    const S: Record<string, { fg: string; text: string }> = {
+                      spend: { fg: '#22c55e', text: T('Chạy ngay', 'Run now') },
+                      later: { fg: '#a5b4fc', text: T('Chạy sau', 'Later') },
+                      hold: { fg: '#f59e0b', text: T('Chưa nên chạy', 'Hold') },
+                      unproven: { fg: 'var(--c94a3b8)', text: T('Chưa có số liệu', 'Unproven') },
+                    };
+                    const s2 = S[p.status] ?? S.unproven;
+                    return (
+                      <div key={p.platform} style={{
+                        padding: '11px 13px', marginBottom: 9, borderRadius: 9,
+                        background: 'var(--c1e293b)',
+                        border: `1px solid ${p.status === 'spend' ? '#22c55e' : 'var(--c334155)'}`,
+                      }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 5 }}>
+                          <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>#{p.rank}</span>
+                          <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{p.label}</span>
+                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: 'var(--c0f172a)', color: s2.fg, border: `1px solid ${s2.fg}` }}>{s2.text}</span>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 7 }}>{p.evidence}</div>
+                        {p.total && (
+                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+                            {[
+                              { k: T('Mỗi ngày', 'Per day'), v: p.daily, c: 'var(--ce2e8f0)' },
+                              { k: T('Trong', 'For'), v: `${p.days} ${T('ngày', 'days')}`, c: 'var(--ce2e8f0)' },
+                              { k: T('Tổng', 'Total'), v: p.total, c: '#a5b4fc' },
+                              { k: T('Ngưỡng/booking', 'Ceiling per booking'), v: p.ceiling, c: '#22c55e' },
+                              { k: T('Hoà vốn ở', 'Break-even at'), v: p.bookingsToBreakEven !== null ? `${p.bookingsToBreakEven} booking` : null, c: '#f59e0b' },
+                            ].filter((m) => m.v).map((m) => (
+                              <div key={m.k}>
+                                <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{m.k}</div>
+                                <div style={{ fontSize: 17, fontWeight: 800, color: m.c }}>{m.v}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {p.how.map((h, i) => (
+                          <div key={i} style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, padding: '3px 0' }}>• {h}</div>
+                        ))}
+                        <div style={{
+                          fontSize: 12, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 8,
+                          padding: '7px 9px', borderRadius: 8, background: 'var(--c0f172a)',
+                        }}>
+                          <b style={{ color: '#f59e0b' }}>{T('Đo thế nào', 'How to check')}:</b> {p.watch}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

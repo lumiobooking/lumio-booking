@@ -33,6 +33,8 @@
  * you already had.
  */
 
+import { sizeCampaign } from './channel-plan';
+
 export interface LeadTime {
   /** Median days between booking and appointment. Null when too few to tell. */
   medianDays: number | null;
@@ -137,13 +139,19 @@ export interface BudgetPlan {
 /**
  * Size the first campaign as a measurement, not a bet.
  *
- * Two weeks and a small daily figure, because the deliverable of campaign one
- * is a number — this salon's real cost per booking — and a longer or larger
- * first run buys the same number for more money. The check that matters is
- * whether the bookings needed to break even can physically fit in the empty
- * chairs: a plan that requires more customers than the salon has room for is
- * not ambitious, it is arithmetically impossible, and better caught here than
- * in week three.
+ * Two weeks, because the deliverable of campaign one is a number — this salon's
+ * real cost per booking — and a longer first run buys the same number for more
+ * money. The check that matters is whether the bookings needed to break even
+ * can physically fit in the empty chairs: a plan that requires more customers
+ * than the salon has room for is not ambitious, it is arithmetically
+ * impossible, and better caught here than in week three.
+ *
+ * The daily figure used to default to $15 for every business on this platform.
+ * It looked plausible for a nail salon, which is how it survived; for a trade
+ * with a $500 ticket it is a rounding error that can never buy enough
+ * conversions to measure anything. It now comes from the salon's own ceiling
+ * via sizeCampaign, which is the same derivation the per-platform cards use —
+ * so the two numbers on the screen cannot disagree.
  */
 export function budgetPlan(input: {
   ceiling: CpaCeiling;
@@ -152,8 +160,9 @@ export function budgetPlan(input: {
   dailyCents?: number;
   days?: number;
 }): BudgetPlan {
-  const daily = input.dailyCents ?? 1500; // $15/day — small enough to be a test
-  const days = input.days ?? 14;
+  const sized = sizeCampaign(input.ceiling.strictCents, input.openSlots ?? null);
+  const days = input.days ?? sized.days;
+  const daily = input.dailyCents ?? sized.dailyCents ?? 1500;
   const total = daily * days;
   const ceiling = input.ceiling.strictCents;
   if (!ceiling) {
@@ -229,91 +238,18 @@ export function runWindow(input: {
   };
 }
 
-// ---- which platform ---------------------------------------------------------
-
-export type Platform = 'google' | 'meta' | 'none';
-
-export interface PlatformPick {
-  first: Platform;
-  label: string;
-  why: string;
-  /** What to do there, concretely. */
-  setup: string[];
-  /** The one to leave alone for now, and why. */
-  notYet: string;
-}
-
-/**
- * Where to spend first, decided by where customers already arrive from free.
- *
- * A channel that brings this salon customers at zero cost is a channel where
- * the offer, the photos and the reviews already work on that audience. Paying
- * to do more of something that works beats paying to start something that has
- * never worked here — and this is knowable, because every booking on this
- * platform records where it came from.
- *
- * With no booking history the honest answer is not "Facebook" but "search",
- * with the reason attached: someone typing "nail salon near me" wants one now,
- * while someone scrolling a feed did not ask. Intent is the cheapest thing to
- * buy in a local business.
- */
-export function platformPick(sources: Record<string, number>): PlatformPick {
-  const n = (k: string) => sources?.[k] ?? 0;
-  const google = n('google') + n('gbp') + n('organic') + n('website');
-  const meta = n('facebook') + n('instagram') + n('messenger');
-  const total = Object.values(sources ?? {}).reduce((a, b) => a + b, 0);
-
-  if (total < 10) {
-    return {
-      first: 'google',
-      label: 'Google (Tìm kiếm + Maps)',
-      why: 'Chưa đủ lịch sử nguồn khách để đọc kênh nào đang mạnh. Bắt đầu ở tìm kiếm vì người gõ "nail salon near me" đang cần làm ngay, còn người lướt bảng tin thì chưa hỏi gì cả. Ý định là thứ rẻ nhất mà một tiệm địa phương mua được.',
-      setup: [
-        'Hoàn thiện hồ sơ Google Business trước khi trả tiền — quảng cáo đổ vào một hồ sơ sơ sài là đổ tiền qua lỗ thủng',
-        'Chạy Search với bán kính hẹp quanh tiệm, đúng các khung giờ đã chọn bên dưới',
-        'Từ khoá bắt đầu bằng chính tên dịch vụ tiệm bán chạy nhất, không phải từ chung chung',
-      ],
-      notYet: 'Meta để sau: bảng tin hợp với việc tạo nhu cầu, mà tiệm chưa biết mình chốt được bao nhiêu phần trăm người có sẵn nhu cầu.',
-    };
-  }
-
-  if (google >= meta * 1.3) {
-    return {
-      first: 'google',
-      label: 'Google (Tìm kiếm + Maps)',
-      why: `Khách đã tự tìm tới qua Google ${google} lần mà chưa tốn đồng nào. Kênh nào đang mang khách về miễn phí thì cũng là kênh mua khách rẻ nhất khi trả tiền — ảnh, đánh giá và lời chào ở đó đã được chứng minh là có tác dụng với đúng tệp này.`,
-      setup: [
-        'Bật Search + Maps trong bán kính quanh tiệm',
-        'Đặt giá thầu cao nhất vào chính khung giờ trống, thấp hơn ở khung đã đông',
-        'Dùng đúng cụm từ khách đang gõ (xem mục Xu hướng) làm từ khoá',
-      ],
-      notYet: 'Meta chưa vội: chưa cần tạo thêm nhu cầu khi nhu cầu sẵn có còn chưa hứng hết.',
-    };
-  }
-  if (meta >= google * 1.3) {
-    return {
-      first: 'meta',
-      label: 'Meta (Facebook + Instagram)',
-      why: `Khách đến từ Facebook/Instagram/Messenger ${meta} lần, nhiều hơn hẳn từ tìm kiếm. Nội dung của tiệm đang hợp với tệp ở đó, nên tiền bỏ vào đó là khuếch đại thứ đã chạy được.`,
-      setup: [
-        'Chạy lại (retarget) người đã nhắn tin hoặc xem trang mà chưa đặt lịch — rẻ nhất trong tất cả',
-        'Dùng đúng clip đang có lượt xem cao nhất làm quảng cáo, đừng dựng clip mới',
-        'Giới hạn bán kính quanh tiệm; bán kính rộng chỉ tốn tiền cho người không bao giờ lái xe tới',
-      ],
-      notYet: 'Google Search để sau, nhưng vẫn phải giữ hồ sơ Google Business đầy đủ — nó miễn phí và là nơi người ta kiểm tra tiệm trước khi đến.',
-    };
-  }
-  return {
-    first: 'google',
-    label: 'Google trước, Meta sau',
-    why: `Hai kênh đang xấp xỉ nhau (Google ${google}, Meta ${meta}). Khi không có kênh nào thắng rõ thì chạy tìm kiếm trước, vì đo được sạch hơn: người bấm vào là người đang tìm đúng thứ tiệm bán.`,
-    setup: [
-      'Một chiến dịch Search duy nhất, bán kính hẹp, ngân sách nhỏ',
-      'Chỉ mở Meta sau khi biết được chi phí mỗi booking trên Google',
-    ],
-    notYet: 'Đừng chạy cả hai cùng lúc ở lần đầu: hai biến số đổi một lúc thì không biết cái nào tạo ra kết quả.',
-  };
-}
+// ---- which platform ----------------------------------------------------------
+//
+// REMOVED: platformPick().
+//
+// It ranked the platforms from raw arrival counts and shipped its verdict to
+// the same screen that now shows channel-plan.ts's ranking, which is built from
+// acquisition and retention. Two rankers on one screen is not redundancy, it is
+// a contradiction waiting for the week they disagree — and the owner would have
+// had no way to tell which card to believe.
+//
+// The one thing worth keeping from it, the argument for starting with search
+// when there is no history at all, moved into channel-plan's evidenceFor().
 
 // ---- who to aim at ----------------------------------------------------------
 

@@ -48,6 +48,11 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // human has to remember to press anything.
       const a = await this.content.warmAreas().catch(() => ({ warmed: 0 }));
       if (a.warmed) this.logger.log(`Area figures refreshed for ${a.warmed} salon(s).`);
+      // Freeze each salon's week, so the archive exists whether or not anybody
+      // opened the screen. A plan nobody looked at is still the plan that was
+      // in force, and next Monday it is the only record of it.
+      const w = await this.content.keepAllWeeks().catch(() => ({ kept: 0 }));
+      if (w.kept) this.logger.log(`Week plan archived for ${w.kept} salon(s).`);
     } catch (e) {
       this.logger.warn(`planner tick failed: ${String(e).slice(0, 160)}`);
     } finally {

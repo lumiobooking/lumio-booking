@@ -229,3 +229,37 @@ describe('the self-reschedule column exists in schema AND migration', () => {
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS "selfRescheduleCount"/i);
   });
 });
+
+describe('the weekly archive is declared in schema AND migration', () => {
+  /**
+   * The plan used to be recomputed on every read and stored nowhere, so last
+   * week's plan ceased to exist the moment Monday arrived. This table is the
+   * fix, and a table in schema.prisma with no migration is a build that passes
+   * locally and a runtime error on the deploy.
+   */
+  it('keeps the system version and the team edit side by side', () => {
+    const body = ALL.get('ContentWeek') ?? '';
+    // Both, always. Without the generated side nobody can answer "what did the
+    // system suggest, and did our change do better" — which is the only way
+    // this feature ever improves.
+    expect(body).toMatch(/generated\s+Json/);
+    expect(body).toMatch(/edited\s+Json\?/);
+    expect(body).toMatch(/@@unique\(\[tenantId, weekKey\]\)/);
+    expect(body).toMatch(/@@map\("content_weeks"\)/);
+  });
+
+  it('is tenant-scoped — one salon must never read another salon’s plan', () => {
+    expect(ALL.get('ContentWeek')).toMatch(/tenantId\s+String/);
+    expect(ALL.get('ContentWeek')).toMatch(/onDelete: Cascade/);
+  });
+
+  it('has a migration that creates it', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS "content_weeks"/i);
+    expect(sql).toMatch(/content_weeks_tenantId_weekKey_key/);
+  });
+});

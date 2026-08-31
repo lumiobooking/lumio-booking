@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ContentService } from './content.service';
 import { ContentAdminService } from './content-admin.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { EditWeekDto } from './dto/edit-week.dto';
 
 /**
  * What a salon can reach: today's approved plan, and marking it done.
@@ -35,6 +36,35 @@ export class ContentController {
    * Capped per tenant per day inside the service — every press costs a real API
    * call, and a button with no ceiling is a bill with no ceiling.
    */
+  /** Every week this salon has on file — the archive the plan used to lack. */
+  @Get('weeks')
+  weeks(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.weekHistory(user);
+  }
+
+  /** One archived week, read as the team left it. */
+  @Get('weeks/:key')
+  weekAt(@CurrentUser() user: AuthenticatedUser, @Param('key') key: string) {
+    return this.svc.weekAt(user, key);
+  }
+
+  /**
+   * The Lumio team rewrites a week before handing it over.
+   *
+   * The support-session check is inside the service, not on this decorator: the
+   * route has to stay reachable by a SALON_ADMIN token, because that is exactly
+   * what a support session carries. Putting the gate in the controller would
+   * have made it a role check, which is the wrong question.
+   */
+  @Patch('weeks/:key')
+  editWeek(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('key') key: string,
+    @Body() dto: EditWeekDto,
+  ) {
+    return this.svc.editWeek(user, key, dto);
+  }
+
   @Post('refresh')
   refresh(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.refreshFor(user);

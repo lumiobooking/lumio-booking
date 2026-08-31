@@ -78,6 +78,11 @@ interface PlatformPlan {
   how: string[]; watch: string;
 }
 interface TargetSegment { key: string; label: string; size: number; basis: string; why: string; targeting: string[] }
+interface WeekRow {
+  weekKey: string; label: string; startDate: string;
+  stageKey: string | null; stageStep: number | null;
+  focus: string; edited: boolean; editedByName: string | null; editedAt: string | null;
+}
 interface PlainStep { key: string; icon: string; title: string; line: string; action: string | null; why: string }
 interface MarketPlan {
   adults: number | null;
@@ -123,7 +128,9 @@ interface Plan {
     days: DayPlan[]; focus: string; basis: string; daily: Job[]; sources: ContentSource[];
     trade: string; dataThin: boolean; week: number;
     stage: { key: string; step: number; title: string; goal: string; why: string; exitWhen: string; progress: { done: number; need: number; label: string } | null } | null;
+    teamNote?: string;
   };
+  weekMeta: { weekKey: string; label: string; edited: boolean; editedByName: string | null; editedAt: string | null; canEdit: boolean } | null;
   calendar: SeasonEvent[];
   videoFeeds: FeedLink[];
   productWatch: FeedLink[];
@@ -158,6 +165,32 @@ const JOB_ICON: Record<string, string> = {
  * wanted five short answers. They run a shop; they are not marketing people,
  * and a dashboard that has to be studied is a dashboard nobody opens twice.
  */
+
+/**
+ * One week in the archive strip.
+ *
+ * A horizontal scroller rather than a dropdown: on a phone a dropdown hides
+ * how many weeks there are, and how many there are is the point — it is the
+ * visible proof that the plan has a past.
+ */
+function WeekChip({ active, onClick, children }: {
+  active: boolean; onClick: () => void; children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: '0 0 auto', fontSize: 12.5, padding: '6px 13px', borderRadius: 999,
+        cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: active ? 700 : 500,
+        border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`,
+        background: active ? '#6366f1' : 'transparent',
+        color: active ? 'var(--cf8fafc)' : 'var(--c94a3b8)',
+      }}
+    >{children}</button>
+  );
+}
+
+
 function StepCard({ step, T }: { step: PlainStep; T: (vi: string, en: string) => string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -278,6 +311,14 @@ function Inner() {
   const [scanningPf, setScanningPf] = useState(false);
   const [pfScan, setPfScan] = useState<{ sources: string[]; warnings: string[]; saved?: boolean; locationSaved?: string | null } | null>(null);
   const [pfNote, setPfNote] = useState('');
+  // The archive, and which week is on screen. Null = this week (live).
+  const [weeks, setWeeks] = useState<WeekRow[]>([]);
+  const [viewWeek, setViewWeek] = useState<string | null>(null);
+  const [past, setPast] = useState<{ label: string; week: Plan['week']; editedByName: string | null } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftFocus, setDraftFocus] = useState('');
+  const [draftNote, setDraftNote] = useState('');
+  const [savingWeek, setSavingWeek] = useState(false);
   const isMobile = useIsMobile(900);
 
   const load = useCallback(async () => {
@@ -296,6 +337,21 @@ function Inner() {
     finally { setLoading(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+
+  // The archive list, loaded once. Cheap, and it is what turns "this week" into
+  // a plan with a past rather than a screen that forgets every Monday.
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<WeekRow[]>('/content/weeks', { token }).then(setWeeks).catch(() => setWeeks([]));
+  }, [token]);
+
+  // Opening an older week fetches it as the team left it.
+  useEffect(() => {
+    if (!token || !viewWeek) { setPast(null); return; }
+    apiFetch<{ label: string; week: Plan['week']; editedByName: string | null }>(
+      `/content/weeks/${encodeURIComponent(viewWeek)}`, { token },
+    ).then(setPast).catch(() => setPast(null));
+  }, [token, viewWeek]);
   useEffect(() => {
     if (plan?.identity?.profile) setPf({ ...plan.identity.profile });
   }, [plan?.identity?.profile]);
@@ -869,20 +925,75 @@ function Inner() {
                    day and posts the offer two days before its emptiest block. When the
                    book is too thin to say that, the card says so instead of dressing a
                    default up as analysis. */}
-              {!!plan?.week?.days?.length && (
+              {/* ---- the archive ----
+                   The plan used to be recomputed on every read and kept
+                   nowhere, so last week's plan ceased to exist on Monday. Now
+                   every week is frozen and reachable, and the salon and the
+                   team can point at what was actually agreed. */}
+              {weeks.length > 1 && (
+                <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 10 }}>
+                  <WeekChip active={!viewWeek} onClick={() => { setViewWeek(null); setEditing(false); }}>
+                    {T('Tuần này', 'This week')}
+                  </WeekChip>
+                  {weeks.filter((w) => w.weekKey !== plan?.weekMeta?.weekKey).map((w) => (
+                    <WeekChip key={w.weekKey} active={viewWeek === w.weekKey} onClick={() => { setViewWeek(w.weekKey); setEditing(false); }}>
+                      {w.label}{w.edited ? ' ✎' : ''}
+                    </WeekChip>
+                  ))}
+                </div>
+              )}
+
+              {viewWeek && !past && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16, color: 'var(--c94a3b8)', fontSize: 13 }}>
+                  {T('Đang mở tuần cũ…', 'Opening that week…')}
+                </div>
+              )}
+
+              {(() => {
+                const shown = viewWeek ? past?.week : plan?.week;
+                const isPast = Boolean(viewWeek);
+                if (!shown?.days?.length) return null;
+                return (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-                    🗓️ {T('Tuần này làm gì', 'This week')}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                      🗓️ {viewWeek ? past?.label : T('Tuần này làm gì', 'This week')}
+                    </div>
+                    {/* Editing is the team's, not the salon's. The salon reads
+                        the plan and marks work done; one plan two people can
+                        rewrite from opposite ends is a plan neither trusts. */}
+                    {!isPast && plan?.weekMeta?.canEdit && (
+                      <button
+                        onClick={() => {
+                          setDraftFocus(shown.focus);
+                          setDraftNote(shown.teamNote ?? '');
+                          setEditing((e) => !e);
+                        }}
+                        style={{
+                          fontSize: 12.5, padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
+                          border: '1px solid #6366f1', background: editing ? '#6366f1' : 'transparent',
+                          color: editing ? 'var(--cf8fafc)' : 'var(--ca5b4fc)', fontWeight: 600,
+                        }}
+                      >
+                        {editing ? T('Đóng', 'Close') : T('✎ Sửa kế hoạch', '✎ Edit plan')}
+                      </button>
+                    )}
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--ca5b4fc)', marginBottom: 4 }}>{plan.week.focus}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.week.basis}</div>
+                  {plan?.weekMeta?.edited && !isPast && (
+                    <div style={{ fontSize: 11.5, color: 'var(--ca5b4fc)', marginBottom: 4 }}>
+                      ✎ {T('Đã được team chỉnh', 'Edited by the team')}
+                      {plan.weekMeta.editedByName ? ` — ${plan.weekMeta.editedByName}` : ''}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 13, color: 'var(--ca5b4fc)', marginBottom: 4 }}>{shown.focus}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{shown.basis}</div>
 
                   {/* The path, and where this shop stands on it.
                       The stage moves when its exit condition is MET, never
                       because a week went by — telling a shop to buy ads because
                       three weeks passed is how money goes into a Google profile
                       with two photos on it. */}
-                  {plan.week.stage && (
+                  {shown.stage && (
                     <div style={{
                       padding: '11px 13px', marginBottom: 12, borderRadius: 10,
                       background: 'var(--c1e293b)', border: '1px solid #6366f1',
@@ -892,37 +1003,37 @@ function Inner() {
                           fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                           background: 'var(--c0f172a)', color: 'var(--ca5b4fc)',
                         }}>
-                          {T('Giai đoạn', 'Stage')} {plan.week.stage.step}/5
+                          {T('Giai đoạn', 'Stage')} {shown.stage.step}/5
                         </span>
-                        <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{plan.week.stage.title}</span>
+                        <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{shown.stage.title}</span>
                         <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>
-                          {T('Tuần', 'Week')} {plan.week.week + 1}
+                          {T('Tuần', 'Week')} {shown.week + 1}
                         </span>
                       </div>
-                      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>{plan.week.stage.goal}</div>
-                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{plan.week.stage.why}</div>
+                      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>{shown.stage.goal}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{shown.stage.why}</div>
 
-                      {plan.week.stage.progress && plan.week.stage.progress.need > 0 && (
+                      {shown.stage.progress && shown.stage.progress.need > 0 && (
                         <div style={{ marginTop: 8 }}>
                           <div style={{ height: 7, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
                             <div style={{
-                              width: `${Math.min(100, Math.round((plan.week.stage.progress.done / plan.week.stage.progress.need) * 100))}%`,
+                              width: `${Math.min(100, Math.round((shown.stage.progress.done / shown.stage.progress.need) * 100))}%`,
                               height: '100%', background: '#6366f1',
                             }} />
                           </div>
                           <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>
-                            {plan.week.stage.progress.done}/{plan.week.stage.progress.need} {plan.week.stage.progress.label}
+                            {shown.stage.progress.done}/{shown.stage.progress.need} {shown.stage.progress.label}
                           </div>
                         </div>
                       )}
 
                       <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 7 }}>
-                        <b>{T('Xong giai đoạn này khi', 'Done when')}:</b> {plan.week.stage.exitWhen}
+                        <b>{T('Xong giai đoạn này khi', 'Done when')}:</b> {shown.stage.exitWhen}
                       </div>
                     </div>
                   )}
 
-                  {plan.week.days.map((d, i) => {
+                  {shown.days.map((d, i) => {
                     const empty = d.jobs.every((j) => j.kind === 'rest');
                     return (
                       <div key={d.weekday} style={{
@@ -954,15 +1065,15 @@ function Inner() {
                   {/* Where today's clip comes FROM. The most common reason a content
                       plan dies is not laziness — it is standing in the salon at 6pm
                       with nothing filmed and no idea what to point the phone at. */}
-                  {!!plan.week.sources?.length && (
+                  {!!shown.sources?.length && (
                     <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                         {T('Quay từ đâu', 'What to film')}
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 6 }}>
-                        {T(`Nguồn có sẵn của ${plan.week.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}
+                        {T(`Nguồn có sẵn của ${shown.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}
                       </div>
-                      {plan.week.sources.map((s, k) => (
+                      {shown.sources.map((s, k) => (
                         <div key={k} style={{ padding: '5px 0' }}>
                           <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
                             • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
@@ -973,12 +1084,12 @@ function Inner() {
                     </div>
                   )}
 
-                  {!!plan.week.daily?.length && (
+                  {!!shown.daily?.length && (
                     <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                         {T('Mỗi ngày, dù bận cỡ nào', 'Every day, however busy')}
                       </div>
-                      {plan.week.daily.map((j, k) => (
+                      {shown.daily.map((j, k) => (
                         <div key={k} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
                           <span style={{ flex: '0 0 auto' }}>{JOB_ICON[j.kind] ?? '•'}</span>
                           <div>
@@ -992,7 +1103,9 @@ function Inner() {
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
+
               {/* ---- the discount decision, straight from the booking book ---- */}
               {plan?.offer && (
                 <div style={{

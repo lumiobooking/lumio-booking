@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { UserRole } from '@prisma/client';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import { marketOf } from '../common/markets';
@@ -13,6 +14,7 @@ import { resolveShopLocation, type ResolvedShopLocation } from './shop-location'
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { pickStage, weekIndex } from './roadmap';
+import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
@@ -488,6 +490,196 @@ export class ContentService {
     });
   }
 
+
+  // ---- the week, kept ------------------------------------------------------
+
+  /**
+   * Freeze this week's plan, and hand back the version to show.
+   *
+   * WHY THE ARCHIVE EXISTS
+   *
+   * The plan was computed on every read and stored nowhere, so last week's plan
+   * ceased to exist the moment Monday arrived. Neither the team nor the salon
+   * could point at what had been agreed, and "are we further along than last
+   * week" had no answer because there was nothing to compare against.
+   *
+   * TWO RULES THAT MAKE THE ARCHIVE WORTH HAVING
+   *
+   *   - A PAST week is never rewritten. Refreshing it with today's numbers
+   *     would turn the record of what was agreed into a record of what we would
+   *     say now, which is the one thing an archive must not do.
+   *   - An EDIT is never overwritten. The generated side keeps refreshing while
+   *     the week is current; the team's version is what the screen shows, and
+   *     both are kept so "what did we change" stays answerable.
+   */
+  private async keepWeek(
+    tenantId: string,
+    tz: string,
+    plan: Awaited<ReturnType<ContentService['weekPlanFor']>>,
+  ): Promise<{ weekKey: string; edited: boolean; editedByName: string | null; editedAt: Date | null }> {
+    const key = weekKey(new Date(), tz);
+    const start = weekStart(new Date(), tz);
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>;
+      update: (a: unknown) => Promise<unknown>;
+      create: (a: unknown) => Promise<unknown>;
+    }>;
+    const row = await loose.contentWeek?.findFirst({
+      where: { tenantId, weekKey: key },
+    }).catch(() => null) as { id: string; edited?: unknown; editedByName?: string | null; editedAt?: Date | null } | null;
+
+    const data = {
+      startDate: start,
+      stageKey: plan.stage?.key ?? null,
+      stageStep: plan.stage?.step ?? null,
+      generated: plan as never,
+    };
+
+    if (!row) {
+      await loose.contentWeek?.create({ data: { tenantId, weekKey: key, ...data } }).catch(() => undefined);
+      return { weekKey: key, edited: false, editedByName: null, editedAt: null };
+    }
+    // Current week: keep the generated side fresh. The edit is untouched.
+    await loose.contentWeek?.update({ where: { id: row.id }, data }).catch(() => undefined);
+    return {
+      weekKey: key,
+      edited: Boolean(row.edited),
+      editedByName: row.editedByName ?? null,
+      editedAt: row.editedAt ?? null,
+    };
+  }
+
+  /** Every week this salon has on file, newest first. */
+  async weekHistory(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const loose = this.prisma as unknown as Record<string, { findMany: (a: unknown) => Promise<unknown> }>;
+    const rows = await loose.contentWeek?.findMany({
+      where: { tenantId },
+      orderBy: { startDate: 'desc' },
+      take: 52,
+      select: {
+        weekKey: true, startDate: true, stageKey: true, stageStep: true,
+        editedByName: true, editedAt: true, generated: true, edited: true,
+      },
+    }).catch(() => []) as {
+      weekKey: string; startDate: string; stageKey: string | null; stageStep: number | null;
+      editedByName: string | null; editedAt: Date | null;
+      generated: { focus?: string } | null; edited: { focus?: string } | null;
+    }[];
+    return (rows ?? []).map((r) => ({
+      weekKey: r.weekKey,
+      label: weekLabel(r.weekKey),
+      startDate: r.startDate,
+      stageKey: r.stageKey,
+      stageStep: r.stageStep,
+      focus: (r.edited ?? r.generated)?.focus ?? '',
+      edited: Boolean(r.edited),
+      editedByName: r.editedByName,
+      editedAt: r.editedAt,
+    }));
+  }
+
+  /** One archived week, as it should be read: the edit if there is one. */
+  async weekAt(user: AuthenticatedUser, key: string) {
+    const tenantId = this.tenantId(user);
+    const loose = this.prisma as unknown as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>;
+    const row = await loose.contentWeek?.findFirst({
+      where: { tenantId, weekKey: key },
+    }).catch(() => null) as {
+      weekKey: string; startDate: string; generated: unknown; edited: unknown;
+      editedByName: string | null; editedAt: Date | null;
+    } | null;
+    if (!row) throw new NotFoundException('Chưa có kế hoạch nào được lưu cho tuần này.');
+    return {
+      weekKey: row.weekKey,
+      label: weekLabel(row.weekKey),
+      startDate: row.startDate,
+      week: (row.edited ?? row.generated) as unknown,
+      /// The system's own version, so an edit can always be compared with it.
+      original: row.generated as unknown,
+      edited: Boolean(row.edited),
+      editedByName: row.editedByName,
+      editedAt: row.editedAt,
+    };
+  }
+
+  /**
+   * The Lumio team rewrites a week before handing it to the salon.
+   *
+   * Support-session only, deliberately. The salon reads the plan and marks work
+   * done; the team is accountable for what the plan SAYS, and a plan two people
+   * can rewrite from opposite ends is a plan neither of them trusts.
+   *
+   * The generated version is kept beside the edit, always. Without it nobody
+   * can answer "what did the system suggest, and did our change do better" —
+   * which is the only way this feature ever improves.
+   */
+  async editWeek(user: AuthenticatedUser, key: string, patch: { focus?: string; days?: unknown; note?: string }) {
+    const tenantId = this.tenantId(user);
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ team Lumio sửa được kế hoạch. Tiệm xem và đánh dấu đã làm.');
+    }
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>;
+      update: (a: unknown) => Promise<unknown>;
+    }>;
+    const row = await loose.contentWeek?.findFirst({ where: { tenantId, weekKey: key } })
+      .catch(() => null) as { id: string; generated: Record<string, unknown>; edited: Record<string, unknown> | null } | null;
+    if (!row) throw new NotFoundException('Chưa có kế hoạch nào được lưu cho tuần này.');
+
+    // Edits build on the last edit, or on the generated plan the first time.
+    const base = (row.edited ?? row.generated ?? {}) as Record<string, unknown>;
+    const next: Record<string, unknown> = { ...base };
+    if (typeof patch.focus === 'string') next.focus = patch.focus.slice(0, 300);
+    if (Array.isArray(patch.days)) next.days = patch.days;
+    if (typeof patch.note === 'string') next.teamNote = patch.note.slice(0, 2000);
+
+    await loose.contentWeek?.update({
+      where: { id: row.id },
+      data: {
+        edited: next as never,
+        editedById: user.userId ?? null,
+        editedByName: user.email ?? 'Lumio',
+        editedAt: new Date(),
+      },
+    }).catch(() => undefined);
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId, userId: user.userId ?? null,
+        action: 'content.week_edited',
+        resourceType: 'content_week', resourceId: key,
+      } as never,
+    }).catch(() => undefined);
+    return { ok: true, weekKey: key, edited: true };
+  }
+
+
+  /**
+   * Freeze this week for every active salon, on the hourly tick.
+   *
+   * The read path freezes the week too, but only for a salon somebody opened.
+   * A plan nobody looked at is still the plan that was in force that week, and
+   * next Monday this row is the only record that it existed.
+   */
+  async keepAllWeeks(): Promise<{ kept: number }> {
+    const tenants = await this.prisma.tenant.findMany({
+      where: { status: 'ACTIVE', deletedAt: null } as never,
+      select: { id: true, timezone: true },
+      take: 500,
+    }).catch(() => []) as { id: string; timezone: string | null }[];
+    let kept = 0;
+    for (const t of tenants) {
+      const ctx = await this.gather(t.id).catch(() => null);
+      if (!ctx) continue;
+      const plan = await this.weekPlanFor(t.id, ctx).catch(() => null);
+      if (!plan) continue;
+      const r = await this.keepWeek(t.id, t.timezone || ctx.tz, plan).catch(() => null);
+      if (r) kept += 1;
+    }
+    return { kept };
+  }
+
   // ---- generating ---------------------------------------------------------
 
   /**
@@ -824,7 +1016,14 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         money: ctx.money,
       })
       : null;
-    const week = await this.weekPlanFor(tenantId, ctx);
+    const generatedWeek = await this.weekPlanFor(tenantId, ctx);
+    // Frozen on read, so the archive exists even for a salon nobody opens on a
+    // Monday. Idempotent per (tenant, week) — extra reads cost one upsert.
+    const kept = await this.keepWeek(tenantId, ctx.tz, generatedWeek).catch(() => null);
+    // The team's version is what the salon reads, when there is one.
+    const week = kept?.edited
+      ? ((await this.weekAt(user, kept.weekKey).catch(() => null))?.week as typeof generatedWeek) ?? generatedWeek
+      : generatedWeek;
     return {
       // Where we think the salon is, and how sure we are. The screen shows this
       // so a wrong city gets corrected by the person who knows, instead of
@@ -859,6 +1058,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         market: ctx.region.market, city: ctx.region.city, region: ctx.region.region,
       }, { horizonDays: 180 }).events,
       week,
+      // Which week this is, and whether a human has been through it.
+      weekMeta: kept ? {
+        ...kept,
+        label: weekLabel(kept.weekKey),
+        canEdit: user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession),
+      } : null,
       videoFeeds: videoFeeds(ctx.industry, ctx.region.market),
       productWatch: productWatch(ctx.industry),
       // The salon's own numbers steer the trend queries: it is shown Google

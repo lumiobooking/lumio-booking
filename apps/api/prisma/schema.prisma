@@ -295,6 +295,7 @@ model Tenant {
   tipLogs              TipLog[]
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
+  contentWeeks         ContentWeek[]
   voiceCalls           VoiceCall[]
   emailCampaigns       EmailCampaign[]
   emailContacts        EmailContact[]
@@ -2656,6 +2657,48 @@ model ContentFormat {
 
 /// "What's hot this week" — the fast lane. Written by the Lumio team, read by
 /// every matching salon the next morning, no deploy required.
+/// One salon's marketing plan for ONE week, frozen.
+///
+/// The week plan used to be computed on every read and kept nowhere, so last
+/// week's plan did not exist anywhere the moment Monday arrived — the salon and
+/// the team could not point at what had been agreed, and nobody could tell
+/// whether the shop was further along than it had been.
+///
+/// `generated` is what the system wrote and is never overwritten by an edit;
+/// `edited` is what the Lumio team turned it into. Keeping both is what makes
+/// "what did we change, and did it work better" answerable at all.
+model ContentWeek {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// ISO week in the SALON's own timezone, e.g. "2026-W36". A salon in Austin
+  /// and one in Hanoi roll over on different instants; the key follows the shop.
+  weekKey   String
+  /// Monday of that week, salon-local, "YYYY-MM-DD" — for ordering and display.
+  startDate String
+
+  /// Where the shop stood on its path when the week was frozen.
+  stageKey  String?
+  stageStep Int?
+
+  /// The plan as the system produced it. Refreshed while the week is CURRENT,
+  /// frozen once it is past, and never touched by an edit.
+  generated Json    @default("{}")
+  /// The Lumio team's version. Null until somebody edits. Shown when present.
+  edited       Json?
+  editedById   String?
+  editedByName String?
+  editedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, weekKey])
+  @@index([tenantId, startDate])
+  @@map("content_weeks")
+}
+
 model TrendNote {
   id        String   @id @default(uuid())
   industry  String

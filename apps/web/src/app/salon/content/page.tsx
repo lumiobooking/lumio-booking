@@ -20,6 +20,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
+import { ItemComments, TeamChatWindow } from '../../../components/ContentChat';
 
 interface Idea {
   id: string;
@@ -319,6 +320,7 @@ function Inner() {
   const [draftFocus, setDraftFocus] = useState('');
   const [draftNote, setDraftNote] = useState('');
   const [savingWeek, setSavingWeek] = useState(false);
+  const [unread, setUnread] = useState<{ total: number; bySubject: Record<string, number> }>({ total: 0, bySubject: {} });
   const isMobile = useIsMobile(900);
 
   const load = useCallback(async () => {
@@ -343,6 +345,8 @@ function Inner() {
   useEffect(() => {
     if (!token) return;
     apiFetch<WeekRow[]>('/content/weeks', { token }).then(setWeeks).catch(() => setWeeks([]));
+    apiFetch<{ total: number; bySubject: Record<string, number> }>('/content/chat/unread', { token })
+      .then(setUnread).catch(() => undefined);
   }, [token]);
 
   // Opening an older week fetches it as the team left it.
@@ -554,6 +558,11 @@ function Inner() {
 
   return (
     <section style={{ maxWidth: 1180, margin: '0 auto', width: '100%' }}>
+      {/* The shared window. Always reachable, never in the way — and on a phone
+          it opens full-screen, because a chat pinned into a corner of a 375px
+          display is a chat nobody types in. */}
+      <TeamChatWindow token={token} unread={unread.total} vi={vi} />
+
       <div style={{
         display: 'flex', gap: 12, alignItems: 'flex-start',
         justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 12,
@@ -913,6 +922,12 @@ function Inner() {
                         </button>
                       )}
                     </div>
+                    <ItemComments
+                      token={token}
+                      subject={`idea:${idea.id}`}
+                      unread={unread.bySubject[`idea:${idea.id}`] ?? 0}
+                      vi={vi}
+                    />
                   </div>
                 );
               })}
@@ -987,6 +1002,75 @@ function Inner() {
                   )}
                   <div style={{ fontSize: 13, color: 'var(--ca5b4fc)', marginBottom: 4 }}>{shown.focus}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{shown.basis}</div>
+
+                  {/* A note from the team to the salon, above everything else —
+                      the human sentence the numbers cannot write. */}
+                  {shown.teamNote && !editing && (
+                    <div style={{
+                      fontSize: 13, lineHeight: 1.6, marginBottom: 12, padding: '10px 12px',
+                      borderRadius: 9, background: 'var(--c1e1b4b)', color: 'var(--ce2e8f0)',
+                      border: '1px solid #6366f1',
+                    }}>
+                      <b style={{ color: 'var(--ca5b4fc)' }}>{T('Lumio nhắn', 'From Lumio')}:</b> {shown.teamNote}
+                    </div>
+                  )}
+
+                  {editing && !isPast && (
+                    <div style={{
+                      padding: 12, marginBottom: 12, borderRadius: 10,
+                      background: 'var(--c1e293b)', border: '1px solid #6366f1',
+                    }}>
+                      <label style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'block', marginBottom: 4 }}>
+                        {T('Trọng tâm tuần này', 'This week’s focus')}
+                      </label>
+                      <input
+                        value={draftFocus}
+                        onChange={(e) => setDraftFocus(e.target.value)}
+                        style={{ ...ui.input, width: '100%', marginBottom: 10, boxSizing: 'border-box' }}
+                      />
+                      <label style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'block', marginBottom: 4 }}>
+                        {T('Lời nhắn cho tiệm (hiện phía trên kế hoạch)', 'Note to the salon')}
+                      </label>
+                      <textarea
+                        value={draftNote}
+                        onChange={(e) => setDraftNote(e.target.value)}
+                        rows={3}
+                        style={{ ...ui.input, width: '100%', resize: 'vertical', marginBottom: 10, boxSizing: 'border-box' }}
+                      />
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          disabled={savingWeek}
+                          onClick={async () => {
+                            if (!plan?.weekMeta) return;
+                            setSavingWeek(true);
+                            try {
+                              await apiFetch(`/content/weeks/${encodeURIComponent(plan.weekMeta.weekKey)}`, {
+                                method: 'PATCH', token, body: { focus: draftFocus, note: draftNote },
+                              });
+                              setEditing(false);
+                              await load();
+                              apiFetch<WeekRow[]>('/content/weeks', { token }).then(setWeeks).catch(() => undefined);
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : 'Không lưu được');
+                            } finally { setSavingWeek(false); }
+                          }}
+                          style={{ ...ui.primaryBtn, opacity: savingWeek ? 0.6 : 1 }}
+                        >
+                          {savingWeek ? T('Đang lưu…', 'Saving…') : T('Lưu cho tiệm', 'Save for the salon')}
+                        </button>
+                        <button
+                          onClick={() => setEditing(false)}
+                          style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}
+                        >
+                          {T('Huỷ', 'Cancel')}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
+                        {T('Bản hệ thống tự viết vẫn được giữ nguyên bên dưới — để sau này so được sửa gì và có tốt hơn không.',
+                           'The system’s own version is kept underneath, so what changed stays answerable.')}
+                      </div>
+                    </div>
+                  )}
 
                   {/* The path, and where this shop stands on it.
                       The stage moves when its exit condition is MET, never
@@ -1101,6 +1185,18 @@ function Inner() {
                         </div>
                       ))}
                     </div>
+                  )}
+                  {/* Trao đổi về đúng tuần này. The address carries the week,
+                      so a comment written in September is still attached to
+                      September when it is read in October. */}
+                  {plan?.weekMeta?.weekKey && (
+                    <ItemComments
+                      token={token}
+                      subject={`week:${viewWeek ?? plan.weekMeta.weekKey}`}
+                      unread={unread.bySubject[`week:${viewWeek ?? plan.weekMeta.weekKey}`] ?? 0}
+                      labelVi={vi ? 'Trao đổi về tuần này' : 'Discuss this week'}
+                      vi={vi}
+                    />
                   )}
                 </div>
                 );
@@ -1740,6 +1836,13 @@ function Inner() {
                     {T('Ngân sách tính từ ngưỡng chi mỗi booking của chính kênh đó — không phải một con số chung. Chỉ nền tảng số 1 có ngân sách: mở hai kênh cùng lúc thì không biết kênh nào tạo ra kết quả.',
                        'Budget derived from each platform’s own break-even, not a flat number. Only rank 1 gets a budget.')}
                   </div>
+                  <ItemComments
+                    token={token}
+                    subject="ads"
+                    unread={unread.bySubject.ads ?? 0}
+                    labelVi={vi ? 'Trao đổi về quảng cáo' : 'Discuss the ads plan'}
+                    vi={vi}
+                  />
                   {plan.ads.plans.map((p) => {
                     const S: Record<string, { fg: string; text: string }> = {
                       spend: { fg: '#22c55e', text: T('Chạy ngay', 'Run now') },

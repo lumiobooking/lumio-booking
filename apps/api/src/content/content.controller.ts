@@ -1,11 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ContentService } from './content.service';
+import { ContentChatService } from './content-chat.service';
 import { ContentAdminService } from './content-admin.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { EditWeekDto } from './dto/edit-week.dto';
+import { SendChatDto } from './dto/chat.dto';
 
 /**
  * What a salon can reach: today's approved plan, and marking it done.
@@ -17,7 +19,10 @@ import { EditWeekDto } from './dto/edit-week.dto';
 @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
 @Controller('content')
 export class ContentController {
-  constructor(private readonly svc: ContentService) {}
+  constructor(
+    private readonly svc: ContentService,
+    private readonly chat: ContentChatService,
+  ) {}
 
   @Get('today')
   today(@CurrentUser() user: AuthenticatedUser, @Query('date') date?: string) {
@@ -63,6 +68,29 @@ export class ContentController {
     @Body() dto: EditWeekDto,
   ) {
     return this.svc.editWeek(user, key, dto);
+  }
+
+  // ---- team ↔ salon, about the work --------------------------------------
+  //
+  // Both sides reach the same routes. Which side WROTE a message is decided at
+  // write time from the session and stored, because a support token carries a
+  // SALON_ADMIN role and deriving the side at read time would recolour history.
+
+  /** One thread: the shared window, or the comments under one item. */
+  @Get('chat')
+  chatList(@CurrentUser() user: AuthenticatedUser, @Query('subject') subject?: string) {
+    return this.chat.list(user, subject ?? 'general');
+  }
+
+  /** Unread counts per subject, so the dot lands on the item being discussed. */
+  @Get('chat/unread')
+  chatUnread(@CurrentUser() user: AuthenticatedUser) {
+    return this.chat.unread(user);
+  }
+
+  @Post('chat')
+  chatSend(@CurrentUser() user: AuthenticatedUser, @Body() dto: SendChatDto) {
+    return this.chat.send(user, dto.subject, dto.body);
   }
 
   @Post('refresh')

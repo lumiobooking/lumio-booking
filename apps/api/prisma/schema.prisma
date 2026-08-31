@@ -296,6 +296,7 @@ model Tenant {
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
   contentWeeks         ContentWeek[]
+  contentMessages      ContentMessage[]
   voiceCalls           VoiceCall[]
   emailCampaigns       EmailCampaign[]
   emailContacts        EmailContact[]
@@ -389,6 +390,7 @@ model User {
   // Conversations in the shared inbox this person is expected to answer.
   assignedThreads MessengerThread[] @relation("MessengerThreadAssignee")
   messengerNotes  MessengerNote[]  @relation("MessengerNoteAuthor")
+  contentMessages ContentMessage[] @relation("ContentMessageAuthor")
 
   @@index([tenantId])
   @@index([role])
@@ -2697,6 +2699,49 @@ model ContentWeek {
   @@unique([tenantId, weekKey])
   @@index([tenantId, startDate])
   @@map("content_weeks")
+}
+
+/// A message between the Lumio team and the salon, about the marketing work.
+///
+/// NOT the customer inbox. That one is the salon talking to the people who book
+/// with it; this one is the salon talking to us. Mixing them would put an
+/// internal "we should raise the Thursday price" in the same list as a customer
+/// asking about opening hours, and somebody would eventually reply to the wrong
+/// one.
+///
+/// `subject` is what the message is ABOUT: 'week:2026-W36', 'idea:<id>',
+/// 'ads', or 'general' for the shared window. One table, because a comment and
+/// a chat message are the same thing with a different address — two tables
+/// would mean two unread counts, two notification paths, and two places to fix
+/// every bug.
+model ContentMessage {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// What it is attached to. 'general' is the shared window.
+  subject String @default("general")
+
+  /// Which side wrote it: 'lumio' or 'salon'. Stored rather than derived, so a
+  /// support session that later becomes a salon login cannot re-colour history.
+  side String
+
+  authorId   String?
+  author     User?   @relation("ContentMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  /// Captured at write time, so a deleted account still reads sensibly.
+  authorName String
+
+  body String
+
+  /// When the OTHER side last read this thread — drives the unread dot.
+  readByLumioAt DateTime?
+  readBySalonAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, subject, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("content_messages")
 }
 
 model TrendNote {

@@ -263,3 +263,30 @@ describe('the weekly archive is declared in schema AND migration', () => {
     expect(sql).toMatch(/content_weeks_tenantId_weekKey_key/);
   });
 });
+
+describe('the team ↔ salon thread is declared in schema AND migration', () => {
+  it('stores which side wrote each message rather than deriving it', () => {
+    // A support token carries a SALON_ADMIN role by design. Working the side
+    // out at READ time would recolour history the moment the same person
+    // signed in the other way.
+    expect(ALL.get('ContentMessage')).toMatch(/side\s+String/);
+    expect(ALL.get('ContentMessage')).toMatch(/authorName\s+String/);
+  });
+
+  it('is tenant-scoped and addressed by subject', () => {
+    const body = ALL.get('ContentMessage') ?? '';
+    expect(body).toMatch(/tenantId\s+String/);
+    expect(body).toMatch(/subject\s+String/);
+    expect(body).toMatch(/@@index\(\[tenantId, subject, createdAt\]\)/);
+    expect(body).toMatch(/@@map\("content_messages"\)/);
+  });
+
+  it('has a migration that creates it', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS "content_messages"/i);
+  });
+});

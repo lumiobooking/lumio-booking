@@ -24,6 +24,10 @@ interface Tenant {
   city?: string | null;
   region?: string | null;
   postalCode?: string | null;
+  // Gross margin ≈ 100 − commissionPct. Without it the promo engine refuses to
+  // name a discount rather than assume a margin.
+  commissionPct?: number | null;
+  nearbyZips?: string | null;
   planId: string | null;
   subscriptionStatus: string;
   createdAt: string;
@@ -392,6 +396,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
     name: tenant.name, contactEmail: tenant.contactEmail ?? '', timezone: tenant.timezone,
     market: marketOption(tenant.market).code,
     city: tenant.city ?? '', region: tenant.region ?? '', postalCode: tenant.postalCode ?? '',
+    commissionPct: tenant.commissionPct != null ? String(tenant.commissionPct) : '', nearbyZips: tenant.nearbyZips ?? '',
   });
   const [loginEmail, setLoginEmail] = useState(currentLoginEmail);
   const [pw, setPw] = useState('');
@@ -485,6 +490,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
         name: form.name, contactEmail: form.contactEmail || undefined, timezone: form.timezone, market: form.market,
         // Sent even when blank: clearing a wrong city has to be possible.
         city: form.city, region: form.region, postalCode: form.postalCode,
+        commissionPct: form.commissionPct, nearbyZips: form.nearbyZips,
       } });
       setMsg('✓ Salon info saved');
       onSaved();
@@ -549,6 +555,37 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           <Field label="City"><input style={inp} value={form.city} placeholder="Garden Grove" onChange={(e) => setForm({ ...form, city: e.target.value })} /></Field>
           <Field label="State / province code"><input style={inp} value={form.region} placeholder="CA" maxLength={8} onChange={(e) => setForm({ ...form, region: e.target.value.toUpperCase() })} /></Field>
           <Field label="ZIP / postal code"><input style={inp} value={form.postalCode} placeholder="92840" onChange={(e) => setForm({ ...form, postalCode: e.target.value })} /></Field>
+          <Field label="Nearby ZIPs (comma separated)"><input style={inp} value={form.nearbyZips} placeholder="92841, 92843, 92683" onChange={(e) => setForm({ ...form, nearbyZips: e.target.value })} /></Field>
+        </div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0', maxWidth: 560, lineHeight: 1.5 }}>
+          Area demographics are fetched per ZIP from the US Census. Nothing here draws a
+          five-mile circle &mdash; ZIP boundaries follow postal routes, not radii &mdash; so add the
+          neighbouring ZIPs by hand and the screen will say &quot;các ZIP quanh tiệm&quot; rather than
+          claim a radius it did not measure.
+        </p>
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>Technician commission &mdash; decides every discount</div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px', maxWidth: 560, lineHeight: 1.5 }}>
+          Share of service revenue paid to the tech, so gross margin is roughly 100 minus
+          this. At a 40% margin a 20% discount needs the salon to <strong>double</strong> its
+          customers just to break even, and a 40% discount can never break even at all.
+          Leave this blank and the engine refuses to propose any discount &mdash; an assumed
+          margin produces a break-even that looks like arithmetic and is not.
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', maxWidth: 260 }}>
+          <input
+            style={inp}
+            value={form.commissionPct}
+            placeholder="60"
+            inputMode="numeric"
+            onChange={(e) => setForm({ ...form, commissionPct: e.target.value.replace(/[^0-9]/g, '') })}
+          />
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>% &rarr; margin {(() => {
+            const n = Number(form.commissionPct);
+            return Number.isFinite(n) && n > 0 && n < 100 ? `${100 - Math.round(n)}%` : '—';
+          })()}</span>
         </div>
       </div>
 

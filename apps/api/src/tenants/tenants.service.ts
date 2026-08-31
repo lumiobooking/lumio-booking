@@ -30,6 +30,8 @@ const TENANT_PUBLIC_SELECT = {
   city: true,
   region: true,
   postalCode: true,
+  commissionPct: true,
+  nearbyZips: true,
   contactEmail: true,
   planId: true,
   subscriptionStatus: true,
@@ -302,6 +304,13 @@ export class TenantsService {
         ...(dto.city !== undefined ? { city: dto.city.trim() || null } : {}),
         ...(dto.region !== undefined ? { region: dto.region.trim().toUpperCase() || null } : {}),
         ...(dto.postalCode !== undefined ? { postalCode: dto.postalCode.trim() || null } : {}),
+        // Out of range becomes null, not a clamped value: 150 is a typo, and
+        // quietly saving 99 would hide it behind a believable margin.
+        ...(dto.commissionPct !== undefined ? (() => {
+          const n = Number(String(dto.commissionPct).trim());
+          return { commissionPct: Number.isFinite(n) && n > 0 && n < 100 ? Math.round(n) : null };
+        })() : {}),
+        ...(dto.nearbyZips !== undefined ? { nearbyZips: dto.nearbyZips.trim() || null } : {}),
       },
       select: TENANT_PUBLIC_SELECT,
     });

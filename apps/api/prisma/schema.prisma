@@ -195,6 +195,19 @@ model Tenant {
   region     String?
   postalCode String?
 
+  /// Share of service revenue paid to the technician, 0-100.
+  ///
+  /// This one number decides whether a discount is survivable: gross margin is
+  /// roughly 100 minus this. Null on purpose — with no value the promo engine
+  /// refuses to name a discount at all rather than assume a margin, because a
+  /// made-up margin produces a break-even that looks like arithmetic and is not.
+  commissionPct Int?
+
+  /// Extra ZIP codes around the shop, comma-separated, for area demographics.
+  /// Entered by hand: nothing here geocodes a five-mile radius, and guessing
+  /// which ZIPs fall inside one would be inventing geography.
+  nearbyZips String?
+
   contactEmail String?
   contactPhone String?
 

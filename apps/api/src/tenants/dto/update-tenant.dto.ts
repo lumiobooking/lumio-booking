@@ -67,4 +67,23 @@ export class UpdateTenantDto {
   @IsString()
   @MaxLength(12)
   postalCode?: string;
+
+  /**
+   * Share of service revenue paid to the technician, 0-100.
+   *
+   * Sent as a string from the form so an empty box can clear it; parsed and
+   * range-checked in the service. Out of range is treated as "not set" rather
+   * than clamped — a commission of 150% is a typo, and silently turning it
+   * into 99% would hide the typo behind a plausible margin.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(6)
+  commissionPct?: string;
+
+  /** Comma-separated ZIPs around the shop, for area demographics. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  nearbyZips?: string;
 }

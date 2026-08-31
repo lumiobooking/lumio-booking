@@ -44,6 +44,20 @@ interface Offer { kind: string; headline: string; detail: string; discountPct: n
 interface Job { kind: string; text: string; why: string; when?: string }
 interface ContentSource { label: string; when: string; why: string }
 interface FeedLink { key: string; title: string; url: string; what: string; how: string; source: string }
+interface Segment {
+  key: string; label: string; count: number; sharePct: number;
+  avgTicketCents: number; medianGapDays: number | null; favouriteTime: string | null; topService: string | null;
+}
+interface AudienceTarget { segment: string; label: string; why: string; action: string; prize: string }
+interface PromoPlay { key: string; name: string; offer: string; why: string; useWhen: string; avoidWhen: string; cost: 'low' | 'medium' | 'high' }
+interface Promo {
+  margin: { commissionPct: number | null; grossMarginPct: number | null; source: string };
+  ceiling: number | null;
+  proposed: { discountPct: number; liftNeededPct: number | null; impossible: boolean; verdict: string; plain: string } | null;
+  plays: PromoPlay[];
+  tryFirst: string[];
+  note: string;
+}
 interface DayPlan { weekday: number; label: string; jobs: Job[] }
 interface TrendTopic { label: string; why: string; from: 'salon' | 'region' | 'trade' }
 interface TrendLink { key: string; title: string; url: string; what: string; how: string; source: string; topics?: TrendTopic[] }
@@ -55,13 +69,16 @@ interface Plan {
   videoFeeds: FeedLink[];
   productWatch: FeedLink[];
   trends: { weekly: TrendLink[]; monthly: TrendLink[]; regionKnown: boolean };
+  audience: { totalCustomers: number; segments: Segment[]; targets: AudienceTarget[]; thin: boolean; basis: string };
+  promo: Promo;
+  area: { ok: boolean; lines: string[]; year: number | null; totalPopulation: number | null; error?: string } | null;
   offer: Offer;
   lapsed: { count: number; medianDaysAway: number | null };
   quietSlots: { label: string; fillIndex: number }[];
   thin: boolean;
 }
 
-type TabId = 'today' | 'week' | 'trends' | 'calendar';
+type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience';
 
 /** One icon per kind of job, so the week reads at a glance on a phone. */
 const JOB_ICON: Record<string, string> = {
@@ -192,7 +209,15 @@ function Inner() {
     { id: 'week', label: T('Tuần này', 'This week'), icon: '🗓️' },
     { id: 'trends', label: T('Xu hướng', 'Trends'), icon: '📈' },
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
+    { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
   ];
+
+  const money = (c: number) => `$${Math.round(c / 100).toLocaleString('en-US')}`;
+  const COST_LABEL: Record<string, { text: string; color: string }> = {
+    low: { text: T('rẻ', 'cheap'), color: '#22c55e' },
+    medium: { text: T('vừa', 'medium'), color: '#f59e0b' },
+    high: { text: T('đắt', 'expensive'), color: '#ef4444' },
+  };
 
   return (
     <section style={{ maxWidth: 1180, margin: '0 auto', width: '100%' }}>
@@ -625,6 +650,151 @@ function Inner() {
               )}
             </>
           )}
+          {tab === 'audience' && (
+            <>
+              {/* ---- who the customers actually are ----
+                  Read from the salon's own book, because the people in it are
+                  the ones who live within the catchment and chose this shop.
+                  Nothing here describes a person the platform has not seen. */}
+              {plan?.audience && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                    🎯 {T('Tệp khách của tiệm', 'Your customer base')}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.audience.basis}</div>
+
+                  {plan.audience.segments.map((sg) => (
+                    <div key={sg.key} style={{ padding: '8px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{sg.label}</span>
+                        <span style={{ fontSize: 13, color: '#a5b4fc' }}>{sg.count} {T('người', 'people')} · {sg.sharePct}%</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+                        {T('Trung bình', 'Avg')} {money(sg.avgTicketCents)}/{T('lần', 'visit')}
+                        {sg.medianGapDays ? ` · ${T('quay lại mỗi', 'returns every')} ~${sg.medianGapDays} ${T('ngày', 'days')}` : ''}
+                        {sg.favouriteTime ? ` · ${T('hay đi', 'usually')} ${sg.favouriteTime}` : ''}
+                        {sg.topService ? ` · ${sg.topService}` : ''}
+                      </div>
+                    </div>
+                  ))}
+
+                  {!!plan.audience.targets.length && (
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                        {T('Nên nhắm vào ai trước', 'Aim here first')}
+                      </div>
+                      {plan.audience.targets.map((t, i) => (
+                        <div key={t.segment} style={{
+                          padding: '9px 11px', marginBottom: 7, borderRadius: 9,
+                          background: 'var(--c1e293b)', border: `1px solid ${i === 0 ? '#6366f1' : 'var(--c334155)'}`,
+                        }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: i === 0 ? '#a5b4fc' : 'var(--ce2e8f0)' }}>
+                            {i + 1}. {t.label}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 3 }}>
+                            <strong style={{ color: '#22c55e' }}>{T('Làm', 'Do')}:</strong> {t.action}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{t.why}</div>
+                          <div style={{ fontSize: 12, color: 'var(--cfde68a)', marginTop: 3 }}>{t.prize}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ---- the arithmetic that decides a discount ----
+                  A break-even is one line of maths nobody does, so the screen
+                  does it. Without the commission rate it says so instead of
+                  guessing: an assumed margin makes a fake break-even, and a
+                  fake break-even looks exactly like a real one. */}
+              {plan?.promo && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: 16,
+                  borderColor: plan.promo.proposed?.impossible ? '#ef4444' : 'var(--c334155)',
+                }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    🧮 {T('Giảm bao nhiêu thì còn lãi', 'What a discount really costs')}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 8 }}>{plan.promo.note}</div>
+
+                  {plan.promo.margin.grossMarginPct !== null && (
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{T('Biên lãi gộp', 'Gross margin')}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#22c55e' }}>{plan.promo.margin.grossMarginPct}%</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{T('Giảm tối đa nên dùng', 'Safe ceiling')}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#a5b4fc' }}>{plan.promo.ceiling}%</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {plan.promo.proposed && (
+                    <div style={{
+                      padding: '9px 11px', borderRadius: 8, marginBottom: 8,
+                      background: plan.promo.proposed.impossible ? 'var(--c450a0a)' : 'var(--c1e293b)',
+                      border: `1px solid ${plan.promo.proposed.impossible ? 'var(--c991b1b)' : 'var(--c334155)'}`,
+                      color: plan.promo.proposed.impossible ? 'var(--cfca5a5)' : 'var(--ccbd5e1)',
+                      fontSize: 12.5, lineHeight: 1.55,
+                    }}>
+                      {plan.promo.proposed.plain}
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 8 }}>
+                    {T('Thử theo thứ tự rẻ nhất trước', 'Cheapest tools first')}: {plan.promo.tryFirst.join(' → ')}
+                  </div>
+
+                  {plan.promo.plays.map((pl) => (
+                    <div key={pl.key} style={{ padding: '8px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{pl.name}</span>
+                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'var(--c1e293b)', color: COST_LABEL[pl.cost]?.color }}>
+                          {T('chi phí', 'cost')} {COST_LABEL[pl.cost]?.text}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5, marginTop: 2 }}>{pl.offer}</div>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{pl.why}</div>
+                      <div style={{ fontSize: 11.5, color: '#f59e0b', lineHeight: 1.45, marginTop: 2 }}>
+                        {T('Tránh khi', 'Avoid when')}: {pl.avoidWhen}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ---- the neighbourhood ----
+                  Census figures per ZIP. Labelled as ZIPs, never as a radius:
+                  ZIP boundaries follow postal routes, and calling them a
+                  five-mile circle would be a claim nothing here measured. */}
+              <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  🗺️ {T('Khu vực quanh tiệm', 'Around the shop')}
+                </div>
+                {plan?.area?.ok ? (
+                  <>
+                    {plan.area.lines.map((l, i) => (
+                      <div key={i} style={{
+                        fontSize: 13, color: i === plan.area!.lines.length - 1 ? 'var(--c64748b)' : 'var(--ccbd5e1)',
+                        lineHeight: 1.6, marginBottom: 5, fontStyle: i === plan.area!.lines.length - 1 ? 'italic' : 'normal',
+                      }}>{l}</div>
+                    ))}
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6 }}>
+                      {T('Nguồn: Cục Thống kê Mỹ, khảo sát ACS 5 năm', 'Source: US Census ACS 5-year')} {plan.area.year ?? ''}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 13, color: 'var(--cfde68a)', lineHeight: 1.6 }}>
+                    {plan?.area?.error
+                      ?? T('Chưa có số liệu khu vực. Điền ZIP của tiệm ở Super Admin.', 'No area data yet — add the ZIP in Super Admin.')}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {tab === 'calendar' && (
             <>
               {/* ---- what is coming, and what to prepare ---- */}

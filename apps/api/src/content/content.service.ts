@@ -9,6 +9,9 @@ import { regionEvents, parseAddress, eventsToPrompt, type ResolvedRegion, type D
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
+import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
+import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
+import { fetchCensus, describeArea, type CensusResult } from './census';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -87,6 +90,9 @@ export class ContentService {
     events: DatedEvent[];
     signals: SignalProfile;
     revenue: RevenueProfile;
+    audience: AudienceProfile;
+    promo: PromoAdvice;
+    nearbyZips: string | null;
     money: (c: number) => string;
   }> {
     const tenant = await this.prisma.tenant.findUnique({
@@ -94,7 +100,7 @@ export class ContentService {
       // city/region/postalCode may be absent on a database that has not run the
       // location migration yet; the catch below keeps the whole engine alive
       // rather than blanking a salon's screen over a missing column.
-      select: { name: true, timezone: true, businessType: true, market: true, city: true, region: true, postalCode: true },
+      select: { name: true, timezone: true, businessType: true, market: true, city: true, region: true, postalCode: true, commissionPct: true, nearbyZips: true },
     }).catch(() => this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true, timezone: true, businessType: true, market: true },
@@ -161,6 +167,31 @@ export class ContentService {
         return { weekday, hour, minutes, revenueCents: a.priceCents ?? 0 };
       });
 
+    // A YEAR of visits, for segmentation. The 60-day window above is right for
+    // "what is selling now" and useless for "who comes back": inside two months
+    // a customer who visits quarterly looks identical to one who never returned.
+    const d365 = new Date(now.getTime() - 365 * 86_400_000);
+    type HistRow = { startTime: Date; priceCents: number | null; customerId: string | null; service: { name: string } | null };
+    const history: HistRow[] = await this.prisma.appointment.findMany({
+      // Walk-ins with no customer record are dropped below in JS rather than in
+      // the query: `customerId: { not: null }` types differently across Prisma
+      // client versions, and this filter is not worth a build that only fails
+      // on the deploy machine.
+      where: { tenantId, startTime: { gte: d365 }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
+      select: { startTime: true, priceCents: true, customerId: true, service: { select: { name: true } } },
+      take: 20000,
+    }).catch(() => [] as HistRow[]) as HistRow[];
+    const visitRows: VisitRow[] = history.filter((h) => h.customerId).map((h) => {
+      const { weekday, hour } = parts(h.startTime);
+      return {
+        customerId: String(h.customerId),
+        at: h.startTime.getTime(),
+        priceCents: h.priceCents ?? 0,
+        serviceName: h.service?.name ?? null,
+        weekday, hour,
+      };
+    });
+
     // Lapsed customers, measured from their own last visit.
     const lastVisit = new Map<string, { at: number; total: number; n: number }>();
     for (const a of appts) {
@@ -195,6 +226,18 @@ export class ContentService {
       region: t.region ?? fromAddress.region,
     }, { horizonDays: 45 });
 
+    const revenue = buildRevenueProfile({ bookings: bookingRows, customers, services });
+    const promo = promoAdvice({
+      industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
+      commissionPct: (tenant as { commissionPct?: number | null } | null)?.commissionPct ?? null,
+      proposedDiscountPct: revenue.advice.discountPct || null,
+    });
+
+    // Capped at the source, before the number reaches a prompt or a screen.
+    // The rule itself lives in promo-playbook next to the arithmetic it depends
+    // on, so it can be tested without standing up a whole booking book.
+    capAdvice(revenue.advice, promo);
+
     return {
       tenantName: tenant?.name || 'Tiệm',
       industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
@@ -213,7 +256,13 @@ export class ContentService {
         today: now,
         country: ex.country,
       }),
-      revenue: buildRevenueProfile({ bookings: bookingRows, customers, services }),
+      revenue,
+      audience: buildAudienceProfile(visitRows, now.getTime()),
+      promo,
+      nearbyZips: [
+        (tenant as { postalCode?: string | null } | null)?.postalCode ?? '',
+        (tenant as { nearbyZips?: string | null } | null)?.nearbyZips ?? '',
+      ].filter(Boolean).join(',') || null,
     };
   }
 
@@ -308,6 +357,10 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       eventsToPrompt(ctx.region, ctx.events),
       '',
       revenueToPrompt(ctx.revenue, ctx.money),
+      '',
+      audienceToPrompt(ctx.audience),
+      '',
+      promoToPrompt(ctx.promo),
       '',
       weekPlanToPrompt(week),
       '',
@@ -489,6 +542,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         events: ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway, note: e.note })),
       }),
       offer: ctx.revenue.advice,
+      // Who the salon's customers actually are, and the arithmetic behind any
+      // discount. Both travel with the plan so the screen and the model are
+      // reading the same numbers.
+      audience: ctx.audience,
+      promo: ctx.promo,
+      area: await this.areaFor(tenantId, ctx.nearbyZips).catch(() => null),
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),
       busySlots: [...ctx.revenue.loads].reverse().slice(0, 3),
@@ -542,6 +601,41 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       }).catch(() => undefined);
     }
     return { created: r.created, left: LIMIT - next.count, ...(r.skipped ? { skipped: r.skipped } : {}) };
+  }
+
+  /**
+   * Area demographics, cached for a month.
+   *
+   * The ACS moves once a year, so fetching it on every page load would be a lot
+   * of traffic to learn the same number. The cache also means a Census outage
+   * shows last month's figures instead of an empty panel — but only if they
+   * were real: a failed fetch is never written to the cache, because a cached
+   * failure would be indistinguishable from a cached fact.
+   */
+  async areaFor(tenantId: string, zips: string | null, opts: { force?: boolean } = {}): Promise<CensusResult & { lines: string[]; cachedAt?: string }> {
+    const blank: CensusResult = { ok: false, year: null, zips: [], totalPopulation: null, weightedMedianIncomeUsd: null };
+    if (!zips) {
+      return { ...blank, lines: [], error: 'Chưa có mã ZIP. Điền ZIP của tiệm (và các ZIP lân cận) ở Super Admin.' };
+    }
+    const KEY = 'census_cache';
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: KEY }, select: { id: true, value: true } }).catch(() => null);
+    const cached = (row?.value ?? {}) as { at?: string; zips?: string; data?: CensusResult };
+    const fresh = cached.at && Date.now() - Date.parse(cached.at) < 30 * 86_400_000;
+    if (!opts.force && fresh && cached.zips === zips && cached.data?.ok) {
+      return { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at };
+    }
+
+    const r = await fetchCensus(zips, { apiKey: process.env.CENSUS_API_KEY || null });
+    if (r.ok) {
+      const value = { at: new Date().toISOString(), zips, data: r };
+      if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } }).catch(() => undefined);
+      else await this.prisma.setting.create({ data: { tenantId, key: KEY, value: value as never } }).catch(() => undefined);
+    } else {
+      this.logger.warn(`census failed for ${tenantId}: ${r.diagnostic ?? r.error}`);
+      // Serve stale-but-real figures rather than nothing, and say they are old.
+      if (cached.data?.ok) return { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at };
+    }
+    return { ...r, lines: describeArea(r) };
   }
 
   /** The salon marks progress: filmed, posted, or honestly skipped. */

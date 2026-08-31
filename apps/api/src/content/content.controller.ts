@@ -124,6 +124,20 @@ export class ContentAdminController {
     return this.svc.generateAll(dto?.industry ?? 'SALON');
   }
 
+  /**
+   * Census diagnostic.
+   *
+   * The area figures come from an API this code was written against without
+   * being able to call it. When it misbehaves, this returns the raw reason the
+   * server gave rather than leaving anyone to guess which of the year, the
+   * variable codes or the network is wrong.
+   */
+  @Get('census/:tenantId')
+  census(@Param('tenantId') tenantId: string, @Query('zips') zips?: string, @Query('force') force?: string) {
+    return this.svc.gather(tenantId).then((c) =>
+      this.svc.areaFor(tenantId, zips?.trim() || c.nearbyZips, { force: force === '1' }));
+  }
+
   /** The raw signal profile behind a salon's ideas — for spot-checking. */
   @Get('signals/:tenantId')
   signals(@Param('tenantId') tenantId: string) {

@@ -562,7 +562,8 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // reading the same numbers.
       audience: ctx.audience,
       promo: ctx.promo,
-      area: await this.areaFor(tenantId, ctx.nearbyZips).catch(() => null),
+      // Cache only: a salon opening this page must not wait on the Census.
+      area: await this.areaFor(tenantId, ctx.nearbyZips, { allowFetch: false }).catch(() => null),
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),
       busySlots: [...ctx.revenue.loads].reverse().slice(0, 3),
@@ -627,7 +628,11 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
    * were real: a failed fetch is never written to the cache, because a cached
    * failure would be indistinguishable from a cached fact.
    */
-  async areaFor(tenantId: string, zips: string | null, opts: { force?: boolean } = {}): Promise<CensusResult & { lines: string[]; cachedAt?: string }> {
+  async areaFor(
+    tenantId: string,
+    zips: string | null,
+    opts: { force?: boolean; allowFetch?: boolean } = {},
+  ): Promise<CensusResult & { lines: string[]; cachedAt?: string }> {
     const blank: CensusResult = { ok: false, year: null, zips: [], totalPopulation: null, weightedMedianIncomeUsd: null };
     if (!zips) {
       return { ...blank, lines: [], error: 'Chưa có mã ZIP. Điền ZIP của tiệm (và các ZIP lân cận) ở Super Admin.' };
@@ -638,6 +643,19 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     const fresh = cached.at && Date.now() - Date.parse(cached.at) < 30 * 86_400_000;
     if (!opts.force && fresh && cached.zips === zips && cached.data?.ok) {
       return { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at };
+    }
+
+    // Page loads read the cache and stop there.
+    //
+    // Fetching inline meant a cache miss held the salon's screen for up to
+    // twelve seconds waiting on a government API — and it is what dragged the
+    // unit tests onto the network, because planFor reaches this. A third party
+    // must never be in the critical path of a page load; the team refreshes it
+    // from the diagnostic when it needs refreshing.
+    if (opts.allowFetch === false) {
+      return cached.data?.ok
+        ? { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at }
+        : { ...blank, lines: [], error: 'Chưa lấy số liệu dân cư cho khu vực này. Bấm quét ở Super Admin để lấy lần đầu.' };
     }
 
     const r = await fetchCensus(zips, { apiKey: process.env.CENSUS_API_KEY || null });

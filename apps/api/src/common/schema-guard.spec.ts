@@ -111,40 +111,35 @@ describe('nothing untyped reaches Prisma', () => {
 
 describe('no test is allowed to reach the real API', () => {
   /**
-   * A test that calls out to Anthropic passes on a laptop with no key and
-   * fails on the deploy machine, which has one — and bills for the privilege
-   * on the way. That is exactly how the content-refresh tests broke a build:
-   * green here, two timeouts there, and real API calls in between.
+   * This used to be a list of function names known to call out — refreshFor,
+   * generateForTenant, runAgent — and any spec touching one had to stub fetch.
+   * It caught the bug it was written for and missed the very next one, because
+   * `planFor` was not on the list and `planFor` reaches the US Census.
    *
-   * So any spec that drives a code path known to call the model must stub
-   * `fetch`. Narrow on purpose: it names the three entry points that do, rather
-   * than trying to guess at every function that might.
+   * That is the flaw in naming hazards one at a time: the list only ever
+   * describes the failures that already happened. So the enforcement moved to
+   * jest.setup.js, which replaces `fetch` with one that throws for EVERY test in
+   * both projects. What is left here is checking that the block is still wired
+   * in — because a guard that silently stops running is worse than none.
    */
-  const CALLS_MODEL = /\b(refreshFor|generateForTenant|generateAll|runAgent)\s*\(/;
-  const STUBS_FETCH = /spyOn\(\s*globalThis\s*,\s*'fetch'/;
+  const root = path.join(__dirname, '../../../..');
 
-  const specs: string[] = [];
-  (function walk(dir: string) {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (e.name.endsWith('.spec.ts')) specs.push(p);
-    }
-  })(path.join(__dirname, '..'));
-
-  it('found the spec files', () => {
-    expect(specs.length).toBeGreaterThan(10);
+  it('the global fetch block exists and throws', () => {
+    const setup = fs.readFileSync(path.join(root, 'jest.setup.js'), 'utf8');
+    expect(setup).toMatch(/globalThis\.fetch\s*=/);
+    expect(setup).toMatch(/Test tried to reach the network/);
   });
 
-  it('stubs fetch wherever a spec drives the model', () => {
-    const offenders: string[] = [];
-    for (const f of specs) {
-      const src = fs.readFileSync(f, 'utf8');
-      if (CALLS_MODEL.test(src) && !STUBS_FETCH.test(src)) {
-        offenders.push(path.basename(f));
-      }
-    }
-    expect(offenders).toEqual([]);
+  it('both jest projects load it', () => {
+    const cfg = fs.readFileSync(path.join(root, 'jest.config.js'), 'utf8');
+    const hooks = cfg.match(/setupFilesAfterEnv/g) ?? [];
+    expect(hooks.length).toBe(2);
+  });
+
+  it('is actually in force inside this very test', () => {
+    // The strongest available proof: if the block were missing, this resolves.
+    return expect(fetch('https://example.invalid/should-never-be-called'))
+      .rejects.toThrow(/Test tried to reach the network/);
   });
 });
 

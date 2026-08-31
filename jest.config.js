@@ -14,6 +14,9 @@ module.exports = {
       testEnvironment: 'node',
       testRegex: '.*\\.spec\\.ts$',
       transform: { '^.+\\.(t|j)s$': ['ts-jest', { isolatedModules: true }] },
+      // Blocks real network calls. Two builds have now been broken by a unit
+      // test quietly calling a live API; see jest.setup.js for both.
+      setupFilesAfterEnv: ['<rootDir>/../../jest.setup.js'],
     },
     {
       displayName: 'web',
@@ -21,6 +24,7 @@ module.exports = {
       testEnvironment: 'node',
       testRegex: 'src/(lib|components)/.*\\.spec\\.ts$',
       transform: { '^.+\\.(t|j)s$': ['ts-jest', { isolatedModules: true }] },
+      setupFilesAfterEnv: ['<rootDir>/../../jest.setup.js'],
     },
   ],
 };

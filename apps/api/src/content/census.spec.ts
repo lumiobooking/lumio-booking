@@ -164,3 +164,34 @@ describe('the write-up says what the data supports and no more', () => {
     expect(describeArea(await fetchCensus('92840', { fetchImpl: reply('nope', false, 500) }))).toEqual([]);
   });
 });
+
+describe('the "Missing Key" page is named for what it is', () => {
+  it('tells the operator to set CENSUS_API_KEY instead of saying "unparseable"', async () => {
+    // What the live server actually returned on the deploy machine: HTTP 200,
+    // an HTML page, title "Missing Key". A generic "unparseable" would have
+    // sent someone hunting through variable codes for a one-line env fix.
+    const html = '<html><head><title>Missing Key</title></head><body>error</body></html>';
+    const r = await fetchCensus('92840', { fetchImpl: reply(html) });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/khoá API/);
+    expect(r.error).toMatch(/CENSUS_API_KEY/);
+    expect(r.diagnostic).toMatch(/missing api key/);
+  });
+
+  it('stops after the first year rather than retrying a key problem twice more', async () => {
+    let calls = 0;
+    const impl = (async () => {
+      calls += 1;
+      return { ok: true, status: 200, text: async () => '<title>Missing Key</title>' };
+    }) as unknown as FetchLike;
+    await fetchCensus('92840', { fetchImpl: impl });
+    expect(calls).toBe(1);
+  });
+
+  it('sends the key when there is one', async () => {
+    let seen = '';
+    const impl = (async (u: string) => { seen = u; return { ok: true, status: 200, text: async () => GOOD }; }) as unknown as FetchLike;
+    await fetchCensus('92840', { apiKey: 'abc123', fetchImpl: impl });
+    expect(seen).toContain('key=abc123');
+  });
+});

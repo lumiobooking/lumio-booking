@@ -158,7 +158,22 @@ export async function fetchCensus(
     }
     const parsed = parseCensus(body);
     if (!parsed || !parsed.length) {
-      lastDiag = `unparseable (${year}): ${body.slice(0, 200)}`;
+      // The live server answers a keyless request with an HTML page titled
+      // "Missing Key" and a 200 status — so a plain response check passes and
+      // the parse is what discovers it. Worth naming explicitly: "unparseable"
+      // would send someone hunting through variable codes for a problem that
+      // is one environment variable.
+      const needsKey = /missing key/i.test(body);
+      lastDiag = needsKey
+        ? `missing api key (${year}): Census trả về trang "Missing Key"`
+        : `unparseable (${year}): ${body.slice(0, 200)}`;
+      if (needsKey) {
+        return {
+          ...empty,
+          error: 'Cục Thống kê Mỹ yêu cầu khoá API. Đăng ký miễn phí tại api.census.gov/data/key_signup.html rồi đặt biến CENSUS_API_KEY trên Render.',
+          diagnostic: lastDiag,
+        };
+      }
       continue;
     }
 

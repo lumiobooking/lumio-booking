@@ -384,16 +384,28 @@ export function TeamChatWindow({ token, unread, vi }: {
           onClick={() => setOpen(true)}
           aria-label={vi ? 'Mở trao đổi với Lumio' : 'Open the Lumio thread'}
           style={{
-            position: 'fixed', right: 16, bottom: 16, zIndex: 60,
-            width: 54, height: 54, borderRadius: '50%', cursor: 'pointer',
+            position: 'fixed', right: 14,
+            // ---- above the tab bar, not behind it ----
+            // The salon app's bottom navigation is fixed at bottom:0 with
+            // z-index 60 and stands about 60px tall plus the iPhone home bar.
+            // This button sat at bottom:16 with the SAME z-index, so it was
+            // drawn underneath it: on a phone the thread was not hard to find,
+            // it was invisible. `main` already reserves 88px for the bar, so
+            // that is the number to clear, plus the safe area beneath it.
+            bottom: 'calc(84px + env(safe-area-inset-bottom, 0px))',
+            zIndex: 61,
+            display: 'flex', alignItems: 'center', gap: 7,
+            minHeight: 46, padding: '0 16px', borderRadius: 24, cursor: 'pointer',
             border: 'none', background: '#6366f1', color: 'var(--cf8fafc)',
-            fontSize: 22, boxShadow: '0 8px 24px rgba(0,0,0,.35)',
+            fontSize: 14, fontWeight: 700, boxShadow: '0 8px 24px rgba(0,0,0,.45)',
           }}
         >
-          💬
+          {/* A bare circle in a corner reads as decoration. It says what it is. */}
+          <span style={{ fontSize: 18, lineHeight: 1 }}>💬</span>
+          {vi ? 'Nhắn Lumio' : 'Message Lumio'}
           {unread > 0 && (
             <span style={{
-              position: 'absolute', top: -2, right: -2, minWidth: 21, height: 21,
+              minWidth: 21, height: 21,
               borderRadius: 20, background: '#ef4444', color: 'var(--cf8fafc)',
               fontSize: 11.5, fontWeight: 700, display: 'flex',
               alignItems: 'center', justifyContent: 'center', padding: '0 5px',

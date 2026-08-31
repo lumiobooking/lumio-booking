@@ -14,10 +14,14 @@ describe('every trade has its own playbook, not a relabelled nail one', () => {
     }
   });
 
-  it.each(TRADES)('%s gives three posts with three different jobs', (t) => {
+  it.each(TRADES)('%s carries enough angles for the weekly rotation', (t) => {
     const p = playbookFor(t);
-    expect(p.postTypes).toHaveLength(3);
-    expect(new Set(p.postTypes.map((x) => x.job)).size).toBe(3);
+    // Five, not three. Three meant the week plan asked for the same three
+    // clips every week for ever — a template wearing a calendar's clothes.
+    // Five picked three at a time gives five distinct weeks before a repeat.
+    expect(p.postTypes.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(p.postTypes.map((x) => x.job)).size).toBe(p.postTypes.length);
+    expect(new Set(p.postTypes.map((x) => x.label)).size).toBe(p.postTypes.length);
     for (const pt of p.postTypes) expect(pt.shots).toContain('·'); // shots in order
   });
 

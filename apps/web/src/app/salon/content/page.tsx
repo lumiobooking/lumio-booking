@@ -119,7 +119,11 @@ interface Plan {
     gaps: { field: string; label: string; cost: string }[];
   };
   events: SeasonEvent[];
-  week: { days: DayPlan[]; focus: string; basis: string; daily: Job[]; sources: ContentSource[]; trade: string; dataThin: boolean };
+  week: {
+    days: DayPlan[]; focus: string; basis: string; daily: Job[]; sources: ContentSource[];
+    trade: string; dataThin: boolean; week: number;
+    stage: { key: string; step: number; title: string; goal: string; why: string; exitWhen: string; progress: { done: number; need: number; label: string } | null } | null;
+  };
   calendar: SeasonEvent[];
   videoFeeds: FeedLink[];
   productWatch: FeedLink[];
@@ -872,6 +876,51 @@ function Inner() {
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--ca5b4fc)', marginBottom: 4 }}>{plan.week.focus}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.week.basis}</div>
+
+                  {/* The path, and where this shop stands on it.
+                      The stage moves when its exit condition is MET, never
+                      because a week went by — telling a shop to buy ads because
+                      three weeks passed is how money goes into a Google profile
+                      with two photos on it. */}
+                  {plan.week.stage && (
+                    <div style={{
+                      padding: '11px 13px', marginBottom: 12, borderRadius: 10,
+                      background: 'var(--c1e293b)', border: '1px solid #6366f1',
+                    }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                          background: 'var(--c0f172a)', color: 'var(--ca5b4fc)',
+                        }}>
+                          {T('Giai đoạn', 'Stage')} {plan.week.stage.step}/5
+                        </span>
+                        <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{plan.week.stage.title}</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>
+                          {T('Tuần', 'Week')} {plan.week.week + 1}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>{plan.week.stage.goal}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{plan.week.stage.why}</div>
+
+                      {plan.week.stage.progress && plan.week.stage.progress.need > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ height: 7, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${Math.min(100, Math.round((plan.week.stage.progress.done / plan.week.stage.progress.need) * 100))}%`,
+                              height: '100%', background: '#6366f1',
+                            }} />
+                          </div>
+                          <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>
+                            {plan.week.stage.progress.done}/{plan.week.stage.progress.need} {plan.week.stage.progress.label}
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 7 }}>
+                        <b>{T('Xong giai đoạn này khi', 'Done when')}:</b> {plan.week.stage.exitWhen}
+                      </div>
+                    </div>
+                  )}
 
                   {plan.week.days.map((d, i) => {
                     const empty = d.jobs.every((j) => j.kind === 'rest');

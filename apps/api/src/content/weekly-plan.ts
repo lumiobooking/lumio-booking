@@ -24,6 +24,7 @@
 import { WEEKDAY_VI, type SlotLoad, type OfferAdvice, type LapsedSignal } from './revenue-signals';
 import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource } from './industry-playbook';
+import { rotate, type RoadmapStage } from './roadmap';
 
 export type JobKind = 'film' | 'post' | 'story' | 'offer' | 'winback' | 'engage' | 'rest';
 
@@ -50,6 +51,10 @@ export interface WeekPlan {
   focus: string;
   /** Where the day choices came from — real data, or an admitted default. */
   basis: string;
+  /** Which stage of the shop's own path this week belongs to. */
+  stage: RoadmapStage | null;
+  /** Weeks since this shop's plan began — 0 for a brand-new salon. */
+  week: number;
   /** Every-day habits, separate from the dated work. */
   daily: Job[];
   /** Where today's raw material comes from — the part usually left vague. */
@@ -100,6 +105,10 @@ export function buildWeekPlan(input: {
   advice?: OfferAdvice | null;
   lapsed?: LapsedSignal | null;
   events?: DatedEvent[];
+  /** Where the shop is on its path. Its jobs join this week's work. */
+  stage?: RoadmapStage | null;
+  /** Weeks since the plan began — rotates the filming angles, nothing else. */
+  week?: number;
 }): WeekPlan {
   const industry = (input.industry || 'SALON').toUpperCase();
   const book = playbookFor(industry);
@@ -108,6 +117,8 @@ export function buildWeekPlan(input: {
   const advice = input.advice ?? null;
   const lapsed = input.lapsed ?? null;
 
+  const stage = input.stage ?? null;
+  const week = Math.max(0, Math.floor(input.week ?? 0));
   const film = filmDay(loads);
   const quietest = loads.length ? loads[0] : null; // slotLoads sorts quietest first
   const busiest = loads.length ? loads[loads.length - 1] : null;
@@ -135,8 +146,12 @@ export function buildWeekPlan(input: {
   // Three posts, each doing a different job — taken from the trade's playbook,
   // because a restaurant's three posts are not a salon's three posts. Three
   // posts of the same kind is one post repeated.
+  // The angles ROTATE by week. Three clips of the same kind is one clip
+  // repeated, and the same three every week is one week repeated — which is
+  // what this plan was doing before: a shop with a steady book and no holiday
+  // coming saw the identical seven days forever.
   const postDays = [(film.weekday + 1) % 7, (film.weekday + 3) % 7, (film.weekday + 5) % 7];
-  book.postTypes.slice(0, 3).forEach((pt, i) => {
+  rotate(book.postTypes, week, 3).forEach((pt, i) => {
     const last = i === 2;
     add(postDays[i], {
       kind: 'post',
@@ -177,6 +192,15 @@ export function buildWeekPlan(input: {
     });
   }
 
+  // -- the work this stage of the path asks for ----------------------------
+  // Placed the day after filming: the shoot is the heaviest job of the week and
+  // stacking anything on top of it is how a plan gets abandoned.
+  if (stage) {
+    stage.jobs.forEach((j, i) => {
+      add((film.weekday + 2 + i) % 7, { kind: j.kind, text: j.text, why: j.why, ...(j.when ? { when: j.when } : {}) });
+    });
+  }
+
   // -- whatever the neighbourhood is about to celebrate ---------------------
   const soon = events.filter((e) => e.daysAway >= 0 && e.daysAway <= 21).slice(0, 2);
   for (const e of soon) {
@@ -200,7 +224,11 @@ export function buildWeekPlan(input: {
     });
   }
 
-  const focus = advice?.kind === 'fill-slot' && quietest
+  // The stage names the week's aim when there is one — that is the whole point
+  // of having a path. The old fallbacks stay for the shop that has no stage.
+  const focus = stage
+    ? `${stage.title} — ${stage.goal}`
+    : advice?.kind === 'fill-slot' && quietest
     ? `Lấp ${quietest.label} — khung trống nhất của tiệm`
     : advice?.kind === 'win-back'
       ? 'Kéo khách cũ quay lại, chưa cần giảm giá'
@@ -214,12 +242,17 @@ export function buildWeekPlan(input: {
     ? 'Chưa đủ lịch hẹn để đọc nhịp của tiệm — đây là nhịp mặc định, sẽ tự chỉnh lại sau vài tuần tiệm chạy'
     : `Ngày quay và ngày đăng chọn theo sổ đặt lịch thật của tiệm (${loads.length} khung giờ có dữ liệu)`;
 
-  return { days, focus, basis, daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin };
+  return { days, focus, basis, stage, week, daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin };
 }
 
 /** The week as prompt text, so the day's ideas match the week's plan. */
 export function weekPlanToPrompt(p: WeekPlan): string {
-  const L = [`TRỌNG TÂM TUẦN NÀY: ${p.focus}`, `(căn cứ: ${p.basis})`, 'LỊCH TUẦN:'];
+  const L = [`TRỌNG TÂM TUẦN NÀY: ${p.focus}`, `(căn cứ: ${p.basis})`];
+  if (p.stage) {
+    L.push(`GIAI ĐOẠN ${p.stage.step}/5 — ${p.stage.title}. Xong khi: ${p.stage.exitWhen}`);
+    L.push(`Tuần thứ ${p.week + 1} của kế hoạch. Ý tưởng hôm nay phải phục vụ giai đoạn này, không lạc sang việc khác.`);
+  }
+  L.push('LỊCH TUẦN:');
   for (const d of p.days) {
     for (const j of d.jobs) {
       if (j.kind === 'rest') continue;

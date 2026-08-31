@@ -12,6 +12,7 @@ import { regionEvents, eventsToPrompt, type ResolvedRegion, type DatedEvent } fr
 import { resolveShopLocation, type ResolvedShopLocation } from './shop-location';
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
+import { pickStage, weekIndex } from './roadmap';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
@@ -430,6 +431,63 @@ export class ContentService {
     };
   }
 
+
+  /**
+   * This week's plan, including where the shop stands on its own path.
+   *
+   * Shared by the generator and the screen ON PURPOSE. They used to build the
+   * week separately from the same inputs, which was fine only for as long as
+   * the inputs stayed identical — and the moment the roadmap was added, the
+   * daily ideas would have been written against a different week than the one
+   * on screen. One plan, two readers.
+   */
+  private async weekPlanFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>) {
+    const loose = this.prisma as unknown as Record<string, {
+      count?: (a: unknown) => Promise<number>;
+      findFirst?: (a: unknown) => Promise<unknown>;
+    }>;
+    const [reviewCount, postedLast30, firstIdea] = await Promise.all([
+      loose.googleReview?.count?.({ where: { tenantId } }).catch(() => null) ?? Promise.resolve(null),
+      loose.contentIdea?.count?.({
+        where: {
+          tenantId,
+          status: { in: ['posted', 'filmed'] },
+          doneAt: { gte: new Date(Date.now() - 30 * 86_400_000) },
+        },
+      } as never).catch(() => 0) ?? Promise.resolve(0),
+      loose.contentIdea?.findFirst?.({
+        where: { tenantId }, orderBy: { createdAt: 'asc' }, select: { createdAt: true },
+      } as never).catch(() => null) ?? Promise.resolve(null),
+    ]);
+
+    // 'online' is a booking with no channel on it — see common/booking-channel.
+    const attributed = Object.entries(ctx.sourceCounts)
+      .filter(([k]) => k !== 'online')
+      .reduce((n, [, v]) => n + v, 0);
+
+    const stage = pickStage({
+      reviewCount: typeof reviewCount === 'number' ? reviewCount : null,
+      postedLast30: typeof postedLast30 === 'number' ? postedLast30 : 0,
+      lapsedCount: ctx.revenue.lapsed.count,
+      customerCount: ctx.audience.totalCustomers,
+      hasQuietSlot: ctx.revenue.advice?.kind === 'fill-slot',
+      marginKnown: ctx.promo.margin.grossMarginPct !== null,
+      attributedBookings: attributed,
+    });
+
+    return buildWeekPlan({
+      today: new Date(),
+      todayWeekday: this.localWeekday(ctx.tz),
+      industry: ctx.industry,
+      loads: ctx.revenue.loads,
+      advice: ctx.revenue.advice,
+      lapsed: ctx.revenue.lapsed,
+      events: ctx.events,
+      stage,
+      week: weekIndex((firstIdea as { createdAt?: Date } | null)?.createdAt ?? null, new Date()),
+    });
+  }
+
   // ---- generating ---------------------------------------------------------
 
   /**
@@ -505,15 +563,7 @@ LUẬT BẮT BUỘC:
 TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
 {"ideas":[{"rank":1,"formatName":"...","title":"...","hook":"...","shotList":"cảnh 1 · cảnh 2 · cảnh 3","caption":"...","hashtags":"#... #...","bestTime":"18:30","reason":"..."}]}`;
 
-    const week = buildWeekPlan({
-      today: new Date(),
-      todayWeekday: this.localWeekday(ctx.tz),
-      industry: ctx.industry,
-      loads: ctx.revenue.loads,
-      advice: ctx.revenue.advice,
-      lapsed: ctx.revenue.lapsed,
-      events: ctx.events,
-    });
+    const week = await this.weekPlanFor(tenantId, ctx);
 
     const userMsg = [
       // First, and phrased as an override. The model will otherwise reason from
@@ -774,15 +824,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         money: ctx.money,
       })
       : null;
-    const week = buildWeekPlan({
-      today: new Date(),
-      todayWeekday: this.localWeekday(ctx.tz),
-      industry: ctx.industry,
-      loads: ctx.revenue.loads,
-      advice: ctx.revenue.advice,
-      lapsed: ctx.revenue.lapsed,
-      events: ctx.events,
-    });
+    const week = await this.weekPlanFor(tenantId, ctx);
     return {
       // Where we think the salon is, and how sure we are. The screen shows this
       // so a wrong city gets corrected by the person who knows, instead of

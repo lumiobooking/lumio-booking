@@ -78,6 +78,8 @@ const SALON: Playbook = {
     { label: 'Mẫu đang được đặt nhiều nhất', job: 'Bài chắc ăn — bán cái khách đang thật sự chọn, không phải cái tiệm thích nhất', shots: 'Cận móng xoay tay · góc từ trên xuống · khách cầm ly cà phê khoe tay' },
     { label: 'Quy trình / cận cảnh tay nghề', job: 'Bài thuyết phục người đang phân vân giữa tiệm mình và tiệm bên cạnh', shots: 'Tháo bộ cũ · dũa tạo dáng · nét vẽ khó nhất · thành phẩm' },
     { label: 'Trước và sau, hoặc khách phản ứng thật', job: 'Bài kéo người lạ dừng lại — tò mò trước, tin sau', shots: 'Bộ móng hỏng cận cảnh · lướt nhanh quá trình · mặt khách khi nhìn tay' },
+    { label: 'Người thợ và tay nghề của họ', job: 'Bài xây niềm tin vào NGƯỜI — khách quay lại vì thợ, không vì tiệm', shots: 'Thợ đang tập trung · dụng cụ riêng · một câu thợ nói về nghề' },
+    { label: 'Trả lời một câu khách hay hỏi', job: 'Bài gỡ lý do khách còn chần chừ trước khi đặt lịch', shots: 'Câu hỏi hiện trên màn hình · vừa làm vừa trả lời · kết bằng lời mời đặt lịch' },
   ],
   habits: [
     { kind: 'engage', text: 'Trả lời hết tin nhắn và bình luận còn sót', why: 'Khách nhắn mà chờ quá một buổi là mất — đây là việc rẻ nhất trong ngày', when: 'trước khi mở cửa' },
@@ -99,6 +101,8 @@ const RESTAURANT: Playbook = {
     { label: 'Một món, quay kỹ', job: 'Bài kéo người đói đang lướt điện thoại — một món lên hình đẹp mạnh hơn cả thực đơn', shots: 'Cận lúc ra bếp · rót/chan/cắt · miếng đầu tiên' },
     { label: 'Người nấu và gian bếp', job: 'Bài xây niềm tin — giải thích vì sao đáng giá đó', shots: 'Tay đầu bếp làm việc · nguyên liệu thật · vài giây nói về món' },
     { label: 'Khách thật, phản ứng thật', job: 'Bài bằng chứng — người lạ tin người lạ hơn tin quán', shots: 'Bàn đông · khách gắp miếng đầu · một câu nhận xét ngắn' },
+    { label: 'Món ít ai gọi mà ngon nhất', job: 'Bài đẩy món có lãi cao mà thực đơn không nói hộ được', shots: 'Món lên bàn · cắt/xé lộ bên trong · một câu vì sao nên thử' },
+    { label: 'Một buổi trong quán, không dựng', job: 'Bài cho người chưa từng tới hình dung được không khí', shots: 'Mở cửa buổi sáng · lúc đông nhất · dọn bàn cuối ngày' },
   ],
   habits: [
     { kind: 'engage', text: 'Trả lời mọi đánh giá mới, kể cả đánh giá xấu', why: 'Người đọc đánh giá xấu quan tâm cách quán phản hồi hơn là nội dung phàn nàn', when: 'đầu ca' },
@@ -119,6 +123,8 @@ const REAL_ESTATE: Playbook = {
     { label: 'Tour căn nhà quay dọc', job: 'Bài kéo người xem hết — dạng mạnh nhất của ngành này', shots: 'Cửa vào · bếp · phòng ngủ chính · điểm đặc biệt nhất · sân' },
     { label: 'Trả lời một câu hỏi thật của khách', job: 'Bài xây uy tín — người mua lần đầu tìm câu trả lời trước khi tìm môi giới', shots: 'Nói thẳng vào máy · một con số cụ thể trên màn hình · kết bằng bước tiếp theo' },
     { label: 'Giới thiệu khu vực', job: 'Bài kéo đúng người — ai đang cân nhắc chuyển tới khu này', shots: 'Đường phố · quán/trường gần đó · một câu về giá trung bình khu' },
+    { label: 'Một căn vừa bán xong và vì sao', job: 'Bài bằng chứng — kết quả thật nói thay mọi lời giới thiệu', shots: 'Bảng đã bán · căn nhà · một con số về thời gian bán' },
+    { label: 'Sai lầm hay gặp khi mua/bán', job: 'Bài giữ người xem tới cuối — ai cũng sợ mất tiền vì không biết', shots: 'Nói thẳng vào máy · một ví dụ cụ thể · cách tránh' },
   ],
   habits: [
     { kind: 'engage', text: 'Trả lời mọi tin nhắn hỏi về căn đang bán', why: 'Người mua nhắn nhiều môi giới cùng lúc — ai trả lời trước thường thắng', when: 'trong giờ làm' },
@@ -138,6 +144,8 @@ const SERVICE: Playbook = {
     { label: 'Trước và sau của một ca thật', job: 'Bài bằng chứng — cái người ta cần thấy trước khi gọi', shots: 'Hiện trạng · vài giây làm · kết quả' },
     { label: 'Giải thích một thắc mắc thường gặp', job: 'Bài xây uy tín, kéo người đang tìm hiểu', shots: 'Nói thẳng vào máy · minh hoạ · bước tiếp theo' },
     { label: 'Người làm và cách làm', job: 'Bài tạo niềm tin vào người, không chỉ vào dịch vụ', shots: 'Chuẩn bị đồ nghề · thao tác chính · lời nhắn ngắn' },
+    { label: 'Một ca khó hơn bình thường', job: 'Bài phân biệt mình với chỗ làm ẩu — cho thấy tay nghề ở chỗ khó', shots: 'Vì sao ca này khó · cách xử lý · kết quả' },
+    { label: 'Khách cũ nói về lần làm trước', job: 'Bài bằng chứng — lời khách nặng hơn lời mình tự nói', shots: 'Khách nói ngắn · kết quả còn giữ được · lời mời liên hệ' },
   ],
   habits: [
     { kind: 'engage', text: 'Trả lời hết tin nhắn và cuộc gọi nhỡ', why: 'Khách dịch vụ thường gọi nhiều nơi — ai bắt máy trước thường được việc', when: 'đầu ngày' },

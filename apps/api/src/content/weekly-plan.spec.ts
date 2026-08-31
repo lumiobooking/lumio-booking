@@ -211,3 +211,64 @@ describe('each trade gets its own week, not a translated nail one', () => {
     expect(allJobs(p).filter((j) => j.kind === 'post')).toHaveLength(3);
   });
 });
+
+describe('a plan goes somewhere — it is not the same week on repeat', () => {
+  /**
+   * The complaint this answers: with a steady book and no holiday coming, the
+   * week plan was a pure function of (quiet slots, lapsed count, events), so it
+   * produced the identical seven days for ever. Film Saturday, post clips
+   * 1-2-3, message the lapsed list, repeat until the salon stops opening it.
+   */
+  const steady = {
+    today: new Date('2026-09-01T00:00:00Z'),
+    todayWeekday: 1,
+    industry: 'SALON',
+    loads: [
+      { weekday: 4, half: 'pm', label: 'Thứ 5 buổi chiều', minutes: 60, revenueCents: 5000, fillIndex: 10 },
+      { weekday: 6, half: 'am', label: 'Thứ 7 buổi sáng', minutes: 600, revenueCents: 50000, fillIndex: 95 },
+    ] as never,
+    advice: null,
+    lapsed: null,
+    events: [],
+  };
+
+  const clips = (week: number) => buildWeekPlan({ ...steady, week })
+    .days.flatMap((d) => d.jobs).filter((j) => j.kind === 'post').map((j) => j.text);
+
+  it('asks for different clips in week 1 and week 2', () => {
+    expect(clips(0)).not.toEqual(clips(1));
+  });
+
+  it('runs five distinct weeks before an angle comes round again', () => {
+    const seen = new Set([0, 1, 2, 3, 4].map((w) => clips(w).join('|')));
+    expect(seen.size).toBe(5);
+  });
+
+  it('is the SAME week when opened twice — variety, not randomness', () => {
+    // A plan that changed while the owner was reading it would be worse than
+    // one that repeated.
+    expect(clips(3)).toEqual(clips(3));
+  });
+
+  it('takes its focus from the stage, so the aim moves as the shop moves', () => {
+    const withStage = buildWeekPlan({
+      ...steady,
+      stage: {
+        key: 'foundation', step: 1, title: 'Nền móng',
+        goal: 'Làm dày hồ sơ trước khi bỏ tiền.',
+        why: 'w', exitWhen: 'x', progress: null,
+        jobs: [{ kind: 'engage', text: 'Xin đánh giá Google', why: 'y' }],
+      },
+    });
+    expect(withStage.focus).toMatch(/Nền móng/);
+    expect(withStage.stage!.step).toBe(1);
+    // The stage's own work is IN the week, not in a separate list nobody reads.
+    expect(withStage.days.flatMap((d) => d.jobs).map((j) => j.text)).toContain('Xin đánh giá Google');
+  });
+
+  it('still works for a salon with no stage at all', () => {
+    const p = buildWeekPlan(steady);
+    expect(p.stage).toBeNull();
+    expect(p.focus.length).toBeGreaterThan(10);
+  });
+});

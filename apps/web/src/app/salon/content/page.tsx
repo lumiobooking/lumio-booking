@@ -133,7 +133,8 @@ function Inner() {
   const [pf, setPf] = useState({ whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '' });
   const [savingPf, setSavingPf] = useState(false);
   const [scanningPf, setScanningPf] = useState(false);
-  const [pfScan, setPfScan] = useState<{ sources: string[]; warnings: string[] } | null>(null);
+  const [pfScan, setPfScan] = useState<{ sources: string[]; warnings: string[]; saved?: boolean; locationSaved?: string | null } | null>(null);
+  const [pfNote, setPfNote] = useState('');
   const isMobile = useIsMobile(900);
 
   const load = useCallback(async () => {
@@ -228,19 +229,27 @@ function Inner() {
     if (scanningPf) return;
     setScanningPf(true); setPfScan(null); setError(null);
     try {
-      const r = await apiFetch<{ draft: Record<string, string>; sources: string[]; warnings: string[] }>(
-        '/content/profile/scan', { method: 'POST', token },
-      );
-      setPf((cur) => {
-        const next = { ...cur };
-        for (const k of Object.keys(next) as (keyof typeof next)[]) {
-          // Never overwrite something a person already wrote.
-          if (!next[k] && r.draft?.[k]) next[k] = r.draft[k];
-        }
-        return next;
-      });
-      setPfScan({ sources: r.sources ?? [], warnings: r.warnings ?? [] });
-      setEditProfile(true);
+      const r = await apiFetch<{
+        draft: Record<string, string>; sources: string[]; warnings: string[];
+        saved: boolean; locationSaved: string | null;
+      }>('/content/profile/scan', { method: 'POST', token, body: { note: pfNote } });
+      setPfScan({ sources: r.sources ?? [], warnings: r.warnings ?? [], saved: r.saved, locationSaved: r.locationSaved });
+      if (r.saved) {
+        setPfNote('');
+        setEditProfile(false);
+      } else {
+        // Nothing was saved, so the fields are the only way forward — open them
+        // with whatever was read, rather than leaving a dead end.
+        setPf((cur) => {
+          const next = { ...cur };
+          for (const k of Object.keys(next) as (keyof typeof next)[]) {
+            if (!next[k] && r.draft?.[k]) next[k] = r.draft[k];
+          }
+          return next;
+        });
+        setEditProfile(true);
+      }
+      await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setScanningPf(false); }
   }
@@ -414,13 +423,67 @@ function Inner() {
                   used to fall back to a four-value industry code, which cannot
                   express "marketing for Vietnamese-owned businesses in the US"
                   — so it silently produced nail-salon advice instead. */}
-              {(!plan?.identity?.declared || editProfile) && (
-                <div style={{
-                  ...ui.card, marginBottom: 14, padding: 16,
-                  borderColor: plan?.identity?.declared ? 'var(--c334155)' : '#f59e0b',
-                }}>
+              {/* ---- learn the business, without asking it to type ----
+                  Everything here already exists in the shop's own setup: the
+                  website, the connected Page, 36 services with descriptions. A
+                  six-field form is asking someone to re-enter data we hold. So
+                  the default is one button and one optional note; the fields
+                  stay available behind "Sửa" for the corrections a machine
+                  cannot make. */}
+              {!plan?.identity?.declared && !editProfile && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#f59e0b' }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
-                    🏷️ {T('Doanh nghiệp này làm gì?', 'What is this business?')}
+                    🏷️ {T('Học về doanh nghiệp này', 'Learn this business')}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginBottom: 10 }}>
+                    {T('Hệ thống đọc website, trang Facebook đã kết nối và toàn bộ dịch vụ đã khai trong tiệm, rồi tự học. Anh không cần nhập lại gì.',
+                       'Reads the website, the connected Facebook Page and every service already in the system, then learns from them. Nothing to re-enter.')}
+                  </div>
+
+                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>
+                    {T('Lưu ý thêm trước khi quét (tuỳ chọn)', 'Anything to note first (optional)')}
+                  </div>
+                  <textarea
+                    value={pfNote}
+                    rows={2}
+                    placeholder={T('VD: đây KHÔNG phải tiệm nail, chúng tôi làm marketing cho các tiệm nail',
+                                   'e.g. this is NOT a nail salon — we do marketing FOR nail salons')}
+                    onChange={(e) => setPfNote(e.target.value)}
+                    style={{ ...ui.input, resize: 'vertical', fontFamily: 'inherit', marginBottom: 10 }}
+                  />
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginBottom: 10 }}>
+                    {T('Đây là điều máy không tự biết được: thứ website không nói ra, hoặc điều website khiến người ta hiểu nhầm. Nó được giữ lại qua mọi lần quét sau.',
+                       'The one thing a machine cannot produce: what the website does not say, or what it wrongly implies. Kept across every future scan.')}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={scanProfile} disabled={scanningPf} style={{ ...ui.primaryBtn, opacity: scanningPf ? 0.6 : 1 }}>
+                      {scanningPf ? T('Đang đọc & học…', 'Reading & learning…') : `↻ ${T('Quét & học tự động', 'Scan & learn')}`}
+                    </button>
+                    <button onClick={() => setEditProfile(true)} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)' }}>
+                      {T('Nhập tay', 'Type it instead')}
+                    </button>
+                  </div>
+
+                  {pfScan && (
+                    <div style={{ marginTop: 12 }}>
+                      {!!pfScan.sources.length && (
+                        <div style={{ fontSize: 12, color: 'var(--cbbf7d0)', lineHeight: 1.5 }}>
+                          {T('Đã đọc', 'Read from')}: {pfScan.sources.join(' · ')}
+                        </div>
+                      )}
+                      {pfScan.warnings.map((w, i) => (
+                        <div key={i} style={{ fontSize: 12, color: '#f59e0b', lineHeight: 1.5, marginTop: 2 }}>⚠ {w}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {editProfile && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: 'var(--c334155)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                    🏷️ {T('Sửa mô tả doanh nghiệp', 'Edit the description')}
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginBottom: 10 }}>
                     {T('Mọi gợi ý bên dưới đều dựa vào phần này. Chưa điền thì hệ thống chỉ còn một mã ngành bốn giá trị để đoán — và gợi ý sẽ nghe hợp lý nhưng sai nghề.',
@@ -499,6 +562,11 @@ function Inner() {
                       {plan.identity.profile.whoWeServe && (
                         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>
                           {T('Phục vụ', 'Serving')}: {plan.identity.profile.whoWeServe}
+                        </div>
+                      )}
+                      {pfScan?.locationSaved && (
+                        <div style={{ fontSize: 12, color: 'var(--cbbf7d0)', marginTop: 4 }}>
+                          {T('Đã tự điền vị trí tiệm', 'Location filled in')}: {pfScan.locationSaved}
                         </div>
                       )}
                       {!!plan.identity.provenance.length && (

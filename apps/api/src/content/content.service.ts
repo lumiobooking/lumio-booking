@@ -893,10 +893,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
    * person to correct, never a fact to act on. The draft comes back with the
    * source named, so the reviewer can see where each line came from.
    */
-  async scanProfile(user: AuthenticatedUser): Promise<{
+  async scanProfile(user: AuthenticatedUser, opts: { note?: string } = {}): Promise<{
     draft: Record<string, string>; sources: string[]; warnings: string[];
+    saved: boolean; locationSaved: string | null;
   }> {
     const tenantId = this.tenantId(user);
+    const note = String(opts.note ?? '').trim().slice(0, 1000);
     const warnings: string[] = [];
     const sources: string[] = [];
     const chunks: string[] = [];
@@ -926,7 +928,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         chunks.push(`--- ${r.source} ---\n${r.text}`);
         sources.push(r.source);
       } catch (e) {
-        warnings.push(e instanceof SiteReadError ? e.message : 'Không đọc được fanpage.');
+        const raw = e instanceof SiteReadError ? e.message : 'Không đọc được fanpage.';
+        // Meta's permission errors are three lines of documentation links. The
+        // salon cannot act on those; the agency can, and only needs one line.
+        warnings.push(/permission|pages_read|Public Content Access/i.test(raw)
+          ? 'Fanpage chưa cấp quyền đọc nội dung cho ứng dụng — cần duyệt quyền pages_read_engagement bên Meta. Đã bỏ qua fanpage và dùng các nguồn còn lại.'
+          : raw);
       }
     } else {
       warnings.push('Chưa kết nối Facebook Page.');
@@ -943,14 +950,13 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
 
     if (!chunks.length) {
       return {
-        draft: {},
-        sources,
-        warnings: [...warnings, 'Không có nguồn nào đọc được — cần điền tay, hoặc thêm website vào cài đặt tiệm rồi quét lại.'],
+        draft: {}, sources, saved: false, locationSaved: null,
+        warnings: [...warnings, 'Không có nguồn nào đọc được — thêm website vào cài đặt tiệm rồi quét lại.'],
       };
     }
 
     const key = process.env.ANTHROPIC_API_KEY || '';
-    if (!key) return { draft: {}, sources, warnings: [...warnings, 'Chưa cấu hình AI trên bản này nên chưa tự điền được.'] };
+    if (!key) return { draft: {}, sources, saved: false, locationSaved: null, warnings: [...warnings, 'Chưa cấu hình AI trên bản này nên chưa tự đọc được.'] };
 
     const system = `Bạn đọc tài liệu của một doanh nghiệp và điền một hồ sơ ngắn về chính doanh nghiệp đó.
 
@@ -977,7 +983,7 @@ TRẢ VỀ JSON THUẦN:
     }).catch(() => null);
 
     if (!res || !res.ok) {
-      return { draft: {}, sources, warnings: [...warnings, 'Đọc được nội dung nhưng AI chưa phân tích được. Thử lại sau ít phút.'] };
+      return { draft: {}, sources, saved: false, locationSaved: null, warnings: [...warnings, 'Đọc được nội dung nhưng AI chưa phân tích được. Thử lại sau ít phút.'] };
     }
     const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
     const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
@@ -993,8 +999,63 @@ TRẢ VỀ JSON THUẦN:
     }
     if (!draft.whatWeDo) {
       warnings.push('Đọc được nguồn nhưng chưa rút ra được mô tả rõ ràng — kiểm tra lại và sửa tay.');
+      return { draft, sources, warnings, saved: false, locationSaved: null };
     }
-    return { draft, sources, warnings };
+
+    // The operator's note is authoritative and goes in verbatim.
+    //
+    // It is the one field a machine cannot produce: it exists to say the thing
+    // the website does not, or to correct what the website implies. Appending
+    // rather than replacing means a note like "đây KHÔNG phải tiệm nail" sits
+    // permanently above the scanned description instead of being overwritten by
+    // the next scan.
+    if (note) draft.avoid = [draft.avoid, note].filter(Boolean).join(' — ');
+
+    // Saved, not proposed.
+    //
+    // Asking someone to review six fields they never wrote, every time, is the
+    // manual step this was built to remove. What protects the salon instead is
+    // that a person's own words are never overwritten: the merge below keeps
+    // anything already stored and fills only the blanks.
+    const cur = (await this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
+      .catch(() => null))?.value as Record<string, string> | null;
+    const merged: Record<string, string> = { ...draft };
+    for (const [k, v] of Object.entries(cur ?? {})) {
+      if (typeof v === 'string' && v.trim() && k !== 'avoid') merged[k] = v;
+    }
+    if (cur?.avoid && !merged.avoid.includes(cur.avoid)) {
+      merged.avoid = [cur.avoid, merged.avoid].filter(Boolean).join(' — ');
+    }
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { id: true } }).catch(() => null);
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: merged as never } }).catch(() => undefined);
+    else await this.prisma.setting.create({ data: { tenantId, key: 'business_profile', value: merged as never } }).catch(() => undefined);
+
+    // While we are here: the address is in the same sources, and an empty
+    // city/state is what makes every calendar fall back to nationwide dates.
+    // Filled only when blank — a location someone typed by hand outranks one
+    // parsed out of a marketing page.
+    let locationSaved: string | null = null;
+    const t = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { city: true, region: true, postalCode: true, market: true } as never,
+    }).catch(() => null) as unknown as { city?: string | null; region?: string | null; postalCode?: string | null; market?: string | null } | null;
+    if (t && !t.region) {
+      const addr = String(((extra?.value ?? {}) as { address?: string }).address ?? '');
+      const fromArea = parseAddress(`${draft.serviceArea} ${addr}`, t.market === 'VN' ? 'VN' : t.market === 'CA' ? 'CA' : 'US');
+      if (fromArea.region) {
+        await this.prisma.tenant.update({
+          where: { id: tenantId },
+          data: {
+            city: t.city || fromArea.city || null,
+            region: fromArea.region,
+            postalCode: t.postalCode || fromArea.postalCode || null,
+          } as never,
+        }).catch(() => undefined);
+        locationSaved = [fromArea.city, fromArea.region].filter(Boolean).join(', ');
+      }
+    }
+
+    return { draft: merged, sources, warnings, saved: true, locationSaved };
   }
 
   /** The salon marks progress: filmed, posted, or honestly skipped. */

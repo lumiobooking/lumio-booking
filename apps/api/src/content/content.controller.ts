@@ -48,8 +48,8 @@ export class ContentController {
    * reading of a marketing page is a proposal to correct, not a fact to act on.
    */
   @Post('profile/scan')
-  scanProfile(@CurrentUser() user: AuthenticatedUser) {
-    return this.svc.scanProfile(user);
+  scanProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto?: { note?: string }) {
+    return this.svc.scanProfile(user, { note: dto?.note });
   }
 
   @Post('ideas/:id/status')

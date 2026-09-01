@@ -200,8 +200,8 @@ export interface TrendInput {
   services?: { name: string; count?: number }[];
   /** Search terms Google reported for this salon's profile. */
   keywords?: { keyword: string; count?: number }[];
-  /** What its region is walking into. */
-  events?: { name: string; daysAway: number; note?: string }[];
+  /** What its region is walking into. Bilingual, straight from region-events. */
+  events?: { name: Txt; daysAway: number; note?: Txt }[];
 }
 
 /**
@@ -246,14 +246,14 @@ export function topicsFor(input: TrendInput, limit = 4): TrendTopic[] {
 
   for (const e of (input.events ?? []).filter((x) => x.daysAway <= 45).slice(0, 2)) {
     out.push({
-      // The event name and note arrive already unwrapped to Vietnamese (the
-      // caller passes them through `viOf`), so they read the same on both
-      // screens; the sentence built around them is written in each language.
+      // A holiday has a real name in each language — "Lễ Lao động" is "Labor
+      // Day", not a translation of it — so the event travels here bilingual and
+      // each side of the sentence takes its own side of the name.
       label: e.name,
       why: e.daysAway <= 0
         ? bi(
-          `Đang diễn ra ở khu vực tiệm — ${e.note ?? 'làm nội dung bám dịp này ngay'}`,
-          `Happening in your area right now — ${e.note ?? 'post something tied to it today'}`)
+          `Đang diễn ra ở khu vực tiệm — ${e.note ? viOf(e.note) : 'làm nội dung bám dịp này ngay'}`,
+          `Happening in your area right now — ${e.note ? enOf(e.note) : 'post something tied to it today'}`)
         : bi(
           `Còn ${e.daysAway} ngày ở khu vực tiệm. Nội dung phải lên trước dịp, không phải đúng hôm đó`,
           `${e.daysAway} days out in your area. The post has to go up before the day, not on it`),

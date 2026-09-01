@@ -1303,7 +1303,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         city: ctx.region.city,
         services: ctx.signals.services.map((s) => ({ name: s.name, count: s.count })),
         keywords: ctx.signals.keywords.map((k) => ({ keyword: k.keyword, count: k.count })),
-        events: ctx.events.map((e) => ({ name: viOf(e.name), daysAway: e.daysAway, note: viOf(e.note) })),
+        events: ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway, note: e.note })),
       }),
       offer: ctx.revenue.advice,
       // Who the salon's customers actually are, and the arithmetic behind any

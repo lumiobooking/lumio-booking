@@ -22,6 +22,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
+import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial } from '../../../lib/image';
 
 interface Idea {
@@ -383,7 +384,7 @@ function SpecRow({ k, vi, children }: { k: string; vi: boolean; children: React.
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
   const T = (v: string, e: string) => (vi ? v : e);
@@ -700,6 +701,31 @@ function Inner() {
     setPostDraft({
       channels: ['facebook'],
       message: [idea.caption, idea.hashtags].filter(Boolean).join('\n\n'),
+      media: [],
+      at: local,
+    });
+    setTab('queue');
+  }
+
+  /**
+   * Open the composer from a trend card.
+   *
+   * The caption STARTS from the trend, it is not the trend: the title becomes
+   * the first line to rewrite in the salon's own words, and a hashtag that
+   * surfaced the item comes along because it is what made it findable. The
+   * source link is deliberately not put in the message — a salon's post that
+   * links to someone else's video is a post for someone else.
+   */
+  function postFromTrend(card: TrendCard) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(10, 0, 0, 0);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    const tag = card.via && card.via.startsWith('#') ? card.via : '';
+    setPostWhen('later');
+    setPostDraft({
+      channels: ['facebook'],
+      message: [card.title, tag].filter(Boolean).join('\n\n'),
       media: [],
       at: local,
     });
@@ -1916,114 +1942,14 @@ function Inner() {
             </>
           )}
           {tab === 'trends' && (
-            <>
-              {/* ---- trend sources ----
-                   Deep links into the real tools, filtered to this salon's country,
-                   state and trade. Never a link to an individual clip: a fabricated
-                   video URL costs the salon a click and costs this screen its
-                   credibility. Human-picked clips arrive as trend notes above. */}
-              {!!plan?.trends?.weekly?.length && (
-                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-                    📈 {T('Xu hướng đang chạy', 'What is trending')}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
-                    {plan.trends.regionKnown
-                      ? T('Đã lọc sẵn theo ngành và khu vực của tiệm. Mở ra là thấy số liệu hôm nay.',
-                          'Pre-filtered to your trade and area. Live data, not a snapshot.')
-                      : T('Đang lọc theo cả nước vì chưa biết tiệm ở bang nào.',
-                          'Filtered nationwide — we do not know the state yet.')}
-                  </div>
-
-                  {([['weekly', T('Tuần này', 'This week')], ['monthly', T('Tháng này', 'This month')]] as const).map(([bucket, label]) => (
-                    <div key={bucket} style={{ marginTop: 10 }}>
-                      <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>{label}</div>
-                      {plan.trends[bucket].map((l) => (
-                        <a
-                          key={l.key}
-                          href={l.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: 'block', textDecoration: 'none', padding: '9px 11px', marginBottom: 7,
-                            borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
-                          }}
-                        >
-                          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ca5b4fc)' }}>{l.title} ↗</div>
-                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
-                          <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
-                            <strong style={{ color: '#22c55e' }}>{T('Làm gì', 'Do this')}:</strong> {l.how}
-                          </div>
-
-                          {/* Concrete things to search for on that page. Note the
-                              wording: these are instructions, never claims that a
-                              thing IS trending — the tool on the other end of the link
-                              is what decides that, not us. The badge says where each
-                              one came from, so nobody mistakes a trade default for a
-                              reading of this salon's own numbers. */}
-                          {!!l.topics?.length && (
-                            <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px dashed var(--c334155)' }}>
-                              <div style={{ fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 4 }}>
-                                {T('Tìm những chủ đề này', 'Search for these')}
-                              </div>
-                              {l.topics.map((t, i) => (
-                                <div key={i} style={{ marginBottom: i < l.topics!.length - 1 ? 5 : 0 }}>
-                                  <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                                    <span>• {t.label}</span>
-                                    <span style={{
-                                      fontSize: 10, padding: '1px 6px', borderRadius: 20,
-                                      background: t.from === 'salon' ? 'var(--c14532d)' : t.from === 'region' ? 'var(--c451a03)' : 'var(--c1e293b)',
-                                      color: t.from === 'salon' ? 'var(--cbbf7d0)' : t.from === 'region' ? 'var(--cfde68a)' : 'var(--c94a3b8)',
-                                    }}>
-                                      {t.from === 'salon' ? T('số của tiệm', 'your data')
-                                        : t.from === 'region' ? T('khu vực', 'local')
-                                        : T('kinh nghiệm ngành', 'trade')}
-                                    </span>
-                                  </div>
-                                  <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45, paddingLeft: 11 }}>{t.why}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </a>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* ---- clip and product feeds ----
-                   Hashtag pages and sales rankings, never a link to one specific clip:
-                   a specific clip would have to be invented, and would be dead within a
-                   week even if it were not. These pages compute the answer themselves,
-                   every time they are opened. */}
-              {(!!plan?.videoFeeds?.length || !!plan?.productWatch?.length) && (
-                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
-                    🎥 {T('Clip & sản phẩm đang chạy trong ngành', 'Clips & products in your trade')}
-                  </div>
-                  {[
-                    [T('Xem clip đang lên', 'Trending clips'), plan?.videoFeeds ?? []] as const,
-                    [T('Sản phẩm đang bán chạy', 'Products selling now'), plan?.productWatch ?? []] as const,
-                  ].filter(([, rows]) => rows.length).map(([label, rows]) => (
-                    <div key={label} style={{ marginTop: 8 }}>
-                      <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>{label}</div>
-                      {rows.map((l) => (
-                        <a key={l.key} href={l.url} target="_blank" rel="noopener noreferrer" style={{
-                          display: 'block', textDecoration: 'none', padding: '9px 11px', marginBottom: 7,
-                          borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c1e293b)',
-                        }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ca5b4fc)' }}>{l.title} ↗</div>
-                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{l.what}</div>
-                          <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 4 }}>
-                            <strong style={{ color: '#22c55e' }}>{T('Nên làm theo', 'Copy this')}:</strong> {l.how}
-                          </div>
-                        </a>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+            <TrendsTab
+              token={token}
+              vi={vi}
+              isMobile={isMobile}
+              extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
+              canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
+              onMakePost={postFromTrend}
+            />
           )}
           {tab === 'audience' && (
             <>

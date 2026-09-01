@@ -29,13 +29,13 @@ function leaves(v: unknown, path = '', out: { path: string; value: unknown }[] =
 const VIETNAMESE = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]/;
 
 describe('the plan renders whole in either language', () => {
-  const stage = pickStage({ reviewCount: 3, postedLast30: 1, lapsedCount: 40, customerCount: 120, hasQuietSlot: true });
+  const stage = pickStage({ reviewCount: 3, postedLast30: 1, lapsedCount: 40, customerCount: 120, hasQuietSlot: true, marginKnown: false, attributedBookings: 0 });
   const events = regionEvents(new Date('2026-09-01T12:00:00Z'), { market: 'US', city: 'Austin', region: 'TX' }, { horizonDays: 60 }).events;
   const identity = resolveIdentity({
     tenantName: 'Lumio Agency', industry: 'SERVICE', website: 'https://lumioagency.com',
     serviceNames: ['a', 'b', 'c'],
   });
-  const loc = resolveShopLocation({ city: 'Austin', region: 'TX' });
+  const loc = resolveShopLocation({ market: 'US', tenantCity: 'Austin', tenantRegion: 'TX' });
   const week = buildWeekPlan({
     industry: 'SALON', todayWeekday: 2, loads: [], events, stage, dataThin: true,
   } as unknown as Parameters<typeof buildWeekPlan>[0]);

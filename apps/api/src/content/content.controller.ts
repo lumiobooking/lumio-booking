@@ -4,6 +4,7 @@ import { ContentService } from './content.service';
 import { ContentChatService } from './content-chat.service';
 import { SocialPublishService } from './social-publish.service';
 import { ContentAdminService } from './content-admin.service';
+import { TrendFeedService } from './trends/trend-feed.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -25,6 +26,7 @@ export class ContentController {
     private readonly svc: ContentService,
     private readonly chat: ContentChatService,
     private readonly publisher: SocialPublishService,
+    private readonly trends: TrendFeedService,
   ) {}
 
   // ---- scheduled posting to the salon's OWN Page and Instagram -------------
@@ -81,6 +83,22 @@ export class ContentController {
   @Get('today')
   today(@CurrentUser() user: AuthenticatedUser, @Query('date') date?: string) {
     return this.svc.forSalon(user, date);
+  }
+
+  // ---- what is trending in the trade ---------------------------------------
+  // Shared rows (YouTube, Google) are the trade's, not anyone's; the Instagram
+  // row and the service/event overlay are this tenant's and read only for it.
+
+  /** Today's trend feed for this salon's trade and market, in both languages. */
+  @Get('trends')
+  trendFeed(@CurrentUser() user: AuthenticatedUser) {
+    return this.trends.feedFor(user);
+  }
+
+  /** Pull again now. Each feed refuses to re-pull within a day, so this is cheap to expose. */
+  @Post('trends/refresh')
+  refreshTrends(@CurrentUser() user: AuthenticatedUser) {
+    return this.trends.refreshFor(user);
   }
 
   /** Upcoming events + the discount advice, computed from this salon's book. */

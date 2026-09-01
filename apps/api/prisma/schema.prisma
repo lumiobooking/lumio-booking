@@ -307,6 +307,7 @@ model Tenant {
   contentIdeas         ContentIdea[]
   contentWeeks         ContentWeek[]
   scheduledPosts       ScheduledPost[]
+  trendSnapshots       TrendSnapshot[]
   contentMessages      ContentMessage[]
   contentThreads       ContentThread[]
   voiceCalls           VoiceCall[]
@@ -2942,4 +2943,30 @@ model ScheduledPost {
   @@index([tenantId, status, scheduledAt])
   @@index([status, scheduledAt])
   @@map("scheduled_posts")
+}
+
+/// What is trending in a trade, pulled once a day and shared.
+///
+/// One row per (scope, source, tenant). `scope` is "INDUSTRY:MARKET"; the
+/// YouTube and Google rows carry no tenant because they describe the trade,
+/// not a business. Instagram rows are per tenant: hashtag search runs as that
+/// tenant's own connected account, so its answer is its own.
+model TrendSnapshot {
+  id        String   @id @default(uuid())
+  /// "scope:source:tenantId" or "scope:source:shared". The unique handle,
+  /// because a nullable column cannot be part of a Prisma compound unique.
+  key       String   @unique
+  scope     String
+  source    String
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items     Json     @default("[]")
+  fetchedAt DateTime?
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([scope, source])
+  @@map("trend_snapshots")
 }

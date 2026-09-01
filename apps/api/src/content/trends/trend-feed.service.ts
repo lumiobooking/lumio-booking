@@ -1,0 +1,358 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ContentService } from '../content.service';
+import { AuthenticatedUser, resolveTenantScope } from '../../common/tenant/tenant-context';
+import { localizeDeep, bi, type Txt } from '../i18n';
+import { trendLinks } from '../trend-sources';
+import {
+  queriesFor, scopeOf, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends,
+  rankItems, diversify, overlay, overlayQueries, needsRefresh, STALE_AFTER_HOURS,
+  type TrendItem, type RisingQuery, type TrendSource,
+} from './trend-feed';
+
+const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
+const YT = 'https://www.googleapis.com/youtube/v3';
+const DFS = 'https://api.dataforseo.com/v3';
+
+/** One stored pull: (scope, source, tenant) → items. */
+interface SnapshotRow {
+  id: string;
+  scope: string;
+  source: TrendSource;
+  tenantId: string | null;
+  items: unknown;
+  fetchedAt: Date | null;
+  error: string | null;
+}
+
+/**
+ * Pulls the trend feeds and serves them to salons — the half that talks to
+ * the network and the database. Every rule about WHAT comes back is in
+ * ./trend-feed.ts, where it can be tested with a fixture.
+ *
+ * TENANT ISOLATION
+ *
+ * Shared rows (YouTube, Google) have no tenant: they are about the trade, not
+ * about anyone's business, and every salon in the same trade and market reads
+ * the same one. Instagram rows are per tenant and are fetched with THAT
+ * tenant's own connected account; the read path filters them by the tenant on
+ * the JWT, and a tenant's row is never read on another's behalf.
+ *
+ * KEYS
+ *
+ * Each feed switches itself off when its key is missing, and says so in the
+ * payload, so a deployment without a YouTube key shows "not configured" in
+ * the right place rather than an empty screen with no explanation.
+ */
+@Injectable()
+export class TrendFeedService {
+  private readonly log = new Logger(TrendFeedService.name);
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly content: ContentService,
+  ) {}
+
+  /** Loose access: the model exists on deploy but not in the local client. */
+  private get rows() {
+    return (this.prisma as unknown as Record<string, {
+      findMany: (a: unknown) => Promise<unknown>;
+      findFirst: (a: unknown) => Promise<unknown>;
+      upsert: (a: unknown) => Promise<unknown>;
+    }>).trendSnapshot;
+  }
+
+  private get youtubeKey() { return process.env.YOUTUBE_API_KEY || ''; }
+  private get dfsAuth() {
+    const login = process.env.DATAFORSEO_LOGIN || '';
+    const pass = process.env.DATAFORSEO_PASSWORD || '';
+    return login && pass ? Buffer.from(`${login}:${pass}`).toString('base64') : '';
+  }
+
+  // ---- storage ---------------------------------------------------------------
+
+  /** The unique handle: shared rows say so instead of carrying a null. */
+  private keyOf(scope: string, source: TrendSource, tenantId: string | null) {
+    return `${scope}:${source}:${tenantId ?? 'shared'}`;
+  }
+
+  private async read(scope: string, source: TrendSource, tenantId: string | null): Promise<SnapshotRow | null> {
+    return await this.rows?.findFirst({ where: { key: this.keyOf(scope, source, tenantId) } }).catch(() => null) as SnapshotRow | null;
+  }
+
+  private async write(scope: string, source: TrendSource, tenantId: string | null, items: unknown[] | null, error: string | null) {
+    // A failed pull keeps yesterday's items and records the error beside them:
+    // a screen that shows last night's trends with a warning is better than one
+    // that goes blank because a quota ran out at 6am.
+    const data = error
+      ? { error: error.slice(0, 400) }
+      : { items: items as never, fetchedAt: new Date(), error: null };
+    await this.rows?.upsert({
+      where: { key: this.keyOf(scope, source, tenantId) },
+      create: { key: this.keyOf(scope, source, tenantId), scope, source, tenantId, items: (items ?? []) as never, fetchedAt: error ? null : new Date(), error: error ? error.slice(0, 400) : null },
+      update: data,
+    }).catch((e: unknown) => this.log.warn(`snapshot write failed ${scope}/${source}: ${String(e).slice(0, 120)}`));
+  }
+
+  // ---- the pulls -------------------------------------------------------------
+
+  private async getJson(url: string, init: RequestInit = {}, timeoutMs = 15_000): Promise<{ ok: boolean; status: number; body: unknown }> {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    const body = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, body };
+  }
+
+  /** YouTube: last week's videos for each trade query, by views, with stats. */
+  async pullYouTube(scope: string): Promise<TrendItem[]> {
+    const key = this.youtubeKey;
+    if (!key) throw new Error('not_configured');
+    const [industry, market] = scope.split(':');
+    const q = queriesFor(industry);
+    const codes = marketCodes(market);
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const all: TrendItem[] = [];
+    for (const term of q.youtube) {
+      const s = await this.getJson(
+        `${YT}/search?part=id&type=video&maxResults=10&order=viewCount&regionCode=${codes.region}`
+        + `&relevanceLanguage=${codes.lang}&publishedAfter=${encodeURIComponent(since)}&q=${encodeURIComponent(term)}&key=${key}`,
+      );
+      if (!s.ok) throw new Error(`youtube search ${s.status}: ${JSON.stringify(s.body).slice(0, 160)}`);
+      const ids = ((s.body as { items?: { id?: { videoId?: string } }[] })?.items ?? [])
+        .map((i) => i.id?.videoId).filter((x): x is string => Boolean(x));
+      if (!ids.length) continue;
+      const v = await this.getJson(`${YT}/videos?part=snippet,statistics,contentDetails&id=${ids.join(',')}&key=${key}`);
+      if (!v.ok) throw new Error(`youtube videos ${v.status}`);
+      all.push(...parseYouTube((v.body as { items?: unknown })?.items, term));
+    }
+    return all;
+  }
+
+  /** Google Trends via DataForSEO: what is rising around the trade's seed terms. */
+  async pullGoogle(scope: string): Promise<RisingQuery[]> {
+    const auth = this.dfsAuth;
+    if (!auth) throw new Error('not_configured');
+    const [industry, market] = scope.split(':');
+    const q = queriesFor(industry);
+    const codes = marketCodes(market);
+    const to = new Date();
+    const from = new Date(to.getTime() - 30 * 86_400_000);
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    const body = q.google.map((keyword) => ({
+      keywords: [keyword],
+      location_code: codes.dataforseoLocation,
+      language_code: codes.lang,
+      date_from: day(from),
+      date_to: day(to),
+      type: 'web',
+      item_types: ['google_trends_queries_list'],
+    }));
+    const r = await this.getJson(`${DFS}/keywords_data/google_trends/explore/live`, {
+      method: 'POST',
+      headers: { authorization: `Basic ${auth}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }, 30_000);
+    if (!r.ok) throw new Error(`dataforseo ${r.status}`);
+    const tasks = ((r.body as { tasks?: { status_code?: number; result?: unknown[] }[] })?.tasks ?? []);
+    const out: RisingQuery[] = [];
+    for (const t of tasks) {
+      if (t.status_code !== 20000) continue;
+      for (const res of t.result ?? []) out.push(...parseGoogleTrends(res));
+    }
+    return out;
+  }
+
+  /** Instagram: top media on the trade's hashtags, as THIS tenant's connected account. */
+  async pullInstagram(tenantId: string, scope: string): Promise<TrendItem[]> {
+    const pg = await this.prisma.messengerPage.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'asc' },
+      select: { igId: true, pageToken: true },
+    }).catch(() => null);
+    if (!pg?.igId || !pg.pageToken) throw new Error('not_connected');
+    const [industry] = scope.split(':');
+    const q = queriesFor(industry);
+    const all: TrendItem[] = [];
+    for (const tag of q.hashtags) {
+      const s = await this.getJson(
+        `${GRAPH}/ig_hashtag_search?user_id=${encodeURIComponent(pg.igId)}&q=${encodeURIComponent(tag)}&access_token=${encodeURIComponent(pg.pageToken)}`,
+      );
+      const hid = (s.body as { data?: { id?: string }[] })?.data?.[0]?.id;
+      if (!s.ok || !hid) {
+        const msg = (s.body as { error?: { message?: string } })?.error?.message ?? `hashtag search ${s.status}`;
+        throw new Error(msg);
+      }
+      const m = await this.getJson(
+        `${GRAPH}/${hid}/top_media?user_id=${encodeURIComponent(pg.igId)}`
+        + `&fields=id,media_type,media_url,thumbnail_url,permalink,like_count,caption,timestamp&limit=15`
+        + `&access_token=${encodeURIComponent(pg.pageToken)}`,
+      );
+      if (!m.ok) {
+        const msg = (m.body as { error?: { message?: string } })?.error?.message ?? `top_media ${m.status}`;
+        throw new Error(msg);
+      }
+      all.push(...parseInstagram((m.body as { data?: unknown })?.data, tag));
+    }
+    return all;
+  }
+
+  // ---- the daily job ---------------------------------------------------------
+
+  /** Refresh one shared scope's feeds, each only when older than a day. */
+  async refreshShared(scope: string): Promise<{ youtube: boolean; google: boolean }> {
+    const out = { youtube: false, google: false };
+    const yt = await this.read(scope, 'youtube', null);
+    if (needsRefresh(yt?.fetchedAt)) {
+      try {
+        const items = await this.pullYouTube(scope);
+        await this.write(scope, 'youtube', null, items, null);
+        out.youtube = true;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg !== 'not_configured') this.log.warn(`youtube ${scope}: ${msg.slice(0, 160)}`);
+        await this.write(scope, 'youtube', null, null, msg);
+      }
+    }
+    const g = await this.read(scope, 'google', null);
+    if (needsRefresh(g?.fetchedAt)) {
+      try {
+        const items = await this.pullGoogle(scope);
+        await this.write(scope, 'google', null, items, null);
+        out.google = true;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg !== 'not_configured') this.log.warn(`google trends ${scope}: ${msg.slice(0, 160)}`);
+        await this.write(scope, 'google', null, null, msg);
+      }
+    }
+    return out;
+  }
+
+  /** Refresh one tenant's Instagram feed, only when older than a day. */
+  async refreshInstagram(tenantId: string, scope: string): Promise<boolean> {
+    const cur = await this.read(scope, 'instagram', tenantId);
+    if (!needsRefresh(cur?.fetchedAt)) return false;
+    try {
+      const items = await this.pullInstagram(tenantId, scope);
+      await this.write(scope, 'instagram', tenantId, items, null);
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg !== 'not_connected') this.log.warn(`instagram ${tenantId}: ${msg.slice(0, 160)}`);
+      await this.write(scope, 'instagram', tenantId, null, msg);
+      return false;
+    }
+  }
+
+  /**
+   * Called from the hourly planner tick. Idempotent: every pull checks its
+   * own age first, so an extra tick after a Render restart costs a few reads
+   * and no API calls.
+   */
+  async refreshAll(): Promise<{ scopes: number; pulls: number; instagram: number }> {
+    const tenants = await this.prisma.tenant.findMany({
+      where: { status: 'ACTIVE', deletedAt: null } as never,
+      select: { id: true, businessType: true, market: true } as never,
+      take: 500,
+    }).catch(() => []) as { id: string; businessType?: string | null; market?: string | null }[];
+    const scopes = new Map<string, string[]>();
+    for (const t of tenants) {
+      const s = scopeOf(t.businessType, t.market);
+      scopes.set(s, [...(scopes.get(s) ?? []), t.id]);
+    }
+    let pulls = 0; let instagram = 0;
+    for (const [scope, ids] of scopes) {
+      const r = await this.refreshShared(scope).catch(() => ({ youtube: false, google: false }));
+      pulls += Number(r.youtube) + Number(r.google);
+      for (const id of ids) {
+        if (await this.refreshInstagram(id, scope).catch(() => false)) instagram += 1;
+      }
+    }
+    return { scopes: scopes.size, pulls, instagram };
+  }
+
+  // ---- what the salon reads --------------------------------------------------
+
+  /** A refresh the support team can press, capped to one real pull per day per feed. */
+  async refreshFor(user: AuthenticatedUser) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return { ok: false };
+    const ctx = await this.content.gather(tenantId);
+    const scope = scopeOf(ctx.industry, ctx.region.market);
+    await this.refreshShared(scope);
+    await this.refreshInstagram(tenantId, scope);
+    return { ok: true };
+  }
+
+  async feedFor(user: AuthenticatedUser) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return null;
+    const ctx = await this.content.gather(tenantId);
+    const scope = scopeOf(ctx.industry, ctx.region.market);
+
+    const [yt, g, ig] = await Promise.all([
+      this.read(scope, 'youtube', null),
+      this.read(scope, 'google', null),
+      this.read(scope, 'instagram', tenantId),
+    ]);
+    const now = new Date();
+    const items = (r: SnapshotRow | null) => (Array.isArray(r?.items) ? (r!.items as TrendItem[]) : []);
+    const ranked = diversify(rankItems([...items(yt), ...items(ig)]), 4, 12);
+
+    // The overlay: what THIS salon sells, and what its state is walking into.
+    const services = ctx.signals.services.map((s) => s.name);
+    const events = ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway }));
+    const cards = overlay(ranked, { services, events });
+    const rising = overlayQueries(Array.isArray(g?.items) ? (g!.items as RisingQuery[]) : [], services).slice(0, 10);
+
+    // The team's hand-picked notes: the layer a person wrote.
+    const notes = await this.prisma.trendNote.findMany({
+      where: { industry: ctx.industry, active: true, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      orderBy: { createdAt: 'desc' }, take: 4,
+    }).catch(() => []) as { id: string; title: string; body: string; region: string | null; createdAt: Date }[];
+    const picks = notes
+      .filter((n) => !n.region || [ctx.region.region, ctx.region.city].filter(Boolean).some((r) => String(r).toLowerCase() === n.region!.toLowerCase()))
+      .map((n) => ({ id: n.id, title: n.title, body: n.body, at: n.createdAt }));
+
+    const ageHours = (r: SnapshotRow | null) => (r?.fetchedAt ? (now.getTime() - new Date(r.fetchedAt).getTime()) / 3_600_000 : null);
+    const state = (r: SnapshotRow | null, configured: boolean): { configured: boolean; fetchedAt: Date | null; stale: boolean; error: Txt | null } => ({
+      configured,
+      fetchedAt: r?.fetchedAt ?? null,
+      stale: (ageHours(r) ?? Infinity) > STALE_AFTER_HOURS,
+      error: r?.error && r.error !== 'not_configured' && r.error !== 'not_connected'
+        ? bi(`Lần kéo gần nhất lỗi: ${r.error}`, `Last pull failed: ${r.error}`)
+        : null,
+    });
+    const igConnected = Boolean(await this.prisma.messengerPage.findFirst({
+      where: { tenantId, igId: { not: null } }, select: { id: true },
+    }).catch(() => null));
+
+    const newest = [yt, g, ig].map((r) => r?.fetchedAt).filter(Boolean).map((d) => new Date(d as Date).getTime());
+    const fetchedAt = newest.length ? new Date(Math.max(...newest)) : null;
+
+    const payload = {
+      scope,
+      fetchedAt,
+      stale: fetchedAt ? (now.getTime() - fetchedAt.getTime()) / 3_600_000 > STALE_AFTER_HOURS : true,
+      regionLabel: ctx.region.label,
+      items: cards,
+      rising,
+      picks,
+      sources: {
+        youtube: state(yt, Boolean(this.youtubeKey)),
+        google: state(g, Boolean(this.dfsAuth)),
+        instagram: { ...state(ig, igConnected), connected: igConnected },
+      },
+      // The old link list, kept as the third layer: where to go and look for
+      // yourself, with the salon's own topics shown once.
+      links: trendLinks({
+        industry: ctx.industry,
+        market: ctx.region.market,
+        region: ctx.region.region,
+        city: ctx.region.city,
+        services: ctx.signals.services.map((s) => ({ name: s.name, count: s.count })),
+        keywords: ctx.signals.keywords.map((k) => ({ keyword: k.keyword, count: k.count })),
+        events: ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway, note: e.note })),
+      }),
+    };
+    return { ...localizeDeep(payload, 'vi'), en: localizeDeep(payload, 'en') };
+  }
+}

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ContentService } from './content.service';
 import { SocialPublishService } from './social-publish.service';
+import { TrendFeedService } from './trends/trend-feed.service';
 
 /**
  * Drafts tomorrow's ideas while the salons sleep.
@@ -33,6 +34,7 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly content: ContentService,
     private readonly publisher: SocialPublishService,
+    private readonly trends: TrendFeedService,
   ) {}
 
   onModuleInit() {
@@ -107,6 +109,11 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // that holds only what is still waiting to publish.
       const m = await this.publisher.purgeOldMedia().catch(() => ({ files: 0, posts: 0 }));
       if (m.files) this.logger.log(`Media retention: ${m.files} file(s) removed from storage.`);
+      // What is trending in each trade, once a day per trade and market. Each
+      // pull checks its own age first, so the hourly tick costs nothing on the
+      // 23 hours it has nothing to do.
+      const tr = await this.trends.refreshAll().catch(() => ({ scopes: 0, pulls: 0, instagram: 0 }));
+      if (tr.pulls || tr.instagram) this.logger.log(`Trends refreshed: ${tr.pulls} shared feed(s), ${tr.instagram} Instagram account(s).`);
     } catch (e) {
       this.logger.warn(`planner tick failed: ${String(e).slice(0, 160)}`);
     } finally {

@@ -240,11 +240,23 @@ describe('taking a post off the calendar for good', () => {
     expect(q.filter((x) => x.op === 'deleteMany')).toHaveLength(0);
   });
 
-  it('removes an ALREADY PUBLISHED post, and reports that it was published', async () => {
-    // The calendar is unusable after a month if nothing can leave it. The flag
-    // is what lets the caller say the one thing that is easy to get wrong.
-    const r = await svc([], rowOf('posted')).remove(user('T1'), 'p1');
-    expect(r).toEqual({ ok: true, wasPosted: true });
+  it('REFUSES to delete a post that has already gone out', async () => {
+    // Once live, the row stops being a plan and becomes the answer to "what did
+    // we actually publish?" — it carries the publish time and the links, and the
+    // weekly results count it. Delete it and the week's record quietly shrinks.
+    // And deleting it would not remove the post from Facebook anyway.
+    const q: Query[] = [];
+    await expect(svc(q, rowOf('posted')).remove(user('T1'), 'p1'))
+      .rejects.toThrow(/không xoá được/);
+    expect(q.filter((x) => x.op === 'deleteMany')).toHaveLength(0);
+  });
+
+  it('tells the salon where the two real options are', async () => {
+    // "No" on its own is where a support ticket comes from.
+    await expect(svc([], rowOf('posted')).remove(user('T1'), 'p1'))
+      .rejects.toThrow(/xoá trực tiếp trên Facebook\/Instagram/);
+    await expect(svc([], rowOf('posted')).remove(user('T1'), 'p1'))
+      .rejects.toThrow(/Hiện bài đã đăng/);
   });
 
   it('refuses to delete a post that is mid-flight', async () => {

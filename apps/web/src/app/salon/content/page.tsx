@@ -411,6 +411,7 @@ function Inner() {
   // Three views over one queue: a list reads, a calendar plans, a grid judges.
   const [view, setView] = useState<'calendar' | 'grid' | 'list'>('calendar');
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [showPosted, setShowPosted] = useState(true);
   const [postErr, setPostErr] = useState<string | null>(null);
   /**
    * How many queued posts need a human.
@@ -567,12 +568,11 @@ function Inner() {
   async function removePost(id: string) {
     if (queueBusy) return;
     const p = queue?.posts.find((x) => x.id === id);
-    const msg = p?.status === 'posted'
-      ? T('Xoá bài này khỏi lịch của Lumio?\n\nBài trên Facebook/Instagram VẪN CÒN — muốn gỡ hẳn thì phải xoá trực tiếp trên trang đó.',
-          'Remove this from Lumio’s calendar?\n\nThe post STAYS UP on Facebook/Instagram — to take it down you must delete it there.')
-      : T('Xoá hẳn bài này khỏi lịch? Không khôi phục lại được.',
-          'Delete this post from the calendar? This cannot be undone.');
-    if (!window.confirm(msg)) return;
+    // The server refuses this too. Stopping here keeps the salon from meeting an
+    // error message for something the screen should never have offered.
+    if (p?.status === 'posted') return;
+    if (!window.confirm(T('Xoá hẳn bài này khỏi lịch? Không khôi phục lại được.',
+                          'Delete this post from the calendar? This cannot be undone.'))) return;
     setQueueBusy(true); setPostErr(null);
     try {
       await apiFetch(`/content/posts/${id}/remove`, { method: 'DELETE', token });
@@ -2430,24 +2430,27 @@ function Inner() {
                           </a>
                         ))}
 
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {/* Always available, published or not — the calendar
-                              is unusable after a month if nothing can leave it. */}
-                          <button
-                            onClick={() => removePost(live.id)}
-                            disabled={queueBusy}
-                            style={{
-                              minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
-                              border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontWeight: 600,
-                            }}
-                          >
-                            🗑 {live.status === 'posted' ? T('Xoá khỏi lịch', 'Remove from calendar') : T('Xoá bài', 'Delete')}
-                          </button>
-                        </div>
-                        {live.status === 'posted' && (
-                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 6 }}>
-                            {T('Xoá ở đây chỉ gỡ khỏi lịch Lumio. Bài trên Facebook/Instagram vẫn còn.',
-                               'Removing here only clears Lumio’s calendar. The post stays up on Facebook/Instagram.')}
+                        {/* A published row is the record of what really went up:
+                            it carries the publish time and the links, and the
+                            weekly results count it. It is not deletable, so no
+                            button pretends otherwise. */}
+                        {live.status === 'posted' ? (
+                          <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
+                            {T('Bài đã đăng được giữ lại làm sổ ghi — không xoá được ở đây. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
+                               'Published posts are kept as the record and cannot be deleted here. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => removePost(live.id)}
+                              disabled={queueBusy}
+                              style={{
+                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
+                                border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontWeight: 600,
+                              }}
+                            >
+                              🗑 {T('Xoá bài', 'Delete')}
+                            </button>
                           </div>
                         )}
                         {live.status !== 'posted' && (
@@ -2512,14 +2515,35 @@ function Inner() {
                   </div>
 
                   {view === 'calendar' && (
-                    <MonthCalendar
-                      posts={queue.posts}
-                      month={month}
-                      onMonth={setMonth}
-                      onPick={editPost}
-                      onDrop={movePost}
-                      vi={vi}
-                    />
+                    <>
+                      {/* Published posts are a record, not a queue item — they
+                          cannot be deleted, so the only way to keep a busy month
+                          readable is to stop drawing them. */}
+                      <label style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: 10,
+                        fontSize: 12.5, color: 'var(--c94a3b8)', cursor: 'pointer',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={showPosted}
+                          onChange={(e) => setShowPosted(e.target.checked)}
+                          style={{ width: 16, height: 16, accentColor: '#6366f1' }}
+                        />
+                        {T('Hiện bài đã đăng', 'Show published posts')}
+                        <span style={{ color: 'var(--c64748b)' }}>
+                          ({queue.posts.filter((p) => p.status === 'posted').length})
+                        </span>
+                      </label>
+                      <MonthCalendar
+                        posts={showPosted ? queue.posts : queue.posts.filter((p) => p.status !== 'posted')}
+                        month={month}
+                        onMonth={setMonth}
+                        onPick={editPost}
+                        onDrop={movePost}
+                        onDelete={removePost}
+                        vi={vi}
+                      />
+                    </>
                   )}
                   {view === 'grid' && (
                     <IgGrid
@@ -2647,15 +2671,10 @@ function Inner() {
                       </a>
                     ))}
 
-                    {!open && (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                        <button
-                          onClick={() => removePost(p.id)}
-                          disabled={queueBusy}
-                          style={{ minHeight: 36, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c64748b)', fontSize: 12.5 }}
-                        >
-                          🗑 {T('Xoá khỏi lịch', 'Remove from calendar')}
-                        </button>
+                    {p.status === 'posted' && (
+                      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
+                        {T('Giữ lại làm sổ ghi — bài đã đăng không xoá được ở đây.',
+                           'Kept as the record — a published post cannot be deleted here.')}
                       </div>
                     )}
                     {open && (

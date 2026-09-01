@@ -333,26 +333,40 @@ export class SocialPublishService {
   }
 
   /**
-   * Take a post off the calendar for good.
+   * Take a post off the calendar — only if it never went out.
    *
-   * WHAT THIS DOES NOT DO, AND WHY IT MATTERS
+   * A PUBLISHED POST IS A RECORD, NOT A QUEUE ITEM
    *
-   * For a post that has already published, this deletes LUMIO'S RECORD of it.
-   * The post itself stays on Facebook or Instagram. Those are two different
-   * things and conflating them is the expensive mistake here: a salon that
-   * believes "delete" removed an offer from their Page will not go and remove
-   * it, and the offer keeps running. The screen says so in as many words before
-   * the press, and this method will not pretend otherwise.
+   * I first allowed deleting these and was wrong. Once a post is live it stops
+   * being a plan and becomes the answer to "what did we actually publish?" —
+   * the row carries the time it went out and the links to the real posts, and it
+   * is what the weekly results read to say how many pieces went up with a link
+   * anyone can open. Delete it and the week's record quietly shrinks.
    *
-   * Deleting the row rather than hiding it is deliberate. A cancelled post that
-   * lingers greyed-out is clutter a month of planning cannot afford, and there
-   * is nothing in a post nobody sent that anybody comes back for.
+   * There is also the trap underneath: deleting the row would NOT delete the
+   * post on Facebook. A salon that believes "delete" pulled an offer down will
+   * not go and pull it down, and the offer keeps running. Refusing outright is a
+   * better answer than a warning nobody reads.
+   *
+   * The clutter this was meant to solve is handled where it belongs — the
+   * calendar can hide published posts from view without erasing them.
+   *
+   * For everything else — draft, scheduled, failed, expired, cancelled — the row
+   * is deleted rather than hidden. There is nothing in a post nobody sent that
+   * anybody comes back for.
    */
   async remove(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     const row = await this.posts?.findFirst({ where: { id, tenantId }, select: { id: true, status: true } })
       .catch(() => null) as { id: string; status: string } | null;
     if (!row) throw new NotFoundException('Không tìm thấy bài này.');
+    if (row.status === 'posted') {
+      throw new BadRequestException(
+        'Bài đã đăng thì không xoá được — đây là sổ ghi những gì thật sự đã lên trang. '
+        + 'Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram. '
+        + 'Muốn lịch gọn hơn thì tắt "Hiện bài đã đăng" ở lịch tháng.',
+      );
+    }
     // Mid-flight. Deleting the row now would leave a publish in progress with
     // nothing to write its result to, and possibly a live post nobody knows of.
     if (row.status === 'publishing') {
@@ -361,7 +375,7 @@ export class SocialPublishService {
     // Scoped by tenant in the filter as well as the lookup: two checks, because
     // this one is not reversible.
     await this.posts?.deleteMany({ where: { id, tenantId } });
-    return { ok: true, wasPosted: row.status === 'posted' };
+    return { ok: true };
   }
 
   /** Send one now. Also the call that satisfies Meta's API-test requirement. */

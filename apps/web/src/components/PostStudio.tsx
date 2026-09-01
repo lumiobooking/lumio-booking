@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { moveItem } from '../lib/reorder';
 
 /**
@@ -59,16 +59,33 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
  * with holes in the corners is harder to read than one with grey edges.
  */
 export function MonthCalendar({
-  posts, month, onMonth, onPick, onDrop, vi,
+  posts, month, onMonth, onPick, onDrop, onDelete, vi,
 }: {
   posts: StudioPost[];
   month: Date;
   onMonth: (d: Date) => void;
   onPick: (id: string) => void;
   onDrop: (id: string, day: Date) => void;
+  onDelete: (id: string) => void;
   vi: boolean;
 }) {
   const [over, setOver] = useState<string | null>(null);
+  /**
+   * The right-click menu, and its long-press twin.
+   *
+   * A published post is deliberately absent from it: that row is the record of
+   * what really went up, and the server refuses to delete it. Offering a menu
+   * item that always errors is worse than offering none.
+   */
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const press = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = () => setMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); };
+  }, [menu]);
   const T = (v: string, e: string) => (vi ? v : e);
 
   const days = useMemo(() => {
@@ -149,7 +166,22 @@ export function MonthCalendar({
                     e.dataTransfer.effectAllowed = 'move';
                   }}
                   onClick={() => onPick(p.id)}
-                  title={p.message.slice(0, 120)}
+                  onContextMenu={(e) => {
+                    if (p.status === 'posted') return; // let the browser menu through
+                    e.preventDefault();
+                    setMenu({ id: p.id, x: e.clientX, y: e.clientY });
+                  }}
+                  // Touch has no right-click. A long press is the same gesture.
+                  onTouchStart={(e) => {
+                    if (p.status === 'posted') return;
+                    const t = e.touches[0];
+                    press.current = setTimeout(() => setMenu({ id: p.id, x: t.clientX, y: t.clientY }), 500);
+                  }}
+                  onTouchEnd={() => { if (press.current) clearTimeout(press.current); }}
+                  onTouchMove={() => { if (press.current) clearTimeout(press.current); }}
+                  title={p.status === 'posted'
+                    ? `${T('Đã đăng', 'Published')} — ${p.message.slice(0, 100)}`
+                    : `${p.message.slice(0, 100)}\n${T('Chuột phải để xoá', 'Right-click to delete')}`}
                   style={{
                     marginTop: 3, padding: '3px 5px', borderRadius: 5, cursor: 'grab',
                     background: p.blockers.length ? 'var(--c451a03)' : p.status === 'posted' ? 'var(--c14532d)' : 'var(--c1e293b)',
@@ -165,9 +197,40 @@ export function MonthCalendar({
           );
         })}
       </div>
+
+      {menu && (
+        <div
+          style={{
+            position: 'fixed', left: Math.min(menu.x, (typeof window !== 'undefined' ? window.innerWidth : 1000) - 190),
+            top: menu.y, zIndex: 90, minWidth: 176, padding: 5, borderRadius: 10,
+            background: 'var(--c111827)', border: '1px solid var(--c334155)',
+            boxShadow: '0 12px 32px rgba(0,0,0,.45)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { onPick(menu.id); setMenu(null); }}
+            style={menuItem}
+          >
+            ✎ {T('Sửa bài', 'Edit post')}
+          </button>
+          <button
+            onClick={() => { onDelete(menu.id); setMenu(null); }}
+            style={{ ...menuItem, color: '#ef4444' }}
+          >
+            🗑 {T('Xoá bài này', 'Delete this post')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
+
+const menuItem: React.CSSProperties = {
+  display: 'block', width: '100%', textAlign: 'left', padding: '9px 11px',
+  borderRadius: 7, border: 'none', background: 'transparent',
+  color: 'var(--ce2e8f0)', fontSize: 13.5, cursor: 'pointer',
+};
 
 const navBtn: React.CSSProperties = {
   width: 32, height: 32, borderRadius: 8, cursor: 'pointer', fontSize: 16,

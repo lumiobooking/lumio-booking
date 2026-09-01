@@ -527,7 +527,10 @@ function Inner() {
   /** Open one queued post in the composer. */
   function editPost(id: string) {
     const p = queue?.posts.find((x) => x.id === id);
-    if (!p || p.status === 'posted') return;
+    // A published post opens too. The fields cannot be saved — the server
+    // refuses that — but the person clicking it wants to see where it went,
+    // and a click that does nothing at all reads as a broken calendar.
+    if (!p) return;
     setPostDraft({
       id: p.id, channels: p.channels, message: p.message, media: p.media,
       at: new Date(new Date(p.scheduledAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16),
@@ -2163,7 +2166,13 @@ function Inner() {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 14 }}>
+                  {/* Hidden once it has published: the server refuses the save,
+                      and a button whose only outcome is an error message is a
+                      button that should not be there. */}
+                  <div style={{
+                    display: postDraft.id && queue?.posts.find((x) => x.id === postDraft.id)?.status === 'posted' ? 'none' : 'flex',
+                    gap: 9, flexWrap: 'wrap', marginTop: 14,
+                  }}>
                     <button
                       onClick={() => savePost('scheduled')}
                       disabled={queueBusy || !postDraft.message.trim()}
@@ -2196,6 +2205,92 @@ function Inner() {
                       {T('Đóng', 'Close')}
                     </button>
                   </div>
+
+                  {/* ---- an existing post: its state, and what can be done to it ----
+                       "Post now" and "Cancel" used to live ONLY in the list view,
+                       so opening a post from the calendar or the grid gave you a
+                       composer with no way to send it. The composer is the one
+                       place every view leads to, so the actions belong here. */}
+                  {(() => {
+                    const live = postDraft.id ? queue?.posts.find((x) => x.id === postDraft.id) : null;
+                    if (!live) return null;
+                    const S: Record<string, { fg: string; text: string }> = {
+                      draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
+                      scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },
+                      publishing: { fg: '#f59e0b', text: T('Đang đăng', 'Publishing') },
+                      posted: { fg: '#22c55e', text: T('Đã đăng', 'Posted') },
+                      failed: { fg: '#ef4444', text: T('Lỗi', 'Failed') },
+                      expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
+                      cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
+                    };
+                    const st = S[live.status] ?? S.draft;
+                    return (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--c334155)' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Trạng thái', 'Status')}</span>
+                          <span style={{ fontSize: 11.5, padding: '2px 9px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg, fontWeight: 600 }}>
+                            {st.text}
+                          </span>
+                          {live.attempts > 0 && (
+                            <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                              {T('đã thử', 'tried')} {live.attempts}×
+                            </span>
+                          )}
+                        </div>
+
+                        {/* The reason, verbatim from Meta. Paraphrasing it would
+                            hide the one string that says what to fix. */}
+                        {!!live.blockers.length && (
+                          <div style={{ padding: '9px 11px', borderRadius: 8, marginBottom: 9, background: 'var(--c451a03)', border: '1px solid #f59e0b' }}>
+                            {live.blockers.map((b) => (
+                              <div key={b} style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {b}</div>
+                            ))}
+                          </div>
+                        )}
+                        {live.lastError && !live.blockers.length && (
+                          <div style={{ padding: '9px 11px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)' }}>
+                            <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', lineHeight: 1.55 }}>{live.lastError}</div>
+                          </div>
+                        )}
+
+                        {live.results.filter((r) => r.url).map((r) => (
+                          <a
+                            key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'inline-block', marginRight: 12, marginBottom: 8, fontSize: 12.5, color: 'var(--c60a5fa)' }}
+                          >
+                            🔗 {T('Xem trên', 'View on')} {r.channel === 'facebook' ? 'Facebook' : 'Instagram'}
+                          </a>
+                        ))}
+
+                        {live.status !== 'posted' && (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => postAction(live.id, 'publish')}
+                              disabled={queueBusy || live.blockers.length > 0}
+                              style={{
+                                minHeight: 42, padding: '0 18px', borderRadius: 9, fontSize: 13.5, fontWeight: 700,
+                                cursor: live.blockers.length ? 'not-allowed' : 'pointer', border: 'none',
+                                background: live.blockers.length ? 'var(--c334155)' : '#6366f1',
+                                color: live.blockers.length ? 'var(--c64748b)' : '#fff',
+                              }}
+                            >
+                              🚀 {queueBusy ? T('Đang đăng…', 'Publishing…') : T('Đăng ngay', 'Post now')}
+                            </button>
+                            <button
+                              onClick={() => { postAction(live.id, 'cancel'); setPostDraft(null); }}
+                              disabled={queueBusy}
+                              style={{
+                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
+                                border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)',
+                              }}
+                            >
+                              {T('Huỷ bài này', 'Cancel this post')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

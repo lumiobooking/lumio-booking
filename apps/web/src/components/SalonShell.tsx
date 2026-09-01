@@ -51,7 +51,7 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/stations', label: 'Chairs', icon: 'chair' },
   ] },
   { id: 'growth', label: 'Marketing & AI', items: [
-    { href: '/salon/content', label: 'Nội dung hôm nay', icon: 'sparkle' },
+    { href: '/salon/content', label: 'Marketing plan & posts', icon: 'sparkle' },
     { href: '/salon/marketing', label: 'Marketing', icon: 'megaphone' },
     { href: '/salon/marketing/monthly', label: 'Marketing report', icon: 'chart' },
     { href: '/salon/email', label: 'Email marketing', icon: 'mail' },
@@ -142,6 +142,14 @@ export function SalonShell({ children }: { children: ReactNode }) {
 
 function SalonShellChrome({ children }: { children: ReactNode }) {
   const { token, user, ready, logout } = useAuth();
+  /**
+   * Scheduled posts that need a human, counted for the sidebar badge.
+   *
+   * Polled on a slow clock and on window focus rather than continuously: this
+   * is a number that changes a few times a week, and the shell is on every
+   * single page in the app.
+   */
+  const [postAlerts, setPostAlerts] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   const isMobile = useIsMobile();
@@ -303,8 +311,31 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     </div>
   ) : null;
 
+  useEffect(() => {
+    if (!token) { setPostAlerts(0); return; }
+    let alive = true;
+    const load = () => {
+      apiFetch<{ posts: { status: string; blockers: string[] }[] }>('/content/posts', { token })
+        .then((q) => {
+          if (!alive) return;
+          setPostAlerts(q.posts.filter(
+            (p) => p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0,
+          ).length);
+        })
+        .catch(() => undefined);
+    };
+    load();
+    const iv = window.setInterval(load, 5 * 60 * 1000);
+    window.addEventListener('focus', load);
+    return () => { alive = false; window.clearInterval(iv); window.removeEventListener('focus', load); };
+  }, [token]);
+
   const renderLink = (item: NavItem, indent: boolean) => {
     const active = pathname === item.href;
+    // Only one nav item carries a count today, and it carries it for a reason:
+    // a scheduled post that failed to publish is otherwise silent, and the
+    // salon goes on believing its Facebook Page is being looked after.
+    const badge = item.href === '/salon/content' ? postAlerts : 0;
     return (
       <Link
         key={item.href}
@@ -326,7 +357,14 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         }}
       >
         <span style={{ color: active ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', display: 'grid', placeItems: 'center', width: 20 }}><NavIcon name={item.icon} /></span>
-        {NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label}
+        <span style={{ minWidth: 0 }}>{NAV_KEY[item.href] ? tr(NAV_KEY[item.href], lang) : item.label}</span>
+        {badge > 0 && (
+          <span style={{
+            marginLeft: 'auto', minWidth: 19, height: 19, padding: '0 5px', borderRadius: 20,
+            background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800,
+            display: 'grid', placeItems: 'center',
+          }}>{badge > 9 ? '9+' : badge}</span>
+        )}
       </Link>
     );
   };

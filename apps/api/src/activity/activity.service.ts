@@ -3,7 +3,7 @@ import { formatMoneyShort } from '../common/money';
 import { AppointmentStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-export type ActivityType = 'booking' | 'cancel' | 'payment' | 'report';
+export type ActivityType = 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed';
 
 export interface ActivityItem {
   id: string;
@@ -59,6 +59,25 @@ export class ActivityService {
       select: { id: true, periodMonth: true, status: true, createdAt: true },
     });
 
+    // Scheduled posts that did not go out.
+    //
+    // A failed post is the quietest failure in the product: the salon believes
+    // its Facebook Page is being looked after, and nothing anywhere says
+    // otherwise unless somebody opens the queue — which nobody does for
+    // something they believe is handled. So it comes here, where a salon
+    // already looks for things that need them.
+    const badPosts = await (this.prisma as unknown as Record<string, {
+      findMany: (a: unknown) => Promise<unknown>;
+    }>).scheduledPost?.findMany({
+      where: { tenantId, status: { in: ['failed', 'expired'] }, updatedAt: { gte: since } },
+      orderBy: { updatedAt: 'desc' },
+      take: 20,
+      select: { id: true, message: true, status: true, lastError: true, updatedAt: true, scheduledAt: true },
+    }).catch(() => []) as {
+      id: string; message: string; status: string; lastError: string | null;
+      updatedAt: Date; scheduledAt: Date;
+    }[];
+
     const pays = await this.prisma.payment.findMany({
       where: { tenantId, status: PaymentStatus.PAID, paidAt: { gte: since } },
       orderBy: { paidAt: 'desc' },
@@ -111,6 +130,23 @@ export class ActivityService {
         when: null,
         appointmentId: null,
         link: `/salon/marketing/monthly?month=${r.periodMonth}`,
+      });
+    }
+
+    for (const p of badPosts ?? []) {
+      items.push({
+        id: 'sp_' + p.id,
+        type: 'postFailed',
+        // The first line of the post, so the salon knows WHICH post without
+        // opening anything. A bare "a post failed" is not actionable.
+        customer: (p.message || '').split('\n')[0].slice(0, 60),
+        detail: p.status === 'expired'
+          ? 'Quá hạn — hệ thống không đăng bài cũ vào ngày khác.'
+          : (p.lastError || 'Đăng không thành công.'),
+        at: p.updatedAt.toISOString(),
+        when: p.scheduledAt.toISOString(),
+        appointmentId: null,
+        link: '/salon/content?tab=queue',
       });
     }
 

@@ -182,6 +182,12 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'nav.payroll': { en: 'Lương thợ · Payroll', vi: 'Lương thợ' },
   'nav.reviews': { en: 'Reviews & rewards', vi: 'Đánh giá & thưởng' },
   'nav.marketing': { en: 'Marketing', vi: 'Marketing' },
+  // "Nội dung hôm nay" described ONE of this page's seven tabs, and was the only
+  // Vietnamese label in an otherwise English list. The page is the weekly plan
+  // AND the publishing queue, sitting beside 'Marketing campaigns' (automation)
+  // and 'Marketing report' (results) — so the name has to say which of the three
+  // it is.
+  'nav.contentPlan': { en: 'Marketing plan & posts', vi: 'Kế hoạch & bài đăng' },
   'nav.inventory': { en: 'Inventory', vi: 'Kho vật tư' },
   'nav.report': { en: 'Sales report', vi: 'Báo cáo doanh thu' },
   'nav.payments': { en: 'Payments', vi: 'Thanh toán' },
@@ -1803,6 +1809,7 @@ export const NAV_KEY: Record<string, string> = {
   '/salon/payroll': 'nav.payroll',
   '/salon/reviews': 'nav.reviews',
   '/salon/marketing': 'nav.marketing',
+  '/salon/content': 'nav.contentPlan',
   '/salon/inventory': 'nav.inventory',
   '/salon/pos/report': 'nav.report',
   '/salon/payments': 'nav.payments',

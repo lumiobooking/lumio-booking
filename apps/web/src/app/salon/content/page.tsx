@@ -363,6 +363,13 @@ function Inner() {
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>('today');
+  // A notification that says "your post failed" has to LAND on the queue. Read
+  // once on mount, not on every render: after that the tabs are the user's.
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get('tab');
+    const known: TabId[] = ['today', 'week', 'trends', 'calendar', 'audience', 'ads', 'queue'];
+    if (want && (known as string[]).includes(want)) setTab(want as TabId);
+  }, []);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
   const [editProfile, setEditProfile] = useState(false);
@@ -388,6 +395,15 @@ function Inner() {
     id?: string; channels: ('facebook' | 'instagram')[]; message: string; imageUrl: string; at: string;
   } | null>(null);
   const [postErr, setPostErr] = useState<string | null>(null);
+  /**
+   * How many queued posts need a human.
+   *
+   * A post that failed to publish is otherwise invisible: nobody opens this tab
+   * to check on something they believe is handled. It is loaded on EVERY visit
+   * to the page, not only when the tab is open, because the whole point of the
+   * number is to be seen by someone who was not going to look.
+   */
+  const [postAlerts, setPostAlerts] = useState(0);
   const [linkFor, setLinkFor] = useState<string | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [unread, setUnread] = useState<{ total: number; bySubject: Record<string, number> }>({ total: 0, bySubject: {} });
@@ -437,6 +453,17 @@ function Inner() {
     } catch { setQueue({ connected: null, posts: [] }); }
   }, [token]);
   useEffect(() => { if (tab === 'queue') loadQueue(); }, [tab, loadQueue]);
+
+  // Counted from the same payload the tab renders, so the badge and the list can
+  // never disagree about how many things are wrong.
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<QueuePayload>('/content/posts', { token })
+      .then((q) => setPostAlerts(q.posts.filter(
+        (p) => p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0,
+      ).length))
+      .catch(() => setPostAlerts(0));
+  }, [token, queue]);
 
   /** Save the open draft. `status` decides whether it joins the queue or waits. */
   async function savePost(status: 'draft' | 'scheduled') {
@@ -740,12 +767,16 @@ function Inner() {
         justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 12,
       }}>
         <div style={{ minWidth: 0 }}>
+          {/* "Nội dung hôm nay" named ONE of seven tabs. The date belongs with
+              it — on the Today tab — not in a heading that also covers the week
+              plan, the ads budget and the publishing queue. */}
           <h1 style={{ fontSize: isMobile ? 20 : 23, margin: '0 0 3px', color: 'var(--ce2e8f0)' }}>
-            {T('Nội dung hôm nay', "Today's content")}
+            {T('Kế hoạch & bài đăng', 'Marketing plan & posts')}
           </h1>
           <p style={{ color: 'var(--c94a3b8)', margin: 0, fontSize: 13 }}>
-            {data?.forDate ? new Date(`${data.forDate}T00:00:00`).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }) : ''}
-            {plan?.region?.known ? ` · ${plan.region.label}` : ''}
+            {tab === 'today' && data?.forDate
+              ? `${new Date(`${data.forDate}T00:00:00`).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })}${plan?.region?.known ? ` · ${plan.region.label}` : ''}`
+              : plan?.region?.known ? plan.region.label : ''}
           </p>
         </div>
         <button
@@ -789,6 +820,17 @@ function Inner() {
             }}
           >
             <span style={{ marginRight: 5 }}>{t.icon}</span>{t.label}
+            {/* The red count is the whole reason the queue can stay a tab
+                rather than a menu item: a broken post finds the person instead
+                of waiting to be found. */}
+            {t.id === 'queue' && postAlerts > 0 && (
+              <span style={{
+                marginLeft: 6, minWidth: 19, height: 19, padding: '0 5px',
+                borderRadius: 20, background: '#ef4444', color: '#fff',
+                fontSize: 11, fontWeight: 800, display: 'inline-flex',
+                alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle',
+              }}>{postAlerts > 9 ? '9+' : postAlerts}</span>
+            )}
           </button>
         ))}
       </div>

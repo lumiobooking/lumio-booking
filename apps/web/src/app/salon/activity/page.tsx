@@ -11,7 +11,7 @@ import { BookingDetailSheet } from '../../../components/BookingDetailSheet';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { uiLocale } from '../../../lib/datetime';
 
-interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
+interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
 const ACT_SEEN_KEY = 'lumio_activity_seen';
 
@@ -33,7 +33,7 @@ function Inner() {
   const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment' | 'report'>('all');
+  const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed'>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tz, setTz] = useState<string | undefined>(() => (typeof window !== 'undefined' ? (window.localStorage.getItem('lumio_tz') || undefined) : undefined));
@@ -77,7 +77,7 @@ function Inner() {
     if (dd === start - 86400000) return L('HÔM QUA', 'YESTERDAY');
     return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' }).toUpperCase();
   };
-  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' ? '' : L('· Thanh toán', '· Paid');
+  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' || t === 'postFailed' ? '' : L('· Thanh toán', '· Paid');
   const reportText = (status: string) => status === 'approved'
     ? L('— báo cáo marketing đã duyệt', '— marketing report approved')
     : status === 'sent'
@@ -99,12 +99,16 @@ function Inner() {
     { k: 'cancel', label: L('Huỷ', 'Cancels') },
     { k: 'payment', label: L('Đơn hàng', 'Payments') },
     { k: 'report', label: L('Báo cáo', 'Reports') },
+    // A failed post is the quietest failure in the product — the salon believes
+    // its Page is being looked after. It gets its own filter so it can be found
+    // on purpose, not only stumbled on.
+    { k: 'postFailed', label: L('Bài đăng lỗi', 'Failed posts') },
   ];
 
   return (
     <section style={{ maxWidth: 640 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 2px' }}>{L('Thông báo', 'Notifications')}</h1>
-      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{L('Booking mới, huỷ lịch và thanh toán — chạm để xem chi tiết.', 'New bookings, cancellations and payments — tap to see details.')}</p>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{L('Booking mới, huỷ lịch, thanh toán và bài đăng lỗi — chạm để xem chi tiết.', 'New bookings, cancellations, payments and failed posts — tap to see details.')}</p>
 
       <PushEnable />
 
@@ -144,7 +148,12 @@ function Inner() {
                       </svg>
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : `${verb(i.type)} ${i.detail}`}</div>
+                      <div style={{ fontSize: 14.5, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail)
+                        : i.type === 'postFailed' ? <span style={{ color: 'var(--cfca5a5)' }}>— {L('bài chưa đăng được', 'was not published')}</span>
+                          : `${verb(i.type)} ${i.detail}`}</div>
+                      {i.type === 'postFailed' && (
+                        <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', marginTop: 2, lineHeight: 1.45 }}>{i.detail}</div>
+                      )}
                       {(i.when || i.type === 'payment') && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{i.when ? whenText(i.when) : L('Đã thanh toán', 'Paid')}</div>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>

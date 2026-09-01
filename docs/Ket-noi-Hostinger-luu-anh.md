@@ -48,6 +48,11 @@ Bước này quan trọng: Facebook và Instagram sẽ **tự tải ảnh về t
 
 > Nút này trước đây tên là *"Payment gateways"* nên không ai tìm ra kho lưu ảnh ở đó. Đã đổi tên, và đầu trang có sẵn link nhảy thẳng xuống mục kho ảnh.
 
+**Hai bẫy hay dính nhất:**
+
+- Ô **Public URL** là địa chỉ **tên miền** (`https://tenmien.com/media`), KHÔNG phải link Trình quản lý tệp (`srv...-files.hstgr.io/...`). Link đó là giao diện quản trị, người ngoài và máy chủ Facebook không mở được.
+- Chữ mờ sẵn trong ô chỉ là **ví dụ**, không phải giá trị đúng. Đặc biệt phần đuôi tên miền (`.com` / `.us`) và tên thư mục (`uploads` / `media`) — phải sửa cho khớp thư mục anh đã tạo.
+
 Điền đúng 6 ô:
 
 | Ô | Điền gì | Ví dụ |

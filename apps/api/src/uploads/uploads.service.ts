@@ -15,6 +15,28 @@ interface FtpConfig {
  * hosting and served from their domain — so the database never carries image bytes.
  * When NOT configured, callers keep the small inline (data URL) fallback.
  */
+/**
+ * Connection options, with one deliberate loosening.
+ *
+ * Shared hosts are usually reached by IP or by a generic server name, and their
+ * FTPS certificate is issued for neither — so strict verification rejects a
+ * connection that is otherwise perfectly good. The practical consequence of
+ * leaving it strict is not "people fix their certificates": it is that they
+ * untick FTPS and send the password in clear text.
+ *
+ * So the certificate is not verified, and the connection is still encrypted.
+ * That trades away proof of WHO the server is, and keeps the password off the
+ * wire. For uploading a salon's own marketing photos to a host whose IP the
+ * operator typed in themselves, that is the right way round — and it is
+ * strictly better than the plaintext alternative it replaces.
+ */
+function accessOpts(c: FtpConfig) {
+  return {
+    host: c.host, port: c.port, user: c.user, password: c.password, secure: c.secure,
+    ...(c.secure ? { secureOptions: { rejectUnauthorized: false } } : {}),
+  };
+}
+
 @Injectable()
 export class UploadsService {
   private readonly log = new Logger(UploadsService.name);
@@ -32,7 +54,12 @@ export class UploadsService {
     ]);
     if (!host || !user || !password || !publicBase) return null;
     return {
-      host,
+      // Hostinger's panel shows the server as "ftp://46.202.196.218", so that is
+      // what gets pasted in. basic-ftp wants a bare hostname and fails DNS on
+      // anything else, with an error that looks like the server is unreachable.
+      // Accepting what the panel displays is cheaper than explaining the
+      // difference to every person who sets this up.
+      host: host.trim().replace(/^[a-z]+:\/\//i, '').replace(/\/.*$/, ''),
       port: parseInt(port || '21', 10) || 21,
       user,
       password,
@@ -69,7 +96,7 @@ export class UploadsService {
 
     const client = new FtpClient(20_000);
     try {
-      await client.access({ host: c.host, port: c.port, user: c.user, password: c.password, secure: c.secure });
+      await client.access(accessOpts(c));
       await client.ensureDir(remoteDir);           // creates the folder if missing
       await client.uploadFrom(Readable.from(buf), name); // cwd is remoteDir after ensureDir
     } catch (e) {
@@ -105,7 +132,7 @@ export class UploadsService {
     const client = new FtpClient(20_000);
     let deleted = 0; let failed = 0;
     try {
-      await client.access({ host: c.host, port: c.port, user: c.user, password: c.password, secure: c.secure });
+      await client.access(accessOpts(c));
       for (const rel of safe) {
         try {
           await client.remove(`${c.basePath}/${rel}`);
@@ -132,7 +159,7 @@ export class UploadsService {
     if (!c) return { ok: false, message: 'Fill in host, user, password and public URL first.' };
     const client = new FtpClient(15_000);
     try {
-      await client.access({ host: c.host, port: c.port, user: c.user, password: c.password, secure: c.secure });
+      await client.access(accessOpts(c));
       if (c.basePath) await client.ensureDir(c.basePath);
       await client.list();
       return { ok: true, message: `Connected to ${c.host} ✓` };

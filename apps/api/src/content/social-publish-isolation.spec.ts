@@ -163,3 +163,53 @@ describe('what the salon is stopped from queueing at all', () => {
     })).rejects.toThrow(/đã đăng rồi/);
   });
 });
+
+describe('"Post now" works on the rows that most need it', () => {
+  /**
+   * The button was a lie on exactly the posts a person presses it for.
+   *
+   * A post that failed three times is past MAX_ATTEMPTS; a cancelled one was not
+   * in the claim list. Both returned "Bài đang được đăng ở tiến trình khác" — a
+   * message about a race that was not happening — while the salon looked at a
+   * connection that had just been fixed.
+   */
+  const rowOf = (status: string, attempts = 3) => ({
+    'scheduledPost.findFirst': {
+      id: 'p1', tenantId: 'T1', status, attempts, message: 'hi',
+      channels: ['facebook'], media: [], imageUrl: null,
+      scheduledAt: new Date(), lastError: 'old (#200) error', results: [],
+      postedAt: null, createdByName: null, ideaId: null,
+    },
+  });
+
+  it.each(['failed', 'cancelled', 'expired', 'scheduled', 'draft'])(
+    'clears the wreckage of earlier attempts on a %s post', async (status) => {
+      const q: Query[] = [];
+      await svc(q, rowOf(status)).publishNow(user('T1'), 'p1').catch(() => undefined);
+      const reset = q.find((x) => x.op === 'update'
+        && (x.args.data as { attempts?: number })?.attempts === 0);
+      expect(reset).toBeTruthy();
+      const data = reset!.args.data as { status: string; lastError: string | null };
+      expect(data.status).toBe('scheduled');
+      // The old error belongs to a connection that has since been fixed.
+      expect(data.lastError).toBeNull();
+    },
+  );
+
+  it('still refuses a post that has already gone out', async () => {
+    await expect(svc([], rowOf('posted')).publishNow(user('T1'), 'p1'))
+      .rejects.toThrow(/đã đăng rồi/);
+  });
+
+  it('refuses one that is mid-flight, and says so rather than blaming a race', async () => {
+    await expect(svc([], rowOf('publishing')).publishNow(user('T1'), 'p1'))
+      .rejects.toThrow(/đang được đăng, chờ/);
+  });
+
+  it('never resets a post belonging to another tenant', async () => {
+    const q: Query[] = [];
+    await expect(svc(q, { 'scheduledPost.findFirst': null }).publishNow(user('T2'), 'p1'))
+      .rejects.toThrow(/Không tìm thấy/);
+    expect(q.filter((x) => x.op === 'update')).toHaveLength(0);
+  });
+});

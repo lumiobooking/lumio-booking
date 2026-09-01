@@ -189,6 +189,28 @@ export class SocialPublishService {
     }).catch(() => []) as PostRow[];
 
     const conn = await this.pageFor(tenantId);
+
+    // Can this connection publish at all? Asked before anything is attempted,
+    // so the answer arrives on the screen rather than as a failed post — and so
+    // a stale permission error can be recognised as stale.
+    let missingScopes: string[] | null = null;
+    if (conn) {
+      const granted = await this.grantedScopes(tenantId, conn.token);
+      if (granted) {
+        const need = ['pages_manage_posts', ...(conn.page.igId ? ['instagram_content_publish'] : [])];
+        missingScopes = need.filter((n) => !granted.includes(n));
+      }
+    }
+    /**
+     * The permission has since been granted, so any saved permission error is
+     * history rather than an instruction.
+     *
+     * Telling somebody to reconnect a Page they just reconnected is how a fix
+     * message stops being believed. The error text is still shown — it explains
+     * why the post is sitting there — but the "do this" line is dropped.
+     */
+    const permissionFixed = missingScopes !== null && missingScopes.length === 0;
+
     const posts = (rows ?? []).map((r) => {
       const media = this.mediaOf(r);
       const channels = this.channelsOf(r);
@@ -207,7 +229,11 @@ export class SocialPublishService {
         // Meta's own words are kept; this is the sentence that says what to DO.
         // Replacing the raw text would remove the only precise string anybody
         // can search for when this reaches support.
-        fix: explainMetaError(r.lastError),
+        fix: permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? '')
+          ? null
+          : explainMetaError(r.lastError),
+        /** True when the saved error is about a permission the token now has. */
+        errorIsStale: permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? ''),
         results: Array.isArray(r.results) ? r.results : [],
         postedAt: r.postedAt,
         createdByName: r.createdByName,
@@ -216,17 +242,6 @@ export class SocialPublishService {
         blockers: r.status === 'draft' || r.status === 'scheduled' ? plan.problems : [],
       };
     });
-
-    // Can this connection publish at all? Asked before anything is attempted,
-    // so the answer arrives on the screen rather than as a failed post.
-    let missingScopes: string[] | null = null;
-    if (conn) {
-      const granted = await this.grantedScopes(tenantId, conn.token);
-      if (granted) {
-        const need = ['pages_manage_posts', ...(conn.page.igId ? ['instagram_content_publish'] : [])];
-        missingScopes = need.filter((n) => !granted.includes(n));
-      }
-    }
 
     // Advice about a month laid end to end, kept separate from `blockers`:
     // crowding never stops a post, and mixing the two would train the salon to
@@ -322,7 +337,22 @@ export class SocialPublishService {
     const row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;
     if (!row) throw new NotFoundException('Không tìm thấy bài này.');
     if (row.status === 'posted') throw new BadRequestException('Bài này đã đăng rồi.');
-    const out = await this.deliver(row);
+    if (row.status === 'publishing') throw new BadRequestException('Bài này đang được đăng, chờ một chút.');
+
+    // A press of "Post now" clears the wreckage of earlier attempts.
+    //
+    // Without this the button is a lie on exactly the rows that need it most: a
+    // post that failed three times is past MAX_ATTEMPTS and a cancelled one is
+    // not claimable, so the press returned "đang được đăng ở tiến trình khác" —
+    // a message about a race that was not happening. The attempt counter and the
+    // old error belong to a connection that has since been fixed; keeping them
+    // would make the fresh attempt fail for a reason that no longer exists.
+    await this.posts?.update({
+      where: { id: row.id },
+      data: { status: 'scheduled', attempts: 0, lastError: null },
+    }).catch(() => undefined);
+
+    const out = await this.deliver({ ...row, status: 'scheduled', attempts: 0, lastError: null });
     if (!out.ok) throw new BadRequestException(out.error ?? 'Đăng không thành công.');
     return out;
   }
@@ -372,8 +402,15 @@ export class SocialPublishService {
 
     // Claim it first. Two scheduler instances running the same minute must not
     // both publish: a duplicate post is visible to every follower the salon has.
+    //
+    // 'cancelled' and 'expired' are claimable because publishNow() deliberately
+    // moves a row back into 'scheduled' before calling here — a human pressing
+    // "Post now" on a cancelled post means exactly "send this anyway". They stay
+    // OUT of the scheduler's own sweep (see dueNow), which only ever takes
+    // 'scheduled'. Only 'posted' and 'publishing' are never claimable: one has
+    // already gone out, the other is going out right now.
     const claimed = await this.posts?.updateMany({
-      where: { id: row.id, status: { in: ['draft', 'scheduled', 'failed'] } },
+      where: { id: row.id, status: { in: ['draft', 'scheduled', 'failed', 'cancelled', 'expired'] } },
       data: { status: 'publishing', attempts: { increment: 1 } },
     }).catch(() => ({ count: 0 })) as { count: number };
     if (!claimed?.count) return { ok: false, error: 'Bài đang được đăng ở tiến trình khác.', results: [] };

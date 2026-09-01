@@ -187,6 +187,8 @@ interface QueuedPost {
   lastError: string | null;
   /** Meta's error turned into the one action that fixes it. */
   fix: string | null;
+  /** The saved error is about a permission the connection now has. */
+  errorIsStale: boolean;
   results: { channel: string; id: string | null; url: string | null; error: string | null }[];
   postedAt: string | null;
   createdByName: string | null;
@@ -2290,7 +2292,22 @@ function Inner() {
                           </div>
                         )}
                         {live.lastError && !live.blockers.length && (
-                          <div style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)' }}>
+                          <div style={{
+                            padding: '10px 12px', borderRadius: 8, marginBottom: 9,
+                            background: live.errorIsStale ? 'var(--c1e293b)' : 'var(--c450a0a)',
+                            border: `1px solid ${live.errorIsStale ? 'var(--c334155)' : 'var(--c991b1b)'}`,
+                          }}>
+                            {/* The permission has since been granted, so this is
+                                history rather than an instruction. Telling
+                                somebody to reconnect a Page they just
+                                reconnected is how a fix message stops being
+                                believed. */}
+                            {live.errorIsStale && (
+                              <div style={{ fontSize: 13, color: '#22c55e', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
+                                ✓ {T('Quyền đã được cấp rồi — lỗi bên dưới là của lần thử trước. Bấm "Đăng ngay" để thử lại.',
+                                     'The permission is granted now — the error below is from the earlier attempt. Press “Post now” to try again.')}
+                              </div>
+                            )}
                             {live.fix && (
                               <div style={{ fontSize: 13, color: 'var(--cfecaca)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
                                 → {live.fix}
@@ -2493,9 +2510,11 @@ function Inner() {
 
                     {p.lastError && !p.blockers.length && (
                       <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.55 }}>
-                        {p.fix
-                          ? <span style={{ color: 'var(--cfecaca)', fontWeight: 600 }}>→ {p.fix}</span>
-                          : <span style={{ color: 'var(--cfca5a5)' }}>{T('Lỗi', 'Error')}: {p.lastError}</span>}
+                        {p.errorIsStale
+                          ? <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {T('Quyền đã có — bấm "Đăng ngay" để thử lại', 'Permission granted — press “Post now” to retry')}</span>
+                          : p.fix
+                            ? <span style={{ color: 'var(--cfecaca)', fontWeight: 600 }}>→ {p.fix}</span>
+                            : <span style={{ color: 'var(--cfca5a5)' }}>{T('Lỗi', 'Error')}: {p.lastError}</span>}
                         {p.attempts > 0 && (
                           <span style={{ color: 'var(--c94a3b8)' }}> ({T('đã thử', 'tried')} {p.attempts}×)</span>
                         )}

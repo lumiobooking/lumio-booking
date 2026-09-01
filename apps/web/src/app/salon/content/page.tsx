@@ -194,7 +194,11 @@ interface QueuedPost {
   blockers: string[];
 }
 interface QueuePayload {
-  connected: { pageName: string | null; igUsername: string | null; hasInstagram: boolean; enabled: boolean } | null;
+  connected: {
+    pageName: string | null; igUsername: string | null; hasInstagram: boolean; enabled: boolean;
+    /** Permissions the stored Page token does NOT carry. Null = we could not ask. */
+    missingScopes: string[] | null;
+  } | null;
   posts: QueuedPost[];
   /** Advice, never a refusal: where a month of posts fights itself. */
   crowding: { id: string; minutesApart: number; message: string }[];
@@ -2009,13 +2013,49 @@ function Inner() {
                 </div>
 
                 {queue?.connected ? (
-                  <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>
-                    {T('Đăng lên', 'Publishing to')}{' '}
-                    <b style={{ color: 'var(--ce2e8f0)' }}>{queue.connected.pageName ?? T('Trang Facebook của tiệm', 'your Page')}</b>
-                    {queue.connected.hasInstagram
-                      ? <> {T('và Instagram', 'and Instagram')} <b style={{ color: 'var(--ce2e8f0)' }}>@{queue.connected.igUsername}</b></>
-                      : <> · {T('Trang này chưa liên kết Instagram', 'no Instagram linked to this Page')}</>}
-                  </div>
+                  <>
+                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>
+                      {T('Đăng lên', 'Publishing to')}{' '}
+                      <b style={{ color: 'var(--ce2e8f0)' }}>{queue.connected.pageName ?? T('Trang Facebook của tiệm', 'your Page')}</b>
+                      {queue.connected.hasInstagram
+                        ? <> {T('và Instagram', 'and Instagram')} <b style={{ color: 'var(--ce2e8f0)' }}>@{queue.connected.igUsername}</b></>
+                        : <> · {T('Trang này chưa liên kết Instagram', 'no Instagram linked to this Page')}</>}
+                    </div>
+
+                    {/* ---- can this connection publish at all? ----
+                        Asked of Meta before anything is attempted. Without it
+                        the only way to find out whether a reconnect worked is to
+                        publish and read a Graph error about Facebook Groups. */}
+                    {queue.connected.missingScopes === null ? null
+                      : queue.connected.missingScopes.length === 0 ? (
+                        <div style={{ fontSize: 12, color: '#22c55e', marginTop: 6 }}>
+                          ✓ {T('Kết nối có đủ quyền đăng bài.', 'This connection can publish.')}
+                        </div>
+                      ) : (
+                        <div style={{
+                          marginTop: 9, padding: '10px 12px', borderRadius: 9,
+                          background: 'var(--c451a03)', border: '1px solid #f59e0b',
+                        }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfde68a)', marginBottom: 4 }}>
+                            {T('Kết nối hiện tại chưa có quyền đăng bài', 'This connection cannot publish yet')}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.6 }}>
+                            {T('Thiếu', 'Missing')}: <code>{queue.connected.missingScopes.join(', ')}</code>.{' '}
+                            {T('Token của Trang chỉ mang những quyền được cấp đúng lúc kết nối. Kết nối lại Trang và tick tất cả các ô Facebook hỏi.',
+                               'A Page token only carries the permissions granted when it was issued. Reconnect the Page and tick every box Facebook asks about.')}
+                          </div>
+                          <a
+                            href="/salon/messenger"
+                            style={{
+                              display: 'inline-block', marginTop: 9, padding: '9px 15px', borderRadius: 9,
+                              background: '#f59e0b', color: '#451a03', fontSize: 13, fontWeight: 700, textDecoration: 'none',
+                            }}
+                          >
+                            {T('Kết nối lại Trang Facebook →', 'Reconnect the Page →')}
+                          </a>
+                        </div>
+                      )}
+                  </>
                 ) : (
                   <div style={{
                     fontSize: 12.5, lineHeight: 1.55, padding: '9px 11px', borderRadius: 8,

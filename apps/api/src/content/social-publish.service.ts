@@ -92,6 +92,61 @@ export class SocialPublishService {
     };
   }
 
+  // ---- what the stored token can actually DO --------------------------------
+
+  /**
+   * Scopes the live Page token carries, cached briefly per tenant.
+   *
+   * WHY THIS EXISTS
+   *
+   * A Page access token carries only the permissions granted at the moment it
+   * was issued. Adding pages_manage_posts to the app in the Meta dashboard does
+   * nothing for a token minted before that — so a salon can be looking at a
+   * correctly configured app, a correctly written post, and a permanent failure,
+   * with no way to tell the difference except by trying to publish and reading a
+   * Graph error about Facebook Groups.
+   *
+   * Asking Meta what the token holds turns that into a fact on screen, and it
+   * answers the only question that matters after a reconnect: did it work?
+   *
+   * Cached five minutes because the queue screen reloads on every edit and this
+   * is a real network call whose answer changes about twice a year.
+   */
+  private scopeCache = new Map<string, { at: number; scopes: string[] }>();
+
+  private async grantedScopes(tenantId: string, token: string): Promise<string[] | null> {
+    const hit = this.scopeCache.get(tenantId);
+    if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.scopes;
+
+    const appId = process.env.FB_APP_ID || '';
+    const appSecret = process.env.FB_APP_SECRET || '';
+    // Without the app credentials we cannot ask, and guessing would be worse
+    // than saying nothing: a false "missing permission" sends the salon through
+    // a reconnect that fixes nothing.
+    if (!appId || !appSecret) return null;
+
+    try {
+      const res = await fetch(
+        `${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}`
+        + `&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`,
+        { signal: AbortSignal.timeout(10_000) },
+      );
+      const j = await res.json().catch(() => null) as {
+        data?: { scopes?: string[]; granular_scopes?: { scope: string }[] };
+      } | null;
+      if (!res.ok || !j?.data) return null;
+      const scopes = [
+        ...(j.data.scopes ?? []),
+        ...((j.data.granular_scopes ?? []).map((g) => g.scope)),
+      ];
+      const uniq = Array.from(new Set(scopes));
+      this.scopeCache.set(tenantId, { at: Date.now(), scopes: uniq });
+      return uniq;
+    } catch {
+      return null;
+    }
+  }
+
   private channelsOf(row: { channels: unknown }): Channel[] {
     const raw = Array.isArray(row.channels) ? row.channels : [];
     return raw.filter((c): c is Channel => c === 'facebook' || c === 'instagram');
@@ -162,6 +217,17 @@ export class SocialPublishService {
       };
     });
 
+    // Can this connection publish at all? Asked before anything is attempted,
+    // so the answer arrives on the screen rather than as a failed post.
+    let missingScopes: string[] | null = null;
+    if (conn) {
+      const granted = await this.grantedScopes(tenantId, conn.token);
+      if (granted) {
+        const need = ['pages_manage_posts', ...(conn.page.igId ? ['instagram_content_publish'] : [])];
+        missingScopes = need.filter((n) => !granted.includes(n));
+      }
+    }
+
     // Advice about a month laid end to end, kept separate from `blockers`:
     // crowding never stops a post, and mixing the two would train the salon to
     // ignore the ones that do.
@@ -170,6 +236,9 @@ export class SocialPublishService {
       connected: conn ? {
         pageName: conn.page.pageName, igUsername: conn.page.igUsername,
         hasInstagram: Boolean(conn.page.igId), enabled: conn.page.enabled,
+        // Null when we could not ask — which is not the same as "nothing is
+        // missing", and the screen words it differently.
+        missingScopes,
       } : null,
       posts,
       crowding: crowding(live.map((p) => ({ id: p.id, scheduledAt: p.scheduledAt, channels: p.channels }))),

@@ -274,6 +274,29 @@ describe('the publishing queue is declared in schema AND migration', () => {
     expect(body).toMatch(/@@map\("scheduled_posts"\)/);
   });
 
+  it('carries media as an ordered list, not one image column', () => {
+    // Order IS the content for a carousel: item one is the feed thumbnail and
+    // the square on the profile grid, and the only one most people ever see.
+    // A single imageUrl cannot express that, and cannot express video at all.
+    const body = ALL.get('ScheduledPost') ?? '';
+    expect(body).toMatch(/media\s+Json/);
+    // The legacy column stays: rows queued before media[] existed must keep
+    // publishing rather than silently losing their picture on deploy.
+    expect(body).toMatch(/imageUrl\s+String\?/);
+  });
+
+  it('has a migration that adds media AND carries the old images across', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS "media"/i);
+    // Adding the column without the backfill would blank every queued post's
+    // picture the moment this deploys.
+    expect(sql).toMatch(/jsonb_build_object\('url', "imageUrl"/);
+  });
+
   it('stores no page id and no access token on the post', () => {
     // The Page and its token are read from MessengerPage at send time. Copying
     // a token onto a queue row would outlive the salon disconnecting its Page

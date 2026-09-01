@@ -19,7 +19,7 @@
  * THE REFUSALS MATTER MORE THAN THE HAPPY PATH
  *
  * A publisher that silently does half of what it was asked is worse than one
- * that stops. If a post is aimed at Facebook and Instagram but carries no image,
+ * that stops. If a post is aimed at Facebook and Instagram but carries no media,
  * Instagram cannot take it at all — the Content Publishing API has no text-only
  * post. Publishing to Facebook alone and reporting success would tell the salon
  * their Instagram is being kept alive when it is not. So a post that cannot be
@@ -28,11 +28,12 @@
  *
  * PLATFORM LIMITS ARE FACTS, NOT PREFERENCES
  *
- * Instagram rejects a caption over 2,200 characters and rejects media with more
- * than 30 hashtags. Over the line the API returns an error, so the post simply
- * does not go out — at 9am on the morning the salon expected it. Both are
- * checked here, before the post is accepted into the queue, where the person who
- * wrote it is still looking at it.
+ * Instagram rejects a caption over 2,200 characters, rejects media with more
+ * than 30 hashtags, and accepts between 2 and 10 items in a carousel. Over any
+ * of those lines the API returns an error, so the post simply does not go out —
+ * at 9am on the morning the salon expected it. All three are checked here,
+ * before the post is accepted into the queue, while the person who wrote it is
+ * still looking at it.
  */
 
 /** Instagram caption ceiling. Over this the Graph API rejects the container. */
@@ -41,8 +42,21 @@ export const IG_CAPTION_MAX = 2200;
 export const IG_HASHTAG_MAX = 30;
 /** Facebook Page post ceiling. Generous, but not infinite. */
 export const FB_MESSAGE_MAX = 63_206;
+/** An Instagram carousel holds between 2 and 10 items. */
+export const IG_CAROUSEL_MIN = 2;
+export const IG_CAROUSEL_MAX = 10;
 
 export type Channel = 'facebook' | 'instagram';
+export type MediaKind = 'image' | 'video';
+
+export interface MediaItem {
+  /** Public https URL. Meta's servers fetch it themselves. */
+  url: string;
+  kind: MediaKind;
+}
+
+/** What the post IS, derived from its media rather than stored separately. */
+export type PostShape = 'text' | 'image' | 'video' | 'carousel';
 
 export interface ConnectedPage {
   pageId: string;
@@ -57,8 +71,8 @@ export interface PostDraft {
   /** Where the salon asked for it to go. */
   channels: Channel[];
   message: string;
-  /** A public https image URL. Instagram cannot post without one. */
-  imageUrl: string | null;
+  /** In display order. The first item is the one the feed shows. */
+  media: MediaItem[];
 }
 
 export interface ChannelPlan {
@@ -71,6 +85,7 @@ export interface ChannelPlan {
 }
 
 export interface PublishPlan {
+  shape: PostShape;
   plans: ChannelPlan[];
   /** True only when every requested channel can actually receive the post. */
   ready: boolean;
@@ -81,23 +96,43 @@ export interface PublishPlan {
 const hashtagCount = (s: string) => (s.match(/#[\p{L}\p{N}_]+/gu) ?? []).length;
 
 /** A public https URL. Meta fetches this itself, so localhost cannot work. */
-export function usableImageUrl(url: string | null | undefined): boolean {
+export function usableMediaUrl(url: string | null | undefined): boolean {
   const u = (url ?? '').trim();
   if (!/^https:\/\//i.test(u)) return false;
-  // Meta's servers fetch the image. An address only this machine can resolve
+  // Meta's servers fetch the file. An address only this machine can resolve
   // produces a container error minutes after the salon has walked away.
   if (/^https:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(u)) return false;
   if (/^https:\/\/[^/]*\.local(\b|[:/])/i.test(u)) return false;
   return true;
 }
 
+/**
+ * Guess image or video from the URL, for the moment a salon pastes a link.
+ *
+ * Only a default for the picker — the stored `kind` is what publishing uses,
+ * because a URL with no extension (a CDN with a signed path, say) tells us
+ * nothing, and guessing wrong sends a video to the photo endpoint.
+ */
+export function guessKind(url: string): MediaKind {
+  return /\.(mp4|mov|m4v|avi|webm|mkv)(\?|#|$)/i.test((url ?? '').trim()) ? 'video' : 'image';
+}
+
+export function shapeOf(media: MediaItem[]): PostShape {
+  const m = media ?? [];
+  if (!m.length) return 'text';
+  if (m.length > 1) return 'carousel';
+  return m[0].kind === 'video' ? 'video' : 'image';
+}
+
 export function planPublish(draft: PostDraft, page: ConnectedPage | null): PublishPlan {
   const wanted = Array.from(new Set(draft.channels ?? []));
   const text = (draft.message ?? '').trim();
+  const media = (draft.media ?? []).filter((m) => m && typeof m.url === 'string');
+  const shape = shapeOf(media);
   const plans: ChannelPlan[] = [];
 
   for (const channel of wanted) {
-    const refusal = refuse(channel, draft, text, page);
+    const refusal = refuse(channel, { text, media, shape }, page);
     plans.push({
       channel,
       ok: refusal === null,
@@ -108,6 +143,7 @@ export function planPublish(draft: PostDraft, page: ConnectedPage | null): Publi
 
   const problems = Array.from(new Set(plans.filter((p) => !p.ok).map((p) => p.refusal!)));
   return {
+    shape,
     plans,
     // Not "at least one channel works". A post the salon believes is going to
     // both places must go to both places or wait until it can.
@@ -116,14 +152,26 @@ export function planPublish(draft: PostDraft, page: ConnectedPage | null): Publi
   };
 }
 
-function refuse(channel: Channel, draft: PostDraft, text: string, page: ConnectedPage | null): string | null {
+interface Checked { text: string; media: MediaItem[]; shape: PostShape }
+
+function refuse(channel: Channel, c: Checked, page: ConnectedPage | null): string | null {
   if (!page) return 'Tiệm chưa kết nối Trang Facebook. Vào Cài đặt → Messenger để kết nối trước.';
   if (!page.enabled) return `Trang ${page.pageName ?? ''} đang tắt kết nối. Bật lại rồi mới đăng được.`.replace('  ', ' ');
-  if (!text) return 'Bài chưa có nội dung.';
+  if (!c.text && !c.media.length) return 'Bài chưa có nội dung.';
+
+  const bad = c.media.find((m) => !usableMediaUrl(m.url));
+  if (bad) return 'Link ảnh/video phải là https công khai — Facebook và Instagram tự tải file về từ link này.';
 
   if (channel === 'facebook') {
-    if (text.length > FB_MESSAGE_MAX) return `Nội dung dài ${text.length} ký tự, quá giới hạn ${FB_MESSAGE_MAX} của Facebook.`;
-    if (draft.imageUrl && !usableImageUrl(draft.imageUrl)) return 'Link ảnh phải là https công khai — Facebook tự tải ảnh về từ link này.';
+    if (c.text.length > FB_MESSAGE_MAX) return `Nội dung dài ${c.text.length} ký tự, quá giới hạn ${FB_MESSAGE_MAX} của Facebook.`;
+    if (!c.text && !c.media.length) return 'Bài chưa có nội dung.';
+    // A Facebook post is one video, or one or more photos — not both at once.
+    // The API has no single call that mixes them, and quietly dropping the
+    // video would publish something the salon never wrote.
+    const vids = c.media.filter((m) => m.kind === 'video').length;
+    if (vids && c.media.length > 1) {
+      return 'Facebook không đăng chung video với ảnh trong một bài. Tách thành hai bài, hoặc bỏ bớt.';
+    }
     return null;
   }
 
@@ -134,10 +182,12 @@ function refuse(channel: Channel, draft: PostDraft, text: string, page: Connecte
   // The Content Publishing API has no text-only post. There is no way to make
   // this work by trying harder, so it is refused here instead of failing in a
   // scheduler run at 9am.
-  if (!draft.imageUrl) return 'Instagram bắt buộc phải có ảnh hoặc video — không đăng được bài chỉ có chữ.';
-  if (!usableImageUrl(draft.imageUrl)) return 'Link ảnh phải là https công khai — Instagram tự tải ảnh về từ link này.';
-  if (text.length > IG_CAPTION_MAX) return `Caption dài ${text.length} ký tự, quá giới hạn ${IG_CAPTION_MAX} của Instagram.`;
-  const tags = hashtagCount(text);
+  if (!c.media.length) return 'Instagram bắt buộc phải có ảnh hoặc video — không đăng được bài chỉ có chữ.';
+  if (c.media.length > IG_CAROUSEL_MAX) {
+    return `Instagram chỉ cho tối đa ${IG_CAROUSEL_MAX} ảnh/video trong một bài. Bài này đang có ${c.media.length}.`;
+  }
+  if (c.text.length > IG_CAPTION_MAX) return `Caption dài ${c.text.length} ký tự, quá giới hạn ${IG_CAPTION_MAX} của Instagram.`;
+  const tags = hashtagCount(c.text);
   if (tags > IG_HASHTAG_MAX) return `Bài có ${tags} hashtag, quá giới hạn ${IG_HASHTAG_MAX} của Instagram.`;
   return null;
 }
@@ -175,4 +225,64 @@ export function dueNow(posts: QueuedPost[], now: Date): { send: QueuedPost[]; ex
     else send.push(p);
   }
   return { send, expired };
+}
+
+// ---- planning a month ahead ------------------------------------------------
+
+/**
+ * Two posts to the same account within this window read as spam to a follower
+ * and, on Instagram, compete with each other in the same ranking pass.
+ */
+export const CROWDING_MS = 3 * 60 * 60 * 1000;
+
+export interface SpacingWarning {
+  /** The later of the two posts — the one the salon would move. */
+  id: string;
+  minutesApart: number;
+  message: string;
+}
+
+/**
+ * Where a month of scheduled content collides with itself.
+ *
+ * This is advice, never a refusal. Two posts an hour apart is a bad idea, not an
+ * impossible one, and a salon publishing a flash offer at 11 and a follow-up at
+ * 12 knows something this code does not. The queue says so and moves on.
+ */
+export function crowding(posts: { id: string; scheduledAt: Date; channels: Channel[] }[]): SpacingWarning[] {
+  const out: SpacingWarning[] = [];
+  for (const channel of ['facebook', 'instagram'] as Channel[]) {
+    const on = (posts ?? [])
+      .filter((p) => p.channels?.includes(channel))
+      .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+    for (let i = 1; i < on.length; i += 1) {
+      const gap = on[i].scheduledAt.getTime() - on[i - 1].scheduledAt.getTime();
+      if (gap >= CROWDING_MS) continue;
+      const mins = Math.round(gap / 60_000);
+      out.push({
+        id: on[i].id,
+        minutesApart: mins,
+        message: `Cách bài trước ${mins < 60 ? `${mins} phút` : `${Math.round(mins / 60)} tiếng`} trên ${channel === 'facebook' ? 'Facebook' : 'Instagram'}. Đăng dồn thì bài sau ăn mất người xem của bài trước.`,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * The Instagram profile grid, as it will look once everything has published.
+ *
+ * Newest first, three per row — the salon's own profile page, before it exists.
+ * Only posts that will actually appear there: Instagram, with media, not
+ * cancelled. A grid that shows a Facebook-only post is a grid that lies about
+ * what the profile will look like.
+ */
+export function igGrid<T extends { channels: Channel[]; media: MediaItem[]; status: string; scheduledAt: Date }>(
+  posts: T[],
+): T[] {
+  return (posts ?? [])
+    .filter((p) => p.channels?.includes('instagram'))
+    .filter((p) => (p.media ?? []).length > 0)
+    .filter((p) => p.status !== 'cancelled' && p.status !== 'expired')
+    .sort((a, b) => b.scheduledAt.getTime() - a.scheduledAt.getTime());
 }

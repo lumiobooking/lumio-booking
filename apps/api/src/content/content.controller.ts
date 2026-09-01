@@ -44,6 +44,16 @@ export class ContentController {
     return this.publisher.save(user, body);
   }
 
+  /** Move one post to another slot — the drag on the month calendar. */
+  @Patch('posts/:id/when')
+  reschedulePost(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() body: { scheduledAt: string },
+  ) {
+    return this.publisher.reschedule(user, id, body?.scheduledAt);
+  }
+
   @Delete('posts/:id')
   cancelPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.publisher.cancel(user, id);

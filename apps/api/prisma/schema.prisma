@@ -2896,8 +2896,16 @@ model ScheduledPost {
   /// Where the salon asked for it to go: ["facebook"], ["instagram"], or both.
   channels  Json    @default("[\"facebook\"]")
   message   String
-  /// Public https image URL. Meta fetches it from its own servers, so it must
-  /// be reachable from the internet. Required for Instagram.
+  /// Media in DISPLAY ORDER: [{url, kind:'image'|'video'}]. One item is a
+  /// photo or video post, two to ten is a carousel, none is text-only. The
+  /// shape is derived from this rather than stored, so a post can never claim
+  /// to be a carousel while holding one photo.
+  ///
+  /// Meta fetches each URL from its own servers, so every one must be public
+  /// https — a localhost link fails minutes after the salon walks away.
+  media     Json    @default("[]")
+  /// Legacy single-image column, kept so rows written before media[] existed
+  /// still publish. New posts write media[] and leave this null.
   imageUrl  String?
 
   scheduledAt DateTime

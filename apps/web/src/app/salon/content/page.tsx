@@ -21,6 +21,7 @@ import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
+import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
 
 interface Idea {
   id: string;
@@ -177,7 +178,9 @@ interface QueuedPost {
   ideaId: string | null;
   channels: ('facebook' | 'instagram')[];
   message: string;
-  imageUrl: string | null;
+  /** Photos and videos in DISPLAY ORDER. Item one is the cover. */
+  media: MediaItem[];
+  shape: 'text' | 'image' | 'video' | 'carousel';
   scheduledAt: string;
   status: 'draft' | 'scheduled' | 'publishing' | 'posted' | 'failed' | 'expired' | 'cancelled';
   attempts: number;
@@ -191,6 +194,8 @@ interface QueuedPost {
 interface QueuePayload {
   connected: { pageName: string | null; igUsername: string | null; hasInstagram: boolean; enabled: boolean } | null;
   posts: QueuedPost[];
+  /** Advice, never a refusal: where a month of posts fights itself. */
+  crowding: { id: string; minutesApart: number; message: string }[];
 }
 
 /** One icon per kind of job, so the week reads at a glance on a phone. */
@@ -392,8 +397,12 @@ function Inner() {
   const [queue, setQueue] = useState<QueuePayload | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
   const [postDraft, setPostDraft] = useState<{
-    id?: string; channels: ('facebook' | 'instagram')[]; message: string; imageUrl: string; at: string;
+    id?: string; channels: ('facebook' | 'instagram')[]; message: string; media: MediaItem[]; at: string;
   } | null>(null);
+  const [mediaInput, setMediaInput] = useState('');
+  // Three views over one queue: a list reads, a calendar plans, a grid judges.
+  const [view, setView] = useState<'calendar' | 'grid' | 'list'>('calendar');
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [postErr, setPostErr] = useState<string | null>(null);
   /**
    * How many queued posts need a human.
@@ -450,7 +459,7 @@ function Inner() {
     if (!token) return;
     try {
       setQueue(await apiFetch<QueuePayload>('/content/posts', { token }));
-    } catch { setQueue({ connected: null, posts: [] }); }
+    } catch { setQueue({ connected: null, posts: [], crowding: [] }); }
   }, [token]);
   useEffect(() => { if (tab === 'queue') loadQueue(); }, [tab, loadQueue]);
 
@@ -476,7 +485,7 @@ function Inner() {
           id: postDraft.id,
           channels: postDraft.channels,
           message: postDraft.message,
-          imageUrl: postDraft.imageUrl.trim() || null,
+          media: postDraft.media,
           // The picker gives a local wall-clock string; the server stores an
           // instant. Converting here means "9:00" means 9:00 where the salon is.
           scheduledAt: new Date(postDraft.at).toISOString(),
@@ -487,6 +496,42 @@ function Inner() {
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setQueueBusy(false); }
+  }
+
+  /** Add one pasted link to the draft, guessing photo vs video from the URL. */
+  function addMedia() {
+    const url = mediaInput.trim();
+    if (!postDraft || !url || postDraft.media.length >= 10) return;
+    // A guess from the extension, not a decision: a signed CDN path has no
+    // extension, so the row carries a picker the salon can correct.
+    const kind: MediaItem['kind'] = /\.(mp4|mov|m4v|avi|webm|mkv)(\?|#|$)/i.test(url) ? 'video' : 'image';
+    setPostDraft({ ...postDraft, media: [...postDraft.media, { url, kind }] });
+    setMediaInput('');
+  }
+
+  /** Drop a post on another day. Keeps the hour it already had. */
+  async function movePost(id: string, day: Date) {
+    const p = queue?.posts.find((x) => x.id === id);
+    if (!p) return;
+    const old = new Date(p.scheduledAt);
+    const when = new Date(day);
+    when.setHours(old.getHours(), old.getMinutes(), 0, 0);
+    setQueueBusy(true); setPostErr(null);
+    try {
+      await apiFetch(`/content/posts/${id}/when`, { method: 'PATCH', token, body: { scheduledAt: when.toISOString() } });
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setQueueBusy(false); }
+  }
+
+  /** Open one queued post in the composer. */
+  function editPost(id: string) {
+    const p = queue?.posts.find((x) => x.id === id);
+    if (!p || p.status === 'posted') return;
+    setPostDraft({
+      id: p.id, channels: p.channels, message: p.message, media: p.media,
+      at: new Date(new Date(p.scheduledAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16),
+    });
   }
 
   async function postAction(id: string, action: 'publish' | 'cancel') {
@@ -509,7 +554,7 @@ function Inner() {
     setPostDraft({
       channels: ['facebook'],
       message: [idea.caption, idea.hashtags].filter(Boolean).join('\n\n'),
-      imageUrl: '',
+      media: [],
       at: local,
     });
     setTab('queue');
@@ -1947,7 +1992,7 @@ function Inner() {
                     onClick={() => {
                       const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0);
                       const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-                      setPostDraft({ channels: ['facebook'], message: '', imageUrl: '', at: local });
+                      setPostDraft({ channels: ['facebook'], message: '', media: [], at: local });
                     }}
                     style={{
                       marginLeft: 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
@@ -2030,22 +2075,78 @@ function Inner() {
                     })}
                   </div>
 
-                  <div style={{ marginTop: 11 }}>
-                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 4 }}>
-                      {T('Link ảnh (https công khai)', 'Image URL (public https)')}
-                      {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ảnh', 'required for Instagram')}`}
+                  {/* ---- media, in the order they will appear ----
+                       Order is the whole feature for a carousel: item one is
+                       the thumbnail in the feed AND the square on the profile
+                       grid, and it is the only one most people ever see. */}
+                  <div style={{ marginTop: 13 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 5 }}>
+                      {T('Ảnh & video (link https công khai)', 'Photos & video (public https links)')}
+                      {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ít nhất 1', 'Instagram needs at least one')}`}
                     </div>
-                    <input
-                      value={postDraft.imageUrl}
-                      onChange={(e) => setPostDraft({ ...postDraft, imageUrl: e.target.value })}
-                      placeholder="https://…"
-                      style={{
-                        width: '100%', minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
-                        border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                        boxSizing: 'border-box',
-                      }}
+
+                    <MediaList
+                      media={postDraft.media}
+                      onChange={(m) => setPostDraft({ ...postDraft, media: m })}
+                      vi={vi}
                     />
+
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: postDraft.media.length ? 4 : 0 }}>
+                      <input
+                        value={mediaInput}
+                        onChange={(e) => setMediaInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          e.preventDefault();
+                          addMedia();
+                        }}
+                        placeholder="https://…"
+                        style={{
+                          flex: '1 1 200px', minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
+                          border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                        }}
+                      />
+                      <button
+                        onClick={addMedia}
+                        disabled={postDraft.media.length >= 10}
+                        style={{
+                          minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
+                          cursor: postDraft.media.length >= 10 ? 'not-allowed' : 'pointer', border: '1px solid var(--c475569)',
+                          background: 'transparent', color: postDraft.media.length >= 10 ? 'var(--c64748b)' : 'var(--ca5b4fc)',
+                        }}
+                      >
+                        + {T('Thêm', 'Add')}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 4, lineHeight: 1.5 }}>
+                      {postDraft.media.length >= 2
+                        ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
+                        : postDraft.media.some((m) => m.kind === 'video')
+                          ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
+                          : T('Dán link rồi Enter. Có thể thêm tới 10 ảnh/video.', 'Paste a link and press Enter. Up to 10 items.')}
+                    </div>
                   </div>
+
+                  {/* ---- what the follower will actually meet ---- */}
+                  {(postDraft.message.trim() || postDraft.media.length > 0) && (
+                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14 }}>
+                      {postDraft.channels.map((c) => (
+                        <div key={c}>
+                          <div style={{ fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
+                            {T('Xem trước', 'Preview')} · {c === 'facebook' ? 'Facebook' : 'Instagram'}
+                          </div>
+                          <PostPreview
+                            channel={c}
+                            message={postDraft.message}
+                            media={postDraft.media}
+                            pageName={queue?.connected?.pageName ?? null}
+                            igUsername={queue?.connected?.igUsername ?? null}
+                            vi={vi}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div style={{ marginTop: 11 }}>
                     <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 4 }}>
@@ -2098,6 +2199,75 @@ function Inner() {
                 </div>
               )}
 
+              {/* ---- three views over one queue ----
+                   A list is fine for three posts and useless for thirty.
+                   Laying out a month needs to see which days are EMPTY, and
+                   what the profile will look like when it is all up. */}
+              {!!queue?.posts.length && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 14 }}>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {([
+                      ['calendar', '🗓️', T('Lịch tháng', 'Calendar')],
+                      ['grid', '▦', T('Lưới Instagram', 'IG grid')],
+                      ['list', '☰', T('Danh sách', 'List')],
+                    ] as const).map(([k, icon, label]) => (
+                      <button
+                        key={k}
+                        onClick={() => setView(k)}
+                        style={{
+                          padding: '7px 13px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+                          fontWeight: view === k ? 700 : 500,
+                          border: `1px solid ${view === k ? '#6366f1' : 'var(--c334155)'}`,
+                          background: view === k ? '#6366f1' : 'transparent',
+                          color: view === k ? '#fff' : 'var(--c94a3b8)',
+                        }}
+                      >
+                        <span style={{ marginRight: 5 }}>{icon}</span>{label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {view === 'calendar' && (
+                    <MonthCalendar
+                      posts={queue.posts}
+                      month={month}
+                      onMonth={setMonth}
+                      onPick={editPost}
+                      onDrop={movePost}
+                      vi={vi}
+                    />
+                  )}
+                  {view === 'grid' && (
+                    <IgGrid
+                      posts={queue.posts
+                        .filter((p) => p.channels.includes('instagram') && p.media.length > 0)
+                        .filter((p) => p.status !== 'cancelled' && p.status !== 'expired')
+                        .sort((a, b) => (a.scheduledAt < b.scheduledAt ? 1 : -1))}
+                      onPick={editPost}
+                      vi={vi}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Crowding is advice, kept away from the blockers that really
+                  stop a post — mixing them trains the salon to ignore both. */}
+              {!!queue?.crowding?.length && view !== 'grid' && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: '11px 14px',
+                  borderColor: '#f59e0b', background: 'var(--c451a03)',
+                }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cfde68a)', marginBottom: 3 }}>
+                    {T('Vài bài đăng quá sát nhau', 'Some posts are bunched together')}
+                  </div>
+                  {queue.crowding.slice(0, 4).map((c) => (
+                    <div key={`${c.id}-${c.minutesApart}`} style={{ fontSize: 12, color: 'var(--cfde68a)', lineHeight: 1.55 }}>
+                      · {c.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* ---- the queue ---- */}
               {queue && !queue.posts.length && !postDraft && (
                 <div style={{ ...ui.card, padding: 20, textAlign: 'center' }}>
@@ -2108,7 +2278,7 @@ function Inner() {
                 </div>
               )}
 
-              {queue?.posts.map((p) => {
+              {view === 'list' && queue?.posts.map((p) => {
                 const S: Record<string, { fg: string; text: string }> = {
                   draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
                   scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },
@@ -2130,11 +2300,36 @@ function Inner() {
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg }}>{st.text}</span>
                       <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
                         {p.channels.map((c) => (c === 'facebook' ? 'Facebook' : 'Instagram')).join(' + ')}
+                        {p.shape === 'carousel' && ` · ${p.media.length} ${T('ảnh/video', 'items')}`}
+                        {p.shape === 'video' && ' · video'}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                      {p.message.length > 220 ? `${p.message.slice(0, 220)}…` : p.message}
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      {!!p.media.length && (
+                        <div style={{ display: 'flex', gap: 3, flex: '0 0 auto' }}>
+                          {p.media.slice(0, 3).map((m, i) => (
+                            <span key={`${m.url}-${i}`} style={{
+                              width: 46, height: 46, borderRadius: 6, overflow: 'hidden',
+                              background: 'var(--c1e293b)', display: 'grid', placeItems: 'center', position: 'relative',
+                            }}>
+                              {m.kind === 'video'
+                                ? <span style={{ fontSize: 15 }}>▶</span>
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                : <img src={m.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                              {i === 2 && p.media.length > 3 && (
+                                <span style={{
+                                  position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', color: '#fff',
+                                  fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center',
+                                }}>+{p.media.length - 2}</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap', minWidth: 0 }}>
+                        {p.message.length > 220 ? `${p.message.slice(0, 220)}…` : p.message}
+                      </div>
                     </div>
 
                     {!!p.blockers.length && (
@@ -2165,10 +2360,7 @@ function Inner() {
                     {open && (
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
                         <button
-                          onClick={() => setPostDraft({
-                            id: p.id, channels: p.channels, message: p.message, imageUrl: p.imageUrl ?? '',
-                            at: new Date(new Date(p.scheduledAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16),
-                          })}
+                          onClick={() => editPost(p.id)}
                           style={{ minHeight: 38, padding: '8px 13px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13 }}
                         >
                           ✎ {T('Sửa', 'Edit')}

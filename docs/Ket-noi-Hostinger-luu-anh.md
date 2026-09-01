@@ -32,13 +32,31 @@ hPanel → **Trang web** → chọn website → **Tệp** → **Tài khoản FTP
 
 > **Nên tạo một tài khoản FTP RIÊNG** chỉ trỏ vào thư mục `media`, thay vì dùng tài khoản chính. Nếu mật khẩu này lộ, kẻ lấy được cũng chỉ chạm tới được thư mục ảnh, không phải cả website. Hostinger cho tạo thêm tài khoản FTP ngay ở màn hình đó.
 
-### 1.3. Kiểm tra thư mục mở được từ internet
+### 1.3. Xác định ĐÚNG website — bẫy lớn nhất
 
-Mở tab mới, vào `https://tenmien.com/media/`
+Một tài khoản Hostinger có thể chứa **nhiều website**, mỗi cái một thư mục `public_html` RIÊNG. Tài khoản FTP cũng gắn theo từng website.
 
-Thấy trang trắng hoặc danh sách trống là **được**. Thấy lỗi 404 nghĩa là đường dẫn sai — quay lại bước 1.1.
+Nếu tài khoản FTP thuộc website A mà ô Public URL lại là địa chỉ của website B, thì file lên đúng máy chủ nhưng **không địa chỉ web nào chạm tới được** — upload báo thành công, ảnh vẫn vỡ.
+
+Nguy hiểm hơn: một tên miền anh **sở hữu** chưa chắc **trỏ về Hostinger**. Nó có thể đang chạy ở nơi khác (Render, Vercel, Cloudflare…). Lúc đó thư mục trên Hostinger vĩnh viễn không ai vào được.
+
+**Cách kiểm tra chắc chắn:**
+
+1. hPanel → **Trang web** — ghi lại tên website anh đang mở File Manager của nó
+2. Tạo file thử: trong `public_html/media`, bấm **New file**, tên `test.txt`, gõ vài chữ, lưu
+3. Mở tab mới, vào `https://<đúng-tên-website-đó>/media/test.txt`
+
+| Kết quả | Nghĩa là |
+|---|---|
+| **Thấy chữ vừa gõ** | Đúng rồi — dùng chính địa chỉ đó làm Public URL |
+| **404** | Tên miền không trỏ về hosting này, hoặc đây là website khác trong cùng tài khoản |
+| **Ra trang đăng nhập / trang lạ** | Tên miền đang chạy ở máy chủ khác, không phải Hostinger |
+
+Xong nhớ xoá `test.txt`.
 
 Bước này quan trọng: Facebook và Instagram sẽ **tự tải ảnh về từ địa chỉ này**. Máy chủ của họ không đăng nhập được, nên thư mục phải mở công khai.
+
+> **Nên dùng tên miền phụ riêng** cho việc này, ví dụ `media.tenmien.com` trỏ về Hostinger. Như vậy kho ảnh độc lập với website chính — website chính đổi nhà cung cấp hay đổi thiết kế cũng không làm chết ảnh của các bài đã hẹn lịch.
 
 ---
 

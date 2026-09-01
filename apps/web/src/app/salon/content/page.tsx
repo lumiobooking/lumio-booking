@@ -22,7 +22,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
-import { compressImageToFit } from '../../../lib/image';
+import { fitForSocial } from '../../../lib/image';
 
 interface Idea {
   id: string;
@@ -414,6 +414,8 @@ function Inner() {
   } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
   const [uploading, setUploading] = useState(false);
+  /** What the fitter did to the last upload — crop, padding, or nothing. */
+  const [fitNote, setFitNote] = useState<string | null>(null);
   /**
    * Post now, or put it on the calendar.
    *
@@ -542,25 +544,26 @@ function Inner() {
     if (!postDraft || uploading) return;
     setUploading(true); setPostErr(null);
     try {
-      // ---- the numbers matter, and my first pass got them wrong ----
+      // ---- fit the SHAPE, not just the size ----
       //
-      // maxSide defaults to 512 in this helper, sized for avatars and service
-      // thumbnails. I passed only maxChars, so every uploaded post picture was
-      // being squashed to 512px — Instagram renders at 1080 and would have made
-      // that visibly soft. 1440 is comfortably above what either platform shows.
+      // Instagram takes 4:5 to 1.91:1. A photo taken holding a phone upright is
+      // 3:4 — already outside — so this is not an edge case, it is most of what
+      // a salon shoots. Left alone, the Graph API answers "Media ID is not
+      // available", which names a container id and says nothing about the
+      // picture.
       //
-      // maxChars 1.6M ≈ 1.2MB of actual bytes. The server refuses anything over
-      // 3MB decoded, so my earlier 4M sat right on that line and would have
-      // thrown "Image is too large" on some photos. It is also simply more than
-      // a feed picture needs: past this the upload gets slower and nothing on
-      // screen looks better.
-      const dataUrl = await compressImageToFit(file, {
-        maxSide: 1440, quality: 0.85, maxChars: 1_600_000,
-      });
+      // maxChars 1.6M ≈ 1.2MB decoded. The server refuses over 3MB, and a feed
+      // picture needs nothing like that: past this the upload is slower and
+      // nothing on screen looks better.
+      const { dataUrl, note } = await fitForSocial(file, { maxChars: 1_600_000 });
       const { url } = await apiFetch<{ url: string }>('/uploads/service-photo', {
         method: 'POST', token, body: { dataUrl },
       });
       setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'image' }] } : d));
+      // A tool that silently reshapes somebody's photograph and posts the result
+      // is one they stop trusting the first time they notice. Say it, and let
+      // the preview below show the picture that will actually go out.
+      setFitNote(note);
     } catch (e) {
       const raw = e instanceof Error ? e.message : '';
       // The server answers with a code here, not a sentence. Passing that
@@ -604,6 +607,9 @@ function Inner() {
     // toggle was left on last time. Inheriting 'now' from a previous composer
     // would publish a queued post the moment somebody pressed save.
     setPostWhen('later');
+    // The note describes ONE upload. Carried into the next post it would claim
+    // a crop that never happened.
+    setFitNote(null);
     const p = queue?.posts.find((x) => x.id === id);
     // A published post opens too. The fields cannot be saved — the server
     // refuses that — but the person clicking it wants to see where it went,
@@ -2285,6 +2291,15 @@ function Inner() {
                         />
                       </label>
                     </div>
+                    {fitNote && (
+                      <div style={{
+                        marginTop: 7, padding: '8px 11px', borderRadius: 8,
+                        background: 'var(--c1e293b)', border: '1px solid var(--c475569)',
+                        fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55,
+                      }}>
+                        ✂︎ {fitNote}
+                      </div>
+                    )}
                     <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 4, lineHeight: 1.5 }}>
                       {postDraft.media.length >= 2
                         ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)

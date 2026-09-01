@@ -357,9 +357,14 @@ export default function GatewaysPage() {
           <button onClick={() => save({ storageFtpHost: stHost, storageFtpPort: stPort, storageFtpUser: stUser, storageFtpPass: stPass, storageFtpSecure: String(stSecure), storageFtpBasePath: stBase, storagePublicBase: stPublic })} disabled={busy} style={primaryBtn}>Save storage</button>
           <button onClick={testStorage} disabled={busy} style={{ ...ghost, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>Test connection</button>
         </div>
+        {/* whiteSpace pre-line, because the test now reports a WALK: where the
+            FTP account landed, what was there, whether the folder existed
+            without being created, and whether the file could be read back over
+            the web. Collapsed onto one line, that walk is unreadable and the
+            step that failed is impossible to spot. */}
         {stTest && (
-          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: stTest.ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: stTest.ok ? 'var(--c4ade80)' : 'var(--cfca5a5)', fontSize: 13 }}>
-            {stTest.ok ? '✓ ' : '✕ '}{stTest.message}
+          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: stTest.ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', color: stTest.ok ? 'var(--c4ade80)' : 'var(--cfca5a5)', fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
+            {stTest.message}
           </div>
         )}
         <div style={hintBox}>

@@ -203,20 +203,94 @@ export class UploadsService {
     return { deleted, failed };
   }
 
-  /** Super Admin "Test connection": connect, list the base dir, disconnect. */
+  /**
+   * Prove the whole chain, end to end, and say where it broke.
+   *
+   * WHAT THE OLD VERSION ACTUALLY TESTED
+   *
+   * It connected, called ensureDir(basePath) and reported success. ensureDir
+   * CREATES the directory when it is missing — so a wrong folder path produced
+   * a green tick and a freshly created folder in the wrong place. The check
+   * could not fail for the one mistake it existed to catch, and it did not:
+   * a real setup showed "Connected ✓" while every uploaded photo was landing
+   * somewhere no web address reached.
+   *
+   * The FTP half succeeding and the HTTP half succeeding are separate facts,
+   * and on shared hosting with several websites they come apart constantly: an
+   * FTP account belongs to ONE website, and the Public URL can name a different
+   * one. Nothing about a successful login reveals that.
+   *
+   * So this walks the whole path and writes down each step: where the account
+   * lands, what is there, whether the folder exists WITHOUT creating it, and
+   * finally whether a file written over FTP can be read back over HTTPS.
+   */
   async test(): Promise<{ ok: boolean; message: string }> {
     const c = await this.config();
-    if (!c) return { ok: false, message: 'Fill in host, user, password and public URL first.' };
+    if (!c) return { ok: false, message: 'Điền host, user, password và Public URL trước đã.' };
+
+    const lines: string[] = [];
     const client = new FtpClient(15_000);
+    let probe: string | null = null;
+
     try {
       await client.access(accessOpts(c));
-      if (c.basePath) await client.ensureDir(c.basePath);
-      await client.list();
-      return { ok: true, message: `Connected to ${c.host} ✓` };
+      lines.push(`✓ Đăng nhập FTP ${c.host} thành công.`);
+
+      // Where does this account actually land? On Hostinger an account named
+      // after a domain is locked to that domain's folder, and this line is what
+      // tells the two cases apart.
+      const home = await client.pwd().catch(() => '?');
+      const rootList = await client.list().catch(() => []);
+      const names = rootList.slice(0, 8).map((f: { name: string }) => f.name).join(", ");
+      lines.push(`• Tài khoản đang đứng ở: ${home}`);
+      lines.push(`• Thư mục gốc chứa: ${names || '(trống)'}`);
+
+      // cd, NOT ensureDir. Creating the folder is what made the old check
+      // useless: it could not tell "the path is right" from "the path was
+      // wrong and I have just made it".
+      try {
+        await client.cd(c.basePath);
+      } catch {
+        return {
+          ok: false,
+          message: [
+            ...lines,
+            `✕ Không tìm thấy thư mục "${c.basePath}" từ tài khoản này.`,
+            'Đường dẫn phải tính TỪ chỗ tài khoản đang đứng ở trên, không phải từ gốc máy chủ.',
+            'Nếu tài khoản FTP thuộc website khác với Public URL thì sẽ luôn lệch — tạo tài khoản FTP cho đúng website đó.',
+          ].join('\n'),
+        };
+      }
+      lines.push(`✓ Vào được thư mục ${c.basePath}.`);
+
+      // The half nobody checks: can the file be read back from the web?
+      probe = `lumio-check-${randomUUID()}.txt`;
+      await client.uploadFrom(Readable.from(Buffer.from('lumio storage check')), probe);
+      lines.push('✓ Ghi file thử qua FTP thành công.');
     } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : 'Connection failed' };
-    } finally {
-      client.close();
+      return { ok: false, message: [...lines, `✕ ${e instanceof Error ? e.message : 'Kết nối thất bại'}`].join('\n') };
     }
+
+    const url = `${c.publicBase}/${probe}`;
+    const problem = await this.verifyPublic(url);
+    await client.remove(probe).catch(() => undefined);
+    client.close();
+
+    if (problem) {
+      return {
+        ok: false,
+        message: [
+          ...lines,
+          `✕ Nhưng KHÔNG đọc lại được qua web: ${url}`,
+          problem,
+          'Ghi được mà đọc không được = tài khoản FTP và Public URL đang trỏ vào hai website khác nhau.',
+        ].join('\n'),
+      };
+    }
+
+    return {
+      ok: true,
+      message: [...lines, `✓ Đọc lại được qua web: ${c.publicBase}`, '✓ Kho ảnh sẵn sàng.'].join('\n'),
+    };
   }
 }

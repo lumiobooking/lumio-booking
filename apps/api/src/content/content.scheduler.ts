@@ -36,19 +36,30 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    // ---- publishing starts FIRST, and unconditionally ----
+    //
+    // These are two different jobs on one switch, and I wired them together.
+    // CONTENT_PLANNER_ENABLED governs DRAFTING: it calls a paid AI API for every
+    // salon every hour, so it is the flag somebody turns off to stop a bill.
+    // Publishing is the opposite kind of job — the salon already approved these
+    // posts and is waiting for them — and it costs nothing to run.
+    //
+    // Started before the planner's early return so that turning drafting off can
+    // never silently stop posts the salon has already scheduled. A queue that
+    // stops firing without saying so is worse than one that never existed.
+    this.postTimer = setInterval(() => this.sweepPosts(), this.postIntervalMs);
+    this.postTimer.unref?.();
+    this.logger.log('Scheduled posts: sweeping every minute.');
+
     const enabled = process.env.CONTENT_PLANNER_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false');
     if (enabled !== 'true') {
-      this.logger.log('Content planner disabled (set CONTENT_PLANNER_ENABLED=true to enable).');
+      this.logger.log('Content planner disabled (set CONTENT_PLANNER_ENABLED=true to enable). Scheduled posts still publish.');
       return;
     }
     setTimeout(() => this.tick(), 120 * 1000);
     this.timer = setInterval(() => this.tick(), this.intervalMs);
     this.timer.unref?.();
     this.logger.log('Content planner on (hourly; drafts once per salon per local day).');
-
-    this.postTimer = setInterval(() => this.sweepPosts(), this.postIntervalMs);
-    this.postTimer.unref?.();
-    this.logger.log('Scheduled posts sweeping every minute.');
   }
 
   onModuleDestroy() {

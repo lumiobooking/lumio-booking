@@ -105,7 +105,57 @@ export class UploadsService {
     } finally {
       client.close();
     }
-    return `${c.publicBase}/${safeTenant}/${name}`;
+    const url = `${c.publicBase}/${safeTenant}/${name}`;
+
+    // ---- prove the file is actually readable from the internet ----
+    //
+    // The FTP upload succeeding says the bytes reached the server. It says
+    // NOTHING about whether the public URL serves them, and those two are
+    // different questions: the wrong Public URL, a domain not pointing at this
+    // hosting, a .htaccess that swallows unknown paths, or a folder path that
+    // does not correspond to the web address all produce a perfectly successful
+    // upload and a URL that returns a 404.
+    //
+    // Failing here costs one HTTP request. NOT failing here costs a photo that
+    // looks fine in the composer, a post that sits in the queue until its slot,
+    // and then a Meta error reading "Missing or invalid image file" — hours
+    // later, pointing at nothing anybody can act on.
+    const reachable = await this.verifyPublic(url);
+    if (reachable) throw new BadRequestException(reachable);
+
+    return url;
+  }
+
+  /**
+   * Fetch our own upload back. Returns a problem sentence, or null when fine.
+   *
+   * The message names the URL, because the fix is almost always in the "Public
+   * URL of the upload folder" setting and the person reading it needs to see
+   * what the two halves produced together.
+   */
+  private async verifyPublic(url: string): Promise<string | null> {
+    try {
+      // GET, not HEAD: some shared hosts answer HEAD differently or not at all,
+      // and a false alarm here would block a working upload.
+      const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+      if (!res.ok) {
+        return `Ảnh đã tải lên máy chủ nhưng địa chỉ công khai không mở được (HTTP ${res.status}): ${url} — `
+          + 'kiểm tra ô "Public URL of the upload folder" có khớp với "Folder path on the server" không, '
+          + 'và tên miền đã trỏ về hosting này chưa.';
+      }
+      const type = res.headers.get('content-type') || '';
+      if (!/^image\//i.test(type)) {
+        // A WordPress 404 page answers 200 with text/html. Checking the status
+        // alone would call that a success and hand Meta a web page.
+        return `Địa chỉ ảnh trả về "${type || 'không rõ loại'}" chứ không phải file ảnh: ${url} — `
+          + 'nhiều khả năng website đang nuốt đường dẫn này (WordPress trả về trang 404) '
+          + 'hoặc ô "Public URL" trỏ sai chỗ.';
+      }
+      return null;
+    } catch (e) {
+      return `Không mở được ảnh vừa tải lên: ${url} (${e instanceof Error ? e.message : 'lỗi mạng'}). `
+        + 'Thử dán địa chỉ đó vào trình duyệt xem hiện gì.';
+    }
   }
 
   /** The public base, so callers can tell OUR files from a salon's own links. */

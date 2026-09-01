@@ -315,7 +315,10 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
     finally { setBusy(false); }
   }
 
-  const useTemplate = (tpl: SavedTemplate) => {
+  // Named applyTemplate, not useTemplate. A plain function whose name starts
+  // with `use` reads as a hook to every React lint and to every human skimming
+  // the file, and one day somebody will "fix" its position accordingly.
+  const applyTemplate = (tpl: SavedTemplate) => {
     setD({
       ...EMPTY,
       name: tpl.name, subject: tpl.subject, fromName: tpl.fromName || defaultFromName || '',
@@ -477,7 +480,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                           style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10,
                             border: chosen === tpl.name ? '1px solid #fbbf24' : '1px solid var(--c1e293b)',
                             background: chosen === tpl.name ? 'rgba(251,191,36,0.10)' : 'var(--c0f172a)' }}>
-                          <button onClick={() => useTemplate(tpl)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
+                          <button onClick={() => applyTemplate(tpl)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
                             <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{tpl.name}</span>
                             <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {tpl.subject}

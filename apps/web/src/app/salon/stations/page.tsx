@@ -82,13 +82,18 @@ function Inner() {
     catch (e) { setError(e instanceof Error ? e.message : 'Could not delete'); }
   }
 
+  // Above the early return, not below it. React counts hooks per render: called
+  // after `if (loading) return`, this one runs on the loaded pass and not on the
+  // loading pass, and the second render throws. Found by hook-order.spec after
+  // the same mistake in SalonShell took the whole app down.
+  const pick = useBulkSelect(rows.map((r) => r.id));
+
   if (loading) return <section><h2 style={{ fontSize: 18 }}>{vi ? 'Ghế / Bàn' : 'Chairs'}</h2><p style={{ color: 'var(--c94a3b8)' }}>Loading…</p></section>;
 
   const groups = [
     ...types.map((t) => ({ id: t.id, name: t.name, list: rows.filter((r) => r.stationTypeId === t.id) })),
     { id: '', name: vi ? 'Chưa phân loại' : 'Untyped', list: rows.filter((r) => !r.stationTypeId) },
   ].filter((g) => g.list.length > 0);
-  const pick = useBulkSelect(rows.map((r) => r.id));
 
   return (
     <section>

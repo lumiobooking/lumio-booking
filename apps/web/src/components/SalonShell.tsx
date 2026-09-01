@@ -272,6 +272,36 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     if (g) setOpenGroups((prev) => (prev[g.id] ? prev : { ...prev, [g.id]: true }));
   }, [pathname]);
 
+  /**
+   * Scheduled posts that need a human, for the sidebar badge.
+   *
+   * MUST STAY ABOVE THE EARLY RETURN BELOW.
+   *
+   * This effect was first written further down, next to renderLink — which is
+   * AFTER `if (!ready || !token …) return`. React counts hooks per render: the
+   * loading pass ran one fewer than the loaded pass, and the whole shell threw.
+   * Every page in the salon app lives inside this component, so that one
+   * misplaced line took the entire product down.
+   */
+  useEffect(() => {
+    if (!token) { setPostAlerts(0); return; }
+    let alive = true;
+    const load = () => {
+      apiFetch<{ posts: { status: string; blockers: string[] }[] }>('/content/posts', { token })
+        .then((q) => {
+          if (!alive) return;
+          setPostAlerts((q.posts ?? []).filter(
+            (p) => p.status === 'failed' || p.status === 'expired' || (p.blockers ?? []).length > 0,
+          ).length);
+        })
+        .catch(() => undefined);
+    };
+    load();
+    const iv = window.setInterval(load, 5 * 60 * 1000);
+    window.addEventListener('focus', load);
+    return () => { alive = false; window.clearInterval(iv); window.removeEventListener('focus', load); };
+  }, [token]);
+
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)', background: 'var(--c0b1120)' }}>
@@ -310,25 +340,6 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       >{tr('shell.supportLeave', lang)}</button>
     </div>
   ) : null;
-
-  useEffect(() => {
-    if (!token) { setPostAlerts(0); return; }
-    let alive = true;
-    const load = () => {
-      apiFetch<{ posts: { status: string; blockers: string[] }[] }>('/content/posts', { token })
-        .then((q) => {
-          if (!alive) return;
-          setPostAlerts(q.posts.filter(
-            (p) => p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0,
-          ).length);
-        })
-        .catch(() => undefined);
-    };
-    load();
-    const iv = window.setInterval(load, 5 * 60 * 1000);
-    window.addEventListener('focus', load);
-    return () => { alive = false; window.clearInterval(iv); window.removeEventListener('focus', load); };
-  }, [token]);
 
   const renderLink = (item: NavItem, indent: boolean) => {
     const active = pathname === item.href;

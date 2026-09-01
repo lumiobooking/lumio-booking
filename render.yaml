@@ -182,7 +182,7 @@ services:
     # Tests before the build here too: the price boxes a salon types into live
     # in the web app, and that is the half that was wrong for a whole currency.
     buildCommand: npm install --include=dev && npm run db:generate --workspace=apps/api && npm run test:guards --if-present && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
-    startCommand: cd apps/web && npx next start -p $PORT
+    startCommand: cd apps/web && npx next start -H 0.0.0.0 -p $PORT
     envVars:
       - key: NODE_ENV
         value: production
@@ -337,7 +337,7 @@ services:
     # Tests before the build here too: the price boxes a salon types into live
     # in the web app, and that is the half that was wrong for a whole currency.
     buildCommand: npm install --include=dev && npm run db:generate --workspace=apps/api && npm run test:guards --if-present && NODE_OPTIONS=--max-old-space-size=4096 npm run build --workspace=apps/web
-    startCommand: cd apps/web && npx next start -p $PORT
+    startCommand: cd apps/web && npx next start -H 0.0.0.0 -p $PORT
     envVars:
       - key: NODE_ENV
         value: production

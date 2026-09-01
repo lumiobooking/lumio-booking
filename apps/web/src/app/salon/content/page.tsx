@@ -414,6 +414,14 @@ function Inner() {
   } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
   const [uploading, setUploading] = useState(false);
+  /**
+   * Post now, or put it on the calendar.
+   *
+   * Scheduling was the only way in: write the post, pick a date, save, find the
+   * row, press "Post now". Five steps for the commonest thing a salon does —
+   * something happened in the shop and they want it up.
+   */
+  const [postWhen, setPostWhen] = useState<'now' | 'later'>('later');
   // Three views over one queue: a list reads, a calendar plans, a grid judges.
   const [view, setView] = useState<'calendar' | 'grid' | 'list'>('calendar');
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -489,12 +497,18 @@ function Inner() {
       .catch(() => setPostAlerts(0));
   }, [token, queue]);
 
-  /** Save the open draft. `status` decides whether it joins the queue or waits. */
-  async function savePost(status: 'draft' | 'scheduled') {
+  /**
+   * Save the open draft. `status` decides whether it joins the queue or waits.
+   *
+   * `now` saves and publishes in one press. If the publish call fails the row is
+   * still saved and scheduled for this minute, so the sweeper picks it up within
+   * sixty seconds — a half-finished press leaves work queued, never lost.
+   */
+  async function savePost(status: 'draft' | 'scheduled', now = false) {
     if (!postDraft || queueBusy) return;
     setQueueBusy(true); setPostErr(null);
     try {
-      await apiFetch('/content/posts', {
+      const r = await apiFetch<{ id: string }>('/content/posts', {
         method: 'POST', token,
         body: {
           id: postDraft.id,
@@ -503,10 +517,13 @@ function Inner() {
           media: postDraft.media,
           // The picker gives a local wall-clock string; the server stores an
           // instant. Converting here means "9:00" means 9:00 where the salon is.
-          scheduledAt: new Date(postDraft.at).toISOString(),
+          scheduledAt: now ? new Date().toISOString() : new Date(postDraft.at).toISOString(),
           status,
         },
       });
+      if (now && r?.id) {
+        await apiFetch(`/content/posts/${r.id}/publish`, { method: 'POST', token });
+      }
       setPostDraft(null);
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
@@ -583,6 +600,10 @@ function Inner() {
 
   /** Open one queued post in the composer. */
   function editPost(id: string) {
+    // Opening a row that already has a slot is a scheduling act, whatever the
+    // toggle was left on last time. Inheriting 'now' from a previous composer
+    // would publish a queued post the moment somebody pressed save.
+    setPostWhen('later');
     const p = queue?.posts.find((x) => x.id === id);
     // A published post opens too. The fields cannot be saved — the server
     // refuses that — but the person clicking it wants to see where it went,
@@ -640,6 +661,7 @@ function Inner() {
     d.setDate(d.getDate() + 1);
     d.setHours(10, 0, 0, 0);
     const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    setPostWhen('later');
     setPostDraft({
       channels: ['facebook'],
       message: [idea.caption, idea.hashtags].filter(Boolean).join('\n\n'),
@@ -2336,19 +2358,48 @@ function Inner() {
                     );
                   })()}
 
-                  <div style={{ marginTop: 11 }}>
-                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 4 }}>
-                      {T('Đăng lúc', 'Publish at')}
+                  {/* ---- now, or on the calendar ----
+                       Scheduling used to be the only way in: write it, pick a
+                       date, save, find the row, press Post now. Five steps for
+                       the commonest thing a salon does — something happened in
+                       the shop and they want it up. */}
+                  <div style={{ marginTop: 13 }}>
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 9 }}>
+                      {([
+                        ['now', `🚀 ${T('Đăng ngay', 'Post now')}`],
+                        ['later', `🗓️ ${T('Hẹn giờ', 'Schedule')}`],
+                      ] as const).map(([k, label]) => (
+                        <button
+                          key={k}
+                          onClick={() => setPostWhen(k)}
+                          style={{
+                            minHeight: 40, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
+                            fontSize: 13.5, fontWeight: postWhen === k ? 700 : 500,
+                            border: `1px solid ${postWhen === k ? '#6366f1' : 'var(--c334155)'}`,
+                            background: postWhen === k ? '#6366f1' : 'transparent',
+                            color: postWhen === k ? '#fff' : 'var(--c94a3b8)',
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
                     </div>
-                    <input
-                      type="datetime-local"
-                      value={postDraft.at}
-                      onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
-                      style={{
-                        minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
-                        border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                      }}
-                    />
+                    {postWhen === 'later' ? (
+                      <input
+                        type="datetime-local"
+                        value={postDraft.at}
+                        onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
+                        style={{
+                          minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
+                          border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                        }}
+                      />
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55 }}>
+                        {T('Bài sẽ lên trang ngay khi bấm. Vẫn được lưu vào lịch để xem lại sau.',
+                           'Goes up the moment you press. Still recorded on the calendar afterwards.')}
+                      </div>
+                    )}
                   </div>
 
                   {/* Hidden once it has published: the server refuses the save,
@@ -2359,16 +2410,18 @@ function Inner() {
                     gap: 9, flexWrap: 'wrap', marginTop: 14,
                   }}>
                     <button
-                      onClick={() => savePost('scheduled')}
-                      disabled={queueBusy || !postDraft.message.trim()}
+                      onClick={() => savePost('scheduled', postWhen === 'now')}
+                      disabled={queueBusy || (!postDraft.message.trim() && !postDraft.media.length)}
                       style={{
                         flex: '1 1 160px', minHeight: 44, borderRadius: 9, border: 'none', cursor: 'pointer',
-                        background: postDraft.message.trim() ? '#22c55e' : 'var(--c334155)',
-                        color: postDraft.message.trim() ? '#052e16' : 'var(--c64748b)',
+                        background: (postDraft.message.trim() || postDraft.media.length) ? '#22c55e' : 'var(--c334155)',
+                        color: (postDraft.message.trim() || postDraft.media.length) ? '#052e16' : 'var(--c64748b)',
                         fontSize: 14, fontWeight: 700,
                       }}
                     >
-                      {queueBusy ? T('Đang lưu…', 'Saving…') : T('✓ Đặt lịch đăng', '✓ Schedule it')}
+                      {queueBusy
+                        ? (postWhen === 'now' ? T('Đang đăng…', 'Publishing…') : T('Đang lưu…', 'Saving…'))
+                        : postWhen === 'now' ? T('🚀 Đăng lên ngay', '🚀 Publish now') : T('✓ Đặt lịch đăng', '✓ Schedule it')}
                     </button>
                     <button
                       onClick={() => savePost('draft')}

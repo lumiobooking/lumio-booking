@@ -4,7 +4,7 @@ import { ReactNode, createContext, useContext, useCallback, useEffect, useState 
 import { InboxAlerts } from './InboxAlerts';
 import { ThemeToggle } from './ThemeToggle';
 import { NavIcon } from './NavIcon';
-import { canSee, isSupportOnly, gateText } from '../lib/support-gate';
+import { canSee, gateText, DEFAULT_HIDDEN } from '../lib/support-gate';
 import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -115,6 +115,29 @@ function writeCachedPos(on: boolean) {
   if (typeof window !== 'undefined') window.localStorage.setItem(POS_CACHE_KEY, on ? '1' : '0');
 }
 
+/**
+ * Which agency screens this salon has been handed, remembered between loads.
+ *
+ * Same reason as the POS cache above: the nav renders before `/feature-policy`
+ * answers, and a salon that WAS given the marketing plan should not watch it
+ * appear a second late. The fallback is the pessimistic list, never an empty
+ * one — a cache miss or a failed request must hide, not reveal.
+ */
+const HIDDEN_CACHE_KEY = 'lumio_hidden_hrefs';
+function readCachedHidden(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_HIDDEN;
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_CACHE_KEY);
+    if (!raw) return DEFAULT_HIDDEN;
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : DEFAULT_HIDDEN;
+  } catch { return DEFAULT_HIDDEN; }
+}
+function writeCachedHidden(hrefs: string[]) {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(HIDDEN_CACHE_KEY, JSON.stringify(hrefs)); } catch { /* ignore */ }
+}
+
 const RESTAURANT_CACHE_KEY = 'lumio_is_restaurant';
 function readCachedRestaurant(): boolean {
   if (typeof window === 'undefined') return false;
@@ -160,7 +183,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // load) → gated items stay hidden until the plan resolves (no "show all" flash).
   const [posEnabled, setPosEnabled] = useState<boolean | null>(() => readCachedPos());
   // Routes hidden because Super Admin set the feature to platform-managed.
-  const [hiddenHrefs, setHiddenHrefs] = useState<string[]>([]);
+  const [hiddenHrefs, setHiddenHrefs] = useState<string[]>(() => readCachedHidden());
   const [isRestaurant, setIsRestaurant] = useState<boolean>(() => readCachedRestaurant());
   // Sidebar collapsed? Remembered, so a cashier who works on the POS all day
   // keeps the wide screen instead of re-collapsing it on every page.
@@ -193,17 +216,19 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const caps: string[] = user?.capabilities ?? (user && (user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN') ? ALL_CAPS : []);
   const hasSalonAccess = caps.length > 0;
   const isSupport = !!user?.supportSession;
-  // Two gates, one verdict. Capabilities say what the PLAN allows; the support
-  // gate says what belongs to the AGENCY. The salon's menu only shows what
-  // passes both — Google reviews being the one agency-family route that stays.
+  // Two gates, one verdict. Capabilities say what this ROLE may do; the support
+  // gate says what this SALON has been handed (Super Admin → Feature access).
+  // The menu shows only what passes both.
   const can = (href: string) => {
-    if (!canSee(href, isSupport)) return false;
+    if (!canSee(href, isSupport, hiddenHrefs)) return false;
     const c = HREF_CAP[href]; return !c || caps.includes(c);
   };
   // Staff with salon access are assumed POS-entitled (the owner's plan applies);
   // only the owner's own view is gated by the cached plan flag.
   const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
-  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk) && (item.biz !== 'restaurant' || isRestaurant) && can(item.href) && !hiddenHrefs.includes(item.href);
+  // `can` already consults hiddenHrefs, so the per-tenant switch is applied
+  // once, in one place, for the menu and the page guard alike.
+  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk) && (item.biz !== 'restaurant' || isRestaurant) && can(item.href);
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
     .filter((g) => g.items.length > 0);
@@ -227,7 +252,15 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       .then((p) => { const on = p?.posEnabled ?? true; setPosEnabled(on); writeCachedPos(on); })
       .catch(() => {});
     apiFetch<{ policy: Record<string, string>; defs: { key: string; hrefs: string[] }[] }>('/feature-policy', { token })
-      .then((r) => setHiddenHrefs((r?.defs || []).filter((d) => r.policy?.[d.key] === 'platform').flatMap((d) => d.hrefs)))
+      .then((r) => {
+        const defs = r?.defs || [];
+        // An empty or malformed answer is not permission to show everything:
+        // without defs there is nothing to reason from, so the last known list
+        // stands. Only a real answer replaces it.
+        if (!defs.length) return;
+        const hidden = defs.filter((d) => r.policy?.[d.key] === 'platform').flatMap((d) => d.hrefs);
+        setHiddenHrefs(hidden); writeCachedHidden(hidden);
+      })
       .catch(() => {});
     apiFetch<{ businessType?: string; timezone?: string; market?: string; currency?: string }>('/me/tenant', { token })
       .then((r) => {
@@ -315,7 +348,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // The door itself. Hiding the menu is politeness; this is the rule — a salon
   // account that navigates straight to an agency route sees who runs it and
   // how to ask, never a half-working screen it was not meant to operate.
-  const gated = (!isSupport && isSupportOnly(pathname)) ? (
+  const gated = (!isSupport && !canSee(pathname, isSupport, hiddenHrefs)) ? (
     <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center', background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 14, padding: '36px 28px' }}>
       <div style={{ fontSize: 34, marginBottom: 10 }}>🛠</div>
       <h2 style={{ margin: '0 0 10px', fontSize: 19, color: 'var(--cf8fafc)' }}>{gateText(lang === 'vi').title}</h2>

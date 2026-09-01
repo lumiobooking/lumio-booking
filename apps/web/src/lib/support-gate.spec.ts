@@ -1,32 +1,28 @@
-import { isSupportOnly, canSee, SUPPORT_ONLY, gateText } from './support-gate';
+import { isSupportOnly, isHidden, canSee, SUPPORT_ONLY, DEFAULT_HIDDEN, gateText } from './support-gate';
 
-describe('what the salon account may see', () => {
-  it.each([
-    '/salon/marketing',
-    '/salon/marketing/monthly',
-    '/salon/email',
-    '/salon/reviews',
-    '/salon/inbox',
-    '/salon/messenger',
-    '/salon/voice',
-    '/staff/inbox',
-  ])('%s is Lumio-only', (p) => {
-    expect(isSupportOnly(p)).toBe(true);
+/** The nine "Marketing & AI" routes, each of which now has its own switch. */
+const AGENCY_ROUTES = [
+  '/salon/content',
+  '/salon/marketing',
+  '/salon/marketing/monthly',
+  '/salon/email',
+  '/salon/reviews',
+  '/salon/reviews-replies',
+  '/salon/inbox',
+  '/salon/messenger',
+  '/salon/voice',
+];
+
+describe('a salon nobody has decided about sees exactly what it saw before', () => {
+  // This is the regression that matters: switches ship OFF, so a deploy must
+  // not reveal a single screen to a single salon already running.
+  it.each(AGENCY_ROUTES)('%s stays hidden by default', (p) => {
     expect(canSee(p, false)).toBe(false);
   });
 
-  // The single exception, by explicit instruction: replying to their own
-  // Google reviews is the SALON's voice, and it stays with them.
-  it('Google reviews stays with the salon', () => {
-    expect(isSupportOnly('/salon/reviews-replies')).toBe(false);
-    expect(canSee('/salon/reviews-replies', false)).toBe(true);
-  });
-
-  it('the boundary is a path segment, not a string prefix', () => {
-    // '/salon/reviews' must not swallow its sibling by accident of spelling.
-    expect(isSupportOnly('/salon/reviews-replies')).toBe(false);
-    expect(isSupportOnly('/salon/reviews/settings')).toBe(true);
-    expect(isSupportOnly('/salon/emailing-else')).toBe(false);
+  it('the staff inbox belongs to Lumio outright — no switch hands it over', () => {
+    expect(isSupportOnly('/staff/inbox')).toBe(true);
+    expect(canSee('/staff/inbox', false, [])).toBe(false);
   });
 
   it('everything the salon runs day-to-day is untouched', () => {
@@ -36,13 +32,43 @@ describe('what the salon account may see', () => {
   });
 
   it('a query string cannot sneak past the gate', () => {
-    expect(isSupportOnly('/salon/messenger?tab=facts')).toBe(true);
+    expect(canSee('/salon/messenger?tab=facts', false)).toBe(false);
+  });
+});
+
+describe('a salon that has been handed a screen can open it', () => {
+  it('shows only what the policy left out of the hidden list', () => {
+    // Super Admin turned "Marketing plan & posts" on for this salon and nothing
+    // else: the plan opens, the phone bot does not.
+    const hidden = DEFAULT_HIDDEN.filter((h) => h !== '/salon/content');
+    expect(canSee('/salon/content', false, hidden)).toBe(true);
+    expect(canSee('/salon/voice', false, hidden)).toBe(false);
+  });
+
+  it('grants the sub-route with the screen it belongs to', () => {
+    const hidden = DEFAULT_HIDDEN.filter((h) => h !== '/salon/reviews');
+    expect(canSee('/salon/reviews/settings', false, hidden)).toBe(true);
+  });
+
+  it('never hands over the staff portal, whatever the policy says', () => {
+    expect(canSee('/staff/inbox', false, [])).toBe(false);
+  });
+});
+
+describe('the boundary is a path segment, not a string prefix', () => {
+  it('one screen is not decided by another screen’s spelling', () => {
+    // '/salon/reviews' and '/salon/reviews-replies' have separate switches, so
+    // one must never claim the other by accident of spelling.
+    const onlyRewards = ['/salon/reviews'];
+    expect(isHidden('/salon/reviews-replies', onlyRewards)).toBe(false);
+    expect(isHidden('/salon/reviews/settings', onlyRewards)).toBe(true);
+    expect(isHidden('/salon/emailing-else', ['/salon/email'])).toBe(false);
   });
 });
 
 describe('what the Lumio support session sees', () => {
   it('everything — this is who sets it all up', () => {
-    for (const p of SUPPORT_ONLY) expect(canSee(p, true)).toBe(true);
+    for (const p of [...SUPPORT_ONLY, ...AGENCY_ROUTES]) expect(canSee(p, true)).toBe(true);
     expect(canSee('/salon/calendar', true)).toBe(true);
   });
 });

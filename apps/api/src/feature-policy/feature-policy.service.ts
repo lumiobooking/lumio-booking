@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { FEATURE_DEFS, PolicyMode } from './feature-policy.constants';
+import { FEATURE_DEFS, PolicyMode, resolvePolicy } from './feature-policy.constants';
 import { featureAvailableInMarket, marketOf } from '../common/markets';
 
 /**
@@ -32,13 +32,7 @@ export class FeaturePolicyService {
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { featurePolicy: true, market: true } });
     const raw = t?.featurePolicy;
     const stored = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? (raw as Record<string, unknown>) : {};
-    const out: Record<string, PolicyMode> = {};
-    for (const f of FEATURE_DEFS) {
-      const v = stored[f.key];
-      const resolved = v === 'platform' ? 'platform' : v === 'salon' ? 'salon' : f.default;
-      out[f.key] = featureAvailableInMarket(t?.market, f.key) ? resolved : 'platform';
-    }
-    return out;
+    return resolvePolicy(stored, (key) => featureAvailableInMarket(t?.market, key));
   }
 
   private defs(market?: string | null) {

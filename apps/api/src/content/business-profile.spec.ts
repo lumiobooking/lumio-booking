@@ -1,4 +1,8 @@
 import { resolveIdentity, identityToPrompt, EMPTY_PROFILE } from './business-profile';
+import { enOf, viOf } from './i18n';
+
+/** Every phrase this file produces is bilingual; the specs read one side at a time. */
+const viAll = (xs: Parameters<typeof viOf>[0][]) => xs.map(viOf).join(' | ');
 
 /** The real business that exposed the flaw: not a salon, not any of the four codes. */
 const AGENCY = {
@@ -48,7 +52,7 @@ describe('the website and fanpage fill gaps, but never overwrite a declaration',
     });
     expect(id.declared).toBe(true);
     expect(id.profile.whatWeDo).toMatch(/chăm sóc móng/);
-    expect(id.provenance.join(' ')).toMatch(/website\/fanpage/);
+    expect(viAll(id.provenance)).toMatch(/website\/fanpage/);
   });
 
   it('lets the salon’s own words win over the learned intro', () => {
@@ -58,7 +62,7 @@ describe('the website and fanpage fill gaps, but never overwrite a declaration',
       bizIntro: 'Chào mừng bạn đến với chúng tôi!',
     });
     expect(id.profile.whatWeDo).toMatch(/marketing/);
-    expect(id.provenance[0]).toMatch(/tự khai/);
+    expect(viOf(id.provenance[0])).toMatch(/tự khai/);
   });
 
   it('records where every fact came from', () => {
@@ -66,9 +70,9 @@ describe('the website and fanpage fill gaps, but never overwrite a declaration',
       declared: { whatWeDo: 'A' }, website: 'https://x.com',
       serviceNames: ['a', 'b'], city: 'Austin', region: 'TX',
     });
-    expect(id.provenance.join(' | ')).toMatch(/tự khai/);
-    expect(id.provenance.join(' | ')).toMatch(/x\.com/);
-    expect(id.provenance.join(' | ')).toMatch(/2 dịch vụ/);
+    expect(viAll(id.provenance)).toMatch(/tự khai/);
+    expect(viAll(id.provenance)).toMatch(/x\.com/);
+    expect(viAll(id.provenance)).toMatch(/2 dịch vụ/);
   });
 });
 
@@ -83,7 +87,7 @@ describe('it will not invent who the customers are', () => {
   it('says nothing is known when nothing was declared at all', () => {
     const id = resolveIdentity({ tenantName: 'ABC', industry: 'SALON' });
     expect(id.declared).toBe(false);
-    expect(id.label).toMatch(/chưa khai báo/i);
+    expect(viOf(id.label)).toMatch(/chưa khai báo/i);
     const p = identityToPrompt(id, 'SALON');
     expect(p).toMatch(/CHƯA TỰ KHAI BÁO/);
     expect(p).toMatch(/KHÔNG mô tả khách hàng của họ/);
@@ -104,14 +108,18 @@ describe('the gaps say what each blank costs', () => {
     const id = resolveIdentity({ tenantName: 'X' });
     expect(id.gaps.length).toBe(Object.keys(EMPTY_PROFILE).length);
     for (const g of id.gaps) {
-      expect(g.label.length).toBeGreaterThan(4);
-      expect(g.cost.length).toBeGreaterThan(30);
+      expect(viOf(g.label).length).toBeGreaterThan(4);
+      expect(viOf(g.cost).length).toBeGreaterThan(30);
+      // The English side is not allowed to be a copy of the Vietnamese one:
+      // that is exactly the bug this pass exists to fix.
+      expect(enOf(g.label)).not.toBe(viOf(g.label));
+      expect(enOf(g.cost)).not.toBe(viOf(g.cost));
     }
   });
 
   it('warns that a nationwide business must not be given a five-mile radius', () => {
     const id = resolveIdentity({ declared: { whatWeDo: 'A' } });
-    expect(id.gaps.find((g) => g.field === 'serviceArea')?.cost).toMatch(/5 dặm/);
+    expect(viOf(id.gaps.find((g) => g.field === 'serviceArea')?.cost)).toMatch(/5 dặm/);
   });
 
   it('counts what is filled so the screen can show progress', () => {
@@ -134,5 +142,21 @@ describe('the “never assume” field is passed through as a hard rule', () => 
       declared: { whatWeDo: 'Dịch vụ marketing', avoid: 'Đây KHÔNG phải tiệm nail' },
     }), 'SALON');
     expect(p).toMatch(/TUYỆT ĐỐI KHÔNG giả định: Đây KHÔNG phải tiệm nail/);
+  });
+});
+
+describe('an English reader gets English', () => {
+  it('renders provenance, gaps and the placeholder label in English too', () => {
+    const id = resolveIdentity({
+      declared: { whatWeDo: 'A' }, website: 'https://x.com', serviceNames: ['a', 'b'],
+    });
+    const en = id.provenance.map(enOf).join(' | ');
+    expect(en).toMatch(/Description written by the business/);
+    expect(en).toMatch(/2 services listed in the system/);
+    expect(en).not.toMatch(/tự khai|dịch vụ đã khai/);
+
+    const blank = resolveIdentity({ tenantName: 'X' });
+    expect(enOf(blank.label)).toMatch(/business not described yet/i);
+    expect(viOf(blank.label)).toMatch(/chưa khai báo/i);
   });
 });

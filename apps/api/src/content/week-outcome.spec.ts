@@ -1,4 +1,5 @@
 import { buildWeekOutcome, describeOutcome, describeDelta, type OutcomeInput } from './week-outcome';
+import { enOf, viOf } from './i18n';
 
 const money = (c: number) => `$${Math.round(c / 100)}`;
 const book = (n: number, firsts = 0, price = 5000) =>
@@ -59,18 +60,20 @@ describe('the comparison is week-on-week, and only when there is a week to compa
     expect(o.delta.bookings).toBeNull();
     expect(o.delta.newCustomers).toBeNull();
     expect(o.delta.reviews).toBeNull();
-    expect(describeDelta(o)).toBe('');
+    expect(viOf(describeDelta(o))).toBe('');
+    expect(enOf(describeDelta(o))).toBe('');
   });
 
   it('reports a fall as plainly as a rise', () => {
     const o = out({ bookings: book(10, 1), prevBookings: book(20, 5) });
     expect(o.delta.bookings).toBe(-10);
-    expect(describeDelta(o)).toContain('-10 booking');
+    expect(viOf(describeDelta(o))).toContain('-10 booking');
+    expect(enOf(describeDelta(o))).toContain('-10 bookings');
   });
 
   it('says nothing rather than "0" when a figure did not move', () => {
     const o = out({ bookings: book(18, 4), prevBookings: book(18, 4), reviews: 1, prevReviews: 1 });
-    expect(describeDelta(o)).toBe('');
+    expect(viOf(describeDelta(o))).toBe('');
   });
 });
 
@@ -80,18 +83,19 @@ describe('it never claims the work caused the numbers', () => {
     // customers" — a booking on Thursday might have come from the post, the
     // sign outside, or a friend. A number that looks like attribution and is
     // not is worse than none, because somebody spends money on it.
-    const line = describeOutcome(out(), money);
+    const line = viOf(describeOutcome(out(), money));
     expect(line).toMatch(/làm 3\/8 việc/);
     expect(line).toMatch(/22 booking/);
     expect(line).not.toMatch(/nhờ|do bài|mang về|giúp tăng/);
   });
 
   it('reads as one line a salon owner can take in', () => {
-    expect(describeOutcome(out(), money).length).toBeLessThan(90);
+    expect(viOf(describeOutcome(out(), money)).length).toBeLessThan(90);
+    expect(enOf(describeOutcome(out(), money)).length).toBeLessThan(90);
   });
 
   it('leaves out what did not happen instead of printing zeros', () => {
-    const line = describeOutcome(out({ reviews: 0, ideas: [], plannedJobs: 0 }), money);
+    const line = viOf(describeOutcome(out({ reviews: 0, ideas: [], plannedJobs: 0 }), money));
     expect(line).not.toMatch(/0 đánh giá|0\/0/);
     expect(line).toMatch(/22 booking/);
   });
@@ -108,5 +112,26 @@ describe('the counting rules that stop a quiet week looking like a failed one', 
 
   it('never returns a negative planned count from bad input', () => {
     expect(out({ plannedJobs: -3 }).plannedJobs).toBe(0);
+  });
+});
+
+describe('the same week reads in English without changing what it claims', () => {
+  it('writes both languages whole, plurals included', () => {
+    const line = describeOutcome(out(), money);
+    expect(viOf(line)).toBe('làm 3/8 việc · 22 booking · 6 khách mới · $1100 · 3 đánh giá');
+    expect(enOf(line)).toBe('3 of 8 jobs done · 22 bookings · 6 new customers · $1100 · 3 reviews');
+    expect(enOf(line)).not.toBe(viOf(line));
+
+    const one = describeOutcome(out({ bookings: book(1, 1), reviews: 1 }), money);
+    expect(enOf(one)).toContain('1 booking ');
+    expect(enOf(one)).toContain('1 new customer ');
+    expect(enOf(one)).toContain('1 review');
+  });
+
+  it('states the week-on-week change in English, with no arrow drawn', () => {
+    const d = describeDelta(out());
+    expect(viOf(d)).toBe('+4 booking, +2 khách mới, +2 đánh giá so với tuần trước');
+    expect(enOf(d)).toBe('+4 bookings, +2 new customers, +2 reviews vs the week before');
+    expect(enOf(d)).not.toMatch(/because|thanks to|drove|led to/);
   });
 });

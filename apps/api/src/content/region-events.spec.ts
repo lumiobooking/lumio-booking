@@ -1,10 +1,12 @@
 import { regionEvents, resolveRegion, parseAddress, nthWeekday, lastWeekday, easter, lunarNewYear, eventsToPrompt } from './region-events';
+import { enOf, viOf } from './i18n';
 
 const d = (s: string) => new Date(`${s}T12:00:00Z`);
+/** Names and notes are bilingual now; the calendar is identified by its Vietnamese side. */
 const names = (today: string, input: Parameters<typeof regionEvents>[1], horizon = 45) =>
-  regionEvents(d(today), input, { horizonDays: horizon }).events.map((e) => e.name);
+  regionEvents(d(today), input, { horizonDays: horizon }).events.map((e) => viOf(e.name));
 const find = (today: string, input: Parameters<typeof regionEvents>[1], name: string, horizon = 400) =>
-  regionEvents(d(today), input, { horizonDays: horizon }).events.find((e) => e.name === name);
+  regionEvents(d(today), input, { horizonDays: horizon }).events.find((e) => viOf(e.name) === name);
 
 describe('date arithmetic is right, not roughly right', () => {
   it('finds the nth weekday of a month', () => {
@@ -126,7 +128,7 @@ describe('two salons in different states get different calendars', () => {
   it('marks school and prom as approximate and says why', () => {
     const e = find('2026-08-01', ca, 'Tựu trường');
     expect(e?.precision).toBe('approximate');
-    expect(e?.caveat).toMatch(/học khu/);
+    expect(viOf(e?.caveat)).toMatch(/học khu/);
     expect(e?.spanDays).toBeGreaterThan(0);
   });
 
@@ -138,7 +140,7 @@ describe('two salons in different states get different calendars', () => {
   it('flags cultural events as optional rather than assuming the customer base', () => {
     const tet = find('2026-02-01', ca, 'Tết Nguyên đán');
     expect(tet?.scope).toBe('cultural');
-    expect(tet?.caveat).toMatch(/nếu tiệm/);
+    expect(viOf(tet?.caveat)).toMatch(/nếu tiệm/);
   });
 });
 
@@ -170,8 +172,8 @@ describe('the calendar always looks forward', () => {
     const seen = new Set<string>();
     let prev = -Infinity;
     for (const e of events) {
-      expect(seen.has(e.name)).toBe(false);
-      seen.add(e.name);
+      expect(seen.has(viOf(e.name))).toBe(false);
+      seen.add(viOf(e.name));
       expect(e.daysAway).toBeGreaterThanOrEqual(prev);
       prev = e.daysAway;
     }
@@ -187,7 +189,7 @@ describe('Vietnam gets its own calendar, not a translated American one', () => {
   });
 
   it('does not show American ones', () => {
-    const all = regionEvents(d('2026-06-01'), vn, { horizonDays: 365 }).events.map((e) => e.name);
+    const all = regionEvents(d('2026-06-01'), vn, { horizonDays: 365 }).events.map((e) => viOf(e.name));
     expect(all).not.toContain('Quốc khánh Mỹ 4/7');
     expect(all).not.toContain('Lễ Tạ ơn');
     expect(all).not.toContain('Black Friday');
@@ -197,5 +199,40 @@ describe('Vietnam gets its own calendar, not a translated American one', () => {
     const e = find('2027-01-10', vn, 'Cao điểm trước Tết');
     expect(e?.date).toBe('2027-01-23'); // Tết 2027 is 6 Feb
     expect(e?.precision).toBe('approximate');
+  });
+});
+
+describe('the same calendar reads in English', () => {
+  const ca = { market: 'US', city: 'Garden Grove', region: 'CA' };
+
+  it('gives each holiday the name Americans actually use', () => {
+    // The English side is the real holiday, not a translation of the
+    // Vietnamese: 'Lễ Lao động' is Labor Day, not "Labour Celebration Day".
+    const labor = find('2026-08-30', ca, 'Lễ Lao động');
+    expect(enOf(labor?.name)).toBe('Labor Day');
+    expect(enOf(labor?.name)).not.toBe(viOf(labor?.name));
+    expect(enOf(find('2026-11-01', ca, 'Lễ Tạ ơn')?.name)).toBe('Thanksgiving');
+    expect(enOf(find('2026-04-20', ca, 'Ngày của Mẹ')?.name)).toBe("Mother's Day");
+  });
+
+  it('keeps Tết in the English name, because that IS its English name', () => {
+    const tet = find('2026-02-01', ca, 'Tết Nguyên đán');
+    expect(enOf(tet?.name)).toContain('Tết');
+    expect(enOf(tet?.name)).toMatch(/Lunar New Year/);
+  });
+
+  it('translates the notes and the caveats, not only the names', () => {
+    const school = find('2026-08-01', ca, 'Tựu trường');
+    expect(enOf(school?.note)).not.toBe(viOf(school?.note));
+    expect(enOf(school?.note)).toMatch(/August/);
+    expect(enOf(school?.caveat)).toMatch(/district/i);
+  });
+
+  it('still hands the model Vietnamese, whatever the screen shows', () => {
+    const { region, events } = regionEvents(d('2026-11-01'), ca, { horizonDays: 40 });
+    const text = eventsToPrompt(region, events);
+    expect(text).toContain('Lễ Tạ ơn');
+    expect(text).not.toContain('Thanksgiving');
+    expect(text).not.toContain('[object Object]');
   });
 });

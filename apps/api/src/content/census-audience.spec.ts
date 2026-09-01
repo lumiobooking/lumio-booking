@@ -1,5 +1,6 @@
 import { fetchAreaAudience, languageCodesFromGroup, adultsIn, type AreaAudience } from './census-audience';
 import type { FetchLike } from './census';
+import { enOf, viOf } from './i18n';
 
 /** B01001 male bands _003.._025, female _027.._049 — the real table layout. */
 function ageRow(male: number[], female: number[]): string {
@@ -101,7 +102,7 @@ describe('a misaligned read is discarded rather than displayed', () => {
     return fetchAreaAudience(['78704'], { fetchImpl: a }).then((r) => {
       expect(r.ok).toBe(false);
       expect(r.female['25-34']).toBe(0);
-      expect(r.notes.join(' ')).toMatch(/thà không có số còn hơn có số sai/);
+      expect(r.notes.map(viOf).join(' ')).toMatch(/thà không có số còn hơn có số sai/);
     });
   });
 
@@ -113,7 +114,7 @@ describe('a misaligned read is discarded rather than displayed', () => {
       fetchImpl: router({ age: ageRow(MALE, FEMALE), income: JSON.stringify(broken) }),
     }).then((r) => {
       expect(r.incomeAtLeast).toEqual([]);
-      expect(r.notes.join(' ')).toMatch(/không khớp tổng số hộ/);
+      expect(r.notes.map(viOf).join(' ')).toMatch(/không khớp tổng số hộ/);
     });
   });
 
@@ -129,7 +130,7 @@ describe('a misaligned read is discarded rather than displayed', () => {
   it('names a missing API key rather than reporting no data', () => {
     const html = (async () => ({ ok: true, status: 200, text: async () => '<title>Missing Key</title>' })) as unknown as FetchLike;
     return fetchAreaAudience(['78704'], { fetchImpl: html }).then((r) => {
-      expect(r.notes.join(' ')).toMatch(/CENSUS_API_KEY/);
+      expect(r.notes.map(viOf).join(' ')).toMatch(/CENSUS_API_KEY/);
     });
   });
 });
@@ -199,5 +200,36 @@ describe('Census sentinels never reach a screen', () => {
     const r = await fetchAreaAudience(['78704'], { fetchImpl: router({ age: JSON.stringify(broken) }) });
     expect(r.ok).toBe(false);
     expect(JSON.stringify(r)).not.toContain('666666');
+  });
+});
+
+describe('the notes reach an English reader in English', () => {
+  it('names the table that failed, in both languages', async () => {
+    // Only the age table answers; income and languages come back as failures,
+    // and each note has to name the table it is about in the reader's language.
+    const r = await fetchAreaAudience(['78704'], { fetchImpl: router({ age: ageRow(MALE, FEMALE) }) });
+    const en = r.notes.map(enOf).join(' ');
+    expect(en).toMatch(/Could not get the household income distribution from the US Census Bureau/);
+    expect(en).toMatch(/Could not get the language table/);
+    expect(en).not.toMatch(/Chưa lấy được|phân bố thu nhập/);
+    for (const note of r.notes) expect(enOf(note)).not.toBe(viOf(note));
+  });
+
+  it('says a dropped breakdown was dropped, in English too', () => {
+    const broken = JSON.parse(ageRow(MALE, FEMALE)) as unknown[][];
+    const head = broken[0] as string[];
+    (broken[1] as number[])[head.indexOf('B01001_026E')] = 99_999;
+    return fetchAreaAudience(['78704'], {
+      fetchImpl: router({ age: JSON.stringify(broken), income: incomeRow(INCOME) }),
+    }).then((r) => {
+      expect(r.notes.map(enOf).join(' ')).toMatch(/better no number than a wrong one/);
+    });
+  });
+
+  it('names a missing API key in English as well', () => {
+    const html = (async () => ({ ok: true, status: 200, text: async () => '<title>Missing Key</title>' })) as unknown as FetchLike;
+    return fetchAreaAudience(['78704'], { fetchImpl: html }).then((r) => {
+      expect(r.notes.map(enOf).join(' ')).toMatch(/requires an API key \(CENSUS_API_KEY\)/);
+    });
   });
 });

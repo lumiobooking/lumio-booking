@@ -27,6 +27,8 @@
  * because the client will make a spending decision on it.
  */
 
+import { bi, type Bi } from './i18n';
+
 export interface WeekOutcome {
   /** ISO week this describes, e.g. "2026-W35". */
   weekKey: string;
@@ -109,25 +111,46 @@ export function buildWeekOutcome(i: OutcomeInput): WeekOutcome {
  * implies the work caused the numbers — the two facts sit side by side and the
  * reader joins them, or does not.
  */
-export function describeOutcome(o: WeekOutcome, money: (c: number) => string): string {
-  const parts: string[] = [];
-  if (o.plannedJobs) parts.push(`làm ${o.doneJobs}/${o.plannedJobs} việc`);
-  parts.push(`${o.bookings} booking`);
-  if (o.newCustomers) parts.push(`${o.newCustomers} khách mới`);
-  if (o.revenueCents) parts.push(money(o.revenueCents));
-  if (o.reviews) parts.push(`${o.reviews} đánh giá`);
-  return parts.join(' · ');
+export function describeOutcome(o: WeekOutcome, money: (c: number) => string): Bi {
+  const vi: string[] = [];
+  const en: string[] = [];
+  // Every part carries a count, so the two languages are written out whole
+  // rather than assembled from shared pieces: English needs the plural and
+  // puts "done" after the figure, Vietnamese puts "làm" in front of it.
+  const both = (v: string, e: string) => { vi.push(v); en.push(e); };
+  if (o.plannedJobs) both(`làm ${o.doneJobs}/${o.plannedJobs} việc`, `${o.doneJobs} of ${o.plannedJobs} jobs done`);
+  both(`${o.bookings} booking`, plural(o.bookings, 'booking', 'bookings'));
+  if (o.newCustomers) both(`${o.newCustomers} khách mới`, plural(o.newCustomers, 'new customer', 'new customers'));
+  // The money formatter is the salon's own, and a price reads the same either way.
+  if (o.revenueCents) both(money(o.revenueCents), money(o.revenueCents));
+  if (o.reviews) both(`${o.reviews} đánh giá`, plural(o.reviews, 'review', 'reviews'));
+  return bi(vi.join(' · '), en.join(' · '));
 }
 
-/** "+4 booking, +2 khách mới so với tuần trước" — or nothing when there is no comparison. */
-export function describeDelta(o: WeekOutcome): string {
-  const bits: string[] = [];
-  const add = (n: number | null, label: string) => {
+/** English needs the singular; Vietnamese does not have the problem. */
+const plural = (n: number, one: string, many: string): string =>
+  `${n} ${Math.abs(n) === 1 ? one : many}`;
+
+/**
+ * "+4 booking, +2 khách mới so với tuần trước" — or nothing when there is no
+ * comparison. In English: "+4 bookings, +2 new customers vs the week before".
+ *
+ * Empty on both sides rather than null, so the caller keeps one shape and the
+ * screen keeps its existing "print it only if there is something" test.
+ */
+export function describeDelta(o: WeekOutcome): Bi {
+  const vi: string[] = [];
+  const en: string[] = [];
+  const add = (n: number | null, label: string, one: string, many: string) => {
     if (n === null || n === 0) return;
-    bits.push(`${n > 0 ? '+' : ''}${n} ${label}`);
+    const sign = n > 0 ? '+' : '';
+    vi.push(`${sign}${n} ${label}`);
+    en.push(`${sign}${plural(n, one, many)}`);
   };
-  add(o.delta.bookings, 'booking');
-  add(o.delta.newCustomers, 'khách mới');
-  add(o.delta.reviews, 'đánh giá');
-  return bits.length ? `${bits.join(', ')} so với tuần trước` : '';
+  add(o.delta.bookings, 'booking', 'booking', 'bookings');
+  add(o.delta.newCustomers, 'khách mới', 'new customer', 'new customers');
+  add(o.delta.reviews, 'đánh giá', 'review', 'reviews');
+  return vi.length
+    ? bi(`${vi.join(', ')} so với tuần trước`, `${en.join(', ')} vs the week before`)
+    : bi('', '');
 }

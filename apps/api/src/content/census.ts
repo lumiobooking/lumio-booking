@@ -32,6 +32,8 @@
  *     the fix comes from reading what the server said rather than from guessing.
  */
 
+import { bi, type Txt } from './i18n';
+
 export interface ZipDemographics {
   zip: string;
   population: number | null;
@@ -47,7 +49,8 @@ export interface CensusResult {
   totalPopulation: number | null;
   /** Population-weighted, so a big ZIP is not outvoted by a tiny one. */
   weightedMedianIncomeUsd: number | null;
-  error?: string;
+  /** Shown in the area panel, so it carries both languages (see ./i18n). */
+  error?: Txt;
   /** Kept verbatim for the diagnostic screen — never shown to a salon. */
   diagnostic?: string;
 }
@@ -137,7 +140,12 @@ export async function fetchCensus(
   const zips = normaliseZips(zipsInput);
   const empty: CensusResult = { ok: false, year: null, zips: [], totalPopulation: null, weightedMedianIncomeUsd: null };
   if (!zips.length) {
-    return { ...empty, error: 'Chưa có mã ZIP nào để tra cứu. Thêm địa chỉ có ZIP ở Cài đặt tiệm → Thông tin công ty.' };
+    return {
+      ...empty,
+      error: bi(
+        'Chưa có mã ZIP nào để tra cứu. Thêm địa chỉ có ZIP ở Cài đặt tiệm → Thông tin công ty.',
+        'No ZIP code to look up yet. Add an address with a ZIP under Shop settings → Company info.'),
+    };
   }
 
   const doFetch: FetchLike = opts.fetchImpl
@@ -170,7 +178,9 @@ export async function fetchCensus(
       if (needsKey) {
         return {
           ...empty,
-          error: 'Cục Thống kê Mỹ yêu cầu khoá API. Đăng ký miễn phí tại api.census.gov/data/key_signup.html rồi đặt biến CENSUS_API_KEY trên Render.',
+          error: bi(
+            'Cục Thống kê Mỹ yêu cầu khoá API. Đăng ký miễn phí tại api.census.gov/data/key_signup.html rồi đặt biến CENSUS_API_KEY trên Render.',
+            'The US Census Bureau requires an API key. Sign up free at api.census.gov/data/key_signup.html, then set CENSUS_API_KEY on Render.'),
           diagnostic: lastDiag,
         };
       }
@@ -192,7 +202,9 @@ export async function fetchCensus(
 
   return {
     ...empty,
-    error: 'Chưa lấy được dữ liệu dân cư từ Cục Thống kê Mỹ. Số liệu khu vực tạm thời chưa hiển thị.',
+    error: bi(
+      'Chưa lấy được dữ liệu dân cư từ Cục Thống kê Mỹ. Số liệu khu vực tạm thời chưa hiển thị.',
+      'Could not get the population data from the US Census Bureau. The area figures are unavailable for now.'),
     diagnostic: lastDiag || 'no response from any year tried',
   };
 }
@@ -205,29 +217,41 @@ export async function fetchCensus(
  * who these people are — the data says how much a household earns, not what
  * they want done to their nails.
  */
-export function describeArea(r: CensusResult, market = 'US'): string[] {
+export function describeArea(r: CensusResult, market = 'US'): Txt[] {
   if (!r.ok) return [];
-  const out: string[] = [];
+  const out: Txt[] = [];
   if (r.totalPopulation) {
-    out.push(`Khoảng ${r.totalPopulation.toLocaleString('en-US')} người sống trong các mã ZIP quanh tiệm.`);
+    out.push(bi(
+      `Khoảng ${r.totalPopulation.toLocaleString('en-US')} người sống trong các mã ZIP quanh tiệm.`,
+      `About ${r.totalPopulation.toLocaleString('en-US')} people live in the ZIP codes around the shop.`));
   }
   if (r.weightedMedianIncomeUsd) {
     const inc = r.weightedMedianIncomeUsd;
     const band = inc >= 110_000 ? 'cao' : inc >= 75_000 ? 'khá' : inc >= 50_000 ? 'trung bình' : 'thấp';
-    out.push(
+    // The English band is the same judgement said the way an owner says it, not
+    // a word-for-word rendering of the Vietnamese one.
+    const bandEn = inc >= 110_000 ? 'high' : inc >= 75_000 ? 'above average' : inc >= 50_000 ? 'about average' : 'low';
+    out.push(bi(
       `Thu nhập hộ gia đình trung vị ${'$'}${inc.toLocaleString('en-US')} mỗi năm — mức ${band} so với mặt bằng ${market === 'US' ? 'Mỹ' : market}. `
       + (inc >= 90_000
         ? 'Vùng này chịu được giá cao hơn; cạnh tranh bằng giảm giá ở đây là bỏ tiền đi.'
         : inc >= 60_000
           ? 'Vùng này nhạy giá vừa phải: gói combo và giá trị thêm hiệu quả hơn giảm giá thẳng.'
           : 'Vùng này nhạy giá. Giữ một mức giá dễ tiếp cận cho dịch vụ cơ bản, và kiếm lãi ở các dịch vụ nâng cấp.'),
-    );
+      `Median household income ${'$'}${inc.toLocaleString('en-US')} a year — ${bandEn} for ${market === 'US' ? 'the US' : market}. `
+      + (inc >= 90_000
+        ? 'This area can carry higher prices; competing on discounts here is money thrown away.'
+        : inc >= 60_000
+          ? 'This area is somewhat price-sensitive: packages and added value work better than cutting the price outright.'
+          : 'This area is price-sensitive. Keep one easy price on the basic service, and make your margin on the upgrades.')));
   }
   const ages = r.zips.map((z) => z.medianAge).filter((a): a is number => a !== null);
   if (ages.length) {
     const avg = Math.round(ages.reduce((a, b) => a + b, 0) / ages.length);
-    out.push(`Tuổi trung vị quanh đây khoảng ${avg}.`);
+    out.push(bi(`Tuổi trung vị quanh đây khoảng ${avg}.`, `The median age around here is about ${avg}.`));
   }
-  out.push('Lưu ý: đây là số liệu theo mã ZIP của Cục Thống kê Mỹ, không phải một vòng tròn 5 dặm. ZIP có thể rộng hoặc hẹp hơn nhiều.');
+  out.push(bi(
+    'Lưu ý: đây là số liệu theo mã ZIP của Cục Thống kê Mỹ, không phải một vòng tròn 5 dặm. ZIP có thể rộng hoặc hẹp hơn nhiều.',
+    'Note: these are US Census figures by ZIP code, not a 5-mile circle. A ZIP can be much wider or much narrower.'));
   return out;
 }

@@ -1,4 +1,5 @@
 import { breakEven, safeDiscount, marginBasis, promoAdvice, promoToPrompt, playsFor, capAdvice } from './promo-playbook';
+import { enOf, viOf } from './i18n';
 
 describe('the break-even arithmetic is right', () => {
   it('matches the formula lift = d / (m - d)', () => {
@@ -23,7 +24,7 @@ describe('the break-even arithmetic is right', () => {
       expect(e.impossible).toBe(true);
       expect(e.verdict).toBe('impossible');
       expect(e.liftNeededPct).toBeNull();
-      expect(e.plain).toMatch(/không có lượng khách nào cứu được/i);
+      expect(viOf(e.plain)).toMatch(/không có lượng khách nào cứu được/i);
     }
   });
 
@@ -36,7 +37,7 @@ describe('the break-even arithmetic is right', () => {
     const e = breakEven(20, null);
     expect(e.verdict).toBe('unknown');
     expect(e.liftNeededPct).toBeNull();
-    expect(e.plain).toMatch(/Chưa biết biên lãi/);
+    expect(viOf(e.plain)).toMatch(/Chưa biết biên lãi/);
   });
 });
 
@@ -82,7 +83,7 @@ describe('the advice leads with the cheap plays, not the discount', () => {
   const salon = promoAdvice({ industry: 'SALON', commissionPct: 60, proposedDiscountPct: 20 });
 
   it('puts the blanket discount last, never first', () => {
-    expect(salon.tryFirst).not.toContain('Giảm giá toàn menu (nên tránh)');
+    expect(salon.tryFirst.map(viOf)).not.toContain('Giảm giá toàn menu (nên tránh)');
     expect(salon.tryFirst).toHaveLength(3);
   });
 
@@ -100,20 +101,24 @@ describe('the advice leads with the cheap plays, not the discount', () => {
     const blind = promoAdvice({ industry: 'SALON', commissionPct: null, proposedDiscountPct: 20 });
     expect(blind.ceiling).toBeNull();
     expect(blind.proposed?.verdict).toBe('unknown');
-    expect(blind.note).toMatch(/Chưa có tỷ lệ ăn chia/);
+    expect(viOf(blind.note)).toMatch(/Chưa có tỷ lệ ăn chia/);
   });
 
   it('gives each trade its own plays', () => {
-    expect(playsFor('RESTAURANT').some((p) => /thực đơn|món/i.test(p.name + p.offer))).toBe(true);
-    expect(playsFor('REAL_ESTATE').some((p) => /hoa hồng|định giá/i.test(p.name))).toBe(true);
-    expect(playsFor('REAL_ESTATE').some((p) => /móng/i.test(p.name))).toBe(false);
+    expect(playsFor('RESTAURANT').some((p) => /thực đơn|món/i.test(viOf(p.name) + viOf(p.offer)))).toBe(true);
+    expect(playsFor('REAL_ESTATE').some((p) => /hoa hồng|định giá/i.test(viOf(p.name)))).toBe(true);
+    expect(playsFor('REAL_ESTATE').some((p) => /móng/i.test(viOf(p.name)))).toBe(false);
   });
 
   it('every play says when NOT to use it', () => {
     for (const t of ['SALON', 'RESTAURANT', 'REAL_ESTATE']) {
       for (const p of playsFor(t)) {
-        expect(p.avoidWhen.length).toBeGreaterThan(15);
-        expect(p.why.length).toBeGreaterThan(25);
+        expect(viOf(p.avoidWhen).length).toBeGreaterThan(15);
+        expect(viOf(p.why).length).toBeGreaterThan(25);
+        // The English half is held to the same bar: a play that only warns you
+        // off in Vietnamese warns off nobody reading the English screen.
+        expect(enOf(p.avoidWhen).length).toBeGreaterThan(15);
+        expect(enOf(p.why).length).toBeGreaterThan(25);
       }
     }
   });
@@ -209,7 +214,7 @@ describe('the margin comes from the shop before it comes from a default', () => 
     const m = marginBasis(null, { staffAvgPct: 55, allowAssumed: true });
     expect(m.source).toBe('staff');
     expect(m.grossMarginPct).toBe(45);
-    expect(m.note).toMatch(/hồ sơ thợ/);
+    expect(viOf(m.note)).toMatch(/hồ sơ thợ/);
   });
 
   it('labels a trade default as an estimate, loudly, in the note itself', () => {
@@ -218,10 +223,13 @@ describe('the margin comes from the shop before it comes from a default', () => 
     const m = marginBasis(null, { allowAssumed: true });
     expect(m.source).toBe('assumed');
     expect(m.commissionPct).toBe(55);
-    expect(m.note).toMatch(/ƯỚC TÍNH/);
+    expect(viOf(m.note)).toMatch(/ƯỚC TÍNH/);
     // And it names the screen the SHOP can fix it in — not ours.
-    expect(m.note).toMatch(/hồ sơ thợ/);
-    expect(m.note).not.toMatch(/Super Admin/i);
+    expect(viOf(m.note)).toMatch(/hồ sơ thợ/);
+    expect(viOf(m.note)).not.toMatch(/Super Admin/i);
+    // The warning has to survive the switch to English, or an owner reading EN
+    // takes a trade default for a measurement of their own shop.
+    expect(enOf(m.note)).toMatch(/ESTIMATE/);
   });
 
   it('still refuses entirely when assuming is not permitted', () => {
@@ -248,7 +256,60 @@ describe('the margin comes from the shop before it comes from a default', () => 
   });
 
   it('carries the origin into the advice note the screen shows', () => {
-    expect(promoAdvice({ staffAvgPct: 50, allowAssumed: true }).note).toMatch(/hồ sơ thợ/);
-    expect(promoAdvice({ allowAssumed: true }).note).toMatch(/ƯỚC TÍNH/);
+    expect(viOf(promoAdvice({ staffAvgPct: 50, allowAssumed: true }).note)).toMatch(/hồ sơ thợ/);
+    expect(viOf(promoAdvice({ allowAssumed: true }).note)).toMatch(/ƯỚC TÍNH/);
+  });
+});
+
+describe('both languages, written out rather than translated at render time', () => {
+  it('says every play and every verdict in English too, and not by copying the Vietnamese', () => {
+    for (const t of ['SALON', 'RESTAURANT', 'REAL_ESTATE']) {
+      for (const play of playsFor(t)) {
+        for (const field of [play.name, play.offer, play.why, play.useWhen, play.avoidWhen]) {
+          expect(enOf(field)).not.toBe(viOf(field));
+        }
+      }
+    }
+    const salon = playsFor('SALON');
+    expect(enOf(salon[0].name)).toMatch(/quiet hours/i);
+    expect(enOf(salon.find((p) => p.key === 'blanket')!.avoidWhen)).toMatch(/most expensive tool/i);
+
+    // The arithmetic speaks both languages as well — a break-even an owner
+    // cannot read is a break-even they will not act on.
+    const steep = breakEven(30, 50);
+    expect(enOf(steep.plain)).toMatch(/needs 150% more visits/);
+    expect(enOf(steep.plain)).not.toBe(viOf(steep.plain));
+    expect(enOf(breakEven(60, 40).plain)).toMatch(/No amount of volume/i);
+
+    const advice = promoAdvice({ industry: 'SALON', commissionPct: 60 });
+    expect(enOf(advice.note)).toMatch(/Gross margin 40%/);
+    expect(advice.tryFirst.every((n) => enOf(n) !== viOf(n))).toBe(true);
+  });
+
+  it('hands the capped sentence to the English screen with the same numbers in it', () => {
+    // capAdvice caps a VIETNAMESE view of the advice — that is the contract
+    // content.service relies on — so the Vietnamese sentence goes on the view
+    // and the English one travels back in the return value, for
+    // revenue-signals' applyCapToOffer to put on the English side.
+    const a = {
+      kind: 'fill-slot', discountPct: 20,
+      headline: 'Ưu đãi giờ vàng: Thứ 7 buổi sáng, giảm 20%',
+      detail: 'Thứ 7 buổi sáng chỉ chạy ở mức 15%.',
+    };
+    const r = capAdvice(a, promoAdvice({ commissionPct: 60 }));
+    expect(r.changed).toBe(true);
+    // The Vietnamese half is exactly what was appended to the view, so nothing
+    // has to be re-derived downstream.
+    expect(a.detail.endsWith(r.appended!.vi)).toBe(true);
+    expect(r.appended!.en).toMatch(/brought down from 20% to 11%/);
+    expect(r.appended!.en).toMatch(/100% more visits/); // 20/(40-20) = 100%
+    expect(r.appended!.en).not.toMatch(/lượt khách/);
+  });
+
+  it('leaves the prompt in Vietnamese, with no [object Object] where a name should be', () => {
+    const p = promoToPrompt(promoAdvice({ industry: 'SALON', commissionPct: 60 }));
+    expect(p).not.toContain('[object Object]');
+    expect(p).toContain('Ưu đãi giờ vàng (chỉ khung trống)');
+    expect(p).not.toMatch(/Off-peak offer/i);
   });
 });

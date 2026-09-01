@@ -1,4 +1,5 @@
 import { playbookFor, videoFeeds, productWatch } from './industry-playbook';
+import { viOf, enOf } from './i18n';
 import { regionEvents } from './region-events';
 
 const TRADES = ['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE'] as const;
@@ -8,9 +9,9 @@ describe('every trade has its own playbook, not a relabelled nail one', () => {
     const p = playbookFor(t);
     expect(p.dailySources.length).toBeGreaterThanOrEqual(3);
     for (const s of p.dailySources) {
-      expect(s.label.length).toBeGreaterThan(5);
-      expect(s.when.length).toBeGreaterThan(3);
-      expect(s.why.length).toBeGreaterThan(15);
+      expect(viOf(s.label).length).toBeGreaterThan(5);
+      expect(viOf(s.when).length).toBeGreaterThan(3);
+      expect(viOf(s.why).length).toBeGreaterThan(15);
     }
   });
 
@@ -20,9 +21,14 @@ describe('every trade has its own playbook, not a relabelled nail one', () => {
     // clips every week for ever — a template wearing a calendar's clothes.
     // Five picked three at a time gives five distinct weeks before a repeat.
     expect(p.postTypes.length).toBeGreaterThanOrEqual(5);
-    expect(new Set(p.postTypes.map((x) => x.job)).size).toBe(p.postTypes.length);
-    expect(new Set(p.postTypes.map((x) => x.label)).size).toBe(p.postTypes.length);
-    for (const pt of p.postTypes) expect(pt.shots).toContain('·'); // shots in order
+    // Compared on the Vietnamese side: a Set of {vi,en} objects is a set of
+    // distinct references and would pass however duplicated the wording is.
+    expect(new Set(p.postTypes.map((x) => viOf(x.job))).size).toBe(p.postTypes.length);
+    expect(new Set(p.postTypes.map((x) => viOf(x.label))).size).toBe(p.postTypes.length);
+    for (const pt of p.postTypes) {
+      expect(viOf(pt.shots)).toContain('·'); // shots in order
+      expect(enOf(pt.shots)).toContain('·'); // and in order in English too
+    }
   });
 
   it('does not leak nail vocabulary into other trades', () => {
@@ -33,7 +39,7 @@ describe('every trade has its own playbook, not a relabelled nail one', () => {
   });
 
   it('falls back to the salon playbook rather than returning nothing', () => {
-    expect(playbookFor('SOMETHING_NEW').trade).toBe(playbookFor('SALON').trade);
+    expect(viOf(playbookFor('SOMETHING_NEW').trade)).toBe(viOf(playbookFor('SALON').trade));
     expect(playbookFor(null).dailySources.length).toBeGreaterThan(0);
   });
 });
@@ -48,7 +54,7 @@ describe('video feeds are feeds, never individual clips', () => {
       // A link to one video would have to be invented, and would rot in a week.
       expect(l.url).not.toMatch(/\/video\/\d/);
       expect(l.url).not.toMatch(/watch\?v=/);
-      expect(l.how.length).toBeGreaterThan(20);
+      expect(viOf(l.how).length).toBeGreaterThan(20);
     }
   });
 
@@ -71,7 +77,7 @@ describe('product watch ranks by something real, and claims nothing', () => {
     expect(p.length).toBeGreaterThan(0);
     for (const l of p) {
       expect(['www.amazon.com', 'trends.google.com']).toContain(new URL(l.url).host);
-      expect(l.what.length).toBeGreaterThan(20);
+      expect(viOf(l.what).length).toBeGreaterThan(20);
     }
   });
 
@@ -81,7 +87,7 @@ describe('product watch ranks by something real, and claims nothing', () => {
         // Naming a product here would be a claim that goes stale in days and
         // cannot be checked by clicking. The ranking on the page does the
         // claiming instead.
-        expect(l.title).not.toMatch(/đang hot|bán chạy nhất năm|số 1/i);
+        expect(viOf(l.title)).not.toMatch(/đang hot|bán chạy nhất năm|số 1/i);
       }
     }
   });
@@ -90,6 +96,62 @@ describe('product watch ranks by something real, and claims nothing', () => {
     // SERVICE is deliberately empty: there is no honest public ranking for
     // "local services", and inventing one would be worse than a blank section.
     expect(productWatch('SERVICE')).toEqual([]);
+  });
+});
+
+describe('an English reader gets English, not Vietnamese inside an English frame', () => {
+  // Any Vietnamese-only letter. The English side reading as a copy of the
+  // Vietnamese one is the exact bug this pass exists to fix, so it is asserted.
+  const VIET = /[ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i;
+
+  it.each(TRADES)('%s carries both languages on every phrase it puts on screen', (t) => {
+    const p = playbookFor(t);
+    const phrases = [
+      p.trade,
+      ...p.dailySources.flatMap((s) => [s.label, s.when, s.why]),
+      ...p.postTypes.flatMap((x) => [x.label, x.job, x.shots]),
+      ...p.habits.flatMap((h) => [h.text, h.why, h.when]),
+    ];
+    for (const f of phrases) {
+      expect(enOf(f)).not.toBe(viOf(f));
+      expect(enOf(f)).not.toMatch(VIET);
+    }
+  });
+
+  it('says the same concrete thing on both sides', () => {
+    const first = playbookFor('SALON').dailySources[0];
+    expect(enOf(first.label)).toMatch(/set you just finished/i);
+    expect(enOf(first.when)).toMatch(/before she pays/i);
+    expect(enOf(playbookFor('RESTAURANT').habits[1].when)).toBe('before 11am');
+  });
+
+  it('translates the feeds and the product pages, but not the vendor name', () => {
+    const feeds = videoFeeds('SALON');
+    for (const l of feeds) {
+      for (const f of [l.what, l.how]) {
+        expect(enOf(f)).not.toBe(viOf(f));
+        expect(enOf(f)).not.toMatch(VIET);
+      }
+      // "TikTok" is called TikTok on both screens, and a translated product
+      // name is a name that no longer points at anything.
+      expect(enOf(l.source)).toBe(viOf(l.source));
+    }
+    // The hashtag rows are titled with the hashtag itself — an address, not a
+    // phrase — so only the YouTube row has a title worth translating.
+    const yt = feeds.find((l) => l.key === 'yt-search')!;
+    expect(enOf(yt.title)).toMatch(/nail salons, newest first/);
+    expect(viOf(yt.title)).toMatch(/ngành nail/);
+    // And the search query inside the URL stays one language, or the link
+    // stops pointing anywhere.
+    expect(yt.url).toContain('nail%20art');
+
+    for (const l of productWatch('SALON')) {
+      for (const f of [l.title, l.what, l.how]) {
+        expect(enOf(f)).not.toBe(viOf(f));
+        expect(enOf(f)).not.toMatch(VIET);
+      }
+      expect(enOf(l.source)).toBe(viOf(l.source));
+    }
   });
 });
 
@@ -129,7 +191,7 @@ describe('state holidays differ between states, which is the whole point', () =>
     const e = regionEvents(new Date('2027-01-05T12:00:00Z'), { market: 'US', region: 'CA' }, { horizonDays: 200 })
       .events.find((x) => x.name === 'Super Bowl');
     expect(e?.date).toBe('2027-02-14'); // second Sunday of February
-    expect(e?.note).toMatch(/thứ 6 và thứ 7/);
+    expect(viOf(e?.note)).toMatch(/thứ 6 và thứ 7/);
   });
 
   it('marks state holidays as regional so the screen can label them', () => {

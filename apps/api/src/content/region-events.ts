@@ -25,6 +25,8 @@
  * can ask for the address instead of pretending to know the neighbourhood.
  */
 
+import { bi, viOf, type Txt } from './i18n';
+
 export type Market = 'US' | 'CA' | 'VN';
 export type Precision = 'exact' | 'approximate';
 export type Scope = 'national' | 'regional' | 'cultural';
@@ -37,17 +39,22 @@ export interface RegionInput {
 }
 
 export interface DatedEvent {
-  name: string;
+  /**
+   * The name and the note are both printed on the Calendar and Today tabs, so
+   * both carry two languages. A name that is the same word in both — Halloween,
+   * Mardi Gras, Cinco de Mayo — stays a plain string, which `Txt` allows.
+   */
+  name: Txt;
   /** ISO date (UTC midnight) the event lands on, or the window's first day. */
   date: string;
   daysAway: number;
   /** For a window ('mùa prom'), how many days it runs. 0 for a single day. */
   spanDays: number;
-  note: string;
+  note: Txt;
   scope: Scope;
   precision: Precision;
   /** Shown when precision is approximate, so nobody treats it as a fact. */
-  caveat?: string;
+  caveat?: Txt;
 }
 
 // ---- 1. Date arithmetic ----------------------------------------------------
@@ -319,28 +326,34 @@ const BACK_TO_SCHOOL_AUG: Record<string, number> = {
  * `at` receives the year and returns a UTC timestamp, so moveable feasts stay
  * correct forever instead of drifting.
  */
-const STATE_HOLIDAYS: Record<string, { name: string; at: (y: number) => number; note: string }[]> = {
+const STATE_HOLIDAYS: Record<string, { name: Txt; at: (y: number) => number; note: Txt }[]> = {
+  // Every name in this table is a US proper noun that a Vietnamese screen also
+  // prints in English, so the names stay plain strings; the notes are the
+  // product's own sentences and carry both languages.
   LA: [{
     name: 'Mardi Gras',
     // Always 47 days before Easter — the whole city stops, and nails are part
     // of the costume. Computed, so it never needs updating.
     at: (y) => easter(y) - 47 * DAY,
-    note: 'Cả vùng nghỉ và ăn mừng — móng theo màu tím/vàng/xanh lá, đặt kín từ tuần trước',
+    note: bi(
+      'Cả vùng nghỉ và ăn mừng — móng theo màu tím/vàng/xanh lá, đặt kín từ tuần trước',
+      'The whole area takes the day off to celebrate — purple, gold and green nails, booked solid the week before',
+    ),
   }],
-  MA: [{ name: "Patriots' Day", at: (y) => nthWeekday(y, 4, 1, 3), note: 'Ngày marathon Boston — phố đông, nhưng lịch hẹn buổi sáng thường vắng' }],
-  ME: [{ name: "Patriots' Day", at: (y) => nthWeekday(y, 4, 1, 3), note: 'Ngày nghỉ của bang — nhiều gia đình rảnh cả ngày' }],
-  UT: [{ name: 'Pioneer Day', at: (y) => utc(y, 7, 24), note: 'Ngày lễ lớn nhất của bang ngoài Quốc khánh — tiệc, diễu hành, chụp ảnh nhiều' }],
+  MA: [{ name: "Patriots' Day", at: (y) => nthWeekday(y, 4, 1, 3), note: bi('Ngày marathon Boston — phố đông, nhưng lịch hẹn buổi sáng thường vắng', 'Boston Marathon day — the streets are packed, but morning appointments usually go empty') }],
+  ME: [{ name: "Patriots' Day", at: (y) => nthWeekday(y, 4, 1, 3), note: bi('Ngày nghỉ của bang — nhiều gia đình rảnh cả ngày', 'State holiday — plenty of families have the whole day free') }],
+  UT: [{ name: 'Pioneer Day', at: (y) => utc(y, 7, 24), note: bi('Ngày lễ lớn nhất của bang ngoài Quốc khánh — tiệc, diễu hành, chụp ảnh nhiều', "The state's biggest day after the Fourth — parties, parades, lots of photos") }],
   HI: [
-    { name: 'King Kamehameha Day', at: (y) => utc(y, 6, 11), note: 'Ngày nghỉ toàn bang, lễ hội và diễu hành' },
-    { name: 'Statehood Day', at: (y) => nthWeekday(y, 8, 5, 3), note: 'Ngày nghỉ của bang, cuối tuần dài' },
+    { name: 'King Kamehameha Day', at: (y) => utc(y, 6, 11), note: bi('Ngày nghỉ toàn bang, lễ hội và diễu hành', 'Statewide holiday, festivals and parades') },
+    { name: 'Statehood Day', at: (y) => nthWeekday(y, 8, 5, 3), note: bi('Ngày nghỉ của bang, cuối tuần dài', 'State holiday, long weekend') },
   ],
-  AK: [{ name: "Seward's Day", at: (y) => lastWeekday(y, 3, 1), note: 'Ngày nghỉ của bang — thứ 2 dài, khách rảnh' }],
-  NV: [{ name: 'Nevada Day', at: (y) => lastWeekday(y, 10, 5), note: 'Ngày nghỉ toàn bang, thứ 6 dài trước Halloween' }],
-  RI: [{ name: 'Victory Day', at: (y) => nthWeekday(y, 8, 1, 2), note: 'Ngày nghỉ riêng của Rhode Island — cuối tuần dài giữa tháng 8' }],
-  VT: [{ name: 'Town Meeting Day', at: (y) => nthWeekday(y, 3, 2, 1), note: 'Ngày nghỉ của bang, trường đóng cửa' }],
-  CA: [{ name: 'César Chávez Day', at: (y) => utc(y, 3, 31), note: 'Ngày nghỉ của bang California — trường và cơ quan đóng cửa' }],
-  IL: [{ name: 'Casimir Pulaski Day', at: (y) => nthWeekday(y, 3, 1, 1), note: 'Trường ở Chicago nghỉ — mẹ và con gái rảnh cùng lúc' }],
-  TX: [{ name: 'Texas Independence Day', at: (y) => utc(y, 3, 2), note: 'Ngày của bang — nội dung bám niềm tự hào địa phương chạy rất tốt ở đây' }],
+  AK: [{ name: "Seward's Day", at: (y) => lastWeekday(y, 3, 1), note: bi('Ngày nghỉ của bang — thứ 2 dài, khách rảnh', 'State holiday — a long Monday, customers have time') }],
+  NV: [{ name: 'Nevada Day', at: (y) => lastWeekday(y, 10, 5), note: bi('Ngày nghỉ toàn bang, thứ 6 dài trước Halloween', 'Statewide holiday, a long Friday right before Halloween') }],
+  RI: [{ name: 'Victory Day', at: (y) => nthWeekday(y, 8, 1, 2), note: bi('Ngày nghỉ riêng của Rhode Island — cuối tuần dài giữa tháng 8', "Rhode Island's own holiday — a long weekend in the middle of August") }],
+  VT: [{ name: 'Town Meeting Day', at: (y) => nthWeekday(y, 3, 2, 1), note: bi('Ngày nghỉ của bang, trường đóng cửa', 'State holiday, schools are closed') }],
+  CA: [{ name: 'César Chávez Day', at: (y) => utc(y, 3, 31), note: bi('Ngày nghỉ của bang California — trường và cơ quan đóng cửa', 'California state holiday — schools and offices are closed') }],
+  IL: [{ name: 'Casimir Pulaski Day', at: (y) => nthWeekday(y, 3, 1, 1), note: bi('Trường ở Chicago nghỉ — mẹ và con gái rảnh cùng lúc', 'Chicago schools are off — moms and daughters are free at the same time') }],
+  TX: [{ name: 'Texas Independence Day', at: (y) => utc(y, 3, 2), note: bi('Ngày của bang — nội dung bám niềm tự hào địa phương chạy rất tốt ở đây', "The state's own day — content that leans on local pride does very well here") }],
 };
 
 /** Prom lands earlier in the South, later in the Northeast. */
@@ -349,38 +362,49 @@ const PROM_LATE = new Set(['NY','NJ','CT','MA','RI','NH','VT','ME','PA','MI','MN
 // ---- 4. The calendar --------------------------------------------------------
 
 interface Seed {
-  name: string;
+  name: Txt;
   ts: number;
-  note: string;
+  note: Txt;
   scope: Scope;
   precision?: Precision;
   spanDays?: number;
-  caveat?: string;
+  caveat?: Txt;
 }
 
 function usSeeds(y: number, r: ResolvedRegion): Seed[] {
+  // The English side of a holiday name is the name Americans actually use, not
+  // a translation of the Vietnamese: 'Lễ Tạ ơn' is Thanksgiving, not "Thank
+  // You Day". Names that are already English on both screens stay plain.
   const S: Seed[] = [
-    { name: 'Năm mới', ts: utc(y, 1, 1), note: 'Móng lấp lánh, tiệc tùng, làm mới bản thân — khách đặt từ 26-30/12', scope: 'national' },
-    { name: 'Valentine', ts: utc(y, 2, 14), note: 'Tông hồng đỏ, nail art trái tim, khách đi đôi. Bán gift card cho nam giới mua tặng', scope: 'national' },
-    { name: 'Ngày của Mẹ', ts: nthWeekday(y, 5, 0, 2), note: 'Cao điểm gift card. Mẹ và con gái đi cùng — đẩy gói đôi', scope: 'national' },
-    { name: 'Ngày của Cha', ts: nthWeekday(y, 6, 0, 3), note: 'Nhỏ hơn nhiều, nhưng là dịp bán pedicure cho nam', scope: 'national' },
-    { name: 'Quốc khánh Mỹ 4/7', ts: utc(y, 7, 4), note: 'Đỏ trắng xanh, đi biển, pedicure trước kỳ nghỉ', scope: 'national' },
-    { name: 'Lễ Lao động', ts: nthWeekday(y, 9, 1, 1), note: 'Cuối kỳ nghỉ hè — tuần bận, và là mốc tựu trường của nhiều bang', scope: 'national' },
-    { name: 'Halloween', ts: utc(y, 10, 31), note: 'Nail art chủ đề, màu tối — nội dung dễ lan nhất trong năm', scope: 'national' },
-    { name: 'Lễ Tạ ơn', ts: nthWeekday(y, 11, 4, 4), note: 'Tông ấm, gia đình tụ họp và chụp ảnh. Tuần trước đó rất bận', scope: 'national' },
-    { name: 'Black Friday', ts: nthWeekday(y, 11, 4, 4) + DAY, note: 'Ngày bán gift card mạnh nhất năm — chuẩn bị nội dung từ đầu tháng 11', scope: 'national' },
-    { name: 'Giáng sinh', ts: utc(y, 12, 25), note: 'Mùa cao điểm nhất năm — mở đặt lịch sớm, gift card, thợ làm thêm giờ', scope: 'national' },
-    { name: 'Phục sinh', ts: easter(y), note: 'Tông pastel, ảnh gia đình, brunch — mùa xuân bắt đầu ở đây', scope: 'national' },
+    { name: bi('Năm mới', "New Year's Day"), ts: utc(y, 1, 1), note: bi('Móng lấp lánh, tiệc tùng, làm mới bản thân — khách đặt từ 26-30/12', 'Glitter nails, parties, a fresh start — customers book from 26-30 December'), scope: 'national' },
+    { name: bi('Valentine', "Valentine's Day"), ts: utc(y, 2, 14), note: bi('Tông hồng đỏ, nail art trái tim, khách đi đôi. Bán gift card cho nam giới mua tặng', 'Pinks and reds, heart nail art, couples come in together. Sell gift cards to the men buying a present'), scope: 'national' },
+    { name: bi('Ngày của Mẹ', "Mother's Day"), ts: nthWeekday(y, 5, 0, 2), note: bi('Cao điểm gift card. Mẹ và con gái đi cùng — đẩy gói đôi', 'Peak gift card week. Moms and daughters come in together — push the two-person package'), scope: 'national' },
+    { name: bi('Ngày của Cha', "Father's Day"), ts: nthWeekday(y, 6, 0, 3), note: bi('Nhỏ hơn nhiều, nhưng là dịp bán pedicure cho nam', 'Much smaller, but it is the day men will book a pedicure'), scope: 'national' },
+    { name: bi('Quốc khánh Mỹ 4/7', 'Fourth of July'), ts: utc(y, 7, 4), note: bi('Đỏ trắng xanh, đi biển, pedicure trước kỳ nghỉ', 'Red, white and blue, beach trips, pedicures before the holiday'), scope: 'national' },
+    { name: bi('Lễ Lao động', 'Labor Day'), ts: nthWeekday(y, 9, 1, 1), note: bi('Cuối kỳ nghỉ hè — tuần bận, và là mốc tựu trường của nhiều bang', 'End of summer break — a busy week, and the school start date in a lot of states'), scope: 'national' },
+    { name: 'Halloween', ts: utc(y, 10, 31), note: bi('Nail art chủ đề, màu tối — nội dung dễ lan nhất trong năm', 'Themed nail art, dark colors — the easiest content of the year to get shared'), scope: 'national' },
+    { name: bi('Lễ Tạ ơn', 'Thanksgiving'), ts: nthWeekday(y, 11, 4, 4), note: bi('Tông ấm, gia đình tụ họp và chụp ảnh. Tuần trước đó rất bận', 'Warm tones, families get together and take photos. The week before is packed'), scope: 'national' },
+    { name: 'Black Friday', ts: nthWeekday(y, 11, 4, 4) + DAY, note: bi('Ngày bán gift card mạnh nhất năm — chuẩn bị nội dung từ đầu tháng 11', 'The biggest gift card day of the year — have the posts ready by the first week of November'), scope: 'national' },
+    { name: bi('Giáng sinh', 'Christmas'), ts: utc(y, 12, 25), note: bi('Mùa cao điểm nhất năm — mở đặt lịch sớm, gift card, thợ làm thêm giờ', 'The busiest stretch of the year — open the book early, sell gift cards, plan overtime for the techs'), scope: 'national' },
+    { name: bi('Phục sinh', 'Easter'), ts: easter(y), note: bi('Tông pastel, ảnh gia đình, brunch — mùa xuân bắt đầu ở đây', 'Pastels, family photos, brunch — spring starts here'), scope: 'national' },
   ];
 
   const lny = lunarNewYear(y);
   if (lny !== null) {
     S.push({
-      name: 'Tết Nguyên đán',
+      // 'Tết' is the word an American customer of a Vietnamese salon uses too,
+      // so the English side keeps it and glosses it rather than dropping it.
+      name: bi('Tết Nguyên đán', 'Lunar New Year (Tết)'),
       ts: lny,
-      note: 'Móng đỏ, vàng, cầu may. Nhiều tiệm đóng cửa vài ngày — báo khách trước 2 tuần',
+      note: bi(
+        'Móng đỏ, vàng, cầu may. Nhiều tiệm đóng cửa vài ngày — báo khách trước 2 tuần',
+        'Red and gold nails, for luck. A lot of shops close for a few days — tell customers two weeks ahead',
+      ),
       scope: 'cultural',
-      caveat: 'Chỉ đẩy mạnh nếu tiệm có tệp khách Việt/Hoa — nếu không thì bỏ qua',
+      caveat: bi(
+        'Chỉ đẩy mạnh nếu tiệm có tệp khách Việt/Hoa — nếu không thì bỏ qua',
+        'Only push this if the shop has Vietnamese or Chinese customers — otherwise skip it',
+      ),
     });
   }
 
@@ -391,7 +415,10 @@ function usSeeds(y: number, r: ResolvedRegion): Seed[] {
     name: 'Super Bowl',
     ts: nthWeekday(y, 2, 0, 2),
     scope: 'national',
-    note: 'Cả nước ở nhà xem — thứ 6 và thứ 7 trước đó là hai ngày bận, chủ nhật thì vắng',
+    note: bi(
+      'Cả nước ở nhà xem — thứ 6 và thứ 7 trước đó là hai ngày bận, chủ nhật thì vắng',
+      'The whole country is home watching — the Friday and Saturday before are busy, Sunday is dead',
+    ),
   });
 
   if (r.regionKnown) {
@@ -403,45 +430,74 @@ function usSeeds(y: number, r: ResolvedRegion): Seed[] {
     if (aug !== undefined) {
       const ts = aug === 90 ? nthWeekday(y, 9, 1, 1) + DAY : utc(y, 8, aug);
       S.push({
-        name: 'Tựu trường',
+        name: bi('Tựu trường', 'Back to school'),
         ts,
         spanDays: 10,
         precision: 'approximate',
         scope: 'regional',
+        // The state code sits inside the sentence, so the sentence is written
+        // out whole in each language rather than glued together from pieces.
         note: aug === 90
-          ? `Học sinh ${st} phần lớn vào học sau Lễ Lao động — mẹ và con gái làm móng cuối tuần trước đó`
-          : `Học sinh ${st} thường vào học quanh giữa tháng 8 — mẹ và con gái làm móng tuần trước đó`,
-        caveat: 'Ngày thật khác nhau theo học khu — kiểm tra lịch học khu của tiệm rồi chỉnh lại',
+          ? bi(
+            `Học sinh ${st} phần lớn vào học sau Lễ Lao động — mẹ và con gái làm móng cuối tuần trước đó`,
+            `Most ${st} schools go back after Labor Day — moms and daughters come in the weekend before`,
+          )
+          : bi(
+            `Học sinh ${st} thường vào học quanh giữa tháng 8 — mẹ và con gái làm móng tuần trước đó`,
+            `${st} schools usually go back around the middle of August — moms and daughters come in the week before`,
+          ),
+        caveat: bi(
+          'Ngày thật khác nhau theo học khu — kiểm tra lịch học khu của tiệm rồi chỉnh lại',
+          'The real date differs by district — check your local school district calendar and adjust',
+        ),
       });
     }
     const promLate = PROM_LATE.has(st);
     S.push({
-      name: 'Mùa prom',
+      name: bi('Mùa prom', 'Prom season'),
       ts: promLate ? utc(y, 5, 1) : utc(y, 4, 10),
       spanDays: 30,
       precision: 'approximate',
       scope: 'regional',
       note: promLate
-        ? 'Prom ở vùng này rơi vào tháng 5 — học sinh đặt theo nhóm, móng cầu kỳ, giá cao'
-        : 'Prom ở vùng này rơi vào tháng 4 — học sinh đặt theo nhóm, móng cầu kỳ, giá cao',
-      caveat: 'Ngày prom do từng trường đặt — hỏi khách học sinh xem trường các em prom hôm nào',
+        ? bi(
+          'Prom ở vùng này rơi vào tháng 5 — học sinh đặt theo nhóm, móng cầu kỳ, giá cao',
+          'Prom around here lands in May — students book as a group, detailed sets, higher ticket',
+        )
+        : bi(
+          'Prom ở vùng này rơi vào tháng 4 — học sinh đặt theo nhóm, móng cầu kỳ, giá cao',
+          'Prom around here lands in April — students book as a group, detailed sets, higher ticket',
+        ),
+      caveat: bi(
+        'Ngày prom do từng trường đặt — hỏi khách học sinh xem trường các em prom hôm nào',
+        'Each school picks its own prom date — ask the students who come in when theirs is',
+      ),
     });
     S.push({
-      name: 'Mùa tốt nghiệp',
+      name: bi('Mùa tốt nghiệp', 'Graduation season'),
       ts: utc(y, 5, 20),
       spanDays: 25,
       precision: 'approximate',
       scope: 'regional',
-      note: 'Lễ tốt nghiệp và tiệc gia đình — chụp ảnh nhiều, khách muốn móng bền 2 tuần',
-      caveat: 'Tuần lễ tốt nghiệp khác nhau theo trường',
+      note: bi(
+        'Lễ tốt nghiệp và tiệc gia đình — chụp ảnh nhiều, khách muốn móng bền 2 tuần',
+        'Ceremonies and family parties — plenty of photos, customers want a set that lasts two weeks',
+      ),
+      caveat: bi('Tuần lễ tốt nghiệp khác nhau theo trường', 'Graduation week is different at every school'),
     });
     if (['CA','TX','AZ','NM','NV','IL','CO','FL'].includes(st)) {
       S.push({
         name: 'Cinco de Mayo',
         ts: utc(y, 5, 5),
         scope: 'cultural',
-        note: 'Dịp lễ lớn với cộng đồng gốc Mexico ở bang này — màu rực, tiệc cuối tuần',
-        caveat: 'Chỉ dùng nếu tiệm thật sự có tệp khách này',
+        note: bi(
+          'Dịp lễ lớn với cộng đồng gốc Mexico ở bang này — màu rực, tiệc cuối tuần',
+          'A big day for the Mexican-American community in this state — bright colors, weekend parties',
+        ),
+        caveat: bi(
+          'Chỉ dùng nếu tiệm thật sự có tệp khách này',
+          'Only use this if the shop really does have those customers',
+        ),
       });
     }
   }
@@ -449,19 +505,22 @@ function usSeeds(y: number, r: ResolvedRegion): Seed[] {
 }
 
 function vnSeeds(y: number): Seed[] {
+  // A Vietnamese public holiday has a settled English name in the English-language
+  // press — 'Quốc khánh 2/9' is National Day — and the date is kept in the name
+  // on both sides because that is how both languages refer to these days.
   const S: Seed[] = [
-    { name: 'Tết Dương lịch', ts: utc(y, 1, 1), note: 'Làm móng đón năm mới, khách trẻ đi chơi', scope: 'national' },
-    { name: 'Quốc tế Phụ nữ 8/3', ts: utc(y, 3, 8), note: 'Cao điểm — nam giới mua voucher tặng, tiệm nên bán gói đôi mẹ-con', scope: 'national' },
-    { name: 'Giỗ Tổ · 30/4 · 1/5', ts: utc(y, 4, 30), spanDays: 3, note: 'Kỳ nghỉ dài, khách đi du lịch — làm móng trước khi đi', scope: 'national' },
-    { name: 'Quốc khánh 2/9', ts: utc(y, 9, 2), note: 'Nghỉ lễ, tụ họp, chụp ảnh', scope: 'national' },
-    { name: 'Phụ nữ Việt Nam 20/10', ts: utc(y, 10, 20), note: 'Dịp tặng quà lớn thứ hai trong năm sau 8/3', scope: 'national' },
-    { name: 'Nhà giáo 20/11', ts: utc(y, 11, 20), note: 'Tệp khách giáo viên — gói làm nhanh sau giờ dạy', scope: 'national' },
-    { name: 'Giáng sinh', ts: utc(y, 12, 25), note: 'Giới trẻ đi chơi, chụp ảnh — nail art theo chủ đề', scope: 'national' },
+    { name: bi('Tết Dương lịch', "New Year's Day"), ts: utc(y, 1, 1), note: bi('Làm móng đón năm mới, khách trẻ đi chơi', 'Nails for the new year, younger customers heading out'), scope: 'national' },
+    { name: bi('Quốc tế Phụ nữ 8/3', "International Women's Day (8 Mar)"), ts: utc(y, 3, 8), note: bi('Cao điểm — nam giới mua voucher tặng, tiệm nên bán gói đôi mẹ-con', 'Peak day — men buy vouchers as gifts, so sell the mother-and-daughter package'), scope: 'national' },
+    { name: bi('Giỗ Tổ · 30/4 · 1/5', "Hùng Kings' Day · Reunification Day · May Day"), ts: utc(y, 4, 30), spanDays: 3, note: bi('Kỳ nghỉ dài, khách đi du lịch — làm móng trước khi đi', 'A long break and customers travel — they get their nails done before they leave'), scope: 'national' },
+    { name: bi('Quốc khánh 2/9', 'National Day (2 Sep)'), ts: utc(y, 9, 2), note: bi('Nghỉ lễ, tụ họp, chụp ảnh', 'Day off, family gatherings, photos'), scope: 'national' },
+    { name: bi('Phụ nữ Việt Nam 20/10', "Vietnamese Women's Day (20 Oct)"), ts: utc(y, 10, 20), note: bi('Dịp tặng quà lớn thứ hai trong năm sau 8/3', 'The second biggest gift day of the year after 8 March'), scope: 'national' },
+    { name: bi('Nhà giáo 20/11', "Teachers' Day (20 Nov)"), ts: utc(y, 11, 20), note: bi('Tệp khách giáo viên — gói làm nhanh sau giờ dạy', 'Teachers are the customers — a quick package after class'), scope: 'national' },
+    { name: bi('Giáng sinh', 'Christmas'), ts: utc(y, 12, 25), note: bi('Giới trẻ đi chơi, chụp ảnh — nail art theo chủ đề', 'Young customers go out and take photos — themed nail art'), scope: 'national' },
   ];
   const lny = lunarNewYear(y);
   if (lny !== null) {
-    S.push({ name: 'Tết Nguyên đán', ts: lny, spanDays: 5, note: 'Mùa lớn nhất năm. Nhận khách kín từ 23 tháng Chạp — mở sổ đặt trước 3 tuần', scope: 'national' });
-    S.push({ name: 'Cao điểm trước Tết', ts: lny - 14 * DAY, spanDays: 12, precision: 'approximate', scope: 'national', note: 'Hai tuần trước Tết là lúc đông nhất — tăng giá giờ cao điểm, mở thêm ca', caveat: 'Tùy năm, khách bắt đầu dồn từ 10-20 ngày trước Tết' });
+    S.push({ name: bi('Tết Nguyên đán', 'Lunar New Year (Tết)'), ts: lny, spanDays: 5, note: bi('Mùa lớn nhất năm. Nhận khách kín từ 23 tháng Chạp — mở sổ đặt trước 3 tuần', 'The biggest season of the year. Booked solid from the 23rd of the last lunar month — open the book three weeks ahead'), scope: 'national' });
+    S.push({ name: bi('Cao điểm trước Tết', 'Pre-Tết rush'), ts: lny - 14 * DAY, spanDays: 12, precision: 'approximate', scope: 'national', note: bi('Hai tuần trước Tết là lúc đông nhất — tăng giá giờ cao điểm, mở thêm ca', 'The two weeks before Tết are the busiest of the year — charge peak-hour prices and add a shift'), caveat: bi('Tùy năm, khách bắt đầu dồn từ 10-20 ngày trước Tết', 'Depending on the year, the rush starts 10-20 days before Tết') });
   }
   return S;
 }
@@ -496,8 +555,11 @@ export function regionEvents(
     const endsAway = Math.round((s.ts + span * DAY - now) / DAY);
     const daysAway = Math.round((s.ts - now) / DAY);
     if (endsAway < 0 || daysAway > horizon) continue;
-    if (seen.has(s.name)) continue;
-    seen.add(s.name);
+    // The name is bilingual now, so the Vietnamese side is the dedupe key —
+    // one stable string per event, whatever language the screen ends up in.
+    const key = viOf(s.name);
+    if (seen.has(key)) continue;
+    seen.add(key);
     events.push({
       name: s.name,
       date: iso(s.ts),
@@ -519,8 +581,10 @@ export function eventsToPrompt(r: ResolvedRegion, events: DatedEvent[]): string 
   for (const e of events) {
     const when = e.daysAway <= 0 ? 'đang diễn ra' : `còn ${e.daysAway} ngày`;
     const span = e.spanDays ? ` (kéo dài ~${e.spanDays} ngày)` : '';
-    L.push(`- ${e.name} — ${when}${span}. ${e.note}`);
-    if (e.caveat) L.push(`  (không chắc chắn: ${e.caveat})`);
+    // Prompt text, so every bilingual phrase is unwrapped to its Vietnamese
+    // side: the prompt library is one language on purpose.
+    L.push(`- ${viOf(e.name)} — ${when}${span}. ${viOf(e.note)}`);
+    if (e.caveat) L.push(`  (không chắc chắn: ${viOf(e.caveat)})`);
   }
   if (!r.regionKnown) {
     L.push('LƯU Ý: tiệm chưa điền thành phố/bang, nên đây chỉ là các dịp áp dụng ở mọi nơi.');

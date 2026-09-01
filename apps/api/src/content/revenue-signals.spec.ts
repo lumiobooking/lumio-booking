@@ -1,7 +1,8 @@
 import {
-  blockOf, buildRevenueProfile, lapsedSignal, offerAdvice,
+  applyCapToOffer, blockOf, buildRevenueProfile, lapsedSignal, offerAdvice,
   revenueToPrompt, serviceYields, slotLoads,
 } from './revenue-signals';
+import { enOf, viOf } from './i18n';
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
@@ -17,9 +18,9 @@ const bookings = [
 describe('reading the booking book', () => {
   it('sorts blocks from emptiest to fullest, indexed to the salon’s own peak', () => {
     const loads = slotLoads(bookings);
-    expect(loads[0].label).toBe('Thứ 3 buổi chiều');
+    expect(viOf(loads[0].label)).toBe('Thứ 3 buổi chiều');
     expect(loads[0].fillIndex).toBe(15);
-    expect(loads[loads.length - 1].label).toBe('Thứ 7 buổi chiều');
+    expect(viOf(loads[loads.length - 1].label)).toBe('Thứ 7 buổi chiều');
     expect(loads[loads.length - 1].fillIndex).toBe(100);
   });
 
@@ -39,9 +40,9 @@ describe('the discount decision — margin comes first', () => {
   it('targets the emptiest block and NAMES the blocks that must not be discounted', () => {
     const a = offerAdvice({ loads: slotLoads(bookings) });
     expect(a.kind).toBe('fill-slot');
-    expect(a.headline).toContain('Thứ 3 buổi chiều');
-    expect(a.protect).toContain('Thứ 7 buổi chiều');
-    expect(a.detail).toMatch(/không giảm/i);
+    expect(viOf(a.headline)).toContain('Thứ 3 buổi chiều');
+    expect(a.protect.map(viOf)).toContain('Thứ 7 buổi chiều');
+    expect(viOf(a.detail)).toMatch(/không giảm/i);
   });
 
   it('caps the discount at 20% — deeper cuts just train people to wait', () => {
@@ -60,7 +61,7 @@ describe('the discount decision — margin comes first', () => {
     const a = offerAdvice({ loads: slotLoads(full) });
     expect(a.kind).toBe('raise-price');
     expect(a.discountPct).toBe(0);
-    expect(a.detail).toMatch(/tăng giá|bớt lãi/);
+    expect(viOf(a.detail)).toMatch(/tăng giá|bớt lãi/);
   });
 
   it('when the calendar is fine but customers vanished, it says win-back not sale', () => {
@@ -72,14 +73,14 @@ describe('the discount decision — margin comes first', () => {
     ];
     const a = offerAdvice({ loads: slotLoads(nearlyFull), lapsedCount: 34 });
     expect(a.kind).toBe('win-back');
-    expect(a.headline).toContain('34');
+    expect(viOf(a.headline)).toContain('34');
   });
 
   it('too little history means say so, not guess', () => {
     const a = offerAdvice({ loads: slotLoads([{ weekday: 1, hour: 10, minutes: 60, revenueCents: 100 }]) });
     expect(a.kind).toBe('hold');
     expect(a.discountPct).toBe(0);
-    expect(a.headline).toMatch(/chưa đủ dữ liệu/i);
+    expect(viOf(a.headline)).toMatch(/chưa đủ dữ liệu/i);
   });
 });
 
@@ -122,6 +123,46 @@ describe('which service actually earns the chair', () => {
   it('ignores free or zero-length services instead of dividing by zero', () => {
     expect(serviceYields([{ name: 'Tư vấn', priceCents: 0, durationMinutes: 30 }])).toEqual([]);
     expect(serviceYields([{ name: 'Lỗi', priceCents: 5000, durationMinutes: 0 }])).toEqual([]);
+  });
+});
+
+describe('the same figures, for an owner reading English', () => {
+  it('names the block the way an American owner says it, not word for word', () => {
+    const loads = slotLoads(bookings);
+    expect(viOf(loads[0].label)).toBe('Thứ 3 buổi chiều');
+    expect(enOf(loads[0].label)).toBe('Tue afternoon');
+  });
+
+  it('writes the offer advice twice rather than leaving one side untranslated', () => {
+    const a = offerAdvice({ loads: slotLoads(bookings) });
+    expect(enOf(a.headline)).not.toBe(viOf(a.headline));
+    expect(enOf(a.headline)).toMatch(/off Tue afternoon/);
+    expect(enOf(a.detail)).toMatch(/busiest block/);
+    expect(enOf(a.basis)).not.toBe(viOf(a.basis));
+    expect(a.protect.map(enOf)).toContain('Sat afternoon');
+  });
+
+  it('leaves the prompt in Vietnamese whichever language the screen is in', () => {
+    const text = revenueToPrompt(buildRevenueProfile({ bookings }), money);
+    expect(text).toContain('Thứ 7 buổi chiều');
+    expect(text).not.toContain('[object Object]');
+    expect(text).not.toContain('Sat afternoon');
+  });
+});
+
+describe('the margin cap, folded back onto both languages', () => {
+  it('carries the capped figure and the reason onto the English side too', () => {
+    const a = offerAdvice({ loads: slotLoads(bookings) });
+    expect(a.discountPct).toBe(20);
+    // What promo-playbook's capAdvice does to a Vietnamese view of the advice:
+    // caps the depth and explains the cut in Vietnamese.
+    const view = { discountPct: 15, detail: `${viOf(a.detail)} Mức giảm đã hạ từ 20% xuống 15%.` };
+    applyCapToOffer(a, view, 45);
+    expect(a.discountPct).toBe(15);
+    expect(viOf(a.headline)).toContain('15%');
+    expect(enOf(a.headline)).toContain('15%');
+    expect(viOf(a.detail)).toContain('Mức giảm đã hạ từ 20% xuống 15%.');
+    expect(enOf(a.detail)).toMatch(/brought down from 20% to 15%/);
   });
 });
 

@@ -1,4 +1,5 @@
 import { resolveShopLocation } from './shop-location';
+import { viOf, enOf } from './i18n';
 import { stateFromZip, parseAddress } from './region-events';
 
 describe('a ZIP names its own state', () => {
@@ -85,7 +86,7 @@ describe('the shop is placed from what the shop already gave us', () => {
   it('falls back to the address in the shop settings, and says so', () => {
     const r = resolveShopLocation({ address: '1234 Main St, Kerrville, TX 78028' });
     expect(r).toMatchObject({ city: 'Kerrville', region: 'TX', postalCode: '78028', source: 'address' });
-    expect(r.sourceLabel).toMatch(/cài đặt tiệm/);
+    expect(viOf(r.sourceLabel)).toMatch(/cài đặt tiệm/);
     expect(r.fix).toBeNull();
   });
 
@@ -99,7 +100,7 @@ describe('the shop is placed from what the shop already gave us', () => {
     // and the state is what every regional calendar runs on.
     const r = resolveShopLocation({ tenantPostal: '78028' });
     expect(r).toMatchObject({ region: 'TX', city: null, postalCode: '78028', source: 'zip' });
-    expect(r.sourceLabel).toContain('78028');
+    expect(viOf(r.sourceLabel)).toContain('78028');
   });
 
   it('reaches the ZIP inside an address that has no readable state', () => {
@@ -127,8 +128,8 @@ describe('the shop is placed from what the shop already gave us', () => {
     const r = resolveShopLocation({ address: 'Beauty Bar, Suite A' });
     expect(r.region).toBeNull();
     expect(r.source).toBe('none');
-    expect(r.fix).toMatch(/Cài đặt tiệm/);
-    expect(r.fix).toMatch(/Quét & học tự động/);
+    expect(viOf(r.fix)).toMatch(/Cài đặt tiệm/);
+    expect(viOf(r.fix)).toMatch(/Quét & học tự động/);
   });
 
   it('keeps a city it found even when no state came with it', () => {
@@ -136,6 +137,20 @@ describe('the shop is placed from what the shop already gave us', () => {
     // nothing regional is built on it.
     const r = resolveShopLocation({ tenantCity: 'Houston' });
     expect(r).toMatchObject({ city: 'Houston', region: null, source: 'none' });
+  });
+
+  it('says where it got the location, and the fix, in both languages', () => {
+    // The EN switch used to leave Vietnamese provenance inside an English
+    // frame. Both sides carry the ZIP itself: that is the shop's own datum,
+    // not a phrase we translate.
+    const zip = resolveShopLocation({ tenantPostal: '78028' });
+    expect(enOf(zip.sourceLabel)).not.toBe(viOf(zip.sourceLabel));
+    expect(enOf(zip.sourceLabel)).toMatch(/ZIP 78028/);
+
+    const placeless = resolveShopLocation({ address: 'Beauty Bar, Suite A' });
+    expect(enOf(placeless.fix)).not.toBe(viOf(placeless.fix));
+    expect(enOf(placeless.fix)).toMatch(/Salon settings/);
+    expect(enOf(placeless.fix)).toMatch(/Scan & learn/);
   });
 
   it('does not read US addresses for a Vietnamese shop', () => {

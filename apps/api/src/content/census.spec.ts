@@ -1,4 +1,5 @@
 import { fetchCensus, parseCensus, normaliseZips, describeArea, type FetchLike } from './census';
+import { enOf, viOf } from './i18n';
 
 const reply = (body: string, ok = true, status = 200) =>
   (async () => ({ ok, status, text: async () => body })) as unknown as FetchLike;
@@ -90,7 +91,7 @@ describe('failure is reported, never faked', () => {
     return r0.then((r) => {
       expect(r.ok).toBe(false);
       expect(r.zips).toEqual([]);
-      expect(r.error).toMatch(/Chưa lấy được dữ liệu dân cư/);
+      expect(viOf(r.error)).toMatch(/Chưa lấy được dữ liệu dân cư/);
       // The diagnostic is what turns "it broke" into a fix. Salons never see it.
       expect(r.diagnostic).toMatch(/unknown variable/);
     });
@@ -124,9 +125,9 @@ describe('failure is reported, never faked', () => {
     // The message must point the SHOP at a screen the shop can open. It used to
     // say "Super Admin", which is our staff's screen — an instruction the person
     // reading it cannot carry out.
-    expect(r.error).toMatch(/ZIP/);
-    expect(r.error).toMatch(/Cài đặt tiệm/);
-    expect(r.error).not.toMatch(/Super Admin/i);
+    expect(viOf(r.error)).toMatch(/ZIP/);
+    expect(viOf(r.error)).toMatch(/Cài đặt tiệm/);
+    expect(viOf(r.error)).not.toMatch(/Super Admin/i);
   });
 });
 
@@ -153,11 +154,11 @@ describe('the combined figures are weighted, not averaged', () => {
 describe('the write-up says what the data supports and no more', () => {
   it('always admits a ZIP is not a five-mile circle', async () => {
     const lines = describeArea(await fetchCensus('92840,92841', { fetchImpl: reply(GOOD) }));
-    expect(lines.join(' ')).toMatch(/không phải một vòng tròn 5 dặm/);
+    expect(lines.map(viOf).join(' ')).toMatch(/không phải một vòng tròn 5 dặm/);
   });
 
   it('reads income as spending capacity, not as identity', async () => {
-    const lines = describeArea(await fetchCensus('92840,92841', { fetchImpl: reply(GOOD) })).join(' ');
+    const lines = describeArea(await fetchCensus('92840,92841', { fetchImpl: reply(GOOD) })).map(viOf).join(' ');
     expect(lines).toMatch(/nhạy giá|chịu được giá cao/);
     // The Census says what a household earns. It does not say who they are.
     for (const invented of ['phụ nữ', 'dân văn phòng', 'thích', 'ưa chuộng']) {
@@ -178,8 +179,8 @@ describe('the "Missing Key" page is named for what it is', () => {
     const html = '<html><head><title>Missing Key</title></head><body>error</body></html>';
     const r = await fetchCensus('92840', { fetchImpl: reply(html) });
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/khoá API/);
-    expect(r.error).toMatch(/CENSUS_API_KEY/);
+    expect(viOf(r.error)).toMatch(/khoá API/);
+    expect(viOf(r.error)).toMatch(/CENSUS_API_KEY/);
     expect(r.diagnostic).toMatch(/missing api key/);
   });
 
@@ -198,5 +199,31 @@ describe('the "Missing Key" page is named for what it is', () => {
     const impl = (async (u: string) => { seen = u; return { ok: true, status: 200, text: async () => GOOD }; }) as unknown as FetchLike;
     await fetchCensus('92840', { apiKey: 'abc123', fetchImpl: impl });
     expect(seen).toContain('key=abc123');
+  });
+});
+
+describe('the same area, for an owner reading English', () => {
+  it('writes the write-up twice rather than leaving one side untranslated', async () => {
+    const lines = describeArea(await fetchCensus('92840,92841', { fetchImpl: reply(GOOD) }));
+    const en = lines.map(enOf).join(' ');
+    expect(en).toMatch(/About 82,000 people live in the ZIP codes around the shop/);
+    // $83,122 is above average for the US, and above the $60k line, so the
+    // advice is the packages one — said the way an owner would say it.
+    expect(en).toMatch(/Median household income \$83,122 a year — above average for the US/);
+    expect(en).toMatch(/packages and added value work better/);
+    expect(en).toMatch(/not a 5-mile circle/);
+    expect(en).not.toMatch(/vòng tròn|thu nhập|nhạy giá/);
+    for (const l of lines) expect(enOf(l)).not.toBe(viOf(l));
+  });
+
+  it('says the failures in English too', async () => {
+    const r = await fetchCensus('', { fetchImpl: reply(GOOD) });
+    expect(enOf(r.error)).toMatch(/No ZIP code to look up yet/);
+    expect(enOf(r.error)).toMatch(/Shop settings/);
+    expect(enOf(r.error)).not.toBe(viOf(r.error));
+
+    const key = await fetchCensus('92840', { fetchImpl: reply('<title>Missing Key</title>') });
+    expect(enOf(key.error)).toMatch(/requires an API key/);
+    expect(enOf(key.error)).toMatch(/CENSUS_API_KEY/);
   });
 });

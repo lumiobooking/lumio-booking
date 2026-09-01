@@ -19,6 +19,8 @@
  * somebody else. Nobody repeats "nought point one five percent".
  */
 
+import type { Txt } from './i18n';
+
 /**
  * Money, rounded to something a person would say out loud.
  *
@@ -44,6 +46,9 @@ export const count = (n: number): string => Math.round(n).toLocaleString('en-US'
  * Below 1% a percentage stops meaning anything, so it becomes "8 trong 5.457".
  * Above that the percentage is the clearer form and is kept.
  */
+// Deliberately one language: this returns a FRAGMENT, and a sentence with a
+// number in it has to be written out whole in each language (word order moves
+// the number). The caller assembling the sentence is the place that splits it.
 export function share(part: number, whole: number): string {
   if (!whole || whole <= 0 || part < 0) return '';
   const pct = (part / whole) * 100;
@@ -79,10 +84,14 @@ export interface PlainStep {
   key: string;
   /** Emoji, so the eye finds the block before reading a word. */
   icon: string;
-  title: string;
-  line: string;
+  // The four fields below are read off a screen, so each one carries both
+  // languages; `key` and `icon` are not words and stay as they are. `Txt`
+  // still accepts a plain string, so a builder that has not been translated
+  // yet keeps compiling and simply reads the same in either language.
+  title: Txt;
+  line: Txt;
   /** Imperative. Null when there is genuinely nothing to do yet. */
-  action: string | null;
+  action: Txt | null;
   /** Shown only when the reader asks. May be empty. */
-  why: string;
+  why: Txt;
 }

@@ -1,4 +1,5 @@
 import { weekKey, weekStart, isoWeek, isPastWeek, weekLabel, localParts } from './week-key';
+import { enOf, viOf } from './i18n';
 
 const AUSTIN = 'America/Chicago';
 const HANOI = 'Asia/Ho_Chi_Minh';
@@ -85,7 +86,10 @@ describe('a past week is frozen', () => {
 
 describe('the label is for a person', () => {
   it('reads as a week and a year', () => {
-    expect(weekLabel('2026-W36')).toBe('Tuần 36, 2026');
+    expect(viOf(weekLabel('2026-W36'))).toBe('Tuần 36, 2026');
+    // The archive strip is a list of these; a Vietnamese word repeated down an
+    // otherwise English column is what makes the EN switch look broken.
+    expect(enOf(weekLabel('2026-W36'))).toBe('Week 36, 2026');
   });
 
   it('passes anything it does not recognise straight through', () => {

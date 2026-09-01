@@ -15,6 +15,8 @@
  *   - a salon that is full everywhere is told to RAISE prices, not run offers
  */
 
+import { bi, viOf, enOf, type Txt } from './i18n';
+
 export interface BookingRow {
   /** Local weekday 0=Sunday … 6=Saturday, as seen in the salon's timezone. */
   weekday: number;
@@ -35,6 +37,20 @@ export function blockOf(hour: number): Block {
 export const WEEKDAY_VI = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 export const BLOCK_VI: Record<Block, string> = { morning: 'buổi sáng', afternoon: 'buổi chiều', evening: 'buổi tối' };
 
+/**
+ * The English half of a slot label — written the way an owner says it, not
+ * translated word for word: "Sat morning", never "Day Seven morning".
+ *
+ * `WEEKDAY_VI` above stays exported and unchanged: the prompt text and the
+ * weekly plan build Vietnamese sentences out of it, and those must stay one
+ * language. Only the labels that reach a SCREEN carry both.
+ */
+const WEEKDAY_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const BLOCK_EN: Record<Block, string> = { morning: 'morning', afternoon: 'afternoon', evening: 'evening' };
+
+const slotLabel = (weekday: number, block: Block): Txt =>
+  bi(`${WEEKDAY_VI[weekday]} ${BLOCK_VI[block]}`, `${WEEKDAY_EN[weekday]} ${BLOCK_EN[block]}`);
+
 export interface SlotLoad {
   weekday: number;
   block: Block;
@@ -42,7 +58,8 @@ export interface SlotLoad {
   revenueCents: number;
   /** 0-100, relative to this salon's own busiest block. */
   fillIndex: number;
-  label: string;
+  /** Shown on screen ("Thứ 3 buổi chiều" / "Tue afternoon"), so it is bilingual. */
+  label: Txt;
 }
 
 /**
@@ -75,7 +92,7 @@ export function slotLoads(rows: BookingRow[] | null | undefined): SlotLoad[] {
         minutes: v.minutes,
         revenueCents: v.revenueCents,
         fillIndex: Math.round((v.minutes / peak) * 100),
-        label: `${WEEKDAY_VI[weekday]} ${BLOCK_VI[block as Block]}`,
+        label: slotLabel(weekday, block as Block),
       };
     })
     .sort((a, b) => a.fillIndex - b.fillIndex);
@@ -84,13 +101,13 @@ export function slotLoads(rows: BookingRow[] | null | undefined): SlotLoad[] {
 export interface OfferAdvice {
   /** 'fill-slot' | 'win-back' | 'raise-price' | 'hold' */
   kind: 'fill-slot' | 'win-back' | 'raise-price' | 'hold';
-  headline: string;
-  detail: string;
+  headline: Txt;
+  detail: Txt;
   /** Suggested discount, 0 when the advice is not to discount. */
   discountPct: number;
   /** Blocks the salon must NOT discount — they are already selling. */
-  protect: string[];
-  basis: string;
+  protect: Txt[];
+  basis: Txt;
 }
 
 /**
@@ -114,11 +131,17 @@ export function offerAdvice(input: {
   if (loads.length < minSlots) {
     return {
       kind: 'hold',
-      headline: 'Chưa đủ dữ liệu đặt lịch để tư vấn khuyến mãi',
-      detail: 'Cần thêm vài tuần đặt lịch qua hệ thống thì mới biết khung giờ nào thật sự trống. Trong lúc đó tập trung vào nội dung và xin đánh giá Google.',
+      headline: bi(
+        'Chưa đủ dữ liệu đặt lịch để tư vấn khuyến mãi',
+        'Not enough booking history yet to advise on an offer'),
+      detail: bi(
+        'Cần thêm vài tuần đặt lịch qua hệ thống thì mới biết khung giờ nào thật sự trống. Trong lúc đó tập trung vào nội dung và xin đánh giá Google.',
+        'It takes a few more weeks of bookings through the system to see which hours are genuinely empty. Until then, put the effort into content and into asking for Google reviews.'),
       discountPct: 0,
       protect: [],
-      basis: `mới có ${loads.length} khung giờ có dữ liệu`,
+      basis: bi(
+        `mới có ${loads.length} khung giờ có dữ liệu`,
+        `only ${loads.length} time blocks have any data yet`),
     };
   }
 
@@ -128,11 +151,17 @@ export function offerAdvice(input: {
   if (!quiet.length) {
     return {
       kind: 'raise-price',
-      headline: 'Tiệm đang kín đều — đừng giảm giá',
-      detail: 'Không có khung giờ nào dưới 40% so với khung đông nhất. Giảm giá lúc này là tự bớt lãi trên ghế vốn đã có khách. Thay vào đó: cân nhắc tăng giá dịch vụ chủ lực 5–10%, hoặc đẩy dịch vụ cộng thêm (nail art, chăm da tay) để tăng giá trị mỗi lượt.',
+      headline: bi(
+        'Tiệm đang kín đều — đừng giảm giá',
+        'You are busy across the board — do not discount'),
+      detail: bi(
+        'Không có khung giờ nào dưới 40% so với khung đông nhất. Giảm giá lúc này là tự bớt lãi trên ghế vốn đã có khách. Thay vào đó: cân nhắc tăng giá dịch vụ chủ lực 5–10%, hoặc đẩy dịch vụ cộng thêm (nail art, chăm da tay) để tăng giá trị mỗi lượt.',
+        'No time block is running below 40% of your busiest one. A discount right now just takes profit off chairs that were already selling. Do this instead: raise your main service 5–10%, or push add-ons (nail art, hand treatments) so each visit is worth more.'),
       discountPct: 0,
       protect: busy,
-      basis: 'khung thấp nhất vẫn ≥ 40% so với khung đông nhất',
+      basis: bi(
+        'khung thấp nhất vẫn ≥ 40% so với khung đông nhất',
+        'even the quietest block runs at 40% or more of the busiest one'),
     };
   }
 
@@ -145,22 +174,92 @@ export function offerAdvice(input: {
   if (lapsed >= 20 && quiet.length <= 2) {
     return {
       kind: 'win-back',
-      headline: `Kéo lại ${lapsed} khách cũ thay vì giảm giá đại trà`,
-      detail: `Lịch chỉ trống lác đác (${quiet.map((q) => q.label).join(', ')}), nhưng có ${lapsed} khách đã lâu không quay lại. Gửi tin nhắn riêng kèm ưu đãi ${depth}% cho lần tới, hạn 2 tuần — rẻ hơn nhiều so với giảm giá cho cả khách đang đều đặn.`,
+      // A sentence with a number in it is written out whole in each language:
+      // the word order around the count is not the same in the two.
+      headline: bi(
+        `Kéo lại ${lapsed} khách cũ thay vì giảm giá đại trà`,
+        `Win back ${lapsed} past customers instead of discounting for everyone`),
+      detail: bi(
+        `Lịch chỉ trống lác đác (${quiet.map((q) => viOf(q.label)).join(', ')}), nhưng có ${lapsed} khách đã lâu không quay lại. Gửi tin nhắn riêng kèm ưu đãi ${depth}% cho lần tới, hạn 2 tuần — rẻ hơn nhiều so với giảm giá cho cả khách đang đều đặn.`,
+        `Only a few gaps on the book (${quiet.map((q) => enOf(q.label)).join(', ')}), but ${lapsed} customers have not been in for a long time. Text them one at a time with ${depth}% off their next visit, good for 2 weeks — far cheaper than cutting the price for the regulars who are already coming in.`),
       discountPct: depth,
       protect: busy,
-      basis: `${lapsed} khách quá hạn quay lại`,
+      basis: bi(
+        `${lapsed} khách quá hạn quay lại`,
+        `${lapsed} customers overdue for a visit`),
     };
   }
 
   return {
     kind: 'fill-slot',
-    headline: `Ưu đãi giờ vàng: ${target.label}, giảm ${depth}%`,
-    detail: `${target.label} chỉ chạy ở mức ${target.fillIndex}% so với khung đông nhất của tiệm. Ưu đãi CHỈ áp cho khung này, đăng story sáng hôm đó và ghim vào tin nhắn tự động.${busy.length ? ` Tuyệt đối không giảm ${busy.slice(0, 2).join(' và ')} — đang gần kín, giảm là mất lãi.` : ''}`,
+    headline: bi(
+      `Ưu đãi giờ vàng: ${viOf(target.label)}, giảm ${depth}%`,
+      `Off-peak offer: ${depth}% off ${enOf(target.label)}`),
+    detail: bi(
+      `${viOf(target.label)} chỉ chạy ở mức ${target.fillIndex}% so với khung đông nhất của tiệm. Ưu đãi CHỈ áp cho khung này, đăng story sáng hôm đó và ghim vào tin nhắn tự động.${busy.length ? ` Tuyệt đối không giảm ${busy.slice(0, 2).map(viOf).join(' và ')} — đang gần kín, giảm là mất lãi.` : ''}`,
+      `${enOf(target.label)} is running at just ${target.fillIndex}% of your busiest block. Put the offer on that block ONLY, post a story the morning of, and pin it in the auto-reply.${busy.length ? ` Do not discount ${busy.slice(0, 2).map(enOf).join(' or ')} — nearly full already, and cutting there comes straight out of profit.` : ''}`),
     discountPct: depth,
     protect: busy,
-    basis: `${target.label} ở mức ${target.fillIndex}% công suất tương đối`,
+    basis: bi(
+      `${viOf(target.label)} ở mức ${target.fillIndex}% công suất tương đối`,
+      `${enOf(target.label)} sits at ${target.fillIndex}% of relative capacity`),
   };
+}
+
+/** Same edit on both languages — for a change that is digits, not words. */
+const mapTxt = (t: Txt, f: (s: string) => string): Txt =>
+  typeof t === 'string' ? f(t) : bi(f(t.vi), f(t.en));
+
+/**
+ * Fold the margin cap back onto a bilingual advice.
+ *
+ * `capAdvice` in promo-playbook owns the decision and the arithmetic — how deep
+ * a cut this salon's margin can actually pay for — and it corrects the advice by
+ * MUTATING it, deliberately, so only one copy of the number is ever in
+ * circulation. It was written against plain strings, and this advice now speaks
+ * two languages, so the caller caps a Vietnamese VIEW of it and hands the result
+ * here.
+ *
+ * What comes back is applied to both sides: the capped figure, the percentage
+ * inside the headline (the same digits in either language), and the sentence
+ * capAdvice appended — taken verbatim on the Vietnamese side rather than
+ * re-derived, because a Vietnamese sentence glued to the end of an English
+ * detail line is the whole bug this file is fixing.
+ *
+ * capAdvice now hands its sentence back in both languages, so pass it through
+ * as `view.appended` and the English side carries the same arithmetic the
+ * Vietnamese one does. Without it the fallback sentences below still apply —
+ * true English, one figure short.
+ */
+export function applyCapToOffer(
+  advice: OfferAdvice,
+  view: { discountPct: number; detail: string; appended?: Txt | null },
+  grossMarginPct: number | null,
+): void {
+  const was = advice.discountPct;
+  const now = view.discountPct;
+  const viBase = viOf(advice.detail);
+  const appended = view.detail.length > viBase.length ? view.detail.slice(viBase.length) : '';
+  const enTail = enOf(view.appended);
+
+  if (now !== was) {
+    advice.discountPct = now;
+    advice.headline = mapTxt(advice.headline, (t) => t.replace(`${was}%`, `${now}%`));
+    advice.detail = bi(
+      viBase + appended,
+      enOf(advice.detail) + (enTail
+        || ` The discount was brought down from ${was}% to ${now}%: at a gross margin of about ${grossMarginPct}%, a ${was}% cut needs more extra customers than it can realistically bring in.`),
+    );
+    return;
+  }
+  // No cap to apply, but the margin was unknown and capAdvice said so.
+  if (appended) {
+    advice.detail = bi(
+      viBase + appended,
+      enOf(advice.detail) + (enTail
+        || ' No staff commission split has been entered, so there is no way to check whether this discount still leaves a profit.'),
+    );
+  }
 }
 
 // ---- customers who stopped coming ------------------------------------------
@@ -252,20 +351,26 @@ export function buildRevenueProfile(input: {
   };
 }
 
-/** The revenue picture as prompt text — every figure real, none invented. */
+/**
+ * The revenue picture as prompt text — every figure real, none invented.
+ *
+ * The prompt library is Vietnamese on purpose, so every bilingual phrase is
+ * unwrapped with `viOf` on the way in. A `{vi, en}` pair dropped into a template
+ * literal prints `[object Object]`, and the model would read exactly that.
+ */
 export function revenueToPrompt(p: RevenueProfile, money: (cents: number) => string): string {
   const L: string[] = [];
   if (p.loads.length) {
     const quiet = p.loads.slice(0, 3);
     const busy = [...p.loads].reverse().slice(0, 3);
     L.push('CÔNG SUẤT THEO KHUNG GIỜ (so với khung đông nhất của chính tiệm, 4 tuần gần nhất):');
-    L.push(`- Trống nhất: ${quiet.map((q) => `${q.label} ${q.fillIndex}%`).join(' · ')}`);
-    L.push(`- Đông nhất: ${busy.map((q) => `${q.label} ${q.fillIndex}%`).join(' · ')}`);
+    L.push(`- Trống nhất: ${quiet.map((q) => `${viOf(q.label)} ${q.fillIndex}%`).join(' · ')}`);
+    L.push(`- Đông nhất: ${busy.map((q) => `${viOf(q.label)} ${q.fillIndex}%`).join(' · ')}`);
   }
-  L.push(`KHUYẾN NGHỊ KHUYẾN MÃI (đã tính sẵn, BÁM THEO, không tự nghĩ mức giảm khác): ${p.advice.headline}`);
-  L.push(`- Chi tiết: ${p.advice.detail}`);
-  L.push(`- Căn cứ: ${p.advice.basis}`);
-  if (p.advice.protect.length) L.push(`- KHÔNG được đề xuất giảm giá cho: ${p.advice.protect.join(', ')}`);
+  L.push(`KHUYẾN NGHỊ KHUYẾN MÃI (đã tính sẵn, BÁM THEO, không tự nghĩ mức giảm khác): ${viOf(p.advice.headline)}`);
+  L.push(`- Chi tiết: ${viOf(p.advice.detail)}`);
+  L.push(`- Căn cứ: ${viOf(p.advice.basis)}`);
+  if (p.advice.protect.length) L.push(`- KHÔNG được đề xuất giảm giá cho: ${p.advice.protect.map(viOf).join(', ')}`);
   if (p.lapsed.count) {
     L.push(`KHÁCH LÂU CHƯA QUAY LẠI: ${p.lapsed.count} người, trung vị ${p.lapsed.medianDaysAway} ngày. Nếu 10% quay lại một lần, ước tính thu về ${money(p.lapsed.winBackValueCents)}.`);
   }

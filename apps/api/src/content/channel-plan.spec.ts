@@ -2,6 +2,7 @@ import {
   channelReports, platformPlans, sizeCampaign,
   MEASURABLE_CONVERSIONS, type ChannelBooking, type PlanContext,
 } from './channel-plan';
+import { bi, enOf, viOf } from './i18n';
 
 const NOW = Date.UTC(2026, 7, 31);
 const DAY = 86_400_000;
@@ -28,9 +29,9 @@ const CTX: PlanContext = {
   grossMarginPct: 45,
   firstVisitTicketCents: 5000,
   openSlots: 20,
-  runDayLabels: ['Chủ nhật', 'Thứ 2'],
-  pauseDayLabels: ['Thứ 4'],
-  quietLabels: ['Thứ 3 buổi sáng'],
+  runDayLabels: [bi('Chủ nhật', 'Sun'), bi('Thứ 2', 'Mon')],
+  pauseDayLabels: [bi('Thứ 4', 'Wed')],
+  quietLabels: [bi('Thứ 3 buổi sáng', 'Tuesday morning')],
   leadDays: 3,
   topServiceName: 'Bột đắp',
   city: 'Garden Grove', region: 'CA',
@@ -51,13 +52,13 @@ describe('a channel is judged on who it brings, not how busy it is', () => {
   it('calls the acquiring channel one that builds, with its counts', () => {
     expect(g.verdict).toBe('builds');
     expect(g.acquired).toBe(14);
-    expect(g.says).toMatch(/14\/20 booking là khách LẦN ĐẦU/);
+    expect(viOf(g.says)).toMatch(/14\/20 booking là khách LẦN ĐẦU/);
   });
 
   it('calls the rebooking channel a convenience, and says what that costs', () => {
     expect(l.verdict).toBe('convenience');
-    expect(l.says).toMatch(/khách CŨ đặt lại/);
-    expect(l.says).toMatch(/trả tiền cho người vốn đã tới/);
+    expect(viOf(l.says)).toMatch(/khách CŨ đặt lại/);
+    expect(viOf(l.says)).toMatch(/trả tiền cho người vốn đã tới/);
   });
 
   it('does not let the busier channel win on volume alone', () => {
@@ -71,7 +72,7 @@ describe('it refuses to score what it cannot read', () => {
   it('gives no verdict under five bookings', () => {
     const { reports } = channelReports(make('zalo', 3, { newOnes: 3 }), NOW);
     expect(reports[0].verdict).toBe('unproven');
-    expect(reports[0].says).toMatch(/chưa đủ để kết luận/);
+    expect(viOf(reports[0].says)).toMatch(/chưa đủ để kết luận/);
   });
 
   it('withholds a rate rather than printing a percentage of three people', () => {
@@ -93,7 +94,7 @@ describe('it refuses to score what it cannot read', () => {
     const r = channelReports(rows, NOW).reports[0];
     expect(r.trend).toBe('down');
     expect(r.verdict).toBe('fading');
-    expect(r.says).toMatch(/che chỗ hỏng/);
+    expect(viOf(r.says)).toMatch(/che chỗ hỏng/);
   });
 });
 
@@ -102,8 +103,8 @@ describe('unattributed bookings are declared, never quietly divided away', () =>
     const rows = [...make('gmap', 5, { newOnes: 3 }), ...make('online', 40)];
     const { coverage, caveat } = channelReports(rows, NOW);
     expect(coverage.pct).toBe(11);
-    expect(caveat).toMatch(/40\/45 booking/);
-    expect(caveat).toMatch(/UTM/);
+    expect(viOf(caveat)).toMatch(/40\/45 booking/);
+    expect(viOf(caveat)).toMatch(/UTM/);
   });
 
   it('stays quiet when attribution is good', () => {
@@ -120,7 +121,7 @@ describe('the budget comes from the ceiling, not from a habit', () => {
     const s = sizeCampaign(2250, 20);
     expect(s.target).toBe(MEASURABLE_CONVERSIONS);
     expect(s.totalCents).toBe(Math.floor((2250 * 8) / 14) * 14);
-    expect(s.note).toMatch(/8 booking/);
+    expect(viOf(s.note)).toMatch(/8 booking/);
   });
 
   it('scales with the business rather than with the trade', () => {
@@ -132,19 +133,19 @@ describe('the budget comes from the ceiling, not from a habit', () => {
   it('caps the target at the chairs actually free', () => {
     const s = sizeCampaign(2250, 5);
     expect(s.target).toBe(5);
-    expect(s.note).toMatch(/giới hạn bởi số chỗ trống/);
+    expect(viOf(s.note)).toMatch(/giới hạn bởi số chỗ trống/);
   });
 
   it('says do not advertise when there is no room to seat anyone', () => {
     const s = sizeCampaign(2250, 2);
     expect(s.totalCents).toBeNull();
-    expect(s.note).toMatch(/đừng bật quảng cáo/);
+    expect(viOf(s.note)).toMatch(/đừng bật quảng cáo/);
   });
 
   it('refuses to size anything without a ceiling', () => {
     const s = sizeCampaign(null, 20);
     expect(s.dailyCents).toBeNull();
-    expect(s.note).toMatch(/chưa có cách nào biết ít hay nhiều/);
+    expect(viOf(s.note)).toMatch(/chưa có cách nào biết ít hay nhiều/);
   });
 });
 
@@ -173,11 +174,11 @@ describe('each platform gets its own number, its own steps and its own stop rule
   it('gives the first platform a budget and the others none', () => {
     expect(google.totalCents).toBeGreaterThan(0);
     expect(meta.totalCents).toBeNull();
-    expect(meta.how.join(' ')).toMatch(/khách cũ đặt lại|không biết kênh nào tạo ra nó/);
+    expect(meta.how.map(viOf).join(' ')).toMatch(/khách cũ đặt lại|không biết kênh nào tạo ra nó/);
   });
 
   it('writes steps in the platform’s own controls, using the salon’s own data', () => {
-    const text = google.how.join(' ');
+    const text = google.how.map(viOf).join(' ');
     expect(text).toMatch(/Bột đắp/);            // its best-selling service
     expect(text).toMatch(/Garden Grove, CA/);    // its own catchment
     expect(text).toMatch(/BẬT Chủ nhật, Thứ 2/); // its own booking rhythm
@@ -186,14 +187,14 @@ describe('each platform gets its own number, its own steps and its own stop rule
   });
 
   it('states the stop rule as arithmetic, never as a forecast', () => {
-    expect(google.watch).toMatch(/tiền đã chi chia cho số booking/);
-    expect(google.watch).toMatch(/\$27/);
+    expect(viOf(google.watch)).toMatch(/tiền đã chi chia cho số booking/);
+    expect(viOf(google.watch)).toMatch(/\$27/);
     expect(JSON.stringify(plans)).not.toMatch(/sẽ mang về|dự kiến \d+ khách/);
   });
 
   it('warns about a thin Google profile before spending on clicks into it', () => {
     const thin = platformPlans(reports, { ...CTX, reviewCount: 3 });
-    expect(thin.find((p) => p.platform === 'google')!.how.join(' ')).toMatch(/3 đánh giá/);
+    expect(thin.find((p) => p.platform === 'google')!.how.map(viOf).join(' ')).toMatch(/3 đánh giá/);
   });
 
   it('holds a platform whose bookings are all regulars rebooking', () => {
@@ -207,8 +208,8 @@ describe('each platform gets its own number, its own steps and its own stop rule
     const p = platformPlans(channelReports(make('gmap', 20, { newOnes: 12 }), NOW).reports, CTX)
       .find((x) => x.platform === 'meta')!;
     expect(p.status).toBe('unproven');
-    expect(p.evidence).toMatch(/Chưa có booking nào ghi nhận từ/);
-    expect(p.evidence).toMatch(/PHÉP THỬ/);
+    expect(viOf(p.evidence)).toMatch(/Chưa có booking nào ghi nhận từ/);
+    expect(viOf(p.evidence)).toMatch(/PHÉP THỬ/);
   });
 
   it('offers Zalo only in the market where it exists', () => {
@@ -222,5 +223,50 @@ describe('each platform gets its own number, its own steps and its own stop rule
       expect(p.ceilingCents).toBeNull();
       expect(p.totalCents).toBeNull();
     }
+  });
+});
+
+describe('an English reader gets English', () => {
+  const rows = [
+    ...make('gmap', 30, { newOnes: 20, visits: 3, price: 6000 }),
+    ...make('lumiolink', 20, { newOnes: 2, visits: 3 }),
+  ];
+  const { reports, caveat } = channelReports([...rows, ...make('online', 60)], NOW);
+
+  it('writes the channel names, the verdicts and the caveat twice', () => {
+    const g = reports.find((r) => r.channel === 'gmap')!;
+    const l = reports.find((r) => r.channel === 'lumiolink')!;
+    expect(enOf(g.label)).toBe('Google Maps / Search');
+    expect(enOf(l.label)).toBe('Lumio booking link');
+    expect(enOf(g.says)).toMatch(/20 of 30 bookings were FIRST-TIME customers/);
+    expect(enOf(g.says)).toMatch(/BRINGING NEW CUSTOMERS/);
+    expect(enOf(g.says)).not.toBe(viOf(g.says));
+    expect(enOf(l.says)).toMatch(/EXISTING customers rebooking/);
+    expect(enOf(caveat)).toMatch(/carry no source at all/);
+    expect(enOf(caveat)).not.toBe(viOf(caveat));
+  });
+
+  it('writes the per-platform steps and the stop rule twice', () => {
+    const plans = platformPlans(reports, CTX);
+    const google = plans.find((p) => p.platform === 'google')!;
+    const text = google.how.map(enOf).join(' ');
+    expect(enOf(google.label)).toBe('Google (Search + Maps)');
+    expect(text).toMatch(/Bột đắp/);                 // its best-selling service, untranslated
+    expect(text).toMatch(/Garden Grove, CA/);        // its own catchment, untranslated
+    // The day and slot names now arrive bilingual instead of being flattened.
+    expect(text).toMatch(/Schedule: ON Sun, Mon, OFF Wed\./);
+    expect(text).toMatch(/sitting empty \(Tuesday morning\)/);
+    expect(enOf(google.watch)).toMatch(/Under \$27 a booking you are making money/);
+    expect(enOf(google.watch)).not.toBe(viOf(google.watch));
+
+    const meta = plans.find((p) => p.platform === 'meta')!;
+    expect(enOf(meta.evidence)).not.toBe(viOf(meta.evidence));
+    expect(meta.how.every((h) => enOf(h) !== viOf(h))).toBe(true);
+  });
+
+  it('writes the budget note twice', () => {
+    expect(enOf(sizeCampaign(2250, 20).note)).toMatch(/8 bookings × the limit per booking/);
+    expect(enOf(sizeCampaign(2250, 2).note)).toMatch(/leave the ads off/);
+    expect(enOf(sizeCampaign(null, 20).note)).toMatch(/no way yet to tell small from large/);
   });
 });

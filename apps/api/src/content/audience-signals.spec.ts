@@ -1,4 +1,5 @@
 import { buildAudienceProfile, classify, audienceToPrompt, type VisitRow } from './audience-signals';
+import { viOf, enOf } from './i18n';
 
 const NOW = Date.UTC(2026, 7, 31);
 const DAY = 86_400_000;
@@ -38,7 +39,7 @@ describe('a book too small to read is admitted, not segmented', () => {
     expect(p.thin).toBe(true);
     expect(p.segments).toEqual([]);
     expect(p.targets).toEqual([]);
-    expect(p.basis).toMatch(/suy đoán/);
+    expect(viOf(p.basis)).toMatch(/suy đoán/);
   });
 
   it('tells the model to describe nobody', () => {
@@ -108,27 +109,61 @@ describe('the targets are moves, not adjectives', () => {
 
   it('puts the quietly-leaving regulars first', () => {
     expect(p.targets[0].segment).toBe('cooling');
-    expect(p.targets[0].action).toMatch(/không giảm giá/i);
+    expect(viOf(p.targets[0].action)).toMatch(/không giảm giá/i);
   });
 
   it('never suggests discounting the top spenders', () => {
     const high = p.targets.find((t) => t.segment === 'high-value')!;
-    expect(high.action).toMatch(/TUYỆT ĐỐI không gửi mã giảm giá/);
+    expect(viOf(high.action)).toMatch(/TUYỆT ĐỐI không gửi mã giảm giá/);
   });
 
   it('gives every target a specific action and a stated assumption', () => {
     for (const t of p.targets) {
-      expect(t.action.length).toBeGreaterThan(25);
-      expect(t.why.length).toBeGreaterThan(25);
-      expect(t.prize.length).toBeGreaterThan(15);
+      expect(viOf(t.action).length).toBeGreaterThan(25);
+      expect(viOf(t.why).length).toBeGreaterThan(25);
+      expect(viOf(t.prize).length).toBeGreaterThan(15);
     }
   });
 
   it('states the assumption behind every money figure', () => {
     const oneOff = p.targets.find((t) => t.segment === 'one-off')!;
-    expect(oneOff.prize).toMatch(/1 trong 10/);
+    expect(viOf(oneOff.prize)).toMatch(/1 trong 10/);
     const cooling = p.targets.find((t) => t.segment === 'cooling')!;
-    expect(cooling.prize).toMatch(/nửa nhóm|nhịp cũ/);
+    expect(viOf(cooling.prize)).toMatch(/nửa nhóm|nhịp cũ/);
+  });
+});
+
+describe('an owner reading in English gets English', () => {
+  const p = buildAudienceProfile(book(), NOW);
+
+  it('gives every segment label and every target an English side that is not the Vietnamese one', () => {
+    for (const s of p.segments) {
+      expect(enOf(s.label)).not.toBe(viOf(s.label));
+    }
+    for (const t of p.targets) {
+      expect(enOf(t.action)).not.toBe(viOf(t.action));
+      expect(enOf(t.why)).not.toBe(viOf(t.why));
+      expect(enOf(t.prize)).not.toBe(viOf(t.prize));
+    }
+    const oneOff = p.segments.find((s) => s.key === 'one-off')!;
+    expect(enOf(oneOff.label)).toMatch(/came once/i);
+    const high = p.targets.find((t) => t.segment === 'high-value')!;
+    expect(enOf(high.action)).toMatch(/NEVER send this group a discount code/);
+  });
+
+  it('writes the time of day the way an American owner says it', () => {
+    const withTime = p.segments.filter((s) => s.favouriteTime);
+    expect(withTime.length).toBeGreaterThan(0);
+    for (const s of withTime) {
+      expect(enOf(s.favouriteTime)).toMatch(/^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday) (mornings|afternoons|evenings)$/);
+    }
+  });
+
+  it('says the too-small-a-book message in English too, with the same numbers', () => {
+    const thin = buildAudienceProfile(Array.from({ length: 10 }, (_, i) => visit(`c-${i}`, 20)), NOW);
+    expect(enOf(thin.basis)).toMatch(/10 customers in the book/);
+    expect(enOf(thin.basis)).toMatch(/guesswork/);
+    expect(enOf(thin.basis)).not.toBe(viOf(thin.basis));
   });
 });
 
@@ -137,6 +172,13 @@ describe('the prompt carries the numbers and the floor', () => {
     const text = audienceToPrompt(buildAudienceProfile(book(), NOW));
     expect(text).toMatch(/Đến một lần rồi thôi: 12 người/);
     expect(text).toMatch(/NÊN NHẮM VÀO/);
+  });
+
+  it('stays Vietnamese and never leaks a [object Object] from a bilingual field', () => {
+    const text = audienceToPrompt(buildAudienceProfile(book(), NOW));
+    expect(text).not.toContain('[object Object]');
+    expect(text).toMatch(/hay đi Thứ [2-7]|hay đi Chủ nhật/);
+    expect(text).not.toMatch(/Came once|Big spenders|mornings/);
   });
 
   it('never invents a demographic', () => {

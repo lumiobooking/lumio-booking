@@ -3,6 +3,7 @@ import {
   REVIEWS_FLOOR, POSTS_FLOOR, LAPSED_FLOOR,
   type RoadmapSignals,
 } from './roadmap';
+import { viOf, enOf } from './i18n';
 
 /** A shop past the foundation, with nothing else outstanding. */
 const SETTLED: RoadmapSignals = {
@@ -75,9 +76,9 @@ describe('every stage tells the owner how it ends', () => {
 
   it('names a measurable exit, not "when you are ready"', () => {
     for (const s of all) {
-      expect(s.exitWhen.length).toBeGreaterThan(20);
-      expect(s.goal.length).toBeGreaterThan(20);
-      expect(s.why.length).toBeGreaterThan(30);
+      expect(viOf(s.exitWhen).length).toBeGreaterThan(20);
+      expect(viOf(s.goal).length).toBeGreaterThan(20);
+      expect(viOf(s.why).length).toBeGreaterThan(30);
     }
   });
 
@@ -87,17 +88,53 @@ describe('every stage tells the owner how it ends', () => {
 
   it('counts progress where progress is countable', () => {
     const p = at({ reviewCount: 6 }).progress!;
-    expect(p).toEqual({ done: 6, need: REVIEWS_FLOOR, label: 'đánh giá Google' });
+    expect(p.done).toBe(6);
+    expect(p.need).toBe(REVIEWS_FLOOR);
+    expect(viOf(p.label)).toBe('đánh giá Google');
   });
 
   it('switches the counter to posts once the reviews are there', () => {
     const p = at({ reviewCount: 25, postedLast30: 3 }).progress!;
-    expect(p.label).toMatch(/bài đã đăng/);
+    expect(viOf(p.label)).toMatch(/bài đã đăng/);
     expect(p.done).toBe(3);
   });
 
   it('says how many reviews are still missing, in the job itself', () => {
-    expect(at({ reviewCount: 6 }).jobs[0].text).toContain('14');
+    expect(viOf(at({ reviewCount: 6 }).jobs[0].text)).toContain('14');
+  });
+});
+
+describe('every stage speaks both languages the dashboard speaks', () => {
+  // The EN/VI switch is the whole reason these fields are bilingual: an owner
+  // on EN must not get an English frame around Vietnamese text.
+  const all = [
+    at({ reviewCount: 1 }), at({ lapsedCount: 30 }), at({ hasQuietSlot: true }),
+    at(), at({ marginKnown: false }),
+  ];
+
+  it('carries an English side on everything that reaches the screen', () => {
+    for (const s of all) {
+      for (const t of [s.title, s.goal, s.why, s.exitWhen]) {
+        expect(enOf(t)).not.toBe(viOf(t));
+        expect(enOf(t).length).toBeGreaterThan(0);
+      }
+      if (s.progress) expect(enOf(s.progress.label)).not.toBe(viOf(s.progress.label));
+      for (const j of s.jobs) {
+        expect(enOf(j.text)).not.toBe(viOf(j.text));
+        expect(enOf(j.why)).not.toBe(viOf(j.why));
+        if (j.when) expect(enOf(j.when)).not.toBe(viOf(j.when));
+      }
+    }
+  });
+
+  it('reads as English, not as translated Vietnamese', () => {
+    const foundation = at({ reviewCount: 6 });
+    expect(enOf(foundation.title)).toBe('Foundation');
+    expect(enOf(foundation.exitWhen)).toBe(`${REVIEWS_FLOOR} Google reviews and ${POSTS_FLOOR} posts in the last 30 days.`);
+    // The count sits in a different place in each language, so the sentence is
+    // written out whole in both — not stitched together from fragments.
+    expect(enOf(foundation.jobs[0].text)).toContain('14 more to go');
+    expect(enOf(at({ lapsedCount: 30 }).exitWhen)).toContain(`below ${LAPSED_FLOOR}`);
   });
 });
 

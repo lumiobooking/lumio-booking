@@ -1,6 +1,7 @@
 import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-plan';
 import * as adsPlan from './ads-plan';
 import { BOOKING_CHANNELS } from '../common/booking-channel';
+import { enOf, viOf } from './i18n';
 
 const DAY = 86_400_000;
 const now = Date.UTC(2026, 7, 31);
@@ -23,7 +24,7 @@ describe('how far ahead customers book is measured, not assumed', () => {
   it('says it does not know below ten bookings', () => {
     const r = leadTime([1, 2, 3].map(booking));
     expect(r.medianDays).toBeNull();
-    expect(r.basis).toMatch(/Dưới 10/);
+    expect(viOf(r.basis)).toMatch(/Dưới 10/);
   });
 
   it('drops impossible gaps rather than averaging them in', () => {
@@ -44,7 +45,7 @@ describe('the ceiling comes from the salon’s own ticket and margin', () => {
     const c = cpaCeiling({ avgTicketCents: 8000, grossMarginPct: 40, medianGapDays: 60 });
     expect(c.visitsPerYear).toBe(6);
     expect(c.withRepeatCents).toBe(3200 * 6);
-    expect(c.plain).toMatch(/Lấy con số ĐẦU/);
+    expect(viOf(c.plain)).toMatch(/Lấy con số ĐẦU/);
   });
 
   it('caps the repeat multiple — a first click is not a year of loyalty', () => {
@@ -55,13 +56,13 @@ describe('the ceiling comes from the salon’s own ticket and margin', () => {
   it('refuses a ceiling when the margin is unknown', () => {
     const c = cpaCeiling({ avgTicketCents: 8000, grossMarginPct: null });
     expect(c.strictCents).toBeNull();
-    expect(c.plain).toMatch(/tỷ lệ ăn chia/);
+    expect(viOf(c.plain)).toMatch(/tỷ lệ ăn chia/);
   });
 
   it('refuses a ceiling when there is no ticket history', () => {
     const c = cpaCeiling({ avgTicketCents: null, grossMarginPct: 40 });
     expect(c.strictCents).toBeNull();
-    expect(c.plain).toMatch(/hoá đơn trung bình/);
+    expect(viOf(c.plain)).toMatch(/hoá đơn trung bình/);
   });
 });
 
@@ -73,16 +74,17 @@ describe('the budget is a test to run, never a forecast', () => {
     // The budget is now derived: 8 conversions × a $32 ceiling, spread over 14
     // days. It used to be a flat $15/day for every business on the platform.
     expect(p.bookingsToBreakEven).toBe(8);
-    expect(p.plain).toMatch(/PHÉP ĐO/);
-    // The forecast this file refuses to make.
-    expect(p.plain).not.toMatch(/sẽ ra|dự kiến sẽ|khoảng \d+ khách sẽ/);
+    expect(viOf(p.plain)).toMatch(/PHÉP ĐO/);
+    // The forecast this file refuses to make — in either language.
+    expect(viOf(p.plain)).not.toMatch(/sẽ ra|dự kiến sẽ|khoảng \d+ khách sẽ/);
+    expect(enOf(p.plain)).not.toMatch(/will bring|you can expect|expect \d+/i);
   });
 
   it('catches a budget that cannot break even in the room available', () => {
     // Needing more customers than there are empty chairs is not ambition.
     const p = budgetPlan({ ceiling, openSlots: 4, dailyCents: 5000, days: 30 });
     expect(p.feasible).toBe('no');
-    expect(p.plain).toMatch(/không thể hoà vốn/);
+    expect(viOf(p.plain)).toMatch(/không thể hoà vốn/);
   });
 
   it('calls it tight when the numbers only just fit', () => {
@@ -93,7 +95,7 @@ describe('the budget is a test to run, never a forecast', () => {
     const p = budgetPlan({ ceiling: cpaCeiling({ avgTicketCents: null, grossMarginPct: null }) });
     expect(p.feasible).toBe('unknown');
     expect(p.bookingsToBreakEven).toBeNull();
-    expect(p.plain).toMatch(/chưa nên bật quảng cáo/);
+    expect(viOf(p.plain)).toMatch(/chưa nên bật quảng cáo/);
   });
 });
 
@@ -102,7 +104,7 @@ describe('ad days are derived from the booking lead time', () => {
     // Saturday (6) is empty and customers book 3 days ahead → advertise Wed.
     const w = runWindow({ quietWeekdays: [6], busyWeekdays: [5], leadDays: 3 });
     expect(w.runDays).toContain(3);
-    expect(w.labels.run).toContain('Thứ 4');
+    expect(w.labels.run.map(viOf)).toContain('Thứ 4');
     // Advertising on Saturday itself reaches people deciding for next week.
     expect(w.runDays).not.toContain(6);
   });
@@ -110,7 +112,7 @@ describe('ad days are derived from the booking lead time', () => {
   it('names the days to switch OFF, which is the half nobody does', () => {
     const w = runWindow({ quietWeekdays: [1], busyWeekdays: [6], leadDays: 2 });
     expect(w.pauseDays.length).toBeGreaterThan(0);
-    expect(w.why).toMatch(/đặt trước trung bình 2 ngày/);
+    expect(viOf(w.why)).toMatch(/đặt trước trung bình 2 ngày/);
   });
 
   it('never puts a day in both lists', () => {
@@ -120,7 +122,7 @@ describe('ad days are derived from the booking lead time', () => {
 
   it('admits the fallback when lead time is unknown', () => {
     const w = runWindow({ quietWeekdays: [6], busyWeekdays: [5], leadDays: null });
-    expect(w.why).toMatch(/tạm tính/);
+    expect(viOf(w.why)).toMatch(/tạm tính/);
     expect(w.runDays.length).toBeGreaterThan(0);
   });
 
@@ -160,33 +162,66 @@ describe('audiences are ranked cheapest first, with the expensive one last', () 
   const a = adAudiences({ lapsedCount: 40, customerCount: 300, regularCount: 60, city: 'Austin', region: 'TX' });
 
   it('excludes existing regulars before anything else', () => {
-    expect(a[0].name).toMatch(/LOẠI TRỪ/);
-    expect(a[0].why).toMatch(/mua lại chính khách của mình/);
+    expect(viOf(a[0].name)).toMatch(/LOẠI TRỪ/);
+    expect(viOf(a[0].why)).toMatch(/mua lại chính khách của mình/);
   });
 
   it('puts lapsed customers first among the ones to buy', () => {
-    expect(a.find((x) => x.order === 1)?.name).toMatch(/lâu chưa quay lại/);
+    expect(viOf(a.find((x) => x.order === 1)?.name)).toMatch(/lâu chưa quay lại/);
   });
 
   it('puts the lookalike LAST, and blocks it below the platform floor', () => {
-    const look = a.find((x) => x.name.includes('lookalike'))!;
+    const look = a.find((x) => viOf(x.name).includes('lookalike'))!;
     expect(look.order).toBe(4);
-    expect(look.blockedBy).toMatch(/1\.000 khách/);
-    expect(look.why).toMatch(/ĐẮT NHẤT/);
+    expect(viOf(look.blockedBy)).toMatch(/1\.000 khách/);
+    expect(viOf(look.why)).toMatch(/ĐẮT NHẤT/);
   });
 
   it('unblocks the lookalike once the list is big enough', () => {
     const big = adAudiences({ customerCount: 1500 });
-    expect(big.find((x) => x.name.includes('lookalike'))?.blockedBy).toBeUndefined();
+    expect(big.find((x) => viOf(x.name).includes('lookalike'))?.blockedBy).toBeUndefined();
   });
 
   it('tells a salon with few lapsed customers to message them by hand', () => {
     const few = adAudiences({ lapsedCount: 6, customerCount: 100 });
     const lapsed = few.find((x) => x.order === 1)!;
-    expect(lapsed.blockedBy).toMatch(/nhắn tay/);
+    expect(viOf(lapsed.blockedBy)).toMatch(/nhắn tay/);
   });
 
   it('names the salon’s own town in the radius audience', () => {
-    expect(a.find((x) => x.name.includes('quanh tiệm'))?.name).toContain('Austin, TX');
+    expect(viOf(a.find((x) => viOf(x.name).includes('quanh tiệm'))?.name)).toContain('Austin, TX');
+  });
+});
+
+describe('an English reader gets English', () => {
+  it('writes the day labels, the money sentences and the audiences twice', () => {
+    const w = runWindow({ quietWeekdays: [6], busyWeekdays: [5], leadDays: 3 });
+    expect(w.labels.run.map(enOf)).toContain('Wed');
+    expect(enOf(w.why)).toMatch(/book 3 days ahead/);
+    expect(enOf(w.why)).not.toBe(viOf(w.why));
+
+    // A sentence with a number in it is written out whole in each language,
+    // because the clause order is not the same in both.
+    const c = cpaCeiling({ avgTicketCents: 8000, grossMarginPct: 40, medianGapDays: 60 });
+    expect(enOf(c.plain)).toMatch(/\$32 in profit on that first visit/);
+    expect(enOf(c.plain)).toMatch(/6 times a year/);
+    expect(enOf(c.plain)).not.toBe(viOf(c.plain));
+
+    const p = budgetPlan({ ceiling: c, openSlots: 40 });
+    expect(enOf(p.plain)).toMatch(/needs 8 bookings to break even/);
+    expect(enOf(p.plain)).toMatch(/MEASUREMENT, not an investment/);
+
+    const lead = leadTime([1, 2, 3, 3, 3, 4, 4, 5, 6, 7, 3, 3].map(booking));
+    expect(enOf(lead.basis)).toMatch(/12 appointments: customers usually book 3 days ahead/);
+
+    const a = adAudiences({ lapsedCount: 40, customerCount: 300, regularCount: 60, city: 'Austin', region: 'TX' });
+    for (const aud of a) {
+      expect(enOf(aud.name)).not.toBe(viOf(aud.name));
+      expect(enOf(aud.why)).not.toBe(viOf(aud.why));
+      expect(enOf(aud.how)).not.toBe(viOf(aud.how));
+    }
+    expect(enOf(a[0].name)).toMatch(/^EXCLUDE: 60 regulars$/);
+    // The town is the salon's own data and reads the same in both.
+    expect(enOf(a.find((x) => x.order === 3)!.name)).toContain('Austin, TX');
   });
 });

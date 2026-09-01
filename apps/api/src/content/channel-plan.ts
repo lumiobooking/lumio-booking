@@ -38,6 +38,40 @@ import {
   type BookingChannel, type AdPlatform,
   CHANNEL_VI, PLATFORM_VI, PLATFORM_OF, channelCoverage,
 } from '../common/booking-channel';
+import { bi, viOf, enOf, type Txt } from './i18n';
+
+/**
+ * The English half of the channel and platform names.
+ *
+ * It lives here rather than beside CHANNEL_VI because common/booking-channel.ts
+ * is shared with the parts of the API that have no screen at all — the door a
+ * booking came through is a key, and only this file turns those keys into
+ * something a person reads.
+ */
+const CHANNEL_EN: Record<BookingChannel, string> = {
+  gmap: 'Google Maps / Search',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  messenger: 'Messenger',
+  zalo: 'Zalo',
+  hotline: 'Phone calls',
+  website: 'Shop website',
+  lumiolink: 'Lumio booking link',
+  walkin: 'Walk-ins',
+  staff: 'Booked by staff in the shop',
+  online: 'Booked online (source unknown)',
+};
+
+const PLATFORM_EN: Record<AdPlatform, string> = {
+  google: 'Google (Search + Maps)',
+  meta: 'Meta (Facebook + Instagram)',
+  zalo: 'Zalo',
+  owned: "The shop's own channels (website, booking link)",
+  offline: 'Offline (walk-ins, phone, front desk)',
+};
+
+const channelLabel = (c: BookingChannel): Txt => bi(CHANNEL_VI[c], CHANNEL_EN[c]);
+const platformLabel = (p: AdPlatform): Txt => bi(PLATFORM_VI[p], PLATFORM_EN[p]);
 
 /** One booking, reduced to the facts a channel verdict rests on. */
 export interface ChannelBooking {
@@ -56,7 +90,7 @@ export type ChannelVerdict = 'builds' | 'convenience' | 'fading' | 'weak' | 'unp
 
 export interface ChannelReport {
   channel: BookingChannel;
-  label: string;
+  label: Txt;
   platform: AdPlatform;
   bookings: number;
   sharePct: number;
@@ -75,7 +109,7 @@ export interface ChannelReport {
   trend: 'up' | 'flat' | 'down' | 'unknown';
   verdict: ChannelVerdict;
   /** The verdict in the salon's language, with its numbers in it. */
-  says: string;
+  says: Txt;
 }
 
 /** Below this a channel gets no verdict — the numbers would be noise. */
@@ -89,7 +123,7 @@ export function channelReports(bookings: ChannelBooking[], now: number): {
   reports: ChannelReport[];
   coverage: { total: number; attributed: number; pct: number; unknown: number };
   /** Said out loud whenever attribution is thin enough to mislead. */
-  caveat: string | null;
+  caveat: Txt | null;
 } {
   const rows = bookings ?? [];
   const coverage = channelCoverage(rows.map((r) => r.channel));
@@ -140,7 +174,7 @@ export function channelReports(bookings: ChannelBooking[], now: number): {
     }
 
     reports.push({
-      channel, label: CHANNEL_VI[channel], platform: PLATFORM_OF[channel],
+      channel, label: channelLabel(channel), platform: PLATFORM_OF[channel],
       bookings: list.length, sharePct: pct(list.length, total),
       revenueCents: revenue, avgTicketCents: avgTicket,
       acquired: acq.length, repeatPct, visitsPerAcquired: visitsPer,
@@ -153,10 +187,14 @@ export function channelReports(bookings: ChannelBooking[], now: number): {
 
   reports.sort((a, b) => b.bookings - a.bookings);
 
-  const caveat = coverage.total === 0
-    ? 'Chưa có lịch hẹn nào để đọc nguồn khách.'
+  const caveat: Txt | null = coverage.total === 0
+    ? bi(
+      'Chưa có lịch hẹn nào để đọc nguồn khách.',
+      'There are no appointments yet to read a customer source from.')
     : coverage.pct < 60
-      ? `${coverage.unknown}/${coverage.total} booking (${100 - coverage.pct}%) không ghi nhận được nguồn. Tỷ lệ bên dưới chỉ đúng trên phần đo được — đừng đọc như bức tranh toàn bộ. Cách sửa: gắn UTM vào mọi link đặt lịch chia sẻ trên Facebook/Google, và hỏi khách vãng lai "anh/chị biết tiệm từ đâu" rồi chọn nguồn khi tạo lịch.`
+      ? bi(
+        `${coverage.unknown}/${coverage.total} booking (${100 - coverage.pct}%) không ghi nhận được nguồn. Tỷ lệ bên dưới chỉ đúng trên phần đo được — đừng đọc như bức tranh toàn bộ. Cách sửa: gắn UTM vào mọi link đặt lịch chia sẻ trên Facebook/Google, và hỏi khách vãng lai "anh/chị biết tiệm từ đâu" rồi chọn nguồn khi tạo lịch.`,
+        `${coverage.unknown} of ${coverage.total} bookings (${100 - coverage.pct}%) carry no source at all. The rates below hold only for the part that could be measured — do not read them as the whole picture. The fix: put UTMs on every booking link you share on Facebook or Google, and ask a walk-in "how did you hear about us" and pick the source when you write the appointment.`)
       : null;
 
   return { reports, coverage, caveat };
@@ -166,26 +204,43 @@ function saysFor(i: {
   channel: BookingChannel; list: number; acq: number; acqRate: number;
   repeatPct: number | null; baseRepeat: number | null;
   trend: ChannelReport['trend']; verdict: ChannelVerdict; last90: number; prior90: number;
-}): string {
-  const name = CHANNEL_VI[i.channel];
+}): Txt {
+  const nameVi = CHANNEL_VI[i.channel];
+  const nameEn = CHANNEL_EN[i.channel];
   if (i.verdict === 'unproven') {
-    return `${i.list} booking — chưa đủ để kết luận. Dưới ${READABLE} booking thì mọi tỷ lệ rút ra đều là nhiễu.`;
+    return bi(
+      `${i.list} booking — chưa đủ để kết luận. Dưới ${READABLE} booking thì mọi tỷ lệ rút ra đều là nhiễu.`,
+      `${i.list} bookings — not enough to call it. Under ${READABLE} bookings every rate you pull out of them is noise.`);
   }
-  const acqLine = `${i.acq}/${i.list} booking là khách LẦN ĐẦU (${i.acqRate}%)`;
-  const repLine = i.repeatPct !== null
+  // Counts and percentages in one clause, so the lead-in is built separately in
+  // each language rather than translated word for word.
+  const acqVi = `${i.acq}/${i.list} booking là khách LẦN ĐẦU (${i.acqRate}%)`;
+  const acqEn = `${i.acq} of ${i.list} bookings were FIRST-TIME customers (${i.acqRate}%)`;
+  const repVi = i.repeatPct !== null
     ? `, ${i.repeatPct}% trong số đó quay lại${i.baseRepeat !== null ? ` (trung bình cả tiệm ${i.baseRepeat}%)` : ''}`
+    : '';
+  const repEn = i.repeatPct !== null
+    ? `, and ${i.repeatPct}% of them came back${i.baseRepeat !== null ? ` (${i.baseRepeat}% across the whole shop)` : ''}`
     : '';
   switch (i.verdict) {
     case 'builds':
-      return `${acqLine}${repLine}. ${name} đang MANG KHÁCH MỚI về và giữ được họ — đây là kênh đáng bỏ tiền vào.`;
+      return bi(
+        `${acqVi}${repVi}. ${nameVi} đang MANG KHÁCH MỚI về và giữ được họ — đây là kênh đáng bỏ tiền vào.`,
+        `${acqEn}${repEn}. ${nameEn} is BRINGING NEW CUSTOMERS in and keeping them — this is the one worth putting money behind.`);
     case 'convenience':
-      return `${acqLine}${repLine}. Phần lớn là khách CŨ đặt lại: ${name} đang là chỗ đặt lịch tiện tay chứ không phải nơi tìm ra tiệm. Chạy quảng cáo ở đây phần nhiều là trả tiền cho người vốn đã tới.`;
+      return bi(
+        `${acqVi}${repVi}. Phần lớn là khách CŨ đặt lại: ${nameVi} đang là chỗ đặt lịch tiện tay chứ không phải nơi tìm ra tiệm. Chạy quảng cáo ở đây phần nhiều là trả tiền cho người vốn đã tới.`,
+        `${acqEn}${repEn}. Most of it is EXISTING customers rebooking: ${nameEn} is a handy place to book, not the place people find you. Advertising here is mostly paying for people who were coming in anyway.`);
     case 'fading':
-      return `Giảm rõ: ${i.prior90} booking ở 90 ngày trước, còn ${i.last90} ở 90 ngày gần đây. Tìm nguyên nhân trước khi bỏ tiền — quảng cáo đổ vào một kênh đang tụt thường chỉ che chỗ hỏng.`;
+      return bi(
+        `Giảm rõ: ${i.prior90} booking ở 90 ngày trước, còn ${i.last90} ở 90 ngày gần đây. Tìm nguyên nhân trước khi bỏ tiền — quảng cáo đổ vào một kênh đang tụt thường chỉ che chỗ hỏng.`,
+        `Clearly down: ${i.prior90} bookings in the 90 days before, ${i.last90} in the last 90. Find out why before you spend — ads poured into a channel that is sliding usually just cover the hole.`);
     case 'weak':
-      return `${acqLine}${repLine}. Khách từ ${name} quay lại ÍT hơn mặt bằng của tiệm, nên mỗi khách ở đây đáng giá thấp hơn — nếu chạy thì ngưỡng chi phải thấp hơn.`;
+      return bi(
+        `${acqVi}${repVi}. Khách từ ${nameVi} quay lại ÍT hơn mặt bằng của tiệm, nên mỗi khách ở đây đáng giá thấp hơn — nếu chạy thì ngưỡng chi phải thấp hơn.`,
+        `${acqEn}${repEn}. Customers from ${nameEn} come back LESS than the shop average, so each one here is worth less — if you run ads on it, the spending limit has to be lower.`);
     default:
-      return `${i.list} booking.`;
+      return bi(`${i.list} booking.`, `${i.list} bookings.`);
   }
 }
 
@@ -193,12 +248,12 @@ function saysFor(i: {
 
 export interface PlatformPlan {
   platform: AdPlatform;
-  label: string;
+  label: Txt;
   /** Rank: 1 is where to start. */
   rank: number;
   status: 'spend' | 'later' | 'hold' | 'unproven';
   /** The measured evidence this rests on. */
-  evidence: string;
+  evidence: Txt;
   /** Most a booking may cost HERE, from this platform's own ticket. */
   ceilingCents: number | null;
   dailyCents: number | null;
@@ -206,9 +261,9 @@ export interface PlatformPlan {
   totalCents: number | null;
   bookingsToBreakEven: number | null;
   /** Concrete setup, in this platform's own controls. */
-  how: string[];
+  how: Txt[];
   /** The stop rule, in numbers. */
-  watch: string;
+  watch: Txt;
 }
 
 export interface PlanContext {
@@ -217,9 +272,12 @@ export interface PlanContext {
   firstVisitTicketCents: number | null;
   /** Appointments that would fit in the quiet blocks over the window. */
   openSlots: number | null;
-  runDayLabels: string[];
-  pauseDayLabels: string[];
-  quietLabels: string[];
+  // Day names and slot names are printed inside these sentences, so they arrive
+  // bilingual from ads-plan/revenue-signals rather than flattened to Vietnamese
+  // at the call site.
+  runDayLabels: Txt[];
+  pauseDayLabels: Txt[];
+  quietLabels: Txt[];
   leadDays: number | null;
   topServiceName: string | null;
   city: string | null;
@@ -259,19 +317,23 @@ const WINDOW_DAYS = CAMPAIGN_DAYS;
  * conversions to measure anything, and for a $12 ticket it is too much.
  */
 export function sizeCampaign(ceilingCents: number | null, openSlots: number | null): {
-  target: number | null; dailyCents: number | null; totalCents: number | null; days: number; note: string;
+  target: number | null; dailyCents: number | null; totalCents: number | null; days: number; note: Txt;
 } {
   if (!ceilingCents || ceilingCents <= 0) {
     return {
       target: null, dailyCents: null, totalCents: null, days: WINDOW_DAYS,
-      note: 'Chưa có ngưỡng chi cho mỗi khách nên chưa tính được ngân sách. Không phải "chi ít cho chắc" — mà là chưa có cách nào biết ít hay nhiều.',
+      note: bi(
+        'Chưa có ngưỡng chi cho mỗi khách nên chưa tính được ngân sách. Không phải "chi ít cho chắc" — mà là chưa có cách nào biết ít hay nhiều.',
+        'Without a spending limit per customer there is no budget to work out. This is not "start small to be safe" — it is that there is no way yet to tell small from large.'),
     };
   }
   const room = openSlots === null ? MEASURABLE_CONVERSIONS : Math.min(MEASURABLE_CONVERSIONS, openSlots);
   if (room < 3) {
     return {
       target: room, dailyCents: null, totalCents: null, days: WINDOW_DAYS,
-      note: `Khung giờ trống chỉ chứa thêm ${openSlots} lượt trong 2 tuần. Một chiến dịch không đủ chỗ để tạo ra ${MEASURABLE_CONVERSIONS} booking thì cũng không đo được chi phí mỗi booking — mở thêm giờ hoặc lấp chỗ trống bằng khách cũ trước, đừng bật quảng cáo.`,
+      note: bi(
+        `Khung giờ trống chỉ chứa thêm ${openSlots} lượt trong 2 tuần. Một chiến dịch không đủ chỗ để tạo ra ${MEASURABLE_CONVERSIONS} booking thì cũng không đo được chi phí mỗi booking — mở thêm giờ hoặc lấp chỗ trống bằng khách cũ trước, đừng bật quảng cáo.`,
+        `The quiet blocks only hold ${openSlots} more appointments over two weeks. A campaign with nowhere to put ${MEASURABLE_CONVERSIONS} bookings cannot measure what a booking costs either — open more hours, or fill the gaps with past customers first, and leave the ads off.`),
     };
   }
   const total = ceilingCents * room;
@@ -282,8 +344,12 @@ export function sizeCampaign(ceilingCents: number | null, openSlots: number | nu
   return {
     target: room, dailyCents: daily, totalCents: daily * WINDOW_DAYS, days: WINDOW_DAYS,
     note: room < MEASURABLE_CONVERSIONS
-      ? `Ngân sách đặt bằng ${room} booking × ngưỡng chi mỗi booking — giới hạn bởi số chỗ trống chứ không phải bởi túi tiền.`
-      : `Ngân sách đặt bằng ${MEASURABLE_CONVERSIONS} booking × ngưỡng chi mỗi booking. ${MEASURABLE_CONVERSIONS} là số lượt tối thiểu để con số "mỗi booking tốn bao nhiêu" đọc được; ít hơn thì sai số lớn hơn cả điều cần biết.`,
+      ? bi(
+        `Ngân sách đặt bằng ${room} booking × ngưỡng chi mỗi booking — giới hạn bởi số chỗ trống chứ không phải bởi túi tiền.`,
+        `The budget is ${room} bookings × the limit per booking — held down by the empty chairs, not by what you can afford.`)
+      : bi(
+        `Ngân sách đặt bằng ${MEASURABLE_CONVERSIONS} booking × ngưỡng chi mỗi booking. ${MEASURABLE_CONVERSIONS} là số lượt tối thiểu để con số "mỗi booking tốn bao nhiêu" đọc được; ít hơn thì sai số lớn hơn cả điều cần biết.`,
+        `The budget is ${MEASURABLE_CONVERSIONS} bookings × the limit per booking. ${MEASURABLE_CONVERSIONS} is the fewest you can read a cost per booking from; below that the error is bigger than the thing you are trying to learn.`),
   };
 }
 
@@ -328,7 +394,7 @@ export function platformPlans(reports: ChannelReport[], ctx: PlanContext): Platf
     const spendNow = i === 0 && s.status !== 'hold';
     return {
       platform: s.platform,
-      label: PLATFORM_VI[s.platform],
+      label: platformLabel(s.platform),
       rank: i + 1,
       status: s.status,
       evidence: evidenceFor(s, ctx),
@@ -339,7 +405,9 @@ export function platformPlans(reports: ChannelReport[], ctx: PlanContext): Platf
       bookingsToBreakEven: spendNow ? size.target : null,
       how: spendNow ? howFor(s.platform, ctx) : [waitReason(s.status, i, s.platform)],
       watch: s.ceiling
-        ? `Ngày thứ 3 và ngày thứ 7: lấy tiền đã chi chia cho số booking mà quảng cáo mang về. Dưới ${ctx.money(s.ceiling)}/booking là đang lãi — tăng dần. Trên ${ctx.money(s.ceiling)} là đang lỗ — tắt, đừng chờ hết chiến dịch. ${size.note}`
+        ? bi(
+          `Ngày thứ 3 và ngày thứ 7: lấy tiền đã chi chia cho số booking mà quảng cáo mang về. Dưới ${ctx.money(s.ceiling)}/booking là đang lãi — tăng dần. Trên ${ctx.money(s.ceiling)} là đang lỗ — tắt, đừng chờ hết chiến dịch. ${viOf(size.note)}`,
+          `On day 3 and on day 7: take what you have spent and divide it by the bookings the ads brought in. Under ${ctx.money(s.ceiling)} a booking you are making money — raise it gradually. Over ${ctx.money(s.ceiling)} you are losing it — switch off, do not wait out the campaign. ${enOf(size.note)}`)
         : size.note,
     };
   });
@@ -348,83 +416,138 @@ export function platformPlans(reports: ChannelReport[], ctx: PlanContext): Platf
 function evidenceFor(
   s: { platform: AdPlatform; mine: ChannelReport[]; bookings: number; acquired: number; platTicket: number | null },
   ctx: PlanContext,
-): string {
+): Txt {
   if (!s.mine.length || s.bookings === 0) {
     // The reason search goes first with no history at all. Someone typing
     // "nail salon near me" wants one now; someone scrolling a feed did not ask.
     // Intent is the cheapest thing a local business can buy, and it is also the
     // cleanest to measure — which is what a first campaign is for.
-    const why = s.platform === 'google'
+    const whyVi = s.platform === 'google'
       ? ' Chưa có lịch sử thì bắt đầu ở tìm kiếm: người gõ "tiệm nail gần đây" đang cần làm ngay, còn người lướt bảng tin thì chưa hỏi gì cả. Ý định là thứ rẻ nhất một tiệm địa phương mua được, và cũng là thứ đo sạch nhất.'
       : '';
-    return `Chưa có booking nào ghi nhận từ ${PLATFORM_VI[s.platform]}. Chưa có bằng chứng kênh này chạy được ở tiệm — nếu chạy thì chạy như một PHÉP THỬ: ngân sách nhỏ, đọc kết quả rồi mới tăng.${why}`;
+    const whyEn = s.platform === 'google'
+      ? ' With no history at all, start at search: somebody typing "nail salon near me" wants one now, and somebody scrolling a feed never asked. Intent is the cheapest thing a local business can buy, and the cleanest thing to measure.'
+      : '';
+    return bi(
+      `Chưa có booking nào ghi nhận từ ${PLATFORM_VI[s.platform]}. Chưa có bằng chứng kênh này chạy được ở tiệm — nếu chạy thì chạy như một PHÉP THỬ: ngân sách nhỏ, đọc kết quả rồi mới tăng.${whyVi}`,
+      `No bookings have been recorded from ${PLATFORM_EN[s.platform]}. There is no evidence yet that this one works for your shop — if you run it, run it as a TEST: small budget, read the result, then raise it.${whyEn}`);
   }
-  const parts = s.mine.map((r) => `${r.label}: ${r.bookings} booking, ${r.acquired} khách lần đầu`);
-  const ticket = s.platTicket ? ` Hoá đơn trung bình đến từ kênh này: ${ctx.money(s.platTicket)}.` : '';
-  return `${parts.join(' · ')}.${ticket}`;
+  const ticketVi = s.platTicket ? ` Hoá đơn trung bình đến từ kênh này: ${ctx.money(s.platTicket)}.` : '';
+  const ticketEn = s.platTicket ? ` The average ticket coming from here: ${ctx.money(s.platTicket)}.` : '';
+  return bi(
+    `${s.mine.map((r) => `${viOf(r.label)}: ${r.bookings} booking, ${r.acquired} khách lần đầu`).join(' · ')}.${ticketVi}`,
+    `${s.mine.map((r) => `${enOf(r.label)}: ${r.bookings} bookings, ${r.acquired} first-timers`).join(' · ')}.${ticketEn}`);
 }
 
-function waitReason(status: PlatformPlan['status'], rank: number, platform: AdPlatform): string {
+function waitReason(status: PlatformPlan['status'], rank: number, platform: AdPlatform): Txt {
   if (status === 'hold') {
-    return `Chưa chạy ở ${PLATFORM_VI[platform]}: số liệu cho thấy kênh này chủ yếu phục vụ khách cũ đặt lại, hoặc đang đi xuống. Trả tiền để tiếp cận người vốn đã quay lại là mua lại chính khách của mình — và những booking đó vẫn hiện trong báo cáo chiến dịch, làm nó trông hiệu quả.`;
+    return bi(
+      `Chưa chạy ở ${PLATFORM_VI[platform]}: số liệu cho thấy kênh này chủ yếu phục vụ khách cũ đặt lại, hoặc đang đi xuống. Trả tiền để tiếp cận người vốn đã quay lại là mua lại chính khách của mình — và những booking đó vẫn hiện trong báo cáo chiến dịch, làm nó trông hiệu quả.`,
+      `Not on ${PLATFORM_EN[platform]} yet: the numbers say this one mostly serves existing customers rebooking, or that it is sliding. Paying to reach someone who was coming back anyway is buying your own customers twice — and those bookings still land in the campaign report and make it look like the ad worked.`);
   }
   if (rank > 0) {
-    return 'Chưa chạy song song. Bật hai kênh cùng lúc ở lần đầu thì khi kết quả tốt (hoặc xấu) sẽ không biết kênh nào tạo ra nó — chờ có con số chi phí mỗi booking ở kênh thứ nhất rồi mới mở kênh này.';
+    return bi(
+      'Chưa chạy song song. Bật hai kênh cùng lúc ở lần đầu thì khi kết quả tốt (hoặc xấu) sẽ không biết kênh nào tạo ra nó — chờ có con số chi phí mỗi booking ở kênh thứ nhất rồi mới mở kênh này.',
+      'Not in parallel. Switch two channels on at once the first time and, good result or bad, you will not know which one made it — wait until the first channel has given you a cost per booking, then open this one.');
   }
-  return 'Chưa đủ dữ liệu để nói kênh này chạy được hay không ở tiệm.';
+  return bi(
+    'Chưa đủ dữ liệu để nói kênh này chạy được hay không ở tiệm.',
+    'There is not enough data yet to say whether this one works for your shop.');
 }
 
-function howFor(platform: AdPlatform, ctx: PlanContext): string[] {
-  const where = ctx.city && ctx.region ? `${ctx.city}, ${ctx.region}` : ctx.region || 'quanh tiệm';
+function howFor(platform: AdPlatform, ctx: PlanContext): Txt[] {
+  // The town is the salon's own data and reads the same in both; only the "we
+  // were not told where" fallback has two languages.
+  const whereVi = ctx.city && ctx.region ? `${ctx.city}, ${ctx.region}` : ctx.region || 'quanh tiệm';
+  const whereEn = ctx.city && ctx.region ? `${ctx.city}, ${ctx.region}` : ctx.region || 'the shop';
   const svc = ctx.topServiceName;
-  const run = ctx.runDayLabels.length ? ctx.runDayLabels.join(', ') : null;
-  const pause = ctx.pauseDayLabels.length ? ctx.pauseDayLabels.join(', ') : null;
+  const runVi = ctx.runDayLabels.length ? ctx.runDayLabels.map(viOf).join(', ') : null;
+  const runEn = ctx.runDayLabels.length ? ctx.runDayLabels.map(enOf).join(', ') : null;
+  const pauseVi = ctx.pauseDayLabels.length ? ctx.pauseDayLabels.map(viOf).join(', ') : null;
+  const pauseEn = ctx.pauseDayLabels.length ? ctx.pauseDayLabels.map(enOf).join(', ') : null;
   const quiet = ctx.quietLabels[0] ?? null;
   const lead = ctx.leadDays;
 
-  const timing = run
-    ? `Lịch chạy: BẬT ${run}${pause ? `, TẮT ${pause}` : ''}.${lead !== null ? ` Khách của tiệm đặt trước trung bình ${lead} ngày, nên quảng cáo phải ra trước khung trống đúng ${lead} ngày — chạy đúng hôm đó là muộn.` : ''}`
-    : 'Lịch chạy: chưa đủ lịch hẹn để biết khách đặt trước bao nhiêu ngày — chạy đều 7 ngày ở tuần đầu rồi cắt theo kết quả.';
+  const timing: Txt = runVi
+    ? bi(
+      `Lịch chạy: BẬT ${runVi}${pauseVi ? `, TẮT ${pauseVi}` : ''}.${lead !== null ? ` Khách của tiệm đặt trước trung bình ${lead} ngày, nên quảng cáo phải ra trước khung trống đúng ${lead} ngày — chạy đúng hôm đó là muộn.` : ''}`,
+      `Schedule: ON ${runEn}${pauseEn ? `, OFF ${pauseEn}` : ''}.${lead !== null ? ` Your customers book ${lead} days ahead on average, so the ads have to be out ${lead} days before the empty block — running them on the day itself is already late.` : ''}`)
+    : bi(
+      'Lịch chạy: chưa đủ lịch hẹn để biết khách đặt trước bao nhiêu ngày — chạy đều 7 ngày ở tuần đầu rồi cắt theo kết quả.',
+      'Schedule: there are not enough appointments yet to know how far ahead people book — run all 7 days the first week, then cut back on what the results show.');
 
-  const exclude = ctx.customerCount > 0
-    ? 'Loại trừ (Exclude) danh sách khách quen ở mọi chiến dịch. Không làm bước này thì tiền sẽ chảy vào những người tuần sau vẫn tới.'
+  const exclude: Txt | '' = ctx.customerCount > 0
+    ? bi(
+      'Loại trừ (Exclude) danh sách khách quen ở mọi chiến dịch. Không làm bước này thì tiền sẽ chảy vào những người tuần sau vẫn tới.',
+      'Put the regulars list in the Exclude box on every campaign. Skip that step and the money runs to people who are coming in next week anyway.')
     : '';
 
   if (platform === 'google') {
     return [
       ctx.reviewCount !== null && ctx.reviewCount !== undefined && ctx.reviewCount < 20
-        ? `Trước khi trả tiền: hồ sơ Google Business mới có ${ctx.reviewCount} đánh giá. Quảng cáo đưa người tới xem hồ sơ đó — đổ tiền vào một hồ sơ mỏng là đổ qua lỗ thủng. Xin đánh giá cho đủ 20+ trước.`
-        : 'Trước khi trả tiền: hồ sơ Google Business phải đủ ảnh, giờ mở cửa, bảng giá và trả lời đánh giá — quảng cáo chỉ đưa người tới đó, phần chốt là hồ sơ.',
-      `Loại chiến dịch: Search + hiển thị trên Maps. KHÔNG bật Display, KHÔNG bật Performance Max ở lần đầu — cả hai đều tiêu tiền ở chỗ không đọc được.`,
-      svc ? `Từ khoá: bắt đầu từ chính dịch vụ bán chạy nhất — "${svc}" kèm tên khu vực. Từ chung chung đắt hơn và mang về người ở xa.`
-        : 'Từ khoá: tên dịch vụ + tên khu vực. Từ chung chung đắt hơn và mang về người ở xa.',
-      `Khu vực: bán kính 3-5 dặm quanh ${where}, đặt ở chế độ "người đang ở trong khu vực này" chứ không phải "người quan tâm tới khu vực này".`,
-      quiet ? `Đặt giá thầu cao hơn vào đúng khung đang trống (${quiet}) và thấp hơn ở khung đã đông.` : 'Đặt giá thầu cao hơn ở khung giờ đang trống.',
+        ? bi(
+          `Trước khi trả tiền: hồ sơ Google Business mới có ${ctx.reviewCount} đánh giá. Quảng cáo đưa người tới xem hồ sơ đó — đổ tiền vào một hồ sơ mỏng là đổ qua lỗ thủng. Xin đánh giá cho đủ 20+ trước.`,
+          `Before you pay: your Google Business profile has only ${ctx.reviewCount} reviews. The ad sends people to look at that profile — money poured into a thin one runs straight through the hole. Get to 20+ reviews first.`)
+        : bi(
+          'Trước khi trả tiền: hồ sơ Google Business phải đủ ảnh, giờ mở cửa, bảng giá và trả lời đánh giá — quảng cáo chỉ đưa người tới đó, phần chốt là hồ sơ.',
+          'Before you pay: the Google Business profile needs photos, hours, prices and answered reviews — the ad only brings people there, the profile is what closes them.'),
+      bi(
+        'Loại chiến dịch: Search + hiển thị trên Maps. KHÔNG bật Display, KHÔNG bật Performance Max ở lần đầu — cả hai đều tiêu tiền ở chỗ không đọc được.',
+        'Campaign type: Search, showing on Maps. Do NOT switch on Display, do NOT switch on Performance Max the first time — both spend money in places you cannot read.'),
+      svc
+        ? bi(
+          `Từ khoá: bắt đầu từ chính dịch vụ bán chạy nhất — "${svc}" kèm tên khu vực. Từ chung chung đắt hơn và mang về người ở xa.`,
+          `Keywords: start from your best seller — "${svc}" with the town name on it. Broad words cost more and bring in people who live too far out.`)
+        : bi(
+          'Từ khoá: tên dịch vụ + tên khu vực. Từ chung chung đắt hơn và mang về người ở xa.',
+          'Keywords: the service name plus the town name. Broad words cost more and bring in people who live too far out.'),
+      bi(
+        `Khu vực: bán kính 3-5 dặm quanh ${whereVi}, đặt ở chế độ "người đang ở trong khu vực này" chứ không phải "người quan tâm tới khu vực này".`,
+        `Location: a 3 to 5 mile radius around ${whereEn}, set to "people in this location" and not "people interested in this location".`),
+      quiet
+        ? bi(
+          `Đặt giá thầu cao hơn vào đúng khung đang trống (${viOf(quiet)}) và thấp hơn ở khung đã đông.`,
+          `Bid higher on the block that is sitting empty (${enOf(quiet)}) and lower on the one that is already busy.`)
+        : bi(
+          'Đặt giá thầu cao hơn ở khung giờ đang trống.',
+          'Bid higher on the hours that are sitting empty.'),
       timing,
       exclude,
-    ].filter(Boolean);
+    ].filter(Boolean) as Txt[];
   }
 
   if (platform === 'meta') {
     return [
       ctx.lapsedCount >= 20
-        ? `Tệp đầu tiên, rẻ nhất: ${ctx.lapsedCount} khách cũ lâu chưa quay lại — tải danh sách lên làm Custom Audience. Họ biết tiệm, biết đường, đã từng trả tiền.`
-        : 'Tệp đầu tiên: người đã nhắn tin hoặc xem trang mà chưa đặt lịch (retarget 30 ngày). Rẻ hơn nhiều so với người lạ.',
-      'Mục tiêu chiến dịch: tin nhắn (Messages) hoặc lượt đặt lịch — KHÔNG chọn "tương tác" hay "lượt xem video". Lượt thích không đặt lịch.',
-      'Nội dung quảng cáo: dùng chính clip/ảnh đang có lượt xem cao nhất trên trang, đừng dựng cái mới. Thứ đã được người thật xem hết là thứ đã qua kiểm chứng.',
-      `Khu vực: bán kính 3-5 dặm quanh ${where}. Bán kính rộng chỉ tốn tiền cho người sẽ không bao giờ lái xe tới.`,
+        ? bi(
+          `Tệp đầu tiên, rẻ nhất: ${ctx.lapsedCount} khách cũ lâu chưa quay lại — tải danh sách lên làm Custom Audience. Họ biết tiệm, biết đường, đã từng trả tiền.`,
+          `First audience, and the cheapest: ${ctx.lapsedCount} past customers who have not been back in a while — upload the list as a Custom Audience. They know the shop, they know the drive, they have paid you before.`)
+        : bi(
+          'Tệp đầu tiên: người đã nhắn tin hoặc xem trang mà chưa đặt lịch (retarget 30 ngày). Rẻ hơn nhiều so với người lạ.',
+          'First audience: people who messaged you or opened the page and never booked (a 30-day retarget). Far cheaper than strangers.'),
+      bi(
+        'Mục tiêu chiến dịch: tin nhắn (Messages) hoặc lượt đặt lịch — KHÔNG chọn "tương tác" hay "lượt xem video". Lượt thích không đặt lịch.',
+        'Campaign objective: Messages or bookings — do NOT pick "engagement" or "video views". Likes do not book appointments.'),
+      bi(
+        'Nội dung quảng cáo: dùng chính clip/ảnh đang có lượt xem cao nhất trên trang, đừng dựng cái mới. Thứ đã được người thật xem hết là thứ đã qua kiểm chứng.',
+        'The ad itself: use whichever clip or photo already has the most views on your page, do not shoot something new. What real people watched to the end is already proven.'),
+      bi(
+        `Khu vực: bán kính 3-5 dặm quanh ${whereVi}. Bán kính rộng chỉ tốn tiền cho người sẽ không bao giờ lái xe tới.`,
+        `Location: a 3 to 5 mile radius around ${whereEn}. A wider radius only spends money on people who are never going to make the drive.`),
       timing,
       exclude,
-    ].filter(Boolean);
+    ].filter(Boolean) as Txt[];
   }
 
   if (platform === 'zalo') {
     return [
-      'Zalo OA: đẩy bài tới người theo dõi trước khi mua quảng cáo — tệp có sẵn luôn rẻ hơn.',
-      `Khu vực: giới hạn quanh ${where}.`,
+      bi(
+        'Zalo OA: đẩy bài tới người theo dõi trước khi mua quảng cáo — tệp có sẵn luôn rẻ hơn.',
+        'Zalo OA: push the post to your followers before you buy any ads — an audience you have always costs less.'),
+      bi(`Khu vực: giới hạn quanh ${whereVi}.`, `Location: keep it around ${whereEn}.`),
       timing,
       exclude,
-    ].filter(Boolean);
+    ].filter(Boolean) as Txt[];
   }
 
   return [timing];

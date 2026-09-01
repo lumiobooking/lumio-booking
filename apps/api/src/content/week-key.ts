@@ -20,6 +20,8 @@
  */
 
 /** The salon's local calendar date, as {y, m, d}. */
+import { bi, type Txt } from './i18n';
+
 export function localParts(at: Date, tz: string): { y: number; m: number; d: number } {
   try {
     const f = new Intl.DateTimeFormat('en-CA', {
@@ -74,8 +76,15 @@ export function isPastWeek(key: string, now: Date, tz: string): boolean {
   return key < weekKey(now, tz);
 }
 
-/** "Tuần 36, 2026" — for a human, not for sorting. */
-export function weekLabel(key: string): string {
+/**
+ * "Tuần 36, 2026" / "Week 36, 2026" — for a human, not for sorting.
+ *
+ * Bilingual because the week archive strip is one of the few places a salon
+ * looks at a LIST of weeks, and a Vietnamese word repeated down an otherwise
+ * English column is the kind of thing that makes the switch look broken.
+ * An unparseable key falls through as itself, the same in either language.
+ */
+export function weekLabel(key: string): Txt {
   const m = /^(\d{4})-W(\d{2})$/.exec(key);
-  return m ? `Tuần ${Number(m[2])}, ${m[1]}` : key;
+  return m ? bi(`Tuần ${Number(m[2])}, ${m[1]}`, `Week ${Number(m[2])}, ${m[1]}`) : key;
 }

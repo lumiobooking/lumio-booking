@@ -36,6 +36,8 @@
  * it is empty the engine says "chưa khai báo" rather than filling it in.
  */
 
+import { bi, type Txt } from './i18n';
+
 export interface DeclaredProfile {
   /** What the business does, in its own words. The most important field here. */
   whatWeDo: string;
@@ -73,42 +75,54 @@ export interface ProfileSources {
 
 export interface ResolvedIdentity {
   /** What to print on screen where the trade label used to go. */
-  label: string;
+  label: Txt;
   /** True when the business itself has said what it does. */
   declared: boolean;
   /** How much of the profile is filled in, 0-6. */
   filled: number;
   profile: DeclaredProfile;
   /** Where each fact came from, so nobody has to guess at the provenance. */
-  provenance: string[];
+  provenance: Txt[];
   /** What is still missing and what it costs to leave it missing. */
-  gaps: { field: keyof DeclaredProfile; label: string; cost: string }[];
+  gaps: { field: keyof DeclaredProfile; label: Txt; cost: Txt }[];
 }
 
 const clean = (s?: string | null, max = 600) => String(s ?? '').trim().slice(0, max);
 
-const FIELD_LABEL: Record<keyof DeclaredProfile, string> = {
-  whatWeDo: 'Doanh nghiệp làm gì',
-  whoWeServe: 'Phục vụ ai',
-  languages: 'Ngôn ngữ',
-  serviceArea: 'Khu vực phục vụ',
-  edge: 'Điểm khác biệt',
-  avoid: 'Điều KHÔNG được giả định',
+const FIELD_LABEL: Record<keyof DeclaredProfile, Txt> = {
+  whatWeDo: bi('Doanh nghiệp làm gì', 'What the business does'),
+  whoWeServe: bi('Phục vụ ai', 'Who it serves'),
+  languages: bi('Ngôn ngữ', 'Languages'),
+  serviceArea: bi('Khu vực phục vụ', 'Service area'),
+  edge: bi('Điểm khác biệt', 'What sets it apart'),
+  avoid: bi('Điều KHÔNG được giả định', 'What must NOT be assumed'),
 };
 
 /** Why each empty field matters, in terms of what goes wrong without it. */
-const FIELD_COST: Record<keyof DeclaredProfile, string> = {
-  whatWeDo: 'Thiếu ô này thì hệ thống chỉ còn mã ngành bốn giá trị để đoán — và mọi gợi ý sẽ nghe hợp lý nhưng sai nghề.',
-  whoWeServe: 'Không ai suy ra được tệp khách từ tên tiệm hay dân cư quanh đó. Bỏ trống thì gợi ý nhắm vào "người ở gần", tức là không nhắm vào ai cả.',
-  languages: 'Quyết định caption viết tiếng gì và quảng cáo nhắm nhóm ngôn ngữ nào. Đoán sai là chạy quảng cáo tiếng Anh cho tệp đọc tiếng Việt.',
-  serviceArea: 'Doanh nghiệp phục vụ toàn quốc mà bị nhắm bán kính 5 dặm là vứt đi phần lớn ngân sách.',
-  edge: 'Không có nó thì nội dung chỉ mô tả dịch vụ, không nói được vì sao chọn mình thay vì chỗ khác.',
-  avoid: 'Chỗ để chặn những giả định đã từng sai. Bỏ trống thì hệ thống lặp lại chúng.',
+const FIELD_COST: Record<keyof DeclaredProfile, Txt> = {
+  whatWeDo: bi(
+    'Thiếu ô này thì hệ thống chỉ còn mã ngành bốn giá trị để đoán — và mọi gợi ý sẽ nghe hợp lý nhưng sai nghề.',
+    'Without this, the system has only a four-value industry code to guess from — and every suggestion comes out plausible but about the wrong trade.'),
+  whoWeServe: bi(
+    'Không ai suy ra được tệp khách từ tên tiệm hay dân cư quanh đó. Bỏ trống thì gợi ý nhắm vào "người ở gần", tức là không nhắm vào ai cả.',
+    'Nobody can infer your customers from your name or the neighbourhood. Left blank, the advice targets "people nearby", which is to say nobody in particular.'),
+  languages: bi(
+    'Quyết định caption viết tiếng gì và quảng cáo nhắm nhóm ngôn ngữ nào. Đoán sai là chạy quảng cáo tiếng Anh cho tệp đọc tiếng Việt.',
+    'Decides which language captions are written in and which language group the ads target. Guess wrong and you run English ads at a Vietnamese-reading audience.'),
+  serviceArea: bi(
+    'Doanh nghiệp phục vụ toàn quốc mà bị nhắm bán kính 5 dặm là vứt đi phần lớn ngân sách.',
+    'A nationwide business targeted at a 5-mile radius throws away most of its budget.'),
+  edge: bi(
+    'Không có nó thì nội dung chỉ mô tả dịch vụ, không nói được vì sao chọn mình thay vì chỗ khác.',
+    'Without it the content only describes the service, and never says why to choose you over the place down the road.'),
+  avoid: bi(
+    'Chỗ để chặn những giả định đã từng sai. Bỏ trống thì hệ thống lặp lại chúng.',
+    'This is where you block the assumptions that have already been wrong. Left blank, the system repeats them.'),
 };
 
 export function resolveIdentity(src: ProfileSources): ResolvedIdentity {
   const d = src.declared ?? {};
-  const provenance: string[] = [];
+  const provenance: Txt[] = [];
 
   const profile: DeclaredProfile = {
     whatWeDo: clean(d.whatWeDo),
@@ -118,25 +132,30 @@ export function resolveIdentity(src: ProfileSources): ResolvedIdentity {
     edge: clean(d.edge),
     avoid: clean(d.avoid),
   };
-  if (profile.whatWeDo) provenance.push('Mô tả do tiệm tự khai');
+  if (profile.whatWeDo) provenance.push(bi('Mô tả do tiệm tự khai', 'Description written by the business'));
 
   // The website/fanpage intro fills whatWeDo only when the salon has not written
   // its own. It is a decent description of the business but it was written to
   // greet a customer, not to brief a strategist, so a real declaration wins.
   if (!profile.whatWeDo && clean(src.bizIntro)) {
     profile.whatWeDo = clean(src.bizIntro);
-    provenance.push('Giới thiệu học từ website/fanpage');
+    provenance.push(bi('Giới thiệu học từ website/fanpage', 'Intro learned from the website / Facebook page'));
   }
   if (clean(src.aiInstruction) && !profile.edge) {
     profile.edge = clean(src.aiInstruction);
-    provenance.push('Ghi chú chủ tiệm viết cho bot');
+    provenance.push(bi('Ghi chú chủ tiệm viết cho bot', 'Owner notes written for the bot'));
   }
   if (!profile.serviceArea && src.city && src.region) {
     profile.serviceArea = `${src.city}, ${src.region}`;
-    provenance.push('Địa chỉ trong cài đặt');
+    provenance.push(bi('Địa chỉ trong cài đặt', 'Address in salon settings'));
   }
   if (clean(src.website)) provenance.push(`Website: ${clean(src.website, 120)}`);
-  if (src.serviceNames?.length) provenance.push(`${src.serviceNames.length} dịch vụ đã khai trong hệ thống`);
+  if (src.serviceNames?.length) {
+    provenance.push(bi(
+      `${src.serviceNames.length} dịch vụ đã khai trong hệ thống`,
+      `${src.serviceNames.length} services listed in the system`,
+    ));
+  }
 
   const filled = (Object.keys(profile) as (keyof DeclaredProfile)[]).filter((k) => profile[k]).length;
   const declared = Boolean(profile.whatWeDo);
@@ -148,11 +167,14 @@ export function resolveIdentity(src: ProfileSources): ResolvedIdentity {
   // The label is the business's own first sentence, never the enum. An enum
   // shown as a heading is what let "ngành nail" sit on top of a marketing
   // agency's screen for a week without anyone being able to see the cause.
-  const label = declared
+  // The declared label is the business's OWN sentence, so it is not translated:
+  // translating what a business calls itself is how a name stops being a name.
+  // Only the "we have not been told" placeholder has two languages.
+  const label: Txt = declared
     ? firstSentence(profile.whatWeDo)
     : src.tenantName
-      ? `${src.tenantName} — chưa khai báo ngành nghề`
-      : 'Chưa khai báo ngành nghề';
+      ? bi(`${src.tenantName} — chưa khai báo ngành nghề`, `${src.tenantName} — business not described yet`)
+      : bi('Chưa khai báo ngành nghề', 'Business not described yet');
 
   return { label, declared, filled, profile, provenance, gaps };
 }

@@ -6,6 +6,7 @@ import { STARTER_FORMATS } from './starter-formats';
 import { playbookFor } from './industry-playbook';
 import { playsFor } from './promo-playbook';
 import { profileFor } from './trend-sources';
+import { viOf } from './i18n';
 
 /**
  * Every trade on the platform must actually be served.
@@ -151,7 +152,10 @@ describe('no trade falls back to nail vocabulary anywhere', () => {
   });
 
   it('gives each trade a distinct name the screen can show', () => {
-    const trades = TRADES.map((t) => playbookFor(t).trade);
+    // Compared on the Vietnamese side: the trade label is bilingual now, and a
+    // Set of {vi,en} objects is a set of distinct references — it would pass
+    // even if all four trades were called the same thing.
+    const trades = TRADES.map((t) => viOf(playbookFor(t).trade));
     // SERVICE and SALON deliberately share a promo table, but never a label:
     // the label is what tells an operator the industry was set wrong.
     expect(new Set(trades).size).toBe(TRADES.length);

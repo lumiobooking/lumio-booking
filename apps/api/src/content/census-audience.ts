@@ -43,6 +43,7 @@
  */
 
 import type { FetchLike } from './census';
+import { bi, type Bi, type Txt } from './i18n';
 
 export type AgeBand = '18-24' | '25-34' | '35-44' | '45-54' | '55-64' | '65+';
 export const AGE_BANDS: AgeBand[] = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
@@ -59,8 +60,8 @@ export interface AreaAudience {
   incomeAtLeast: { usd: number; households: number; pct: number }[];
   /** People aged 5+ speaking this at home. Empty when the lookup did not run. */
   languages: { name: string; people: number; pct: number }[];
-  /** Every part that could not be fetched or did not pass its check. */
-  notes: string[];
+  /** Every part that could not be fetched or did not pass its check. Shown, so bilingual. */
+  notes: Txt[];
 }
 
 const EMPTY_BANDS = (): Record<AgeBand, number> =>
@@ -187,31 +188,36 @@ export async function fetchAreaAudience(
   opts: { apiKey?: string | null; fetchImpl?: FetchLike; year?: number } = {},
 ): Promise<AreaAudience> {
   const year = opts.year ?? 2023;
-  const notes: string[] = [];
+  const notes: Txt[] = [];
   const out: AreaAudience = {
     ok: false, year, female: EMPTY_BANDS(), male: EMPTY_BANDS(),
     totalPopulation: null, households: null, incomeAtLeast: [], languages: [], notes,
   };
   if (!zips.length) {
-    notes.push('Chưa có mã ZIP để tra cứu.');
+    notes.push(bi('Chưa có mã ZIP để tra cứu.', 'No ZIP code to look up yet.'));
     return out;
   }
 
   const doFetch: FetchLike = opts.fetchImpl
     ?? ((u) => fetch(u, { signal: AbortSignal.timeout(15_000) }) as unknown as ReturnType<FetchLike>);
 
-  const get = async (codes: string[], what: string) => {
+  // `what` names the table in both languages, because the note it lands in is
+  // read on the area panel and the sentence differs in shape between the two.
+  const get = async (codes: string[], what: Bi) => {
     const res = await doFetch(apiUrl(year, codes, zips, opts.apiKey)).catch(() => null);
     if (!res || !res.ok) {
-      notes.push(`Chưa lấy được ${what} từ Cục Thống kê Mỹ.`);
+      notes.push(bi(
+        `Chưa lấy được ${what.vi} từ Cục Thống kê Mỹ.`,
+        `Could not get ${what.en} from the US Census Bureau.`));
       return null;
     }
     const body = await res.text().catch(() => '');
     const t = rowsByName(body);
     if (!t) {
       notes.push(/missing key/i.test(body)
-        ? 'Cục Thống kê Mỹ yêu cầu khoá API (CENSUS_API_KEY).'
-        : `Không đọc được dữ liệu ${what}.`);
+        ? bi('Cục Thống kê Mỹ yêu cầu khoá API (CENSUS_API_KEY).',
+          'The US Census Bureau requires an API key (CENSUS_API_KEY).')
+        : bi(`Không đọc được dữ liệu ${what.vi}.`, `Could not read the ${what.en} data.`));
       return null;
     }
     return t;
@@ -221,7 +227,7 @@ export async function fetchAreaAudience(
   const ageCodes = [TOTAL, MALE_TOTAL, FEMALE_TOTAL,
     ...MALE_CHILD, ...FEMALE_CHILD,
     ...MALE_BANDS.map(([c]) => c), ...FEMALE_BANDS.map(([c]) => c)];
-  const ageTable = await get(ageCodes, 'cơ cấu tuổi và giới tính');
+  const ageTable = await get(ageCodes, bi('cơ cấu tuổi và giới tính', 'the age and sex breakdown'));
   if (ageTable) {
     const total = sumColumn(ageTable, TOTAL);
     const maleTotal = sumColumn(ageTable, MALE_TOTAL);
@@ -249,20 +255,25 @@ export async function fetchAreaAudience(
       && balances(maleTotal + femaleTotal, total)
       && balances(maleParts, maleTotal) && balances(femaleParts, femaleTotal);
     if (missing || !balanced) {
-      notes.push('Cơ cấu tuổi/giới tính không khớp tổng dân số nên đã bỏ qua — thà không có số còn hơn có số sai.');
+      notes.push(bi(
+        'Cơ cấu tuổi/giới tính không khớp tổng dân số nên đã bỏ qua — thà không có số còn hơn có số sai.',
+        'The age and sex breakdown does not add up to the total population, so it was dropped — better no number than a wrong one.'));
     } else {
       out.male = male; out.female = female; out.totalPopulation = total; out.ok = true;
     }
   }
 
   // ---- household income ---------------------------------------------------
-  const incTable = await get([HOUSEHOLDS, ...INCOME_BRACKETS.map((b) => b.code)], 'phân bố thu nhập hộ gia đình');
+  const incTable = await get([HOUSEHOLDS, ...INCOME_BRACKETS.map((b) => b.code)],
+    bi('phân bố thu nhập hộ gia đình', 'the household income distribution'));
   if (incTable) {
     const households = sumColumn(incTable, HOUSEHOLDS);
     const counts = INCOME_BRACKETS.map((b) => ({ floor: b.floor, n: sumColumn(incTable, b.code) }));
     const parts = counts.reduce((s, c) => s + (c.n ?? 0), 0);
     if (households === null || counts.some((c) => c.n === null) || !balances(parts, households)) {
-      notes.push('Phân bố thu nhập không khớp tổng số hộ nên đã bỏ qua.');
+      notes.push(bi(
+        'Phân bố thu nhập không khớp tổng số hộ nên đã bỏ qua.',
+        'The income distribution does not add up to the household total, so it was dropped.'));
     } else {
       out.households = households;
       out.incomeAtLeast = INCOME_LINES.map((line) => {
@@ -278,7 +289,8 @@ export async function fetchAreaAudience(
     const codes = languageCodesFromGroup(await grp.text().catch(() => ''), LANGUAGES);
     const totalCode = 'C16001_001E';
     if (codes.length) {
-      const langTable = await get([totalCode, ...codes.map((c) => c.code)], 'ngôn ngữ nói ở nhà');
+      const langTable = await get([totalCode, ...codes.map((c) => c.code)],
+        bi('ngôn ngữ nói ở nhà', 'the languages spoken at home'));
       const base = langTable ? sumColumn(langTable, totalCode) : null;
       if (langTable && base) {
         out.languages = codes
@@ -288,10 +300,12 @@ export async function fetchAreaAudience(
           .sort((a, b) => b.people - a.people);
       }
     } else {
-      notes.push('Không tìm được mã biến ngôn ngữ trong danh mục của Cục Thống kê.');
+      notes.push(bi(
+        'Không tìm được mã biến ngôn ngữ trong danh mục của Cục Thống kê.',
+        'Could not find the language variable codes in the Census catalogue.'));
     }
   } else {
-    notes.push('Chưa lấy được bảng ngôn ngữ.');
+    notes.push(bi('Chưa lấy được bảng ngôn ngữ.', 'Could not get the language table.'));
   }
 
   return out;

@@ -1,4 +1,5 @@
 import { buildSeoReport, type SeoInput } from './seo-local';
+import { enOf, viOf } from './i18n';
 
 const NOW = Date.UTC(2026, 7, 31);
 const DAY = 86_400_000;
@@ -23,7 +24,7 @@ describe('it measures what decides the map results, not what looks tidy', () => 
     const r = run({ reviews: stale });
     expect(check(r, 'review-count').state).toBe('pass');
     expect(check(r, 'review-velocity').state).toBe('fail');
-    expect(check(r, 'review-velocity').finding).toMatch(/400 ngày/);
+    expect(viOf(check(r, 'review-velocity').finding)).toMatch(/400 ngày/);
   });
 
   it('treats an unanswered low review as a failure whatever the reply rate is', () => {
@@ -33,8 +34,8 @@ describe('it measures what decides the map results, not what looks tidy', () => 
     ];
     const c = check(run({ reviews: rs }), 'review-replies');
     expect(c.state).toBe('fail');
-    expect(c.action).toMatch(/hôm nay/);
-    expect(c.why).toMatch(/lời cuối cùng về tiệm/);
+    expect(viOf(c.action)).toMatch(/hôm nay/);
+    expect(viOf(c.why)).toMatch(/lời cuối cùng về tiệm/);
   });
 
   it('passes a profile that replies to nearly everything', () => {
@@ -51,8 +52,8 @@ describe('services the shop sells must be findable by their own name', () => {
       services: [{ name: 'Pedicure Deluxe' }, { name: 'Dipping Powder' }, { name: 'Lash Extensions' }],
     }), 'keyword-match');
     expect(c.state).not.toBe('pass');
-    expect(c.finding).toMatch(/dipping|lash/i);
-    expect(c.finding).not.toMatch(/pedicure deluxe/i); // this one IS covered
+    expect(viOf(c.finding)).toMatch(/dipping|lash/i);
+    expect(viOf(c.finding)).not.toMatch(/pedicure deluxe/i); // this one IS covered
   });
 
   it('passes when everything the shop sells is being searched for', () => {
@@ -69,29 +70,29 @@ describe('the final measure is customers, not rankings', () => {
   it('reads the share of bookings that came from search', () => {
     const c = check(run({ sources: { google: 30, gbp: 10, walkin: 40, facebook: 20 } }), 'search-share');
     expect(c.state).toBe('pass');
-    expect(c.finding).toMatch(/40%/);
+    expect(viOf(c.finding)).toMatch(/40%/);
   });
 
   it('fails when search brings almost nobody', () => {
     const c = check(run({ sources: { google: 2, walkin: 80, facebook: 18 } }), 'search-share');
     expect(c.state).toBe('fail');
-    expect(c.action).toMatch(/trước khi nghĩ tới website/);
+    expect(viOf(c.action)).toMatch(/trước khi nghĩ tới website/);
   });
 
   it('refuses to read a percentage off a handful of bookings', () => {
     const c = check(run({ sources: { google: 1, walkin: 3 } }), 'search-share');
     expect(c.state).toBe('unknown');
-    expect(c.finding).toMatch(/chưa đủ để đọc/);
+    expect(viOf(c.finding)).toMatch(/chưa đủ để đọc/);
   });
 });
 
 describe('it says what it cannot see', () => {
   it('names the website factors it does not measure, rather than scoring them', () => {
     const r = run({ reviews: [review(5)] });
-    expect(r.blindSpots.join(' ')).toMatch(/tốc độ tải/);
-    expect(r.blindSpots.join(' ')).toMatch(/backlink/);
+    expect(r.blindSpots.map(viOf).join(' ')).toMatch(/tốc độ tải/);
+    expect(r.blindSpots.map(viOf).join(' ')).toMatch(/backlink/);
     // And it does not silently include them in a score.
-    expect(r.checks.some((c) => /backlink|meta description/i.test(c.title))).toBe(false);
+    expect(r.checks.some((c) => /backlink|meta description/i.test(viOf(c.title)))).toBe(false);
   });
 
   it('never invents a rank', () => {
@@ -115,7 +116,7 @@ describe('the verdict is blunt on purpose', () => {
       sources: { google: 1, walkin: 60 },
     });
     expect(r.failing).toBeGreaterThan(0);
-    expect(r.headline).toMatch(/đang chặn/);
+    expect(viOf(r.headline)).toMatch(/đang chặn/);
     expect(JSON.stringify(r)).not.toMatch(/\/100/);
   });
 
@@ -127,14 +128,47 @@ describe('the verdict is blunt on purpose', () => {
       sources: { google: 40, walkin: 30 },
     });
     expect(r.failing).toBe(0);
-    expect(r.headline).toMatch(/đang ổn/);
+    expect(viOf(r.headline)).toMatch(/đang ổn/);
   });
 
   it('gives every failing check exactly one next action', () => {
     const r = run({ reviews: Array.from({ length: 3 }, () => review(300, 2, false)) });
     for (const c of r.checks.filter((x) => x.state === 'fail')) {
-      expect(c.action.length).toBeGreaterThan(15);
-      expect(c.why.length).toBeGreaterThan(20);
+      expect(viOf(c.action).length).toBeGreaterThan(15);
+      expect(viOf(c.why).length).toBeGreaterThan(20);
     }
+  });
+});
+
+describe('an English reader gets English', () => {
+  it('writes every check, the headline and the blind spots twice', () => {
+    const r = run({
+      reviews: Array.from({ length: 4 }, () => review(200, 2, false)),
+      keywords: [{ keyword: 'nail salon near me', count: 40 }],
+      services: [{ name: 'Lash Extensions' }],
+      sources: { google: 1, walkin: 60 },
+    });
+
+    for (const c of r.checks) {
+      expect(enOf(c.title)).not.toBe(viOf(c.title));
+      expect(enOf(c.finding)).not.toBe(viOf(c.finding));
+      if (viOf(c.why)) expect(enOf(c.why)).not.toBe(viOf(c.why));
+    }
+
+    // The numbers survive the second writing, in the word order English uses.
+    expect(enOf(check(r, 'review-count').finding)).toBe('4 reviews.');
+    expect(enOf(check(r, 'review-velocity').finding)).toMatch(/the newest one is 200 days old/);
+    expect(enOf(check(r, 'search-share').finding)).toMatch(/^2% of bookings come from Google or the map \(1\/61\)\.$/);
+
+    // The service name inside the sentence is the salon's own and is not translated.
+    expect(enOf(check(r, 'keyword-match').finding)).toMatch(/services turn up in no search term at all: lash extensions/);
+
+    expect(enOf(r.headline)).toMatch(/things are keeping you off the map/);
+    expect(enOf(r.headline)).not.toBe(viOf(r.headline));
+
+    const en = r.blindSpots.map(enOf).join(' ');
+    expect(en).toMatch(/load speed/);
+    expect(en).toMatch(/backlinks/);
+    expect(en).not.toMatch(/tốc độ tải/);
   });
 });

@@ -1,5 +1,6 @@
 import { buildMarketPlan, type MarketInput } from './market-target';
 import type { AreaAudience } from './census-audience';
+import { enOf, viOf } from './i18n';
 
 const money = (c: number) => `$${Math.round(c / 100)}`;
 
@@ -46,7 +47,7 @@ describe('the target is sized from the market, not from the booking book', () =>
   it('names a primary segment with a real head count behind it', () => {
     expect(p.primary!.key).toBe('women-core');
     expect(p.primary!.size).toBe(2400 + 2100 + 1700);
-    expect(p.primary!.basis).toMatch(/B01001/);
+    expect(viOf(p.primary!.basis)).toMatch(/B01001/);
   });
 
   it('reasons outward-in: market, then target, then price, then capacity, then money', () => {
@@ -57,7 +58,7 @@ describe('the target is sized from the market, not from the booking book', () =>
   });
 
   it('gives targeting anyone can type into the ad platform', () => {
-    const t = p.primary!.targeting.join(' ');
+    const t = p.primary!.targeting.map(viOf).join(' ');
     expect(t).toMatch(/Nữ, 25–54/);
     expect(t).toMatch(/bán kính 5 dặm/);
     // Google gets no gender filter, and the reason is stated.
@@ -76,8 +77,8 @@ describe('what the business says about itself outranks its industry code', () =>
     });
     expect(p.primary!.key).toBe('language');
     expect(p.primary!.size).toBe(1_800);
-    expect(p.primary!.label).toMatch(/tiếng Việt/);
-    expect(p.primary!.targeting.join(' ')).toMatch(/Ngôn ngữ = Vietnamese/);
+    expect(viOf(p.primary!.label)).toMatch(/tiếng Việt/);
+    expect(p.primary!.targeting.map(viOf).join(' ')).toMatch(/Ngôn ngữ = Vietnamese/);
   });
 
   it('puts the language segment first even when a bigger one exists', () => {
@@ -95,7 +96,7 @@ describe('what the business says about itself outranks its industry code', () =>
   it('falls back to a broad adult segment when nothing narrows it', () => {
     const p = plan({ industry: 'SERVICE' });
     expect(p.primary!.key).toBe('adults-core');
-    expect(p.primary!.why).toMatch(/Chưa có căn cứ để thu hẹp/);
+    expect(viOf(p.primary!.why)).toMatch(/Chưa có căn cứ để thu hẹp/);
   });
 });
 
@@ -107,8 +108,8 @@ describe('penetration replaces the market-share figure it refuses to invent', ()
     expect(p.penetrationPct).toBe(0.32);
     expect(p.penetrationVerdict).toBe('easy');
     const cap = p.steps.find((s) => s.key === 'capacity')!;
-    expect(cap.line).toMatch(/20 người trong 6,200/);
-    expect(cap.action).toMatch(/tầm với/);
+    expect(viOf(cap.line)).toMatch(/20 người trong 6,200/);
+    expect(viOf(cap.action)).toMatch(/tầm với/);
   });
 
   it('calls it impossible when the chairs outnumber what the segment can feed', () => {
@@ -116,14 +117,14 @@ describe('penetration replaces the market-share figure it refuses to invent', ()
     expect(p.penetrationVerdict).toBe('impossible');
     const cap = p.steps.find((s) => s.key === 'capacity')!;
     // The action must be the cheap move, not "spend more".
-    expect(cap.action).toMatch(/khách cũ quay lại/);
-    expect(cap.why).toMatch(/mở rộng bán kính/);
+    expect(viOf(cap.action)).toMatch(/khách cũ quay lại/);
+    expect(viOf(cap.why)).toMatch(/mở rộng bán kính/);
   });
 
   it('never claims a market share', () => {
     const text = JSON.stringify(plan());
     expect(text).not.toMatch(/thị phần \d|chiếm được \d+% thị trường/);
-    expect(plan().limits.join(' ')).toMatch(/KHÔNG có dữ liệu đối thủ/);
+    expect(plan().limits.map(viOf).join(' ')).toMatch(/KHÔNG có dữ liệu đối thủ/);
   });
 });
 
@@ -133,23 +134,23 @@ describe('the budget ceiling comes from capacity × margin, and says it is a cei
     const b = plan().steps.find((s) => s.key === 'budget')!;
     // The line carries the number; the "start small, measure, then scale"
     // procedure is the ACTION, where an owner will actually look for it.
-    expect(b.line).toMatch(/\$450/);
-    expect(b.action).toMatch(/Bắt đầu nhỏ/);
-    expect(b.action).toMatch(/Sau 3 ngày/);
+    expect(viOf(b.line)).toMatch(/\$450/);
+    expect(viOf(b.action)).toMatch(/Bắt đầu nhỏ/);
+    expect(viOf(b.action)).toMatch(/Sau 3 ngày/);
   });
 
   it('explains why spending past it cannot pay back — in the working, not the headline', () => {
     const b = plan().steps.find((s) => s.key === 'budget')!;
-    expect(b.why).toMatch(/không còn ghế trống để ngồi/);
-    expect(b.line.length).toBeLessThan(110);
+    expect(viOf(b.why)).toMatch(/không còn ghế trống để ngồi/);
+    expect(viOf(b.line).length).toBeLessThan(110);
   });
 
   it('refuses a ceiling without a margin, and points at one screen', () => {
     const p = plan({ cpaCeilingCents: null });
     expect(p.maxSpendCents).toBeNull();
     const b = p.steps.find((s) => s.key === 'budget')!;
-    expect(b.action).toMatch(/Nhân sự → sửa thợ/);
-    expect(b.why).toMatch(/Dân số nói được nhắm vào ai/);
+    expect(viOf(b.action)).toMatch(/Nhân sự → sửa thợ/);
+    expect(viOf(b.why)).toMatch(/Dân số nói được nhắm vào ai/);
   });
 
   it('never forecasts bookings from a budget', () => {
@@ -160,8 +161,8 @@ describe('the budget ceiling comes from capacity × margin, and says it is a cei
 describe('price is read against the area, not against a feeling', () => {
   it('calls a low ticket in a rich area an upsell opportunity, not a discount one', () => {
     const price = plan({ firstVisitTicketCents: 4_000 }).steps.find((s) => s.key === 'price')!;
-    expect(price.action).toMatch(/Đừng giảm giá/);
-    expect(price.action).toMatch(/nâng cấp/);
+    expect(viOf(price.action)).toMatch(/Đừng giảm giá/);
+    expect(viOf(price.action)).toMatch(/nâng cấp/);
   });
 
   it('picks the income line from the shop’s own ticket', () => {
@@ -173,7 +174,7 @@ describe('price is read against the area, not against a feeling', () => {
   it('says so plainly when it has no ticket to compare, and offers no advice it cannot support', () => {
     const price = plan({ firstVisitTicketCents: null }).steps.find((s) => s.key === 'price')!;
     expect(price.action).toBeNull();
-    expect(price.why).toMatch(/Chưa đủ lịch hẹn/);
+    expect(viOf(price.why)).toMatch(/Chưa đủ lịch hẹn/);
   });
 });
 
@@ -197,7 +198,41 @@ describe('with no census data it says so instead of estimating', () => {
 
 describe('a ZIP is never called a five-mile circle', () => {
   it('says it every time', () => {
-    expect(plan().limits.join(' ')).toMatch(/không phải một vòng tròn 5 dặm/);
-    expect(plan().limits.join(' ')).toMatch(/trung bình 5 năm/);
+    expect(plan().limits.map(viOf).join(' ')).toMatch(/không phải một vòng tròn 5 dặm/);
+    expect(plan().limits.map(viOf).join(' ')).toMatch(/trung bình 5 năm/);
+  });
+});
+
+describe('the same market, for an owner reading English', () => {
+  it('writes every phrase twice instead of leaving one side in Vietnamese', () => {
+    const p = plan();
+    expect(enOf(p.primary!.label)).not.toBe(viOf(p.primary!.label));
+    expect(enOf(p.primary!.label)).toMatch(/Women 25–54 around Austin, TX/);
+    expect(enOf(p.primary!.basis)).toMatch(/US Census Bureau, table B01001/);
+    expect(p.primary!.targeting.map(enOf).join(' ')).toMatch(/Meta: Women, 25–54, a 5-mile radius/);
+    expect(p.limits.map(enOf).join(' ')).toMatch(/not a 5-mile circle/);
+  });
+
+  it('says the money and the arithmetic in English word order', () => {
+    const p = plan();
+    const b = p.steps.find((s) => s.key === 'budget')!;
+    expect(enOf(b.line)).toMatch(/\$450 — and only if each new customer costs under \$23\./);
+    expect(enOf(b.action)).toMatch(/^Start small\. After 3 days/);
+    expect(enOf(b.why)).toMatch(/20 open slots × \$23 of profit per new customer = \$450\./);
+
+    const cap = p.steps.find((s) => s.key === 'capacity')!;
+    // Below one percent the count reads better than the percentage — in both.
+    expect(enOf(cap.line)).toMatch(/Room for 20 new customers in 14 days — that takes 20 people out of 6,200\./);
+
+    const price = p.steps.find((s) => s.key === 'price')!;
+    expect(enOf(price.line)).toMatch(/60% of households here earn over \$75,000 a year/);
+    expect(enOf(price.line)).not.toMatch(/hộ|thu nhập/);
+  });
+
+  it('leaves the flattened prompt lines in Vietnamese whichever language the screen is in', () => {
+    const text = plan().reasoning.join(' ');
+    expect(text).toContain('người trưởng thành');
+    expect(text).not.toContain('[object Object]');
+    expect(text).not.toContain('adults live in');
   });
 });

@@ -27,6 +27,7 @@
  * itself, in its own settings, today.
  */
 
+import { bi, type Txt } from './i18n';
 import { parseAddress, stateFromZip, type Market } from './region-events';
 
 export type LocationSource = 'tenant' | 'address' | 'serviceArea' | 'zip' | 'none';
@@ -49,10 +50,10 @@ export interface ResolvedShopLocation {
   region: string | null;
   postalCode: string | null;
   source: LocationSource;
-  /** Vietnamese, for the screen: where this came from. Null when nothing did. */
-  sourceLabel: string | null;
+  /** For the screen, in both languages: where this came from. Null when nothing did. */
+  sourceLabel: Txt | null;
   /** What the SHOP can do about it. Null once the location is known. */
-  fix: string | null;
+  fix: Txt | null;
 }
 
 const clean = (s: string | null | undefined) => {
@@ -76,27 +77,28 @@ export function resolveShopLocation(i: LocationInput): ResolvedShopLocation {
   const postalCode = firstZip(i.tenantPostal)
     ?? fromAddress.postalCode ?? fromArea.postalCode ?? firstZip(i.nearbyZips);
 
-  const candidates: { region: string | null; city: string | null; source: LocationSource; label: string }[] = [
+  const candidates: { region: string | null; city: string | null; source: LocationSource; label: Txt }[] = [
     {
       region: clean(i.tenantRegion)?.toUpperCase() ?? null,
       city: clean(i.tenantCity),
       source: 'tenant',
-      label: 'hồ sơ tiệm',
+      label: bi('hồ sơ tiệm', 'the salon profile'),
     },
     {
       region: fromAddress.region, city: fromAddress.city,
-      source: 'address', label: 'địa chỉ trong cài đặt tiệm',
+      source: 'address', label: bi('địa chỉ trong cài đặt tiệm', 'the address in salon settings'),
     },
     {
       region: fromArea.region, city: fromArea.city,
-      source: 'serviceArea', label: 'khu vực phục vụ tiệm đã khai',
+      source: 'serviceArea', label: bi('khu vực phục vụ tiệm đã khai', 'the service area the salon listed'),
     },
     {
       // Last, because a ZIP gives the state and never the city — but a state is
       // what the calendar runs on, so this is a real answer, not a fallback
       // dressed up as one.
       region: market === 'US' ? stateFromZip(postalCode) : null, city: null,
-      source: 'zip', label: postalCode ? `mã ZIP ${postalCode} của tiệm` : '',
+      source: 'zip',
+      label: postalCode ? bi(`mã ZIP ${postalCode} của tiệm`, `the salon's ZIP ${postalCode}`) : '',
     },
   ];
 
@@ -111,7 +113,10 @@ export function resolveShopLocation(i: LocationInput): ResolvedShopLocation {
       // Addressed to the shop, and doable by the shop. Naming both routes
       // matters: one is typing a line, the other is a button that reads the
       // website the shop already has.
-      fix: 'Thêm địa chỉ (hoặc mã ZIP) ở Cài đặt tiệm → Thông tin công ty, hoặc bấm "Quét & học tự động" để lấy từ website/fanpage của tiệm.',
+      fix: bi(
+        'Thêm địa chỉ (hoặc mã ZIP) ở Cài đặt tiệm → Thông tin công ty, hoặc bấm "Quét & học tự động" để lấy từ website/fanpage của tiệm.',
+        'Add the address (or ZIP) in Salon settings → Company info, or hit "Scan & learn" to pull it from the salon\'s website or Facebook page.',
+      ),
     };
   }
 

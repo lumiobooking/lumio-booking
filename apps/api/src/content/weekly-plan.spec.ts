@@ -1,6 +1,7 @@
 import { buildWeekPlan, filmDay, leadDay, weekPlanToPrompt } from './weekly-plan';
 import type { SlotLoad, OfferAdvice, LapsedSignal } from './revenue-signals';
 import type { DatedEvent } from './region-events';
+import { bi, enOf, viOf } from './i18n';
 
 const load = (weekday: number, block: SlotLoad['block'], fillIndex: number): SlotLoad => ({
   weekday, block, minutes: fillIndex * 10, revenueCents: fillIndex * 1000, fillIndex,
@@ -51,13 +52,13 @@ describe('the week is built from the salon’s own book', () => {
     expect(leadDay(6)).toBe(4);
     const offer = jobsOn(plan(), 4).find((j) => j.kind === 'offer');
     expect(offer).toBeTruthy();
-    expect(offer!.text).toContain('Thứ 7 buổi sáng');
-    expect(offer!.why).toMatch(/trước 2 ngày/);
+    expect(viOf(offer!.text)).toContain('Thứ 7 buổi sáng');
+    expect(viOf(offer!.why)).toMatch(/trước 2 ngày/);
   });
 
   it('names the blocks that must not be discounted', () => {
     const offer = jobsOn(plan(), 4).find((j) => j.kind === 'offer')!;
-    expect(offer.why).toContain('Thứ 6 buổi sáng');
+    expect(viOf(offer.why)).toContain('Thứ 6 buổi sáng');
   });
 
   it('spaces the three posts instead of stacking them', () => {
@@ -78,9 +79,9 @@ describe('it refuses to discount when the book says not to', () => {
     const raise: OfferAdvice = { kind: 'raise-price', headline: '', detail: 'Lịch gần kín', discountPct: 0, protect: [], basis: '' };
     const p = plan({ advice: raise });
     expect(allJobs(p).some((j) => j.kind === 'offer')).toBe(false);
-    const post = allJobs(p).find((j) => j.why.includes('cho không phần lãi') || j.text.includes('Không chạy giảm giá'));
+    const post = allJobs(p).find((j) => viOf(j.why).includes('cho không phần lãi') || viOf(j.text).includes('Không chạy giảm giá'));
     expect(post).toBeTruthy();
-    expect(p.focus).toMatch(/Giữ giá/);
+    expect(viOf(p.focus)).toMatch(/Giữ giá/);
   });
 
   it('adds a win-back job only when there are enough lapsed customers', () => {
@@ -95,9 +96,9 @@ describe('an empty book is admitted, not papered over', () => {
 
   it('says the rhythm is a default', () => {
     expect(bare.dataThin).toBe(true);
-    expect(bare.basis).toMatch(/Chưa đủ lịch hẹn/);
+    expect(viOf(bare.basis)).toMatch(/Chưa đủ lịch hẹn/);
     const film = allJobs(bare).find((j) => j.kind === 'film')!;
-    expect(film.why).toMatch(/Chưa đủ dữ liệu/);
+    expect(viOf(film.why)).toMatch(/Chưa đủ dữ liệu/);
   });
 
   it('still gives a usable week rather than an empty screen', () => {
@@ -106,7 +107,7 @@ describe('an empty book is admitted, not papered over', () => {
   });
 
   it('never claims a quiet slot it cannot see', () => {
-    for (const j of allJobs(bare)) expect(j.text).not.toMatch(/CHỈ cho/);
+    for (const j of allJobs(bare)) expect(viOf(j.text)).not.toMatch(/CHỈ cho/);
   });
 });
 
@@ -128,13 +129,13 @@ describe('upcoming local events reach the filming day', () => {
   it('adds a shoot for what is close, and ignores what is two months out', () => {
     const p = plan({ events: ev });
     const films = jobsOn(p, 1).filter((j) => j.kind === 'film');
-    expect(films.some((j) => j.text.includes('Tựu trường'))).toBe(true);
-    expect(films.some((j) => j.text.includes('Halloween'))).toBe(false);
+    expect(films.some((j) => viOf(j.text).includes('Tựu trường'))).toBe(true);
+    expect(films.some((j) => viOf(j.text).includes('Halloween'))).toBe(false);
   });
 
   it('tells the salon to post before the day, not on it', () => {
-    const j = jobsOn(plan({ events: ev }), 1).find((x) => x.text.includes('Tựu trường'))!;
-    expect(j.why).toMatch(/trước 5-7 ngày/);
+    const j = jobsOn(plan({ events: ev }), 1).find((x) => viOf(x.text).includes('Tựu trường'))!;
+    expect(viOf(j.why)).toMatch(/trước 5-7 ngày/);
   });
 });
 
@@ -147,8 +148,8 @@ describe('daily habits are separate from the dated work', () => {
 
   it('every job explains itself', () => {
     for (const j of [...allJobs(plan()), ...plan().daily]) {
-      expect(j.text.length).toBeGreaterThan(10);
-      expect(j.why.length).toBeGreaterThan(15);
+      expect(viOf(j.text).length).toBeGreaterThan(10);
+      expect(viOf(j.why).length).toBeGreaterThan(15);
     }
   });
 });
@@ -164,18 +165,35 @@ describe('the prompt version stays consistent with the screen', () => {
   it('does not list the empty days as work', () => {
     expect(weekPlanToPrompt(plan())).not.toMatch(/Không có việc nội dung/);
   });
+
+  it('stays Vietnamese even though the plan itself is bilingual', () => {
+    const text = weekPlanToPrompt(plan({
+      stage: {
+        key: 'foundation', step: 1,
+        title: bi('Nền móng', 'Foundation'),
+        goal: bi('Làm dày hồ sơ trước khi bỏ tiền.', 'Build the profile up before spending money.'),
+        why: bi('w', 'w-en'), exitWhen: bi('20 đánh giá Google', '20 Google reviews'), progress: null,
+        jobs: [{ kind: 'engage', text: bi('Xin đánh giá Google', 'Ask for Google reviews'), why: bi('y', 'y-en') }],
+      },
+    }));
+    // A {vi,en} pair that reaches a template literal prints as [object Object].
+    expect(text).not.toMatch(/\[object Object\]/);
+    expect(text).toContain('Nền móng');
+    expect(text).toContain('Xin đánh giá Google');
+    expect(text).not.toContain('Foundation');
+  });
 });
 
 describe('each trade gets its own week, not a translated nail one', () => {
   it('gives a restaurant restaurant posts', () => {
     const p = plan({ industry: 'RESTAURANT' });
-    const posts = allJobs(p).filter((j) => j.kind === 'post').map((j) => j.text).join(' ');
+    const posts = allJobs(p).filter((j) => j.kind === 'post').map((j) => viOf(j.text)).join(' ');
     expect(posts).toMatch(/món|bếp|khách thật/i);
     expect(posts).not.toMatch(/móng/i);
   });
 
   it('gives an estate agency house tours, not manicures', () => {
-    const posts = allJobs(plan({ industry: 'REAL_ESTATE' })).filter((j) => j.kind === 'post').map((j) => j.text).join(' ');
+    const posts = allJobs(plan({ industry: 'REAL_ESTATE' })).filter((j) => j.kind === 'post').map((j) => viOf(j.text)).join(' ');
     expect(posts).toMatch(/tour|nhà|khu vực/i);
     expect(posts).not.toMatch(/móng/i);
   });
@@ -183,24 +201,27 @@ describe('each trade gets its own week, not a translated nail one', () => {
   it('gives the three posts three different jobs', () => {
     const posts = allJobs(plan()).filter((j) => j.kind === 'post');
     expect(posts).toHaveLength(3);
-    expect(new Set(posts.map((p) => p.why)).size).toBe(3);
+    expect(new Set(posts.map((p) => viOf(p.why))).size).toBe(3);
   });
 
   it('names where each day’s raw material comes from, with a time to catch it', () => {
     const p = plan();
     expect(p.sources.length).toBeGreaterThanOrEqual(3);
     for (const s of p.sources) {
-      expect(s.when.length).toBeGreaterThan(3);
-      expect(s.why.length).toBeGreaterThan(15);
+      expect(viOf(s.when).length).toBeGreaterThan(3);
+      expect(viOf(s.why).length).toBeGreaterThan(15);
     }
     // The single most perishable moment in a nail salon, and the one most
     // often missed: the set is only perfect until the customer stands up.
-    expect(p.sources[0].when).toMatch(/trước khi khách trả tiền/);
+    expect(viOf(p.sources[0].when)).toMatch(/trước khi khách trả tiền/);
+    // The playbook is bilingual now, so the source reaches an English screen
+    // in English rather than as Vietnamese inside an English frame.
+    expect(enOf(p.sources[0].when)).toMatch(/before she pays/);
   });
 
   it('gives each trade its own daily habits', () => {
-    const salon = plan().daily.map((j) => j.text).join(' ');
-    const resto = plan({ industry: 'RESTAURANT' }).daily.map((j) => j.text).join(' ');
+    const salon = plan().daily.map((j) => viOf(j.text)).join(' ');
+    const resto = plan({ industry: 'RESTAURANT' }).daily.map((j) => viOf(j.text)).join(' ');
     expect(salon).not.toBe(resto);
     expect(resto).toMatch(/đánh giá|story/i);
   });
@@ -233,7 +254,7 @@ describe('a plan goes somewhere — it is not the same week on repeat', () => {
   };
 
   const clips = (week: number) => buildWeekPlan({ ...steady, week })
-    .days.flatMap((d) => d.jobs).filter((j) => j.kind === 'post').map((j) => j.text);
+    .days.flatMap((d) => d.jobs).filter((j) => j.kind === 'post').map((j) => viOf(j.text));
 
   it('asks for different clips in week 1 and week 2', () => {
     expect(clips(0)).not.toEqual(clips(1));
@@ -260,15 +281,67 @@ describe('a plan goes somewhere — it is not the same week on repeat', () => {
         jobs: [{ kind: 'engage', text: 'Xin đánh giá Google', why: 'y' }],
       },
     });
-    expect(withStage.focus).toMatch(/Nền móng/);
+    expect(viOf(withStage.focus)).toMatch(/Nền móng/);
     expect(withStage.stage!.step).toBe(1);
     // The stage's own work is IN the week, not in a separate list nobody reads.
-    expect(withStage.days.flatMap((d) => d.jobs).map((j) => j.text)).toContain('Xin đánh giá Google');
+    expect(withStage.days.flatMap((d) => d.jobs).map((j) => viOf(j.text))).toContain('Xin đánh giá Google');
   });
 
   it('still works for a salon with no stage at all', () => {
     const p = buildWeekPlan(steady);
     expect(p.stage).toBeNull();
-    expect(p.focus.length).toBeGreaterThan(10);
+    expect(viOf(p.focus).length).toBeGreaterThan(10);
+  });
+
+  it('carries the stage’s English into the week instead of stopping at the boundary', () => {
+    // The stage is bilingual; the week used to unwrap it to Vietnamese on the
+    // way in, so an English screen showed a Vietnamese aim and Vietnamese jobs.
+    const withStage = buildWeekPlan({
+      ...steady,
+      stage: {
+        key: 'foundation', step: 1,
+        title: bi('Nền móng', 'Foundation'),
+        goal: bi('Làm dày hồ sơ trước khi bỏ tiền.', 'Build the profile up before spending money.'),
+        why: bi('w', 'w-en'), exitWhen: bi('x', 'x-en'), progress: null,
+        jobs: [{ kind: 'engage', text: bi('Xin đánh giá Google', 'Ask for Google reviews'), why: bi('y', 'y-en') }],
+      },
+    });
+    expect(enOf(withStage.focus)).toBe('Foundation — Build the profile up before spending money.');
+    expect(enOf(withStage.focus)).not.toBe(viOf(withStage.focus));
+    expect(withStage.days.flatMap((d) => d.jobs).map((j) => enOf(j.text))).toContain('Ask for Google reviews');
+  });
+});
+
+describe('the same week reads in English', () => {
+  it('gives the days, the aim, the basis and the jobs an English side of their own', () => {
+    const p = plan();
+    const saturday = p.days.find((d) => d.weekday === 6)!;
+    expect(enOf(saturday.label)).toBe('Saturday');
+    expect(viOf(saturday.label)).toBe('Thứ 7');
+
+    expect(enOf(p.basis)).toMatch(/own book/);
+    expect(enOf(p.basis)).not.toBe(viOf(p.basis));
+    expect(enOf(p.focus)).toMatch(/emptiest block/);
+    expect(enOf(p.focus)).not.toBe(viOf(p.focus));
+
+    const film = allJobs(p).find((j) => j.kind === 'film')!;
+    expect(enOf(film.text)).toMatch(/Film all 3 clips/);
+    expect(enOf(film.why)).not.toBe(viOf(film.why));
+
+    const offer = jobsOn(p, 4).find((j) => j.kind === 'offer')!;
+    expect(enOf(offer.text)).toMatch(/20% offer/);
+    expect(enOf(offer.text)).not.toBe(viOf(offer.text));
+
+    // A rest day is a phrase the product writes, so it is translated too.
+    const rest = allJobs(p).find((j) => j.kind === 'rest')!;
+    expect(enOf(rest.text)).toMatch(/No content work today/);
+
+    // The post lines are built out of the trade playbook. They read as English
+    // here only because the playbook itself carries both languages — before it
+    // did, this line put a Vietnamese post title inside an English sentence.
+    const post = allJobs(p).find((j) => j.kind === 'post')!;
+    expect(enOf(post.text)).toMatch(/^Post clip \d — \w/);
+    expect(enOf(post.text)).not.toBe(viOf(post.text));
+    expect(enOf(post.why)).not.toBe(viOf(post.why));
   });
 });

@@ -9,7 +9,7 @@ import { bookingChannel } from '../common/booking-channel';
 import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
 import { buildCampaignSpec } from './campaign-spec';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
-import { buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
+import { applyCapToOffer, buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
 import { regionEvents, eventsToPrompt, type ResolvedRegion, type DatedEvent } from './region-events';
 import { resolveShopLocation, type ResolvedShopLocation } from './shop-location';
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
@@ -28,6 +28,7 @@ import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { buildStrategyBrief } from './strategy-brief';
+import { bi, localizeDeep, viOf, type Txt } from './i18n';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -389,7 +390,23 @@ export class ContentService {
     // Capped at the source, before the number reaches a prompt or a screen.
     // The rule itself lives in promo-playbook next to the arithmetic it depends
     // on, so it can be tested without standing up a whole booking book.
-    capAdvice(revenue.advice, promo);
+    //
+    // capAdvice corrects the advice by mutating plain strings; the offer advice
+    // carries both languages now (see ./i18n), so it caps a Vietnamese view of
+    // it and applyCapToOffer folds what changed back onto the advice itself.
+    // Dropping the view would leave the uncapped discount on the screen — the
+    // exact failure capAdvice exists to prevent.
+    //
+    // `appended` is the one sentence capAdvice writes, in both languages, so
+    // the English detail line ends with the English explanation of the cut.
+    const capView = {
+      kind: revenue.advice.kind,
+      discountPct: revenue.advice.discountPct,
+      headline: viOf(revenue.advice.headline),
+      detail: viOf(revenue.advice.detail),
+    };
+    const capped = capAdvice(capView, promo);
+    applyCapToOffer(revenue.advice, { ...capView, appended: capped.appended }, promo.margin.grossMarginPct);
 
     return {
       tenantName: tenant?.name || 'Tiệm',
@@ -605,28 +622,42 @@ export class ContentService {
       outcome: WeekOutcome | null; approvedAt: Date | null; approvedByName: string | null;
     }[];
     const money = await this.moneyFor(this.tenantId(user)).catch(() => (c: number) => `$${Math.round(c / 100)}`);
-    return (rows ?? []).map((r) => ({
-      weekKey: r.weekKey,
-      label: weekLabel(r.weekKey),
-      startDate: r.startDate,
-      stageKey: r.stageKey,
-      stageStep: r.stageStep,
-      focus: (r.edited ?? r.generated)?.focus ?? '',
-      edited: Boolean(r.edited),
-      editedByName: r.editedByName,
-      editedAt: r.editedAt,
-      approvedAt: r.approvedAt,
-      approvedByName: r.approvedByName,
-      // What the week produced, in one line — the half the archive used to
-      // be missing. Absent for the current week, which has not finished.
-      outcome: r.outcome,
-      outcomeLine: r.outcome ? describeOutcome(r.outcome, money) : null,
-      deltaLine: r.outcome ? describeDelta(r.outcome) : null,
-    }));
+    return (rows ?? []).map((r) => {
+      const row = {
+        weekKey: r.weekKey,
+        label: weekLabel(r.weekKey),
+        startDate: r.startDate,
+        stageKey: r.stageKey,
+        stageStep: r.stageStep,
+        focus: (r.edited ?? r.generated)?.focus ?? '',
+        edited: Boolean(r.edited),
+        editedByName: r.editedByName,
+        editedAt: r.editedAt,
+        approvedAt: r.approvedAt,
+        approvedByName: r.approvedByName,
+        // What the week produced, in one line — the half the archive used to
+        // be missing. Absent for the current week, which has not finished.
+        outcome: r.outcome,
+        outcomeLine: r.outcome ? describeOutcome(r.outcome, money) : null,
+        deltaLine: r.outcome ? describeDelta(r.outcome) : null,
+      };
+      // Same rule as the plan payload: Vietnamese stays where callers already
+      // look for it, and the English rendering rides alongside under `en`.
+      return { ...localizeDeep(row, 'vi'), en: localizeDeep(row, 'en') };
+    });
   }
 
-  /** One archived week, as it should be read: the edit if there is one. */
-  async weekAt(user: AuthenticatedUser, key: string) {
+  /**
+   * One archived week, as it should be read: the edit if there is one.
+   *
+   * Two entry points on purpose. `weekAtRaw` hands back the week with its
+   * phrases still bilingual, because `planFor` embeds it in a payload it is
+   * about to render in both languages itself — localising here would flatten a
+   * team-edited week to Vietnamese and quietly undo the whole pass for exactly
+   * the salons a human has spent time on. `weekAt` is the HTTP shape, rendered
+   * the same way as the plan and the archive.
+   */
+  private async weekAtRaw(user: AuthenticatedUser, key: string) {
     const tenantId = this.tenantId(user);
     const loose = this.prisma as unknown as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>;
     const row = await loose.contentWeek?.findFirst({
@@ -636,7 +667,10 @@ export class ContentService {
       editedByName: string | null; editedAt: Date | null;
     } | null;
     if (!row) throw new NotFoundException('Chưa có kế hoạch nào được lưu cho tuần này.');
-    return {
+    // One week, rendered the same way the plan and the archive are: Vietnamese
+    // in place, English alongside. `week` here is a stored plan object whose
+    // phrases are already bilingual, so the walk reaches those too.
+    const out = {
       weekKey: row.weekKey,
       label: weekLabel(row.weekKey),
       startDate: row.startDate,
@@ -647,6 +681,12 @@ export class ContentService {
       editedByName: row.editedByName,
       editedAt: row.editedAt,
     };
+    return out;
+  }
+
+  async weekAt(user: AuthenticatedUser, key: string) {
+    const out = await this.weekAtRaw(user, key);
+    return { ...localizeDeep(out, 'vi'), en: localizeDeep(out, 'en') };
   }
 
   /**
@@ -962,8 +1002,8 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // The raw material this trade actually has to hand. Without it the model
       // reaches for stock ideas ("quay một video giới thiệu tiệm") instead of
       // the finished set sitting on the table right now.
-      `NGUỒN QUAY CÓ SẴN CỦA ${playbookFor(ctx.industry).trade.toUpperCase()} — ý tưởng phải bắt đầu từ một trong số này:\n`
-        + week.sources.map((s) => `- ${s.label} (${s.when}) — ${s.why}`).join('\n'),
+      `NGUỒN QUAY CÓ SẴN CỦA ${viOf(playbookFor(ctx.industry).trade).toUpperCase()} — ý tưởng phải bắt đầu từ một trong số này:\n`
+        + week.sources.map((s) => `- ${viOf(s.label)} (${viOf(s.when)}) — ${viOf(s.why)}`).join('\n'),
       '',
       trendLinksToPrompt(),
       '',
@@ -1205,9 +1245,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     const kept = await this.keepWeek(tenantId, ctx.tz, generatedWeek).catch(() => null);
     // The team's version is what the salon reads, when there is one.
     const week = kept?.edited
-      ? ((await this.weekAt(user, kept.weekKey).catch(() => null))?.week as typeof generatedWeek) ?? generatedWeek
+      ? ((await this.weekAtRaw(user, kept.weekKey).catch(() => null))?.week as typeof generatedWeek) ?? generatedWeek
       : generatedWeek;
-    return {
+    // Built once with every phrase in both languages (see ./i18n), then
+    // rendered twice below. The screen picks; nothing in here has to know which
+    // language the person looking at it reads.
+    const payload = {
       // Where we think the salon is, and how sure we are. The screen shows this
       // so a wrong city gets corrected by the person who knows, instead of
       // quietly skewing every suggestion for months.
@@ -1260,7 +1303,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         city: ctx.region.city,
         services: ctx.signals.services.map((s) => ({ name: s.name, count: s.count })),
         keywords: ctx.signals.keywords.map((k) => ({ keyword: k.keyword, count: k.count })),
-        events: ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway, note: e.note })),
+        events: ctx.events.map((e) => ({ name: viOf(e.name), daysAway: e.daysAway, note: viOf(e.note) })),
       }),
       offer: ctx.revenue.advice,
       // Who the salon's customers actually are, and the arithmetic behind any
@@ -1307,8 +1350,8 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         budgetTotalCents: ads?.budget.totalCents ?? null,
         budgetDays: ads?.budget.days ?? 14,
         bookingsToBreakEven: ads?.budget.bookingsToBreakEven ?? null,
-        runDayLabels: ads?.window.labels.run ?? [],
-        pauseDayLabels: ads?.window.labels.pause ?? [],
+        runDayLabels: (ads?.window.labels.run ?? []).map(viOf),
+        pauseDayLabels: (ads?.window.labels.pause ?? []).map(viOf),
         money: ctx.money,
       }),
       seo: await this.seoFor(tenantId, ctx).catch(() => null),
@@ -1318,6 +1361,11 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       topYields: ctx.revenue.yields.slice(0, 3),
       thin: ctx.signals.thin,
     };
+
+    // Vietnamese is the shape callers already expect, so it stays at the top
+    // level; the English rendering rides alongside under `en`. A client that
+    // predates this keeps working and simply never reads `en`.
+    return { ...localizeDeep(payload, 'vi'), en: localizeDeep(payload, 'en') };
   }
 
   /**
@@ -1380,10 +1428,16 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     tenantId: string,
     zips: string | null,
     opts: { force?: boolean; allowFetch?: boolean } = {},
-  ): Promise<CensusResult & { lines: string[]; cachedAt?: string }> {
+  ): Promise<CensusResult & { lines: Txt[]; cachedAt?: string }> {
     const blank: CensusResult = { ok: false, year: null, zips: [], totalPopulation: null, weightedMedianIncomeUsd: null };
     if (!zips) {
-      return { ...blank, lines: [], error: 'Chưa có mã ZIP nào của tiệm. Thêm địa chỉ (có ZIP) ở Cài đặt tiệm → Thông tin công ty, hoặc bấm "Quét & học tự động".' };
+      return {
+        ...blank,
+        lines: [],
+        error: bi(
+          'Chưa có mã ZIP nào của tiệm. Thêm địa chỉ (có ZIP) ở Cài đặt tiệm → Thông tin công ty, hoặc bấm "Quét & học tự động".',
+          'No ZIP code on file for the shop. Add an address with a ZIP under Shop settings → Company info, or press "Scan & learn automatically".'),
+      };
     }
     const KEY = 'census_cache';
     const row = await this.prisma.setting.findFirst({ where: { tenantId, key: KEY }, select: { id: true, value: true } }).catch(() => null);
@@ -1403,7 +1457,13 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     if (opts.allowFetch === false) {
       return cached.data?.ok
         ? { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at }
-        : { ...blank, lines: [], error: 'Đang lấy số liệu dân cư cho khu vực này — hệ thống tự chạy nền mỗi giờ, không cần thao tác.' };
+        : {
+          ...blank,
+          lines: [],
+          error: bi(
+            'Đang lấy số liệu dân cư cho khu vực này — hệ thống tự chạy nền mỗi giờ, không cần thao tác.',
+            'Still pulling the population figures for this area — the system does it in the background every hour, nothing for you to do.'),
+        };
     }
 
     const r = await fetchCensus(zips, { apiKey: process.env.CENSUS_API_KEY || null });
@@ -1412,7 +1472,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } }).catch(() => undefined);
       else await this.prisma.setting.create({ data: { tenantId, key: KEY, value: value as never } }).catch(() => undefined);
     } else {
-      this.logger.warn(`census failed for ${tenantId}: ${r.diagnostic ?? r.error}`);
+      this.logger.warn(`census failed for ${tenantId}: ${r.diagnostic ?? viOf(r.error)}`);
       // Serve stale-but-real figures rather than nothing, and say they are old.
       if (cached.data?.ok) return { ...cached.data, lines: describeArea(cached.data), cachedAt: cached.at };
     }
@@ -1450,7 +1510,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } }).catch(() => undefined);
       else await this.prisma.setting.create({ data: { tenantId, key: KEY, value: value as never } }).catch(() => undefined);
     } else {
-      this.logger.warn(`census audience failed for ${tenantId}: ${r.notes.join(' | ')}`);
+      this.logger.warn(`census audience failed for ${tenantId}: ${r.notes.map(viOf).join(' | ')}`);
       if (cached.data?.ok) return cached.data;
     }
     return r;
@@ -1558,7 +1618,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         spec: p.dailyCents !== null
           ? buildCampaignSpec({
             platform: p.platform,
-            businessName: ctx.identity.label ?? null,
+            businessName: viOf(ctx.identity.label) || null,
             city: ctx.region.city,
             region: ctx.region.region,
             topServiceName: ctx.revenue.yields[0]?.name ?? ctx.signals.services[0]?.name ?? null,
@@ -1659,14 +1719,26 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     return { ok: true, contentLang: value };
   }
 
-  async scanProfile(user: AuthenticatedUser, opts: { note?: string } = {}): Promise<{
-    draft: Record<string, string>; sources: string[]; warnings: string[];
+  /**
+   * The HTTP shape: the same scan, rendered in both languages like the plan.
+   */
+  async scanProfile(user: AuthenticatedUser, opts: { note?: string } = {}) {
+    const out = await this.scanProfileRaw(user, opts);
+    return { ...localizeDeep(out, 'vi'), en: localizeDeep(out, 'en') };
+  }
+
+  private async scanProfileRaw(user: AuthenticatedUser, opts: { note?: string } = {}): Promise<{
+    draft: Record<string, string>; sources: Txt[]; warnings: Txt[];
     saved: boolean; locationSaved: string | null;
   }> {
+    // The warnings are read on the same screen as the plan, by the same person,
+    // in whichever language they set. `draft` is the AI's Vietnamese prose about
+    // the business itself and is NOT translated here — which language the model
+    // writes in is its own setting, one toggle further down that screen.
     const tenantId = this.tenantId(user);
     const note = String(opts.note ?? '').trim().slice(0, 1000);
-    const warnings: string[] = [];
-    const sources: string[] = [];
+    const warnings: Txt[] = [];
+    const sources: Txt[] = [];
     const chunks: string[] = [];
 
     const extra = await this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null);
@@ -1678,10 +1750,14 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         chunks.push(`--- ${r.source} ---\n${r.text}`);
         sources.push(r.source);
       } catch (e) {
-        warnings.push(e instanceof SiteReadError ? e.message : 'Không đọc được website.');
+        // A SiteReadError carries the site's own failure, which is one language
+        // by nature; only our own fallback sentence has two.
+        warnings.push(e instanceof SiteReadError ? e.message : bi('Không đọc được website.', 'Could not read the website.'));
       }
     } else {
-      warnings.push('Chưa có địa chỉ website trong phần cài đặt tiệm.');
+      warnings.push(bi(
+        'Chưa có địa chỉ website trong phần cài đặt tiệm.',
+        'No website address in the salon settings yet.'));
     }
 
     const loose = this.prisma as unknown as Record<string, { findUnique?: (a: unknown) => Promise<unknown>; findFirst?: (a: unknown) => Promise<unknown> }>;
@@ -1695,14 +1771,17 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         sources.push(r.source);
       } catch (e) {
         const raw = e instanceof SiteReadError ? e.message : 'Không đọc được fanpage.';
+        const rawTxt: Txt = e instanceof SiteReadError ? raw : bi(raw, 'Could not read the Facebook page.');
         // Meta's permission errors are three lines of documentation links. The
         // salon cannot act on those; the agency can, and only needs one line.
         warnings.push(/permission|pages_read|Public Content Access/i.test(raw)
-          ? 'Fanpage chưa cấp quyền đọc nội dung cho ứng dụng — cần duyệt quyền pages_read_engagement bên Meta. Đã bỏ qua fanpage và dùng các nguồn còn lại.'
-          : raw);
+          ? bi(
+            'Fanpage chưa cấp quyền đọc nội dung cho ứng dụng — cần duyệt quyền pages_read_engagement bên Meta. Đã bỏ qua fanpage và dùng các nguồn còn lại.',
+            'The Facebook page has not granted content-read access to the app — the pages_read_engagement permission needs approving on Meta. Skipped the page and used the other sources.')
+          : rawTxt);
       }
     } else {
-      warnings.push('Chưa kết nối Facebook Page.');
+      warnings.push(bi('Chưa kết nối Facebook Page.', 'No Facebook Page connected.'));
     }
 
     // The salon's own service list, which is a fact rather than a claim.
@@ -1711,18 +1790,29 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     }).catch(() => []) as { name: string; description: string | null }[];
     if (services.length) {
       chunks.push(`--- Dịch vụ đã khai trong hệ thống ---\n${services.map((s) => `${s.name}${s.description ? `: ${s.description}` : ''}`).join('\n')}`);
-      sources.push(`${services.length} dịch vụ trong hệ thống`);
+      sources.push(bi(
+        `${services.length} dịch vụ trong hệ thống`,
+        `${services.length} services in the system`));
     }
 
     if (!chunks.length) {
       return {
         draft: {}, sources, saved: false, locationSaved: null,
-        warnings: [...warnings, 'Không có nguồn nào đọc được — thêm website vào cài đặt tiệm rồi quét lại.'],
+        warnings: [...warnings, bi(
+          'Không có nguồn nào đọc được — thêm website vào cài đặt tiệm rồi quét lại.',
+          'Nothing could be read — add a website in the salon settings and scan again.')],
       };
     }
 
     const key = process.env.ANTHROPIC_API_KEY || '';
-    if (!key) return { draft: {}, sources, saved: false, locationSaved: null, warnings: [...warnings, 'Chưa cấu hình AI trên bản này nên chưa tự đọc được.'] };
+    if (!key) {
+      return {
+        draft: {}, sources, saved: false, locationSaved: null,
+        warnings: [...warnings, bi(
+          'Chưa cấu hình AI trên bản này nên chưa tự đọc được.',
+          'AI is not configured on this deployment, so nothing could be read automatically.')],
+      };
+    }
 
     const system = `Bạn đọc tài liệu của một doanh nghiệp và điền một hồ sơ ngắn về chính doanh nghiệp đó.
 
@@ -1749,7 +1839,12 @@ TRẢ VỀ JSON THUẦN:
     }).catch(() => null);
 
     if (!res || !res.ok) {
-      return { draft: {}, sources, saved: false, locationSaved: null, warnings: [...warnings, 'Đọc được nội dung nhưng AI chưa phân tích được. Thử lại sau ít phút.'] };
+      return {
+        draft: {}, sources, saved: false, locationSaved: null,
+        warnings: [...warnings, bi(
+          'Đọc được nội dung nhưng AI chưa phân tích được. Thử lại sau ít phút.',
+          'The sources were read but the AI could not analyse them. Try again in a few minutes.')],
+      };
     }
     const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
     const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
@@ -1764,7 +1859,9 @@ TRẢ VỀ JSON THUẦN:
       draft[f] = typeof v === 'string' ? v.trim().slice(0, 600) : '';
     }
     if (!draft.whatWeDo) {
-      warnings.push('Đọc được nguồn nhưng chưa rút ra được mô tả rõ ràng — kiểm tra lại và sửa tay.');
+      warnings.push(bi(
+        'Đọc được nguồn nhưng chưa rút ra được mô tả rõ ràng — kiểm tra lại và sửa tay.',
+        'The sources were read but no clear description came out of them — check and write it by hand.'));
       return { draft, sources, warnings, saved: false, locationSaved: null };
     }
 

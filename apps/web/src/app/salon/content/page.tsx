@@ -13,7 +13,7 @@
  * back at them.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -172,6 +172,18 @@ interface Plan {
   quietSlots: { label: string; fillIndex: number }[];
   thin: boolean;
 }
+
+/**
+ * What `/content/plan` actually returns.
+ *
+ * The server writes every phrase it owns in both languages and renders the
+ * whole plan twice: Vietnamese at the top level (the shape this page has always
+ * read) and English under `en`. The EN/VI switch therefore picks a rendering
+ * rather than asking the server to redo the work, which also means switching
+ * language costs no round trip and cannot leave half the screen in the other
+ * language while a request is in flight.
+ */
+type PlanEnvelope = Plan & { en?: Plan };
 
 type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'queue';
 
@@ -377,7 +389,15 @@ function Inner() {
   const T = (v: string, e: string) => (vi ? v : e);
 
   const [data, setData] = useState<Payload | null>(null);
-  const [plan, setPlan] = useState<Plan | null>(null);
+  // Both renderings are held; `plan` below is whichever one the language switch
+  // is pointing at right now.
+  const [planRaw, setPlanRaw] = useState<PlanEnvelope | null>(null);
+  // The rendering on screen. `en` is missing only when the server is older than
+  // this page, in which case the Vietnamese one is still better than nothing.
+  const plan: Plan | null = useMemo(
+    () => (planRaw ? (vi ? planRaw : (planRaw.en ?? planRaw)) : null),
+    [planRaw, vi],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -399,7 +419,12 @@ function Inner() {
   const [pfScan, setPfScan] = useState<{ sources: string[]; warnings: string[]; saved?: boolean; locationSaved?: string | null } | null>(null);
   const [pfNote, setPfNote] = useState('');
   // The archive, and which week is on screen. Null = this week (live).
-  const [weeks, setWeeks] = useState<WeekRow[]>([]);
+  const [weeksRaw, setWeeksRaw] = useState<(WeekRow & { en?: WeekRow })[]>([]);
+  // The archive strip, in the language on screen — same envelope as the plan.
+  const weeks: WeekRow[] = useMemo(
+    () => weeksRaw.map((w) => (vi ? w : (w.en ?? w))),
+    [weeksRaw, vi],
+  );
   const [viewWeek, setViewWeek] = useState<string | null>(null);
   const [past, setPast] = useState<{ label: string; week: Plan['week']; editedByName: string | null } | null>(null);
   const [editing, setEditing] = useState(false);
@@ -453,9 +478,9 @@ function Inner() {
       // fail on its own means a slow booking query never blanks the whole page.
       const [today, p] = await Promise.all([
         apiFetch<Payload>('/content/today', { token }),
-        apiFetch<Plan>('/content/plan', { token }).catch(() => null),
+        apiFetch<PlanEnvelope>('/content/plan', { token }).catch(() => null),
       ]);
-      setData(today); setPlan(p);
+      setData(today); setPlanRaw(p);
       setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setLoading(false); }
@@ -466,7 +491,8 @@ function Inner() {
   // a plan with a past rather than a screen that forgets every Monday.
   useEffect(() => {
     if (!token) return;
-    apiFetch<WeekRow[]>('/content/weeks', { token }).then(setWeeks).catch(() => setWeeks([]));
+    apiFetch<(WeekRow & { en?: WeekRow })[]>('/content/weeks', { token })
+      .then(setWeeksRaw).catch(() => setWeeksRaw([]));
     apiFetch<{ total: number; bySubject: Record<string, number> }>('/content/chat/unread', { token })
       .then(setUnread).catch(() => undefined);
   }, [token]);
@@ -474,10 +500,11 @@ function Inner() {
   // Opening an older week fetches it as the team left it.
   useEffect(() => {
     if (!token || !viewWeek) { setPast(null); return; }
-    apiFetch<{ label: string; week: Plan['week']; editedByName: string | null }>(
+    type PastWeek = { label: string; week: Plan['week']; editedByName: string | null };
+    apiFetch<PastWeek & { en?: PastWeek }>(
       `/content/weeks/${encodeURIComponent(viewWeek)}`, { token },
-    ).then(setPast).catch(() => setPast(null));
-  }, [token, viewWeek]);
+    ).then((r) => setPast(vi ? r : (r.en ?? r))).catch(() => setPast(null));
+  }, [token, viewWeek, vi]);
   useEffect(() => {
     if (plan?.identity?.profile) setPf({ ...plan.identity.profile });
   }, [plan?.identity?.profile]);
@@ -712,8 +739,16 @@ function Inner() {
       const r = await apiFetch<{ approvedAt: string }>(
         `/content/weeks/${encodeURIComponent(key)}/approve`, { method: 'POST', token },
       );
-      setPlan((p) => (p && p.weekMeta
-        ? { ...p, weekMeta: { ...p.weekMeta, approvedAt: r.approvedAt, approvedByName: T('Tiệm', 'Salon') } }
+      // Both renderings carry the same weekMeta, so the approval is written to
+      // each — otherwise switching language would un-approve the week on screen.
+      setPlanRaw((p) => (p && p.weekMeta
+        ? {
+          ...p,
+          weekMeta: { ...p.weekMeta, approvedAt: r.approvedAt, approvedByName: T('Tiệm', 'Salon') },
+          ...(p.en?.weekMeta
+            ? { en: { ...p.en, weekMeta: { ...p.en.weekMeta, approvedAt: r.approvedAt, approvedByName: T('Tiệm', 'Salon') } } }
+            : {}),
+        }
         : p));
     } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
     finally { setApproving(false); }
@@ -780,10 +815,17 @@ function Inner() {
     if (scanningPf) return;
     setScanningPf(true); setPfScan(null); setError(null);
     try {
-      const r = await apiFetch<{
+      type Scan = {
         draft: Record<string, string>; sources: string[]; warnings: string[];
         saved: boolean; locationSaved: string | null;
-      }>('/content/profile/scan', { method: 'POST', token, body: { note: pfNote } });
+      };
+      // Same envelope as the plan: Vietnamese in place, English under `en`.
+      // Note that `draft` is NOT part of that — it is the AI's description of
+      // the business, and which language the AI writes in is its own setting.
+      const raw = await apiFetch<Scan & { en?: Scan }>(
+        '/content/profile/scan', { method: 'POST', token, body: { note: pfNote } },
+      );
+      const r = vi ? raw : (raw.en ?? raw);
       setPfScan({ sources: r.sources ?? [], warnings: r.warnings ?? [], saved: r.saved, locationSaved: r.locationSaved });
       if (r.saved) {
         setPfNote('');
@@ -1635,7 +1677,7 @@ function Inner() {
                               });
                               setEditing(false);
                               await load();
-                              apiFetch<WeekRow[]>('/content/weeks', { token }).then(setWeeks).catch(() => undefined);
+                              apiFetch<(WeekRow & { en?: WeekRow })[]>('/content/weeks', { token }).then(setWeeksRaw).catch(() => undefined);
                             } catch (e) {
                               setError(e instanceof Error ? e.message : 'Không lưu được');
                             } finally { setSavingWeek(false); }

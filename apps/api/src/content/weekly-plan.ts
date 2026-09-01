@@ -25,22 +25,24 @@ import { WEEKDAY_VI, type SlotLoad, type OfferAdvice, type LapsedSignal } from '
 import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource } from './industry-playbook';
 import { rotate, type RoadmapStage } from './roadmap';
+import { bi, join, viOf, enOf, type Txt } from './i18n';
 
 export type JobKind = 'film' | 'post' | 'story' | 'offer' | 'winback' | 'engage' | 'rest';
 
 export interface Job {
   kind: JobKind;
   /** The instruction itself, short enough to read on a phone at 7am. */
-  text: string;
+  text: Txt;
   /** Why this job is on this day — the part that earns trust. */
-  why: string;
-  /** Suggested clock time, when the timing is the point. */
-  when?: string;
+  why: Txt;
+  /** Suggested clock time, when the timing is the point. A bare clock time
+   *  ('19:00') reads the same in both languages and stays a plain string. */
+  when?: Txt;
 }
 
 export interface DayPlan {
   weekday: number;
-  label: string;
+  label: Txt;
   jobs: Job[];
 }
 
@@ -48,9 +50,9 @@ export interface WeekPlan {
   /** Seven days, starting from today. */
   days: DayPlan[];
   /** What the whole week is aiming at. */
-  focus: string;
+  focus: Txt;
   /** Where the day choices came from — real data, or an admitted default. */
-  basis: string;
+  basis: Txt;
   /** Which stage of the shop's own path this week belongs to. */
   stage: RoadmapStage | null;
   /** Weeks since this shop's plan began — 0 for a brand-new salon. */
@@ -59,9 +61,20 @@ export interface WeekPlan {
   daily: Job[];
   /** Where today's raw material comes from — the part usually left vague. */
   sources: ContentSource[];
-  trade: string;
+  /** The trade's own name, bilingual since the playbook it comes from is. */
+  trade: Txt;
   dataThin: boolean;
 }
+
+/**
+ * The weekday names on screen.
+ *
+ * `WEEKDAY_VI` stays the Vietnamese source of truth over in revenue-signals —
+ * the prompts and the slot labels are built from it. The English side is paired
+ * with it here, in the file that actually puts a weekday on a screen.
+ */
+const WEEKDAY_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const weekdayTxt = (wd: number): Txt => bi(WEEKDAY_VI[wd], WEEKDAY_EN[wd]);
 
 // ---- 1. Reading the salon's own rhythm -------------------------------------
 
@@ -135,11 +148,17 @@ export function buildWeekPlan(input: {
   // -- the filming block: one session, three clips, done for the week --------
   add(film.weekday, {
     kind: 'film',
-    text: 'Quay gộp 3 clip trong một buổi (mỗi clip 15-30 giây)',
+    text: bi(
+      'Quay gộp 3 clip trong một buổi (mỗi clip 15-30 giây)',
+      'Film all 3 clips in one session (15-30 seconds each)'),
     why: film.fromData
-      ? `${WEEKDAY_VI[film.weekday]} là ngày vắng nhất của tiệm — thợ rảnh tay và phòng sạch, lên hình đẹp hơn ngày đông`
-      : 'Chưa đủ dữ liệu đặt lịch để biết ngày nào tiệm vắng, tạm lấy thứ 3 — sửa lại khi tiệm chạy được vài tuần',
-    when: 'giờ vắng nhất trong ngày',
+      ? bi(
+        `${WEEKDAY_VI[film.weekday]} là ngày vắng nhất của tiệm — thợ rảnh tay và phòng sạch, lên hình đẹp hơn ngày đông`,
+        `${WEEKDAY_EN[film.weekday]} is your quietest day — the staff have their hands free and the room is clean, so it shoots better than a busy day`)
+      : bi(
+        'Chưa đủ dữ liệu đặt lịch để biết ngày nào tiệm vắng, tạm lấy thứ 3 — sửa lại khi tiệm chạy được vài tuần',
+        'Not enough booking data yet to tell which day is quiet, so this is Tuesday for now — change it once the shop has run a few weeks'),
+    when: bi('giờ vắng nhất trong ngày', 'the quietest hour of the day'),
   });
 
   // -- three posts, spaced, each with a job to do ---------------------------
@@ -155,9 +174,16 @@ export function buildWeekPlan(input: {
     const last = i === 2;
     add(postDays[i], {
       kind: 'post',
-      text: `Đăng clip ${i + 1} — ${pt.label}`,
+      // The playbook now carries both languages, so each side of this sentence
+      // takes its own: the English screen gets an English post title inside an
+      // English sentence, instead of a Vietnamese one wearing English around it.
+      text: bi(
+        `Đăng clip ${i + 1} — ${viOf(pt.label)}`,
+        `Post clip ${i + 1} — ${enOf(pt.label)}`),
       why: last && busiest
-        ? `${pt.job}. Đăng trước ${WEEKDAY_VI[busiest.weekday]} — khung đông nhất của tiệm — để bài chạy đúng lúc khách đang quyết định`
+        ? bi(
+          `${viOf(pt.job)}. Đăng trước ${WEEKDAY_VI[busiest.weekday]} — khung đông nhất của tiệm — để bài chạy đúng lúc khách đang quyết định`,
+          `${enOf(pt.job)}. Post it before ${WEEKDAY_EN[busiest.weekday]} — the shop's busiest block — so it is running while customers are deciding`)
         : pt.job,
       when: '18:30-20:00',
     });
@@ -167,15 +193,25 @@ export function buildWeekPlan(input: {
   if (advice && advice.kind === 'fill-slot' && quietest) {
     add(offerDay, {
       kind: 'offer',
-      text: `Đăng ưu đãi ${advice.discountPct}% CHỈ cho ${quietest.label}`,
-      why: `${quietest.label} là khung trống nhất của tiệm. Đăng trước 2 ngày để khách kịp sắp lịch — đăng đúng hôm đó thì đã muộn. Không giảm các khung khác: ${advice.protect.join(', ') || 'khung đang đông'}`,
+      // The slot label ('Thứ 7 buổi sáng' / 'Sat morning') and the protected
+      // blocks come from revenue-signals bilingual, so each side takes its own.
+      text: bi(
+        `Đăng ưu đãi ${advice.discountPct}% CHỈ cho ${viOf(quietest.label)}`,
+        `Post a ${advice.discountPct}% offer for ${enOf(quietest.label)} ONLY`),
+      why: bi(
+        `${viOf(quietest.label)} là khung trống nhất của tiệm. Đăng trước 2 ngày để khách kịp sắp lịch — đăng đúng hôm đó thì đã muộn. Không giảm các khung khác: ${advice.protect.map(viOf).join(', ') || 'khung đang đông'}`,
+        `${enOf(quietest.label)} is the emptiest block on your book. Post it 2 days ahead so customers can plan around it — posting on the day itself is too late. Leave the other blocks at full price: ${advice.protect.map(enOf).join(', ') || 'the busy ones'}`),
       when: '19:00',
     });
   } else if (advice && advice.kind === 'raise-price') {
     add(offerDay, {
       kind: 'post',
-      text: 'Không chạy giảm giá tuần này — đăng bài nâng giá trị thay vì hạ giá',
-      why: advice.detail || 'Lịch đang gần kín. Giảm giá lúc này là cho không phần lãi của những ghế vốn đã bán được',
+      text: bi(
+        'Không chạy giảm giá tuần này — đăng bài nâng giá trị thay vì hạ giá',
+        'No discount this week — post something that builds value instead of cutting the price'),
+      why: advice.detail || bi(
+        'Lịch đang gần kín. Giảm giá lúc này là cho không phần lãi của những ghế vốn đã bán được',
+        'The book is nearly full. Discounting now gives away the profit on chairs you had already sold'),
       when: '19:00',
     });
   }
@@ -184,11 +220,17 @@ export function buildWeekPlan(input: {
   if (lapsed && lapsed.count >= 3) {
     add((film.weekday + 4) % 7, {
       kind: 'winback',
-      text: `Nhắn tay ${Math.min(lapsed.count, 10)} khách lâu chưa quay lại`,
+      text: bi(
+        `Nhắn tay ${Math.min(lapsed.count, 10)} khách lâu chưa quay lại`,
+        `Text ${Math.min(lapsed.count, 10)} customers who have not been back in a while, by hand`),
       why: lapsed.medianDaysAway
-        ? `Trung bình ${lapsed.medianDaysAway} ngày chưa quay lại. Đây là khách đã từng trả tiền — rẻ hơn nhiều so với tìm khách mới`
-        : 'Khách cũ quay lại rẻ hơn khách mới rất nhiều',
-      when: 'buổi tối',
+        ? bi(
+          `Trung bình ${lapsed.medianDaysAway} ngày chưa quay lại. Đây là khách đã từng trả tiền — rẻ hơn nhiều so với tìm khách mới`,
+          `They have been away ${lapsed.medianDaysAway} days on average. These people have paid you before — much cheaper than finding new ones`)
+        : bi(
+          'Khách cũ quay lại rẻ hơn khách mới rất nhiều',
+          'Bringing a past customer back costs far less than finding a new one'),
+      when: bi('buổi tối', 'in the evening'),
     });
   }
 
@@ -197,6 +239,9 @@ export function buildWeekPlan(input: {
   // stacking anything on top of it is how a plan gets abandoned.
   if (stage) {
     stage.jobs.forEach((j, i) => {
+      // The roadmap stage is bilingual and so is Job now, so the stage's work
+      // travels through in both languages — it used to be unwrapped to
+      // Vietnamese here, which is how an English screen got Vietnamese jobs.
       add((film.weekday + 2 + i) % 7, { kind: j.kind, text: j.text, why: j.why, ...(j.when ? { when: j.when } : {}) });
     });
   }
@@ -207,8 +252,12 @@ export function buildWeekPlan(input: {
     // Preparation lands on the filming day: it is the only day with slack.
     add(film.weekday, {
       kind: 'film',
-      text: `Quay thêm 1 clip cho ${e.name} (còn ${e.daysAway} ngày)`,
-      why: `${e.note}. Quay sớm để đăng trước 5-7 ngày — đăng đúng hôm lễ là muộn, khách đã đặt chỗ khác rồi`,
+      text: bi(
+        `Quay thêm 1 clip cho ${viOf(e.name)} (còn ${e.daysAway} ngày)`,
+        `Film one more clip for ${enOf(e.name)} (${e.daysAway} days out)`),
+      why: bi(
+        `${viOf(e.note)}. Quay sớm để đăng trước 5-7 ngày — đăng đúng hôm lễ là muộn, khách đã đặt chỗ khác rồi`,
+        `${enOf(e.note)}. Film it early so it can go out 5-7 days ahead — posting on the day itself is too late, customers have already booked somewhere else`),
     });
   }
 
@@ -219,44 +268,70 @@ export function buildWeekPlan(input: {
     const list = jobs.get(wd) ?? [];
     days.push({
       weekday: wd,
-      label: WEEKDAY_VI[wd],
-      jobs: list.length ? list : [{ kind: 'rest', text: 'Không có việc nội dung — chỉ giữ 3 thói quen hằng ngày', why: 'Ngày trống là có chủ ý. Lịch nào cũng kín thì tuần sau bỏ hết' }],
+      label: weekdayTxt(wd),
+      jobs: list.length ? list : [{
+        kind: 'rest',
+        text: bi(
+          'Không có việc nội dung — chỉ giữ 3 thói quen hằng ngày',
+          'No content work today — just keep the 3 daily habits'),
+        why: bi(
+          'Ngày trống là có chủ ý. Lịch nào cũng kín thì tuần sau bỏ hết',
+          'The empty day is on purpose. Fill every day and the whole plan gets dropped by next week'),
+      }],
     });
   }
 
   // The stage names the week's aim when there is one — that is the whole point
   // of having a path. The old fallbacks stay for the shop that has no stage.
-  const focus = stage
-    ? `${stage.title} — ${stage.goal}`
+  // Both sides of the stage's own words, joined — not the Vietnamese side of
+  // each glued together, which is what the screen used to get in English.
+  const focus: Txt = stage
+    ? join([stage.title, stage.goal], ' — ')
     : advice?.kind === 'fill-slot' && quietest
-    ? `Lấp ${quietest.label} — khung trống nhất của tiệm`
+    ? bi(
+      `Lấp ${viOf(quietest.label)} — khung trống nhất của tiệm`,
+      `Fill ${enOf(quietest.label)} — the emptiest block on your book`)
     : advice?.kind === 'win-back'
-      ? 'Kéo khách cũ quay lại, chưa cần giảm giá'
+      ? bi(
+        'Kéo khách cũ quay lại, chưa cần giảm giá',
+        'Bring past customers back, no discount needed yet')
       : advice?.kind === 'raise-price'
-        ? 'Giữ giá và nâng giá trị — lịch đang gần kín'
+        ? bi(
+          'Giữ giá và nâng giá trị — lịch đang gần kín',
+          'Hold your prices and build value — the book is nearly full')
         : soon.length
-          ? `Chuẩn bị cho ${soon[0].name}`
-          : 'Giữ nhịp đăng đều, gom kho nội dung';
+          ? bi(
+            `Chuẩn bị cho ${viOf(soon[0].name)}`,
+            `Get ready for ${enOf(soon[0].name)}`)
+          : bi(
+            'Giữ nhịp đăng đều, gom kho nội dung',
+            'Keep the posting rhythm steady and build up a bank of clips');
 
-  const basis = dataThin
-    ? 'Chưa đủ lịch hẹn để đọc nhịp của tiệm — đây là nhịp mặc định, sẽ tự chỉnh lại sau vài tuần tiệm chạy'
-    : `Ngày quay và ngày đăng chọn theo sổ đặt lịch thật của tiệm (${loads.length} khung giờ có dữ liệu)`;
+  const basis: Txt = dataThin
+    ? bi(
+      'Chưa đủ lịch hẹn để đọc nhịp của tiệm — đây là nhịp mặc định, sẽ tự chỉnh lại sau vài tuần tiệm chạy',
+      'Not enough appointments yet to read the shop rhythm — this is a default one, and it corrects itself after the shop has run a few weeks')
+    : bi(
+      `Ngày quay và ngày đăng chọn theo sổ đặt lịch thật của tiệm (${loads.length} khung giờ có dữ liệu)`,
+      `The filming day and the posting days come from the shop's own book (${loads.length} time blocks with data)`);
 
   return { days, focus, basis, stage, week, daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin };
 }
 
 /** The week as prompt text, so the day's ideas match the week's plan. */
 export function weekPlanToPrompt(p: WeekPlan): string {
-  const L = [`TRỌNG TÂM TUẦN NÀY: ${p.focus}`, `(căn cứ: ${p.basis})`];
+  // The prompt library is Vietnamese on purpose: unwrap every bilingual phrase
+  // here, or a {vi,en} pair prints as [object Object] inside the prompt.
+  const L = [`TRỌNG TÂM TUẦN NÀY: ${viOf(p.focus)}`, `(căn cứ: ${viOf(p.basis)})`];
   if (p.stage) {
-    L.push(`GIAI ĐOẠN ${p.stage.step}/5 — ${p.stage.title}. Xong khi: ${p.stage.exitWhen}`);
+    L.push(`GIAI ĐOẠN ${p.stage.step}/5 — ${viOf(p.stage.title)}. Xong khi: ${viOf(p.stage.exitWhen)}`);
     L.push(`Tuần thứ ${p.week + 1} của kế hoạch. Ý tưởng hôm nay phải phục vụ giai đoạn này, không lạc sang việc khác.`);
   }
   L.push('LỊCH TUẦN:');
   for (const d of p.days) {
     for (const j of d.jobs) {
       if (j.kind === 'rest') continue;
-      L.push(`- ${d.label}: ${j.text}`);
+      L.push(`- ${viOf(d.label)}: ${viOf(j.text)}`);
     }
   }
   return L.join('\n');

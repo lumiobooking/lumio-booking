@@ -1,6 +1,10 @@
 import { money0, count, share, firstSentence } from './plain';
 import { buildMarketPlan, type MarketInput } from './market-target';
 import type { AreaAudience } from './census-audience';
+// buildMarketPlan's blocks carry both languages now (see ./i18n); the
+// measurements below are about the Vietnamese wording they always were about.
+import { bi, enOf, localizeDeep, viOf } from './i18n';
+import type { PlainStep } from './plain';
 
 const fmt = (c: number) => `$${(c / 100).toFixed(2).replace(/\.00$/, '')}`;
 
@@ -90,8 +94,8 @@ describe('every block says what it is, then what to do', () => {
 
   it('gives each block a short line — not a paragraph carrying its own method', () => {
     for (const st of plan.steps) {
-      expect(st.line.length).toBeLessThanOrEqual(150);
-      expect(st.title.length).toBeLessThanOrEqual(46);
+      expect(viOf(st.line).length).toBeLessThanOrEqual(150);
+      expect(viOf(st.title).length).toBeLessThanOrEqual(46);
     }
   });
 
@@ -99,22 +103,22 @@ describe('every block says what it is, then what to do', () => {
     // A dashboard that only describes is a dashboard nobody opens twice.
     const withAction = plan.steps.filter((s) => s.action);
     expect(withAction.length).toBeGreaterThanOrEqual(3);
-    for (const s of withAction) expect(s.action!.length).toBeGreaterThan(20);
+    for (const s of withAction) expect(viOf(s.action).length).toBeGreaterThan(20);
   });
 
   it('hides the derivation behind "why", it does not delete it', () => {
     // Honesty is not traded for brevity: every claim can still be checked.
-    for (const st of plan.steps) expect(st.why.length).toBeGreaterThan(30);
+    for (const st of plan.steps) expect(viOf(st.why).length).toBeGreaterThan(30);
   });
 
   it('never prints cents on a derived figure', () => {
-    const money = plan.steps.map((s) => `${s.line} ${s.action ?? ''}`).join(' ');
+    const money = plan.steps.map((s) => `${viOf(s.line)} ${viOf(s.action)}`).join(' ');
     expect(money).not.toMatch(/\$\d+\.\d\d\b/);
   });
 
   it('never prints a sub-one-percent share', () => {
     // 8 seats out of 5,457 women is 0.15% — a true number nobody can picture.
-    const text = plan.steps.map((s) => s.line).join(' ');
+    const text = plan.steps.map((s) => viOf(s.line)).join(' ');
     expect(text).not.toMatch(/0\.\d+%/);
     expect(text).toMatch(/8 người trong/);
   });
@@ -122,12 +126,44 @@ describe('every block says what it is, then what to do', () => {
   it('tells an owner with no margin exactly which screen to open', () => {
     const blind = buildMarketPlan({ ...INPUT, cpaCeilingCents: null });
     const budget = blind.steps.find((s) => s.key === 'budget')!;
-    expect(budget.action).toMatch(/Nhân sự/);
-    expect(budget.line.length).toBeLessThan(60);
+    expect(viOf(budget.action)).toMatch(/Nhân sự/);
+    expect(viOf(budget.line).length).toBeLessThan(60);
   });
 
   it('keeps the flattened one-liners for the prompt', () => {
     expect(plan.reasoning.length).toBe(plan.steps.length);
     expect(plan.reasoning[0]).toContain('người trưởng thành');
+  });
+});
+
+describe('a block can hold two languages, and still hold only one', () => {
+  // plain.ts owns the SHAPE of an advice block, not its words: the sentences
+  // are written by whichever module builds the block. What is checked here is
+  // that the shape now carries two languages — and that a builder which has not
+  // been converted yet still type-checks and still reads the same either way,
+  // which is what lets this migration happen one file at a time.
+  const bilingual: PlainStep = {
+    key: 'budget', icon: '💰',
+    title: bi('Tối đa nên chi', 'The most worth spending'),
+    line: bi('$210 trong 14 ngày.', '$210 over 14 days.'),
+    action: bi('Bắt đầu nhỏ, đo lại sau 3 ngày.', 'Start small, measure again on day 3.'),
+    why: bi('8 chỗ trống × $26 tiền lãi mỗi khách mới.', '8 open seats × $26 of margin per new customer.'),
+  };
+
+  it('keeps the two sides apart all the way to the screen', () => {
+    expect(enOf(bilingual.title)).not.toBe(viOf(bilingual.title));
+    expect(enOf(bilingual.line)).toBe('$210 over 14 days.');
+    expect(localizeDeep(bilingual, 'en').action).toBe('Start small, measure again on day 3.');
+    expect(localizeDeep(bilingual, 'vi').action).toBe('Bắt đầu nhỏ, đo lại sau 3 ngày.');
+  });
+
+  it('still accepts a block nobody has translated yet', () => {
+    const untranslated: PlainStep = {
+      key: 'market', icon: '📍',
+      title: 'Khu vực quanh tiệm', line: '27,136 người trưởng thành.',
+      action: null, why: 'Đếm từ điều tra dân số Mỹ.',
+    };
+    expect(enOf(untranslated.line)).toBe(viOf(untranslated.line));
+    expect(localizeDeep(untranslated, 'en').title).toBe('Khu vực quanh tiệm');
   });
 });

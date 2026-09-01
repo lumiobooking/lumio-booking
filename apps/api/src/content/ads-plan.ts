@@ -34,12 +34,13 @@
  */
 
 import { sizeCampaign } from './channel-plan';
+import { bi, viOf, enOf, type Txt } from './i18n';
 
 export interface LeadTime {
   /** Median days between booking and appointment. Null when too few to tell. */
   medianDays: number | null;
   sample: number;
-  basis: string;
+  basis: Txt;
 }
 
 /**
@@ -56,7 +57,9 @@ export function leadTime(rows: { createdAt: number; startTime: number }[]): Lead
     return {
       medianDays: null,
       sample: days.length,
-      basis: `Chỉ có ${days.length} lịch hẹn đo được khoảng cách đặt-đến-làm. Dưới 10 thì chưa nói lên nhịp của tiệm.`,
+      basis: bi(
+        `Chỉ có ${days.length} lịch hẹn đo được khoảng cách đặt-đến-làm. Dưới 10 thì chưa nói lên nhịp của tiệm.`,
+        `Only ${days.length} appointments show the gap between booking and visit. Under ten of those, it says nothing about how this shop runs.`),
     };
   }
   const s = [...days].sort((a, b) => a - b);
@@ -65,7 +68,9 @@ export function leadTime(rows: { createdAt: number; startTime: number }[]): Lead
   return {
     medianDays: median,
     sample: days.length,
-    basis: `${days.length} lịch hẹn: khách thường đặt trước ${median} ngày.`,
+    basis: bi(
+      `${days.length} lịch hẹn: khách thường đặt trước ${median} ngày.`,
+      `${days.length} appointments: customers usually book ${median} days ahead.`),
   };
 }
 
@@ -78,7 +83,7 @@ export interface CpaCeiling {
   withRepeatCents: number | null;
   /** Visits per year implied by the median gap — the assumption, stated. */
   visitsPerYear: number | null;
-  plain: string;
+  plain: Txt;
 }
 
 /**
@@ -102,8 +107,12 @@ export function cpaCeiling(input: {
     return {
       strictCents: null, withRepeatCents: null, visitsPerYear: null,
       plain: t === null
-        ? 'Chưa đủ lịch hẹn để biết hoá đơn trung bình, nên chưa tính được một khách đáng giá bao nhiêu.'
-        : 'Chưa nhập tỷ lệ ăn chia thợ nên chưa biết biên lãi — không tính được ngưỡng chi cho mỗi khách.',
+        ? bi(
+          'Chưa đủ lịch hẹn để biết hoá đơn trung bình, nên chưa tính được một khách đáng giá bao nhiêu.',
+          'There are not enough appointments yet to know the average ticket, so there is no way to say what one customer is worth.')
+        : bi(
+          'Chưa nhập tỷ lệ ăn chia thợ nên chưa biết biên lãi — không tính được ngưỡng chi cho mỗi khách.',
+          'The tech pay split has not been entered, so the margin is unknown — and without a margin there is no spending limit per customer.'),
     };
   }
   const strict = Math.round((t * m) / 100);
@@ -114,9 +123,15 @@ export function cpaCeiling(input: {
   const withRepeat = visits ? strict * visits : null;
   return {
     strictCents: strict, withRepeatCents: withRepeat, visitsPerYear: visits,
+    // Two numbers in one sentence, so it is written out whole in each language
+    // rather than stitched from pieces: the clause order is not the same twice.
     plain: withRepeat && visits && visits > 1
-      ? `Một lượt khách mới để lại khoảng ${fmt(strict)} lãi ngay lần đầu. Nếu họ quay lại theo nhịp hiện tại (~${visits} lần/năm) thì tối đa ${fmt(withRepeat)}. Lấy con số ĐẦU làm ngưỡng cho chiến dịch đầu tiên — con số sau chỉ dùng khi tiệm đã chứng minh giữ được khách.`
-      : `Một lượt khách mới để lại khoảng ${fmt(strict)} lãi. Chi hơn mức đó cho mỗi booking là lỗ.`,
+      ? bi(
+        `Một lượt khách mới để lại khoảng ${fmt(strict)} lãi ngay lần đầu. Nếu họ quay lại theo nhịp hiện tại (~${visits} lần/năm) thì tối đa ${fmt(withRepeat)}. Lấy con số ĐẦU làm ngưỡng cho chiến dịch đầu tiên — con số sau chỉ dùng khi tiệm đã chứng minh giữ được khách.`,
+        `A new customer leaves you about ${fmt(strict)} in profit on that first visit. If they come back at the pace your customers do now (~${visits} times a year), the most they are worth is ${fmt(withRepeat)}. Use the FIRST number as the limit on your first campaign — the second one only counts once you have proven you keep customers.`)
+      : bi(
+        `Một lượt khách mới để lại khoảng ${fmt(strict)} lãi. Chi hơn mức đó cho mỗi booking là lỗ.`,
+        `A new customer leaves you about ${fmt(strict)} in profit. Pay more than that per booking and you lose money on every one.`),
   };
 }
 
@@ -133,7 +148,7 @@ export interface BudgetPlan {
   /** Free capacity in the quiet blocks — is the target even physically possible? */
   openSlots: number | null;
   feasible: 'yes' | 'tight' | 'no' | 'unknown';
-  plain: string;
+  plain: Txt;
 }
 
 /**
@@ -169,17 +184,27 @@ export function budgetPlan(input: {
     return {
       dailyCents: daily, days, totalCents: total,
       bookingsToBreakEven: null, openSlots: input.openSlots ?? null, feasible: 'unknown',
-      plain: `${input.ceiling.plain} Chưa có ngưỡng thì chưa nên bật quảng cáo — sẽ không có cách nào biết nó lãi hay lỗ.`,
+      // The ceiling's own sentence leads, so each language is composed from its
+      // own half rather than from a translated fragment.
+      plain: bi(
+        `${viOf(input.ceiling.plain)} Chưa có ngưỡng thì chưa nên bật quảng cáo — sẽ không có cách nào biết nó lãi hay lỗ.`,
+        `${enOf(input.ceiling.plain)} Without that limit, do not switch ads on yet — there would be no way to tell whether they made money or lost it.`),
     };
   }
   const need = Math.ceil(total / ceiling);
   const open = input.openSlots ?? null;
   const feasible = open === null ? 'unknown' : need <= open * 0.5 ? 'yes' : need <= open ? 'tight' : 'no';
-  const plain = feasible === 'no'
-    ? `${fmt(total)} trong ${days} ngày cần ${need} booking mới hoà vốn, nhưng khung giờ trống chỉ chứa được ${open}. Ngân sách này không thể hoà vốn — hạ xuống hoặc mở thêm giờ trước đã.`
+  const plain: Txt = feasible === 'no'
+    ? bi(
+      `${fmt(total)} trong ${days} ngày cần ${need} booking mới hoà vốn, nhưng khung giờ trống chỉ chứa được ${open}. Ngân sách này không thể hoà vốn — hạ xuống hoặc mở thêm giờ trước đã.`,
+      `${fmt(total)} over ${days} days needs ${need} bookings just to break even, and the empty slots only hold ${open}. This budget cannot break even — cut it back, or open more hours first.`)
     : feasible === 'tight'
-      ? `${fmt(total)} trong ${days} ngày cần ${need} booking để hoà vốn, và tiệm chỉ trống ${open} chỗ. Sát quá — nên bắt đầu ở mức thấp hơn.`
-      : `${fmt(total)} trong ${days} ngày cần ${need} booking để hoà vốn${open ? `, trong khi khung trống chứa được ${open}` : ''}. Đây là một PHÉP ĐO chứ không phải một khoản đầu tư: thứ mua được là con số "mỗi booking tốn bao nhiêu" của chính tiệm.`;
+      ? bi(
+        `${fmt(total)} trong ${days} ngày cần ${need} booking để hoà vốn, và tiệm chỉ trống ${open} chỗ. Sát quá — nên bắt đầu ở mức thấp hơn.`,
+        `${fmt(total)} over ${days} days needs ${need} bookings to break even, and you only have ${open} slots open. That is too close for comfort — start smaller.`)
+      : bi(
+        `${fmt(total)} trong ${days} ngày cần ${need} booking để hoà vốn${open ? `, trong khi khung trống chứa được ${open}` : ''}. Đây là một PHÉP ĐO chứ không phải một khoản đầu tư: thứ mua được là con số "mỗi booking tốn bao nhiêu" của chính tiệm.`,
+        `${fmt(total)} over ${days} days needs ${need} bookings to break even${open ? `, and there is room for ${open}` : ''}. This is a MEASUREMENT, not an investment: what the money buys is your own shop's number for what a booking costs.`);
   return { dailyCents: daily, days, totalCents: total, bookingsToBreakEven: need, openSlots: open, feasible, plain };
 }
 
@@ -187,13 +212,23 @@ export function budgetPlan(input: {
 
 const WEEKDAY_VI = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 
+/**
+ * The English half of a day label, in the short form an owner writes on a
+ * calendar — and the same shorthand revenue-signals.ts uses for its slot
+ * labels, so one screen does not say "Wed" on one card and "Wednesday" on the
+ * next.
+ */
+const WEEKDAY_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const dayLabel = (weekday: number): Txt => bi(WEEKDAY_VI[weekday], WEEKDAY_EN[weekday]);
+
 export interface RunWindow {
   /** Weekdays to have ads live, 0 = Sunday. */
   runDays: number[];
   /** Weekdays to switch off. */
   pauseDays: number[];
-  labels: { run: string[]; pause: string[] };
-  why: string;
+  labels: { run: Txt[]; pause: Txt[] };
+  why: Txt;
 }
 
 /**
@@ -231,10 +266,14 @@ export function runWindow(input: {
   const pauseDays = Array.from(pause).sort();
   return {
     runDays, pauseDays,
-    labels: { run: runDays.map((d) => WEEKDAY_VI[d]), pause: pauseDays.map((d) => WEEKDAY_VI[d]) },
+    labels: { run: runDays.map(dayLabel), pause: pauseDays.map(dayLabel) },
     why: input.leadDays === null
-      ? `Chưa đo được khách đặt trước bao nhiêu ngày, nên tạm tính ${lead} ngày. Sửa lại khi tiệm có đủ lịch hẹn.`
-      : `Khách của tiệm đặt trước trung bình ${lead} ngày, nên quảng cáo phải chạy trước khung trống đúng ${lead} ngày — chạy đúng hôm đó là muộn.`,
+      ? bi(
+        `Chưa đo được khách đặt trước bao nhiêu ngày, nên tạm tính ${lead} ngày. Sửa lại khi tiệm có đủ lịch hẹn.`,
+        `How far ahead your customers book has not been measured yet, so this assumes ${lead} days. It gets corrected once there are enough appointments.`)
+      : bi(
+        `Khách của tiệm đặt trước trung bình ${lead} ngày, nên quảng cáo phải chạy trước khung trống đúng ${lead} ngày — chạy đúng hôm đó là muộn.`,
+        `Your customers book ${lead} days ahead on average, so the ads have to run ${lead} days before the empty block — running them on the day itself is already too late.`),
   };
 }
 
@@ -254,15 +293,15 @@ export function runWindow(input: {
 // ---- who to aim at ----------------------------------------------------------
 
 export interface AdAudience {
-  name: string;
-  who: string;
-  why: string;
+  name: Txt;
+  who: Txt;
+  why: Txt;
   /** Concrete targeting, in the words of the ad platform. */
-  how: string;
+  how: Txt;
   /** Ranked cheapest-first. */
   order: number;
   /** Blocked when the platform needs more people than the salon has. */
-  blockedBy?: string;
+  blockedBy?: Txt;
 }
 
 /**
@@ -283,63 +322,100 @@ export function adAudiences(input: {
   regularCount?: number;
 }): AdAudience[] {
   const out: AdAudience[] = [];
-  const where = input.city && input.region ? `${input.city}, ${input.region}` : input.region || 'quanh tiệm';
+  // The town's name is the salon's own data and is never translated; only the
+  // "we were not told where" fallback has two languages.
+  const whereVi = input.city && input.region ? `${input.city}, ${input.region}` : input.region || 'quanh tiệm';
+  const whereEn = input.city && input.region ? `${input.city}, ${input.region}` : input.region || 'around the shop';
 
   if ((input.lapsedCount ?? 0) >= 20) {
     out.push({
-      name: 'Khách cũ lâu chưa quay lại',
-      who: `${input.lapsedCount} người từng trả tiền ở tiệm và đã lâu không tới`,
-      why: 'Rẻ nhất trong mọi tệp: họ biết tiệm, biết đường, đã từng chọn tiệm này. Không phải thuyết phục từ đầu.',
-      how: 'Tải danh sách khách lên làm Custom Audience, loại trừ những người đã đặt lịch trong 30 ngày qua.',
+      name: bi('Khách cũ lâu chưa quay lại', 'Past customers who stopped coming'),
+      who: bi(
+        `${input.lapsedCount} người từng trả tiền ở tiệm và đã lâu không tới`,
+        `${input.lapsedCount} people who have paid you before and have not been in for a while`),
+      why: bi(
+        'Rẻ nhất trong mọi tệp: họ biết tiệm, biết đường, đã từng chọn tiệm này. Không phải thuyết phục từ đầu.',
+        'The cheapest audience there is: they know the shop, they know the drive, they picked you once already. Nothing to sell from scratch.'),
+      how: bi(
+        'Tải danh sách khách lên làm Custom Audience, loại trừ những người đã đặt lịch trong 30 ngày qua.',
+        'Upload your customer list as a Custom Audience and exclude anyone who has booked in the last 30 days.'),
       order: 1,
     });
   } else if (input.lapsedCount) {
     out.push({
-      name: 'Khách cũ lâu chưa quay lại',
-      who: `${input.lapsedCount} người`,
-      why: 'Vẫn là tệp đáng nhất, nhưng quá ít để làm quảng cáo.',
-      how: 'Nhắn tay từng người. Rẻ hơn và tỷ lệ trả lời cao hơn quảng cáo ở quy mô này.',
+      name: bi('Khách cũ lâu chưa quay lại', 'Past customers who stopped coming'),
+      who: bi(`${input.lapsedCount} người`, `${input.lapsedCount} people`),
+      why: bi(
+        'Vẫn là tệp đáng nhất, nhưng quá ít để làm quảng cáo.',
+        'Still the audience worth the most, but too few of them to put an ad behind.'),
+      how: bi(
+        'Nhắn tay từng người. Rẻ hơn và tỷ lệ trả lời cao hơn quảng cáo ở quy mô này.',
+        'Text them one at a time. At this size it costs less and gets more replies than an ad would.'),
       order: 1,
-      blockedBy: 'Dưới 20 người thì quảng cáo không chạy nổi — nhắn tay hiệu quả hơn.',
+      blockedBy: bi(
+        'Dưới 20 người thì quảng cáo không chạy nổi — nhắn tay hiệu quả hơn.',
+        'Under 20 people an ad cannot get off the ground — reaching out by hand works better.'),
     });
   }
 
   out.push({
-    name: 'Người đã ghé mà chưa đặt',
-    who: 'Người xem trang đặt lịch, nhắn tin, hoặc xem hết clip mà chưa đặt',
-    why: 'Đã tự tìm tới nhưng dừng lại giữa chừng. Đây là nhóm gần với việc đặt lịch nhất mà chưa tốn tiền thuyết phục.',
-    how: 'Retarget 30 ngày: người truy cập trang đặt lịch + người tương tác trang. Loại trừ người đã đặt.',
+    name: bi('Người đã ghé mà chưa đặt', 'People who came by but never booked'),
+    who: bi(
+      'Người xem trang đặt lịch, nhắn tin, hoặc xem hết clip mà chưa đặt',
+      'People who opened the booking page, sent a message, or watched a clip all the way through and still did not book'),
+    why: bi(
+      'Đã tự tìm tới nhưng dừng lại giữa chừng. Đây là nhóm gần với việc đặt lịch nhất mà chưa tốn tiền thuyết phục.',
+      'They found you on their own and stopped halfway. Nobody is closer to booking, and you have not spent a dollar convincing them.'),
+    how: bi(
+      'Retarget 30 ngày: người truy cập trang đặt lịch + người tương tác trang. Loại trừ người đã đặt.',
+      'Retarget a 30-day window: booking-page visitors plus anyone who engaged with the page. Exclude the ones who already booked.'),
     order: 2,
   });
 
   out.push({
-    name: `Người sống quanh tiệm — ${where}`,
-    who: 'Bán kính 3-5 dặm quanh tiệm',
-    why: 'Với tiệm địa phương, khoảng cách quyết định nhiều hơn mọi tiêu chí khác. Người cách 15 dặm hiếm khi lái xe qua ba tiệm cùng loại.',
-    how: 'Giới hạn bán kính quanh địa chỉ tiệm. Đừng nhắm cả thành phố — mỗi dặm thừa là tiền trả cho người sẽ không bao giờ tới.',
+    name: bi(`Người sống quanh tiệm — ${whereVi}`, `People who live near the shop — ${whereEn}`),
+    who: bi('Bán kính 3-5 dặm quanh tiệm', 'A 3 to 5 mile radius around the shop'),
+    why: bi(
+      'Với tiệm địa phương, khoảng cách quyết định nhiều hơn mọi tiêu chí khác. Người cách 15 dặm hiếm khi lái xe qua ba tiệm cùng loại.',
+      'For a local shop, distance decides more than any other setting. Someone 15 miles out almost never drives past three places just like yours.'),
+    how: bi(
+      'Giới hạn bán kính quanh địa chỉ tiệm. Đừng nhắm cả thành phố — mỗi dặm thừa là tiền trả cho người sẽ không bao giờ tới.',
+      'Set the radius around your shop address. Do not target the whole city — every extra mile is money spent on people who are never going to drive in.'),
     order: 3,
   });
 
   const canLookalike = (input.customerCount ?? 0) >= 1000;
   out.push({
-    name: 'Tệp tương tự khách hiện tại (lookalike)',
-    who: 'Người có hành vi giống khách đang có của tiệm',
-    why: 'Đây là tệp ĐẮT NHẤT trong danh sách và là tệp mọi nền tảng gợi ý đầu tiên. Chỉ nên tới đây sau khi ba tệp trên đã hết chỗ.',
+    name: bi('Tệp tương tự khách hiện tại (lookalike)', 'A lookalike of your current customers'),
+    who: bi(
+      'Người có hành vi giống khách đang có của tiệm',
+      'People whose behaviour matches the customers you already have'),
+    why: bi(
+      'Đây là tệp ĐẮT NHẤT trong danh sách và là tệp mọi nền tảng gợi ý đầu tiên. Chỉ nên tới đây sau khi ba tệp trên đã hết chỗ.',
+      'This is the MOST EXPENSIVE audience on the list, and the one every platform pushes at you first. Only come here once the three above have run out of room.'),
     how: canLookalike
-      ? 'Tạo Lookalike 1% từ danh sách khách, giới hạn trong bán kính quanh tiệm.'
-      : 'Chưa làm được.',
+      ? bi(
+        'Tạo Lookalike 1% từ danh sách khách, giới hạn trong bán kính quanh tiệm.',
+        'Build a 1% Lookalike off your customer list and hold it inside the radius around the shop.')
+      : bi('Chưa làm được.', 'Not possible yet.'),
     order: 4,
     ...(canLookalike ? {} : {
-      blockedBy: `Cần khoảng 1.000 khách trong danh sách để nền tảng dựng được tệp tương tự; tiệm đang có ${input.customerCount ?? 0}. Dựng từ danh sách nhỏ hơn chỉ ra một tệp làm từ nhiễu.`,
+      blockedBy: bi(
+        `Cần khoảng 1.000 khách trong danh sách để nền tảng dựng được tệp tương tự; tiệm đang có ${input.customerCount ?? 0}. Dựng từ danh sách nhỏ hơn chỉ ra một tệp làm từ nhiễu.`,
+        `The platforms need roughly 1,000 customers on the list before they can build a lookalike; you have ${input.customerCount ?? 0}. Built off anything smaller, the audience is made of noise.`),
     }),
   });
 
   if ((input.regularCount ?? 0) > 0) {
     out.push({
-      name: `LOẠI TRỪ: ${input.regularCount} khách quen`,
-      who: 'Những người vẫn đang đi đều',
-      why: 'Trả tiền để tiếp cận người tuần sau vẫn tới là mua lại chính khách của mình. Tệ hơn: những booking đó hiện lên trong báo cáo chiến dịch và làm nó trông hiệu quả.',
-      how: 'Thêm danh sách khách quen vào ô Exclude ở mọi chiến dịch.',
+      name: bi(`LOẠI TRỪ: ${input.regularCount} khách quen`, `EXCLUDE: ${input.regularCount} regulars`),
+      who: bi('Những người vẫn đang đi đều', 'The people already coming in on schedule'),
+      why: bi(
+        'Trả tiền để tiếp cận người tuần sau vẫn tới là mua lại chính khách của mình. Tệ hơn: những booking đó hiện lên trong báo cáo chiến dịch và làm nó trông hiệu quả.',
+        'Paying to reach someone who is coming back next week anyway is buying your own customers a second time. Worse: those bookings land in the campaign report and make it look like the ad worked.'),
+      how: bi(
+        'Thêm danh sách khách quen vào ô Exclude ở mọi chiến dịch.',
+        'Add your regulars list to the Exclude box on every campaign.'),
       order: 0,
     });
   }

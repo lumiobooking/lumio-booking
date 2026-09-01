@@ -1,4 +1,5 @@
 import { trendLinks, trendsGeo, profileFor, trendLinksToPrompt, topicsFor } from './trend-sources';
+import { enOf, viOf } from './i18n';
 
 const SALON = {
   industry: 'SALON', market: 'US', region: 'CA', city: 'Garden Grove',
@@ -46,8 +47,8 @@ describe('every link is a real, reachable tool', () => {
 
   it('tells the salon what to DO with each page, not just to open it', () => {
     for (const l of links) {
-      expect(l.what.length).toBeGreaterThan(20);
-      expect(l.how.length).toBeGreaterThan(20);
+      expect(viOf(l.what).length).toBeGreaterThan(20);
+      expect(viOf(l.how).length).toBeGreaterThan(20);
     }
   });
 
@@ -124,22 +125,22 @@ describe('the topics come from what we actually know about this salon', () => {
     const t = topicsFor(SALON);
     expect(t[0].label).toBe('Dipping Powder');
     expect(t[0].from).toBe('salon');
-    expect(t[0].why).toContain('24');
+    expect(viOf(t[0].why)).toContain('24');
   });
 
   it('uses the words customers actually typed into Google', () => {
     const t = topicsFor(SALON);
     const kw = t.find((x) => x.label === 'dip powder near me');
     expect(kw).toBeTruthy();
-    expect(kw!.why).toMatch(/chữ của khách/);
+    expect(viOf(kw!.why)).toMatch(/chữ của khách/);
   });
 
   it('brings in what the region is walking into, with the days attached', () => {
     const t = topicsFor({ ...SALON, services: [], keywords: [] });
     const ev = t.find((x) => x.from === 'region');
     expect(ev?.label).toBe('Tựu trường');
-    expect(ev?.why).toContain('9 ngày');
-    expect(ev?.why).toMatch(/trước dịp/);
+    expect(viOf(ev?.why)).toContain('9 ngày');
+    expect(viOf(ev?.why)).toMatch(/trước dịp/);
   });
 
   it('falls back to trade angles for a salon that opened on Monday', () => {
@@ -150,14 +151,14 @@ describe('the topics come from what we actually know about this salon', () => {
 
   it('gives a real-estate agency its own angles, not nail ones', () => {
     const t = topicsFor({ industry: 'REAL_ESTATE', market: 'US' });
-    expect(t.some((x) => /nhà|mua/i.test(x.label + x.why))).toBe(true);
-    expect(t.some((x) => /móng/i.test(x.label))).toBe(false);
+    expect(t.some((x) => /nhà|mua/i.test(viOf(x.label) + viOf(x.why)))).toBe(true);
+    expect(t.some((x) => /móng/i.test(viOf(x.label)))).toBe(false);
   });
 
   it('never states that something IS trending — only what to look for', () => {
     for (const t of topicsFor(SALON)) {
-      expect(t.label).not.toMatch(/đang trending|viral|triệu view/i);
-      expect(t.why.length).toBeGreaterThan(20);
+      expect(viOf(t.label)).not.toMatch(/đang trending|viral|triệu view/i);
+      expect(viOf(t.why).length).toBeGreaterThan(20);
     }
   });
 
@@ -170,7 +171,7 @@ describe('the topics come from what we actually know about this salon', () => {
     const r = trendLinks(SALON);
     for (const l of [...r.weekly, ...r.monthly]) {
       expect(l.topics.length).toBeGreaterThan(0);
-      for (const t of l.topics) expect(t.why.length).toBeGreaterThan(15);
+      for (const t of l.topics) expect(viOf(t.why).length).toBeGreaterThan(15);
     }
   });
 });
@@ -203,6 +204,57 @@ describe('the salon’s own numbers steer the queries', () => {
   it('asks for the twelve-month shape so seasons are read, not guessed', () => {
     const s = trendLinks(SALON).monthly.find((l) => l.key === 'gtrends-season')!;
     expect(new URL(s.url).searchParams.get('date')).toBe('today 12-m');
-    expect(s.how).toMatch(/đang xuống/);
+    expect(viOf(s.how)).toMatch(/đang xuống/);
+  });
+});
+
+describe('an English reader gets English', () => {
+  it('carries both languages on every phrase a link puts on screen', () => {
+    const r = trendLinks(SALON);
+    for (const l of [...r.weekly, ...r.monthly]) {
+      for (const f of [l.title, l.what, l.how]) {
+        // The English side being a copy of the Vietnamese one is the exact bug
+        // this pass exists to fix, so it is asserted rather than assumed.
+        expect(enOf(f)).not.toBe(viOf(f));
+        expect(enOf(f).length).toBeGreaterThan(10);
+      }
+      // The vendor's name is not translated: the page is called "Google Trends"
+      // on both screens, and a translated product name points at nothing.
+      expect(enOf(l.source)).toBe(viOf(l.source));
+    }
+
+    const tt = r.weekly.find((l) => l.key === 'tiktok-7')!;
+    expect(enOf(tt.title)).toMatch(/rising hashtags and sounds/i);
+    expect(enOf(tt.how)).toMatch(/top 10/);
+    expect(enOf(tt.how)).not.toMatch(/bài nhạc/);
+  });
+
+  it('names the trade in English in the titles built around it', () => {
+    const en = trendLinks({ industry: 'REAL_ESTATE', market: 'US', region: 'TX' })
+      .weekly.map((l) => enOf(l.title)).join(' | ');
+    expect(en).toMatch(/real estate agents/);
+    expect(en).not.toMatch(/ngành/);
+  });
+
+  it('translates the reason for a topic but leaves the salon’s own words as typed', () => {
+    const t = topicsFor(SALON);
+    // A service name is a name: the same on both screens, or it stops matching
+    // the menu the salon actually sells from.
+    expect(enOf(t[0].label)).toBe('Dipping Powder');
+    expect(enOf(t[0].why)).toMatch(/best sellers/);
+    expect(enOf(t[0].why)).toContain('24');
+    expect(enOf(t[0].why)).not.toBe(viOf(t[0].why));
+
+    const ev = topicsFor({ ...SALON, services: [], keywords: [] }).find((x) => x.from === 'region')!;
+    expect(enOf(ev.why)).toMatch(/9 days out/);
+
+    for (const x of topicsFor({ industry: 'SALON', market: 'US' })) {
+      expect(enOf(x.label)).not.toBe(viOf(x.label));
+      expect(enOf(x.why)).not.toBe(viOf(x.why));
+    }
+  });
+
+  it('keeps the prompt Vietnamese whichever language the screen is in', () => {
+    expect(trendLinksToPrompt()).toMatch(/TUYỆT ĐỐI KHÔNG tự bịa link/);
   });
 });

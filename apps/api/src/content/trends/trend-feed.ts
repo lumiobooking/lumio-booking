@@ -277,7 +277,10 @@ export function parseInstagram(items: unknown, hashtag: string, now = new Date()
     if (!id || !m.permalink) return [];
     const caption = String(m.caption ?? '').split('\n')[0].trim();
     const title = caption ? caption.slice(0, 120) : `#${hashtag}`;
-    const thumb = m.media_type === 'VIDEO' ? (m.thumbnail_url ?? m.media_url ?? null) : (m.media_url ?? null);
+    // Hashtag media has no thumbnail_url field (asking for it is a #100), and
+    // a VIDEO's media_url is an mp4 — not an image — so a video card goes
+    // without a thumb rather than with a broken one.
+    const thumb = m.media_type === 'VIDEO' ? (m.thumbnail_url ?? null) : (m.media_url ?? null);
     const count = typeof m.like_count === 'number' ? m.like_count : null;
     const publishedAt = m.timestamp ?? null;
     return [{

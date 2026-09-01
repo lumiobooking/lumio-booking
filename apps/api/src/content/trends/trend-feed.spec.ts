@@ -33,6 +33,26 @@ describe('reading what each feed answers', () => {
     expect(items[1].title).toBe('#nailart');
   });
 
+  it('leaves a video card without a thumb rather than pointing an img at an mp4', () => {
+    // Hashtag top_media has no thumbnail_url field — asking for it is a (#100) —
+    // so a VIDEO row arrives with only media_url, which is a video file.
+    const items = parseInstagram([
+      { id: '4', media_type: 'VIDEO', media_url: 'https://cdn/v.mp4', permalink: 'https://instagram.com/p/c', like_count: 90, timestamp: '2026-08-31T00:00:00Z' },
+    ], 'nailart', NOW);
+    expect(items).toHaveLength(1);
+    expect(items[0].thumbUrl).toBeNull();
+    expect(items[0].count).toBe(90);
+  });
+
+  it('keeps the card when Instagram hides the like count', () => {
+    const items = parseInstagram([
+      { id: '5', media_type: 'IMAGE', media_url: 'https://cdn/e.jpg', permalink: 'https://instagram.com/p/e', caption: 'Hidden likes', timestamp: '2026-08-31T00:00:00Z' },
+    ], 'nailart', NOW);
+    expect(items).toHaveLength(1);
+    expect(items[0].count).toBeNull();
+    expect(items[0].perDay).toBeNull();
+  });
+
   it('reads the rising list out of a DataForSEO Google Trends result, and keeps breakouts', () => {
     const qs = parseGoogleTrends({
       items: [

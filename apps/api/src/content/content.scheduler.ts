@@ -30,6 +30,9 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
   private postTimer: NodeJS.Timeout | null = null;
   private readonly postIntervalMs = 60 * 1000;
   private postRunning = false;
+  private trendTimer: NodeJS.Timeout | null = null;
+  private readonly trendIntervalMs = 60 * 60 * 1000;
+  private trendRunning = false;
 
   constructor(
     private readonly content: ContentService,
@@ -53,6 +56,16 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     this.postTimer.unref?.();
     this.logger.log('Scheduled posts: sweeping every minute.');
 
+    // Trends refresh is the same kind of job as publishing: no AI bill, and a
+    // promise to the user — "the board updates itself every day" — that must
+    // hold on every deployment, so it does not sit behind the drafting flag.
+    // Each pull checks its own age (>=20h) first, so the hourly timer costs a
+    // few reads and no API calls on the 23 hours it has nothing to do.
+    setTimeout(() => this.sweepTrends(), 90 * 1000);
+    this.trendTimer = setInterval(() => this.sweepTrends(), this.trendIntervalMs);
+    this.trendTimer.unref?.();
+    this.logger.log('Trend feeds: refreshing daily (checked hourly).');
+
     const enabled = process.env.CONTENT_PLANNER_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false');
     if (enabled !== 'true') {
       this.logger.log('Content planner disabled (set CONTENT_PLANNER_ENABLED=true to enable). Scheduled posts still publish.');
@@ -67,6 +80,7 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
     if (this.postTimer) clearInterval(this.postTimer);
+    if (this.trendTimer) clearInterval(this.trendTimer);
   }
 
   /** Send whatever is due. Never publishes anything the salon did not schedule. */
@@ -79,6 +93,20 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`post sweep failed: ${String(e).slice(0, 160)}`);
     } finally {
       this.postRunning = false;
+    }
+  }
+
+  /** What is trending in each trade, once a day per trade and market. */
+  private async sweepTrends() {
+    if (this.trendRunning) return;
+    this.trendRunning = true;
+    try {
+      const tr = await this.trends.refreshAll();
+      if (tr.pulls || tr.instagram) this.logger.log(`Trends refreshed: ${tr.pulls} shared feed(s), ${tr.instagram} Instagram account(s).`);
+    } catch (e) {
+      this.logger.warn(`trend sweep failed: ${String(e).slice(0, 160)}`);
+    } finally {
+      this.trendRunning = false;
     }
   }
 
@@ -109,11 +137,6 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // that holds only what is still waiting to publish.
       const m = await this.publisher.purgeOldMedia().catch(() => ({ files: 0, posts: 0 }));
       if (m.files) this.logger.log(`Media retention: ${m.files} file(s) removed from storage.`);
-      // What is trending in each trade, once a day per trade and market. Each
-      // pull checks its own age first, so the hourly tick costs nothing on the
-      // 23 hours it has nothing to do.
-      const tr = await this.trends.refreshAll().catch(() => ({ scopes: 0, pulls: 0, instagram: 0 }));
-      if (tr.pulls || tr.instagram) this.logger.log(`Trends refreshed: ${tr.pulls} shared feed(s), ${tr.instagram} Instagram account(s).`);
     } catch (e) {
       this.logger.warn(`planner tick failed: ${String(e).slice(0, 160)}`);
     } finally {

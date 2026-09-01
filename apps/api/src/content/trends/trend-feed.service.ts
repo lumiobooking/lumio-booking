@@ -186,7 +186,7 @@ export class TrendFeedService {
       }
       const m = await this.getJson(
         `${GRAPH}/${hid}/top_media?user_id=${encodeURIComponent(pg.igId)}`
-        + `&fields=id,media_type,media_url,thumbnail_url,permalink,like_count,caption,timestamp&limit=15`
+        + `&fields=id,media_type,media_url,permalink,like_count,caption,timestamp&limit=15`
         + `&access_token=${encodeURIComponent(pg.pageToken)}`,
       );
       if (!m.ok) {
@@ -207,6 +207,9 @@ export class TrendFeedService {
    */
   private explainIgError(raw: string): string {
     const e = raw.toLowerCase();
+    if (/#100|supported fields|nonexisting field/.test(e)) {
+      return 'Instagram đổi danh sách field cho hashtag media — báo đội Lumio cập nhật pullInstagram (bỏ field không hỗ trợ khỏi tham số fields). — ' + raw;
+    }
     if (/public content access|\(#10\)|permission|instagram_basic/.test(e)) {
       return 'Instagram từ chối tìm hashtag: token Page thiếu quyền instagram_basic hoặc app chưa được cấp feature "Instagram Public Content Access" (App Review). Kết nối lại Page và tick đủ; với tiệm khách hàng cần xin duyệt feature này. — ' + raw;
     }

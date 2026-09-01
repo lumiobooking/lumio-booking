@@ -649,6 +649,9 @@ export class SocialPublishService {
    */
   private async awaitContainer(id: string, token: string, tries = 20, gapMs = 3000): Promise<string | null> {
     for (let i = 0; i < tries; i += 1) {
+      // A photo is normally FINISHED on the first poll, so the first check must
+      // happen BEFORE any sleep — otherwise every photo post pays three seconds
+      // it does not need.
       const res = await fetch(
         `${GRAPH}/${id}?fields=status_code,status&access_token=${encodeURIComponent(token)}`,
         { signal: AbortSignal.timeout(15_000) },
@@ -657,9 +660,14 @@ export class SocialPublishService {
       const code = j?.status_code;
       if (code === 'FINISHED') return null;
       if (code === 'ERROR' || code === 'EXPIRED') return j?.status || `Instagram xử lý file thất bại (${code}).`;
+      // No status_code at all, but the container answered: photo containers do
+      // not always report one. Waiting sixty seconds for a field that will never
+      // arrive, then blaming the video, would be worse than proceeding — the
+      // publish call itself is the real check.
+      if (res?.ok && j && code === undefined) return null;
       await new Promise((r) => setTimeout(r, gapMs));
     }
-    return 'Instagram xử lý video quá lâu. Thử lại với file nhẹ hơn, hoặc kiểm tra link video.';
+    return 'Instagram xử lý file quá lâu. Với video, thử file nhẹ hơn; với ảnh, kiểm tra link mở được từ trình duyệt lạ.';
   }
 
   /** One container. `child` marks it as part of a carousel rather than a post. */
@@ -707,11 +715,19 @@ export class SocialPublishService {
         creationId = parent.json.id;
       }
 
-      // Wait unless it is a single photo, which is ready the moment it exists.
-      if (!(media.length === 1 && media[0].kind === 'image')) {
-        const err = await this.awaitContainer(creationId, token);
-        if (err) return fail(err);
-      }
+      // ---- always wait, photos included ----
+      //
+      // I skipped this for a single photo on the reasoning that a photo
+      // container is ready the moment it exists. Usually true; not always. When
+      // it is not, media_publish answers "Media ID is not available" — a message
+      // that names the container and says nothing about timing, so it reads like
+      // a broken id rather than one that simply is not finished yet.
+      //
+      // The saving was one status call of a few hundred milliseconds, on a job
+      // that runs in the background. The cost was an intermittent failure that
+      // looks like a different bug every time it appears.
+      const err = await this.awaitContainer(creationId, token);
+      if (err) return fail(err);
 
       const p = await this.post(`${GRAPH}/${igId}/media_publish`, new URLSearchParams({
         creation_id: creationId, access_token: token,

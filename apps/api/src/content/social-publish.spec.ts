@@ -371,3 +371,18 @@ describe('a link to a sharing PAGE is not a link to a file', () => {
     expect(sharePageProblem('https://luxnails.com/wp-content/uploads/nail.jpg')).toBeNull();
   });
 });
+
+describe('the Instagram error that names the wrong thing', () => {
+  it('explains "Media ID is not available" as a media problem, not an id problem', () => {
+    // The words point at the container id. The cause is almost never the id: it
+    // is a container that is not finished, or a picture Instagram will not take.
+    const fix = explainMetaError('instagram: Media ID is not available')!;
+    expect(fix).toMatch(/JPG/);
+    expect(fix).toMatch(/320–1440px/);
+    expect(fix).toMatch(/4:5/);
+  });
+
+  it('is matched case-insensitively, since Meta varies the wording', () => {
+    expect(explainMetaError('MEDIA ID IS NOT AVAILABLE')).not.toBeNull();
+  });
+});

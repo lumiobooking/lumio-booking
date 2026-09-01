@@ -271,6 +271,13 @@ export function explainMetaError(raw: string | null | undefined): string | null 
   if (e.includes('rate limit') || e.includes('#4') && e.includes('limit')) {
     return 'Facebook đang giới hạn số lần đăng của Trang này. Chờ khoảng một giờ rồi thử lại — không phải lỗi nội dung bài.';
   }
+  // Instagram's answer when media_publish is handed a container it will not
+  // accept. The words point at the id; the cause is almost never the id.
+  if (e.includes('media id is not available')) {
+    return 'Instagram chưa nhận được ảnh. Thường do ảnh chưa xử lý xong hoặc không đúng chuẩn: '
+      + 'phải là JPG, rộng 320–1440px, tỷ lệ trong khoảng 4:5 (dọc) đến 1.91:1 (ngang) — '
+      + 'ảnh quá dài hoặc quá vuông-cao sẽ bị từ chối. Bấm "Đăng ngay" để thử lại trước.';
+  }
   if (e.includes('media_type') || e.includes('unsupported') || e.includes('aspect ratio')) {
     return 'Facebook/Instagram không nhận được file này. Kiểm tra link mở được từ trình duyệt lạ, và ảnh/video đúng định dạng thường (JPG, PNG, MP4).';
   }

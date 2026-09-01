@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContentService } from '../content.service';
 import { AuthenticatedUser, resolveTenantScope } from '../../common/tenant/tenant-context';
@@ -6,7 +7,7 @@ import { localizeDeep, bi, type Txt } from '../i18n';
 import { trendLinks } from '../trend-sources';
 import {
   queriesFor, scopeOf, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends,
-  rankItems, diversify, overlay, overlayQueries, needsRefresh, STALE_AFTER_HOURS,
+  rankItems, diversify, overlay, overlayQueries, needsRefresh, relevant, withGrowth, STALE_AFTER_HOURS,
   type TrendItem, type RisingQuery, type TrendSource,
 } from './trend-feed';
 
@@ -111,8 +112,11 @@ export class TrendFeedService {
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const all: TrendItem[] = [];
     for (const term of q.youtube) {
+      // 25, not 10: the relevance filter below throws away the comedy channel
+      // and the light-ring unboxing that view-count search puts at the top,
+      // and a list of ten leaves five.
       const s = await this.getJson(
-        `${YT}/search?part=id&type=video&maxResults=10&order=viewCount&regionCode=${codes.region}`
+        `${YT}/search?part=id&type=video&maxResults=25&order=viewCount&regionCode=${codes.region}`
         + `&relevanceLanguage=${codes.lang}&publishedAfter=${encodeURIComponent(since)}&q=${encodeURIComponent(term)}&key=${key}`,
       );
       if (!s.ok) throw new Error(`youtube search ${s.status}: ${JSON.stringify(s.body).slice(0, 160)}`);
@@ -123,7 +127,7 @@ export class TrendFeedService {
       if (!v.ok) throw new Error(`youtube videos ${v.status}`);
       all.push(...parseYouTube((v.body as { items?: unknown })?.items, term));
     }
-    return all;
+    return relevant(all, industry, market);
   }
 
   /** Google Trends via DataForSEO: what is rising around the trade's seed terms. */
@@ -191,18 +195,52 @@ export class TrendFeedService {
       }
       all.push(...parseInstagram((m.body as { data?: unknown })?.data, tag));
     }
-    return all;
+    // Hashtag media is on-topic by construction, so only the script check
+    // does any work here — and a caption that is all emoji passes it.
+    return relevant(all, industry, null);
+  }
+
+  /**
+   * Meta's hashtag errors, in one sentence the person fixing it can act on.
+   * The raw text is kept behind it: paraphrase is for the screen, the exact
+   * string is for the support ticket.
+   */
+  private explainIgError(raw: string): string {
+    const e = raw.toLowerCase();
+    if (/public content access|\(#10\)|permission|instagram_basic/.test(e)) {
+      return 'Instagram từ chối tìm hashtag: token Page thiếu quyền instagram_basic hoặc app chưa được cấp feature "Instagram Public Content Access" (App Review). Kết nối lại Page và tick đủ; với tiệm khách hàng cần xin duyệt feature này. — ' + raw;
+    }
+    if (/#190|expired|invalid/.test(e)) return 'Kết nối Facebook đã hết hạn — vào Cài đặt → Messenger kết nối lại Trang. — ' + raw;
+    if (/#4|limit|rate/.test(e)) return 'Instagram giới hạn 30 hashtag/tuần cho mỗi tài khoản — chờ tới tuần sau. — ' + raw;
+    return raw;
   }
 
   // ---- the daily job ---------------------------------------------------------
 
-  /** Refresh one shared scope's feeds, each only when older than a day. */
-  async refreshShared(scope: string): Promise<{ youtube: boolean; google: boolean }> {
+  /**
+   * The previous pull's items, for the day-over-day percent — but only when
+   * that pull is old enough to mean something. A forced re-pull an hour after
+   * the last one would otherwise print "+1%" on every card, which is noise
+   * dressed as a number.
+   */
+  private baseline(row: SnapshotRow | null): TrendItem[] {
+    if (!row?.fetchedAt || !Array.isArray(row.items)) return [];
+    const ageH = (Date.now() - new Date(row.fetchedAt).getTime()) / 3_600_000;
+    return ageH >= 12 ? (row.items as TrendItem[]) : [];
+  }
+
+  /**
+   * Refresh one shared scope's feeds, each only when older than a day —
+   * unless forced, which the support team's "Pull again" does so a fix to a
+   * key or a filter can be seen now rather than tomorrow.
+   */
+  async refreshShared(scope: string, opts: { force?: boolean } = {}): Promise<{ youtube: boolean; google: boolean }> {
     const out = { youtube: false, google: false };
     const yt = await this.read(scope, 'youtube', null);
-    if (needsRefresh(yt?.fetchedAt)) {
+    if (opts.force || needsRefresh(yt?.fetchedAt)) {
       try {
-        const items = await this.pullYouTube(scope);
+        // Yesterday's row is what makes today's percent honest.
+        const items = withGrowth(await this.pullYouTube(scope), this.baseline(yt));
         await this.write(scope, 'youtube', null, items, null);
         out.youtube = true;
       } catch (e) {
@@ -212,7 +250,7 @@ export class TrendFeedService {
       }
     }
     const g = await this.read(scope, 'google', null);
-    if (needsRefresh(g?.fetchedAt)) {
+    if (opts.force || needsRefresh(g?.fetchedAt)) {
       try {
         const items = await this.pullGoogle(scope);
         await this.write(scope, 'google', null, items, null);
@@ -227,17 +265,17 @@ export class TrendFeedService {
   }
 
   /** Refresh one tenant's Instagram feed, only when older than a day. */
-  async refreshInstagram(tenantId: string, scope: string): Promise<boolean> {
+  async refreshInstagram(tenantId: string, scope: string, opts: { force?: boolean } = {}): Promise<boolean> {
     const cur = await this.read(scope, 'instagram', tenantId);
-    if (!needsRefresh(cur?.fetchedAt)) return false;
+    if (!opts.force && !needsRefresh(cur?.fetchedAt)) return false;
     try {
-      const items = await this.pullInstagram(tenantId, scope);
+      const items = withGrowth(await this.pullInstagram(tenantId, scope), this.baseline(cur));
       await this.write(scope, 'instagram', tenantId, items, null);
       return true;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg !== 'not_connected') this.log.warn(`instagram ${tenantId}: ${msg.slice(0, 160)}`);
-      await this.write(scope, 'instagram', tenantId, null, msg);
+      const raw = e instanceof Error ? e.message : String(e);
+      if (raw !== 'not_connected') this.log.warn(`instagram ${tenantId}: ${raw.slice(0, 160)}`);
+      await this.write(scope, 'instagram', tenantId, null, raw === 'not_connected' ? raw : this.explainIgError(raw));
       return false;
     }
   }
@@ -271,14 +309,19 @@ export class TrendFeedService {
 
   // ---- what the salon reads --------------------------------------------------
 
-  /** A refresh the support team can press, capped to one real pull per day per feed. */
+  /** A refresh the support team can press. Forced: they press it to SEE a fix, not to wait for it. */
   async refreshFor(user: AuthenticatedUser) {
+    // Forced pulls spend quota and paid calls, so the button is the team's,
+    // not the salon's — and the API says so, not just the screen.
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ đội Lumio kéo lại được — bảng tự cập nhật mỗi sáng.');
+    }
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return { ok: false };
     const ctx = await this.content.gather(tenantId);
     const scope = scopeOf(ctx.industry, ctx.region.market);
-    await this.refreshShared(scope);
-    await this.refreshInstagram(tenantId, scope);
+    await this.refreshShared(scope, { force: true });
+    await this.refreshInstagram(tenantId, scope, { force: true });
     return { ok: true };
   }
 
@@ -300,7 +343,7 @@ export class TrendFeedService {
     // The overlay: what THIS salon sells, and what its state is walking into.
     const services = ctx.signals.services.map((s) => s.name);
     const events = ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway }));
-    const cards = overlay(ranked, { services, events });
+    const cards = overlay(ranked, { services, events }, now);
     const rising = overlayQueries(Array.isArray(g?.items) ? (g!.items as RisingQuery[]) : [], services).slice(0, 10);
 
     // The team's hand-picked notes: the layer a person wrote.

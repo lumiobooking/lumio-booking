@@ -1,5 +1,5 @@
 import {
-  parseYouTube, parseInstagram, parseGoogleTrends, velocityPct, isoDurationSec,
+  parseYouTube, parseInstagram, parseGoogleTrends, perDayOf, isoDurationSec, latinShare, relevant, withGrowth,
   matchService, serviceKeywords, shortCount, rankItems, diversify, overlay, overlayQueries,
   scopeOf, queriesFor, needsRefresh, type TrendItem,
 } from './trend-feed';
@@ -62,16 +62,67 @@ describe('reading what each feed answers', () => {
 });
 
 describe('what "rising" means for a video', () => {
-  it('scores a fresh video above an old one with more views', () => {
-    const fresh = velocityPct(200_000, '2026-08-31T12:00:00Z', NOW);
-    const old = velocityPct(400_000, '2026-08-01T12:00:00Z', NOW);
-    expect(fresh).toBe(100);
+  it('scores a fresh video above an old one with more views, by pace', () => {
+    const fresh = perDayOf(200_000, '2026-08-31T12:00:00Z', NOW);
+    const old = perDayOf(400_000, '2026-08-01T12:00:00Z', NOW);
+    expect(fresh).toBe(200_000);
     expect(old!).toBeLessThan(fresh!);
   });
 
   it('has nothing to say without a count or a date', () => {
-    expect(velocityPct(null, '2026-08-31T12:00:00Z', NOW)).toBeNull();
-    expect(velocityPct(10, null, NOW)).toBeNull();
+    expect(perDayOf(null, '2026-08-31T12:00:00Z', NOW)).toBeNull();
+    expect(perDayOf(10, null, NOW)).toBeNull();
+  });
+
+  it('never prints a percent from a single snapshot', () => {
+    // The first version printed "+100% this week" on every card because the
+    // search window was seven days and the maths pretended that was growth.
+    const items = parseYouTube([
+      { id: 'a', snippet: { title: 'nail art', publishedAt: '2026-08-30T12:00:00Z' }, statistics: { viewCount: '1000' } },
+    ], 'nail art', NOW);
+    expect(items[0].growthPct).toBeNull();
+    expect(items[0].perDay).toBe(500);
+  });
+
+  it('gives a real percent once the same item has been seen twice', () => {
+    const today = parseYouTube([
+      { id: 'a', snippet: { title: 'nail art', publishedAt: '2026-08-30T12:00:00Z' }, statistics: { viewCount: '1380' } },
+      { id: 'b', snippet: { title: 'new nails', publishedAt: '2026-08-31T12:00:00Z' }, statistics: { viewCount: '50' } },
+    ], 'nail art', NOW);
+    const yesterday = [{ ...today[0], count: 1000 }];
+    const out = withGrowth(today, yesterday);
+    expect(out[0].growthPct).toBe(38);
+    expect(out[1].growthPct).toBeNull();
+  });
+});
+
+describe('keeping the feed about the trade', () => {
+  const item = (title: string, via = 'nail art'): TrendItem => ({
+    id: title, source: 'youtube', title, url: 'u', thumbUrl: null, count: 1, perDay: 1, growthPct: null,
+    breakout: false, publishedAt: null, durationSec: null, via,
+  });
+
+  it('drops a view-count winner whose title is not about nails', () => {
+    const kept = relevant([
+      item('behind the scene: Super Handsome Light Ring'),
+      item("I didn't expect this 😱 #funny"),
+      item('Ranking The Best Nail Polish Squishy Trend'),
+      item('Chrome cat-eye on almond nails'),
+    ], 'SALON', 'US');
+    expect(kept.map((k) => k.title)).toEqual(['Ranking The Best Nail Polish Squishy Trend', 'Chrome cat-eye on almond nails']);
+  });
+
+  it('drops a title the market cannot read, and keeps Vietnamese', () => {
+    expect(latinShare('関西人4280円が言えない #ジェルネイル')).toBeLessThan(0.6);
+    expect(latinShare('Mẫu nail đẹp tháng 9')).toBe(1);
+    const kept = relevant([item('関西人4280円が言えない nails'), item('Mẫu nails đẹp tháng 9')], 'SALON', 'US');
+    expect(kept).toHaveLength(1);
+    expect(kept[0].title).toMatch(/Mẫu/);
+  });
+
+  it('lets a hashtag stand in for the title on Instagram', () => {
+    const ig: TrendItem = { ...item('✨✨', '#nailart'), source: 'instagram' };
+    expect(relevant([ig], 'SALON', 'US')).toHaveLength(1);
   });
 });
 
@@ -94,22 +145,22 @@ describe('matching a trend to what this salon sells', () => {
 
 describe('ranking and the overlay', () => {
   const item = (o: Partial<TrendItem>): TrendItem => ({
-    id: 'x', source: 'youtube', title: 't', url: 'u', thumbUrl: null, count: null, growthPct: null,
+    id: 'x', source: 'youtube', title: 't', url: 'u', thumbUrl: null, count: null, perDay: null, growthPct: null,
     breakout: false, publishedAt: null, durationSec: null, via: null, ...o,
   });
 
   it('puts what is moving fastest first, whichever feed it came from', () => {
     const r = rankItems([
-      item({ id: 'a', source: 'youtube', growthPct: 20, count: 900_000 }),
-      item({ id: 'b', source: 'instagram', growthPct: 80, count: 5_000 }),
-      item({ id: 'c', growthPct: 80, count: 9_000 }),
+      item({ id: 'a', source: 'youtube', perDay: 20, count: 900_000 }),
+      item({ id: 'b', source: 'instagram', perDay: 80, count: 5_000 }),
+      item({ id: 'c', perDay: 80, count: 9_000 }),
     ]);
     expect(r.map((x) => x.id)).toEqual(['c', 'b', 'a']);
   });
 
   it('keeps one hashtag or creator from owning the whole screen', () => {
-    const many = Array.from({ length: 10 }, (_, i) => item({ id: `a${i}`, title: `same via ${i}`, via: '#nailart', growthPct: 50 }));
-    const other = item({ id: 'o', title: 'other', via: '#naildesign', growthPct: 10 });
+    const many = Array.from({ length: 10 }, (_, i) => item({ id: `a${i}`, title: `same via ${i}`, via: '#nailart', perDay: 50 }));
+    const other = item({ id: 'o', title: 'other', via: '#naildesign', perDay: 10 });
     const out = diversify([...many, other], 4, 12);
     expect(out.filter((x) => x.via === '#nailart')).toHaveLength(4);
     expect(out.some((x) => x.id === 'o')).toBe(true);
@@ -122,14 +173,18 @@ describe('ranking and the overlay', () => {
 
   it('annotates each card with the salon service and the upcoming holiday it is about', () => {
     const cards = overlay(
-      [item({ id: 'a', title: 'Labor Day nail set: red, white and a star', count: 96_000, growthPct: 210 }),
+      [item({ id: 'a', title: 'Labor Day nail set: red, white and a star', count: 96_000, perDay: 48_000, growthPct: 210, publishedAt: '2026-08-30T12:00:00Z' }),
        item({ id: 'b', title: 'Chrome manicure', count: 1_200_000 })],
       { services: ['Luxury Manicure'], events: [{ name: bi('Lễ Lao động', 'Labor Day'), daysAway: 6 }] },
+      NOW,
     );
     expect(viOf(cards[0].matchesEvent)).toBe('Lễ Lao động');
     expect(enOf(cards[0].matchesEvent)).toBe('Labor Day');
     expect(cards[0].countLabel).toBe('96K');
-    expect(enOf(cards[0].growthLabel)).toBe('+210% this week');
+    expect(enOf(cards[0].perDayLabel)).toBe('48K views/day');
+    expect(enOf(cards[0].growthLabel)).toBe('+210% since yesterday');
+    expect(enOf(cards[0].ageLabel)).toBe('2d ago');
+    expect(cards[1].growthLabel).toBeNull();
     expect(cards[1].matchesService).toBe('Luxury Manicure');
     expect(cards[1].countLabel).toBe('1.2M');
   });

@@ -33,7 +33,7 @@ export interface TrendCard {
   thumbUrl: string | null; count: number | null; growthPct: number | null; breakout: boolean;
   publishedAt: string | null; durationSec: number | null; via: string | null;
   matchesService: string | null; matchesEvent: string | null;
-  countLabel: string | null; growthLabel: string | null;
+  countLabel: string | null; perDayLabel: string | null; growthLabel: string | null; ageLabel: string | null;
 }
 export interface RisingQuery { query: string; growthPct: number | null; breakout: boolean; matchesService: string | null }
 interface Pick { id: string; title: string; body: string; at: string }
@@ -115,6 +115,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
   const items = (feed?.items ?? []).filter((c) => filter === 'all' || c.source === filter);
   const shown = showAll ? items : items.slice(0, isMobile ? 4 : 8);
   const anyConfigured = Boolean(feed && (feed.sources.youtube.configured || feed.sources.google.configured || feed.sources.instagram.connected));
+  const anyFailed = Boolean(feed && (feed.sources.youtube.error || feed.sources.google.error || feed.sources.instagram.error));
   const cols = isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))';
 
   const sectionTitle = (text: string, sub: string, right?: ReactNode) => (
@@ -183,8 +184,11 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
                   'Lumio is switching on the data feeds for this board. Until then, the "Look it up yourself" section below still works.')
               : feed?.fetchedAt
                 ? T('Không có mục nào khớp bộ lọc này.', 'Nothing matches this filter.')
-                : T('Lần kéo đầu tiên chạy trong đêm nay. Sáng mai mở lại là có.',
-                    'The first pull runs tonight. Check back in the morning.')}
+                : anyFailed
+                  ? T('Lần kéo gần nhất bị lỗi — lý do ghi ở dòng nguồn ngay dưới. Sửa xong bấm "Kéo lại".',
+                      'The last pull failed — the reason is on the source line just below. Fix it and press "Pull again".')
+                  : T('Lần kéo đầu tiên chạy trong đêm nay. Sáng mai mở lại là có.',
+                      'The first pull runs tonight. Check back in the morning.')}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 12 }}>
@@ -210,9 +214,14 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
                 </a>
                 <div style={{ padding: '11px 12px 12px', display: 'flex', flexDirection: 'column', gap: 8, flexGrow: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.title}</div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap', fontSize: 12 }}>
-                    {c.countLabel && <span style={{ color: 'var(--c94a3b8)' }}>{c.countLabel} {c.source === 'youtube' ? T('lượt xem', 'views') : T('lượt thích', 'likes')}</span>}
-                    {c.growthLabel && <span style={{ color: '#22c55e', fontWeight: 700 }}>{c.growthLabel}</span>}
+                  {/* Count, pace, age — and a percent ONLY when the same clip
+                      was seen yesterday. A percent from one snapshot is a
+                      made-up number, and the first build printed one. */}
+                  <div style={{ display: 'flex', gap: '4px 8px', alignItems: 'baseline', flexWrap: 'wrap', fontSize: 12, lineHeight: 1.4 }}>
+                    {c.countLabel && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{c.countLabel} {c.source === 'youtube' ? T('lượt xem', 'views') : T('lượt thích', 'likes')}</span>}
+                    {c.perDayLabel && <span style={{ color: '#22c55e', fontWeight: 700 }}>{c.perDayLabel}</span>}
+                    {c.ageLabel && <span style={{ color: 'var(--c64748b)' }}>{c.ageLabel}</span>}
+                    {c.growthLabel && <span style={{ color: (c.growthLabel.startsWith('-') || c.growthLabel.startsWith('−')) ? 'var(--c94a3b8)' : '#22c55e', fontWeight: 700, width: '100%' }}>{c.growthLabel}</span>}
                   </div>
                   {(c.matchesService || c.matchesEvent) && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -227,11 +236,20 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
                     </div>
                   )}
                   <div style={{ flexGrow: 1 }} />
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => onMakePost(c)} style={{ ...ui.primaryBtn, flexGrow: 1, padding: '8px 10px', fontSize: 12 }}>
+                  {/* Both controls are one row of equal height. The link was
+                      wrapping to a vertical "O p e n" and stretching the
+                      button beside it; a fixed height and nowrap end that. */}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+                    <button onClick={() => onMakePost(c)} style={{
+                      ...ui.primaryBtn, flex: '1 1 auto', minWidth: 0, height: 36, padding: '0 10px', fontSize: 12,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
                       {T('Làm bài theo mẫu này', 'Make a post like this')}
                     </button>
-                    <a href={c.url} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--c475569)', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+                    <a href={c.url} target="_blank" rel="noopener noreferrer" style={{
+                      flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', height: 36, padding: '0 12px', borderRadius: 8,
+                      border: '1px solid var(--c475569)', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap',
+                    }}>
                       {T('Mở', 'Open')}
                     </a>
                   </div>
@@ -262,6 +280,20 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
                 {name}{!on ? (name === 'Instagram' ? T(' · chưa kết nối', ' · not connected') : T(' · chưa bật', ' · not on')) : e ? T(' · lỗi lần kéo gần nhất', ' · last pull failed') : ''}
               </span>
             ))}
+          </div>
+        )}
+        {/* The reason, in full, for whoever can fix it. A salon account is not
+            that person, so it gets the one-line status above and no stack of
+            API errors it cannot act on. */}
+        {canRefresh && anyFailed && feed && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {([['YouTube', feed.sources.youtube.error], ['Google Trends', feed.sources.google.error], ['Instagram', feed.sources.instagram.error]] as const)
+              .filter(([, e]) => e)
+              .map(([name, e]) => (
+                <div key={name} style={{ fontSize: 11.5, color: '#fbbf24', lineHeight: 1.5, wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                  {name}: {e}
+                </div>
+              ))}
           </div>
         )}
 

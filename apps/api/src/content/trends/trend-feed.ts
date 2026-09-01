@@ -58,8 +58,16 @@ export interface TrendItem {
   /** Views for YouTube, likes for Instagram, null for a search term. */
   count: number | null;
   /**
-   * How fast it is moving. Google gives it directly (percent, or "breakout");
-   * for video and Instagram it is derived from count per day since publish.
+   * Count per day since publish — the pace. This is what the feed ranks on: a
+   * clip with 200K views posted yesterday is hotter than one with 400K posted
+   * a month ago, and raw views would rank them the other way round.
+   */
+  perDay: number | null;
+  /**
+   * Change since the previous pull, in percent, for the SAME item. Null until
+   * the item has been seen twice — one snapshot cannot say how fast a thing is
+   * moving, and the first version of this screen printed "+100% this week" on
+   * every card because it pretended otherwise.
    */
   growthPct: number | null;
   breakout: boolean;
@@ -79,7 +87,9 @@ export interface TrendCard extends TrendItem {
   matchesEvent: Txt | null;
   /** Printable, short. */
   countLabel: string | null;
+  perDayLabel: Txt | null;
   growthLabel: Txt | null;
+  ageLabel: Txt | null;
 }
 
 /** One rising search, for the chip row. */
@@ -93,6 +103,13 @@ export interface RisingQuery {
 // ---- what to ask each feed, per trade ---------------------------------------
 
 export interface TradeQueries {
+  /**
+   * A result is about this trade only if its title says so. YouTube's search
+   * ranks by views across everything the words appear in — a comedy channel's
+   * "I didn't expect this" with #nailart in the tags outranks every real set —
+   * so the title has to carry one of these before the item is kept.
+   */
+  mustMatch: RegExp;
   /** YouTube search terms — each is one search.list call, so keep it to two or three. */
   youtube: string[];
   /** Instagram hashtags, without '#'. Three at most: the cap is 30 a week per account. */
@@ -103,21 +120,25 @@ export interface TradeQueries {
 
 const QUERIES: Record<string, TradeQueries> = {
   SALON: {
-    youtube: ['nail art', 'nail design tutorial', 'nail trends'],
+    mustMatch: /\b(nails?|manicure|pedicure|gel[- ]?x|acrylics?|nail ?art|chrome|french tips?|press[- ]ons?)\b/i,
+    youtube: ['nail art', 'nail design ideas', 'nail trends'],
     hashtags: ['nailart', 'nailsofinstagram', 'naildesign'],
     google: ['nails', 'nail salon'],
   },
   RESTAURANT: {
+    mustMatch: /\b(food|restaurant|recipe|dish|cook|chef|menu|eat|kitchen|pho|bbq|taco|sushi|noodle)\b/i,
     youtube: ['restaurant food', 'viral food recipe', 'street food'],
     hashtags: ['foodie', 'foodporn', 'restaurant'],
     google: ['restaurant near me', 'food'],
   },
   REAL_ESTATE: {
+    mustMatch: /\b(house|home|real estate|realtor|listing|mortgage|apartment|condo|property|buyers?|sellers?)\b/i,
     youtube: ['house tour', 'real estate tips', 'home buying'],
     hashtags: ['realestate', 'hometour', 'realtor'],
     google: ['homes for sale', 'real estate'],
   },
   SERVICE: {
+    mustMatch: /\b(before|after|small business|local|repair|clean|install|service|customer|shop)\b/i,
     youtube: ['home service before and after', 'small business marketing', 'local business'],
     hashtags: ['smallbusiness', 'beforeandafter', 'localbusiness'],
     google: ['near me', 'local services'],
@@ -153,19 +174,61 @@ export function isoDurationSec(s: string | null | undefined): number | null {
   return (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
 }
 
-/**
- * Views per day, as a stand-in for "rising". A video with 200K views posted
- * yesterday is hotter than one with 400K posted a month ago; raw views would
- * rank them the other way round. Expressed as a percentage of the item's own
- * count so the screen can print it beside a search term's percent and the two
- * columns mean roughly the same thing: "how much of this happened lately".
- */
-export function velocityPct(count: number | null, publishedAt: string | null, now: Date): number | null {
+/** Count per day since publish. Half a day at minimum, so a fresh upload is not infinite. */
+export function perDayOf(count: number | null, publishedAt: string | null, now: Date): number | null {
   if (count == null || !publishedAt) return null;
   const ageDays = Math.max(0.5, (now.getTime() - Date.parse(publishedAt)) / 86_400_000);
   if (!Number.isFinite(ageDays)) return null;
-  // Share of the count that landed in the last 7 days, assuming an even spread.
-  return Math.round(Math.min(1, 7 / ageDays) * 100);
+  return Math.round(count / ageDays);
+}
+
+/**
+ * Share of letters that are Latin. A US or Canadian salon's feed is in
+ * English; a Japanese short with #ジェルネイル is real and trending and of no
+ * use to a shop in Austin. Vietnamese is Latin script, so it passes — which
+ * is right for this product.
+ */
+export function latinShare(text: string): number {
+  const letters = Array.from(text).filter((ch) => /\p{L}/u.test(ch));
+  if (!letters.length) return 1;
+  const latin = letters.filter((ch) => /\p{Script=Latin}/u.test(ch)).length;
+  return latin / letters.length;
+}
+
+/**
+ * Keep only what is about the trade, in a script the market reads.
+ *
+ * Every market this product serves (US, CA, VN) reads Latin script, so the
+ * script check is unconditional for now; the parameter is here so a market
+ * that does not can switch it off without touching the callers.
+ */
+export function relevant(items: TrendItem[], industry: string | null | undefined, market?: string | null): TrendItem[] {
+  const q = queriesFor(industry);
+  void market;
+  return items.filter((it) => {
+    // The TITLE has to say it. `via` is our own search term, and testing it
+    // would pass everything the search returned — which is the whole problem.
+    // Hashtag media is on-topic by construction (the tag IS the topic), so
+    // only the script check applies to Instagram.
+    if (it.source === 'youtube' && !q.mustMatch.test(it.title)) return false;
+    if (latinShare(it.title) < 0.6) return false;
+    return true;
+  });
+}
+
+/**
+ * Real growth: the same item, seen in the previous pull, compared.
+ *
+ * Only this deserves a percent on the card. Everything without a previous
+ * reading keeps growthPct null and the screen prints the pace instead.
+ */
+export function withGrowth(items: TrendItem[], previous: TrendItem[] | null | undefined): TrendItem[] {
+  const before = new Map((previous ?? []).map((p) => [`${p.source}:${p.id}`, p.count]));
+  return items.map((it) => {
+    const old = before.get(`${it.source}:${it.id}`);
+    if (old == null || it.count == null || old <= 0) return { ...it, growthPct: null };
+    return { ...it, growthPct: Math.round(((it.count - old) / old) * 100) };
+  });
 }
 
 interface YtVideo {
@@ -191,7 +254,8 @@ export function parseYouTube(items: unknown, via: string, now = new Date()): Tre
       url: `https://www.youtube.com/watch?v=${id}`,
       thumbUrl: thumb ?? null,
       count: Number.isFinite(count as number) ? count : null,
-      growthPct: velocityPct(Number.isFinite(count as number) ? count : null, publishedAt, now),
+      perDay: perDayOf(Number.isFinite(count as number) ? count : null, publishedAt, now),
+      growthPct: null,
       breakout: false,
       publishedAt,
       durationSec: isoDurationSec(v.contentDetails?.duration),
@@ -219,7 +283,8 @@ export function parseInstagram(items: unknown, hashtag: string, now = new Date()
     return [{
       id, source: 'instagram' as const, title,
       url: m.permalink, thumbUrl: thumb, count,
-      growthPct: velocityPct(count, publishedAt, now),
+      perDay: perDayOf(count, publishedAt, now),
+      growthPct: null,
       breakout: false, publishedAt, durationSec: null,
       via: `#${hashtag}`,
     }];
@@ -306,18 +371,36 @@ export function shortCount(n: number | null): string | null {
 export function growthLabel(pct: number | null, breakout: boolean): Txt | null {
   if (breakout) return bi('đột biến', 'breakout');
   if (pct == null) return null;
-  return bi(`+${pct}% tuần này`, `+${pct}% this week`);
+  const sign = pct >= 0 ? '+' : '';
+  return bi(`${sign}${pct}% so với hôm qua`, `${sign}${pct}% since yesterday`);
+}
+
+export function perDayLabel(perDay: number | null, source: TrendSource): Txt | null {
+  if (perDay == null) return null;
+  const n = shortCount(perDay);
+  return source === 'youtube'
+    ? bi(`${n} lượt xem/ngày`, `${n} views/day`)
+    : bi(`${n} lượt thích/ngày`, `${n} likes/day`);
+}
+
+export function ageLabel(publishedAt: string | null, now: Date): Txt | null {
+  if (!publishedAt) return null;
+  const days = Math.floor((now.getTime() - Date.parse(publishedAt)) / 86_400_000);
+  if (!Number.isFinite(days)) return null;
+  if (days <= 0) return bi('hôm nay', 'today');
+  if (days === 1) return bi('hôm qua', 'yesterday');
+  return bi(`${days} ngày trước`, `${days}d ago`);
 }
 
 /**
  * Rank across sources so the top of the screen is what is moving fastest,
- * whichever feed it came from. Velocity first, then raw count as the
- * tie-break; a picture beats no picture at the same score because a card
+ * whichever feed it came from. Pace (count per day) first, then raw count as
+ * the tie-break; a picture beats no picture at the same score because a card
  * without one is a line of text the owner has to imagine.
  */
 export function rankItems(items: TrendItem[]): TrendItem[] {
   return [...items].sort((a, b) => {
-    const g = (b.growthPct ?? -1) - (a.growthPct ?? -1);
+    const g = (b.perDay ?? -1) - (a.perDay ?? -1);
     if (g) return g;
     const c = (b.count ?? -1) - (a.count ?? -1);
     if (c) return c;
@@ -354,7 +437,7 @@ export interface OverlayInput {
 }
 
 /** The shared items, annotated with what this salon sells and what is coming up. */
-export function overlay(items: TrendItem[], input: OverlayInput): TrendCard[] {
+export function overlay(items: TrendItem[], input: OverlayInput, now = new Date()): TrendCard[] {
   const soon = input.events.filter((e) => e.daysAway >= -1 && e.daysAway <= 21);
   return items.map((it) => {
     const svc = matchService(it.title + ' ' + (it.via ?? ''), input.services);
@@ -369,7 +452,9 @@ export function overlay(items: TrendItem[], input: OverlayInput): TrendCard[] {
       matchesService: svc,
       matchesEvent: ev ? ev.name : null,
       countLabel: shortCount(it.count),
+      perDayLabel: perDayLabel(it.perDay, it.source),
       growthLabel: growthLabel(it.growthPct, it.breakout),
+      ageLabel: ageLabel(it.publishedAt, now),
     };
   });
 }

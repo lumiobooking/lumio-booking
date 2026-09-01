@@ -95,7 +95,7 @@ export class ContentController {
     return this.trends.feedFor(user);
   }
 
-  /** Pull again now. Each feed refuses to re-pull within a day, so this is cheap to expose. */
+  /** Pull again now, forced. Support/Super Admin only — the service refuses anyone else. */
   @Post('trends/refresh')
   refreshTrends(@CurrentUser() user: AuthenticatedUser) {
     return this.trends.refreshFor(user);

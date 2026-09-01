@@ -182,6 +182,16 @@ model Tenant {
   // Defaulting to "US" is what makes the migration safe: every salon that
   // exists today keeps behaving precisely as it does.
   market   String       @default("US")
+  /// Language the AI writes this salon's plan and ideas in: 'vi' | 'en'.
+  ///
+  /// Null means "decide from the market", which is the behaviour that existed
+  /// before this column and stays the default. It is a SEPARATE choice from the
+  /// interface language, because the two genuinely differ for the customers this
+  /// product was built for: a Vietnamese owner running a salon in Texas wants
+  /// the plan explained in Vietnamese and the CAPTIONS written in English,
+  /// because her customers are American. Deriving the content language from the
+  /// market would get that exactly backwards.
+  contentLang String?
   timezone String       @default("UTC")
 
   /// Where the salon actually stands. Until these are filled the content engine

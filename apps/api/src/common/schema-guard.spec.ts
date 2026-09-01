@@ -264,6 +264,33 @@ describe('the weekly archive is declared in schema AND migration', () => {
   });
 });
 
+describe('the language the AI writes in is the salon’s choice, not the market’s', () => {
+  it('is nullable, so "decide from the market" stays reachable', () => {
+    // Null is the behaviour that existed before the column: Vietnamese
+    // explanation, English captions. That is right for the customers this was
+    // built for, and it must stay a state you can return to — not one you can
+    // only leave.
+    expect(ALL.get('Tenant') ?? '').toMatch(/contentLang\s+String\?/);
+  });
+
+  it('is NOT the same field as market', () => {
+    // Deriving one from the other gets it exactly backwards for a Vietnamese
+    // owner running a salon in Texas.
+    const body = ALL.get('Tenant') ?? '';
+    expect(body).toMatch(/market\s+String/);
+    expect(body).toMatch(/contentLang/);
+  });
+
+  it('has a migration that adds it', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS "contentLang"/i);
+  });
+});
+
 describe('the publishing queue is declared in schema AND migration', () => {
   it('belongs to a tenant and cascades with it', () => {
     // A post is published to a Facebook Page in public, under a salon's brand.

@@ -177,6 +177,19 @@ export class ContentController {
     return this.svc.scanProfile(user, { note: dto?.note });
   }
 
+  /**
+   * The language the AI writes this salon's plan in.
+   *
+   * Separate from the interface language on purpose: a Vietnamese owner running
+   * a salon in Texas wants the plan explained in Vietnamese and the captions
+   * written in English, because her customers are American. One toggle cannot
+   * serve both, so there are two.
+   */
+  @Patch('language')
+  setLanguage(@CurrentUser() user: AuthenticatedUser, @Body() dto: { lang?: string }) {
+    return this.svc.setContentLang(user, dto?.lang);
+  }
+
   @Post('ideas/:id/status')
   setStatus(
     @CurrentUser() user: AuthenticatedUser,

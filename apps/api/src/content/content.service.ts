@@ -99,6 +99,8 @@ export class ContentService {
    */
   async gather(tenantId: string): Promise<{
     tenantName: string;
+    /** 'vi' | 'en' | null — null means "decide from the market", the old default. */
+    contentLang: string | null;
     industry: string;
     city: string;
     tz: string;
@@ -127,7 +129,7 @@ export class ContentService {
       // city/region/postalCode may be absent on a database that has not run the
       // location migration yet; the catch below keeps the whole engine alive
       // rather than blanking a salon's screen over a missing column.
-      select: { name: true, timezone: true, businessType: true, market: true, city: true, region: true, postalCode: true, commissionPct: true, nearbyZips: true },
+      select: { name: true, timezone: true, businessType: true, market: true, city: true, region: true, postalCode: true, commissionPct: true, nearbyZips: true, contentLang: true },
     }).catch(() => this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true, timezone: true, businessType: true, market: true },
@@ -391,6 +393,7 @@ export class ContentService {
 
     return {
       tenantName: tenant?.name || 'Tiệm',
+      contentLang: (tenant as { contentLang?: string | null } | null)?.contentLang ?? null,
       industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
       city: region.label,
       tz,
@@ -903,6 +906,19 @@ export class ContentService {
       ? `\nĐÃ GỢI Ý GẦN ĐÂY — KHÔNG LẶP LẠI:\n${recentTitles.map((r) => `- ${r.title}`).join('\n')}`
       : '';
 
+    // ---- which language the plan is WRITTEN in ----
+    //
+    // Not the interface language, and not derived from the market either. Both
+    // would get this backwards for the customers this product was built for: a
+    // Vietnamese owner running a salon in Texas reads the plan in Vietnamese and
+    // posts captions in English, because her customers are American. Only the
+    // salon can say which it wants, so the column decides and falls back to the
+    // behaviour that existed before it.
+    const writeEn = ctx.contentLang === 'en';
+    const langRule = writeEn
+      ? '4. Write in ENGLISH — the plan, the reasons, the captions and the hashtags.'
+      : '4. Viết tiếng Việt cho chủ tiệm và đội marketing đọc. Riêng "caption" và "hashtags" viết TIẾNG ANH vì khách hàng cuối là người Mỹ.';
+
     const system = `Bạn là chuyên gia marketing cho doanh nghiệp địa phương tại Mỹ, đang lập kế hoạch nội dung cho "${ctx.tenantName}"${ctx.city ? ` ở ${ctx.city}` : ''}.
 
 NHIỆM VỤ: đề xuất ĐÚNG 3 ý tưởng nội dung cho hôm nay.
@@ -914,7 +930,7 @@ LUẬT BẮT BUỘC:
 1. Mỗi ý phải có trường "reason" nêu CĂN CỨ TỪ SỐ LIỆU THẬT bên dưới. Trích đúng con số. TUYỆT ĐỐI KHÔNG bịa số liệu, không nói "xu hướng cho thấy" nếu dữ liệu không nói vậy.
 2. Nếu dữ liệu quá mỏng, nói thẳng trong reason rằng đây là gợi ý nền tảng cho ngành.
 3. Về khuyến mãi: BÁM ĐÚNG khuyến nghị đã tính sẵn. Không tự nghĩ mức giảm khác, không đề xuất giảm cho khung giờ bị cấm.
-4. Viết tiếng Việt cho chủ tiệm và đội marketing đọc. Riêng "caption" và "hashtags" viết TIẾNG ANH vì khách hàng cuối là người Mỹ.
+${langRule}
 5. Ngắn gọn, cụ thể, quay được ngay. Không sáo rỗng.
 6. Về khu vực: chỉ được nhắc tới địa phương nếu phần dữ liệu bên dưới nói rõ tiệm ở đâu. Nếu ghi "chưa rõ khu vực" thì viết trung lập, KHÔNG đoán tên thành phố, bang, trường học hay lễ hội địa phương nào.
 7. Ý tưởng hôm nay phải khớp với việc của hôm nay trong LỊCH TUẦN bên dưới — đừng bảo tiệm quay clip vào ngày lịch ghi là ngày đăng.
@@ -1209,6 +1225,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       industry: { code: ctx.industry, trade: playbookFor(ctx.industry).trade },
       // The label the screen shows. The business's own sentence when it has
       // given one; the enum is demoted to a footnote beside it.
+      contentLang: ctx.contentLang,
       identity: {
         label: ctx.identity.label,
         declared: ctx.identity.declared,
@@ -1624,6 +1641,24 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
    * person to correct, never a fact to act on. The draft comes back with the
    * source named, so the reviewer can see where each line came from.
    */
+  /**
+   * Which language this salon's plan is written in.
+   *
+   * 'auto' clears the column and restores the behaviour that existed before it:
+   * Vietnamese explanation, English captions. That is the right default for the
+   * customers this was built for — Vietnamese owners with American customers —
+   * and it must stay reachable, not become a thing you can only leave.
+   */
+  async setContentLang(user: AuthenticatedUser, lang: unknown) {
+    const tenantId = this.tenantId(user);
+    const value = lang === 'en' || lang === 'vi' ? lang : null;
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { contentLang: value } as never,
+    });
+    return { ok: true, contentLang: value };
+  }
+
   async scanProfile(user: AuthenticatedUser, opts: { note?: string } = {}): Promise<{
     draft: Record<string, string>; sources: string[]; warnings: string[];
     saved: boolean; locationSaved: string | null;

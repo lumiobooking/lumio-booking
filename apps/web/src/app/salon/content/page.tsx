@@ -150,6 +150,8 @@ interface Plan {
     stage: { key: string; step: number; title: string; goal: string; why: string; exitWhen: string; progress: { done: number; need: number; label: string } | null } | null;
     teamNote?: string;
   };
+  /** Language the AI writes the plan in. Null = decide from the market. */
+  contentLang?: string | null;
   weekMeta: {
     weekKey: string; label: string; edited: boolean; editedByName: string | null; editedAt: string | null;
     canEdit: boolean; approvedAt: string | null; approvedByName: string | null;
@@ -1177,6 +1179,47 @@ function Inner() {
                         {T('Sửa', 'Edit')}
                       </button>
                     </div>
+                  </div>
+
+                  {/* ---- which language the PLAN is written in ----
+                       Deliberately separate from the EN/VI switch at the top of
+                       the app. A Vietnamese owner running a salon in Texas wants
+                       the plan explained in Vietnamese and the captions written
+                       in English, because her customers are American. One toggle
+                       cannot serve both, so there are two. */}
+                  <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--c1e293b)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                      {T('AI viết kế hoạch bằng', 'The AI writes the plan in')}
+                    </span>
+                    {([
+                      [null, T('Tiếng Việt · caption tiếng Anh', 'Vietnamese · English captions')],
+                      ['en', T('Tất cả tiếng Anh', 'All English')],
+                    ] as const).map(([code, label]) => {
+                      const on = (plan.contentLang ?? null) === code;
+                      return (
+                        <button
+                          key={String(code)}
+                          onClick={async () => {
+                            try {
+                              await apiFetch('/content/language', { method: 'PATCH', token, body: { lang: code ?? 'auto' } });
+                              await load();
+                            } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+                          }}
+                          style={{
+                            fontSize: 11.5, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+                            border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
+                            background: on ? '#6366f1' : 'transparent',
+                            color: on ? '#fff' : 'var(--c94a3b8)', fontWeight: on ? 700 : 500,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <span style={{ fontSize: 11, color: 'var(--c64748b)', width: '100%', lineHeight: 1.5 }}>
+                      {T('Đổi xong bấm "Cập nhật ngay" để soạn lại bài của hôm nay.',
+                         'After changing this, press “Refresh now” to redraft today’s ideas.')}
+                    </span>
                   </div>
 
                   {!!plan.identity.gaps.length && (

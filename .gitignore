@@ -64,3 +64,4 @@ lumio-booking-*.zip
 *.avi
 0811*/
 tsconfig.scoped-check.tsbuildinfo
+.dts-check/

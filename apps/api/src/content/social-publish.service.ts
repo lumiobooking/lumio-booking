@@ -14,7 +14,15 @@ interface PostRow {
   results: unknown; postedAt: Date | null; createdByName: string | null; ideaId: string | null;
 }
 
-interface PublishResult { channel: Channel; id: string | null; url: string | null; error: string | null }
+/**
+ * Where one channel's attempt landed.
+ *
+ * Exported because it appears in the return type of `publishNow`, which the
+ * controller re-exports. With `declaration: true` a private interface in a
+ * public signature is a build error (TS4053) — and `tsc --noEmit` does NOT
+ * emit declarations, so it does not catch it. The real build does.
+ */
+export interface PublishResult { channel: Channel; id: string | null; url: string | null; error: string | null }
 
 /**
  * Publishing the salon's approved posts to the salon's own Page and Instagram.

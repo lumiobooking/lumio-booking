@@ -213,3 +213,62 @@ describe('"Post now" works on the rows that most need it', () => {
     expect(q.filter((x) => x.op === 'update')).toHaveLength(0);
   });
 });
+
+describe('taking a post off the calendar for good', () => {
+  const rowOf = (status: string) => ({ 'scheduledPost.findFirst': { id: 'p1', status } });
+
+  it('deletes the row rather than hiding it', async () => {
+    // A cancelled post that lingers greyed-out is clutter a month of planning
+    // cannot afford, and there is nothing in a post nobody sent to come back for.
+    const q: Query[] = [];
+    await svc(q, rowOf('scheduled')).remove(user('T1'), 'p1');
+    expect(q.some((x) => x.op === 'deleteMany' && x.model === 'scheduledPost')).toBe(true);
+  });
+
+  it('scopes the delete by tenant in the filter, not just the lookup', async () => {
+    // Two checks, because this one is not reversible.
+    const q: Query[] = [];
+    await svc(q, rowOf('scheduled')).remove(user('T1'), 'p1');
+    const del = q.find((x) => x.op === 'deleteMany')!;
+    expect((del.args.where as { tenantId: string }).tenantId).toBe('T1');
+  });
+
+  it('refuses a post id belonging to another tenant, and deletes nothing', async () => {
+    const q: Query[] = [];
+    await expect(svc(q, { 'scheduledPost.findFirst': null }).remove(user('T2'), 'p1'))
+      .rejects.toThrow(/Không tìm thấy/);
+    expect(q.filter((x) => x.op === 'deleteMany')).toHaveLength(0);
+  });
+
+  it('removes an ALREADY PUBLISHED post, and reports that it was published', async () => {
+    // The calendar is unusable after a month if nothing can leave it. The flag
+    // is what lets the caller say the one thing that is easy to get wrong.
+    const r = await svc([], rowOf('posted')).remove(user('T1'), 'p1');
+    expect(r).toEqual({ ok: true, wasPosted: true });
+  });
+
+  it('refuses to delete a post that is mid-flight', async () => {
+    // Deleting now leaves a publish in progress with nothing to write its
+    // result to, and possibly a live post nobody has a record of.
+    await expect(svc([], rowOf('publishing')).remove(user('T1'), 'p1'))
+      .rejects.toThrow(/đang được đăng/);
+  });
+});
+
+describe('delete and cancel are different things and stay different', () => {
+  it('cancel keeps the row and only changes its status', async () => {
+    const q: Query[] = [];
+    await svc(q).cancel(user('T1'), 'p1');
+    expect(q.some((x) => x.op === 'deleteMany')).toBe(false);
+    const upd = q.find((x) => x.op === 'updateMany')!;
+    expect((upd.args.data as { status: string }).status).toBe('cancelled');
+  });
+
+  it('cancel refuses a published post, because there is nothing left to stop', async () => {
+    const q: Query[] = [];
+    await svc(q).cancel(user('T1'), 'p1').catch(() => undefined);
+    const upd = q.find((x) => x.op === 'updateMany')!;
+    const where = upd.args.where as { status: { in: string[] } };
+    expect(where.status.in).not.toContain('posted');
+  });
+});

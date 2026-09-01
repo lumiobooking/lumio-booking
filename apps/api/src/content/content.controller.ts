@@ -59,6 +59,19 @@ export class ContentController {
     return this.publisher.cancel(user, id);
   }
 
+  /**
+   * Take it off the calendar for good.
+   *
+   * Separate from cancel: cancel stops a post going out and keeps the row,
+   * this erases the row. For an already-published post it removes LUMIO's
+   * record only — what is on Facebook stays on Facebook, and the screen says so
+   * before the press.
+   */
+  @Delete('posts/:id/remove')
+  removePost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.publisher.remove(user, id);
+  }
+
   /** Send one right now, instead of waiting for its slot. */
   @Post('posts/:id/publish')
   publishPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

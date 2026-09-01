@@ -68,6 +68,7 @@ export class SocialPublishService {
       create: (a: unknown) => Promise<unknown>;
       update: (a: unknown) => Promise<unknown>;
       updateMany: (a: unknown) => Promise<unknown>;
+      deleteMany: (a: unknown) => Promise<unknown>;
     }>).scheduledPost;
   }
 
@@ -329,6 +330,38 @@ export class SocialPublishService {
     }).catch(() => ({ count: 0 })) as { count: number };
     if (!r?.count) throw new NotFoundException('Không huỷ được — bài không tồn tại hoặc đã đăng.');
     return { ok: true };
+  }
+
+  /**
+   * Take a post off the calendar for good.
+   *
+   * WHAT THIS DOES NOT DO, AND WHY IT MATTERS
+   *
+   * For a post that has already published, this deletes LUMIO'S RECORD of it.
+   * The post itself stays on Facebook or Instagram. Those are two different
+   * things and conflating them is the expensive mistake here: a salon that
+   * believes "delete" removed an offer from their Page will not go and remove
+   * it, and the offer keeps running. The screen says so in as many words before
+   * the press, and this method will not pretend otherwise.
+   *
+   * Deleting the row rather than hiding it is deliberate. A cancelled post that
+   * lingers greyed-out is clutter a month of planning cannot afford, and there
+   * is nothing in a post nobody sent that anybody comes back for.
+   */
+  async remove(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const row = await this.posts?.findFirst({ where: { id, tenantId }, select: { id: true, status: true } })
+      .catch(() => null) as { id: string; status: string } | null;
+    if (!row) throw new NotFoundException('Không tìm thấy bài này.');
+    // Mid-flight. Deleting the row now would leave a publish in progress with
+    // nothing to write its result to, and possibly a live post nobody knows of.
+    if (row.status === 'publishing') {
+      throw new BadRequestException('Bài đang được đăng — chờ xong rồi mới xoá được.');
+    }
+    // Scoped by tenant in the filter as well as the lookup: two checks, because
+    // this one is not reversible.
+    await this.posts?.deleteMany({ where: { id, tenantId } });
+    return { ok: true, wasPosted: row.status === 'posted' };
   }
 
   /** Send one now. Also the call that satisfies Meta's API-test requirement. */

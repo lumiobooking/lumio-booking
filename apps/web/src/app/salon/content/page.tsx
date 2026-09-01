@@ -556,6 +556,32 @@ function Inner() {
     finally { setQueueBusy(false); }
   }
 
+  /**
+   * Take a post off the calendar for good.
+   *
+   * The confirmation for an ALREADY PUBLISHED post says the one thing that is
+   * easy to get wrong: this removes Lumio's record, not the post on Facebook.
+   * A salon that thinks "delete" pulled an offer down will not go and pull it
+   * down, and the offer keeps running.
+   */
+  async function removePost(id: string) {
+    if (queueBusy) return;
+    const p = queue?.posts.find((x) => x.id === id);
+    const msg = p?.status === 'posted'
+      ? T('Xoá bài này khỏi lịch của Lumio?\n\nBài trên Facebook/Instagram VẪN CÒN — muốn gỡ hẳn thì phải xoá trực tiếp trên trang đó.',
+          'Remove this from Lumio’s calendar?\n\nThe post STAYS UP on Facebook/Instagram — to take it down you must delete it there.')
+      : T('Xoá hẳn bài này khỏi lịch? Không khôi phục lại được.',
+          'Delete this post from the calendar? This cannot be undone.');
+    if (!window.confirm(msg)) return;
+    setQueueBusy(true); setPostErr(null);
+    try {
+      await apiFetch(`/content/posts/${id}/remove`, { method: 'DELETE', token });
+      setPostDraft((d) => (d?.id === id ? null : d));
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setQueueBusy(false); }
+  }
+
   /** Open the composer prefilled from a drafted idea — the whole point of the plan. */
   function scheduleFromIdea(idea: Idea) {
     const d = new Date();
@@ -2335,8 +2361,28 @@ function Inner() {
                           </a>
                         ))}
 
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {/* Always available, published or not — the calendar
+                              is unusable after a month if nothing can leave it. */}
+                          <button
+                            onClick={() => removePost(live.id)}
+                            disabled={queueBusy}
+                            style={{
+                              minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
+                              border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontWeight: 600,
+                            }}
+                          >
+                            🗑 {live.status === 'posted' ? T('Xoá khỏi lịch', 'Remove from calendar') : T('Xoá bài', 'Delete')}
+                          </button>
+                        </div>
+                        {live.status === 'posted' && (
+                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 6 }}>
+                            {T('Xoá ở đây chỉ gỡ khỏi lịch Lumio. Bài trên Facebook/Instagram vẫn còn.',
+                               'Removing here only clears Lumio’s calendar. The post stays up on Facebook/Instagram.')}
+                          </div>
+                        )}
                         {live.status !== 'posted' && (
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                             <button
                               onClick={() => postAction(live.id, 'publish')}
                               disabled={queueBusy || live.blockers.length > 0}
@@ -2352,12 +2398,13 @@ function Inner() {
                             <button
                               onClick={() => { postAction(live.id, 'cancel'); setPostDraft(null); }}
                               disabled={queueBusy}
+                              title={T('Giữ lại bài nhưng không đăng nữa', 'Keeps the post but stops it going out')}
                               style={{
                                 minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
                                 border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)',
                               }}
                             >
-                              {T('Huỷ bài này', 'Cancel this post')}
+                              {T('Tạm dừng', 'Pause it')}
                             </button>
                           </div>
                         )}
@@ -2531,6 +2578,17 @@ function Inner() {
                       </a>
                     ))}
 
+                    {!open && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                        <button
+                          onClick={() => removePost(p.id)}
+                          disabled={queueBusy}
+                          style={{ minHeight: 36, padding: '7px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c64748b)', fontSize: 12.5 }}
+                        >
+                          🗑 {T('Xoá khỏi lịch', 'Remove from calendar')}
+                        </button>
+                      </div>
+                    )}
                     {open && (
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
                         <button
@@ -2556,7 +2614,14 @@ function Inner() {
                           disabled={queueBusy}
                           style={{ minHeight: 38, padding: '8px 13px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', fontSize: 13 }}
                         >
-                          {T('Huỷ', 'Cancel')}
+                          {T('Tạm dừng', 'Pause')}
+                        </button>
+                        <button
+                          onClick={() => removePost(p.id)}
+                          disabled={queueBusy}
+                          style={{ minHeight: 38, padding: '8px 13px', borderRadius: 8, cursor: 'pointer', border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontSize: 13 }}
+                        >
+                          🗑 {T('Xoá', 'Delete')}
                         </button>
                       </div>
                     )}

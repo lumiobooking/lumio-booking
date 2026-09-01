@@ -201,8 +201,13 @@ export default function TenantsPage() {
           <a href="/super-admin/plans" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Manage plans
           </a>
+          {/* Named for its contents, not for two of its five sections.
+              Called "Payment gateways", it also holds platform email, reply
+              detection and the image storage every uploaded photo depends on —
+              and nobody goes looking for a storage setting under a payments
+              button. This one was found by somebody failing to find it. */}
           <a href="/super-admin/billing" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
-            Payment gateways
+            Cài đặt hệ thống
           </a>
           <a href="/super-admin/chains" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-block' }}>
             Chains

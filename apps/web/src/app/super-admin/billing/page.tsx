@@ -134,8 +134,14 @@ export default function GatewaysPage() {
     <main style={{ maxWidth: 820, margin: '0 auto', padding: '32px 24px', color: 'var(--ce2e8f0)' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Payment gateways</h1><MarketBadge /></div>
-          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>Connect Stripe / PayPal so salons can pay you. Money goes to the account these keys belong to.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><h1 style={{ fontSize: 24, margin: 0 }}>Cài đặt hệ thống</h1><MarketBadge /></div>
+          {/* A map of the page. The image-storage panel is at the bottom and
+              was unfindable: the sub-heading described only the first section,
+              so anybody who did not already know it was here scrolled past. */}
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14, lineHeight: 1.6 }}>
+            Thanh toán (Stripe · PayPal) · Email hệ thống · Nhận diện thư trả lời ·{' '}
+            <a href="#image-storage" style={{ color: 'var(--ca5b4fc)' }}>Kho lưu ảnh (Hostinger / FTP)</a>
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={testNow} disabled={busy} style={ghost}>Test connection</button>
@@ -322,7 +328,7 @@ export default function GatewaysPage() {
       </section>
 
       {/* -------- Image storage (Hostinger FTP) -------- */}
-      <section style={card}>
+      <section id="image-storage" style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <h2 style={{ fontSize: 18, margin: 0 }}>🖼 Image storage (Hostinger / FTP)</h2>
           <span style={{ fontSize: 13 }}>{st ? dot(!!st.storage?.configured) : '…'}</span>

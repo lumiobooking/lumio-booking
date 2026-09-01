@@ -264,6 +264,43 @@ describe('the weekly archive is declared in schema AND migration', () => {
   });
 });
 
+describe('the publishing queue is declared in schema AND migration', () => {
+  it('belongs to a tenant and cascades with it', () => {
+    // A post is published to a Facebook Page in public, under a salon's brand.
+    // A queue row that outlives its tenant is a row that can still fire.
+    const body = ALL.get('ScheduledPost') ?? '';
+    expect(body).toMatch(/tenantId\s+String/);
+    expect(body).toMatch(/onDelete: Cascade/);
+    expect(body).toMatch(/@@map\("scheduled_posts"\)/);
+  });
+
+  it('stores no page id and no access token on the post', () => {
+    // The Page and its token are read from MessengerPage at send time. Copying
+    // a token onto a queue row would outlive the salon disconnecting its Page
+    // and add one more place a leak can come from.
+    const body = ALL.get('ScheduledPost') ?? '';
+    expect(body).not.toMatch(/pageToken/);
+    expect(body).not.toMatch(/pageId/);
+    expect(body).not.toMatch(/igId/);
+  });
+
+  it('indexes both the salon’s own view and the scheduler’s cross-tenant sweep', () => {
+    const body = ALL.get('ScheduledPost') ?? '';
+    expect(body).toMatch(/@@index\(\[tenantId, status, scheduledAt\]\)/);
+    expect(body).toMatch(/@@index\(\[status, scheduledAt\]\)/);
+  });
+
+  it('has a migration that creates it', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS "scheduled_posts"/i);
+    expect(sql).toMatch(/scheduled_posts_status_scheduledAt_idx/);
+  });
+});
+
 describe('the team ↔ salon thread is declared in schema AND migration', () => {
   it('stores which side wrote each message rather than deriving it', () => {
     // A support token carries a SALON_ADMIN role by design. Working the side

@@ -3,13 +3,14 @@ import { SettingsModule } from '../settings/settings.module';
 import { ContentService } from './content.service';
 import { ContentAdminService } from './content-admin.service';
 import { ContentChatService } from './content-chat.service';
+import { SocialPublishService } from './social-publish.service';
 import { ContentController, ContentAdminController } from './content.controller';
 import { ContentScheduler } from './content.scheduler';
 
 @Module({
   imports: [SettingsModule],
   controllers: [ContentController, ContentAdminController],
-  providers: [ContentService, ContentAdminService, ContentChatService, ContentScheduler],
+  providers: [ContentService, ContentAdminService, ContentChatService, SocialPublishService, ContentScheduler],
   exports: [ContentService],
 })
 export class ContentModule {}

@@ -2,12 +2,14 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { UserRole } from '@prisma/client';
 import { ContentService } from './content.service';
 import { ContentChatService } from './content-chat.service';
+import { SocialPublishService } from './social-publish.service';
 import { ContentAdminService } from './content-admin.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { EditWeekDto } from './dto/edit-week.dto';
 import { SendChatDto } from './dto/chat.dto';
+import { SavePostDto } from './dto/save-post.dto';
 
 /**
  * What a salon can reach: today's approved plan, and marking it done.
@@ -22,7 +24,36 @@ export class ContentController {
   constructor(
     private readonly svc: ContentService,
     private readonly chat: ContentChatService,
+    private readonly publisher: SocialPublishService,
   ) {}
+
+  // ---- scheduled posting to the salon's OWN Page and Instagram -------------
+  // Every route is scoped to the caller's tenant inside the service, and the
+  // page published to is looked up FROM that tenant: publishing to another
+  // salon's Facebook Page would be a public, permanent mistake.
+
+  /** The queue, plus whether each waiting post can still actually be sent. */
+  @Get('posts')
+  listPosts(@CurrentUser() user: AuthenticatedUser) {
+    return this.publisher.list(user);
+  }
+
+  /** Create or edit a queued post. Saving as 'scheduled' validates it first. */
+  @Post('posts')
+  savePost(@CurrentUser() user: AuthenticatedUser, @Body() body: SavePostDto) {
+    return this.publisher.save(user, body);
+  }
+
+  @Delete('posts/:id')
+  cancelPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.publisher.cancel(user, id);
+  }
+
+  /** Send one right now, instead of waiting for its slot. */
+  @Post('posts/:id/publish')
+  publishPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.publisher.publishNow(user, id);
+  }
 
   @Get('today')
   today(@CurrentUser() user: AuthenticatedUser, @Query('date') date?: string) {

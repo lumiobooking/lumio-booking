@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ContentService } from './content.service';
+import { SocialPublishService } from './social-publish.service';
 
 /**
  * Drafts tomorrow's ideas while the salons sleep.
@@ -17,7 +18,22 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
   private readonly intervalMs = 60 * 60 * 1000;
   private running = false;
 
-  constructor(private readonly content: ContentService) {}
+  /**
+   * Posts are swept on their own, much faster clock.
+   *
+   * The planner ticks hourly, which is right for drafting tomorrow's ideas and
+   * completely wrong for sending a post the salon scheduled for 9:00 — on an
+   * hourly clock that lands anywhere in the following hour, and "roughly ten
+   * o'clock-ish" is not what the person who chose 9:00 asked for.
+   */
+  private postTimer: NodeJS.Timeout | null = null;
+  private readonly postIntervalMs = 60 * 1000;
+  private postRunning = false;
+
+  constructor(
+    private readonly content: ContentService,
+    private readonly publisher: SocialPublishService,
+  ) {}
 
   onModuleInit() {
     const enabled = process.env.CONTENT_PLANNER_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false');
@@ -29,10 +45,28 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     this.timer = setInterval(() => this.tick(), this.intervalMs);
     this.timer.unref?.();
     this.logger.log('Content planner on (hourly; drafts once per salon per local day).');
+
+    this.postTimer = setInterval(() => this.sweepPosts(), this.postIntervalMs);
+    this.postTimer.unref?.();
+    this.logger.log('Scheduled posts sweeping every minute.');
   }
 
   onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+    if (this.postTimer) clearInterval(this.postTimer);
+  }
+
+  /** Send whatever is due. Never publishes anything the salon did not schedule. */
+  private async sweepPosts() {
+    if (this.postRunning) return;
+    this.postRunning = true;
+    try {
+      await this.publisher.runDue();
+    } catch (e) {
+      this.logger.warn(`post sweep failed: ${String(e).slice(0, 160)}`);
+    } finally {
+      this.postRunning = false;
+    }
   }
 
   private async tick() {

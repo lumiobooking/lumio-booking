@@ -169,7 +169,29 @@ interface Plan {
   thin: boolean;
 }
 
-type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads';
+type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'queue';
+
+/** One post waiting to go out on the salon's own Page / Instagram. */
+interface QueuedPost {
+  id: string;
+  ideaId: string | null;
+  channels: ('facebook' | 'instagram')[];
+  message: string;
+  imageUrl: string | null;
+  scheduledAt: string;
+  status: 'draft' | 'scheduled' | 'publishing' | 'posted' | 'failed' | 'expired' | 'cancelled';
+  attempts: number;
+  lastError: string | null;
+  results: { channel: string; id: string | null; url: string | null; error: string | null }[];
+  postedAt: string | null;
+  createdByName: string | null;
+  /** Why it cannot go out as it stands. Empty when it is fine. */
+  blockers: string[];
+}
+interface QueuePayload {
+  connected: { pageName: string | null; igUsername: string | null; hasInstagram: boolean; enabled: boolean } | null;
+  posts: QueuedPost[];
+}
 
 /** One icon per kind of job, so the week reads at a glance on a phone. */
 const JOB_ICON: Record<string, string> = {
@@ -358,6 +380,14 @@ function Inner() {
   const [draftNote, setDraftNote] = useState('');
   const [savingWeek, setSavingWeek] = useState(false);
   const [approving, setApproving] = useState(false);
+  // The publishing queue. Loaded on demand: most visits never open this tab,
+  // and it is one more round trip on a phone that is already waiting.
+  const [queue, setQueue] = useState<QueuePayload | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const [postDraft, setPostDraft] = useState<{
+    id?: string; channels: ('facebook' | 'instagram')[]; message: string; imageUrl: string; at: string;
+  } | null>(null);
+  const [postErr, setPostErr] = useState<string | null>(null);
   const [linkFor, setLinkFor] = useState<string | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [unread, setUnread] = useState<{ total: number; bySubject: Record<string, number> }>({ total: 0, bySubject: {} });
@@ -399,6 +429,64 @@ function Inner() {
   useEffect(() => {
     if (plan?.identity?.profile) setPf({ ...plan.identity.profile });
   }, [plan?.identity?.profile]);
+
+  const loadQueue = useCallback(async () => {
+    if (!token) return;
+    try {
+      setQueue(await apiFetch<QueuePayload>('/content/posts', { token }));
+    } catch { setQueue({ connected: null, posts: [] }); }
+  }, [token]);
+  useEffect(() => { if (tab === 'queue') loadQueue(); }, [tab, loadQueue]);
+
+  /** Save the open draft. `status` decides whether it joins the queue or waits. */
+  async function savePost(status: 'draft' | 'scheduled') {
+    if (!postDraft || queueBusy) return;
+    setQueueBusy(true); setPostErr(null);
+    try {
+      await apiFetch('/content/posts', {
+        method: 'POST', token,
+        body: {
+          id: postDraft.id,
+          channels: postDraft.channels,
+          message: postDraft.message,
+          imageUrl: postDraft.imageUrl.trim() || null,
+          // The picker gives a local wall-clock string; the server stores an
+          // instant. Converting here means "9:00" means 9:00 where the salon is.
+          scheduledAt: new Date(postDraft.at).toISOString(),
+          status,
+        },
+      });
+      setPostDraft(null);
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setQueueBusy(false); }
+  }
+
+  async function postAction(id: string, action: 'publish' | 'cancel') {
+    if (queueBusy) return;
+    setQueueBusy(true); setPostErr(null);
+    try {
+      if (action === 'publish') await apiFetch(`/content/posts/${id}/publish`, { method: 'POST', token });
+      else await apiFetch(`/content/posts/${id}`, { method: 'DELETE', token });
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setQueueBusy(false); }
+  }
+
+  /** Open the composer prefilled from a drafted idea — the whole point of the plan. */
+  function scheduleFromIdea(idea: Idea) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(10, 0, 0, 0);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    setPostDraft({
+      channels: ['facebook'],
+      message: [idea.caption, idea.hashtags].filter(Boolean).join('\n\n'),
+      imageUrl: '',
+      at: local,
+    });
+    setTab('queue');
+  }
 
   async function mark(id: string, status: string, postedUrl?: string) {
     setBusy(id);
@@ -609,6 +697,7 @@ function Inner() {
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
     { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣' },
+    { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀' },
   ];
 
   /**
@@ -994,6 +1083,20 @@ function Inner() {
                         }}
                       >
                         {done ? T('✓ Đã đăng', '✓ Posted') : T('Đánh dấu đã đăng', 'Mark as posted')}
+                      </button>
+                      {/* The step the plan used to stop short of. Copying text
+                          into Facebook is what a technician with both hands wet
+                          does not do — so the schedule is the product, not the
+                          text. */}
+                      <button
+                        onClick={() => scheduleFromIdea(idea)}
+                        style={{
+                          minHeight: 42, padding: '10px 14px', borderRadius: 9, cursor: 'pointer',
+                          border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)',
+                          fontSize: 13.5, fontWeight: 600,
+                        }}
+                      >
+                        🚀 {T('Hẹn giờ đăng', 'Schedule it')}
                       </button>
                       {!done && (
                         <button
@@ -1786,6 +1889,276 @@ function Inner() {
             </>
           )}
 
+          {/* ---- the publishing queue ----
+               The plan drafted a week of posts and then asked the owner to open
+               Facebook and paste them, which is the step that does not happen.
+               This is where a post stops being advice and becomes something
+               that goes out on a Tuesday morning while she is doing a fill. */}
+          {tab === 'queue' && (
+            <>
+              <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                    🚀 {T('Lịch đăng bài tự động', 'Scheduled posts')}
+                  </div>
+                  <button
+                    onClick={() => {
+                      const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0);
+                      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+                      setPostDraft({ channels: ['facebook'], message: '', imageUrl: '', at: local });
+                    }}
+                    style={{
+                      marginLeft: 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
+                      border: 'none', background: '#6366f1', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    + {T('Bài mới', 'New post')}
+                  </button>
+                </div>
+
+                {queue?.connected ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>
+                    {T('Đăng lên', 'Publishing to')}{' '}
+                    <b style={{ color: 'var(--ce2e8f0)' }}>{queue.connected.pageName ?? T('Trang Facebook của tiệm', 'your Page')}</b>
+                    {queue.connected.hasInstagram
+                      ? <> {T('và Instagram', 'and Instagram')} <b style={{ color: 'var(--ce2e8f0)' }}>@{queue.connected.igUsername}</b></>
+                      : <> · {T('Trang này chưa liên kết Instagram', 'no Instagram linked to this Page')}</>}
+                  </div>
+                ) : (
+                  <div style={{
+                    fontSize: 12.5, lineHeight: 1.55, padding: '9px 11px', borderRadius: 8,
+                    background: 'var(--c451a03)', border: '1px solid #f59e0b', color: 'var(--cfde68a)',
+                  }}>
+                    {T('Tiệm chưa kết nối Trang Facebook. Vào Cài đặt → Messenger để kết nối, rồi quay lại đây.',
+                       'No Facebook Page connected yet. Connect one in Settings → Messenger, then come back.')}
+                  </div>
+                )}
+              </div>
+
+              {postErr && (
+                <div style={{
+                  ...ui.card, marginBottom: 14, padding: '11px 14px', borderColor: '#ef4444',
+                  fontSize: 13, color: 'var(--cfca5a5)', lineHeight: 1.55,
+                }}>{postErr}</div>
+              )}
+
+              {/* ---- the composer ---- */}
+              {postDraft && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
+                    {postDraft.id ? T('Sửa bài', 'Edit post') : T('Bài mới', 'New post')}
+                  </div>
+
+                  <textarea
+                    value={postDraft.message}
+                    onChange={(e) => setPostDraft({ ...postDraft, message: e.target.value })}
+                    rows={6}
+                    placeholder={T('Nội dung bài đăng…', 'What the post says…')}
+                    style={{
+                      width: '100%', padding: '11px 12px', borderRadius: 9, fontSize: 14, lineHeight: 1.6,
+                      border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                      resize: 'vertical', boxSizing: 'border-box',
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 3 }}>
+                    {postDraft.message.length} {T('ký tự', 'characters')}
+                    {postDraft.channels.includes('instagram') && ` · ${T('Instagram tối đa 2.200', 'Instagram max 2,200')}`}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 11 }}>
+                    {(['facebook', 'instagram'] as const).map((c) => {
+                      const on = postDraft.channels.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          onClick={() => setPostDraft({
+                            ...postDraft,
+                            channels: on ? postDraft.channels.filter((x) => x !== c) : [...postDraft.channels, c],
+                          })}
+                          style={{
+                            minHeight: 40, padding: '9px 15px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, fontWeight: 600,
+                            border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
+                            background: on ? '#6366f1' : 'transparent',
+                            color: on ? '#fff' : 'var(--c94a3b8)',
+                          }}
+                        >
+                          {c === 'facebook' ? 'Facebook' : 'Instagram'}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 11 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 4 }}>
+                      {T('Link ảnh (https công khai)', 'Image URL (public https)')}
+                      {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ảnh', 'required for Instagram')}`}
+                    </div>
+                    <input
+                      value={postDraft.imageUrl}
+                      onChange={(e) => setPostDraft({ ...postDraft, imageUrl: e.target.value })}
+                      placeholder="https://…"
+                      style={{
+                        width: '100%', minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
+                        border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginTop: 11 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 4 }}>
+                      {T('Đăng lúc', 'Publish at')}
+                    </div>
+                    <input
+                      type="datetime-local"
+                      value={postDraft.at}
+                      onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
+                      style={{
+                        minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
+                        border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 14 }}>
+                    <button
+                      onClick={() => savePost('scheduled')}
+                      disabled={queueBusy || !postDraft.message.trim()}
+                      style={{
+                        flex: '1 1 160px', minHeight: 44, borderRadius: 9, border: 'none', cursor: 'pointer',
+                        background: postDraft.message.trim() ? '#22c55e' : 'var(--c334155)',
+                        color: postDraft.message.trim() ? '#052e16' : 'var(--c64748b)',
+                        fontSize: 14, fontWeight: 700,
+                      }}
+                    >
+                      {queueBusy ? T('Đang lưu…', 'Saving…') : T('✓ Đặt lịch đăng', '✓ Schedule it')}
+                    </button>
+                    <button
+                      onClick={() => savePost('draft')}
+                      disabled={queueBusy}
+                      style={{
+                        minHeight: 44, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
+                        border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5,
+                      }}
+                    >
+                      {T('Lưu nháp', 'Save draft')}
+                    </button>
+                    <button
+                      onClick={() => { setPostDraft(null); setPostErr(null); }}
+                      style={{
+                        minHeight: 44, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
+                        border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', fontSize: 13.5,
+                      }}
+                    >
+                      {T('Đóng', 'Close')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ---- the queue ---- */}
+              {queue && !queue.posts.length && !postDraft && (
+                <div style={{ ...ui.card, padding: 20, textAlign: 'center' }}>
+                  <div style={{ fontSize: 14, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
+                    {T('Chưa có bài nào trong hàng đợi. Vào tab Hôm nay, bấm "Hẹn giờ đăng" trên một ý tưởng là xong.',
+                       'Nothing queued yet. Open the Today tab and press “Schedule it” on an idea.')}
+                  </div>
+                </div>
+              )}
+
+              {queue?.posts.map((p) => {
+                const S: Record<string, { fg: string; text: string }> = {
+                  draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
+                  scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },
+                  publishing: { fg: '#f59e0b', text: T('Đang đăng', 'Publishing') },
+                  posted: { fg: '#22c55e', text: T('Đã đăng', 'Posted') },
+                  failed: { fg: '#ef4444', text: T('Lỗi', 'Failed') },
+                  expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
+                  cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
+                };
+                const st = S[p.status] ?? S.draft;
+                const when = new Date(p.scheduledAt);
+                const open = p.status === 'draft' || p.status === 'scheduled' || p.status === 'failed' || p.status === 'expired';
+                return (
+                  <div key={p.id} style={{ ...ui.card, marginBottom: 10, padding: 14, borderColor: p.blockers.length ? '#f59e0b' : 'var(--c334155)' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                        {when.toLocaleString(vi ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg }}>{st.text}</span>
+                      <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                        {p.channels.map((c) => (c === 'facebook' ? 'Facebook' : 'Instagram')).join(' + ')}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                      {p.message.length > 220 ? `${p.message.slice(0, 220)}…` : p.message}
+                    </div>
+
+                    {!!p.blockers.length && (
+                      <div style={{ marginTop: 8, padding: '8px 11px', borderRadius: 8, background: 'var(--c451a03)', border: '1px solid #f59e0b' }}>
+                        {p.blockers.map((b) => (
+                          <div key={b} style={{ fontSize: 12, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {b}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {p.lastError && !p.blockers.length && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--cfca5a5)', lineHeight: 1.55 }}>
+                        {T('Lỗi', 'Error')}: {p.lastError}
+                        {p.attempts > 0 && ` (${T('đã thử', 'tried')} ${p.attempts}×)`}
+                      </div>
+                    )}
+
+                    {/* Where it actually landed — the verifiable half. */}
+                    {p.results.filter((r) => r.url).map((r) => (
+                      <a
+                        key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
+                        style={{ display: 'inline-block', marginTop: 7, marginRight: 12, fontSize: 12.5, color: 'var(--c60a5fa)' }}
+                      >
+                        🔗 {T('Xem trên', 'View on')} {r.channel === 'facebook' ? 'Facebook' : 'Instagram'}
+                      </a>
+                    ))}
+
+                    {open && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                        <button
+                          onClick={() => setPostDraft({
+                            id: p.id, channels: p.channels, message: p.message, imageUrl: p.imageUrl ?? '',
+                            at: new Date(new Date(p.scheduledAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16),
+                          })}
+                          style={{ minHeight: 38, padding: '8px 13px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13 }}
+                        >
+                          ✎ {T('Sửa', 'Edit')}
+                        </button>
+                        <button
+                          onClick={() => postAction(p.id, 'publish')}
+                          disabled={queueBusy || p.blockers.length > 0}
+                          style={{
+                            minHeight: 38, padding: '8px 13px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                            cursor: p.blockers.length ? 'not-allowed' : 'pointer', border: 'none',
+                            background: p.blockers.length ? 'var(--c334155)' : '#6366f1',
+                            color: p.blockers.length ? 'var(--c64748b)' : '#fff',
+                          }}
+                        >
+                          {T('Đăng ngay', 'Post now')}
+                        </button>
+                        <button
+                          onClick={() => postAction(p.id, 'cancel')}
+                          disabled={queueBusy}
+                          style={{ minHeight: 38, padding: '8px 13px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', fontSize: 13 }}
+                        >
+                          {T('Huỷ', 'Cancel')}
+                        </button>
+                      </div>
+                    )}
+
+                    <ItemComments token={token} subject={`post:${p.id}`} unread={unread.bySubject[`post:${p.id}`] ?? 0} vi={vi} />
+                  </div>
+                );
+              })}
+            </>
+          )}
           {tab === 'ads' && (
             <>
               {/* ---- the market, first ----

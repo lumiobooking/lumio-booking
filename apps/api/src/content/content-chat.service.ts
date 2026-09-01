@@ -95,6 +95,10 @@ export class ContentChatService {
     if (s === 'general' || s === 'ads') return s;
     if (/^week:\d{4}-W\d{2}$/.test(s)) return s;
     if (/^idea:[a-zA-Z0-9-]{6,40}$/.test(s)) return s;
+    // A scheduled post can be argued about too — "move this to Thursday", "the
+    // caption is wrong" — and that argument belongs beside the post, not in one
+    // long general thread where nobody can find which post was meant.
+    if (/^post:[a-zA-Z0-9-]{6,40}$/.test(s)) return s;
     throw new BadRequestException('Chủ đề trao đổi không hợp lệ.');
   }
 

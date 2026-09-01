@@ -2221,6 +2221,48 @@ function Inner() {
                     </div>
                   )}
 
+                  {/* ---- what this post will and will NOT do ----
+                       The channel buttons show their own state, but a salon that
+                       meant to reach Instagram and left it untoggled published to
+                       Facebook believing otherwise, and nothing on the screen
+                       contradicted them until afterwards. The absence has to be
+                       stated, not merely not-stated. */}
+                  {(() => {
+                    const on = postDraft.channels;
+                    const igReady = queue?.connected?.hasInstagram;
+                    const missingIg = igReady && !on.includes('instagram');
+                    const missingFb = !on.includes('facebook');
+                    if (!missingIg && !missingFb) return null;
+                    return (
+                      <div style={{
+                        marginTop: 9, padding: '9px 11px', borderRadius: 8,
+                        background: 'var(--c1e293b)', border: '1px dashed var(--c475569)',
+                        fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55,
+                      }}>
+                        {on.length === 0
+                          ? T('Chưa chọn nơi đăng — bài này sẽ không đi đâu cả.', 'No channel picked — this post goes nowhere.')
+                          : <>
+                            {T('Chỉ đăng lên', 'Publishing to')} <b style={{ color: 'var(--ce2e8f0)' }}>{on.includes('facebook') ? 'Facebook' : 'Instagram'}</b>.{' '}
+                            {missingIg && (
+                              <>
+                                {T('KHÔNG lên Instagram', 'NOT to Instagram')} (@{queue?.connected?.igUsername}).{' '}
+                                <button
+                                  onClick={() => setPostDraft({ ...postDraft, channels: [...on, 'instagram'] })}
+                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline' }}
+                                >
+                                  {T('Thêm Instagram', 'Add Instagram')}
+                                </button>
+                                {postDraft.media.length === 0 && (
+                                  <span> — {T('nhớ thêm ảnh, Instagram không nhận bài chỉ có chữ.', 'you will need a photo; Instagram takes no text-only post.')}</span>
+                                )}
+                              </>
+                            )}
+                            {missingFb && !missingIg && T('KHÔNG lên Facebook.', 'NOT to Facebook.')}
+                          </>}
+                      </div>
+                    );
+                  })()}
+
                   <div style={{ marginTop: 11 }}>
                     <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 4 }}>
                       {T('Đăng lúc', 'Publish at')}
@@ -2352,7 +2394,34 @@ function Inner() {
                           </div>
                         )}
 
-                        {live.results.filter((r) => r.url).map((r) => (
+                        {/* Every channel the post ASKED for, with what became of
+                            it — not only the ones that worked. A list of
+                            successes reads as a complete list, which is how a
+                            Facebook-only post gets mistaken for one that also
+                            reached Instagram. */}
+                        {live.status === 'posted' && (
+                          <div style={{ marginBottom: 9 }}>
+                            {(['facebook', 'instagram'] as const).map((c) => {
+                              const asked = live.channels.includes(c);
+                              const r = live.results.find((x) => x.channel === c);
+                              const name = c === 'facebook' ? 'Facebook' : 'Instagram';
+                              const connected = c === 'facebook' || queue?.connected?.hasInstagram;
+                              if (!asked && !connected) return null;
+                              return (
+                                <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                                  {!asked
+                                    ? <span style={{ color: 'var(--c64748b)' }}>○ {name} — {T('không chọn đăng', 'not selected')}</span>
+                                    : r?.url
+                                      ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c60a5fa)' }}>
+                                        ✓ {name} — {T('xem bài', 'view the post')}
+                                      </a>
+                                      : <span style={{ color: '#22c55e' }}>✓ {name}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {live.status !== 'posted' && live.results.filter((r) => r.url).map((r) => (
                           <a
                             key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
                             style={{ display: 'inline-block', marginRight: 12, marginBottom: 8, fontSize: 12.5, color: 'var(--c60a5fa)' }}

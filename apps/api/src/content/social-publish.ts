@@ -192,6 +192,55 @@ function refuse(channel: Channel, c: Checked, page: ConnectedPage | null): strin
   return null;
 }
 
+/**
+ * Meta's error, turned into the one thing the salon can actually do.
+ *
+ * Graph errors are written for the developer who wrote the call, not for the
+ * person holding the phone. The worst of them is #200:
+ *
+ *   "(#200) If posting to a group, requires app being installed in the group,
+ *    and either publish_to_groups permission with user token, or both
+ *    pages_read_engagement and pages_manage_posts permission with page token…"
+ *
+ * Four clauses about groups the salon is not posting to, and the real cause is
+ * none of them: the stored Page access token was minted BEFORE pages_manage_posts
+ * was requested, so it does not carry it. Adding the permission in the Meta
+ * dashboard changes nothing for an existing token. The fix is one sentence —
+ * reconnect the Page — and that sentence appears nowhere in Meta's text.
+ *
+ * The raw message is kept alongside, never replaced: it is what makes a support
+ * conversation possible, and paraphrasing away the only precise string in the
+ * system is how a support queue fills up with "it says an error".
+ */
+export function explainMetaError(raw: string | null | undefined): string | null {
+  const e = (raw ?? '').toLowerCase();
+  if (!e) return null;
+
+  if (e.includes('pages_manage_posts') || e.includes('publish_to_groups') || e.includes('#200')) {
+    return 'Trang Facebook đang thiếu quyền đăng bài. Vào Cài đặt → Messenger, bấm KẾT NỐI LẠI Trang và tick tất cả các ô Facebook hỏi. Quyền mới chỉ có hiệu lực với kết nối mới — thêm quyền ở Meta không sửa được kết nối cũ.';
+  }
+  if (e.includes('instagram_content_publish') || e.includes('instagram_business_content_publish')) {
+    return 'Tài khoản Instagram đang thiếu quyền đăng bài. Kết nối lại Trang ở Cài đặt → Messenger và tick tất cả các ô.';
+  }
+  // A token that has genuinely died, rather than one missing a scope.
+  if (e.includes('session has expired') || e.includes('access token') && (e.includes('expired') || e.includes('invalid'))) {
+    return 'Kết nối Facebook đã hết hạn. Vào Cài đặt → Messenger và kết nối lại Trang.';
+  }
+  if (e.includes('#190')) {
+    return 'Facebook đã thu hồi kết nối (đổi mật khẩu, gỡ ứng dụng, hoặc hết hạn). Kết nối lại Trang ở Cài đặt → Messenger.';
+  }
+  if (e.includes('rate limit') || e.includes('#4') && e.includes('limit')) {
+    return 'Facebook đang giới hạn số lần đăng của Trang này. Chờ khoảng một giờ rồi thử lại — không phải lỗi nội dung bài.';
+  }
+  if (e.includes('media_type') || e.includes('unsupported') || e.includes('aspect ratio')) {
+    return 'Facebook/Instagram không nhận được file này. Kiểm tra link mở được từ trình duyệt lạ, và ảnh/video đúng định dạng thường (JPG, PNG, MP4).';
+  }
+  if (e.includes('not a video') || e.includes('image_url') || e.includes('video_url')) {
+    return 'Link ảnh/video không tải được. Mở thử link đó ở tab ẩn danh — nếu phải đăng nhập mới xem được thì Meta cũng không tải được.';
+  }
+  return null;
+}
+
 // ---- when the scheduler should pick a post up ------------------------------
 
 export interface QueuedPost {

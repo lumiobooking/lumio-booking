@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import {
-  planPublish, dueNow, crowding, shapeOf, MAX_ATTEMPTS,
+  planPublish, dueNow, crowding, shapeOf, explainMetaError, MAX_ATTEMPTS,
   type Channel, type ConnectedPage, type PublishPlan, type MediaItem,
 } from './social-publish';
 
@@ -149,6 +149,10 @@ export class SocialPublishService {
         status: r.status,
         attempts: r.attempts,
         lastError: r.lastError,
+        // Meta's own words are kept; this is the sentence that says what to DO.
+        // Replacing the raw text would remove the only precise string anybody
+        // can search for when this reaches support.
+        fix: explainMetaError(r.lastError),
         results: Array.isArray(r.results) ? r.results : [],
         postedAt: r.postedAt,
         createdByName: r.createdByName,

@@ -219,11 +219,29 @@ export class MessengerService implements OnModuleInit {
     // requesting it kills the WHOLE dialog with "Invalid Scopes" — so it can be
     // switched off with FB_SCOPE_READ_ENGAGEMENT=0 until the dashboard is set.
     const readEng = process.env.FB_SCOPE_READ_ENGAGEMENT !== '0';
+    // Scheduled publishing to the salon's own Page and Instagram.
+    //
+    // Asked for here or it does not exist ANYWHERE: a Page access token carries
+    // only the scopes granted at the moment it was issued. Adding
+    // pages_manage_posts to the app in the Meta dashboard does nothing for a
+    // token minted before that — Meta answers "(#200) … requires both
+    // pages_read_engagement and pages_manage_posts", which reads like a
+    // dashboard problem and is really a stale token. Any salon connected before
+    // this line existed has to RECONNECT its Page.
+    //
+    // Same off-switch as the scopes above, and for the same reason: requesting a
+    // scope the app has not been granted kills the WHOLE dialog with "Invalid
+    // Scopes", so an app that has not added them yet sets FB_SCOPE_PUBLISH=0.
+    const publishOn = process.env.FB_SCOPE_PUBLISH !== '0';
     const scope = [
       'pages_show_list', 'pages_messaging', 'pages_manage_metadata',
       ...(readEng ? ['pages_read_engagement'] : []),
+      ...(publishOn ? ['pages_manage_posts'] : []),
       ...(bizOn ? ['business_management'] : []),
       ...(igOn ? ['instagram_basic', 'instagram_manage_messages'] : []),
+      // Instagram publishing rides on the Page connection, so it is only worth
+      // asking for when the Instagram scopes are on at all.
+      ...(igOn && publishOn ? ['instagram_content_publish'] : []),
     ].join(',');
     const params = new URLSearchParams({
       client_id: this.appId(), redirect_uri: this.oauthRedirect(), response_type: 'code',

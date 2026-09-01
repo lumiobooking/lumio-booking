@@ -185,6 +185,8 @@ interface QueuedPost {
   status: 'draft' | 'scheduled' | 'publishing' | 'posted' | 'failed' | 'expired' | 'cancelled';
   attempts: number;
   lastError: string | null;
+  /** Meta's error turned into the one action that fixes it. */
+  fix: string | null;
   results: { channel: string; id: string | null; url: string | null; error: string | null }[];
   postedAt: string | null;
   createdByName: string | null;
@@ -2248,8 +2250,22 @@ function Inner() {
                           </div>
                         )}
                         {live.lastError && !live.blockers.length && (
-                          <div style={{ padding: '9px 11px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)' }}>
-                            <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', lineHeight: 1.55 }}>{live.lastError}</div>
+                          <div style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)' }}>
+                            {live.fix && (
+                              <div style={{ fontSize: 13, color: 'var(--cfecaca)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
+                                → {live.fix}
+                              </div>
+                            )}
+                            {/* Meta's own words, kept whole. It is the only
+                                precise string anybody can search for later. */}
+                            <details>
+                              <summary style={{ fontSize: 11.5, color: 'var(--cfca5a5)', cursor: 'pointer' }}>
+                                {T('Nguyên văn lỗi từ Facebook', 'Facebook’s exact error')}
+                              </summary>
+                              <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', lineHeight: 1.5, marginTop: 5, wordBreak: 'break-word' }}>
+                                {live.lastError}
+                              </div>
+                            </details>
                           </div>
                         )}
 
@@ -2436,9 +2452,13 @@ function Inner() {
                     )}
 
                     {p.lastError && !p.blockers.length && (
-                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--cfca5a5)', lineHeight: 1.55 }}>
-                        {T('Lỗi', 'Error')}: {p.lastError}
-                        {p.attempts > 0 && ` (${T('đã thử', 'tried')} ${p.attempts}×)`}
+                      <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.55 }}>
+                        {p.fix
+                          ? <span style={{ color: 'var(--cfecaca)', fontWeight: 600 }}>→ {p.fix}</span>
+                          : <span style={{ color: 'var(--cfca5a5)' }}>{T('Lỗi', 'Error')}: {p.lastError}</span>}
+                        {p.attempts > 0 && (
+                          <span style={{ color: 'var(--c94a3b8)' }}> ({T('đã thử', 'tried')} {p.attempts}×)</span>
+                        )}
                       </div>
                     )}
 

@@ -1,5 +1,5 @@
 import {
-  planPublish, dueNow, usableMediaUrl, guessKind, shapeOf, crowding, igGrid,
+  planPublish, dueNow, usableMediaUrl, guessKind, shapeOf, crowding, igGrid, explainMetaError,
   IG_CAPTION_MAX, IG_HASHTAG_MAX, IG_CAROUSEL_MAX, MAX_ATTEMPTS, LATE_GRACE_MS, CROWDING_MS,
   type ConnectedPage, type PostDraft, type QueuedPost, type MediaItem, type Channel,
 } from './social-publish';
@@ -273,5 +273,58 @@ describe('the Instagram grid shows the profile as it will look', () => {
 
   it('keeps posts that have already published — they are what is on the profile now', () => {
     expect(igGrid([row('a', '2026-08-01T09:00:00Z', { status: 'posted' })])).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Meta’s error becomes the one thing the salon can do about it', () => {
+  const REAL_200 = '(#200) If posting to a group, requires app being installed in the group, and either publish_to_groups permission with user token, or both pages_read_engagement and pages_manage_posts permission with page token; If posting to a page, requires both pages_read_engagement and pages_manage_posts as an admin with sufficient administrative permission';
+
+  it('turns the real #200 into "reconnect the Page"', () => {
+    // Four clauses about groups the salon is not posting to, and the actual
+    // cause is none of them: the stored Page token was minted before
+    // pages_manage_posts was ever requested, so it does not carry it. Adding the
+    // permission in the Meta dashboard changes nothing for an existing token.
+    const fix = explainMetaError(REAL_200)!;
+    expect(fix).toMatch(/KẾT NỐI LẠI Trang/);
+    expect(fix).toMatch(/Cài đặt → Messenger/);
+    // And it says why the obvious move — adding the permission in Meta — will
+    // not work on its own, because that is what somebody tries first.
+    expect(fix).toMatch(/thêm quyền ở Meta không sửa được kết nối cũ/i);
+  });
+
+  it('never mentions groups, which is the half of Meta’s text that misleads', () => {
+    expect(explainMetaError(REAL_200)).not.toMatch(/group|nhóm/i);
+  });
+
+  it('names the Instagram permission separately', () => {
+    expect(explainMetaError('(#10) instagram_content_publish permission is required')).toMatch(/Instagram/);
+  });
+
+  it('separates an expired connection from a missing permission', () => {
+    // Both end in "reconnect", but one is the salon changing their password and
+    // the other is us never having asked. Telling them apart is what stops a
+    // support conversation going in circles.
+    expect(explainMetaError('Error validating access token: Session has expired')).toMatch(/hết hạn/);
+    expect(explainMetaError('(#190) Error validating access token')).toMatch(/thu hồi/);
+  });
+
+  it('says wait, not reconnect, when the Page is being rate limited', () => {
+    const fix = explainMetaError('(#4) Application request limit reached — rate limit')!;
+    expect(fix).toMatch(/Chờ/);
+    expect(fix).toMatch(/không phải lỗi nội dung/);
+  });
+
+  it('points at the link when Meta could not fetch the file', () => {
+    expect(explainMetaError('The video_url could not be downloaded')).toMatch(/tab ẩn danh/);
+  });
+
+  it('returns null rather than inventing advice for an error it does not know', () => {
+    // A confident wrong instruction costs more than none: the salon follows it,
+    // it does not help, and the real cause is now buried under a false lead.
+    expect(explainMetaError('some brand new failure nobody has seen')).toBeNull();
+    expect(explainMetaError('')).toBeNull();
+    expect(explainMetaError(null)).toBeNull();
   });
 });

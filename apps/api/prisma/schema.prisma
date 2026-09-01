@@ -2917,6 +2917,13 @@ model ScheduledPost {
   /// Where it actually landed: [{channel, id, url}]. The verifiable half.
   results   Json    @default("[]")
   postedAt  DateTime?
+  /// When Lumio deleted the uploaded files for this post.
+  ///
+  /// Facebook and Instagram keep their own copy of the media, so a published
+  /// post is unaffected — but the calendar and the Instagram grid would draw a
+  /// broken image. This is how the screen knows to draw a placeholder instead,
+  /// and how the sweep knows not to examine the row again.
+  mediaPurgedAt DateTime?
 
   createdByName String?
   createdAt DateTime @default(now())

@@ -81,6 +81,51 @@ export class UploadsService {
     return `${c.publicBase}/${safeTenant}/${name}`;
   }
 
+  /** The public base, so callers can tell OUR files from a salon's own links. */
+  async publicBase(): Promise<string | null> {
+    return (await this.config())?.publicBase ?? null;
+  }
+
+  /**
+   * Delete files we uploaded, by their path inside our own bucket.
+   *
+   * Takes RELATIVE paths ("<tenant>/<uuid>.jpg"), never URLs. Building an FTP
+   * delete from a URL is a way to delete somebody else's file; the caller
+   * derives the path through storagePathOf(), which refuses anything that is
+   * not ours and anything containing traversal.
+   *
+   * One connection for the whole batch — opening an FTP session per file is
+   * most of the cost of a sweep.
+   */
+  async deletePaths(paths: string[]): Promise<{ deleted: number; failed: number }> {
+    const c = await this.config();
+    if (!c || !paths.length) return { deleted: 0, failed: 0 };
+    const safe = paths.filter((p) => /^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{2,5}$/.test(p));
+
+    const client = new FtpClient(20_000);
+    let deleted = 0; let failed = 0;
+    try {
+      await client.access({ host: c.host, port: c.port, user: c.user, password: c.password, secure: c.secure });
+      for (const rel of safe) {
+        try {
+          await client.remove(`${c.basePath}/${rel}`);
+          deleted += 1;
+        } catch {
+          // A file already gone is a success as far as the caller is concerned;
+          // anything else is counted and moved past, because one bad path must
+          // not strand the rest of the batch.
+          failed += 1;
+        }
+      }
+    } catch (e) {
+      this.log.warn(`FTP cleanup could not connect: ${e instanceof Error ? e.message : e}`);
+      return { deleted, failed: safe.length - deleted };
+    } finally {
+      client.close();
+    }
+    return { deleted, failed };
+  }
+
   /** Super Admin "Test connection": connect, list the base dir, disconnect. */
   async test(): Promise<{ ok: boolean; message: string }> {
     const c = await this.config();

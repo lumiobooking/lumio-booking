@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -6,6 +6,8 @@ import {
   planPublish, dueNow, crowding, shapeOf, explainMetaError, MAX_ATTEMPTS,
   type Channel, type ConnectedPage, type PublishPlan, type MediaItem,
 } from './social-publish';
+import { planPurge, storagePathOf, DEFAULT_RETENTION_DAYS, type RetentionPost } from './media-retention';
+import { MEDIA_STORE, type MediaStore } from './media-store';
 
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
 
@@ -14,6 +16,7 @@ interface PostRow {
   media: unknown; imageUrl: string | null;
   scheduledAt: Date; status: string; attempts: number; lastError: string | null;
   results: unknown; postedAt: Date | null; createdByName: string | null; ideaId: string | null;
+  mediaPurgedAt?: Date | null;
 }
 
 /**
@@ -53,7 +56,10 @@ export interface PublishResult { channel: Channel; id: string | null; url: strin
 @Injectable()
 export class SocialPublishService {
   private readonly log = new Logger(SocialPublishService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(MEDIA_STORE) private readonly uploads: MediaStore,
+  ) {}
 
   private tenantId(user: AuthenticatedUser): string {
     const id = user?.tenantId;
@@ -242,6 +248,9 @@ export class SocialPublishService {
         results: Array.isArray(r.results) ? r.results : [],
         postedAt: r.postedAt,
         createdByName: r.createdByName,
+        // The files are gone from storage; the post itself is untouched on
+        // Facebook. The screen draws a placeholder instead of a broken image.
+        mediaPurged: Boolean(r.mediaPurgedAt),
         // Only meaningful while it is still waiting; a posted row's page state
         // says nothing about what already went out.
         blockers: r.status === 'draft' || r.status === 'scheduled' ? plan.problems : [],
@@ -446,6 +455,59 @@ export class SocialPublishService {
       this.log.log(`Scheduled posts: ${sent} sent, ${failed} failed, ${expired.length} expired`);
     }
     return { sent, failed, expired: expired.length };
+  }
+
+  // ---- storage retention ----------------------------------------------------
+
+  /**
+   * Delete the uploaded pictures of posts that went out long enough ago.
+   *
+   * Cross-tenant by nature, like the publish sweep. Runs on the slow clock: this
+   * is housekeeping, and a day late costs nothing.
+   *
+   * The decision of WHAT may go lives in media-retention.ts and is tested there
+   * — it is the part where a mistake deletes a salon's picture before their post
+   * has run, or deletes a file that was never ours.
+   */
+  async purgeOldMedia(now = new Date()): Promise<{ files: number; posts: number }> {
+    const publicBase = await this.uploads.publicBase().catch(() => null);
+    if (!publicBase) return { files: 0, posts: 0 };
+
+    const days = Number(process.env.MEDIA_RETENTION_DAYS || DEFAULT_RETENTION_DAYS) || DEFAULT_RETENTION_DAYS;
+    const rows = await this.posts?.findMany({
+      // Everything still holding a claim on a file has to be in this set, not
+      // just the expired rows: the plan keeps any file another post still needs.
+      where: { OR: [{ mediaPurgedAt: null }, { status: { not: 'posted' } }] },
+      orderBy: { postedAt: 'asc' },
+      take: 2000,
+      select: { id: true, status: true, postedAt: true, mediaPurgedAt: true, media: true, imageUrl: true },
+    }).catch(() => []) as (PostRow & { media: unknown })[];
+
+    const forPlan: RetentionPost[] = (rows ?? []).map((r) => ({
+      id: r.id,
+      status: r.status,
+      postedAt: r.postedAt ?? null,
+      mediaPurgedAt: r.mediaPurgedAt ?? null,
+      mediaUrls: this.mediaOf(r).map((m) => m.url),
+    }));
+
+    const plan = planPurge(forPlan, publicBase, now, days);
+    if (!plan.postIds.length) return { files: 0, posts: 0 };
+
+    const paths = plan.urls
+      .map((u) => storagePathOf(u, publicBase))
+      .filter((p): p is string => Boolean(p));
+    const out = await this.uploads.deletePaths(paths).catch(() => ({ deleted: 0, failed: paths.length }));
+
+    await this.posts?.updateMany({
+      where: { id: { in: plan.postIds } },
+      data: { mediaPurgedAt: now },
+    }).catch(() => undefined);
+
+    if (out.deleted || plan.postIds.length) {
+      this.log.log(`Media retention: ${out.deleted} file(s) deleted, ${plan.postIds.length} post(s) marked, ${out.failed} failed.`);
+    }
+    return { files: out.deleted, posts: plan.postIds.length };
   }
 
   // ---- delivery -------------------------------------------------------------

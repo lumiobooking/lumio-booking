@@ -1,5 +1,6 @@
 import { SocialPublishService } from './social-publish.service';
 import type { AuthenticatedUser } from '../common/tenant/tenant-context';
+import type { MediaStore } from './media-store';
 
 /**
  * One salon must never publish to another salon's Facebook Page.
@@ -40,7 +41,20 @@ function recordingPrisma(queries: Query[], overrides: Record<string, unknown> = 
   return new Proxy({}, { get: (_t, name: string) => model(name) }) as never;
 }
 
-const svc = (q: Query[], o: Record<string, unknown> = {}) => new SocialPublishService(recordingPrisma(q, o));
+/**
+ * Storage is stubbed: these tests are about tenant isolation and publishing
+ * decisions. Depending on the real UploadsService dragged an FTP library into
+ * every one of them, and the suite failed to RUN when that library was absent —
+ * an error saying nothing about the code under test. Retention itself is tested
+ * as pure logic in media-retention.spec.
+ */
+const stubUploads: MediaStore = {
+  publicBase: async () => null,
+  deletePaths: async () => ({ deleted: 0, failed: 0 }),
+};
+
+const svc = (q: Query[], o: Record<string, unknown> = {}) =>
+  new SocialPublishService(recordingPrisma(q, o), stubUploads);
 const user = (tenantId: string): AuthenticatedUser =>
   ({ userId: 'u1', tenantId, role: 'SALON_ADMIN', email: 'a@b.c' } as unknown as AuthenticatedUser);
 

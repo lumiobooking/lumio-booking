@@ -188,6 +188,8 @@ interface QueuedPost {
   lastError: string | null;
   /** Meta's error turned into the one action that fixes it. */
   fix: string | null;
+  /** Files removed from storage after the post had been live a while. */
+  mediaPurged?: boolean;
   /** The saved error is about a permission the connection now has. */
   errorIsStale: boolean;
   results: { channel: string; id: string | null; url: string | null; error: string | null }[];
@@ -2699,7 +2701,20 @@ function Inner() {
                     </div>
 
                     <div style={{ display: 'flex', gap: 10 }}>
-                      {!!p.media.length && (
+                      {/* The files were cleaned up after the post had been live
+                          a while. Facebook and Instagram kept their own copy, so
+                          the post is untouched — but drawing the old URL here
+                          would show a broken image and read as a fault. */}
+                      {p.mediaPurged && !!p.media.length && (
+                        <div style={{
+                          width: 46, height: 46, borderRadius: 6, flex: '0 0 46px',
+                          background: 'var(--c1e293b)', border: '1px dashed var(--c475569)',
+                          display: 'grid', placeItems: 'center', fontSize: 16, color: 'var(--c64748b)',
+                        }} title={T('Ảnh đã dọn khỏi kho — bài trên trang vẫn còn', 'Files cleaned from storage — the post itself is unaffected')}>
+                          🗄
+                        </div>
+                      )}
+                      {!p.mediaPurged && !!p.media.length && (
                         <div style={{ display: 'flex', gap: 3, flex: '0 0 auto' }}>
                           {p.media.slice(0, 3).map((m, i) => (
                             <span key={`${m.url}-${i}`} style={{

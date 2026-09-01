@@ -101,6 +101,12 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // The results of a finished week, written once. Without this the archive
       // holds intentions and never says whether any of them worked.
       if (w.outcomes) this.logger.log(`Week results recorded for ${w.outcomes} salon(s).`);
+      // Housekeeping, on the slow clock: uploaded pictures of posts that went
+      // out long ago. Meta kept its own copy, so nothing on any Page changes —
+      // this is the difference between storage that grows for ever and storage
+      // that holds only what is still waiting to publish.
+      const m = await this.publisher.purgeOldMedia().catch(() => ({ files: 0, posts: 0 }));
+      if (m.files) this.logger.log(`Media retention: ${m.files} file(s) removed from storage.`);
     } catch (e) {
       this.logger.warn(`planner tick failed: ${String(e).slice(0, 160)}`);
     } finally {

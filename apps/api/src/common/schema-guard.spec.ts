@@ -307,6 +307,22 @@ describe('the publishing queue is declared in schema AND migration', () => {
     expect(body).not.toMatch(/igId/);
   });
 
+  it('records when its uploaded files were cleaned from storage', () => {
+    // Facebook and Instagram keep their own copy, so a purged post is unaffected
+    // — but without this the calendar draws a broken image, and the sweep
+    // re-examines the same rows for ever.
+    expect(ALL.get('ScheduledPost') ?? '').toMatch(/mediaPurgedAt\s+DateTime\?/);
+  });
+
+  it('has a migration for it', () => {
+    const dir = path.join(__dirname, '../../prisma/migrations');
+    const sql = fs.readdirSync(dir)
+      .filter((d) => fs.existsSync(path.join(dir, d, 'migration.sql')))
+      .map((d) => fs.readFileSync(path.join(dir, d, 'migration.sql'), 'utf8'))
+      .join('\n');
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS "mediaPurgedAt"/i);
+  });
+
   it('indexes both the salon’s own view and the scheduler’s cross-tenant sweep', () => {
     const body = ALL.get('ScheduledPost') ?? '';
     expect(body).toMatch(/@@index\(\[tenantId, status, scheduledAt\]\)/);

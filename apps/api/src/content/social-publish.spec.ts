@@ -1,5 +1,5 @@
 import {
-  planPublish, dueNow, usableMediaUrl, guessKind, shapeOf, crowding, igGrid, explainMetaError,
+  planPublish, dueNow, usableMediaUrl, sharePageProblem, guessKind, shapeOf, crowding, igGrid, explainMetaError,
   IG_CAPTION_MAX, IG_HASHTAG_MAX, IG_CAROUSEL_MAX, MAX_ATTEMPTS, LATE_GRACE_MS, CROWDING_MS,
   type ConnectedPage, type PostDraft, type QueuedPost, type MediaItem, type Channel,
 } from './social-publish';
@@ -326,5 +326,48 @@ describe('Meta’s error becomes the one thing the salon can do about it', () =>
     expect(explainMetaError('some brand new failure nobody has seen')).toBeNull();
     expect(explainMetaError('')).toBeNull();
     expect(explainMetaError(null)).toBeNull();
+  });
+});
+
+describe('a link to a sharing PAGE is not a link to a file', () => {
+  const drive = 'https://drive.google.com/file/d/1uWxgKKeSyIYW4amFYmCKFMqXzWL1EY5q/view?usp=sharing';
+
+  it('refuses the Google Drive share link, which is the one everybody uses', () => {
+    // It opens a picture in a browser, so it looks exactly like an image link.
+    // Meta fetches it and receives Google's HTML viewer page, and the post dies
+    // hours later for a link the salon watched load correctly in their own tab.
+    expect(usableMediaUrl(drive)).toBe(false);
+    expect(sharePageProblem(drive)).toMatch(/trang xem, không phải file ảnh/);
+  });
+
+  it('says what to do instead, not just what is wrong', () => {
+    expect(sharePageProblem(drive)).toMatch(/Tải ảnh lên/);
+  });
+
+  it('surfaces that sentence as the post’s blocker, not the generic https one', () => {
+    const p = planPublish(draft({ media: [{ url: drive, kind: 'image' }] }), PAGE);
+    expect(p.ready).toBe(false);
+    // "must be a public https link" is exactly what a Drive share link IS, so
+    // the generic message would read as already satisfied.
+    expect(p.problems[0]).not.toMatch(/https công khai/);
+    expect(p.problems[0]).toMatch(/Google Drive/);
+  });
+
+  it.each([
+    ['https://www.dropbox.com/s/abc/photo.jpg?dl=0', /Dropbox/],
+    ['https://1drv.ms/i/s!Abc', /OneDrive/],
+    ['https://photos.app.goo.gl/abc', /Google Photos/],
+    ['https://salon.com/gallery/nails.html', /trang web/],
+  ])('refuses %s', (url, expected) => {
+    expect(sharePageProblem(url)).toMatch(expected);
+  });
+
+  it('lets a Dropbox link through once it points at the raw file', () => {
+    expect(sharePageProblem('https://www.dropbox.com/s/abc/photo.jpg?raw=1')).toBeNull();
+  });
+
+  it('leaves an ordinary CDN link alone', () => {
+    expect(sharePageProblem('https://cdn.lumio.app/p/1.jpg')).toBeNull();
+    expect(sharePageProblem('https://luxnails.com/wp-content/uploads/nail.jpg')).toBeNull();
   });
 });

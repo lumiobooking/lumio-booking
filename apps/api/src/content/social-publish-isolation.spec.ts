@@ -240,6 +240,25 @@ describe('taking a post off the calendar for good', () => {
     expect(q.filter((x) => x.op === 'deleteMany')).toHaveLength(0);
   });
 
+  it('lets a Lumio support session delete a published row', async () => {
+    // The salon loses its only record; Lumio staff are clearing test data and
+    // understand that the post itself stays on Facebook.
+    const lumio = { userId: 'u1', tenantId: 'T1', role: 'SALON_ADMIN', supportSession: true, email: 'a@b.c' } as unknown as AuthenticatedUser;
+    const q: Query[] = [];
+    const r = await svc(q, rowOf('posted')).remove(lumio, 'p1');
+    expect(r).toEqual({ ok: true, wasPosted: true });
+    expect((q.find((x) => x.op === 'deleteMany')!.args.where as { tenantId: string }).tenantId).toBe('T1');
+  });
+
+  it('still scopes a support delete to the salon being supported', async () => {
+    // A support session is inside ONE salon. It is not a key to every row on
+    // the platform, and the filter is what keeps that true.
+    const lumio = { userId: 'u1', tenantId: 'T1', role: 'SUPER_ADMIN', email: 'a@b.c' } as unknown as AuthenticatedUser;
+    const q: Query[] = [];
+    await svc(q, { 'scheduledPost.findFirst': null }).remove(lumio, 'p1').catch(() => undefined);
+    expect(q.filter((x) => x.op === 'deleteMany')).toHaveLength(0);
+  });
+
   it('REFUSES to delete a post that has already gone out', async () => {
     // Once live, the row stops being a plan and becomes the answer to "what did
     // we actually publish?" — it carries the publish time and the links, and the

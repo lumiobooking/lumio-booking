@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import {
   planPublish, dueNow, crowding, shapeOf, explainMetaError, MAX_ATTEMPTS,
@@ -183,6 +184,9 @@ export class SocialPublishService {
    */
   async list(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
+    // Lumio staff get the extra affordance; the screen must know before it
+    // draws a button, not find out from an error afterwards.
+    const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
     const rows = await this.posts?.findMany({
       where: { tenantId },
       orderBy: { scheduledAt: 'asc' },
@@ -257,6 +261,8 @@ export class SocialPublishService {
         missingScopes,
       } : null,
       posts,
+      /** True for a Lumio support session: may delete published rows too. */
+      canDeletePosted: isLumio,
       crowding: crowding(live.map((p) => ({ id: p.id, scheduledAt: p.scheduledAt, channels: p.channels }))),
     };
   }
@@ -360,7 +366,14 @@ export class SocialPublishService {
     const row = await this.posts?.findFirst({ where: { id, tenantId }, select: { id: true, status: true } })
       .catch(() => null) as { id: string; status: string } | null;
     if (!row) throw new NotFoundException('Không tìm thấy bài này.');
-    if (row.status === 'posted') {
+    // The Lumio team can clear a published row; the salon cannot.
+    //
+    // For the salon this row is their only account of what went up, and losing
+    // it silently shrinks the week's results. For Lumio staff it is sometimes
+    // test data that has to go, and they are the ones who understand that
+    // deleting the row does NOT take the post off Facebook.
+    const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
+    if (row.status === 'posted' && !isLumio) {
       throw new BadRequestException(
         'Bài đã đăng thì không xoá được — đây là sổ ghi những gì thật sự đã lên trang. '
         + 'Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram. '
@@ -375,7 +388,8 @@ export class SocialPublishService {
     // Scoped by tenant in the filter as well as the lookup: two checks, because
     // this one is not reversible.
     await this.posts?.deleteMany({ where: { id, tenantId } });
-    return { ok: true };
+    // The caller says the sentence about Facebook; this says which case it was.
+    return { ok: true, wasPosted: row.status === 'posted' };
   }
 
   /** Send one now. Also the call that satisfies Meta's API-test requirement. */

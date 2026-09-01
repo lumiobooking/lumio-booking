@@ -95,6 +95,40 @@ export interface PublishPlan {
 
 const hashtagCount = (s: string) => (s.match(/#[\p{L}\p{N}_]+/gu) ?? []).length;
 
+/**
+ * A link to a SHARING PAGE rather than to the file itself.
+ *
+ * This is the mistake everybody makes, and it is invisible: a Google Drive
+ * "share" link opens a picture in a browser, so it looks exactly like an image
+ * link. It is not. Meta's servers fetch that URL and receive an HTML viewer
+ * page — some hundred kilobytes of Google's JavaScript — and the post fails
+ * with a message about an unsupported format, hours later, for a link the salon
+ * watched load correctly in their own tab.
+ *
+ * Refusing it while they are still looking at the screen is worth more than any
+ * error message afterwards. Returns the fix, or null when the link is fine.
+ */
+export function sharePageProblem(url: string): string | null {
+  const u = (url ?? '').trim();
+  if (/drive\.google\.com|docs\.google\.com/i.test(u)) {
+    return 'Link Google Drive là trang xem, không phải file ảnh — Facebook tải về chỉ nhận được trang web. Dùng nút "Tải ảnh lên" ở dưới, hoặc dán link ảnh từ website của tiệm.';
+  }
+  if (/dropbox\.com/i.test(u) && !/(\?|&)(raw|dl)=1/i.test(u)) {
+    return 'Link Dropbox này là trang xem. Đổi đuôi thành ?raw=1, hoặc dùng nút "Tải ảnh lên".';
+  }
+  if (/1drv\.ms|onedrive\.live\.com|sharepoint\.com/i.test(u)) {
+    return 'Link OneDrive là trang xem, không phải file ảnh. Dùng nút "Tải ảnh lên" ở dưới.';
+  }
+  if (/photos\.google\.com|photos\.app\.goo\.gl/i.test(u)) {
+    return 'Link Google Photos không tải file trực tiếp được. Dùng nút "Tải ảnh lên" ở dưới.';
+  }
+  // A path that ends in a page extension is a page, whatever the host.
+  if (/\.(html?|php|aspx)(\?|#|$)/i.test(u)) {
+    return 'Link này trỏ tới một trang web, không phải file ảnh hay video.';
+  }
+  return null;
+}
+
 /** A public https URL. Meta fetches this itself, so localhost cannot work. */
 export function usableMediaUrl(url: string | null | undefined): boolean {
   const u = (url ?? '').trim();
@@ -103,6 +137,7 @@ export function usableMediaUrl(url: string | null | undefined): boolean {
   // produces a container error minutes after the salon has walked away.
   if (/^https:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(u)) return false;
   if (/^https:\/\/[^/]*\.local(\b|[:/])/i.test(u)) return false;
+  if (sharePageProblem(u)) return false;
   return true;
 }
 
@@ -159,6 +194,10 @@ function refuse(channel: Channel, c: Checked, page: ConnectedPage | null): strin
   if (!page.enabled) return `Trang ${page.pageName ?? ''} đang tắt kết nối. Bật lại rồi mới đăng được.`.replace('  ', ' ');
   if (!c.text && !c.media.length) return 'Bài chưa có nội dung.';
 
+  // The share-page case gets its own sentence, because "must be a public https
+  // link" is exactly what a Google Drive share link looks like to its owner.
+  const share = c.media.map((m) => sharePageProblem(m.url)).find(Boolean);
+  if (share) return share;
   const bad = c.media.find((m) => !usableMediaUrl(m.url));
   if (bad) return 'Link ảnh/video phải là https công khai — Facebook và Instagram tự tải file về từ link này.';
 

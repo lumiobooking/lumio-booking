@@ -22,6 +22,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
+import { compressImageToFit } from '../../../lib/image';
 
 interface Idea {
   id: string;
@@ -204,6 +205,8 @@ interface QueuePayload {
   posts: QueuedPost[];
   /** Advice, never a refusal: where a month of posts fights itself. */
   crowding: { id: string; minutesApart: number; message: string }[];
+  /** Lumio support session: may delete published rows too. */
+  canDeletePosted?: boolean;
 }
 
 /** One icon per kind of job, so the week reads at a glance on a phone. */
@@ -408,6 +411,7 @@ function Inner() {
     id?: string; channels: ('facebook' | 'instagram')[]; message: string; media: MediaItem[]; at: string;
   } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
+  const [uploading, setUploading] = useState(false);
   // Three views over one queue: a list reads, a calendar plans, a grid judges.
   const [view, setView] = useState<'calendar' | 'grid' | 'list'>('calendar');
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -508,6 +512,29 @@ function Inner() {
   }
 
   /** Add one pasted link to the draft, guessing photo vs video from the URL. */
+  /**
+   * Upload a picture and use the URL we get back.
+   *
+   * Videos are not offered here: the existing upload path takes a compressed
+   * base64 image, and a phone video is tens of megabytes. Pretending otherwise
+   * would fail at a size limit after the salon had waited for it.
+   */
+  async function uploadMedia(file: File) {
+    if (!postDraft || uploading) return;
+    setUploading(true); setPostErr(null);
+    try {
+      const dataUrl = await compressImageToFit(file, { maxChars: 4_000_000 });
+      const { url } = await apiFetch<{ url: string }>('/uploads/service-photo', {
+        method: 'POST', token, body: { dataUrl },
+      });
+      setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'image' }] } : d));
+    } catch (e) {
+      setPostErr(e instanceof Error
+        ? `${T('Tải ảnh lên không được', 'Upload failed')}: ${e.message}`
+        : 'error');
+    } finally { setUploading(false); }
+  }
+
   function addMedia() {
     const url = mediaInput.trim();
     if (!postDraft || !url || postDraft.media.length >= 10) return;
@@ -568,11 +595,15 @@ function Inner() {
   async function removePost(id: string) {
     if (queueBusy) return;
     const p = queue?.posts.find((x) => x.id === id);
-    // The server refuses this too. Stopping here keeps the salon from meeting an
-    // error message for something the screen should never have offered.
-    if (p?.status === 'posted') return;
-    if (!window.confirm(T('Xoá hẳn bài này khỏi lịch? Không khôi phục lại được.',
-                          'Delete this post from the calendar? This cannot be undone.'))) return;
+    // The server refuses this for a salon too. Stopping here keeps them from
+    // meeting an error message for something the screen should never offer.
+    if (p?.status === 'posted' && !queue?.canDeletePosted) return;
+    const msg = p?.status === 'posted'
+      ? T('Xoá bản ghi này khỏi lịch Lumio?\n\nBài trên Facebook/Instagram VẪN CÒN — muốn gỡ hẳn phải xoá trực tiếp trên trang đó.\nTiệm sẽ mất dấu vết bài này trong kết quả tuần.',
+          'Delete this record from Lumio’s calendar?\n\nThe post STAYS UP on Facebook/Instagram.\nThe salon loses this post from its weekly results.')
+      : T('Xoá hẳn bài này khỏi lịch? Không khôi phục lại được.',
+          'Delete this post from the calendar? This cannot be undone.');
+    if (!window.confirm(msg)) return;
     setQueueBusy(true); setPostErr(null);
     try {
       await apiFetch(`/content/posts/${id}/remove`, { method: 'DELETE', token });
@@ -2188,8 +2219,28 @@ function Inner() {
                           background: 'transparent', color: postDraft.media.length >= 10 ? 'var(--c64748b)' : 'var(--ca5b4fc)',
                         }}
                       >
-                        + {T('Thêm', 'Add')}
+                        + {T('Thêm link', 'Add link')}
                       </button>
+                      {/* The way out of the link problem entirely.
+                          Asking a salon for a "public https link to the file"
+                          is asking them to understand hosting; the answer they
+                          reach for is a Google Drive share link, which is a web
+                          page and can never work. Uploading is the path that
+                          does not require them to know any of that. */}
+                      <label style={{
+                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 700,
+                        display: 'inline-flex', alignItems: 'center', cursor: uploading ? 'wait' : 'pointer',
+                        border: 'none', background: '#6366f1', color: '#fff',
+                      }}>
+                        {uploading ? T('Đang tải…', 'Uploading…') : `📷 ${T('Tải ảnh lên', 'Upload a photo')}`}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={uploading || postDraft.media.length >= 10}
+                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMedia(f); }}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 4, lineHeight: 1.5 }}>
                       {postDraft.media.length >= 2
@@ -2435,9 +2486,23 @@ function Inner() {
                             weekly results count it. It is not deletable, so no
                             button pretends otherwise. */}
                         {live.status === 'posted' ? (
-                          <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
-                            {T('Bài đã đăng được giữ lại làm sổ ghi — không xoá được ở đây. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
-                               'Published posts are kept as the record and cannot be deleted here. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
+                          <div>
+                            <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
+                              {T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
+                                 'Published posts are kept as the record. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
+                            </div>
+                            {queue?.canDeletePosted && (
+                              <button
+                                onClick={() => removePost(live.id)}
+                                disabled={queueBusy}
+                                style={{
+                                  marginTop: 9, minHeight: 38, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5,
+                                  border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontWeight: 600,
+                                }}
+                              >
+                                🗑 {T('Xoá khỏi lịch (Lumio)', 'Remove from calendar (Lumio)')}
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

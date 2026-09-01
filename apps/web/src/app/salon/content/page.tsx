@@ -523,15 +523,34 @@ function Inner() {
     if (!postDraft || uploading) return;
     setUploading(true); setPostErr(null);
     try {
-      const dataUrl = await compressImageToFit(file, { maxChars: 4_000_000 });
+      // ---- the numbers matter, and my first pass got them wrong ----
+      //
+      // maxSide defaults to 512 in this helper, sized for avatars and service
+      // thumbnails. I passed only maxChars, so every uploaded post picture was
+      // being squashed to 512px — Instagram renders at 1080 and would have made
+      // that visibly soft. 1440 is comfortably above what either platform shows.
+      //
+      // maxChars 1.6M ≈ 1.2MB of actual bytes. The server refuses anything over
+      // 3MB decoded, so my earlier 4M sat right on that line and would have
+      // thrown "Image is too large" on some photos. It is also simply more than
+      // a feed picture needs: past this the upload gets slower and nothing on
+      // screen looks better.
+      const dataUrl = await compressImageToFit(file, {
+        maxSide: 1440, quality: 0.85, maxChars: 1_600_000,
+      });
       const { url } = await apiFetch<{ url: string }>('/uploads/service-photo', {
         method: 'POST', token, body: { dataUrl },
       });
       setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'image' }] } : d));
     } catch (e) {
-      setPostErr(e instanceof Error
-        ? `${T('Tải ảnh lên không được', 'Upload failed')}: ${e.message}`
-        : 'error');
+      const raw = e instanceof Error ? e.message : '';
+      // The server answers with a code here, not a sentence. Passing that
+      // through would tell a salon owner "STORAGE_NOT_CONFIGURED", which is a
+      // message for whoever set up the platform, not for them.
+      setPostErr(/STORAGE_NOT_CONFIGURED/i.test(raw)
+        ? T('Chưa bật kho lưu ảnh trên hệ thống. Báo Lumio bật giúp, hoặc tạm thời dán link ảnh từ website của tiệm.',
+            'Image storage is not switched on yet. Ask Lumio to enable it, or paste a link from your own website for now.')
+        : `${T('Tải ảnh lên không được', 'Upload failed')}${raw ? `: ${raw}` : ''}`);
     } finally { setUploading(false); }
   }
 
@@ -2247,7 +2266,8 @@ function Inner() {
                         ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
                         : postDraft.media.some((m) => m.kind === 'video')
                           ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
-                          : T('Dán link rồi Enter. Có thể thêm tới 10 ảnh/video.', 'Paste a link and press Enter. Up to 10 items.')}
+                          : T('Ảnh: bấm "Tải ảnh lên". Video: phải dán link trỏ THẲNG tới file .mp4 — link Google Drive/Photos không dùng được.',
+                              'Photos: use Upload. Video: paste a link pointing straight at the .mp4 file — Google Drive/Photos links do not work.')}
                     </div>
                   </div>
 

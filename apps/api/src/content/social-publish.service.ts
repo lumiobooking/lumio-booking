@@ -325,7 +325,10 @@ export class SocialPublishService {
       // A post that already went out is history. Editing it here would change
       // the record without changing what is on Facebook.
       if (owned.status === 'posted') throw new BadRequestException('Bài đã đăng rồi — không sửa được nữa.');
-      await this.posts?.update({ where: { id: owned.id }, data: { ...data, attempts: 0, lastError: null } });
+      // An edit resets the salon's sign-off and releases any comment-hold:
+      // what they approved is not what will publish now, and the team acting
+      // on the post IS the answer the hold was waiting for.
+      await this.posts?.update({ where: { id: owned.id }, data: { ...data, attempts: 0, lastError: null, approvedAt: null, approvedByName: null, heldAt: null } });
       return { ok: true, id: owned.id };
     }
 

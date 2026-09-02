@@ -5,6 +5,7 @@ import { ContentChatService } from './content-chat.service';
 import { SocialPublishService } from './social-publish.service';
 import { ContentAdminService } from './content-admin.service';
 import { TrendFeedService } from './trends/trend-feed.service';
+import { PostReviewService } from './post-review.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -27,7 +28,33 @@ export class ContentController {
     private readonly chat: ContentChatService,
     private readonly publisher: SocialPublishService,
     private readonly trends: TrendFeedService,
+    private readonly review: PostReviewService,
   ) {}
+
+  // ---- the salon's approval screen (the logged-in door) --------------------
+  // The client-safe shape: scheduled + recently-posted posts only, one-tap
+  // approve. Comments ride the existing /content/chat routes (subject post:x).
+
+  @Get('review')
+  reviewFeed(@CurrentUser() user: AuthenticatedUser) {
+    return this.review.feedFor(user);
+  }
+
+  @Post('review/:postId/approve')
+  reviewApprove(@CurrentUser() user: AuthenticatedUser, @Param('postId') postId: string) {
+    return this.review.approveFor(user, postId);
+  }
+
+  /** Team only (enforced in the service): the link to drop into the salon's group chat. */
+  @Post('review-link')
+  reviewLink(@CurrentUser() user: AuthenticatedUser) {
+    return this.review.ensureLink(user);
+  }
+
+  @Delete('review-link')
+  revokeReviewLink(@CurrentUser() user: AuthenticatedUser) {
+    return this.review.revokeLink(user);
+  }
 
   // ---- scheduled posting to the salon's OWN Page and Instagram -------------
   // Every route is scoped to the caller's tenant inside the service, and the

@@ -189,6 +189,12 @@ describe('the scheduler sends what is due and nothing else', () => {
     expect(dueNow([q({ attempts: MAX_ATTEMPTS })], NOW).send).toHaveLength(0);
   });
 
+  it('waits on a held post — an open client comment outranks the clock', () => {
+    const r = dueNow([q({ heldAt: new Date('2026-09-01T13:50:00Z') })], NOW);
+    expect(r.send).toHaveLength(0);
+    expect(r.expired).toHaveLength(0);
+  });
+
   it('expires rather than publishes a post from two days ago', () => {
     // A server down for two days must not suddenly post Tuesday's offer on
     // Thursday — the offer is wrong and the salon looks asleep at the wheel.

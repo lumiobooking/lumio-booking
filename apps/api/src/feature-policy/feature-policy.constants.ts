@@ -40,6 +40,9 @@ export const FEATURE_DEFS: FeatureDef[] = [
   // switch ON is a decision someone makes per salon, never a side effect of a
   // deploy.
   { key: 'contentPlan', label: 'Marketing plan & posts', hrefs: ['/salon/content'], default: 'platform' },
+  // Follows the content-plan switch unless set on its own: a salon whose plan
+  // the agency runs gets the approval screen with it, in one flip.
+  { key: 'postApproval', label: 'Post approval (client review)', hrefs: ['/salon/approve-posts'], default: 'platform', fallbackKey: 'contentPlan' },
   { key: 'marketing', label: 'Marketing & campaigns', hrefs: ['/salon/marketing'], default: 'platform' },
   // Split out of 'marketing' — inherits it until someone sets it on its own.
   { key: 'marketingReport', label: 'Marketing report (monthly)', hrefs: ['/salon/marketing/monthly'], default: 'platform', fallbackKey: 'marketing' },

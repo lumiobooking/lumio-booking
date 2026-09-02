@@ -41,6 +41,7 @@ const P: Record<string, React.ReactNode> = {
   pie: <><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12V3.5Z" /><path d="M15 3.9A8.5 8.5 0 0 1 20.1 9H15V3.9Z" /></>,
   mail: <><rect x="3.5" y="5.5" width="17" height="13.5" rx="2" /><path d="m4.5 7.5 7.5 6 7.5-6" /></>,
   star: <path d="m12 3.8 2.6 5.2 5.8.8-4.2 4.1 1 5.7-5.2-2.7-5.2 2.7 1-5.7L3.6 9.8l5.8-.8L12 3.8Z" />,
+  check: <><circle cx="12" cy="12" r="8.5" /><path d="m8.3 12.2 2.5 2.6 4.9-5.4" /></>,
   chat: <path d="M4 5.5h16v11H10l-4.5 4v-4H4v-11Z" />,
   inboxTray: <><path d="M4 4.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V4.5Z" /><path d="M4 13h4.5c0 1.6 1.5 3 3.5 3s3.5-1.4 3.5-3H20" /></>,
   bot: <><rect x="4.5" y="8" width="15" height="11" rx="3" /><path d="M12 8V4.5M12 4.5a1.3 1.3 0 1 0-.01 0Z" /><circle cx="9" cy="13" r="1" fill="currentColor" stroke="none" /><circle cx="15" cy="13" r="1" fill="currentColor" stroke="none" /><path d="M9.5 16.2h5" /></>,

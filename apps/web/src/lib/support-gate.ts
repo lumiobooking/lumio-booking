@@ -47,6 +47,7 @@ export const SUPPORT_ONLY: string[] = [
  */
 export const DEFAULT_HIDDEN: string[] = [
   '/salon/content',            // daily content plan — an agency deliverable
+  '/salon/approve-posts',      // the client's approval screen — turned on per salon
   '/salon/marketing',
   '/salon/marketing/monthly',
   '/salon/email',

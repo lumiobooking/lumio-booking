@@ -181,7 +181,29 @@ export class ContentChatService {
       update: { lastMessageAt: new Date(), lastSide: side, resolvedAt: null, resolvedByName: null },
     }).catch(() => undefined);
 
+    await this.applyHold(tenantId, key, side);
+
     return row;
+  }
+
+  /**
+   * The comment-hold, wired to the conversation itself.
+   *
+   * A SALON message on a scheduled post holds it: publishing over an open
+   * comment is how the wrong price goes out with the client watching. A LUMIO
+   * message releases it — answering is the act the hold was waiting for. Both
+   * are no-ops on anything that is not a scheduled post.
+   */
+  private async applyHold(tenantId: string, subject: string, side: 'lumio' | 'salon') {
+    if (!subject.startsWith('post:')) return;
+    const postId = subject.slice('post:'.length);
+    const posts = (this.prisma as unknown as Record<string, {
+      updateMany: (a: unknown) => Promise<unknown>;
+    }>).scheduledPost;
+    await posts?.updateMany({
+      where: { id: postId, tenantId, status: 'scheduled' },
+      data: side === 'salon' ? { heldAt: new Date() } : { heldAt: null },
+    }).catch(() => undefined);
   }
 
   /**

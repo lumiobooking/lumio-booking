@@ -2172,13 +2172,33 @@ function Inner() {
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
                     🚀 {T('Lịch đăng bài tự động', 'Scheduled posts')}
                   </div>
+                  {/* Team only: the link the client's group chat gets. One tap
+                      copies it; the server reuses a fresh link or mints one. */}
+                  {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                    <button
+                      onClick={async (e) => {
+                        const btn = e.currentTarget;
+                        try {
+                          const r = await apiFetch<{ url: string }>('/content/review-link', { method: 'POST', token });
+                          await navigator.clipboard.writeText(r.url);
+                          btn.textContent = '✓ ' + T('Đã sao chép link duyệt', 'Review link copied');
+                        } catch { btn.textContent = T('Không tạo được link', 'Could not make the link'); }
+                      }}
+                      style={{
+                        marginLeft: 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
+                        border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      }}
+                    >
+                      🔗 {T('Link duyệt bài cho khách', 'Client review link')}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       const local = wallTomorrowAt('10:00');
                       setPostDraft({ channels: ['facebook'], message: '', media: [], at: local });
                     }}
                     style={{
-                      marginLeft: 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
+                      marginLeft: (Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? undefined : 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
                       border: 'none', background: '#6366f1', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
                     }}
                   >

@@ -2922,6 +2922,15 @@ model ScheduledPost {
   scheduledAt DateTime
   /// draft | scheduled | publishing | posted | failed | expired | cancelled
   status    String  @default("draft")
+
+  /// The salon's sign-off. Optional by design: an unapproved post still goes
+  /// out on schedule — approval is the client's chance to speak, not a gate
+  /// the calendar waits on. Cleared whenever the team edits the content.
+  approvedAt     DateTime?
+  approvedByName String?
+  /// Set when the salon leaves a comment the team has not answered yet. A held
+  /// post does NOT auto-publish — the one case where the calendar waits.
+  heldAt         DateTime?
   attempts  Int     @default(0)
   lastError String?
 

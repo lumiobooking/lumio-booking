@@ -52,6 +52,10 @@ const GROUPS: NavGroup[] = [
   ] },
   { id: 'growth', label: 'Marketing & AI', items: [
     { href: '/salon/content', label: 'Marketing plan & posts', icon: 'sparkle' },
+    // The client's own door: preview + approve what is about to publish.
+    // Deliberately its own route, NOT the content page — that page is the
+    // agency's kitchen and has its own switch; this one is the dining room.
+    { href: '/salon/approve-posts', label: 'Duyệt bài đăng', icon: 'check' },
     { href: '/salon/marketing', label: 'Marketing', icon: 'megaphone' },
     { href: '/salon/marketing/monthly', label: 'Marketing report', icon: 'chart' },
     { href: '/salon/email', label: 'Email marketing', icon: 'mail' },

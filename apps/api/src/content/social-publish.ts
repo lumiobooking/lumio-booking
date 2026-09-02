@@ -294,6 +294,8 @@ export interface QueuedPost {
   status: string;
   scheduledAt: Date;
   attempts: number;
+  /** A salon comment the team has not answered. A held post does not publish. */
+  heldAt?: Date | null;
 }
 
 /** Give up after this many tries rather than retrying a bad post forever. */
@@ -314,6 +316,10 @@ export function dueNow(posts: QueuedPost[], now: Date): { send: QueuedPost[]; ex
   for (const p of posts ?? []) {
     if (p.status !== 'scheduled') continue;
     if (p.attempts >= MAX_ATTEMPTS) continue;
+    // The one case the calendar waits: the salon said something and nobody
+    // answered. Publishing over an open comment is how the wrong price goes
+    // out with the client watching.
+    if (p.heldAt) continue;
     const at = p.scheduledAt.getTime();
     if (at > now.getTime()) continue;
     if (now.getTime() - at > LATE_GRACE_MS) expired.push(p);

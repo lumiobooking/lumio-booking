@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState, CSSProperties } from 'react';
+import { Fragment, useEffect, useRef, useState, CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
@@ -123,19 +123,31 @@ export default function HomePage() {
     fetch(`${API_URL}/public/plans`).then((r) => r.json()).then((d) => Array.isArray(d) && setPlans(d)).catch(() => {});
   }, []);
 
-  const dashHref = user?.role === 'SUPER_ADMIN' ? '/super-admin/tenants' : user?.role === 'STAFF' ? '/staff/bookings' : '/salon';
+  // Every role goes to ITS OWN door. Sending SUPPORT to /salon looked
+  // harmless until the app redirect met SalonShell's guard: /salon bounced a
+  // support account back to /, which redirected to /salon, forever - Safari
+  // kills the app at 100 history writes in 10 seconds.
+  const dashHref = user?.role === 'SUPER_ADMIN' ? '/super-admin/tenants'
+    : user?.role === 'STAFF' ? '/staff/bookings'
+      : user?.role === 'SUPPORT' ? '/agency'
+        : '/salon';
 
   // Opened as the INSTALLED app (home-screen icon)? Then this marketing page
   // is the wrong room: the person tapped the icon to run their salon, not to
   // read the pitch. Phones that installed the icon while the manifest was
   // broken saved THIS page as the app's start page, so the redirect is what
   // heals every existing install without asking anyone to re-add the icon.
+  const sentAway = useRef(false);
   useEffect(() => {
     if (!ready) return; // wait until we know who is signed in, or we'd bounce an owner to /login
+    if (sentAway.current) return; // ONE redirect per visit: if a guard bounces us back, stay - a loop is worse than the pitch
     try {
       const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches
         || (navigator as unknown as { standalone?: boolean }).standalone === true;
-      if (standalone) router.replace(user ? dashHref : '/login');
+      if (standalone) {
+        sentAway.current = true;
+        router.replace(user ? dashHref : '/login');
+      }
     } catch { /* an odd browser reads the page as usual */ }
   }, [ready, router, user, dashHref]);
 

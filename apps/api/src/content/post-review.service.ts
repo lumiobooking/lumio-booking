@@ -167,7 +167,7 @@ export class PostReviewService {
     }
     const token = makeReviewToken(tenantId, row.secret!);
     const base = process.env.PUBLIC_WEB_URL || 'https://lumiobooking.com';
-    return { url: `${base}/review/${token}`, expiresAt: new Date(Date.parse(row.createdAt!) + 30 * 86_400_000) };
+    return { url: `${base}/review-posts/${token}`, expiresAt: new Date(Date.parse(row.createdAt!) + 30 * 86_400_000) };
   }
 
   async revokeLink(user: AuthenticatedUser) {

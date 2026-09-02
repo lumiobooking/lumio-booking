@@ -1,7 +1,10 @@
 'use client';
 
 /**
- * The group-chat door: /review/{token}, no login.
+ * The group-chat door: /review-posts/{token}, no login.
+ *
+ * NOT /review/{token} — that path already belongs to the customer review QR
+ * page, and Next refuses two different param names on one route.
  *
  * The token in the URL is the whole credential — the server resolves it to
  * exactly one salon or refuses (see api post-review.ts). This page adds no

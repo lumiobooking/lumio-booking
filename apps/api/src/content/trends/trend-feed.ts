@@ -43,7 +43,7 @@
 
 import { bi, type Txt } from '../i18n';
 
-export type TrendSource = 'youtube' | 'instagram' | 'google';
+export type TrendSource = 'youtube' | 'instagram' | 'google' | 'pinterest';
 
 /** One trending thing, whichever feed it came from. */
 export interface TrendItem {
@@ -116,6 +116,12 @@ export interface TradeQueries {
   hashtags: string[];
   /** Google Trends seed terms. Related rising queries come back for each. */
   google: string[];
+  /**
+   * Pinterest Trends interest facets, narrowing "growing keywords" to the
+   * trade's corner of Pinterest. Values Pinterest does not recognise cost
+   * nothing: the pull retries once without them.
+   */
+  pinterestInterests: string[];
 }
 
 const QUERIES: Record<string, TradeQueries> = {
@@ -124,24 +130,28 @@ const QUERIES: Record<string, TradeQueries> = {
     youtube: ['nail art', 'nail design ideas', 'nail trends'],
     hashtags: ['nailart', 'nailsofinstagram', 'naildesign'],
     google: ['nails', 'nail salon'],
+    pinterestInterests: ['beauty'],
   },
   RESTAURANT: {
     mustMatch: /\b(food|restaurant|recipe|dish|cook|chef|menu|eat|kitchen|pho|bbq|taco|sushi|noodle)\b/i,
     youtube: ['restaurant food', 'viral food recipe', 'street food'],
     hashtags: ['foodie', 'foodporn', 'restaurant'],
     google: ['restaurant near me', 'food'],
+    pinterestInterests: ['food_and_drink'],
   },
   REAL_ESTATE: {
     mustMatch: /\b(house|home|real estate|realtor|listing|mortgage|apartment|condo|property|buyers?|sellers?)\b/i,
     youtube: ['house tour', 'real estate tips', 'home buying'],
     hashtags: ['realestate', 'hometour', 'realtor'],
     google: ['homes for sale', 'real estate'],
+    pinterestInterests: ['home_decor'],
   },
   SERVICE: {
     mustMatch: /\b(before|after|small business|local|repair|clean|install|service|customer|shop)\b/i,
     youtube: ['home service before and after', 'small business marketing', 'local business'],
     hashtags: ['smallbusiness', 'beforeandafter', 'localbusiness'],
     google: ['near me', 'local services'],
+    pinterestInterests: [],
   },
 };
 
@@ -157,11 +167,13 @@ export function scopeOf(industry: string | null | undefined, market: string | nu
 }
 
 /** YouTube's regionCode / DataForSEO's location for a market. */
-export function marketCodes(market: string | null | undefined): { region: string; dataforseoLocation: number; lang: string } {
+export function marketCodes(market: string | null | undefined): { region: string; dataforseoLocation: number; lang: string; pinterestRegion: string | null } {
   switch (String(market ?? '').toUpperCase()) {
-    case 'CA': return { region: 'CA', dataforseoLocation: 2124, lang: 'en' };
-    case 'VN': return { region: 'VN', dataforseoLocation: 2704, lang: 'vi' };
-    default: return { region: 'US', dataforseoLocation: 2840, lang: 'en' };
+    case 'CA': return { region: 'CA', dataforseoLocation: 2124, lang: 'en', pinterestRegion: 'CA' };
+    // Pinterest Trends covers a short list of markets; VN is not on it, so the
+    // source shows "not on" there instead of failing every morning.
+    case 'VN': return { region: 'VN', dataforseoLocation: 2704, lang: 'vi', pinterestRegion: null };
+    default: return { region: 'US', dataforseoLocation: 2840, lang: 'en', pinterestRegion: 'US' };
   }
 }
 
@@ -460,6 +472,33 @@ export function overlay(items: TrendItem[], input: OverlayInput, now = new Date(
       ageLabel: ageLabel(it.publishedAt, now),
     };
   });
+}
+
+interface PinTrend { keyword?: string; pct_growth_wow?: number | null }
+
+/**
+ * Pinterest's "growing keywords" answer into rising queries.
+ *
+ * The list is one interest facet of one market, so most of it is near the
+ * trade rather than in it ("berry makeup" next to "chrome nails" for a nail
+ * salon). Keywords the trade's own words appear in are shown first; the rest
+ * still follow, because the adjacent aisle is exactly what a marketing board
+ * is for — but capped, so it stays a garnish and not the meal.
+ */
+export function parsePinterest(body: unknown, industry: string | null | undefined, cap = 10): RisingQuery[] {
+  const list = (body as { trends?: PinTrend[] })?.trends;
+  if (!Array.isArray(list)) return [];
+  const q = queriesFor(industry);
+  const all: RisingQuery[] = list.flatMap((t) => {
+    const kw = String(t?.keyword ?? '').trim();
+    if (!kw) return [];
+    const pct = typeof t?.pct_growth_wow === 'number' && Number.isFinite(t.pct_growth_wow) ? Math.round(t.pct_growth_wow) : null;
+    return [{ query: kw, growthPct: pct, breakout: false, matchesService: null }];
+  });
+  const byGrowth = (a: RisingQuery, b: RisingQuery) => (b.growthPct ?? -1) - (a.growthPct ?? -1);
+  const inTrade = all.filter((r) => q.mustMatch.test(r.query)).sort(byGrowth);
+  const nearby = all.filter((r) => !q.mustMatch.test(r.query)).sort(byGrowth);
+  return [...inTrade, ...nearby].slice(0, cap);
 }
 
 export function overlayQueries(qs: RisingQuery[], services: string[]): RisingQuery[] {

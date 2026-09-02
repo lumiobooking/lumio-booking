@@ -6,7 +6,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../../common/tenant/tenan
 import { localizeDeep, bi, type Txt } from '../i18n';
 import { trendLinks } from '../trend-sources';
 import {
-  queriesFor, scopeOf, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends,
+  queriesFor, scopeOf, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest,
   rankItems, diversify, overlay, overlayQueries, needsRefresh, relevant, withGrowth, STALE_AFTER_HOURS,
   type TrendItem, type RisingQuery, type TrendSource,
 } from './trend-feed';
@@ -14,6 +14,7 @@ import {
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
 const YT = 'https://www.googleapis.com/youtube/v3';
 const DFS = 'https://api.dataforseo.com/v3';
+const PIN = 'https://api.pinterest.com/v5';
 
 /** One stored pull: (scope, source, tenant) → items. */
 interface SnapshotRow {
@@ -67,6 +68,35 @@ export class TrendFeedService {
     const login = process.env.DATAFORSEO_LOGIN || '';
     const pass = process.env.DATAFORSEO_PASSWORD || '';
     return login && pass ? Buffer.from(`${login}:${pass}`).toString('base64') : '';
+  }
+  private get pinterestConfigured() {
+    return Boolean(process.env.PINTEREST_ACCESS_TOKEN
+      || (process.env.PINTEREST_APP_ID && process.env.PINTEREST_APP_SECRET && process.env.PINTEREST_REFRESH_TOKEN));
+  }
+
+  /** A refreshed Pinterest token, exchanged at most once an hour. */
+  private pinCache: { token: string; until: number } | null = null;
+  private async pinterestToken(): Promise<string> {
+    const direct = process.env.PINTEREST_ACCESS_TOKEN || '';
+    if (direct) return direct;
+    if (this.pinCache && Date.now() < this.pinCache.until) return this.pinCache.token;
+    const id = process.env.PINTEREST_APP_ID || '';
+    const secret = process.env.PINTEREST_APP_SECRET || '';
+    const refresh = process.env.PINTEREST_REFRESH_TOKEN || '';
+    if (!id || !secret || !refresh) throw new Error('not_configured');
+    const r = await this.getJson(`${PIN}/oauth/token`, {
+      method: 'POST',
+      headers: {
+        authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refresh)}`,
+    });
+    const token = (r.body as { access_token?: string })?.access_token;
+    if (!r.ok || !token) throw new Error(`pinterest token ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}`);
+    const expires = Number((r.body as { expires_in?: number })?.expires_in ?? 3600);
+    this.pinCache = { token, until: Date.now() + Math.min(expires - 300, 24 * 3600) * 1000 };
+    return token;
   }
 
   // ---- storage ---------------------------------------------------------------
@@ -164,6 +194,30 @@ export class TrendFeedService {
     return out;
   }
 
+  /** Pinterest Trends: this week's growing keywords in the trade's corner of Pinterest. */
+  async pullPinterest(scope: string): Promise<RisingQuery[]> {
+    if (!this.pinterestConfigured) throw new Error('not_configured');
+    const [industry, market] = scope.split(':');
+    const region = marketCodes(market).pinterestRegion;
+    if (!region) throw new Error('not_configured'); // market Pinterest Trends does not cover
+    const token = await this.pinterestToken();
+    const q = queriesFor(industry);
+    const url = (withInterests: boolean) =>
+      `${PIN}/trends/keywords/${region}/top/growing?limit=50`
+      + (withInterests && q.pinterestInterests.length ? `&interests=${encodeURIComponent(q.pinterestInterests.join(','))}` : '');
+    const auth = { headers: { authorization: `Bearer ${token}` } };
+    let r = await this.getJson(url(true), auth);
+    // An interest value Pinterest no longer recognises is their enum drifting,
+    // not our morning failing: ask again for the whole market and let the
+    // trade filter in parsePinterest do the narrowing.
+    if (!r.ok && r.status === 400 && q.pinterestInterests.length) r = await this.getJson(url(false), auth);
+    if (!r.ok) {
+      const msg = (r.body as { message?: string })?.message ?? JSON.stringify(r.body)?.slice(0, 160);
+      throw new Error(`pinterest ${r.status}: ${msg}`);
+    }
+    return parsePinterest(r.body, industry);
+  }
+
   /** Instagram: top media on the trade's hashtags, as THIS tenant's connected account. */
   async pullInstagram(tenantId: string, scope: string): Promise<TrendItem[]> {
     const pg = await this.prisma.messengerPage.findFirst({
@@ -237,8 +291,8 @@ export class TrendFeedService {
    * unless forced, which the support team's "Pull again" does so a fix to a
    * key or a filter can be seen now rather than tomorrow.
    */
-  async refreshShared(scope: string, opts: { force?: boolean } = {}): Promise<{ youtube: boolean; google: boolean }> {
-    const out = { youtube: false, google: false };
+  async refreshShared(scope: string, opts: { force?: boolean } = {}): Promise<{ youtube: boolean; google: boolean; pinterest: boolean }> {
+    const out = { youtube: false, google: false, pinterest: false };
     const yt = await this.read(scope, 'youtube', null);
     if (opts.force || needsRefresh(yt?.fetchedAt)) {
       try {
@@ -262,6 +316,18 @@ export class TrendFeedService {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg !== 'not_configured') this.log.warn(`google trends ${scope}: ${msg.slice(0, 160)}`);
         await this.write(scope, 'google', null, null, msg);
+      }
+    }
+    const pn = await this.read(scope, 'pinterest', null);
+    if (opts.force || needsRefresh(pn?.fetchedAt)) {
+      try {
+        const items = await this.pullPinterest(scope);
+        await this.write(scope, 'pinterest', null, items, null);
+        out.pinterest = true;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg !== 'not_configured') this.log.warn(`pinterest ${scope}: ${msg.slice(0, 160)}`);
+        await this.write(scope, 'pinterest', null, null, msg);
       }
     }
     return out;
@@ -301,8 +367,8 @@ export class TrendFeedService {
     }
     let pulls = 0; let instagram = 0;
     for (const [scope, ids] of scopes) {
-      const r = await this.refreshShared(scope).catch(() => ({ youtube: false, google: false }));
-      pulls += Number(r.youtube) + Number(r.google);
+      const r = await this.refreshShared(scope).catch(() => ({ youtube: false, google: false, pinterest: false }));
+      pulls += Number(r.youtube) + Number(r.google) + Number(r.pinterest);
       for (const id of ids) {
         if (await this.refreshInstagram(id, scope).catch(() => false)) instagram += 1;
       }
@@ -334,10 +400,11 @@ export class TrendFeedService {
     const ctx = await this.content.gather(tenantId);
     const scope = scopeOf(ctx.industry, ctx.region.market);
 
-    const [yt, g, ig] = await Promise.all([
+    const [yt, g, ig, pn] = await Promise.all([
       this.read(scope, 'youtube', null),
       this.read(scope, 'google', null),
       this.read(scope, 'instagram', tenantId),
+      this.read(scope, 'pinterest', null),
     ]);
     const now = new Date();
     const items = (r: SnapshotRow | null) => (Array.isArray(r?.items) ? (r!.items as TrendItem[]) : []);
@@ -348,6 +415,7 @@ export class TrendFeedService {
     const events = ctx.events.map((e) => ({ name: e.name, daysAway: e.daysAway }));
     const cards = overlay(ranked, { services, events }, now);
     const rising = overlayQueries(Array.isArray(g?.items) ? (g!.items as RisingQuery[]) : [], services).slice(0, 10);
+    const pinterestRising = overlayQueries(Array.isArray(pn?.items) ? (pn!.items as RisingQuery[]) : [], services).slice(0, 10);
 
     // The team's hand-picked notes: the layer a person wrote.
     const notes = await this.prisma.trendNote.findMany({
@@ -371,7 +439,7 @@ export class TrendFeedService {
       where: { tenantId, igId: { not: null } }, select: { id: true },
     }).catch(() => null));
 
-    const newest = [yt, g, ig].map((r) => r?.fetchedAt).filter(Boolean).map((d) => new Date(d as Date).getTime());
+    const newest = [yt, g, ig, pn].map((r) => r?.fetchedAt).filter(Boolean).map((d) => new Date(d as Date).getTime());
     const fetchedAt = newest.length ? new Date(Math.max(...newest)) : null;
 
     const payload = {
@@ -381,11 +449,13 @@ export class TrendFeedService {
       regionLabel: ctx.region.label,
       items: cards,
       rising,
+      pinterestRising,
       picks,
       sources: {
         youtube: state(yt, Boolean(this.youtubeKey)),
         google: state(g, Boolean(this.dfsAuth)),
         instagram: { ...state(ig, igConnected), connected: igConnected },
+        pinterest: state(pn, this.pinterestConfigured && Boolean(marketCodes(ctx.region.market).pinterestRegion)),
       },
       // The old link list, kept as the third layer: where to go and look for
       // yourself, with the salon's own topics shown once.

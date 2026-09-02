@@ -41,8 +41,8 @@ interface SourceState { configured: boolean; fetchedAt: string | null; stale: bo
 interface FeedLink { key: string; title: string; url: string; what: string; how: string; source: string; topics?: { label: string; why: string; from: string }[] }
 export interface TrendFeed {
   scope: string; fetchedAt: string | null; stale: boolean; regionLabel: string;
-  items: TrendCard[]; rising: RisingQuery[]; picks: Pick[];
-  sources: { youtube: SourceState; google: SourceState; instagram: SourceState };
+  items: TrendCard[]; rising: RisingQuery[]; pinterestRising?: RisingQuery[]; picks: Pick[];
+  sources: { youtube: SourceState; google: SourceState; instagram: SourceState; pinterest?: SourceState };
   links: { weekly: FeedLink[]; monthly: FeedLink[]; regionKnown: boolean };
 }
 type Envelope = TrendFeed & { en?: TrendFeed };
@@ -114,8 +114,8 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
 
   const items = (feed?.items ?? []).filter((c) => filter === 'all' || c.source === filter);
   const shown = showAll ? items : items.slice(0, isMobile ? 4 : 8);
-  const anyConfigured = Boolean(feed && (feed.sources.youtube.configured || feed.sources.google.configured || feed.sources.instagram.connected));
-  const anyFailed = Boolean(feed && (feed.sources.youtube.error || feed.sources.google.error || feed.sources.instagram.error));
+  const anyConfigured = Boolean(feed && (feed.sources.youtube.configured || feed.sources.google.configured || feed.sources.instagram.connected || feed.sources.pinterest?.configured));
+  const anyFailed = Boolean(feed && (feed.sources.youtube.error || feed.sources.google.error || feed.sources.instagram.error || feed.sources.pinterest?.error));
   const cols = isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))';
 
   const sectionTitle = (text: string, sub: string, right?: ReactNode) => (
@@ -274,6 +274,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
               ['YouTube', feed.sources.youtube.configured, feed.sources.youtube.error],
               ['Google Trends', feed.sources.google.configured, feed.sources.google.error],
               ['Instagram', Boolean(feed.sources.instagram.connected), feed.sources.instagram.error],
+              ['Pinterest', Boolean(feed.sources.pinterest?.configured), feed.sources.pinterest?.error ?? null],
             ] as const).map(([name, on, e]) => (
               <span key={name} title={e ?? undefined} style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
                 <span style={{ width: 6, height: 6, borderRadius: 3, background: e ? '#f59e0b' : on ? '#22c55e' : 'var(--c475569)', display: 'inline-block' }} />
@@ -287,7 +288,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
             API errors it cannot act on. */}
         {canRefresh && anyFailed && feed && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {([['YouTube', feed.sources.youtube.error], ['Google Trends', feed.sources.google.error], ['Instagram', feed.sources.instagram.error]] as const)
+            {([['YouTube', feed.sources.youtube.error], ['Google Trends', feed.sources.google.error], ['Instagram', feed.sources.instagram.error], ['Pinterest', feed.sources.pinterest?.error ?? null]] as const)
               .filter(([, e]) => e)
               .map(([name, e]) => (
                 <div key={name} style={{ fontSize: 11.5, color: '#fbbf24', lineHeight: 1.5, wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
@@ -315,6 +316,32 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
                   <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{q.query}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>
                     {q.breakout ? T('đột biến', 'breakout') : q.growthPct != null ? `+${q.growthPct}%` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* rising on Pinterest — same chips, different well: what people PLAN,
+            weeks before they search for a salon to do it */}
+        {!!feed?.pinterestRising?.length && (
+          <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14, marginTop: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)' }}>
+                {T('Đang lên trên Pinterest · tuần này', 'Rising on Pinterest · this week')}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>{T('Khách ghim gì trước khi đi làm đẹp', 'What people pin before they book')}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {feed.pinterestRising.map((q) => (
+                <div key={q.query} style={{
+                  display: 'flex', gap: 8, alignItems: 'center', padding: '7px 12px', borderRadius: 20,
+                  background: 'var(--c0f172a)', border: `1px solid ${q.matchesService ? '#22c55e' : 'var(--c334155)'}`,
+                }}>
+                  <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{q.query}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#e60023' }}>
+                    {q.growthPct != null ? `+${q.growthPct}%` : ''}
                   </span>
                 </div>
               ))}

@@ -1,5 +1,5 @@
 import {
-  parseYouTube, parseInstagram, parseGoogleTrends, perDayOf, isoDurationSec, latinShare, relevant, withGrowth,
+  parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest, perDayOf, isoDurationSec, latinShare, relevant, withGrowth,
   matchService, serviceKeywords, shortCount, rankItems, diversify, overlay, overlayQueries,
   scopeOf, queriesFor, needsRefresh, type TrendItem,
 } from './trend-feed';
@@ -51,6 +51,24 @@ describe('reading what each feed answers', () => {
     expect(items).toHaveLength(1);
     expect(items[0].count).toBeNull();
     expect(items[0].perDay).toBeNull();
+  });
+
+  it('puts the trade\'s own Pinterest keywords first, and keeps the adjacent aisle behind them', () => {
+    const qs = parsePinterest({ trends: [
+      { keyword: 'berry makeup', pct_growth_wow: 320 },
+      { keyword: 'chrome nails', pct_growth_wow: 145 },
+      { keyword: 'fall wedding hair', pct_growth_wow: 90 },
+      { keyword: 'gel x french tips', pct_growth_wow: 60.4 },
+      { keyword: '', pct_growth_wow: 999 },
+    ] }, 'SALON');
+    expect(qs.map((q) => q.query)).toEqual(['chrome nails', 'gel x french tips', 'berry makeup', 'fall wedding hair']);
+    expect(qs[1].growthPct).toBe(60); // rounded, honest
+    expect(qs.every((q) => !q.breakout)).toBe(true);
+  });
+
+  it('answers an empty Pinterest body with an empty list, not a crash', () => {
+    expect(parsePinterest(null, 'SALON')).toEqual([]);
+    expect(parsePinterest({ trends: 'nope' }, 'SALON')).toEqual([]);
   });
 
   it('reads the rising list out of a DataForSEO Google Trends result, and keeps breakouts', () => {

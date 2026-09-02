@@ -345,3 +345,33 @@ describe('the same week reads in English', () => {
     expect(enOf(post.why)).not.toBe(viOf(post.why));
   });
 });
+
+describe('the plan reads its own scorecard', () => {
+  const plan = (over: Partial<Parameters<typeof buildWeekPlan>[0]> = {}) =>
+    buildWeekPlan({ today: new Date('2026-08-30T12:00:00Z'), todayWeekday: 0, industry: 'SALON', loads: BOOK, advice: FILL, lapsed: LAPSED, ...over });
+
+  const postJobs = (p: ReturnType<typeof buildWeekPlan>) =>
+    p.days.flatMap((d) => d.jobs).filter((j) => j.kind === 'post');
+
+  it('says nothing on the very first week — there is nothing to report', () => {
+    expect(plan().report).toBeNull();
+  });
+
+  it('keeps three posts and says so when last week held the rhythm', () => {
+    const p = plan({ lastWeek: { planned: 5, done: 4, posted: 3 } });
+    expect(postJobs(p)).toHaveLength(3);
+    expect(viOf(p.report!)).toContain('4/5');
+  });
+
+  it('trims to two posts when last week collapsed, and admits why', () => {
+    const p = plan({ lastWeek: { planned: 6, done: 1, posted: 0 } });
+    expect(postJobs(p)).toHaveLength(2);
+    expect(viOf(p.report!)).toContain('rút còn 2');
+    expect(enOf(p.report!)).toContain('trimmed to 2');
+  });
+
+  it('never punishes a tiny plan — one missed job out of two is not a collapse', () => {
+    const p = plan({ lastWeek: { planned: 2, done: 1, posted: 1 } });
+    expect(postJobs(p)).toHaveLength(3);
+  });
+});

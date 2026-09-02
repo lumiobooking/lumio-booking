@@ -53,6 +53,11 @@ export interface WeekPlan {
   focus: Txt;
   /** Where the day choices came from — real data, or an admitted default. */
   basis: Txt;
+  /**
+   * Last week in one honest sentence, and whether this week was lightened
+   * because of it. Null on the first week, when there is nothing to report.
+   */
+  report: Txt | null;
   /** Which stage of the shop's own path this week belongs to. */
   stage: RoadmapStage | null;
   /** Weeks since this shop's plan began — 0 for a brand-new salon. */
@@ -122,6 +127,8 @@ export function buildWeekPlan(input: {
   stage?: RoadmapStage | null;
   /** Weeks since the plan began — rotates the filming angles, nothing else. */
   week?: number;
+  /** The archived outcome of the previous week, if one exists. */
+  lastWeek?: { planned: number; done: number; posted: number } | null;
 }): WeekPlan {
   const industry = (input.industry || 'SALON').toUpperCase();
   const book = playbookFor(industry);
@@ -169,9 +176,39 @@ export function buildWeekPlan(input: {
   // repeated, and the same three every week is one week repeated — which is
   // what this plan was doing before: a shop with a steady book and no holiday
   // coming saw the identical seven days forever.
-  const postDays = [(film.weekday + 1) % 7, (film.weekday + 3) % 7, (film.weekday + 5) % 7];
-  rotate(book.postTypes, week, 3).forEach((pt, i) => {
-    const last = i === 2;
+  // -- the feedback loop: last week decides how heavy this week is ----------
+  //
+  // A plan that ignores whether last week's plan happened is a wish list. If
+  // the salon finished under half of what was planned, this week asks for TWO
+  // posts instead of three — a rhythm kept at two beats a week is worth more
+  // than one abandoned at three — and the report line says so out loud.
+  const lw = input.lastWeek ?? null;
+  const struggled = Boolean(lw && lw.planned >= 3 && lw.done / lw.planned < 0.5);
+  const postCount = struggled ? 2 : 3;
+  const report: Txt | null = lw
+    ? (struggled
+      ? bi(
+        `Tuần trước làm được ${lw.done}/${lw.planned} việc, đăng ${lw.posted} bài — tuần này rút còn ${postCount} bài để giữ nhịp cho chắc.`,
+        `Last week: ${lw.done}/${lw.planned} jobs done, ${lw.posted} posted — this week is trimmed to ${postCount} posts so the rhythm holds.`)
+      : bi(
+        `Tuần trước làm được ${lw.done}/${lw.planned} việc, đăng ${lw.posted} bài — giữ nhịp ${postCount} bài/tuần.`,
+        `Last week: ${lw.done}/${lw.planned} jobs done, ${lw.posted} posted — keeping the ${postCount}-post rhythm.`))
+    : null;
+
+  // Post an hour or two before the block where customers decide: a weekday
+  // whose biggest block is the AFTERNOON gets the lunch-scroll window instead
+  // of the evening one. Absent data, the evening window stays — it is when
+  // beauty content is actually consumed.
+  const postWindowOf = (wd: number): string => {
+    const dayLoads = loads.filter((l) => l.weekday === wd);
+    if (!dayLoads.length) return '18:30-20:00';
+    const top = dayLoads.reduce((a, b) => (b.fillIndex > a.fillIndex ? b : a));
+    return top.block === 'afternoon' ? '11:30-13:00' : '18:30-20:00';
+  };
+
+  const postDays = [(film.weekday + 1) % 7, (film.weekday + 3) % 7, (film.weekday + 5) % 7].slice(0, postCount);
+  rotate(book.postTypes, week, postCount).forEach((pt, i) => {
+    const last = i === postCount - 1;
     add(postDays[i], {
       kind: 'post',
       // The playbook now carries both languages, so each side of this sentence
@@ -185,7 +222,7 @@ export function buildWeekPlan(input: {
           `${viOf(pt.job)}. Đăng trước ${WEEKDAY_VI[busiest.weekday]} — khung đông nhất của tiệm — để bài chạy đúng lúc khách đang quyết định`,
           `${enOf(pt.job)}. Post it before ${WEEKDAY_EN[busiest.weekday]} — the shop's busiest block — so it is running while customers are deciding`)
         : pt.job,
-      when: '18:30-20:00',
+      when: postWindowOf(postDays[i]),
     });
   });
 
@@ -315,7 +352,7 @@ export function buildWeekPlan(input: {
       `Ngày quay và ngày đăng chọn theo sổ đặt lịch thật của tiệm (${loads.length} khung giờ có dữ liệu)`,
       `The filming day and the posting days come from the shop's own book (${loads.length} time blocks with data)`);
 
-  return { days, focus, basis, stage, week, daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin };
+  return { days, focus, basis, report, stage, week, daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin };
 }
 
 /** The week as prompt text, so the day's ideas match the week's plan. */

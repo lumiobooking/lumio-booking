@@ -16,6 +16,8 @@ import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
+import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
+import { scopeOf } from './trends/trend-feed';
 import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
@@ -29,7 +31,7 @@ import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { buildStrategyBrief } from './strategy-brief';
-import { bi, localizeDeep, viOf, type Txt } from './i18n';
+import { bi, localizeDeep, viOf, enOf, type Txt } from './i18n';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -471,6 +473,15 @@ export class ContentService {
       count?: (a: unknown) => Promise<number>;
       findFirst?: (a: unknown) => Promise<unknown>;
     }>;
+    // Last week's archived outcome — the plan reads its own scorecard before
+    // deciding how heavy this week should be.
+    const thisWeekKey = weekKey(new Date(), ctx.tz);
+    const lastWeekRow = await loose.contentWeek?.findFirst?.({
+      where: { tenantId, weekKey: { not: thisWeekKey }, outcome: { not: null } } as never,
+      orderBy: { startDate: 'desc' },
+      select: { outcome: true },
+    } as never).catch(() => null) ?? null;
+    const lastOutcome = (lastWeekRow as { outcome?: { plannedJobs?: number; doneJobs?: number; posted?: number } | null } | null)?.outcome ?? null;
     const [reviewCount, postedLast30, firstIdea] = await Promise.all([
       loose.googleReview?.count?.({ where: { tenantId } }).catch(() => null) ?? Promise.resolve(null),
       loose.contentIdea?.count?.({
@@ -510,6 +521,9 @@ export class ContentService {
       events: ctx.events,
       stage,
       week: weekIndex((firstIdea as { createdAt?: Date } | null)?.createdAt ?? null, new Date()),
+      lastWeek: lastOutcome && typeof lastOutcome.plannedJobs === 'number'
+        ? { planned: lastOutcome.plannedJobs, done: lastOutcome.doneJobs ?? 0, posted: lastOutcome.posted ?? 0 }
+        : null,
     });
   }
 
@@ -932,10 +946,45 @@ export class ContentService {
       this.prisma.contentIdea.findMany({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
-        take: 20,
+        take: 40,
         select: { title: true },
       }).catch(() => []),
     ])) as [FormatRow[], NoteRow[], TitleRow[]];
+
+    // ---- the three anchors: live trends, the design season, today's pillar --
+    //
+    // Cached rows only — the trend feed pulls once a day on its own clock, so
+    // this read costs nothing and never blocks drafting on an external API.
+    const scope = scopeOf(ctx.industry, ctx.region.market);
+    const looseTrend = this.prisma as unknown as { trendSnapshot?: { findMany: (a: unknown) => Promise<unknown> } };
+    const trendRows = await looseTrend.trendSnapshot?.findMany({
+      where: { scope, OR: [{ tenantId: null }, { tenantId }] },
+      select: { source: true, items: true },
+    }).catch(() => []) as { source: string; items: unknown }[] ?? [];
+    const trendItems: TrendForPrompt[] = [];
+    const trendRising: RisingForPrompt[] = [];
+    for (const row of trendRows) {
+      if (!Array.isArray(row.items)) continue;
+      if (row.source === 'youtube' || row.source === 'instagram') {
+        for (const it of row.items.slice(0, 4) as { title?: string; perDay?: number | null; thumbUrl?: string | null; url?: string | null }[]) {
+          if (it?.title) trendItems.push({ title: it.title, source: row.source, perDay: it.perDay, thumbUrl: it.thumbUrl, url: it.url });
+        }
+      } else {
+        for (const q of row.items.slice(0, 5) as { query?: string; growthPct?: number | null }[]) {
+          if (q?.query) trendRising.push({ query: q.query, growthPct: q.growthPct, source: row.source });
+        }
+      }
+    }
+    // Busiest first, so the prompt's five slots go to what is actually moving.
+    trendItems.sort((a, b) => (b.perDay ?? 0) - (a.perDay ?? 0));
+    const trendBlock = trendsToPrompt(trendItems, trendRising);
+
+    const monthNow = Number(this.localDay(ctx.tz).slice(5, 7));
+    const season = seasonFor(ctx.industry, monthNow);
+    const seasonBlock = seasonToPrompt(season, monthNow);
+
+    const pillar = pillarFor(playbookFor(ctx.industry), forDate);
+    const pillarBlock = pillarToPrompt(pillar);
 
     const formatBlock = formats.length
       ? 'THƯ VIỆN ĐỊNH DẠNG (đội Lumio duy trì — CHỌN TỪ ĐÂY, ưu tiên cái đang nóng):\n'
@@ -980,7 +1029,7 @@ ${langRule}
 7. Ý tưởng hôm nay phải khớp với việc của hôm nay trong LỊCH TUẦN bên dưới — đừng bảo tiệm quay clip vào ngày lịch ghi là ngày đăng.
 
 TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
-{"ideas":[{"rank":1,"formatName":"...","title":"...","hook":"...","shotList":"cảnh 1 · cảnh 2 · cảnh 3","caption":"...","hashtags":"#... #...","bestTime":"18:30","reason":"..."}]}`;
+{"ideas":[{"rank":1,"formatName":"...","title":"...","hook":"...","shotList":"cảnh 1 · cảnh 2 · cảnh 3","caption":"...","hashtags":"#... #...","bestTime":"18:30","reason":"...","trendTitle":"chỉ điền khi phỏng theo một trend trong danh sách, sao chép đúng nguyên văn tiêu đề"}]}`;
 
     const week = await this.weekPlanFor(tenantId, ctx);
 
@@ -1002,6 +1051,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       promoToPrompt(ctx.promo),
       '',
       weekPlanToPrompt(week),
+      '',
+      pillarBlock,
+      '',
+      seasonBlock,
+      '',
+      trendBlock,
       '',
       // The raw material this trade actually has to hand. Without it the model
       // reaches for stock ideas ("quay một video giới thiệu tiệm") instead of
@@ -1056,7 +1111,13 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       thin: ctx.signals.thin,
     };
     let created = 0;
+    const pillarLabel = { vi: viOf(pillar.label), en: enOf(pillar.label) };
     for (const idea of parsed.slice(0, 3)) {
+      // The trend the model says it adapted — accepted only when it names a
+      // row we actually fed it. That check is what makes the reference image
+      // on the card trustworthy: it can never point at an invented clip.
+      const claimed = typeof idea.trendTitle === 'string' ? idea.trendTitle.trim().toLowerCase() : '';
+      const trendRef = claimed ? trendItems.find((t) => t.title.trim().toLowerCase() === claimed) ?? null : null;
       // Everything in `idea` came out of a model's JSON, so it is `unknown` and
       // has to be coerced before it touches the database — the same String()
       // treatment every other field below gets.
@@ -1075,7 +1136,11 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
           hashtags: idea.hashtags ? String(idea.hashtags).slice(0, 400) : null,
           bestTime: idea.bestTime ? String(idea.bestTime).slice(0, 20) : null,
           reason: idea.reason ? String(idea.reason).slice(0, 800) : null,
-          signals: snapshot as never,
+          signals: {
+            ...snapshot,
+            trend: trendRef ? { title: trendRef.title, source: trendRef.source, thumbUrl: trendRef.thumbUrl ?? null, url: trendRef.url ?? null } : null,
+            pillar: Number(idea.rank) === 1 || created === 0 ? pillarLabel : null,
+          } as never,
           aiModel: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
         },
       }).catch((e: unknown) => this.logger.warn(`idea save failed: ${String(e).slice(0, 120)}`));

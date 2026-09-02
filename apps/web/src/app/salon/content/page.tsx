@@ -40,6 +40,11 @@ interface Idea {
   hashtags: string | null;
   bestTime: string | null;
   reason: string | null;
+  /** The generation snapshot — carries the trend the idea adapted and today's pillar. */
+  signals?: {
+    trend?: { title: string; source: string; thumbUrl: string | null; url: string | null } | null;
+    pillar?: { vi: string; en: string } | null;
+  } | null;
 }
 interface TrendNote { id: string; title: string; body: string }
 interface Payload { forDate: string; ideas: Idea[]; trendNotes: TrendNote[] }
@@ -147,7 +152,7 @@ interface Plan {
   };
   events: SeasonEvent[];
   week: {
-    days: DayPlan[]; focus: string; basis: string; daily: Job[]; sources: ContentSource[];
+    days: DayPlan[]; focus: string; basis: string; report?: string | null; daily: Job[]; sources: ContentSource[];
     trade: string; dataThin: boolean; week: number;
     stage: { key: string; step: number; title: string; goal: string; why: string; exitWhen: string; progress: { done: number; need: number; label: string } | null } | null;
     teamNote?: string;
@@ -1290,11 +1295,26 @@ function Inner() {
                     </span>
                   </div>
 
+                  {/* The profile as a checklist, not a wall of warnings: a
+                      salon owner reads "4/6 done, two to go", not two orange
+                      paragraphs of consequences. The consequence text is still
+                      there — one line per gap — but it reads as a to-do. */}
                   {!!plan.identity.gaps.length && (
                     <div style={{ marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--c1e293b)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                          {T('Hồ sơ tiệm', 'Shop profile')}: {6 - plan.identity.gaps.length}/6
+                        </span>
+                        <div style={{ flex: 1, maxWidth: 120, height: 5, borderRadius: 3, background: 'var(--c1e293b)', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.round(((6 - plan.identity.gaps.length) / 6) * 100)}%`, height: '100%', background: plan.identity.gaps.length > 2 ? '#f59e0b' : '#22c55e' }} />
+                        </div>
+                        <button onClick={() => setEditProfile(true)} style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 700, color: 'var(--ca5b4fc)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                          {T('Bổ sung →', 'Fill in →')}
+                        </button>
+                      </div>
                       {plan.identity.gaps.slice(0, 2).map((g) => (
-                        <div key={g.field} style={{ fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5, marginBottom: 2 }}>
-                          {T('Còn thiếu', 'Missing')} — {g.label}: {g.cost}
+                        <div key={g.field} style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginBottom: 2 }}>
+                          <span style={{ color: '#f59e0b' }}>○</span> <b style={{ color: 'var(--ccbd5e1)' }}>{g.label}</b> — {g.cost}
                         </div>
                       ))}
                     </div>
@@ -1335,6 +1355,11 @@ function Inner() {
                       {idea.formatName && (
                         <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{idea.formatName}</span>
                       )}
+                      {idea.signals?.pillar && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ca5b4fc)', background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)', padding: '2px 8px', borderRadius: 20 }}>
+                          {vi ? idea.signals.pillar.vi : idea.signals.pillar.en}
+                        </span>
+                      )}
                       {idea.bestTime && (
                         <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c94a3b8)' }}>
                           🕐 {idea.bestTime}
@@ -1345,6 +1370,29 @@ function Inner() {
                     <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginBottom: 8 }}>
                       {idea.title}
                     </div>
+
+                    {/* The trend this idea adapted — with the reference clip, so
+                        the salon SEES what is working instead of taking our word. */}
+                    {idea.signals?.trend && (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 9, padding: 8, marginBottom: 10 }}>
+                        {idea.signals.trend.thumbUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={idea.signals.trend.thumbUrl} alt="" style={{ width: 64, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', color: '#22c55e' }}>
+                            📈 {T('Phỏng theo trend đang chạy', 'Adapted from a live trend')} · {idea.signals.trend.source === 'youtube' ? 'YouTube' : 'Instagram'}
+                          </div>
+                          {idea.signals.trend.url ? (
+                            <a href={idea.signals.trend.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', textDecoration: 'none', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {idea.signals.trend.title} ↗
+                            </a>
+                          ) : (
+                            <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{idea.signals.trend.title}</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {idea.hook && (
                       <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 10 }}>
@@ -1656,6 +1704,14 @@ function Inner() {
                   )}
                   <div style={{ fontSize: 13, color: 'var(--ca5b4fc)', marginBottom: 4 }}>{shown.focus}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{shown.basis}</div>
+
+                  {/* Last week, in one sentence — the plan showing it reads its
+                      own scorecard before asking for this week's work. */}
+                  {shown.report && (
+                    <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+                      📊 {shown.report}
+                    </div>
+                  )}
 
                   {/* A note from the team to the salon, above everything else —
                       the human sentence the numbers cannot write. */}

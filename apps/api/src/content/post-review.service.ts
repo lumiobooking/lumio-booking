@@ -7,8 +7,12 @@ import { clientStatusOf, makeReviewToken, parseReviewToken, tokenFresh } from '.
 
 const LINK_KEY = 'post_review_link';
 
-/** What one post looks like to the client — nothing the agency keeps to itself. */
-interface ClientPost {
+/**
+ * What one post looks like to the client — nothing the agency keeps to
+ * itself. Exported because the controller's inferred return type names it,
+ * and tsc refuses a public signature built on a name it cannot reach (TS4053).
+ */
+export interface ClientPost {
   id: string;
   channels: string[];
   message: string;

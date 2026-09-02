@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { maySendSms, smsPolicyFor, type MessageKind } from './sms-policy';
 import { dialCodeFor } from '../common/phone';
 import { NotificationChannel, NotificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -40,6 +41,13 @@ export interface SendNotificationInput {
   tenantId: string;
   channel: NotificationChannel;
   recipient: string;
+  /**
+   * Whether this message is a receipt or an advert. Transactional (the
+   * default, and what every existing caller gets) is never held back — a
+   * 10pm booking that gets no confirmation until 7am is a broken product.
+   * Marketing goes through the market's quiet-hours and daily-cap rules.
+   */
+  kind?: MessageKind;
   subject?: string;
   body: string;
   html?: string;
@@ -173,9 +181,86 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * The quiet-hours and per-number gate for advertising SMS. The rules have
+   * lived, fully tested, in sms-policy.ts since the day Vietnam support was
+   * written — and nothing called them, so a birthday campaign could still fire
+   * at 2am Hanoi. This is the missing caller. A held message is recorded as
+   * FAILED with the reason, because a campaign that silently sends nothing
+   * looks exactly like a campaign with no eligible customers.
+   */
+  private async marketingSmsGate(input: SendNotificationInput) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: input.tenantId },
+      select: { timezone: true, market: true } as never,
+    }).catch(() => null) as { timezone?: string; market?: string | null } | null;
+    const market = tenant?.market ?? null;
+    const policy = smsPolicyFor(market);
+    if (!policy.adHoursLocal && policy.adPerDayCap === null) return { held: null, policy }; // US/CA: unchanged, by design
+
+    let nowMinutesLocal = 12 * 60; // an unreadable clock must not block a send outright
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tenant?.timezone || 'UTC', hour12: false, hour: '2-digit', minute: '2-digit',
+      }).formatToParts(new Date());
+      const g = (t: string) => Number(parts.find((x) => x.type === t)?.value);
+      const h = g('hour') === 24 ? 0 : g('hour');
+      if (Number.isFinite(h) && Number.isFinite(g('minute'))) nowMinutesLocal = h * 60 + g('minute');
+    } catch { /* keep the midday default */ }
+
+    const prior = await this.prisma.notification.findMany({
+      where: {
+        tenantId: input.tenantId,
+        channel: NotificationChannel.SMS,
+        recipient: input.recipient,
+        status: NotificationStatus.SENT,
+        sentAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        OR: [{ relatedType: { startsWith: 'campaign:' } }, { relatedType: 'rebooking' }],
+      },
+      select: { sentAt: true },
+      take: 20,
+    }).catch(() => [] as { sentAt: Date | null }[]);
+
+    const verdict = maySendSms({
+      market, kind: 'marketing', nowMinutesLocal,
+      sentAt: prior.map((r) => r.sentAt).filter((d): d is Date => Boolean(d)),
+    });
+    if (verdict.ok) return { held: null, policy };
+    const held = await this.prisma.notification.create({
+      data: {
+        tenantId: input.tenantId,
+        channel: input.channel,
+        recipient: input.recipient,
+        subject: input.subject ?? null,
+        body: input.body,
+        status: NotificationStatus.FAILED,
+        provider: 'sms-policy',
+        error: verdict.reason === 'outside-hours'
+          ? 'Giữ lại: ngoài khung giờ quảng cáo cho phép (07:00-22:00 giờ tiệm) — Nghị định 91/2020. / Held: outside the allowed advertising window.'
+          : 'Giữ lại: số này đã nhận đủ 3 tin quảng cáo trong 24 giờ — Nghị định 91/2020. / Held: this number reached the 3-ads-per-day cap.',
+        relatedType: input.relatedType ?? null,
+        relatedId: input.relatedId ?? null,
+        sentAt: null,
+      },
+    });
+    return { held, policy };
+  }
+
   async send(input: SendNotificationInput) {
     let status: NotificationStatus = NotificationStatus.PENDING;
     let error: string | null = null;
+
+    // Adverts pass through the market's rules before any provider is chosen.
+    if (input.channel === NotificationChannel.SMS && input.kind === 'marketing') {
+      const gate = await this.marketingSmsGate(input);
+      if (gate?.held) return gate.held;
+      // The law that sets the window also demands a stated opt-out, in the
+      // customer's language. Only markets WITH a window get the line appended —
+      // US salons keep exactly the messages they send today.
+      if (gate?.policy.adHoursLocal && !input.body.includes(gate.policy.optOutLine)) {
+        input = { ...input, body: `${input.body}\n${gate.policy.optOutLine}` };
+      }
+    }
 
     // Email provider preference (per salon): the salon's own Brevo (HTTPS, works
     // from the cloud) > the salon's own SMTP > an optional platform-wide Brevo

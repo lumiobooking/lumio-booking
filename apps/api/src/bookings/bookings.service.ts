@@ -509,12 +509,22 @@ export class BookingsService {
       // against opening hours is how a 9am booking becomes 2am somewhere else.
       const parts = new Intl.DateTimeFormat('en-US', {
         timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
       }).formatToParts(start);
       const wd = parts.find((x) => x.type === 'weekday')?.value ?? '';
       const hh = Number(parts.find((x) => x.type === 'hour')?.value ?? NaN);
       const mm = Number(parts.find((x) => x.type === 'minute')?.value ?? NaN);
       const dayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
       const day = dayIndex >= 0 ? (hoursRules.businessHours ?? [])[dayIndex] : undefined;
+
+      // The holiday list. The voice bot and the review gate both honour
+      // daysOff; the public booking form was the one door left unlocked — a
+      // customer could book Thanksgiving and nobody would know until they
+      // knocked on a dark shop.
+      const dateStr = `${parts.find((x) => x.type === 'year')?.value}-${parts.find((x) => x.type === 'month')?.value}-${parts.find((x) => x.type === 'day')?.value}`;
+      if ((hoursRules.daysOff ?? []).includes(dateStr)) {
+        throw new BadRequestException('The salon is closed that day. Please pick another date.');
+      }
 
       if (dayIndex >= 0 && Number.isFinite(hh) && Number.isFinite(mm)) {
         // hour12:false reports midnight as 24 in some environments.
@@ -1467,7 +1477,7 @@ export class BookingsService {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text, html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
     }
     if (rb.sms && custPhone) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, kind: 'marketing', recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
     }
     await Promise.allSettled(jobs);
     return true;

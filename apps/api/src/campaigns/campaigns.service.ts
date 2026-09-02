@@ -519,7 +519,9 @@ export class CampaignsService {
       }));
     }
     if (msg.sms && c.phone && c.smsConsent) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: c.phone, body: fillPct(msg.smsBody, pct) + refSmsSuffix, twilio: n.twilio, ...related }));
+      // An advert, and it says so: the send path holds it outside the market's
+      // allowed hours and past the per-number daily cap.
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, kind: 'marketing', recipient: c.phone, body: fillPct(msg.smsBody, pct) + refSmsSuffix, twilio: n.twilio, ...related }));
     }
     if (jobs.length === 0) return false;
     await Promise.allSettled(jobs);

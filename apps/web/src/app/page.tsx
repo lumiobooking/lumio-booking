@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState, CSSProperties } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { useIsMobile } from '../lib/responsive';
 import { uiLocale } from '../lib/datetime';
@@ -114,6 +115,7 @@ function ComparisonTable({ mobile }: { mobile: boolean }) {
 export default function HomePage() {
   const { user, ready } = useAuth();
   const mobile = useIsMobile();
+  const router = useRouter();
   const [plans, setPlans] = useState<PublicPlan[]>([]);
   const [yearly, setYearly] = useState(false);
 
@@ -122,6 +124,20 @@ export default function HomePage() {
   }, []);
 
   const dashHref = user?.role === 'SUPER_ADMIN' ? '/super-admin/tenants' : user?.role === 'STAFF' ? '/staff/bookings' : '/salon';
+
+  // Opened as the INSTALLED app (home-screen icon)? Then this marketing page
+  // is the wrong room: the person tapped the icon to run their salon, not to
+  // read the pitch. Phones that installed the icon while the manifest was
+  // broken saved THIS page as the app's start page, so the redirect is what
+  // heals every existing install without asking anyone to re-add the icon.
+  useEffect(() => {
+    if (!ready) return; // wait until we know who is signed in, or we'd bounce an owner to /login
+    try {
+      const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches
+        || (navigator as unknown as { standalone?: boolean }).standalone === true;
+      if (standalone) router.replace(user ? dashHref : '/login');
+    } catch { /* an odd browser reads the page as usual */ }
+  }, [ready, router, user, dashHref]);
 
   return (
     <div style={{ background: '#fff', color: INK, minHeight: '100vh', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>

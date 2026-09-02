@@ -733,7 +733,22 @@ export class SocialPublishService {
         creation_id: creationId, access_token: token,
       }), 60_000);
       if (!p.ok || !p.json?.id) return fail(p.json?.error?.message ?? `Instagram publish ${p.status}`);
-      return { channel: 'instagram', id: p.json.id, url: `https://www.instagram.com/p/${p.json.id}`, error: null };
+
+      // instagram.com/p/{...} takes the post's SHORTCODE, not this numeric
+      // Graph id — a link built from the id opens "Post isn't available" even
+      // though the post is live. The real address is the permalink field, one
+      // read away; if that read fails the post still succeeded, so answer
+      // with no link rather than a broken one.
+      let permalink: string | null = null;
+      try {
+        const pl = await fetch(
+          `${GRAPH}/${p.json.id}?fields=permalink&access_token=${encodeURIComponent(token)}`,
+          { signal: AbortSignal.timeout(15_000) },
+        );
+        const j = await pl.json().catch(() => null) as { permalink?: string } | null;
+        if (pl.ok && j?.permalink) permalink = j.permalink;
+      } catch { /* the post is up; only the pretty link is missing */ }
+      return { channel: 'instagram', id: p.json.id, url: permalink, error: null };
     } catch (e) {
       return fail(e instanceof Error ? e.message : 'lỗi mạng');
     }

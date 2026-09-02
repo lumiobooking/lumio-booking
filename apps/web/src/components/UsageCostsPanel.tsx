@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, CSSProperties } from 'react';
+import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
@@ -101,7 +102,7 @@ export function UsageCostsPanel() {
 
   const cur = sum.currency || 'USD';
   const month = (() => {
-    try { return new Date(sum.periodStart).toLocaleDateString(g === 'vi' ? 'vi-VN' : uiLocale(), { month: 'long', year: 'numeric' }); }
+    try { return fmtInTz(sum.periodStart, { month: 'long', year: 'numeric' }); }
     catch { return ''; }
   })();
   const daysLeft = Math.max(0, sum.daysInMonth - sum.daysElapsed);

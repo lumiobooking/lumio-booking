@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -85,7 +86,7 @@ function Inner() {
                 <MRow label={t('wl.colContact')}>{e.phone || e.email || '—'}</MRow>
                 <MRow label={t('wl.colService')}>{e.service?.name || t('wl.any')}</MRow>
                 <MRow label={t('wl.colWants')}>{e.preferredDate || t('wl.anyDay')}</MRow>
-                <MRow label={t('wl.colAdded')}>{new Date(e.createdAt).toLocaleDateString(uiLocale())}</MRow>
+                <MRow label={t('wl.colAdded')}>{fmtInTz(e.createdAt, { dateStyle: 'short' })}</MRow>
                 <MActions>
                   <button onClick={() => notify(e)} style={mini('#22c55e')}>{t('wl.notify')}</button>
                   {e.status !== 'CONVERTED' && <button onClick={() => setStatus(e, 'CONVERTED')} style={mini('#6366f1')}>{t('wl.booked')}</button>}
@@ -111,7 +112,7 @@ function Inner() {
               {pg.paged.map((e) => (
                 <tr key={e.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(e.id) ? 'var(--c1e1b4b)' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(e.id)} onChange={() => bulk.toggle(e.id)} /></td>
-                  <td style={{ ...ui.td, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{new Date(e.createdAt).toLocaleDateString(uiLocale())}</td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{fmtInTz(e.createdAt, { dateStyle: 'short' })}</td>
                   <td style={ui.td}>{e.customerName}{e.note ? <div style={{ color: 'var(--c64748b)', fontSize: 12 }}>{e.note}</div> : null}</td>
                   <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{e.phone || e.email || '—'}</td>
                   <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{e.service?.name || t('wl.any')}</td>

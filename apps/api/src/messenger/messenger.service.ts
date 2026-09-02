@@ -3301,9 +3301,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           appointmentId: r.id,
           service: r.service?.name ?? '',
           when: fmt(r.startTime),
-          // ISO alongside the human form: the model needs the machine one to
-          // build the new time from "dời sang cùng giờ thứ 7".
-          startsAtLocalIso: new Date(r.startTime).toISOString(),
+          // A SALON-LOCAL wall string alongside the human form: the model
+          // builds "dời sang cùng giờ thứ 7" from this, and reschedule's
+          // wallToUtcISO reads its input as salon wall time — handing it UTC
+          // here rebooked a 2pm customer at 7pm.
+          startsAtLocalIso: new Intl.DateTimeFormat('sv-SE', {
+            timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+          }).format(new Date(r.startTime)).replace(' ', 'T'),
           staff: r.assignedStaff?.firstName ?? null,
         })));
       }

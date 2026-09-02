@@ -3,6 +3,7 @@
 import { ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
+import { apiFetch } from '../lib/api';
 import { ThemeToggle } from './ThemeToggle';
 
 /** Layout + auth guard for the Staff (technician) portal. */
@@ -18,6 +19,16 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
       router.replace('/');
     }
   }, [ready, token, user, router]);
+
+  // The salon's timezone, cached where every date helper reads it — so the
+  // technician's schedule shows the SALON's hours even from another timezone.
+  // SalonShell does the same for owner pages; staff pages need it too.
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ timezone?: string }>('/me/tenant', { token })
+      .then((r) => { if (r?.timezone) { try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } } })
+      .catch(() => { /* offline: yesterday's cached value still applies */ });
+  }, [token]);
 
   if (!ready || !token || user?.role !== 'STAFF') {
     return (

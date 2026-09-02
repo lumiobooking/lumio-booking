@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { createHash } from 'crypto';
 import { AppointmentStatus, OrderStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,20 +7,26 @@ import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
-/** Resolve a 'YYYY-MM' string (or now) to its [start, end) date range + label. */
-function monthRange(month?: string): { start: Date; end: Date; ym: string; label: string } {
-  const now = new Date();
-  let y = now.getFullYear();
-  let m = now.getMonth(); // 0-based
-  if (month && /^\d{4}-\d{2}$/.test(month)) {
-    const [yy, mm] = month.split('-').map(Number);
-    y = yy; m = mm - 1;
-  }
-  const start = new Date(y, m, 1);
-  const end = new Date(y, m + 1, 1);
-  const ym = `${y}-${String(m + 1).padStart(2, '0')}`;
-  const label = start.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+/**
+ * Resolve a 'YYYY-MM' string (or now) to its [start, end) range + label — in
+ * the SALON's month. Points earned on the last evening of an Austin month
+ * used to land in the next month's leaderboard when the server sat elsewhere.
+ */
+function monthRange(tz: string, month?: string): { start: Date; end: Date; ym: string; label: string } {
+  const todayKey = dayKeyTz(new Date(), tz);
+  let ym = todayKey.slice(0, 7);
+  if (month && /^\d{4}-\d{2}$/.test(month)) ym = month;
+  const [y, m] = ym.split('-').map(Number);
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const start = startOfDayTz(`${ym}-01`, tz);
+  const end = startOfDayTz(`${next}-01`, tz);
+  const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
   return { start, end, ym, label };
+}
+
+/** Salon-local midnight of the salon's current day, as an instant. */
+function startOfTodayTz(tz: string): Date {
+  return startOfDayTz(dayKeyTz(new Date(), tz), tz);
 }
 
 @Injectable()
@@ -145,7 +152,8 @@ export class ReviewsService {
     const dedupHours = settings.sendDedupHours ?? 12;
     const dailyCap = settings.sendDailyCap ?? 20;
     const pts = settings.staffPointsPerSend ?? 0;
-    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+    // The daily cap's "day" is the SALON's day, or the quota resets mid-shift.
+    const startOfDay = startOfTodayTz(tenant.timezone);
 
     let counted = false;
     let reason = 'disabled';
@@ -225,7 +233,7 @@ export class ReviewsService {
 
     const tenant = await this.prisma.tenant.findFirst({
       where: { slug: dto.slug, deletedAt: null, status: TenantStatus.ACTIVE },
-      select: { id: true },
+      select: { id: true, timezone: true },
     });
     if (!tenant) throw new NotFoundException('Salon not found');
     const tenantId = tenant.id;
@@ -282,16 +290,16 @@ export class ReviewsService {
         const recentDup = await this.prisma.feedback.count({ where: { tenantId, staffId: staff.id, customerId, verified: true, createdAt: { gte: dupSince } } });
         if (recentDup > 0) blockReason = 'duplicate';
         else {
-          // 3) Daily cap of rewarded feedbacks per staff.
-          const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+          // 3) Daily cap of rewarded feedbacks per staff — per SALON day.
+          const startOfDay = startOfTodayTz(tenant.timezone);
           const todayCount = await this.prisma.feedback.count({ where: { tenantId, staffId: staff.id, verified: true, createdAt: { gte: startOfDay } } });
           if (todayCount >= dailyCap) blockReason = 'cap';
           else verified = true;
         }
       }
     } else if (!requireRealVisit && staff) {
-      // Lenient mode (admin turned off real-visit requirement): still cap per day.
-      const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+      // Lenient mode (admin turned off real-visit requirement): still cap per SALON day.
+      const startOfDay = startOfTodayTz(tenant.timezone);
       const todayCount = await this.prisma.feedback.count({ where: { tenantId, staffId: staff.id, verified: true, createdAt: { gte: startOfDay } } });
       if (todayCount >= dailyCap) blockReason = 'cap';
       else verified = true;
@@ -347,8 +355,10 @@ export class ReviewsService {
    */
   async leaderboard(user: AuthenticatedUser, month?: string) {
     const tenantId = this.tenantId(user);
-    const { start, end, ym, label } = monthRange(month);
-    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+    const tzRow = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const tz = tzRow?.timezone || 'UTC';
+    const { start, end, ym, label } = monthRange(tz, month);
+    const startOfDay = startOfTodayTz(tz);
 
     const staff = await this.prisma.staffMember.findMany({
       where: { tenantId },
@@ -420,9 +430,13 @@ export class ReviewsService {
   /** Delete review/reward data within a date range (e.g. clean up test days). */
   async cleanupRange(user: AuthenticatedUser, from: string, to: string) {
     const tenantId = this.tenantId(user);
-    const start = new Date(from); start.setHours(0, 0, 0, 0);
-    const end = new Date(to); end.setHours(23, 59, 59, 999);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) throw new BadRequestException('Invalid date range');
+    // This deletes data and reverses reward points, so the window's edges must
+    // be exactly the SALON days the admin picked — not the server's reading.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new BadRequestException('Invalid date range');
+    const tzRow = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const tz = tzRow?.timezone || 'UTC';
+    const start = startOfDayTz(from, tz);
+    const end = new Date(startOfDayTz(addDaysToKey(to, 1), tz).getTime() - 1);
     const range = { gte: start, lte: end };
     // Remove the points those transactions granted, then delete the rows.
     const txns = await this.prisma.staffRewardTransaction.findMany({ where: { tenantId, createdAt: range }, select: { staffId: true, points: true } });

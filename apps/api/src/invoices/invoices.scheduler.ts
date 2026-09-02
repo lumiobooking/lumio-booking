@@ -39,8 +39,8 @@ export class InvoicesScheduler implements OnModuleInit, OnModuleDestroy {
   /** One sweep. Returns counts of newly-emailed invoices. Safe to call repeatedly. */
   async runOnce(): Promise<{ overage: number; renewal: number }> {
     const now = new Date();
-    const day = now.getDate();
-    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const day = now.getUTCDate(); // same UTC convention as the billing months
+    const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const tenants = await this.prisma.tenant.findMany({
       where: { deletedAt: null, planId: { not: null } },
       select: { id: true, accessUntil: true },

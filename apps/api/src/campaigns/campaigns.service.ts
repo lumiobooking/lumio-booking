@@ -52,14 +52,14 @@ function campaignLink(slug: string | null | undefined, key: CampaignKey, o?: Cam
 // The expiry date lands in a marketing text the SALON's customer reads, so it
 // is written in the salon's language. Defaulted to en-US, so any caller that
 // does not say otherwise sends exactly what it sent before.
-function offerVars(o: CampaignOffer | undefined | null, locale = 'en-US'): Record<string, string> {
+function offerVars(o: CampaignOffer | undefined | null, locale = 'en-US', tz?: string): Record<string, string> {
   const label = offerLabel(o);
   if (!o?.enabled || !label) {
     return { offer: '', offer_code: '', offer_expiry: '', offer_block: '', offer_sms: '', offer_subject: '' };
   }
   const code = (o.code || '').trim().toUpperCase();
   const expiry = o.expiryDays > 0
-    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString(locale, { month: 'long', day: 'numeric' })
+    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString(locale, { month: 'long', day: 'numeric', ...(tz ? { timeZone: tz } : {}) })
     : '';
   const codeLine = code ? ` Show the code ${code} at the salon.` : '';
   const expiryLine = expiry ? ` Valid through ${expiry}.` : '';
@@ -86,12 +86,12 @@ function bodyToHtml(text: string): string {
 }
 
 /** The offer, as a box the eye lands on — code included, ready to read out at the counter. */
-function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string, locale = 'en-US'): string {
+function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string, locale = 'en-US', tz?: string): string {
   const label = offerLabel(o);
   if (!o?.enabled || !label) return '';
   const code = (o.code || '').trim().toUpperCase();
   const expiry = o.expiryDays > 0
-    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString(locale, { month: 'long', day: 'numeric' })
+    ? new Date(Date.now() + o.expiryDays * 24 * 60 * 60 * 1000).toLocaleDateString(locale, { month: 'long', day: 'numeric', ...(tz ? { timeZone: tz } : {}) })
     : '';
   // The headline is the value itself (5% OFF), because that is the only line a
   // skimming reader is guaranteed to see.
@@ -114,7 +114,7 @@ function offerBoxHtml(o: CampaignOffer | undefined | null, accent: string, local
  * %offer_block% sits, and one clear Book button — instead of the flat wall of
  * plain text these campaigns used to send.
  */
-function campaignBodyHtml(template: string, pct: Record<string, string>, offer: CampaignOffer | undefined, accent: string, bookingLink: string, locale = 'en-US'): string {
+function campaignBodyHtml(template: string, pct: Record<string, string>, offer: CampaignOffer | undefined, accent: string, bookingLink: string, locale = 'en-US', tz?: string): string {
   const MARK = '@@LUMIO_OFFER@@';
   const filled = fillPct(template, { ...pct, offer_block: MARK + '\n\n' });
   const paras = filled
@@ -122,7 +122,7 @@ function campaignBodyHtml(template: string, pct: Record<string, string>, offer: 
     .filter((p) => p.trim())
     .map((p) => `<p style="margin:0 0 14px;color:#374151;font-size:15px;line-height:1.7;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
     .join('');
-  const withOffer = paras.replace(new RegExp(`<p[^>]*>${MARK}</p>`), offerBoxHtml(offer, accent, locale));
+  const withOffer = paras.replace(new RegExp(`<p[^>]*>${MARK}</p>`), offerBoxHtml(offer, accent, locale, tz));
   const cta = bookingLink
     ? `<table style="width:100%;border-collapse:collapse;margin:6px 0 4px;"><tr><td align="center">
         <a href="${escapeHtml(bookingLink)}" style="display:inline-block;background:${escapeHtml(accent)};color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:13px 30px;border-radius:10px;">Book my visit</a>
@@ -259,7 +259,7 @@ export class CampaignsService {
     const msg = cs[dto.campaign] as CampaignMessage;
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, slug: true, contactEmail: true, contactPhone: true, branding: true },
+      select: { name: true, slug: true, contactEmail: true, contactPhone: true, branding: true, timezone: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     const n = await this.settings.getNotificationSettings(tenantId);
@@ -271,7 +271,8 @@ export class CampaignsService {
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
       booking_link: campaignLink(tenant.slug, dto.campaign, msg.offer),
       customer_name: 'Test',
-      ...offerVars(msg.offer, locale),
+      tz: tenant.timezone || '',
+      ...offerVars(msg.offer, locale, tenant.timezone || undefined),
     };
     const out = { email: 'skipped', sms: 'skipped' };
 
@@ -285,7 +286,7 @@ export class CampaignsService {
           salon: tenant.name,
           accent,
           contact: tenant.contactPhone || tenant.contactEmail || '',
-          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, accent, pct.booking_link, locale),
+          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, accent, pct.booking_link, locale, pct.tz),
         }),
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo,
@@ -342,6 +343,7 @@ export class CampaignsService {
     const n = await this.settings.getNotificationSettings(tenantId);
     const transport = this.buildTransport(n, tenant.name);
     const basePct: Record<string, string> = {
+      tz,
       salon_name: tenant.name,
       salon_contact: tenant.contactPhone || tenant.contactEmail || '',
       booking_link: bookingUrl(tenant.slug),
@@ -471,7 +473,7 @@ export class CampaignsService {
       ...basePct,
       customer_name: c.firstName || 'there',
       booking_link: campaignLink(basePct.salon_slug, key, msg.offer),
-      ...offerVars(msg.offer, locale),
+      ...offerVars(msg.offer, locale, basePct.tz),
     };
     const related = { relatedType: campaignRelatedType(key), relatedId: c.id };
 
@@ -510,7 +512,7 @@ export class CampaignsService {
           salon: pct.salon_name,
           accent: pct.accent_color || '#6366f1',
           contact: pct.salon_contact,
-          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, pct.accent_color || '#6366f1', pct.booking_link, locale) + refHtml,
+          bodyText: campaignBodyHtml(msg.body, pct, msg.offer, pct.accent_color || '#6366f1', pct.booking_link, locale, pct.tz) + refHtml,
         }),
         smtp: transport.smtp, brevo: transport.brevo, gmail: transport.gmail,
         mailService: n.mailService, senderName: transport.senderName, replyTo: transport.replyTo, ...related,

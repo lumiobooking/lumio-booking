@@ -599,7 +599,10 @@ export class VoiceService implements OnModuleInit {
   private async usageForTenant(tenantId: string, monthStart?: Date): Promise<VoiceUsage> {
     const since = monthStart ?? this.monthStart();
     // When billing a specific past month, bound the window to that month only.
-    const until = monthStart ? new Date(since.getFullYear(), since.getMonth() + 1, 1) : null;
+    // Same convention as `since` (UTC month), or the window's far edge lands
+    // hours inside the neighbouring month and the last evening's minutes and
+    // SMS fall out of the invoice entirely.
+    const until = monthStart ? new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth() + 1, 1)) : null;
     const callWindow = until ? { gte: since, lt: until } : { gte: since };
     const [calls, line] = await Promise.all([
       this.prisma.voiceCall.findMany({

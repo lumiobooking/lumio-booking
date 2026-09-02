@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -63,7 +64,7 @@ function Inner() {
             <div key={r.id} style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#f59e0b' }}>{'★'.repeat(r.rating)}<span style={{ color: 'var(--c334155)' }}>{'★'.repeat(5 - r.rating)}</span></span>
-                <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{new Date(r.createdAt).toLocaleDateString(uiLocale())}</span>
+                <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{fmtInTz(r.createdAt, { dateStyle: 'short' })}</span>
               </div>
               {r.comment && <div style={{ fontSize: 14, marginTop: 6, color: 'var(--ce2e8f0)' }}>“{r.comment}”</div>}
             </div>

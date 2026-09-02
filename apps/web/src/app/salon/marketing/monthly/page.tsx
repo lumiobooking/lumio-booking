@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, CSSProperties } from 'react';
+import { fmtInTz } from '../../../../lib/datetime';
+import { dayKeyInTz } from '../../../../lib/datetime';
 import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
@@ -58,7 +60,7 @@ interface SocialInsight {
 
 const CHANNELS = ['facebook', 'instagram', 'tiktok', 'google_ads', 'gbp', 'seo', 'email', 'sms', 'website', 'other'];
 const CH_LABEL: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác / Other' };
-const thisMonth = () => new Date().toISOString().slice(0, 7);
+const thisMonth = () => dayKeyInTz(new Date()).slice(0, 7); // the SALON's month
 
 export default function MarketingMonthlyPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -291,7 +293,7 @@ function Inner() {
         <button onClick={saveGbpReviews} disabled={busy === 'grev'} style={{ ...ui.primaryBtn, marginTop: 10 }}>{busy === 'grev' ? '…' : T('Lưu đánh giá Google', 'Save Google reviews')}</button>
         {data?.gbp?.reviews?.syncedAt && data.gbp.reviews.manual !== true && (
           <span style={{ fontSize: 11, color: 'var(--c64748b)', marginLeft: 10 }}>
-            {T('cập nhật ', 'updated ')}{new Date(data.gbp.reviews.syncedAt).toLocaleString(vi ? 'vi-VN' : uiLocale())}
+            {T('cập nhật ', 'updated ')}{fmtInTz(data.gbp.reviews.syncedAt, { dateStyle: 'short', timeStyle: 'short' })}
           </span>
         )}
       </div>
@@ -375,7 +377,7 @@ function Inner() {
  * that it actually happened (and what still needs approving) instead of trusting it.
  */
 function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean; T: (v: string, e: string) => string; onOpen: (month: string) => void }) {
-  const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+  const fmtDate = (iso: string | null) => (iso ? fmtInTz(iso, { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
   const statusChip = (st: string | null) => {
     const map: Record<string, [string, string]> = {
       review: ['#f59e0b', T('Chờ duyệt', 'In review')],
@@ -592,7 +594,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const igPosts = ((data.socialInsights ?? []).find((x) => x.platform === 'instagram')?.posts ?? []).slice(0, 12);
   const postsHtml = igPosts.map((p) => {
     const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
-    const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
+    const dt = p.timestamp ? fmtInTz(p.timestamp, { month: 'short', day: 'numeric' }) : '';
     const tl = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : t('Ảnh', 'Photo');
     const thumb = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0" />` : `<div style="width:40px;height:40px;border-radius:6px;background:#f1f4f9;flex-shrink:0"></div>`;
     const cell = (label: string, v: number | null) => (v == null ? '' : `<span style="margin-right:10px"><b>${f(v)}</b> <span style="color:#6b7280">${label}</span></span>`);
@@ -1092,7 +1094,7 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
             </span>
           </div>
           {c.connected && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 4 }}>
-            {c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + new Date(c.lastSyncedAt).toLocaleString(uiLocale()) : ''}{c.lastError ? ' · ' + c.lastError : ''}
+            {c.accountName || c.externalAccountId} {c.lastSyncedAt ? '· ' + T('đồng bộ', 'synced') + ' ' + fmtInTz(c.lastSyncedAt, { dateStyle: 'short', timeStyle: 'short' }) : ''}{c.lastError ? ' · ' + c.lastError : ''}
             {c.keyHint === 'LINKED:messenger' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/messenger" style={{ color: 'var(--c818cf8)' }}>Messenger AI</a></>}
             {c.keyHint === 'LINKED:google-reviews' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/reviews-replies" style={{ color: 'var(--c818cf8)' }}>Google Reviews</a></>}
           </div>}
@@ -1124,7 +1126,7 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
 
 function PostRowView({ p, T }: { p: PostRow; T: (v: string, e: string) => string }) {
   const img = !!p.thumbnail && p.thumbnail.startsWith('http');
-  const dt = p.timestamp ? new Date(p.timestamp).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' }) : '';
+  const dt = p.timestamp ? fmtInTz(p.timestamp, { month: 'short', day: 'numeric' }) : '';
   const typeLabel = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : T('Ảnh', 'Photo');
   const num = (n: number | null) => (n == null ? null : Number(n).toLocaleString(uiLocale()));
   const stat = (label: string, v: number | null) => (v == null ? null : <span key={label} style={{ whiteSpace: 'nowrap' }}><b style={{ color: 'var(--cf8fafc)' }}>{num(v)}</b> <span style={{ color: 'var(--c64748b)' }}>{label}</span></span>);

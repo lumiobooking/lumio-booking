@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
@@ -609,15 +610,13 @@ function MenuItem({ label, color, onClick }: { label: string; color: string; onC
 
 /** Date+time picker that opens under the 🗓 icon. */
 function InlineMove({ current, t, onMove, onClose }: { current: string; t: (k: string) => string; onMove: (iso: string) => void; onClose: () => void }) {
-  const [val, setVal] = useState(() => {
-    const d = new Date(current);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  });
+  // The picker shows and reads SALON wall time. Browser-local here means an
+  // owner rescheduling from another timezone silently moves the appointment.
+  const [val, setVal] = useState(() => instantToWall(current));
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
       <input type="datetime-local" value={val} onChange={(e) => setVal(e.target.value)} style={{ ...ui.input, padding: '5px 8px', fontSize: 13 }} />
-      <button disabled={!val} onClick={() => val && onMove(new Date(val).toISOString())} style={smallOk}>{t('bk.move')}</button>
+      <button disabled={!val} onClick={() => val && onMove(wallToInstantISO(val))} style={smallOk}>{t('bk.move')}</button>
       <button onClick={onClose} style={actBtnOutline('var(--c94a3b8)')}>✕</button>
     </div>
   );
@@ -735,7 +734,9 @@ function CreateBookingForm({
       .map(({ p, i }) => (i === 0 ? (form.customerFirstName.trim() || t('bk.you')) : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`)));
     if (empty.length > 0) { setError(t('bk.missingSvc').replace('{who}', empty.join(', '))); return; }
     setSubmitting(true);
-    const startTime = new Date(form.startLocal).toISOString();
+    // form.startLocal is the SALON's wall clock — the receptionist typed the
+    // customer's hour, not their own browser's.
+    const startTime = wallToInstantISO(form.startLocal);
     const groupNote = partyN > 1 ? `${t('bk.groupNote')} (${partyN})` : undefined;
     // One id shared by the whole party. The note is for humans; this is what
     // the calendar and the till read.

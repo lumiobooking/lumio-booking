@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { UsageCostsPanel } from '../../../components/UsageCostsPanel';
 import { useAuth } from '../../../lib/auth';
@@ -103,7 +104,7 @@ function Inner() {
   const remainMs = peMs > nowMs ? peMs - nowMs : 0;
   const remainFrac = periodMs > 0 ? Math.min(1, Math.max(0, remainMs / periodMs)) : 0;
   const remainDays = Math.max(0, Math.ceil(remainMs / 86400000));
-  const renewLabel = sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  const renewLabel = sub?.currentPeriodEnd ? fmtInTz(sub.currentPeriodEnd, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
   return (
     <section style={{ maxWidth: 760 }}>
@@ -281,7 +282,7 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
 
 const invMoney = (c: number, cur = 'USD') => new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur }).format((c || 0) / 100);
 function fmtInvDate(s: string): string {
-  try { return new Date(s).toLocaleDateString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return ''; }
+  try { return fmtInTz(s, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return ''; }
 }
 
 function toggle(active: boolean): React.CSSProperties {
@@ -299,7 +300,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function fmtDate(s: string | null): string {
   if (!s) return '—';
-  try { return new Date(s).toLocaleDateString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return '—'; }
+  try { return fmtInTz(s, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return '—'; }
 }
 
 function statusLabel(s: string, lang: Lang): string {

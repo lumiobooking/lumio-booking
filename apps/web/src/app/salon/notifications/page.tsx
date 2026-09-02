@@ -10,6 +10,7 @@
 // ===========================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -437,7 +438,7 @@ function HistoryView({ token }: { token: string | null }) {
           {items.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('nt.noMessages')}</td></tr>}
           {items.map((n) => (
             <tr key={n.id} style={{ borderTop: '1px solid var(--c334155)' }}>
-              <td style={{ ...ui.td, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString(uiLocale())}</td>
+              <td style={{ ...ui.td, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{fmtInTz(n.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</td>
               <td style={ui.td}>{n.channel}</td>
               <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{n.recipient}</td>
               <td style={ui.td}>

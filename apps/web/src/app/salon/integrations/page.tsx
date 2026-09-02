@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, FormEvent } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -280,7 +281,7 @@ function Inner() {
                     </span>
                   </td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>
-                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString(uiLocale()) : t('in.never')}
+                    {k.lastUsedAt ? fmtInTz(k.lastUsedAt, { dateStyle: 'short', timeStyle: 'short' }) : t('in.never')}
                   </td>
                   <td style={ui.td}>
                     {k.status === 'ACTIVE' && (

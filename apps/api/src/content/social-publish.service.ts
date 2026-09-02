@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { wallTimeToUtcTz } from '../common/salon-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -60,6 +61,22 @@ export class SocialPublishService {
     private readonly prisma: PrismaService,
     @Inject(MEDIA_STORE) private readonly uploads: MediaStore,
   ) {}
+
+  /**
+   * A scheduledAt from the client as an instant. A full ISO instant (with Z or
+   * an offset) is taken as-is; an OFFSETLESS "2026-09-02T20:00" is a wall time
+   * and means 8pm AT THE SALON — the server's own zone must never decide when
+   * a salon's post goes out.
+   */
+  private async whenOf(tenantId: string, scheduledAt: string): Promise<Date> {
+    const sIn = String(scheduledAt ?? '');
+    const wall = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(sIn);
+    if (wall) {
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+      return wallTimeToUtcTz(wall[1], wall[2], t?.timezone || 'UTC');
+    }
+    return new Date(sIn);
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = user?.tenantId;
@@ -286,7 +303,7 @@ export class SocialPublishService {
     const channels = (body.channels ?? ['facebook']).filter((c) => c === 'facebook' || c === 'instagram');
     const message = (body.message ?? '').trim();
     const media = this.mediaOf({ media: body.media ?? [] });
-    const when = body.scheduledAt ? new Date(body.scheduledAt) : null;
+    const when = body.scheduledAt ? await this.whenOf(tenantId, body.scheduledAt) : null;
     if (!message && !media.length) throw new BadRequestException('Bài chưa có nội dung.');
     if (!when || Number.isNaN(when.getTime())) throw new BadRequestException('Chưa chọn thời gian đăng.');
     if (!channels.length) throw new BadRequestException('Chọn ít nhất một nơi để đăng.');
@@ -327,7 +344,7 @@ export class SocialPublishService {
    */
   async reschedule(user: AuthenticatedUser, id: string, scheduledAt: string) {
     const tenantId = this.tenantId(user);
-    const when = new Date(scheduledAt);
+    const when = await this.whenOf(tenantId, scheduledAt);
     if (Number.isNaN(when.getTime())) throw new BadRequestException('Thời gian không hợp lệ.');
     const r = await this.posts?.updateMany({
       where: { id, tenantId, status: { in: ['draft', 'scheduled', 'failed', 'expired'] } },

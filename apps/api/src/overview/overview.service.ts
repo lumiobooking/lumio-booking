@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, PaymentStatus, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { addDaysToKey, dayKeyTz, dayRangeTz, hourTz, startOfDayTz, weekdayTz } from '../common/salon-time';
 
 const ACTIVE_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.PENDING,
@@ -27,14 +28,25 @@ export class OverviewService {
     return id;
   }
 
+  /** The tenant's own timezone — every "today" and "this month" here is theirs. */
+  private async tzOf(tenantId: string): Promise<string> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    return t?.timezone || 'UTC';
+  }
+
   /** Headline numbers + recent bookings for the Salon Admin overview page. */
   async stats(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
 
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // "Today" and "this month" are the SALON's, not the server's: on a server
+    // in another timezone the old headline rolled over mid-shift and showed
+    // tomorrow's bookings before the owner had closed today.
+    const tz = await this.tzOf(tenantId);
+    const todayKey = dayKeyTz(now, tz);
+    const startOfToday = startOfDayTz(todayKey, tz);
+    const endOfToday = startOfDayTz(addDaysToKey(todayKey, 1), tz);
+    const startOfMonth = startOfDayTz(`${todayKey.slice(0, 7)}-01`, tz);
 
     const [
       bookingsToday,
@@ -95,17 +107,12 @@ export class OverviewService {
   async dashboard(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
     const tenantId = this.tenantId(user);
 
-    // --- Resolve the date range (default: trailing 30 days, inclusive). ---
+    // --- Resolve the date range (default: trailing 30 days, inclusive) — in
+    // the SALON's days. Parsing "?to=2026-09-30" with the server's clock used
+    // to cut the last afternoon off every report read across timezones. ---
     const now = new Date();
-    const endBase = toStr ? new Date(`${toStr}T00:00:00`) : now;
-    const to = new Date(endBase.getFullYear(), endBase.getMonth(), endBase.getDate(), 23, 59, 59, 999);
-    let from: Date;
-    if (fromStr) {
-      const f = new Date(`${fromStr}T00:00:00`);
-      from = new Date(f.getFullYear(), f.getMonth(), f.getDate());
-    } else {
-      from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - 29);
-    }
+    const tz = await this.tzOf(tenantId);
+    const { from, to, fromKey, toKey } = dayRangeTz(fromStr, toStr, tz, { now });
 
     const [appts, payments, newCustomers, upcomingBookings] = await Promise.all([
       this.prisma.appointment.findMany({
@@ -191,27 +198,24 @@ export class OverviewService {
     const noShowRate = totalBookings > 0 ? noShow / totalBookings : 0;
     const completionRate = totalBookings > 0 ? completed / totalBookings : 0;
 
-    // --- Per-day time series (bookings + revenue). Capped to keep payload small. ---
-    const dayKey = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    // --- Per-day time series (bookings + revenue), on the SALON's days. ---
     const bookingsByDay = new Map<string, number>();
     for (const a of appts) {
-      const k = dayKey(new Date(a.startTime));
+      const k = dayKeyTz(new Date(a.startTime), tz);
       bookingsByDay.set(k, (bookingsByDay.get(k) ?? 0) + 1);
     }
     const revenueByDay = new Map<string, number>();
     for (const p of countablePayments) {
       if (!p.paidAt) continue;
-      const k = dayKey(new Date(p.paidAt));
+      const k = dayKeyTz(new Date(p.paidAt), tz);
       revenueByDay.set(k, (revenueByDay.get(k) ?? 0) + p.amountCents);
     }
     const series: { date: string; bookings: number; revenueCents: number }[] = [];
-    const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+    let k = fromKey;
     let guard = 0;
-    while (cursor <= to && guard < 370) {
-      const k = dayKey(cursor);
+    while (k <= toKey && guard < 370) {
       series.push({ date: k, bookings: bookingsByDay.get(k) ?? 0, revenueCents: revenueByDay.get(k) ?? 0 });
-      cursor.setDate(cursor.getDate() + 1);
+      k = addDaysToKey(k, 1);
       guard += 1;
     }
 
@@ -223,8 +227,8 @@ export class OverviewService {
     const byWeekday = Array.from({ length: 7 }, () => 0);
     for (const a of appts) {
       const d = new Date(a.startTime);
-      byHour[d.getHours()] += 1;
-      byWeekday[d.getDay()] += 1;
+      byHour[hourTz(d, tz)] += 1;
+      byWeekday[weekdayTz(d, tz)] += 1;
     }
 
     // --- Staff revenue: bookings handled + revenue earned, for EVERY active
@@ -340,7 +344,7 @@ export class OverviewService {
     };
 
     return {
-      range: { from: dayKey(from), to: dayKey(to) },
+      range: { from: fromKey, to: toKey },
       // Raw (source, utmSource) pairs — tiny, and the web's booking-sources
       // lib owns ALL classification rules in one place.
       sourceRows: appts.map((a) => ({ source: a.source ?? null, utmSource: a.utmSource ?? null, attrReferrer: a.attrReferrer ?? null })),

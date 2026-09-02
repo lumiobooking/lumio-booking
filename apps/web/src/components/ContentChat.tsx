@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { fmtInTz } from '../lib/datetime';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { useIsMobile } from '../lib/responsive';
@@ -45,7 +46,7 @@ export interface ChatMessage {
 
 const timeOf = (iso: string) => {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return fmtInTz(iso, {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     });
   } catch { return ''; }

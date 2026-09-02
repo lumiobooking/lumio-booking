@@ -1,6 +1,7 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
+import { fmtInTz } from '../lib/datetime';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch } from '../lib/api';
@@ -63,8 +64,8 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
 
   const fullName = (o?: { firstName: string; lastName: string | null } | null, fb = L('Khách', 'Guest')) =>
     o ? ([o.firstName, o.lastName].filter(Boolean).join(' ').trim() || fb) : fb;
-  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(lang === 'vi' ? 'vi-VN' : uiLocale(), { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
-  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const fmtWhen = (iso: string) => fmtInTz(iso, { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const fmtTime = (iso: string) => fmtInTz(iso, { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const money = (cents: number) => { try { return new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100); } catch { return '$' + Math.round(cents / 100); } };
   const sourceLabel = (s?: string | null) => {
     switch ((s || '').toUpperCase()) {

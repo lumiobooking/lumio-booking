@@ -17,6 +17,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { TrashService } from '../maintenance/trash.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 
 const ORDER_INCLUDE = {
@@ -39,6 +40,29 @@ export class PosService {
     const id = resolveTenantScope(user);
     if (!id) throw new NotFoundException('No tenant context');
     return id;
+  }
+
+  /** The tenant's own timezone: a till report's "day" is the salon's day. */
+  private async tzOf(tenantId: string): Promise<string> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    return t?.timezone || 'UTC';
+  }
+
+  /**
+   * A range argument as an instant. Accepts a full ISO instant (a caller that
+   * already anchored its window, like staff performance) or a "YYYY-MM-DD"
+   * salon day, whose edge is that day's start or end AT THE SALON. The old
+   * string-concatenation parse produced Invalid Date for ISO input — which a
+   * caller's catch then read as "POS has no money", zeros in a payroll table.
+   */
+  private edgeOf(x: string, tz: string, edge: 'start' | 'end'): Date {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(x)) {
+      return edge === 'start'
+        ? startOfDayTz(x, tz)
+        : new Date(startOfDayTz(addDaysToKey(x, 1), tz).getTime() - 1);
+    }
+    const d = new Date(x);
+    return Number.isNaN(d.getTime()) ? new Date(NaN) : d;
   }
 
   // ===================== Products (retail catalog) =====================
@@ -111,8 +135,12 @@ export class PosService {
     if (status) where.status = status as OrderStatus;
     if (fromStr || toStr) {
       where.createdAt = {};
-      if (fromStr) where.createdAt.gte = new Date(`${fromStr}T00:00:00`);
-      if (toStr) where.createdAt.lte = new Date(`${toStr}T23:59:59.999`);
+      const tzP = this.tzOf(tenantId);
+      return tzP.then((tz) => {
+        if (fromStr) (where.createdAt as { gte?: Date }).gte = this.edgeOf(fromStr, tz, 'start');
+        if (toStr) (where.createdAt as { lte?: Date }).lte = this.edgeOf(toStr, tz, 'end');
+        return this.prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
+      });
     }
     return this.prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
   }
@@ -557,9 +585,13 @@ export class PosService {
 
   async report(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
     const tenantId = this.tenantId(user);
+    const tz = await this.tzOf(tenantId);
     const now = new Date();
-    const to = toStr ? new Date(`${toStr}T23:59:59.999`) : now;
-    const from = fromStr ? new Date(`${fromStr}T00:00:00`) : new Date(to.getTime() - 29 * 86400000);
+    const to = toStr ? this.edgeOf(toStr, tz, 'end') : now;
+    const from = fromStr ? this.edgeOf(fromStr, tz, 'start') : new Date(to.getTime() - 29 * 86400000);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new Error('report range must be YYYY-MM-DD or an ISO instant');
+    }
 
     const orders = await this.prisma.order.findMany({
       where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: from, lte: to } },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -130,7 +131,7 @@ function Inner() {
         </div>
 
         <div style={{ ...meta, marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          <span>{new Date(t.createdAt).toLocaleString(uiLocale())}</span>
+          <span>{fmtInTz(t.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
           {t.cardBrand && <span>{L.card}: {t.cardBrand} •••• {t.last4 ?? '——'}{t.entryType ? ` · ${t.entryType}` : ''}</span>}
           {t.approvalCode && <span>{L.approval}: {t.approvalCode}</span>}
           {t.batchNumber && <span>{L.batch}: {t.batchNumber}</span>}

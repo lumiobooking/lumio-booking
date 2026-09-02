@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -198,7 +199,7 @@ function Inner() {
                     : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                 </MRow>
                 <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
-                <MRow label={t('cu.colSince')}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</MRow>
+                <MRow label={t('cu.colSince')}>{fmtInTz(c.createdAt, { dateStyle: 'short' })}</MRow>
                 <MActions>
                   <button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button>
                 </MActions>
@@ -245,7 +246,7 @@ function Inner() {
                         : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                   </td>
                   <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>
-                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(c.createdAt).toLocaleDateString(uiLocale())}</td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtInTz(c.createdAt, { dateStyle: 'short' })}</td>
                   <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button></td>
                 </tr>
               ))}

@@ -5,6 +5,7 @@
 // sweep removes it permanently.
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -90,7 +91,7 @@ function Inner() {
                 <tr key={r.id} style={{ borderTop: '1px solid var(--c334155)' }}>
                   <td style={ui.td}>{ENTITY_LABEL[r.entity] ?? r.entity}</td>
                   <td style={ui.td}>{r.label}</td>
-                  <td style={ui.td}>{new Date(r.deletedAt).toLocaleString(uiLocale())}</td>
+                  <td style={ui.td}>{fmtInTz(r.deletedAt, { dateStyle: 'short', timeStyle: 'short' })}</td>
                   <td style={ui.td}>
                     {/* Under two days is when someone needs to notice. */}
                     <span style={{ fontWeight: 700, color: r.daysLeft <= 2 ? '#f97316' : 'var(--c94a3b8)' }}>

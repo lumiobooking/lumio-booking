@@ -1,13 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AppointmentStatus, PaymentStatus, StaffRole, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { dayRangeTz } from '../common/salon-time';
 
 const EXCLUDED = [AppointmentStatus.CANCELLED, AppointmentStatus.REJECTED];
-
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 @Injectable()
 export class BranchesService {
@@ -76,17 +73,17 @@ export class BranchesService {
    */
   async chainReport(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
     const ids = await this.allowedBranchIds(user);
-    const now = new Date();
-    const endBase = toStr ? new Date(`${toStr}T00:00:00`) : now;
-    const to = new Date(endBase.getFullYear(), endBase.getMonth(), endBase.getDate(), 23, 59, 59, 999);
-    let from: Date;
-    if (fromStr) {
-      const f = new Date(`${fromStr}T00:00:00`);
-      from = new Date(f.getFullYear(), f.getMonth(), f.getDate());
-    } else {
-      from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - 29);
-    }
-    const range = { from: dayKey(from), to: dayKey(to) };
+    // The range's edges are days in the OWNER's home-branch timezone — a chain
+    // report cut at the server's midnight compared branches against a day none
+    // of them keeps. (Branches in different timezones share these instants so
+    // the columns still sum; the edges just belong to the person asking.)
+    const homeId = resolveTenantScope(user) ?? ids[0];
+    const home = homeId
+      ? await this.prisma.tenant.findUnique({ where: { id: homeId }, select: { timezone: true } }).catch(() => null)
+      : null;
+    const tz = home?.timezone || 'UTC';
+    const { from, to, fromKey, toKey } = dayRangeTz(fromStr, toStr, tz);
+    const range = { from: fromKey, to: toKey };
     if (ids.length === 0) return { range, totalCents: 0, branches: [] };
 
     const [revRows, apptRows, custRows, tenants] = await Promise.all([

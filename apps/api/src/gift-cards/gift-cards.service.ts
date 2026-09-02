@@ -7,6 +7,7 @@ import {
 import { randomInt } from 'crypto';
 import { PaymentStatus, PaymentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { addDaysToKey, startOfDayTz } from '../common/salon-time';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -31,6 +32,18 @@ export class GiftCardsService {
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
   ) {}
+
+  /**
+   * "Expires 2026-12-31" means THROUGH that day at the salon. Parsing the bare
+   * date as UTC midnight refused cards a whole day early at the till.
+   */
+  private async expiryOf(tenantId: string, raw: string): Promise<Date> {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+      return new Date(startOfDayTz(addDaysToKey(raw, 1), t?.timezone || 'UTC').getTime() - 1);
+    }
+    return new Date(raw);
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -108,7 +121,7 @@ export class GiftCardsService {
           recipientName: dto.recipientName?.trim() || null,
           recipientContact: dto.recipientContact?.trim() || null,
           note: dto.note?.trim() || null,
-          expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+          expiresAt: dto.expiresAt ? await this.expiryOf(tenantId, dto.expiresAt) : null,
           createdByUserId: user.userId,
         },
       });

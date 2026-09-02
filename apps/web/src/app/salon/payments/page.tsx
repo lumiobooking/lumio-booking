@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import Link from 'next/link';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
@@ -106,7 +107,7 @@ function Inner() {
                 <MHead right={<span style={{ color: COLORS[p.status] ?? 'var(--c94a3b8)', fontWeight: 700, fontSize: 13 }}>{p.status}</span>}>
                   {formatPrice(p.amountCents, p.currency)}
                 </MHead>
-                <MRow label={t('pm.colDate')}>{new Date(p.createdAt).toLocaleString(uiLocale())}</MRow>
+                <MRow label={t('pm.colDate')}>{fmtInTz(p.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</MRow>
                 <MRow label={t('pm.colType')}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</MRow>
                 <MRow label={t('pm.colProvider')}>{p.provider || '—'}</MRow>
                 <MActions>
@@ -140,7 +141,7 @@ function Inner() {
               {pg.paged.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(p.id) ? 'var(--c1e1b4b)' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
-                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(p.createdAt).toLocaleString(uiLocale())}</td>
+                  <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtInTz(p.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</td>
                   <td style={ui.td}>{formatPrice(p.amountCents, p.currency)}</td>
                   <td style={ui.td}>{p.type === 'PAY_ONLINE' ? t('pm.online') : t('pm.atSalon')}</td>
                   <td style={ui.td}>

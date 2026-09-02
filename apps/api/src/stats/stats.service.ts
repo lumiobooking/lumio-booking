@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { AppointmentStatus, OrderStatus, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -41,12 +42,17 @@ export class StatsService {
     const tz = tenant?.timezone || 'America/New_York';
     const bucket: Bucket = bucketRaw === 'year' ? 'year' : bucketRaw === 'month' ? 'month' : 'day';
 
-    // Range: explicit from/to, else a sensible default per bucket.
+    // Range: explicit from/to, else a sensible default per bucket. Explicit
+    // edges are SALON days — the buckets below are already tz-derived, and a
+    // server-local edge cut the first and last bucket of every range short.
     const now = new Date();
+    const dayRe = /^\d{4}-\d{2}-\d{2}$/;
     let from: Date;
-    let to: Date = toRaw ? new Date(`${toRaw}T23:59:59`) : now;
-    if (fromRaw) {
-      from = new Date(`${fromRaw}T00:00:00`);
+    let to: Date = dayRe.test(String(toRaw ?? ''))
+      ? new Date(startOfDayTz(addDaysToKey(String(toRaw), 1), tz).getTime() - 1)
+      : now;
+    if (dayRe.test(String(fromRaw ?? ''))) {
+      from = startOfDayTz(String(fromRaw), tz);
     } else if (bucket === 'year') {
       from = new Date(Date.UTC(now.getUTCFullYear() - 4, 0, 1));
     } else if (bucket === 'month') {
@@ -125,8 +131,9 @@ export class StatsService {
 
     return {
       bucket, tz,
-      from: from.toISOString().slice(0, 10),
-      to: to.toISOString().slice(0, 10),
+      // Report the range back as the SALON days it covers, not their UTC shadows.
+      from: dayKeyTz(from, tz),
+      to: dayKeyTz(to, tz),
       sources: CANONICAL_SOURCES,
       devicesList: CANONICAL_DEVICES,
       buckets,

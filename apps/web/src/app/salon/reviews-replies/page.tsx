@@ -8,6 +8,7 @@
 // Everything is tenant-scoped by the backend.
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -408,7 +409,7 @@ function Inner() {
           </button>
           {saving ? <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>…</span> : saved ? <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span> : null}
           <span style={{ color: 'var(--c64748b)', fontSize: 12, marginLeft: 'auto' }}>
-            {t('lastSync')}: {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString(uiLocale()) : t('never')}
+            {t('lastSync')}: {s.lastSyncAt ? fmtInTz(s.lastSyncAt, { dateStyle: 'short', timeStyle: 'short' }) : t('never')}
           </span>
         </div>
         {s.enabled && s.hasLocation && (
@@ -440,7 +441,7 @@ function Inner() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <span style={{ color: r.starRating >= 4 ? '#22c55e' : '#f59e0b', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
                   <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
-                  {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{new Date(r.reviewCreatedAt).toLocaleDateString(uiLocale())}</span>}
+                  {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{fmtInTz(r.reviewCreatedAt, { dateStyle: 'short' })}</span>}
                 </div>
                 {r.comment && <div style={{ color: 'var(--ccbd5e1)', fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>{r.comment}</div>}
 

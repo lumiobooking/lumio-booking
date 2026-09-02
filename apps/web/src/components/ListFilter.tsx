@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { dayKeyInTz } from '../lib/datetime';
 import { useLang, tr } from '../lib/i18n';
 
 /**
@@ -15,18 +16,23 @@ export function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * The filter's days are the SALON's days. A row stamped Tuesday 8pm in Austin
+ * is Wednesday morning UTC and to a viewer in Vietnam; grouping it by the
+ * browser's day silently drops it from "today" and month-end filters.
+ */
+
 // openFuture: for future-oriented lists (bookings) the presets leave the END
 // open so upcoming appointments still show ("from N days ago onward").
 function computeRange(preset: Preset, openFuture = false): { from: string; to: string } {
-  const today = isoDay(new Date());
+  const today = dayKeyInTz(new Date());
   const end = openFuture ? '' : today;
   if (preset === 'all' || preset === 'custom') return { from: '', to: '' };
   if (preset === 'month') {
-    const d = new Date();
-    return { from: isoDay(new Date(d.getFullYear(), d.getMonth(), 1)), to: end };
+    return { from: `${today.slice(0, 7)}-01`, to: end };
   }
   const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
-  return { from: isoDay(new Date(Date.now() - (days - 1) * 86400000)), to: end };
+  return { from: dayKeyInTz(new Date(Date.now() - (days - 1) * 86400000)), to: end };
 }
 
 export interface DateRange {
@@ -69,7 +75,7 @@ export function useDateRange(initial: Preset = 'all', openFuture = false): DateR
   const inRange = (dateStr?: string | null) => {
     if (!from && !to) return true;
     if (!dateStr) return false;
-    const day = isoDay(new Date(dateStr));
+    const day = dayKeyInTz(dateStr);
     if (from && day < from) return false;
     if (to && day > to) return false;
     return true;

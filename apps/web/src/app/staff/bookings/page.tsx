@@ -10,7 +10,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
-import { uiLocale } from '../../../lib/datetime';
+import { uiLocale, dayKeyInTz, hourInTz, fmtInTz } from '../../../lib/datetime';
 
 interface NamedRef { firstName?: string; lastName?: string | null }
 interface Booking {
@@ -85,7 +85,7 @@ function Inner() {
   const byDay = useMemo(() => {
     const m = new Map<string, Booking[]>();
     for (const b of bookings) {
-      const k = ymd(new Date(b.startTime));
+      const k = dayKeyInTz(b.startTime); // the SALON's day, not the phone's
       const list = m.get(k);
       if (list) list.push(b); else m.set(k, [b]);
     }
@@ -98,9 +98,9 @@ function Inner() {
   // upcoming day, else the most recent past one).
   useEffect(() => {
     if (autoPicked || bookings.length === 0) return;
-    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
-    const days = [...new Set(bookings.map((b) => ymd(new Date(b.startTime))))].sort();
-    const upcoming = days.find((d) => new Date(d + 'T00:00:00').getTime() >= t0.getTime());
+    const todayKey = dayKeyInTz(new Date());
+    const days = [...new Set(bookings.map((b) => dayKeyInTz(b.startTime)))].sort();
+    const upcoming = days.find((d) => d >= todayKey);
     const target = upcoming ?? days[days.length - 1];
     if (!target) return;
     const d = new Date(target + 'T00:00:00');
@@ -120,17 +120,19 @@ function Inner() {
     return out;
   }, [view]);
 
-  const today = new Date();
+  // The ring says "today" by the SALON's calendar.
+  const todayKey = dayKeyInTz(new Date());
+  const today = new Date(`${todayKey}T00:00:00`);
   const dayList = byDay.get(ymd(picked)) ?? [];
   const pending = bookings.filter((b) => b.status === 'ASSIGNED').length;
 
   const monthName = view.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { month: 'long', year: 'numeric' });
   const dayNames = vi ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const shift = (n: number) => setView(new Date(view.getFullYear(), view.getMonth() + n, 1));
-  const jumpToday = () => { setView(new Date()); setPicked(new Date()); };
+  const jumpToday = () => { const d = new Date(`${dayKeyInTz(new Date())}T00:00:00`); setView(d); setPicked(d); };
 
   const name = (c: NamedRef | null) => (c ? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() : '—');
-  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString(vi ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' });
+  const hhmm = (iso: string) => fmtInTz(iso, { hour: 'numeric', minute: '2-digit' });
 
   const row = (b: Booking, withDate = false) => {
     const colour = STATUS_COLORS[b.status] ?? 'var(--c94a3b8)';
@@ -170,15 +172,15 @@ function Inner() {
   // Everything from today on, soonest first — used by the List tab and by the
   // "nothing on this day" fallback, so the tech is never staring at an empty screen.
   const upcoming = useMemo(() => {
-    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const t0 = dayKeyInTz(new Date());
     return bookings
-      .filter((b) => new Date(b.startTime).getTime() >= t0.getTime())
+      .filter((b) => dayKeyInTz(b.startTime) >= t0)
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
   }, [bookings]);
   const past = useMemo(() => {
-    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const t0 = dayKeyInTz(new Date());
     return bookings
-      .filter((b) => new Date(b.startTime).getTime() < t0.getTime())
+      .filter((b) => dayKeyInTz(b.startTime) < t0)
       .sort((a, b) => b.startTime.localeCompare(a.startTime));
   }, [bookings]);
 
@@ -327,13 +329,13 @@ function Inner() {
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
                 {upcoming.slice(0, 3).map((b) => {
-                  const d = new Date(b.startTime);
+                  const d = new Date(`${dayKeyInTz(b.startTime)}T00:00:00`);
                   return (
                     <button key={b.id} onClick={() => { setPicked(d); setView(new Date(d.getFullYear(), d.getMonth(), 1)); }}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                         border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', textAlign: 'left' }}>
                       <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--ca5b4fc)', flexShrink: 0 }}>
-                        {d.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' })} · {hhmm(b.startTime)}
+                        {fmtInTz(b.startTime, { day: 'numeric', month: 'short' })} · {hhmm(b.startTime)}
                       </span>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {b.service?.name ?? 'Service'} · {name(b.customer)}

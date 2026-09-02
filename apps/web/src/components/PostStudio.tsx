@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { moveItem } from '../lib/reorder';
+import { dayKeyInTz, hourInTz, fmtInTz } from '../lib/datetime';
 
 /**
  * Planning a month of posts, and seeing what it will look like before it exists.
@@ -47,6 +48,10 @@ const FB_FOLD = 250;
 const IG_FOLD = 125;
 
 const pad = (n: number) => String(n).padStart(2, '0');
+// A month cell's Date is a plain calendar-day carrier (local midnight, Y-M-D);
+// its key reads those digits back. A stored INSTANT is different: it must be
+// keyed by the SALON's calendar day (dayKeyInTz), or an Austin evening post
+// files itself under the viewer's tomorrow.
 const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 // ---------------------------------------------------------------------------
@@ -104,13 +109,13 @@ export function MonthCalendar({
   const byDay = useMemo(() => {
     const m = new Map<string, StudioPost[]>();
     for (const p of posts) {
-      const k = dayKey(new Date(p.scheduledAt));
+      const k = dayKeyInTz(p.scheduledAt);
       m.set(k, [...(m.get(k) ?? []), p]);
     }
     return m;
   }, [posts]);
 
-  const today = dayKey(new Date());
+  const today = dayKeyInTz(new Date());
   const label = month.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { month: 'long', year: 'numeric' });
   const dows = vi ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -190,7 +195,7 @@ export function MonthCalendar({
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}
                 >
-                  {p.channels.includes('instagram') ? '◈' : '▣'} {new Date(p.scheduledAt).getHours()}h {p.message.slice(0, 18) || T('(ảnh)', '(media)')}
+                  {p.channels.includes('instagram') ? '◈' : '▣'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 18) || T('(ảnh)', '(media)')}
                 </div>
               ))}
             </div>
@@ -269,7 +274,7 @@ export function IgGrid({ posts, onPick, vi }: { posts: StudioPost[]; onPick: (id
             <button
               key={p.id}
               onClick={() => onPick(p.id)}
-              title={`${new Date(p.scheduledAt).toLocaleDateString()} · ${p.message.slice(0, 80)}`}
+              title={`${fmtInTz(p.scheduledAt, { day: 'numeric', month: 'short', year: 'numeric' })} · ${p.message.slice(0, 80)}`}
               style={{
                 position: 'relative', aspectRatio: '1 / 1', padding: 0, cursor: 'pointer',
                 border: p.blockers.length ? '2px solid #f59e0b' : '1px solid var(--c1e293b)',
@@ -295,7 +300,7 @@ export function IgGrid({ posts, onPick, vi }: { posts: StudioPost[]; onPick: (id
                   position: 'absolute', left: 4, bottom: 4, padding: '1px 5px', borderRadius: 4,
                   background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 9.5, fontWeight: 700,
                 }}>
-                  {new Date(p.scheduledAt).getDate()}/{new Date(p.scheduledAt).getMonth() + 1}
+                  {dayKeyInTz(p.scheduledAt).slice(8, 10).replace(/^0/, '')}/{dayKeyInTz(p.scheduledAt).slice(5, 7).replace(/^0/, '')}
                 </span>
               )}
             </button>

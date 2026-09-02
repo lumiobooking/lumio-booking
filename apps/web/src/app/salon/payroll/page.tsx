@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
+import { dayKeyInTz, wallToInstantISO } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -224,10 +226,18 @@ interface Perf {
 }
 
 function monthRange(): { from: string; to: string } {
-  const n = new Date();
-  const from = new Date(n.getFullYear(), n.getMonth(), 1);
-  const to = new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59, 999);
-  return { from: from.toISOString(), to: to.toISOString() };
+  // Pay-period edges are the SALON's month edges. Browser edges pushed a US
+  // salon's last-evening appointments into next month's payroll when viewed
+  // from another timezone — money owed to a named technician, filed wrong.
+  const today = dayKeyInTz(new Date());
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const from = wallToInstantISO(`${y}-${pad(m)}-01T00:00`);
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const nextStart = wallToInstantISO(`${nextY}-${pad(nextM)}-01T00:00`);
+  return { from, to: new Date(Date.parse(nextStart) - 1).toISOString() };
 }
 
 function Performance() {
@@ -404,7 +414,7 @@ function RecentList({ recent }: { recent: { name: string; date: string; service:
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, borderBottom: '1px solid var(--c1e293b)', paddingBottom: 5 }}>
             <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{x.name}</span>
             <span style={{ color: 'var(--c94a3b8)' }}>{x.service}</span>
-            <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{new Date(x.date).toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' })}</span>
+            <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{fmtInTz(x.date, { month: 'short', day: 'numeric' })}</span>
           </div>
         ))}
       </div>

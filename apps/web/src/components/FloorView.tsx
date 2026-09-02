@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, CSSProperties } from 'react';
+import { fmtInTz } from '../lib/datetime';
 import { createPortal } from 'react-dom';
 import { apiFetch } from '../lib/api';
 import { ui, formatPrice } from '../lib/ui';
@@ -155,7 +156,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>{vi ? 'Đã hẹn hôm nay · chờ tới' : 'Booked today · not arrived'}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {board.booked.map((b) => {
-              const time = new Date(b.startTime).toLocaleTimeString(vi ? 'vi-VN' : uiLocale(), { hour: 'numeric', minute: '2-digit' });
+              const time = fmtInTz(b.startTime, { hour: 'numeric', minute: '2-digit' });
               return (
                 <div key={b.id} style={{ background: 'var(--c111827)', border: '1px solid var(--c334155)', borderRadius: 12, padding: '9px 11px', minWidth: 190 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>

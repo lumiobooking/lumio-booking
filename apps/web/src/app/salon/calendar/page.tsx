@@ -12,6 +12,8 @@ import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { StaffDayView } from './StaffDayView';
+import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
+import { todayInZone } from '../../../lib/salon-clock';
 import { TableDayView } from './TableDayView';
 import { uiLocale } from '../../../lib/datetime';
 
@@ -89,7 +91,9 @@ function Inner() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; b: Booking } | null>(null);
   const [search, setSearch] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
-  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  // "Today" is the SALON's calendar day, not the viewer's — from Vietnam the
+  // browser is already on tomorrow while the Austin salon is still serving.
+  const today = useMemo(() => todayInZone(typeof window !== 'undefined' ? window.localStorage.getItem('lumio_tz') : null), []);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   // Month grid vs. detailed single-day timeline.
   const [mode, setMode] = useState<'month' | 'day' | 'staff' | 'floor'>('month');
@@ -1041,18 +1045,17 @@ const chipBtn: React.CSSProperties = {
 // different technician — one click each, no extra screens.
 function QuickEdit({ b, onAction }: { b: Booking; onAction: (id: string, path: string, body?: unknown) => void }) {
   const { lang } = useLang();
-  const [when, setWhen] = useState(() => {
-    const d = new Date(b.startTime);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  });
+  // The picker speaks SALON wall time, both reading the instant out and
+  // writing the edit back — otherwise rescheduling from another timezone
+  // silently moves the appointment.
+  const [when, setWhen] = useState(() => instantToWall(b.startTime));
   // The staff picker that used to sit here moved into ServiceLines below:
   // one place answers "who does what", for one service or five.
   return (
     <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 10, margin: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ ...ui.input, padding: '6px 8px', flex: 1, minWidth: 0 }} />
-        <button onClick={() => onAction(b.id, 'reschedule', { startTime: new Date(when).toISOString() })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
+        <button onClick={() => onAction(b.id, 'reschedule', { startTime: wallToInstantISO(when) })} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{tr('bk.move', lang)}</button>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { SocialRegistry } from './connectors/social-registry';
 import { ChannelCreds } from './connectors/social-connector.interface';
 import { encryptSecret, decryptSecret, maskHint, encConfigured } from '../payments-hub/crypto.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { SettingsService } from '../settings/settings.service';
 import { publicWebBase } from '../common/public-url.util';
 import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS } from './linked-channels';
@@ -46,13 +47,27 @@ export class MarketingService {
     return id;
   }
 
-  private range(fromStr?: string, toStr?: string) {
+  /** The tenant's own timezone — every month and day edge here is theirs. */
+  private async tzOf(tenantId: string): Promise<string> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    return t?.timezone || 'UTC';
+  }
+
+  /**
+   * The report window, anchored to the SALON's days. Server-local parsing here
+   * used to start every Austin month seven-plus hours early when the server or
+   * the reader sat in another timezone — and every ROI figure with it.
+   */
+  private async range(tenantId: string, fromStr?: string, toStr?: string) {
+    const tz = await this.tzOf(tenantId);
     const now = new Date();
-    let from = fromStr ? new Date(`${fromStr}T00:00:00`) : new Date(now.getFullYear(), now.getMonth(), 1);
-    let to = toStr ? new Date(`${toStr}T23:59:59.999`) : now;
-    if (Number.isNaN(from.getTime())) from = new Date(now.getFullYear(), now.getMonth(), 1);
-    if (Number.isNaN(to.getTime())) to = now;
-    return { from, to };
+    const todayKey = dayKeyTz(now, tz);
+    const ok = (x?: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(x ?? ''));
+    const fromKey = ok(fromStr) ? String(fromStr) : `${todayKey.slice(0, 7)}-01`;
+    const toKey = ok(toStr) ? String(toStr) : todayKey;
+    const from = startOfDayTz(fromKey, tz);
+    const to = ok(toStr) ? new Date(startOfDayTz(addDaysToKey(toKey, 1), tz).getTime() - 1) : now;
+    return { from, to, fromKey, toKey };
   }
 
   /**
@@ -60,7 +75,7 @@ export class MarketingService {
    */
   async overview(user: AuthenticatedUser, fromStr?: string, toStr?: string, tenantParam?: string) {
     const tenantId = this.tenantId(user, tenantParam);
-    const { from, to } = this.range(fromStr, toStr);
+    const { from, to, fromKey, toKey } = await this.range(tenantId, fromStr, toStr);
 
     const [appts, payments, reviews, reviewClicks, messengerThreads, voiceCalls, emailCampaigns, referredNew, newCustomers] = await Promise.all([
       this.prisma.appointment.findMany({
@@ -146,7 +161,7 @@ export class MarketingService {
     const emailsSent = emailCampaigns.reduce((s, c) => s + (c.sent ?? 0), 0);
 
     return {
-      range: { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) },
+      range: { from: fromKey, to: toKey },
       channels,
       totals,
       // Owned-channel signals — real activity we already capture. No spend here.
@@ -175,10 +190,22 @@ export class MarketingService {
 
   private readonly logger = new Logger('Marketing');
 
+  /**
+   * A month key's instants, in UTC — a stable convention instead of the
+   * server's accidental one. Tenant-facing month REPORTS do not use these
+   * instants any more: they hand overview() the month's day keys and let it
+   * anchor them to the tenant's timezone.
+   */
   private monthRange(month: string): { from: Date; to: Date } {
     if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
     const [y, m] = month.split('-').map(Number);
-    return { from: new Date(y, m - 1, 1, 0, 0, 0), to: new Date(y, m, 0, 23, 59, 59, 999) };
+    return { from: new Date(Date.UTC(y, m - 1, 1)), to: new Date(Date.UTC(y, m, 1) - 1) };
+  }
+
+  /** "2026-09" -> "2026-09-30" — pure calendar math, no timezone can shift it. */
+  private lastDayKeyOf(month: string): string {
+    const [y, m] = month.split('-').map(Number);
+    return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   }
 
   // ---- Spend (one row per tenant+channel+month) ---------------------------
@@ -244,9 +271,9 @@ export class MarketingService {
   // ---- Assembled month data (the single source the report is written from) --
   async monthlyData(user: AuthenticatedUser, month: string, tenantParam?: string) {
     const tenantId = this.tenantId(user, tenantParam);
-    const { from, to } = this.monthRange(month);
-    const fromStr = from.toISOString().slice(0, 10);
-    const toStr = to.toISOString().slice(0, 10);
+    // Day keys, not instants: overview() anchors them to the tenant's timezone.
+    const fromStr = `${month}-01`;
+    const toStr = this.lastDayKeyOf(month);
 
     const [ov, spend, workLog] = await Promise.all([
       this.overview(user, fromStr, toStr, tenantParam),
@@ -273,10 +300,10 @@ export class MarketingService {
     };
 
     // --- Month-over-month comparison (clients love "up X% vs last month") ---
-    const prev = this.previousMonth(new Date(from.getFullYear(), from.getMonth(), 15));
-    const pr = this.monthRange(prev);
+    const [py, pm] = month.split('-').map(Number);
+    const prev = pm === 1 ? `${py - 1}-12` : `${py}-${String(pm - 1).padStart(2, '0')}`;
     const [prevOv, prevSpend] = await Promise.all([
-      this.overview(user, pr.from.toISOString().slice(0, 10), pr.to.toISOString().slice(0, 10), tenantParam),
+      this.overview(user, `${prev}-01`, this.lastDayKeyOf(prev), tenantParam),
       this.prisma.marketingSpend.findMany({ where: { tenantId, periodMonth: prev }, select: { channel: true, amountCents: true, reach: true, clicks: true, leads: true } }),
     ]);
     const prevSpendCents = prevSpend.reduce((a: number, r: { amountCents: number }) => a + r.amountCents, 0);
@@ -643,9 +670,8 @@ export class MarketingService {
     for (let i = count - 1; i >= 0; i--) {
       const d = new Date(y, m - 1 - i, 1);
       const mm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const { from, to } = this.monthRange(mm);
       const [ov, spend] = await Promise.all([
-        this.overview(user, from.toISOString().slice(0, 10), to.toISOString().slice(0, 10), tenantParam),
+        this.overview(user, `${mm}-01`, this.lastDayKeyOf(mm), tenantParam),
         this.prisma.marketingSpend.findMany({ where: { tenantId: this.tenantId(user, tenantParam), periodMonth: mm }, select: { amountCents: true } }),
       ]);
       out.push({ month: mm, spendCents: spend.reduce((a: number, r: { amountCents: number }) => a + r.amountCents, 0), revenueCents: ov.totals.revenueCents, bookings: ov.totals.bookings, newCustomers: ov.newCustomers });
@@ -711,8 +737,8 @@ export class MarketingService {
 
   /** 'YYYY-MM' for the month before the given date (default: now). */
   private previousMonth(ref = new Date()): string {
-    const d = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const d = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() - 1, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   }
 
   /**

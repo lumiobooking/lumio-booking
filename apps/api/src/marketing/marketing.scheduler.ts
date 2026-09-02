@@ -40,7 +40,7 @@ export class MarketingScheduler implements OnModuleInit, OnModuleDestroy {
     // Only act in the first 5 days of a month (draft the month that just ended),
     // and only once per calendar month per process.
     const now = new Date();
-    if (now.getDate() > 5) return;
+    if (now.getUTCDate() > 5) return; // UTC month, matching previousMonth()
     const stamp = `${now.getFullYear()}-${now.getMonth()}`;
     if (this.lastMonthRun === stamp) return;
     try {

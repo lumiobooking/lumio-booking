@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, CSSProperties, ReactNode } from 'react';
+import { dayKeyInTz, presetRangeInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -55,7 +56,7 @@ const DEV_LABEL = (d: Dev, vi: boolean) => ({ mobile: vi ? 'Điện thoại' : '
 const PAY_LABEL = (k: string, vi: boolean) => ({ cash: vi ? 'Tiền mặt' : 'Cash', card: vi ? 'Thẻ' : 'Card', transfer: vi ? 'Chuyển khoản' : 'Transfer', online: vi ? 'Online' : 'Online', onsite: vi ? 'Tại tiệm (khác)' : 'On-site (other)' }[k] ?? k);
 const PAY_COLOR: Record<string, string> = { cash: '#22c55e', card: '#6366f1', transfer: '#0ea5e9', online: '#a78bfa', onsite: 'var(--c64748b)' };
 
-const isoToday = () => new Date().toISOString().slice(0, 10);
+const isoToday = () => dayKeyInTz(new Date()); // the SALON's today, not the browser's
 
 export default function ReportsPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -68,9 +69,8 @@ function Inner() {
   const T = (v: string, e: string) => (vi ? v : e);
 
   // Default: this month.
-  const now = new Date();
-  const [from, setFrom] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10));
-  const [to, setTo] = useState(isoToday());
+  const [from, setFrom] = useState(() => presetRangeInTz('thisMonth').from);
+  const [to, setTo] = useState(() => presetRangeInTz('thisMonth').to);
   const [src, setSrc] = useState<SrcReport | null>(null);
   const [dash, setDash] = useState<Dash | null>(null);
   const [currency, setCurrency] = useState('USD');
@@ -96,12 +96,8 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
 
   function preset(kind: 'thisMonth' | 'lastMonth' | 'thisYear' | 'last7') {
-    const n = new Date(); const y = n.getFullYear(); const m = n.getMonth();
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    if (kind === 'thisMonth') { setFrom(iso(new Date(y, m, 1))); setTo(isoToday()); }
-    else if (kind === 'lastMonth') { setFrom(iso(new Date(y, m - 1, 1))); setTo(iso(new Date(y, m, 0))); }
-    else if (kind === 'thisYear') { setFrom(iso(new Date(y, 0, 1))); setTo(isoToday()); }
-    else { setFrom(iso(new Date(Date.now() - 6 * 86400000))); setTo(isoToday()); }
+    const r = presetRangeInTz(kind);
+    setFrom(r.from); setTo(r.to);
   }
 
   const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
@@ -110,12 +106,10 @@ function Inner() {
 
   // Which preset (if any) the current range matches, so the button can light up.
   const activePreset = (() => {
-    const n = new Date(); const y = n.getFullYear(); const m = n.getMonth();
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    if (from === iso(new Date(Date.now() - 6 * 86400000)) && to === isoToday()) return 'last7';
-    if (from === iso(new Date(y, m, 1)) && to === isoToday()) return 'thisMonth';
-    if (from === iso(new Date(y, m - 1, 1)) && to === iso(new Date(y, m, 0))) return 'lastMonth';
-    if (from === iso(new Date(y, 0, 1)) && to === isoToday()) return 'thisYear';
+    for (const k of ['last7', 'thisMonth', 'lastMonth', 'thisYear'] as const) {
+      const r = presetRangeInTz(k);
+      if (from === r.from && to === r.to) return k;
+    }
     return 'custom';
   })();
 

@@ -20,6 +20,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
+import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
 import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
@@ -547,9 +548,11 @@ function Inner() {
           channels: postDraft.channels,
           message: postDraft.message,
           media: postDraft.media,
-          // The picker gives a local wall-clock string; the server stores an
-          // instant. Converting here means "9:00" means 9:00 where the salon is.
-          scheduledAt: now ? new Date().toISOString() : new Date(postDraft.at).toISOString(),
+          // The picker gives a wall-clock string that means SALON time; the
+          // server stores an instant. The conversion has to say whose wall the
+          // digits belong to — an owner reading from Vietnam still schedules
+          // the Austin evening, not their own.
+          scheduledAt: now ? new Date().toISOString() : wallToInstantISO(postDraft.at),
           status,
         },
       });
@@ -620,12 +623,15 @@ function Inner() {
   async function movePost(id: string, day: Date) {
     const p = queue?.posts.find((x) => x.id === id);
     if (!p) return;
-    const old = new Date(p.scheduledAt);
-    const when = new Date(day);
-    when.setHours(old.getHours(), old.getMinutes(), 0, 0);
+    // Keep the SALON hour when the post hops days. Reading getHours() here
+    // would take the viewer's hour instead — dragging from another timezone
+    // used to walk the post's time with every drop.
+    const hm = instantToWall(p.scheduledAt).slice(11, 16) || '10:00';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dayStr = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
     setQueueBusy(true); setPostErr(null);
     try {
-      await apiFetch(`/content/posts/${id}/when`, { method: 'PATCH', token, body: { scheduledAt: when.toISOString() } });
+      await apiFetch(`/content/posts/${id}/when`, { method: 'PATCH', token, body: { scheduledAt: wallToInstantISO(`${dayStr}T${hm}`) } });
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setQueueBusy(false); }
@@ -647,7 +653,7 @@ function Inner() {
     if (!p) return;
     setPostDraft({
       id: p.id, channels: p.channels, message: p.message, media: p.media,
-      at: new Date(new Date(p.scheduledAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16),
+      at: instantToWall(p.scheduledAt),
     });
   }
 
@@ -693,10 +699,7 @@ function Inner() {
 
   /** Open the composer prefilled from a drafted idea — the whole point of the plan. */
   function scheduleFromIdea(idea: Idea) {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0);
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    const local = wallTomorrowAt('10:00'); // tomorrow morning AT THE SALON
     setPostWhen('later');
     setPostDraft({
       channels: ['facebook'],
@@ -717,10 +720,7 @@ function Inner() {
    * links to someone else's video is a post for someone else.
    */
   function postFromTrend(card: TrendCard) {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0);
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    const local = wallTomorrowAt('10:00'); // tomorrow morning AT THE SALON
     const tag = card.via && card.via.startsWith('#') ? card.via : '';
     setPostWhen('later');
     setPostDraft({
@@ -2118,8 +2118,7 @@ function Inner() {
                   </div>
                   <button
                     onClick={() => {
-                      const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0);
-                      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+                      const local = wallTomorrowAt('10:00');
                       setPostDraft({ channels: ['facebook'], message: '', media: [], at: local });
                     }}
                     style={{
@@ -2769,7 +2768,7 @@ function Inner() {
                   <div key={p.id} style={{ ...ui.card, marginBottom: 10, padding: 14, borderColor: p.blockers.length ? '#f59e0b' : 'var(--c334155)' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-                        {when.toLocaleString(vi ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        {fmtInTz(when, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg }}>{st.text}</span>
                       <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>

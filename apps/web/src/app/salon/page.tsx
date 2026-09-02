@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fmtInTz } from '../../lib/datetime';
+import { dayKeyInTz, presetRangeInTz } from '../../lib/datetime';
 import { SalonShell } from '../../components/SalonShell';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
@@ -71,8 +73,10 @@ function Inner() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const today = useMemo(() => new Date(), []);
-  const [from, setFrom] = useState(() => isoDay(new Date(Date.now() - 29 * 86400000)));
-  const [to, setTo] = useState(() => isoDay(new Date()));
+  // Ranges in the SALON's days: the viewer's calendar may already be on
+  // tomorrow while the salon is still open.
+  const [from, setFrom] = useState(() => dayKeyInTz(new Date(Date.now() - 29 * 86400000)));
+  const [to, setTo] = useState(() => dayKeyInTz(new Date()));
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,13 +98,12 @@ function Inner() {
   useLiveRefresh(load, 30000);
 
   const applyPreset = (days: number) => {
-    setFrom(isoDay(new Date(Date.now() - (days - 1) * 86400000)));
-    setTo(isoDay(today));
+    setFrom(dayKeyInTz(new Date(Date.now() - (days - 1) * 86400000)));
+    setTo(dayKeyInTz(new Date()));
   };
   const applyThisMonth = () => {
-    const d = new Date();
-    setFrom(isoDay(new Date(d.getFullYear(), d.getMonth(), 1)));
-    setTo(isoDay(d));
+    const r = presetRangeInTz('thisMonth');
+    setFrom(r.from); setTo(r.to);
   };
 
   const name = (p: { firstName?: string; lastName?: string | null } | null) =>
@@ -126,7 +129,7 @@ function Inner() {
           </div>
           <input lang="en-US" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
           <span style={{ color: 'var(--c64748b)' }}>→</span>
-          <input lang="en-US" type="date" value={to} min={from} max={isoDay(today)} onChange={(e) => setTo(e.target.value)} style={dateInput} />
+          <input lang="en-US" type="date" value={to} min={from} max={dayKeyInTz(new Date())} onChange={(e) => setTo(e.target.value)} style={dateInput} />
         </div>
       </div>
 
@@ -197,9 +200,9 @@ function Inner() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontSize: 13 }}>{new Date(b.startTime).toLocaleDateString(uiLocale())}</div>
+                        <div style={{ fontSize: 13 }}>{fmtInTz(b.startTime, { dateStyle: 'short' })}</div>
                         <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
-                          {new Date(b.startTime).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
+                          {fmtInTz(b.startTime, { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
                     </div>

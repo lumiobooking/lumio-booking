@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState, FormEvent } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -342,7 +343,7 @@ function HistoryPanel({ token, item }: { token: string; item: Supply }) {
                 <span style={{ width: 56, fontWeight: 700, textAlign: 'right', color: m.delta >= 0 ? '#22c55e' : '#f59e0b' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
                 <span style={{ color: 'var(--ccbd5e1)', minWidth: 120 }}>{t(REASON_KEY[m.reason] ?? 'iv.rAdjust')}</span>
                 <span style={{ color: 'var(--c94a3b8)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.note || ''}</span>
-                <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{new Date(m.createdAt).toLocaleString(uiLocale())}</span>
+                <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{fmtInTz(m.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
               </div>
             ))}
           </div>

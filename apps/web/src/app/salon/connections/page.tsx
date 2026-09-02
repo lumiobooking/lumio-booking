@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, CSSProperties } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import Link from 'next/link';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
@@ -116,7 +117,7 @@ function Inner() {
                       {(it.detail || it.lastActivity) && (
                         <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>
                           {it.detail}
-                          {it.lastActivity && <span> · {T('hoạt động gần nhất', 'last activity')}: {new Date(it.lastActivity).toLocaleString(vi ? 'vi-VN' : uiLocale())}</span>}
+                          {it.lastActivity && <span> · {T('hoạt động gần nhất', 'last activity')}: {fmtInTz(it.lastActivity, { dateStyle: 'short', timeStyle: 'short' })}</span>}
                         </div>
                       )}
                       {t === 'ok' && <div style={{ fontSize: 12.5, color: '#22c55e', marginTop: 6 }}>✓ {T('Kiểm tra thành công — kết nối đang hoạt động.', 'Test passed — the connection works.')} {testMsg[it.key]}</div>}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../lib/datetime';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { useIsMobile } from '../lib/responsive';
@@ -256,7 +257,7 @@ export function ContentInbox({ token }: { token: string | null }) {
                   <div key={m.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                     <div style={{ maxWidth: '85%' }}>
                       <div style={{ fontSize: 10.5, color: 'var(--c64748b)', marginBottom: 2, textAlign: mine ? 'right' : 'left' }}>
-                        {m.authorName} · {new Date(m.createdAt).toLocaleString()}
+                        {m.authorName} · {fmtInTz(m.createdAt, { dateStyle: 'short', timeStyle: 'short' })}
                       </div>
                       <div style={{
                         fontSize: 13.5, lineHeight: 1.55, padding: '8px 11px', borderRadius: 12,

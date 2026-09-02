@@ -55,13 +55,15 @@ export class InvoicesService {
   }
 
   private async nextNumber(now: Date): Promise<string> {
-    const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const ym = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
     const count = await this.prisma.invoice.count({ where: { number: { startsWith: `INV-${ym}-` } } });
     return `INV-${ym}-${String(count + 1).padStart(4, '0')}`;
   }
 
-  private monthStart(d = new Date()): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
-  private prevMonthStart(d = new Date()): Date { return new Date(d.getFullYear(), d.getMonth() - 1, 1); }
+  // Platform billing periods run on UTC months — one stated convention for
+  // every tenant, instead of whichever timezone the server happens to run in.
+  private monthStart(d = new Date()): Date { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
+  private prevMonthStart(d = new Date()): Date { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)); }
 
   // -------------------------------------------------------------- generation
   /** Build (idempotent) the usage-overage invoice for a completed month. Returns
@@ -86,7 +88,7 @@ export class InvoicesService {
     if (minCents > 0) lineItems.push({ label: `AI Hotline minutes over plan — ${u.overageMinutes} × ${money(u.overageCentsPerMin, cur)}`, amountCents: minCents });
     if (smsCents > 0) lineItems.push({ label: `SMS over plan — ${smsOver} × ${money(u.overageCentsPerSms, cur)}`, amountCents: smsCents });
 
-    const periodEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    const periodEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));
     const due = new Date(); due.setDate(due.getDate() + 14);
     try {
       const inv = await this.prisma.invoice.create({
@@ -112,7 +114,7 @@ export class InvoicesService {
     const amount = (plan?.priceMonthlyCents || plan?.priceCents) ?? 0;
     if (!plan || amount <= 0) return null;
     const cur = plan.currency ?? 'USD';
-    const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, periodStart.getDate());
+    const periodEnd = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, periodStart.getUTCDate()));
     const due = new Date(); due.setDate(due.getDate() + 7);
     const lineItems: LineItem[] = [{ label: `${plan.name ?? 'Plan'} — monthly renewal`, amountCents: amount }];
     try {

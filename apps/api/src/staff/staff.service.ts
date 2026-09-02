@@ -10,6 +10,7 @@ import { AuditService } from '../audit/audit.service';
 import { hashSecret } from '../auth/password.util';
 import { PosService } from '../pos/pos.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { CreateStaffDto, WorkingHourDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
@@ -66,9 +67,20 @@ export class StaffService {
    */
   async performance(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
     const tenantId = this.tenantId(user);
-    const now = new Date();
-    const from = fromStr ? new Date(fromStr) : new Date(now.getFullYear(), now.getMonth(), 1);
-    const to = toStr ? new Date(toStr) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    // Commission is paid off this range, so its edges are the SALON's days.
+    // new Date("2026-09-30") is UTC MIDNIGHT — the old default quietly dropped
+    // the whole last day of the month from every payroll figure.
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const tz = t?.timezone || 'UTC';
+    const todayKey = dayKeyTz(new Date(), tz);
+    const ok = (x?: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(x ?? ''));
+    const fromKey = ok(fromStr) ? String(fromStr) : `${todayKey.slice(0, 7)}-01`;
+    const from = ok(fromStr) || !fromStr ? startOfDayTz(fromKey, tz) : new Date(fromStr);
+    const to = ok(toStr)
+      ? new Date(startOfDayTz(addDaysToKey(String(toStr), 1), tz).getTime() - 1)
+      : toStr
+        ? new Date(toStr)
+        : new Date(startOfDayTz(addDaysToKey(`${todayKey.slice(0, 7)}-01`, 32).slice(0, 8) + '01', tz).getTime() - 1);
 
     const [staff, appts, feedback] = await Promise.all([
       this.prisma.staffMember.findMany({

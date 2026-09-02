@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { useRouter } from 'next/navigation';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
@@ -9,7 +10,7 @@ import { useLang } from '../../../lib/i18n';
 import { PushEnable } from '../../../components/PushEnable';
 import { BookingDetailSheet } from '../../../components/BookingDetailSheet';
 import { usePaged, Pager } from '../../../components/ListFilter';
-import { uiLocale } from '../../../lib/datetime';
+import { uiLocale, dayKeyInTz } from '../../../lib/datetime';
 
 interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
@@ -70,12 +71,15 @@ function Inner() {
     return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : uiLocale(), { weekday: 'short', day: 'numeric', month: 'short', ...(tz ? { timeZone: tz } : {}) }) + ' · ' + d.toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   };
   const dayKey = (at: string) => {
-    const d = new Date(at); const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    if (dd === start) return L('HÔM NAY', 'TODAY');
-    if (dd === start - 86400000) return L('HÔM QUA', 'YESTERDAY');
-    return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' }).toUpperCase();
+    // TODAY/YESTERDAY by the SALON's calendar — the row text below each header
+    // is already salon-time, and a header disagreeing with its own rows is the
+    // visible tell of a browser-day grouping.
+    const day = dayKeyInTz(at, tz || undefined);
+    const todayK = dayKeyInTz(new Date(), tz || undefined);
+    const yesterK = dayKeyInTz(new Date(Date.now() - 86400000), tz || undefined);
+    if (day === todayK) return L('HÔM NAY', 'TODAY');
+    if (day === yesterK) return L('HÔM QUA', 'YESTERDAY');
+    return fmtInTz(at, { day: 'numeric', month: 'short', ...(tz ? { timeZone: tz } : {}) }).toUpperCase();
   };
   const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' || t === 'postFailed' ? '' : L('· Thanh toán', '· Paid');
   const reportText = (status: string) => status === 'approved'

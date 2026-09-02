@@ -16,6 +16,7 @@ import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
+import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
@@ -797,9 +798,12 @@ export class ContentService {
     for (const w of rows ?? []) {
       if (!isPastWeek(w.weekKey, new Date(), tz)) continue;
 
-      const start = new Date(`${w.startDate}T00:00:00Z`);
-      const end = new Date(start.getTime() + 7 * 86_400_000);
-      const prevStart = new Date(start.getTime() - 7 * 86_400_000);
+      // The frozen record of a salon's week must cover the SALON's week:
+      // UTC midnights here filed Sunday-evening bookings under next week.
+      // DST-safe: each edge is derived for its own date, not offset by 168h.
+      const start = wallTimeToUtc(w.startDate, '00:00', tz);
+      const end = wallTimeToUtc(addDaysToKey(w.startDate, 7), '00:00', tz);
+      const prevStart = wallTimeToUtc(addDaysToKey(w.startDate, -7), '00:00', tz);
 
       type Row = { priceCents: number | null; customerId: string | null; startTime: Date };
       const window = async (from: Date, to: Date) => await this.prisma.appointment.findMany({

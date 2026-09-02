@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, CSSProperties, ReactNode } from 'react';
+import { dayKeyInTz, presetRangeInTz } from '../../../../lib/datetime';
 import { SalonShell } from '../../../../components/SalonShell';
 import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
@@ -25,7 +26,7 @@ const SRC_LABEL = (s: Src, vi: boolean): string => ({
   walkin: vi ? 'Khách vãng lai' : 'Walk-in', staff: vi ? 'Nhân viên nhập' : 'Staff',
 }[s]);
 
-const isoToday = () => new Date().toISOString().slice(0, 10);
+const isoToday = () => dayKeyInTz(new Date()); // the SALON's today, not the browser's
 
 export default function MarketingReportPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -37,9 +38,8 @@ function Inner() {
   const vi = lang === 'vi';
   const T = (v: string, e: string) => (vi ? v : e);
 
-  const now = new Date();
-  const [from, setFrom] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10));
-  const [to, setTo] = useState(isoToday());
+  const [from, setFrom] = useState(() => presetRangeInTz('thisMonth').from);
+  const [to, setTo] = useState(() => presetRangeInTz('thisMonth').to);
   const [data, setData] = useState<Overview | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
@@ -62,20 +62,14 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
 
   function preset(kind: 'thisMonth' | 'lastMonth' | 'thisYear' | 'last7') {
-    const n = new Date(); const y = n.getFullYear(); const m = n.getMonth();
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    if (kind === 'thisMonth') { setFrom(iso(new Date(y, m, 1))); setTo(isoToday()); }
-    else if (kind === 'lastMonth') { setFrom(iso(new Date(y, m - 1, 1))); setTo(iso(new Date(y, m, 0))); }
-    else if (kind === 'thisYear') { setFrom(iso(new Date(y, 0, 1))); setTo(isoToday()); }
-    else { setFrom(iso(new Date(Date.now() - 6 * 86400000))); setTo(isoToday()); }
+    const r = presetRangeInTz(kind);
+    setFrom(r.from); setTo(r.to);
   }
   const activePreset = (() => {
-    const n = new Date(); const y = n.getFullYear(); const m = n.getMonth();
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    if (from === iso(new Date(Date.now() - 6 * 86400000)) && to === isoToday()) return 'last7';
-    if (from === iso(new Date(y, m, 1)) && to === isoToday()) return 'thisMonth';
-    if (from === iso(new Date(y, m - 1, 1)) && to === iso(new Date(y, m, 0))) return 'lastMonth';
-    if (from === iso(new Date(y, 0, 1)) && to === isoToday()) return 'thisYear';
+    for (const k of ['last7', 'thisMonth', 'lastMonth', 'thisYear'] as const) {
+      const r = presetRangeInTz(k);
+      if (from === r.from && to === r.to) return k;
+    }
     return 'custom';
   })();
 

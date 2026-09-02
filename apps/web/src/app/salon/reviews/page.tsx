@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState, FormEvent } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
+import { dayKeyInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -187,7 +189,7 @@ function Inner() {
           <div key={f.id} style={{ ...ui.card, padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
               <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: 'var(--c334155)' }}>{'★'.repeat(5 - f.rating)}</span></span>
-              <span style={{ color: 'var(--c64748b)' }}>{new Date(f.createdAt).toLocaleString(uiLocale())}</span>
+              <span style={{ color: 'var(--c64748b)' }}>{fmtInTz(f.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
             </div>
             <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 4 }}>
               {f.staff ? `${f.staff.firstName} ${f.staff.lastName ?? ''}`.trim() : t('rv.salon')} · {f.customer?.phone ?? f.customer?.firstName ?? t('rv.anonymous')}
@@ -212,7 +214,7 @@ function Inner() {
             {sends.length === 0 && <tr><td style={ui.td} colSpan={5}>{t('rv.noSends')}</td></tr>}
             {sendsPage.paged.map((r) => (
               <tr key={r.id} style={{ borderTop: '1px solid var(--c334155)' }}>
-                <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(r.createdAt).toLocaleString(uiLocale())}</td>
+                <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtInTz(r.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</td>
                 <td style={ui.td}>{r.staff}</td>
                 <td style={{ ...ui.td, color: 'var(--c64748b)' }}>{r.device}</td>
                 <td style={ui.td}>{r.counted ? <span style={{ color: '#22c55e', fontWeight: 600 }}>{t('rv.plusPts')}</span> : <span style={{ color: 'var(--c94a3b8)' }}>—</span>}</td>
@@ -492,7 +494,7 @@ function modeCard(active: boolean): React.CSSProperties {
   return { textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', background: active ? 'var(--c312e81)' : 'transparent', border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`, color: 'var(--ce2e8f0)' };
 }
 const monthNavBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 8, border: '1px solid var(--c475569)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 16, cursor: 'pointer', lineHeight: 1 };
-function currentYm(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+function currentYm(): string { return dayKeyInTz(new Date()).slice(0, 7); } // the SALON's month
 function shiftYm(ym: string, delta: number): string {
   const [y, m] = ym.split('-').map(Number);
   const d = new Date(y, (m - 1) + delta, 1);

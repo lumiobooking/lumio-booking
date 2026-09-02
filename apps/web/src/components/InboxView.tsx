@@ -23,8 +23,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage } from '../lib/api';
+import { wallToInstantISO, instantToWall, dayKeyInTz } from '../lib/datetime';
 import { ui } from '../lib/ui';
 import { useLang } from '../lib/i18n';
 import { uiLocale } from '../lib/datetime';
@@ -70,13 +72,10 @@ const FOLLOWUP_TONE: Record<string, { bg: string; fg: string }> = {
  *  few enough that nobody spends a morning in a colour picker. */
 const LABEL_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7'];
 
-/** <input type="datetime-local"> wants local wall-clock, not an ISO Z string. */
+/** <input type="datetime-local"> wants SALON wall-clock, not an ISO Z string. */
 function toLocalInput(iso: string | null | undefined): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return instantToWall(iso);
 }
 
 const ghostBtn: React.CSSProperties = {
@@ -320,7 +319,7 @@ export function InboxView() {
     if (!detail || !token) return;
     setBusy(true);
     try {
-      const at = local ? new Date(local).toISOString() : null;
+      const at = local ? wallToInstantISO(local) : null; // "10:00" means 10:00 at the salon
       await apiFetch(`/messenger/threads/${detail.id}/followup`, { method: 'POST', token, body: { at, note: detail.followUpNote ?? null } });
       await Promise.all([loadList(), loadThread(detail.id)]);
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
@@ -594,7 +593,7 @@ export function InboxView() {
                           {displayName(r, vi)}
                         </span>
                         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>
-                          {new Date(r.lastMessageAt || r.updatedAt).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}
+                          {fmtInTz(r.lastMessageAt || r.updatedAt, { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {r.unread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
                       </div>
@@ -730,7 +729,7 @@ export function InboxView() {
                           identical is how nobody could tell what the bot had
                           already promised a customer. */}
                       {mine ? (t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer')}
-                      {t.at ? ` · ${new Date(t.at).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })}` : ''}
+                      {t.at ? ` · ${fmtInTz(t.at, { hour: '2-digit', minute: '2-digit' })}` : ''}
                     </p>
                   </div>
                 );
@@ -805,7 +804,7 @@ export function InboxView() {
               <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--c64748b)' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
               {detail.customer ? (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {detail.customer.nextAt && <Stat label={vi ? 'Lần tới' : 'Next'} value={new Date(detail.customer.nextAt).toLocaleString(uiLocale())} />}
+                  {detail.customer.nextAt && <Stat label={vi ? 'Lần tới' : 'Next'} value={fmtInTz(detail.customer.nextAt, { dateStyle: 'short', timeStyle: 'short' })} />}
                   <Stat label={vi ? 'Đã đến' : 'Visits'} value={vi ? `${detail.customer.visits ?? 0} lần` : String(detail.customer.visits ?? 0)} />
                   {detail.customer.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={detail.customer.usualTech} />}
                   {detail.customer.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={detail.customer.phone} />}
@@ -917,10 +916,9 @@ export function InboxView() {
                 ] as [number, string][]).map(([days, label]) => (
                   <button key={days} disabled={busy}
                     onClick={() => {
-                      const d = new Date();
-                      d.setDate(d.getDate() + days);
-                      d.setHours(10, 0, 0, 0); // a working hour, not this minute
-                      void setFollowUp(toLocalInput(d.toISOString()));
+                      // "+N days at 10:00" counts salon days and a salon hour.
+                      const day = dayKeyInTz(new Date(Date.now() + days * 86_400_000));
+                      void setFollowUp(`${day}T10:00`);
                     }}
                     style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px' }}>{label}</button>
                 ))}
@@ -959,7 +957,7 @@ export function InboxView() {
                   <p style={{ margin: '4px 0 0', fontSize: 10.5, color: '#a16207', display: 'flex', gap: 6 }}>
                     <span>{n.authorName}</span>
                     <span>·</span>
-                    <span>{new Date(n.createdAt).toLocaleString(uiLocale())}</span>
+                    <span>{fmtInTz(n.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
                     <button
                       onClick={() => void apiFetch(`/messenger/threads/${detail.id}/notes/${n.id}/delete`, { method: 'POST', token: token! }).then(() => loadThread(detail.id))}
                       title={vi ? 'Xoá ghi chú' : 'Delete note'}

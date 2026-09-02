@@ -25,6 +25,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { fmtInTz } from '../lib/datetime';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 
@@ -363,7 +364,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
               <div key={p.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{p.title}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{p.body}</div>
-                <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>Lumio · {new Date(p.at).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { month: 'short', day: 'numeric' })}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>Lumio · {fmtInTz(p.at, { month: 'short', day: 'numeric' })}</div>
               </div>
             ))}
           </div>

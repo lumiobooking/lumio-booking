@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -102,7 +103,7 @@ function Inner() {
       <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color:#000}
       h2{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse;font-size:13px}td{padding:2px 0;vertical-align:top}
       hr{border:none;border-top:1px dashed #999;margin:8px 0}.center{text-align:center;font-size:12px;color:#333}</style></head><body>
-      <h2>Receipt</h2><div class="center">Order #${o.orderNumber} · ${new Date(o.paidAt ?? o.createdAt).toLocaleString(uiLocale())}${o.status === 'VOID' ? ' · VOID' : ''}</div><hr>
+      <h2>Receipt</h2><div class="center">Order #${o.orderNumber} · ${fmtInTz(o.paidAt ?? o.createdAt, { dateStyle: 'short', timeStyle: 'short' })}${o.status === 'VOID' ? ' · VOID' : ''}</div><hr>
       <table>${rows}</table><hr><table>
       ${line('Subtotal', formatPrice(o.subtotalCents, o.currency))}
       ${o.discountCents ? line('Discount', '-' + formatPrice(o.discountCents, o.currency)) : ''}
@@ -166,7 +167,7 @@ function Inner() {
                 <MHead right={<span style={{ color: STATUS_COLORS[o.status], border: `1px solid ${STATUS_COLORS[o.status]}`, borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>{o.status}</span>}>
                   #{o.orderNumber} · {formatPrice(o.totalCents, o.currency)}
                 </MHead>
-                <MRow label={t('or.colDate')}>{new Date(o.createdAt).toLocaleString(uiLocale())}</MRow>
+                <MRow label={t('or.colDate')}>{fmtInTz(o.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</MRow>
                 <MRow label={t('or.colItems')}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? ' · ' + t('or.fromBooking') : ''}</MRow>
                 <MRow label={t('or.colMethod')}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</MRow>
                 <MActions>
@@ -196,7 +197,7 @@ function Inner() {
                   <tr style={{ borderTop: '1px solid var(--c334155)', cursor: 'pointer', background: bulk.has(o.id) ? 'var(--c1e1b4b)' : undefined }} onClick={() => setOpenId(openId === o.id ? null : o.id)}>
                     <td style={{ ...ui.td, width: 34 }} onClick={(e) => e.stopPropagation()}><BulkRowBox on={bulk.has(o.id)} onChange={() => bulk.toggle(o.id)} /></td>
                     <td style={ui.td}>#{o.orderNumber}</td>
-                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{new Date(o.createdAt).toLocaleString(uiLocale())}</td>
+                    <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtInTz(o.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</td>
                     <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{o.items.length} {t('or.itemsWord')}{o.appointmentId ? <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--c818cf8)' }}>{t('or.fromBooking')}</span> : null}</td>
                     <td style={ui.td}>{formatPrice(o.totalCents, o.currency)}</td>
                     <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</td>

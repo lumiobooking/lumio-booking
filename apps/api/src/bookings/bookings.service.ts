@@ -55,9 +55,6 @@ const BOOKING_INCLUDE = {
 // testable with a lightweight mock).
 type Tx = Prisma.TransactionClient;
 
-function fmtTimeOf(d: Date): string {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
 
 /** Same rule as the booking form: digits/()+-. only, 8–15 digits. */
 function isValidPhoneNumber(v: string): boolean {
@@ -2297,7 +2294,15 @@ export class BookingsService {
     const pays = await this.prisma.payment.findMany({ where: { tenantId, appointmentId: id } });
     const b = booking as { customer?: { firstName?: string; lastName?: string | null } | null; service?: { name?: string } | null; startTime?: Date };
     const who = `${b?.customer?.firstName ?? ''} ${b?.customer?.lastName ?? ''}`.trim() || 'Walk-in';
-    const label = `${who} · ${b?.service?.name ?? 'Service'} · ${b?.startTime ? new Date(b.startTime).toISOString().slice(0, 16).replace('T', ' ') : ''}`;
+    // The only identifying line on the trash row — in the SALON's clock, not
+    // UTC, or the admin restores "01:30" for an 8:30pm appointment.
+    const tzRow = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const whenLabel = b?.startTime
+      ? new Intl.DateTimeFormat('sv-SE', {
+        timeZone: tzRow?.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+      }).format(new Date(b.startTime))
+      : '';
+    const label = `${who} · ${b?.service?.name ?? 'Service'} · ${whenLabel}`;
 
     await this.prisma.$transaction(async (tx) => {
       await this.trash.capture(tx, {

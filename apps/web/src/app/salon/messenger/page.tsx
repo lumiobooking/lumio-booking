@@ -4,6 +4,7 @@
 // set the webhook, turn the AI receptionist on, and watch conversations.
 
 import { useCallback, useEffect, useState } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -536,7 +537,7 @@ function Inner() {
       const res = await apiFetch<{ ok: boolean; at?: string }>('/messenger/send', { method: 'POST', token, body: { threadId: sendTo || undefined, text: sendMsg.trim() } });
       setSendResult('ok'); setSendMsg('');
       setSentAtIso(res.at || null);
-      setSentAt(res.at ? new Date(res.at).toLocaleString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null);
+      setSentAt(res.at ? fmtInTz(res.at, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null);
       await load();
     } catch (e) {
       setSendResult(e instanceof Error ? e.message : 'Send failed');
@@ -606,7 +607,7 @@ function Inner() {
       {c?.connectTrace && fbResult && !fbResult.ok && (
         <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 6 }}>
-            🔬 {lang === 'vi' ? 'Chi tiết kỹ thuật lần kết nối gần nhất' : 'Last connect attempt — technical trace'} · {new Date(c.connectTrace.at).toLocaleString(uiLocale())}
+            🔬 {lang === 'vi' ? 'Chi tiết kỹ thuật lần kết nối gần nhất' : 'Last connect attempt — technical trace'} · {fmtInTz(c.connectTrace.at, { dateStyle: 'short', timeStyle: 'short' })}
           </div>
           <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--ccbd5e1)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {c.connectTrace.steps.join('\n')}
@@ -782,7 +783,7 @@ function Inner() {
             <div style={{ color: 'var(--ce2e8f0)', fontFamily: 'monospace' }}>
               {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
             </div>
-            {wh?.verifiedAt && <div style={{ color: 'var(--c64748b)', marginTop: 6 }}>{t('lastVerified')}: {new Date(wh.verifiedAt).toLocaleString(uiLocale())}</div>}
+            {wh?.verifiedAt && <div style={{ color: 'var(--c64748b)', marginTop: 6 }}>{t('lastVerified')}: {fmtInTz(wh.verifiedAt, { dateStyle: 'short', timeStyle: 'short' })}</div>}
             {typeof wh?.echoOk === 'boolean' && (
               <div style={{ color: wh.echoOk ? '#34d399' : '#f59e0b', marginTop: 6 }}>
                 {wh.echoOk
@@ -909,7 +910,7 @@ function Inner() {
               <tbody>
                 {shownActivity.map((ev, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--c1e293b)', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
-                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{new Date(ev.at).toLocaleString(uiLocale(), { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{fmtInTz(ev.at, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
                     <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
                     <td style={{ ...tdc, fontFamily: 'monospace', color: 'var(--c94a3b8)' }}>{ev.user}</td>
@@ -1255,7 +1256,7 @@ function Inner() {
                           {th.senderName && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}
                         </div>
                         <div style={{ color: 'var(--c64748b)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <span>{new Date(th.updatedAt).toLocaleString(uiLocale())}</span>
+                          <span>{fmtInTz(th.updatedAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
                           <StateBadge th={th} lang={lang} />
                         </div>
                       </div>
@@ -1295,7 +1296,7 @@ function Inner() {
                     <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--ce2e8f0)' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
                     <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{l.phone}</td>
                     <td style={{ padding: '9px 8px', color: 'var(--c94a3b8)', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{l.note}</span> : null}</td>
-                    <td style={{ padding: '9px 8px', color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleDateString(uiLocale())}</td>
+                    <td style={{ padding: '9px 8px', color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{fmtInTz(l.createdAt, { dateStyle: 'short' })}</td>
                     <td style={{ padding: '9px 8px' }}>
                       <select value={l.status}
                         onChange={async (e) => {

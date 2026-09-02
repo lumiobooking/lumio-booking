@@ -5,6 +5,7 @@
 // the AI answers, books, and confirms by text.
 
 import { useCallback, useEffect, useState, CSSProperties } from 'react';
+import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -243,7 +244,7 @@ function Inner() {
     if (!c?.lumioNumber) return;
     try { navigator.clipboard?.writeText(c.lumioNumber); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ }
   }
-  const fmtWhen = (iso: string) => { try { return new Date(iso).toLocaleString(uiLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
+  const fmtWhen = (iso: string) => { try { return fmtInTz(iso, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
   const outc = (o: string) => OUTCOME[o] || OUTCOME.no_action;
 
   if (loading || !c) {

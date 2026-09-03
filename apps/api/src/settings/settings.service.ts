@@ -494,6 +494,9 @@ export class SettingsService {
       esms: {
         apiKey: n.esms?.apiKey ?? '',
         brandname: n.esms?.brandname ?? '',
+        oaid: n.esms?.oaid ?? '',
+        znsBookingTempId: n.esms?.znsBookingTempId ?? '',
+        znsReminderTempId: n.esms?.znsReminderTempId ?? '',
         connected: (n.esms?.secretKey ?? '').length > 0,
       },
     };
@@ -577,6 +580,9 @@ export class SettingsService {
       esms: {
         apiKey: typeof incEsms.apiKey === 'string' ? incEsms.apiKey : (cur.esms?.apiKey ?? ''),
         brandname: typeof incEsms.brandname === 'string' ? incEsms.brandname : (cur.esms?.brandname ?? ''),
+        oaid: typeof incEsms.oaid === 'string' ? incEsms.oaid.trim() : (cur.esms?.oaid ?? ''),
+        znsBookingTempId: typeof incEsms.znsBookingTempId === 'string' ? incEsms.znsBookingTempId.trim() : (cur.esms?.znsBookingTempId ?? ''),
+        znsReminderTempId: typeof incEsms.znsReminderTempId === 'string' ? incEsms.znsReminderTempId.trim() : (cur.esms?.znsReminderTempId ?? ''),
         // cleanSecret returns undefined for the UI's mask, so re-saving the
         // form without retyping the key keeps the stored one instead of
         // overwriting it with bullet characters — the bug that made Brevo

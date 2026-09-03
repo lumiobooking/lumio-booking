@@ -10,6 +10,7 @@ import { createEmailProvider, createSmsProvider } from './providers/notification
 import { ESmsProvider } from './providers/esms.provider';
 import { routeSmsFor } from './providers/sms-routing';
 import { readEsmsCallback } from './providers/esms-callback';
+import { ZnsProvider } from './providers/zns.provider';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
 import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
 import { GmailOAuthConfig, GmailOAuthProvider } from './providers/gmail-oauth.provider';
@@ -68,6 +69,14 @@ export interface SendNotificationInput {
   brevo?: BrevoConfig;
   // The salon's own Gmail OAuth2 config (Gmail API over HTTPS).
   gmail?: GmailOAuthConfig;
+  /**
+   * Ask for Zalo ZNS first, SMS as the net. Only honoured for a VN salon whose
+   * eSMS config carries an OAID and the matching template id; everyone else —
+   * and every failure — takes exactly the SMS path they take today. `params`
+   * must match the registered ZNS template's parameter names (Lumio canon:
+   * customer_name, salon_name, service_name, appointment_date, appointment_time).
+   */
+  zns?: { kind: 'booking_confirmed' | 'reminder'; params: Record<string, string> };
   // The salon's own Twilio SMS credentials (per-tenant). When complete, SMS is
   // sent from the salon's own number; otherwise it falls back to the platform
   // (env) Twilio, then mock.
@@ -153,14 +162,14 @@ export class NotificationsService {
    * Never throws: any failure returns null and the existing Twilio path runs,
    * which is what every salon does today.
    */
-  private async esmsForTenant(tenantId: string): Promise<{ apiKey: string; secretKey: string; brandname: string; callbackUrl: string } | null> {
+  private async esmsForTenant(tenantId: string): Promise<{ apiKey: string; secretKey: string; brandname: string; callbackUrl: string; oaid: string; znsBookingTempId: string; znsReminderTempId: string } | null> {
     try {
       const [t, row] = await Promise.all([
         this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }),
         this.prisma.setting.findFirst({ where: { tenantId, key: 'notifications' }, select: { value: true } }).catch(() => null),
       ]);
       const market = (t as unknown as { market?: string } | null)?.market ?? 'US';
-      const esms = (row?.value as unknown as { esms?: { apiKey?: string; secretKey?: string; brandname?: string } } | null)?.esms;
+      const esms = (row?.value as unknown as { esms?: { apiKey?: string; secretKey?: string; brandname?: string; oaid?: string; znsBookingTempId?: string; znsReminderTempId?: string } } | null)?.esms;
       if (routeSmsFor({ market, esms }).provider !== 'esms' || !esms) return null;
       return {
         apiKey: String(esms.apiKey ?? ''),
@@ -169,6 +178,9 @@ export class NotificationsService {
         // CodeResult 100 only means "accepted" — the real delivery outcome
         // arrives HERE, so every send carries the address of our callback.
         callbackUrl: `${apiBase()}/api/public/esms/callback`,
+        oaid: String(esms.oaid ?? ''),
+        znsBookingTempId: String(esms.znsBookingTempId ?? ''),
+        znsReminderTempId: String(esms.znsReminderTempId ?? ''),
       };
     } catch {
       return null;
@@ -368,26 +380,54 @@ export class NotificationsService {
       return this.sms;
     })();
     const provider = input.channel === NotificationChannel.EMAIL ? emailProvider : smsProvider;
+    let providerName = provider.name;
 
     try {
-      const result =
-        input.channel === NotificationChannel.EMAIL
-          ? await emailProvider.sendEmail({
-              to: input.recipient,
-              subject: input.subject ?? '',
-              body: input.body,
-              html: input.html,
-            })
-          : await smsProvider.sendSms({
-              to: input.recipient,
-              body: input.body,
-              // A local number means different things in different countries.
-              // The salon's timezone is the only country signal a tenant
-              // carries, and it is enough to tell Ho Chi Minh City from
-              // Los Angeles. US/CA tenants resolve to '1' — unchanged.
-              defaultDialCode: await this.dialCodeForTenant(input.tenantId),
-              requestId: rowId,
+      let result: { success: boolean; providerMessageId?: string; error?: string } | null = null;
+
+      if (input.channel === NotificationChannel.EMAIL) {
+        result = await emailProvider.sendEmail({
+          to: input.recipient,
+          subject: input.subject ?? '',
+          body: input.body,
+          html: input.html,
+        });
+      } else {
+        // Zalo ZNS first, when asked for and configured: cheaper than a
+        // brandname SMS and lands inside the app the customer actually reads.
+        // ANY failure — no Zalo on that number, template mismatch, eSMS down —
+        // falls straight through to the SMS path below, so a customer can
+        // lose the discount but never the message.
+        if (vnKeys && input.zns) {
+          const tempId = input.zns.kind === 'booking_confirmed' ? vnKeys.znsBookingTempId : vnKeys.znsReminderTempId;
+          if (vnKeys.oaid && tempId) {
+            const zns = new ZnsProvider({
+              apiKey: vnKeys.apiKey, secretKey: vnKeys.secretKey,
+              oaid: vnKeys.oaid, callbackUrl: vnKeys.callbackUrl,
             });
+            // Suffixed idempotency key: if eSMS treats RequestId as global,
+            // a failed ZNS try must not make them refuse the SMS fallback
+            // as a 24h duplicate (their error 124).
+            const zr = await zns.sendZns({ to: input.recipient, tempId, params: input.zns.params, requestId: `${rowId}-z` });
+            if (zr.success) {
+              result = zr;
+              providerName = zns.name;
+            }
+          }
+        }
+        if (!result) {
+          result = await smsProvider.sendSms({
+            to: input.recipient,
+            body: input.body,
+            // A local number means different things in different countries.
+            // The salon's timezone is the only country signal a tenant
+            // carries, and it is enough to tell Ho Chi Minh City from
+            // Los Angeles. US/CA tenants resolve to '1' — unchanged.
+            defaultDialCode: await this.dialCodeForTenant(input.tenantId),
+            requestId: rowId,
+          });
+        }
+      }
       status = result.success ? NotificationStatus.SENT : NotificationStatus.FAILED;
       error = result.error ?? null;
       providerMessageId = result.providerMessageId ?? null;
@@ -399,7 +439,7 @@ export class NotificationsService {
     // In production, an SMS routed to the mock provider means NO real Twilio is
     // connected for this salon — record it as FAILED with a clear reason instead
     // of a misleading "SENT", so the salon sees the customer text never went out.
-    if (input.channel === NotificationChannel.SMS && smsProvider.name === 'mock' && process.env.NODE_ENV === 'production') {
+    if (input.channel === NotificationChannel.SMS && providerName === 'mock' && process.env.NODE_ENV === 'production') {
       status = NotificationStatus.FAILED;
       error = 'SMS not sent — no Twilio number is connected for this salon. Connect Twilio in Settings -> SMS gateway (and make sure the plan includes SMS).';
     }
@@ -413,7 +453,7 @@ export class NotificationsService {
         subject: input.subject ?? null,
         body: input.body,
         status,
-        provider: provider.name,
+        provider: providerName,
         error,
         relatedType: input.relatedType ?? null,
         relatedId: input.relatedId ?? null,
@@ -446,7 +486,7 @@ export class NotificationsService {
       if (r.smsId) ors.push({ providerMessageId: r.smsId });
       if (r.requestId) ors.push({ id: r.requestId });
       const row = (await this.prisma.notification.findFirst({
-        where: { provider: 'esms', OR: ors } as never,
+        where: { provider: { in: ['esms', 'zalo-zns'] }, OR: ors } as never,
         select: { id: true, status: true, deliveredAt: true } as never,
       })) as { id: string; status: NotificationStatus; deliveredAt: Date | null } | null;
       if (!row) return { ok: true };

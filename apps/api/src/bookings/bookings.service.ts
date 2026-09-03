@@ -1098,7 +1098,20 @@ export class BookingsService {
       // registered text goes out alone; the manage link still rides the email.
       const smsBase = tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d);
       const smsText = (n.market ?? 'US').toUpperCase() === 'VN' ? smsBase : `${smsBase}\nManage/cancel: ${manageUrl}`;
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
+      jobs.push(this.notifications.send({
+        tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio,
+        // Zalo ZNS first for a configured VN salon (send() decides; everyone
+        // else ignores this). Params are Lumio's canonical five — the names
+        // the salon registered its ZNS template with.
+        zns: {
+          kind: 'booking_confirmed',
+          params: {
+            customer_name: d.customer, salon_name: d.salon, service_name: d.service,
+            appointment_date: d.date, appointment_time: d.time,
+          },
+        },
+        ...related,
+      }));
     }
     // Admin notification: who gets it = the Admin email, falling back to the
     // sender email so the salon is never left un-notified.
@@ -1199,7 +1212,11 @@ export class BookingsService {
     const html = `<p>Hi ${cust},</p><p>This is a friendly reminder of your <strong>${svc}</strong> at <strong>${salon}</strong>:</p><p style="font-size:16px"><strong>${when}</strong></p>`
       + `<p style="margin:18px 0"><a href="${actionUrl}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;margin-right:8px">✓ Confirm</a> <a href="${actionUrl}" style="background:#fff;color:#dc2626;border:1px solid #dc2626;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Can't make it?</a></p>`
       + (contact ? `<p style="color:#64748b;font-size:13px">Or call us at ${contact}.</p>` : '') + '<p>See you soon! 💅</p>';
-    const smsText = `${salon}: reminder — ${svc} on ${when}. Confirm/cancel: ${actionUrl}. Reply STOP to opt out.`;
+    // VN: the registered CSKH mau tin has no room for a per-booking link (the
+    // carriers allowlist template AND urls), and STOP is a US convention.
+    const smsText = (n.market ?? 'US').toUpperCase() === 'VN'
+      ? `${salon}: Nhac ban lich hen ${svc} ngay ${when}. Hen gap ban!`
+      : `${salon}: reminder — ${svc} on ${when}. Confirm/cancel: ${actionUrl}. Reply STOP to opt out.`;
 
     const senderName = n.senderName || salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;
@@ -1244,7 +1261,17 @@ export class BookingsService {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text + refText, html: html + refHtml, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
     }
     if (rs.channelSms && custPhone) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
+      jobs.push(this.notifications.send({
+        tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio,
+        zns: {
+          kind: 'reminder',
+          params: {
+            customer_name: cust, salon_name: salon, service_name: svc,
+            appointment_date: fmtD(appt.startTime), appointment_time: fmtT(appt.startTime),
+          },
+        },
+        ...related,
+      }));
     }
     await Promise.allSettled(jobs);
   }

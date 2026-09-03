@@ -38,7 +38,7 @@ interface SettingsData {
     brevo: { senderEmail: string; senderName: string; connected: boolean };
     gmail: { clientId: string; senderEmail: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
-    esms?: { apiKey: string; brandname: string; connected: boolean };
+    esms?: { apiKey: string; brandname: string; oaid?: string; znsBookingTempId?: string; znsReminderTempId?: string; connected: boolean };
   };
   pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
@@ -981,7 +981,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   });
   const [showTpl, setShowTpl] = useState(false);
   const [tw, setTw] = useState({ accountSid: n.twilio.accountSid, fromNumber: n.twilio.fromNumber, authToken: '' });
-  const [es, setEs] = useState({ apiKey: n.esms?.apiKey ?? '', brandname: n.esms?.brandname ?? '', secretKey: '' });
+  const [es, setEs] = useState({ apiKey: n.esms?.apiKey ?? '', brandname: n.esms?.brandname ?? '', secretKey: '', oaid: n.esms?.oaid ?? '', znsBookingTempId: n.esms?.znsBookingTempId ?? '', znsReminderTempId: n.esms?.znsReminderTempId ?? '' });
   const [smtp, setSmtp] = useState({ host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, fromEmail: n.smtp.fromEmail, secure: n.smtp.secure, pass: '' });
   const [brevo, setBrevo] = useState({ senderEmail: n.brevo.senderEmail, senderName: n.brevo.senderName, apiKey: '' });
   const [gmail, setGmail] = useState({ clientId: n.gmail?.clientId ?? '', clientSecret: '' });
@@ -1245,6 +1245,22 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
             <Field label="API Key"><input style={ui.input} value={es.apiKey} onChange={(e) => setEs({ ...es, apiKey: e.target.value })} /></Field>
             <Field label="Secret Key"><input style={ui.input} type="password" value={es.secretKey} onChange={(e) => setEs({ ...es, secretKey: e.target.value })} placeholder={n.esms?.connected ? 'Đã lưu' : 'Secret Key'} /></Field>
             <Field label="Brandname"><input style={ui.input} value={es.brandname} onChange={(e) => setEs({ ...es, brandname: e.target.value })} placeholder="LUMIO" /></Field>
+          </div>
+
+          {/* Zalo ZNS — same eSMS keys and wallet. Optional: empty = SMS only. */}
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginTop: 14 }}>
+            Zalo ZNS (tùy chọn){' '}
+            {es.oaid && (es.znsBookingTempId || es.znsReminderTempId) && <span style={{ color: '#22c55e', fontSize: 12 }}>đang bật</span>}
+          </div>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px', lineHeight: 1.5 }}>
+            Có OAID + Template ID thì tin xác nhận/nhắc lịch đi qua Zalo trước (rẻ hơn ~50%, hiện ngay trong app) —
+            lỗi hoặc máy không có Zalo thì tự động chuyển về SMS, khách không bao giờ bị mất tin.
+            Mẫu ZNS đăng ký qua eSMS phải dùng đúng 5 tham số: <code>customer_name, salon_name, service_name, appointment_date, appointment_time</code>.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+            <Field label="Zalo OA ID"><input style={ui.input} value={es.oaid} onChange={(e) => setEs({ ...es, oaid: e.target.value })} placeholder="OAID đã liên kết với eSMS" /></Field>
+            <Field label="Template xác nhận lịch"><input style={ui.input} value={es.znsBookingTempId} onChange={(e) => setEs({ ...es, znsBookingTempId: e.target.value })} placeholder="TempID" /></Field>
+            <Field label="Template nhắc lịch"><input style={ui.input} value={es.znsReminderTempId} onChange={(e) => setEs({ ...es, znsReminderTempId: e.target.value })} placeholder="TempID" /></Field>
           </div>
         </div>
       )}

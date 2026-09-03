@@ -399,7 +399,18 @@ export interface NotificationSettings {
    * brandname must be registered with the carriers before it will send;
    * an unregistered one is eSMS error 104 on every attempt.
    */
-  esms: { apiKey: string; secretKey: string; brandname: string };
+  esms: {
+    apiKey: string; secretKey: string; brandname: string;
+    /** Zalo Official Account id linked to eSMS. With a template id below, the
+     *  matching notification goes out as Zalo ZNS first (cheaper, richer,
+     *  lands in-app) and falls back to brandname SMS on any failure. */
+    oaid: string;
+    /** Zalo-approved ZNS template ids, registered through eSMS with Lumio's
+     *  canonical params: customer_name, salon_name, service_name,
+     *  appointment_date, appointment_time. Empty = that message stays SMS. */
+    znsBookingTempId: string;
+    znsReminderTempId: string;
+  };
   /**
    * The tenant's market ('US' | 'CA' | 'VN'), attached AT READ TIME by
    * getNotificationSettings so every caller that already holds the settings
@@ -433,7 +444,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   twilio: { accountSid: '', authToken: '', fromNumber: '' },
   // Empty = not configured. A VN salon with no eSMS keys falls back to the
   // existing path, which is what it does today — not to an error.
-  esms: { apiKey: '', secretKey: '', brandname: '' },
+  esms: { apiKey: '', secretKey: '', brandname: '', oaid: '', znsBookingTempId: '', znsReminderTempId: '' },
 };
 
 /** Supported card/online gateways (most popular for US/Canada salons). */

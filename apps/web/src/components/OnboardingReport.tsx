@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { CardHead } from './CardHead';
 
 type Confidence = 'thin' | 'partial' | 'solid';
 
@@ -75,12 +76,13 @@ function asText(r: Report): string {
   return L.join('\n');
 }
 
-function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+function Section({ title, note, alsoIn, children }: {
+  title: string; note?: string; alsoIn?: string; children: React.ReactNode;
+}) {
   return (
     <div style={{ ...ui.card, padding: 16, marginBottom: 12 }}>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{title}</div>
-      {note && <div style={{ fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.6, marginTop: 4 }}>{note}</div>}
-      <div style={{ marginTop: 12 }}>{children}</div>
+      <CardHead title={title} note={note} alsoIn={alsoIn} />
+      {children}
     </div>
   );
 }
@@ -187,7 +189,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
       </Section>
 
       {/* ---- the starting point ---- */}
-      <Section title="Điểm khởi đầu">
+      <Section title="Điểm khởi đầu" alsoIn="📣 Quảng cáo & SEO">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           {[
             { n: r.start?.measured ?? 0, l: 'đo được', c: '#22c55e' },
@@ -217,7 +219,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
       </Section>
 
       {/* ---- the first month ---- */}
-      <Section title="Tháng đầu tiên" note="Chia theo tuần, mỗi tuần dưới khoảng 3 tiếng — vừa đủ để một chủ tiệm làm thật chứ không phải đọc rồi bỏ.">
+      <Section title="Tháng đầu tiên" alsoIn="🛣️ Lộ trình SEO" note="Chia theo tuần, mỗi tuần dưới khoảng 3 tiếng — vừa đủ để một chủ tiệm làm thật chứ không phải đọc rồi bỏ.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {weeks.map((w) => (
             <div key={w.week} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>

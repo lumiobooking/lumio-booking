@@ -35,6 +35,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { CardHead } from './CardHead';
 
 type TaskState = 'done' | 'todo' | 'unknown';
 type Tier = 'low' | 'medium' | 'high';
@@ -241,11 +242,12 @@ function KeywordPanel({ plan }: { plan: KeywordPlan }) {
 
   return (
     <div style={{ ...ui.card, padding: 16, marginBottom: 12, borderColor: '#38bdf8' }}>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>🎯 Từ khoá của tiệm này</div>
-      <div style={{ fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.6, marginTop: 5 }}>
-        Danh sách đã ghép sẵn tên thành phố và tên tiệm. Mỗi trang nhắm <b style={{ color: 'var(--c94a3b8)' }}>một</b> từ khoá chính —
-        hai trang cùng nhắm một từ thì Google chọn đại một trang, và thường chọn sai.
-      </div>
+      <CardHead
+        icon="🎯"
+        title="Từ khoá của tiệm này"
+        note="Danh sách đã ghép sẵn tên thành phố và tên tiệm. Mỗi trang nhắm MỘT từ khoá chính — hai trang cùng nhắm một từ thì Google chọn đại một trang, và thường chọn sai."
+        alsoIn="📣 Quảng cáo & SEO"
+      />
 
       <div style={{ fontSize: 11, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)', margin: '16px 0 9px' }}>
         Trang và bài cần có

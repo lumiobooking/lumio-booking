@@ -18,6 +18,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { SeoRoadmap } from '../../../components/SeoRoadmap';
 import { OnboardingReport } from '../../../components/OnboardingReport';
 import { Panel } from '../../../components/Panel';
+import { CardHead } from '../../../components/CardHead';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -421,7 +422,7 @@ function Inner() {
   // once on mount, not on every render: after that the tabs are the user's.
   useEffect(() => {
     const want = new URLSearchParams(window.location.search).get('tab');
-    const known: TabId[] = ['today', 'week', 'trends', 'calendar', 'audience', 'ads', 'queue'];
+    const known: TabId[] = ['today', 'week', 'trends', 'calendar', 'audience', 'ads', 'start', 'map', 'queue'];
     if (want && (known as string[]).includes(want)) setTab(want as TabId);
   }, []);
   const [refreshing, setRefreshing] = useState(false);
@@ -961,16 +962,31 @@ function Inner() {
     </div>
   ) : null;
 
-  const TABS: { id: TabId; label: string; icon: string }[] = [
-    { id: 'today', label: T('Hôm nay', 'Today'), icon: '✍️' },
-    { id: 'week', label: T('Tuần này', 'This week'), icon: '🗓️' },
-    { id: 'trends', label: T('Xu hướng', 'Trends'), icon: '📈' },
-    { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
-    { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
-    { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣' },
-    { id: 'start', label: T('Đánh giá khởi đầu', 'Opening assessment'), icon: '🧭' },
-    { id: 'map', label: T('Lộ trình SEO', 'SEO roadmap'), icon: '🚀' },
-    { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀' },
+  /**
+   * Nine tabs in one scrolling row asked the person to remember an order they
+   * were never told. Two named groups answer the question the row could not:
+   * the left half is the work that goes out this week, the right half is the
+   * work that decides where the shop stands in six months. Nothing here changes
+   * what any tab contains — it changes whether someone can find it.
+   *
+   * `map` and `queue` both carried 🚀, which is how two unrelated tabs came to
+   * look like the same tab twice.
+   */
+  const TABS: { id: TabId; label: string; icon: string; group: 'content' | 'growth' }[] = [
+    { id: 'today', label: T('Hôm nay', 'Today'), icon: '✍️', group: 'content' },
+    { id: 'week', label: T('Tuần này', 'This week'), icon: '🗓️', group: 'content' },
+    { id: 'trends', label: T('Xu hướng', 'Trends'), icon: '📈', group: 'content' },
+    { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆', group: 'content' },
+    { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀', group: 'content' },
+    { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯', group: 'growth' },
+    { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣', group: 'growth' },
+    { id: 'start', label: T('Đánh giá khởi đầu', 'Opening assessment'), icon: '🧭', group: 'growth' },
+    { id: 'map', label: T('Lộ trình SEO', 'SEO roadmap'), icon: '🛣️', group: 'growth' },
+  ];
+
+  const TAB_GROUPS: { id: 'content' | 'growth'; label: string; hint: string }[] = [
+    { id: 'content', label: T('Việc tuần này', 'This week'), hint: T('nội dung, lịch, bài chờ đăng', 'content, calendar, posts waiting') },
+    { id: 'growth', label: T('Đường dài', 'The long game'), hint: T('khách, quảng cáo, SEO', 'customers, ads, SEO') },
   ];
 
   /**
@@ -1047,38 +1063,76 @@ function Inner() {
 
       {isMobile && regionCard}
 
-      {/* This screen outgrew a single scroll: on a phone the holiday calendar
-          sat six swipes below the ideas, so nobody ever reached it. Four tabs,
-          and the one that matters most opens first. */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16, overflowX: 'auto', paddingBottom: 2 }}>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            style={{
-              flex: isMobile ? '1 0 auto' : '0 0 auto',
-              padding: isMobile ? '9px 12px' : '9px 16px',
-              borderRadius: 9, cursor: 'pointer', whiteSpace: 'nowrap',
-              fontSize: 13.5, fontWeight: tab === t.id ? 700 : 500,
-              border: `1px solid ${tab === t.id ? '#6366f1' : 'var(--c334155)'}`,
-              background: tab === t.id ? '#6366f1' : 'var(--c1e293b)',
-              color: tab === t.id ? '#fff' : 'var(--c94a3b8)',
-            }}
-          >
-            <span style={{ marginRight: 5 }}>{t.icon}</span>{t.label}
-            {/* The red count is the whole reason the queue can stay a tab
-                rather than a menu item: a broken post finds the person instead
-                of waiting to be found. */}
-            {t.id === 'queue' && postAlerts > 0 && (
-              <span style={{
-                marginLeft: 6, minWidth: 19, height: 19, padding: '0 5px',
-                borderRadius: 20, background: '#ef4444', color: '#fff',
-                fontSize: 11, fontWeight: 800, display: 'inline-flex',
-                alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle',
-              }}>{postAlerts > 9 ? '9+' : postAlerts}</span>
-            )}
-          </button>
-        ))}
+      {/* This screen outgrew a single scroll, then it outgrew a single row of
+          tabs. Nine of them side by side ran off the edge of a phone and off
+          the edge of most laptops, so the four that decide where this shop
+          stands in six months were the four nobody scrolled to.
+
+          Two named groups instead. The name is the point: a tab bar can only
+          say what each tab is called, and these people needed to be told what
+          each half is FOR.
+
+          Not sticky, deliberately. The shell already pins its own header at
+          top:0, so a second sticky bar would need that header's exact height —
+          a number nothing here can read, and a wrong guess leaves the tabs
+          sliced in half behind it on somebody else's screen size. */}
+      <div style={{ paddingBottom: 10, marginBottom: 12, borderBottom: '1px solid var(--c1e293b)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {TAB_GROUPS.map((g) => (
+            <div key={g.id} style={{
+              display: 'flex', gap: 8, alignItems: 'center',
+              flexWrap: isMobile ? 'wrap' : 'nowrap',
+            }}>
+              <div style={{
+                flexShrink: 0, width: isMobile ? '100%' : 104,
+                paddingRight: 6, lineHeight: 1.25,
+              }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)' }}>
+                  {g.label}
+                </div>
+                {!isMobile && (
+                  <div style={{ fontSize: 10, color: 'var(--c475569)', marginTop: 1 }}>{g.hint}</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+                {TABS.filter((t) => t.group === g.id).map((t) => {
+                  const on = tab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTab(t.id)}
+                      style={{
+                        flex: isMobile ? '1 1 auto' : '0 0 auto',
+                        padding: isMobile ? '8px 11px' : '8px 14px',
+                        borderRadius: 9, cursor: 'pointer', whiteSpace: 'nowrap',
+                        fontFamily: 'inherit',
+                        fontSize: 13.5, fontWeight: on ? 700 : 500,
+                        border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
+                        background: on ? '#6366f1' : 'var(--c1e293b)',
+                        color: on ? '#fff' : 'var(--c94a3b8)',
+                        boxShadow: on ? '0 2px 10px rgba(99,102,241,.35)' : 'none',
+                        transition: 'background .15s, color .15s',
+                      }}
+                    >
+                      <span style={{ marginRight: 5 }}>{t.icon}</span>{t.label}
+                      {/* The red count is the whole reason the queue can stay a
+                          tab rather than a menu item: a broken post finds the
+                          person instead of waiting to be found. */}
+                      {t.id === 'queue' && postAlerts > 0 && (
+                        <span style={{
+                          marginLeft: 6, minWidth: 19, height: 19, padding: '0 5px',
+                          borderRadius: 20, background: '#ef4444', color: '#fff',
+                          fontSize: 11, fontWeight: 800, display: 'inline-flex',
+                          alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle',
+                        }}>{postAlerts > 9 ? '9+' : postAlerts}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {loading && <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{T('Đang tải…', 'Loading…')}</p>}
@@ -3179,13 +3233,13 @@ function Inner() {
                   phrase with a hundred thousand idle searches. */}
               {plan?.keywordPlan && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
-                    🔑 {T('Từ khóa theo nghề — viết gì, chạy gì', 'Keywords for your trade — what to write, what to bid on')}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 14, lineHeight: 1.5 }}>
-                    {T('Theo nghề tiệm đã khai và thị trường của tiệm. Xếp theo Ý ĐỊNH của người tìm, không theo lượng tìm — câu ít người gõ mà sắp đặt lịch đáng tiền hơn câu nhiều người gõ để xem cho vui.',
-                       'Based on the trade you declared and your market. Ordered by INTENT, not volume — a phrase with a customer at the end of it beats one with a hundred thousand idle searches.')}
-                  </div>
+                  <CardHead
+                    icon="🔑"
+                    title={T('Từ khóa theo nghề — viết gì, chạy gì', 'Keywords for your trade — what to write, what to bid on')}
+                    note={T('Theo nghề tiệm đã khai và thị trường của tiệm. Xếp theo Ý ĐỊNH của người tìm, không theo lượng tìm — câu ít người gõ mà sắp đặt lịch đáng tiền hơn câu nhiều người gõ để xem cho vui.',
+                            'Based on the trade you declared and your market. Ordered by INTENT, not volume — a phrase with a customer at the end of it beats one with a hundred thousand idle searches.')}
+                    alsoIn={T('🛣️ Lộ trình SEO', '🛣️ SEO roadmap')}
+                  />
 
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 8, letterSpacing: 0.3 }}>
                     {T('NHÓM QUẢNG CÁO', 'AD GROUPS')}
@@ -3607,9 +3661,11 @@ function Inner() {
               {/* ---- local SEO ---- */}
               {plan?.seo && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-                    🔍 {T('SEO địa phương', 'Local SEO')}
-                  </div>
+                  <CardHead
+                    icon="🔍"
+                    title={T('SEO địa phương', 'Local SEO')}
+                    alsoIn={T('🧭 Đánh giá khởi đầu', '🧭 Opening assessment')}
+                  />
                   {/* Green is a claim. It is only earned when something was
                       actually measured and came back clean — a report that
                       graded nothing gets amber, not a pat on the back. */}

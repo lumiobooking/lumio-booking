@@ -18,6 +18,7 @@ import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
+import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
 import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
@@ -1451,6 +1452,25 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         money: ctx.money,
       }),
       seo: await this.seoFor(tenantId, ctx).catch(() => null),
+      // The keyword map for this trade in this market: what to write and what
+      // to bid on. Placeholders are filled here rather than on the screen —
+      // the salon's own city and name are the whole point of a local keyword,
+      // and a template shown raw is a template that gets copied raw into an
+      // ad account.
+      keywordPlan: ((): unknown => {
+        const tk = tradeKeywordsFor(ctx.industry, ctx.region.market);
+        const vals = { city: ctx.region.city || ctx.region.label, brand: ctx.tenantName, year: new Date().getFullYear() };
+        return {
+          adGroups: tk.adGroups.map((g) => ({
+            name: viOf(g.name), intent: g.intent, note: viOf(g.note),
+            keywords: g.keywords.map((k) => fillKeyword(k, vals)),
+          })),
+          seoTopics: tk.seoTopics.map((t2) => ({
+            title: fillKeyword(viOf(t2.title), vals), kind: t2.kind, why: viOf(t2.why),
+            targets: t2.targets.map((k) => fillKeyword(k, vals)),
+          })),
+        };
+      })(),
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),
       busySlots: [...ctx.revenue.loads].reverse().slice(0, 3),

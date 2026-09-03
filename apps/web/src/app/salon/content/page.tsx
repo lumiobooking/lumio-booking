@@ -138,6 +138,9 @@ interface Promo {
   tryFirst: string[];
   note: string;
 }
+interface KwAdGroup { name: string; intent: 'book-now' | 'service' | 'design' | 'brand'; keywords: string[]; note: string }
+interface KwSeoTopic { title: string; kind: 'money' | 'service' | 'guide' | 'local'; targets: string[]; why: string }
+interface KeywordPlan { adGroups: KwAdGroup[]; seoTopics: KwSeoTopic[] }
 interface DayPlan { weekday: number; label: string; jobs: Job[] }
 interface TrendTopic { label: string; why: string; from: 'salon' | 'region' | 'trade' }
 interface TrendLink { key: string; title: string; url: string; what: string; how: string; source: string; topics?: TrendTopic[] }
@@ -174,6 +177,7 @@ interface Plan {
   ads: Ads | null;
   brief: Brief | null;
   seo: Seo | null;
+  keywordPlan: KeywordPlan | null;
   offer: Offer;
   lapsed: { count: number; medianDaysAway: number | null };
   quietSlots: { label: string; fillIndex: number }[];
@@ -3157,6 +3161,70 @@ function Inner() {
                   Everything else on this tab is worthless without it: the one
                   number that says when to stop. Deliberately above the budget,
                   because a budget read before a ceiling becomes a target. */}
+              {/* ---- what to write, and what to bid on ----
+                  The market card above sizes the audience; this one says what
+                  to actually publish and pay for. Ordered by intent, not by
+                  volume: a phrase with a customer at the end of it beats a
+                  phrase with a hundred thousand idle searches. */}
+              {plan?.keywordPlan && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                    🔑 {T('Từ khóa theo nghề — viết gì, chạy gì', 'Keywords for your trade — what to write, what to bid on')}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 14, lineHeight: 1.5 }}>
+                    {T('Theo nghề tiệm đã khai và thị trường của tiệm. Xếp theo Ý ĐỊNH của người tìm, không theo lượng tìm — câu ít người gõ mà sắp đặt lịch đáng tiền hơn câu nhiều người gõ để xem cho vui.',
+                       'Based on the trade you declared and your market. Ordered by INTENT, not volume — a phrase with a customer at the end of it beats one with a hundred thousand idle searches.')}
+                  </div>
+
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 8, letterSpacing: 0.3 }}>
+                    {T('NHÓM QUẢNG CÁO', 'AD GROUPS')}
+                  </div>
+                  {plan.keywordPlan.adGroups.map((g) => {
+                    const tone = g.intent === 'book-now' ? '#22c55e' : g.intent === 'service' ? '#6366f1' : 'var(--c64748b)';
+                    const badge = g.intent === 'book-now' ? T('đặt lịch ngay', 'ready to book')
+                      : g.intent === 'service' ? T('theo dịch vụ', 'by service')
+                      : g.intent === 'brand' ? T('tên tiệm', 'brand') : T('chọn mẫu', 'browsing');
+                    return (
+                      <div key={g.name} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: `1px solid ${tone}`, marginBottom: 9 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{g.name}</span>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: tone, border: `1px solid ${tone}`, borderRadius: 20, padding: '1px 8px' }}>{badge}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 7 }}>
+                          {g.keywords.map((k) => (
+                            <span key={k} style={{ fontSize: 12, color: 'var(--ccbd5e1)', background: 'var(--c1e293b)', borderRadius: 6, padding: '3px 8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{k}</span>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>{g.note}</div>
+                      </div>
+                    );
+                  })}
+
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', margin: '16px 0 8px', letterSpacing: 0.3 }}>
+                    {T('BÀI SEO NÊN VIẾT', 'ARTICLES TO WRITE')}
+                  </div>
+                  {plan.keywordPlan.seoTopics.map((t2) => {
+                    const kindLabel = t2.kind === 'money' ? T('trang ra tiền', 'money page')
+                      : t2.kind === 'service' ? T('trang dịch vụ', 'service page')
+                      : t2.kind === 'local' ? T('trang địa phương', 'local page') : T('bài giải đáp', 'guide');
+                    return (
+                      <div key={t2.title} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', marginBottom: 9 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 5 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t2.title}</span>
+                          <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{kindLabel}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 6 }}>{t2.why}</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {t2.targets.map((k) => (
+                            <span key={k} style={{ fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--c1e293b)', borderRadius: 6, padding: '2px 7px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{k}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {plan?.ads && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>

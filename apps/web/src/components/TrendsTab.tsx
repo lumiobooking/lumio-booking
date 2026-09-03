@@ -39,10 +39,11 @@ export interface TrendCard {
 export interface RisingQuery { query: string; growthPct: number | null; breakout: boolean; matchesService: string | null }
 interface Pick { id: string; title: string; body: string; at: string }
 interface SourceState { configured: boolean; fetchedAt: string | null; stale: boolean; error: string | null; connected?: boolean }
+interface MinedPhrase extends RisingQuery { posts: number }
 interface FeedLink { key: string; title: string; url: string; what: string; how: string; source: string; topics?: { label: string; why: string; from: string }[] }
 export interface TrendFeed {
   scope: string; fetchedAt: string | null; stale: boolean; regionLabel: string;
-  items: TrendCard[]; rising: RisingQuery[]; pinterestRising?: RisingQuery[]; picks: Pick[];
+  items: TrendCard[]; rising: RisingQuery[]; pinterestRising?: RisingQuery[]; mined?: MinedPhrase[]; picks: Pick[];
   sources: { youtube: SourceState; google: SourceState; instagram: SourceState; pinterest?: SourceState };
   links: { weekly: FeedLink[]; monthly: FeedLink[]; regionKnown: boolean };
 }
@@ -296,6 +297,38 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
                   {name}: {e}
                 </div>
               ))}
+          </div>
+        )}
+
+        {/* The trade's live vocabulary — mined from the posts already pulled.
+            First of the three keyword strips because it is the only one that
+            needs no key: a salon with nothing configured still gets this. */}
+        {!!feed?.mined?.length && (
+          <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14, marginTop: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c64748b)' }}>
+                {T('Ngành đang nói về · rút từ bài đang lên', 'What the trade is talking about · from the posts above')}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>
+                {T('Số bài nhắc tới, không phải lượt tìm kiếm', 'Posts mentioning it — not search volume')}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {feed.mined.map((q) => (
+                <div key={q.query} style={{
+                  display: 'flex', gap: 8, alignItems: 'center', padding: '7px 12px', borderRadius: 20,
+                  background: 'var(--c0f172a)', border: `1px solid ${q.matchesService ? '#22c55e' : 'var(--c334155)'}`,
+                }}>
+                  <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{q.query}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c64748b)' }}>
+                    {T(`${q.posts} bài`, `${q.posts} posts`)}
+                  </span>
+                  {q.growthPct != null && (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>+{q.growthPct}%</span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

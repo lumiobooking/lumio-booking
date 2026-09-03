@@ -1,7 +1,7 @@
 import {
   parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest, perDayOf, isoDurationSec, latinShare, relevant, withGrowth,
   matchService, serviceKeywords, shortCount, rankItems, diversify, overlay, overlayQueries,
-  scopeOf, queriesFor, needsRefresh, type TrendItem,
+  scopeOf, queriesFor, needsRefresh, minePhrases, type TrendItem,
 } from './trend-feed';
 import { bi, enOf, viOf } from '../i18n';
 
@@ -332,5 +332,96 @@ describe('sharing one pull across every salon in a trade', () => {
     expect(needsRefresh(null, NOW)).toBe(true);
     expect(needsRefresh(new Date(NOW.getTime() - 3 * 3_600_000), NOW)).toBe(false);
     expect(needsRefresh(new Date(NOW.getTime() - 25 * 3_600_000), NOW)).toBe(true);
+  });
+});
+
+describe('the keyword list that costs nothing', () => {
+  const post = (title: string, growthPct: number | null = null): TrendItem => ({
+    id: Math.random().toString(36).slice(2), source: 'instagram', title,
+    url: 'u', thumbUrl: null, count: null, perDay: null, growthPct,
+    breakout: false, publishedAt: null, durationSec: null, via: '#nailart',
+  });
+
+  it('finds the trade\'s real vocabulary in the posts already pulled', () => {
+    const out = minePhrases([
+      post('Chrome nails are everywhere this fall'),
+      post('Doing chrome nails on a client'),
+      post('Chrome nails, but make it burgundy'),
+      post('Simple french tip on short nails'),
+      post('French tip with a twist'),
+    ], { minPosts: 3 });
+
+    expect(out.map((x) => x.query)).toContain('chrome nails');
+    expect(out.find((x) => x.query === 'chrome nails')?.posts).toBe(3);
+  });
+
+  it('never reads our own search terms back to us', () => {
+    // Every hashtag result contains the hashtag by construction, so counting
+    // the seeds would pin our own search box to the top of the list daily.
+    const out = minePhrases([
+      post('nail art in autumn tones'),
+      post('nail art for beginners'),
+      post('nail art on almond shape'),
+    ], { seeds: ['nail art'], minPosts: 3 });
+
+    expect(out.map((x) => x.query)).not.toContain('nail art');
+  });
+
+  it('keeps the specific phrase and drops the fragment inside it', () => {
+    const out = minePhrases([
+      post('builder gel overlay tutorial'),
+      post('builder gel overlay on natural nail'),
+      post('builder gel overlay, three weeks later'),
+    ], { minPosts: 3 });
+
+    const qs = out.map((x) => x.query);
+    expect(qs).toContain('builder gel overlay');
+    // 'builder gel' appears exactly as often and says less — it is the same
+    // finding, one word shorter.
+    expect(qs).not.toContain('builder gel');
+  });
+
+  it('prints a growth number only when more than one post backs it', () => {
+    const solo = minePhrases([
+      post('jade marble nails', 400),
+      post('jade marble nails set'),
+      post('jade marble nails close up'),
+    ], { minPosts: 3 });
+    // One post has growth; a single reading is that post's story, not the
+    // phrase's — no percentage rather than an invented one.
+    expect(solo.find((x) => x.query === 'jade marble nails')?.growthPct).toBeNull();
+
+    const backed = minePhrases([
+      post('jade marble nails', 40),
+      post('jade marble nails set', 60),
+      post('jade marble nails close up', 50),
+    ], { minPosts: 3 });
+    expect(backed.find((x) => x.query === 'jade marble nails')?.growthPct).toBe(50);
+  });
+
+  it('counts a post once however often it repeats itself', () => {
+    const out = minePhrases([
+      post('cat eye cat eye cat eye everywhere'),
+      post('cat eye polish review'),
+      post('trying cat eye at home'),
+    ], { minPosts: 3 });
+    expect(out.find((x) => x.query === 'cat eye')?.posts).toBe(3);
+  });
+
+  it('returns nothing rather than noise when there is too little to go on', () => {
+    expect(minePhrases([], {})).toEqual([]);
+    expect(minePhrases([post('one lonely post')], { minPosts: 3 })).toEqual([]);
+  });
+
+  it('drops filler words instead of ranking them', () => {
+    const out = minePhrases([
+      post('how to do the best nails today'),
+      post('how to do the best nails ever'),
+      post('how to do the best nails at home'),
+    ], { minPosts: 3 });
+    for (const q of out.map((x) => x.query)) {
+      expect(q.startsWith('how ')).toBe(false);
+      expect(q.endsWith(' the')).toBe(false);
+    }
   });
 });

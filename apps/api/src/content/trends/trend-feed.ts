@@ -575,6 +575,159 @@ export function overlayQueries(qs: RisingQuery[], services: string[]): RisingQue
   return qs.map((q) => ({ ...q, matchesService: matchService(q.query, services) }));
 }
 
+/**
+ * The keyword list a salon gets for free.
+ *
+ * WHY THIS EXISTS
+ *
+ * The two feeds that name rising SEARCHES both cost something a small agency
+ * may not want to spend yet: Google Trends needs a paid DataForSEO account,
+ * and Pinterest needs an app approval. Without them the whole "rising
+ * keywords" strip is missing — which is most of the reason a salon opens the
+ * board at all.
+ *
+ * But the answer is already sitting in the data. Every YouTube title and
+ * Instagram caption pulled this morning is a sentence written by somebody
+ * trying to be found for this trade. The phrases that recur across them ARE
+ * the trade's live vocabulary, and they cost nothing extra: no new API, no
+ * key, no approval, no undocumented endpoint that quietly starts returning
+ * empty from a cloud IP.
+ *
+ * WHAT IT IS AND IS NOT
+ *
+ * This is NOT search volume. Nothing here says how many people typed a
+ * phrase into Google. It says: of the posts doing well in this trade right
+ * now, this many are about that. The screen must label it that way — calling
+ * it "searches" would be a lie the numbers cannot back.
+ *
+ * The growth figure is honest in the same narrow way: an item's growthPct is
+ * measured against the same item in yesterday's pull (see withGrowth), so a
+ * phrase's growth is the median growth of the posts carrying it. A phrase
+ * only earns a percentage when enough of its posts have one; otherwise it
+ * shows with no number rather than a fabricated one.
+ */
+
+/** Words that carry no topic. Kept deliberately small: an over-eager stop
+ *  list removes the very words that make a phrase specific ("press on").
+ *  Named apart from the service-name STOP above — that one strips menu
+ *  filler ("deluxe", "combo"), this one strips English filler, and merging
+ *  them would quietly break both. */
+const PHRASE_STOP = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'than', 'that', 'this',
+  'these', 'those', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'am',
+  'do', 'does', 'did', 'doing', 'have', 'has', 'had', 'will', 'would', 'can',
+  'could', 'should', 'shall', 'may', 'might', 'must', 'to', 'of', 'in', 'on',
+  'at', 'by', 'for', 'with', 'from', 'as', 'into', 'about', 'over', 'after',
+  'before', 'you', 'your', 'yours', 'i', 'me', 'my', 'we', 'our', 'they',
+  'them', 'their', 'it', 'its', 'he', 'she', 'his', 'her', 'how', 'what',
+  'when', 'where', 'why', 'who', 'which', 'not', 'no', 'so', 'very', 'just',
+  'get', 'got', 'make', 'makes', 'made', 'new', 'best', 'top', 'ep', 'part',
+  'video', 'shorts', 'short', 'tutorial', 'diy', 'asmr', 'satisfying', 'vlog',
+  'day', 'days', 'week', 'today', 'time', 'like', 'love', 'now', 'up', 'out',
+  'one', 'two', 'all', 'more', 'most', 'much', 'some', 'any', 'try', 'trying',
+]);
+
+/** Title text to comparable words: lowercase, hashtags opened up, emoji and
+ *  punctuation dropped, digits kept (they carry "3d", "90s"). */
+function words(text: string): string[] {
+  return String(text ?? '')
+    .toLowerCase()
+    .replace(/[#_]/g, ' ')
+    .replace(/[^\p{Letter}\p{Number}\s'-]/gu, ' ')
+    .split(/\s+/)
+    .map((w) => w.replace(/^[''-]+|[''-]+$/g, ''))
+    .filter(Boolean);
+}
+
+/** Every 1-, 2- and 3-word run that does not start or end on a stop word. A
+ *  bigram is where the trade's real names live — "chrome nails", "cat eye",
+ *  "builder gel" — so unigrams alone would flatten the list into noise. */
+function phrasesOf(text: string): string[] {
+  const w = words(text);
+  const out: string[] = [];
+  for (let n = 1; n <= 3; n += 1) {
+    for (let i = 0; i + n <= w.length; i += 1) {
+      const run = w.slice(i, i + n);
+      if (PHRASE_STOP.has(run[0]) || PHRASE_STOP.has(run[run.length - 1])) continue;
+      if (run.some((x) => x.length < 2)) continue;
+      out.push(run.join(' '));
+    }
+  }
+  return out;
+}
+
+function median(ns: number[]): number | null {
+  if (!ns.length) return null;
+  const s = [...ns].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+}
+
+export interface MinedPhrase extends RisingQuery {
+  /** How many of this morning's posts carry the phrase. The honest unit. */
+  posts: number;
+}
+
+/**
+ * Mine the trade's live vocabulary out of the items already pulled.
+ *
+ * `seeds` are the terms we searched WITH (queriesFor().youtube / hashtags):
+ * every result contains them by construction, so counting them would put our
+ * own search box at the top of the list every single day.
+ */
+export function minePhrases(
+  items: TrendItem[],
+  opts: { seeds?: string[]; minPosts?: number; limit?: number } = {},
+): MinedPhrase[] {
+  const minPosts = opts.minPosts ?? 3;
+  const limit = opts.limit ?? 12;
+  const seedSet = new Set((opts.seeds ?? []).map((t) => words(t).join(' ')).filter(Boolean));
+
+  // Count DISTINCT items per phrase, not raw occurrences: one title that says
+  // "chrome" five times is one post about chrome, not five.
+  const posts = new Map<string, number>();
+  const growth = new Map<string, number[]>();
+  for (const it of items) {
+    const seen = new Set(phrasesOf(it.title));
+    for (const p of seen) {
+      if (seedSet.has(p)) continue;
+      posts.set(p, (posts.get(p) ?? 0) + 1);
+      if (typeof it.growthPct === 'number' && Number.isFinite(it.growthPct)) {
+        growth.set(p, [...(growth.get(p) ?? []), it.growthPct]);
+      }
+    }
+  }
+
+  const kept = [...posts.entries()].filter(([, n]) => n >= minPosts);
+
+  // A phrase wholly inside a longer phrase that appears just as often is the
+  // same finding twice — keep the longer, more specific one ("chrome nails"
+  // over "chrome"), drop the fragment.
+  const byLength = [...kept].sort((a, b) => b[0].length - a[0].length);
+  const chosen: [string, number][] = [];
+  for (const [phrase, n] of byLength) {
+    const swallowed = chosen.some(([longer, ln]) => longer.includes(phrase) && ln >= n);
+    if (!swallowed) chosen.push([phrase, n]);
+  }
+
+  return chosen
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([query, n]) => {
+      const gs = growth.get(query) ?? [];
+      // One post's growth is that post's story, not the phrase's. Two is the
+      // fewest that can disagree, which is what makes a median mean anything.
+      const g = gs.length >= 2 ? median(gs) : null;
+      return {
+        query,
+        growthPct: g != null && g > 0 ? g : null,
+        breakout: false,
+        matchesService: null,
+        posts: n,
+      };
+    });
+}
+
 /** A snapshot older than this is shown with a warning rather than as today's. */
 export const STALE_AFTER_HOURS = 36;
 

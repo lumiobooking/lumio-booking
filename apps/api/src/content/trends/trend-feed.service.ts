@@ -6,7 +6,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../../common/tenant/tenan
 import { localizeDeep, bi, type Txt } from '../i18n';
 import { trendLinks } from '../trend-sources';
 import {
-  queriesFor, scopeOf, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest,
+  queriesFor, scopeOf, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest, minePhrases,
   rankItems, diversify, overlay, overlayQueries, needsRefresh, relevant, withGrowth, STALE_AFTER_HOURS,
   type TrendItem, type RisingQuery, type TrendSource,
 } from './trend-feed';
@@ -424,6 +424,17 @@ export class TrendFeedService {
     const rising = overlayQueries(Array.isArray(g?.items) ? (g!.items as RisingQuery[]) : [], services).slice(0, 10);
     const pinterestRising = overlayQueries(Array.isArray(pn?.items) ? (pn!.items as RisingQuery[]) : [], services).slice(0, 10);
 
+    // The free layer: the trade's live vocabulary, mined from the titles and
+    // captions already pulled this morning. Costs no API call and needs no
+    // key, so it is the one keyword list every salon has from day one —
+    // Google Trends and Pinterest add to it, they do not replace it. Our own
+    // search terms are excluded, or the list would just read them back.
+    const q = queriesFor(ctx.industry);
+    const mined = overlayQueries(
+      minePhrases([...items(yt), ...items(ig)], { seeds: [...q.youtube, ...q.hashtags] }),
+      services,
+    ) as (RisingQuery & { posts: number })[];
+
     // The team's hand-picked notes: the layer a person wrote.
     const notes = await this.prisma.trendNote.findMany({
       where: { industry: ctx.industry, active: true, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
@@ -457,6 +468,7 @@ export class TrendFeedService {
       items: cards,
       rising,
       pinterestRising,
+      mined,
       picks,
       sources: {
         youtube: state(yt, Boolean(this.youtubeKey)),

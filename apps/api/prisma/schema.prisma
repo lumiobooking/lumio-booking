@@ -1470,6 +1470,13 @@ model Notification {
   provider String             @default("mock") // mock | sendgrid | twilio | ...
   error    String?
 
+  // Provider-side message id (eSMS SMSID). eSMS's CodeResult 100 only means
+  // "accepted" — the real outcome arrives later on the callback, which finds
+  // this row by that id. Null for providers that report synchronously.
+  providerMessageId String?
+  // Set when the provider's callback confirmed the message reached the handset.
+  deliveredAt DateTime?
+
   // Loose link to the resource that triggered this notification.
   relatedType String? // e.g. "appointment"
   relatedId   String?
@@ -1479,6 +1486,7 @@ model Notification {
 
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([providerMessageId])
   @@map("notifications")
 }
 

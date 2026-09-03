@@ -25,6 +25,10 @@ export interface SmsMessage {
    *  '84' for a Vietnamese salon. Omitted → '1', which is what every US and
    *  Canadian salon has always used. */
   defaultDialCode?: string;
+  /** Caller-chosen idempotency id, passed to providers that support one
+   *  (eSMS RequestId: a repeated id within 24h is a no-op, so a retry can
+   *  never double-text a customer). Providers without the concept ignore it. */
+  requestId?: string;
 }
 
 export interface EmailProvider {

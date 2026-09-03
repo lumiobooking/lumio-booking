@@ -400,6 +400,13 @@ export interface NotificationSettings {
    * an unregistered one is eSMS error 104 on every attempt.
    */
   esms: { apiKey: string; secretKey: string; brandname: string };
+  /**
+   * The tenant's market ('US' | 'CA' | 'VN'), attached AT READ TIME by
+   * getNotificationSettings so every caller that already holds the settings
+   * can branch per-market without a second tenant lookup. Runtime-only:
+   * stripped before every save, never stored in the settings JSON.
+   */
+  market?: string;
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -768,3 +775,113 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
     smsBody: '%salon_name%: your schedule for tomorrow is ready. Check your staff portal.',
   }),
 };
+
+// ===========================================================================
+// Vietnamese default copy.
+//
+// Applied as an OVERLAY at read time, and only onto fields the salon has not
+// customised (i.e. fields still equal to the English default): a VN salon gets
+// Vietnamese out of the box, a US salon is untouched, and nobody's edits are
+// ever overwritten. SMS bodies are deliberately khong dau (unaccented):
+// accented Vietnamese forces unicode SMS (70 chars/segment instead of 160),
+// and the CSKH template the salon registers with eSMS/carriers is usually
+// registered unaccented too — the sent text must match the registered mau tin.
+// No "Reply STOP" tail: opt-out language is appended per-market by sms-policy
+// (NĐ91 requires it on ADVERTISING only; these are transactional).
+// ===========================================================================
+
+export const VN_NOTIFICATION_TEXTS: Partial<NotificationSettings> = {
+  emailSubjectCustomer: 'Lịch hẹn của bạn đã được xác nhận — {salon}',
+  emailIntroCustomer: 'Chào {customer}, cảm ơn bạn đã đặt lịch tại {salon}! Chi tiết lịch hẹn của bạn:',
+  emailSubjectAdmin: 'Lịch đặt mới — {service} cho {customer}',
+  emailIntroAdmin: 'Vừa có lịch đặt mới. Chi tiết bên dưới:',
+  emailFooter: 'Hẹn gặp bạn tại tiệm! Cần thay đổi lịch, bạn chỉ cần trả lời email này.',
+  smsCustomer: '{salon}: Lich hen {service} ngay {date} luc {time} da duoc xac nhan. Hen gap ban!',
+  smsAdmin: 'Lich moi: {service} cho {customer} ngay {date} luc {time}.',
+};
+
+/** Same overlay for the per-event template catalog (customer-facing events;
+ *  staff alerts stay English — the target reader is the salon's own team). */
+export const VN_TEMPLATE_TEXTS: Record<string, Partial<Pick<NotifTemplate, 'subject' | 'body' | 'smsBody'>>> = {
+  customer_booking_confirmed: {
+    subject: 'Lịch hẹn %service_name% đã được xác nhận — %salon_name%',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Cảm ơn bạn đã đặt lịch tại %salon_name%! Lịch hẹn của bạn đã được xác nhận.\n\n' +
+      'Dịch vụ: %service_name%\n' +
+      'Dịch vụ thêm: %add_ons%\n' +
+      'Kỹ thuật viên: %staff_name%\n' +
+      'Ngày: %appointment_date%\n' +
+      'Giờ: %appointment_time%\n' +
+      'Thời lượng: %duration%\n' +
+      'Tổng tiền: %total_price%\n\n' +
+      'Hẹn gặp bạn tại tiệm. Cần thay đổi? Bạn chỉ cần trả lời tin này.\n' +
+      '%salon_name% — %salon_contact%',
+    ),
+    smsBody: '%salon_name%: Lich hen %service_name% ngay %appointment_date% luc %appointment_time% da duoc xac nhan. Hen gap ban!',
+  },
+  customer_booking_pending: {
+    subject: 'Đã nhận yêu cầu đặt lịch — %salon_name%',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Chúng tôi đã nhận yêu cầu đặt %service_name% ngày %appointment_date% lúc %appointment_time%. ' +
+      'Tiệm sẽ xác nhận với bạn sớm.\n\n%salon_name%',
+    ),
+    smsBody: '%salon_name%: Da nhan yeu cau dat lich ngay %appointment_date% %appointment_time%. Tiem se xac nhan som.',
+  },
+  customer_booking_cancelled: {
+    subject: 'Lịch hẹn của bạn đã được hủy — %salon_name%',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Lịch hẹn %service_name% ngày %appointment_date% lúc %appointment_time% đã được hủy. ' +
+      'Hẹn gặp lại bạn — đặt lịch lại bất cứ lúc nào nhé.\n\n%salon_name%',
+    ),
+    smsBody: '%salon_name%: Lich hen ngay %appointment_date% %appointment_time% da duoc huy.',
+  },
+  customer_booking_rescheduled: {
+    subject: 'Lịch hẹn của bạn đã được dời — %salon_name%',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Lịch hẹn %service_name% của bạn được dời sang ngày %appointment_date% lúc %appointment_time% ' +
+      'với %staff_name%. Hẹn gặp bạn!\n\n%salon_name%',
+    ),
+    smsBody: '%salon_name%: Lich hen doi sang ngay %appointment_date% luc %appointment_time%.',
+  },
+  customer_reminder: {
+    subject: 'Nhắc lịch: hẹn của bạn tại %salon_name% sắp đến',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Nhắc bạn lịch hẹn %service_name% ngày %appointment_date% ' +
+      'lúc %appointment_time% với %staff_name%.\n\nHẹn gặp bạn!\n%salon_name% — %salon_contact%',
+    ),
+    smsBody: '%salon_name%: Nhac ban lich hen %service_name% ngay %appointment_date% luc %appointment_time%. Hen gap ban!',
+  },
+  customer_followup: {
+    subject: 'Cảm ơn bạn đã ghé %salon_name%!',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Cảm ơn bạn đã ghé %salon_name%! Mong bạn hài lòng với bộ nail của mình. ' +
+      'Tiệm rất mong nhận được góp ý của bạn, và sớm được gặp lại bạn.\n\n%salon_name%',
+    ),
+    smsBody: '%salon_name%: Cam on ban da ghe tiem! Mong ban hai long va som gap lai ban.',
+  },
+  customer_birthday: {
+    subject: 'Chúc mừng sinh nhật từ %salon_name%!',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Cả nhà %salon_name% chúc bạn sinh nhật thật vui! Tự thưởng cho mình nhé — ' +
+      'đặt lịch hẹn tiếp theo để nhận một món quà sinh nhật nhỏ từ tiệm.\n\n%salon_name%',
+    ),
+    smsBody: '%salon_name%: Chuc mung sinh nhat! Ghe tiem trong thang nay de nhan uu dai sinh nhat nhe.',
+  },
+  customer_payment_receipt: {
+    subject: 'Biên nhận thanh toán từ %salon_name%',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      'Cảm ơn bạn đã thanh toán %total_price% cho %service_name% ngày %appointment_date%.\n\n' +
+      'Mã đặt lịch: %booking_id%\n%salon_name%',
+    ),
+    smsBody: '%salon_name%: Da nhan thanh toan %total_price%. Cam on ban!',
+  },
+};
+

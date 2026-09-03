@@ -24,6 +24,8 @@ import {
   GatewayId,
   NOTIFICATION_SETTINGS_KEY,
   NOTIFICATION_TEMPLATES_KEY,
+  VN_NOTIFICATION_TEXTS,
+  VN_TEMPLATE_TEXTS,
   NotificationSettings,
   NotificationTemplates,
   PAYMENT_GATEWAYS_KEY,
@@ -398,6 +400,20 @@ export class SettingsService {
   }
 
   /** Full notification settings (incl. secrets) — server-side use. */
+  /** The tenant's market, defaulting to 'US' on any failure — which makes
+   *  every market branch below a no-op, i.e. exactly today's behaviour. */
+  private async marketOf(tenantId: string): Promise<string> {
+    try {
+      const t = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { market: true } as never,
+      });
+      return String((t as unknown as { market?: string } | null)?.market ?? 'US').toUpperCase();
+    } catch {
+      return 'US';
+    }
+  }
+
   async getNotificationSettings(tenantId: string): Promise<NotificationSettings> {
     const merged = await this.readKey<NotificationSettings>(tenantId, NOTIFICATION_SETTINGS_KEY, DEFAULT_NOTIFICATION_SETTINGS);
     const smtp = { ...DEFAULT_NOTIFICATION_SETTINGS.smtp, ...(merged.smtp ?? {}) };
@@ -413,7 +429,20 @@ export class SettingsService {
     esms.secretKey = usableSecret(esms.secretKey);
     smtp.pass = usableSecret(smtp.pass);
     gmail.clientSecret = usableSecret(gmail.clientSecret);
-    return { ...merged, smtp, brevo, gmail, twilio, esms };
+    const out: NotificationSettings = { ...merged, smtp, brevo, gmail, twilio, esms };
+
+    // Vietnamese copy, as an overlay: only onto fields the salon has NOT
+    // customised (still equal to the English default). A VN salon reads
+    // Vietnamese out of the box; a customised field — any market — is never
+    // touched; US/CA salons take the (market !== 'VN') early exit unchanged.
+    out.market = await this.marketOf(tenantId);
+    if (out.market === 'VN') {
+      for (const [k, vnText] of Object.entries(VN_NOTIFICATION_TEXTS)) {
+        const key = k as keyof NotificationSettings;
+        if (out[key] === DEFAULT_NOTIFICATION_SETTINGS[key]) (out as unknown as Record<string, unknown>)[key] = vnText;
+      }
+    }
+    return out;
   }
 
   /** Notification view for the frontend — hides the SMTP pass + Twilio token. */
@@ -555,6 +584,7 @@ export class SettingsService {
         secretKey: cleanSecret(incEsms.secretKey) ?? (cur.esms?.secretKey ?? ''),
       },
     } as NotificationSettings;
+    delete merged.market; // runtime-only — attached at read time, never stored
     await this.writeKey(tenantId, NOTIFICATION_SETTINGS_KEY, merged);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.notifications_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
@@ -568,6 +598,19 @@ export class SettingsService {
     const out: NotificationTemplates = {};
     for (const [id, def] of Object.entries(DEFAULT_NOTIFICATION_TEMPLATES)) {
       out[id] = { ...def, ...(stored[id] ?? {}) };
+    }
+    // Vietnamese catalog overlay — same rule as getNotificationSettings: only
+    // fields still equal to the English default are translated, so a salon's
+    // edits always win and non-VN salons are untouched.
+    if ((await this.marketOf(tenantId)) === 'VN') {
+      for (const [id, vn] of Object.entries(VN_TEMPLATE_TEXTS)) {
+        const def = DEFAULT_NOTIFICATION_TEMPLATES[id];
+        if (!def || !out[id]) continue;
+        for (const [f, vnText] of Object.entries(vn)) {
+          const field = f as 'subject' | 'body' | 'smsBody';
+          if (out[id][field] === def[field]) out[id][field] = vnText as string;
+        }
+      }
     }
     return out;
   }

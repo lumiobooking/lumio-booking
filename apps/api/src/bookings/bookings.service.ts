@@ -1092,7 +1092,12 @@ export class BookingsService {
       }
     }
     if (smsCustomer && custPhone) {
-      const smsText = `${tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d)}\nManage/cancel: ${manageUrl}`;
+      // VN: the SMS must match the CSKH mau tin registered with the carriers,
+      // and carriers there allowlist template AND urls — a per-booking manage
+      // link is exactly the shape that gets a message silently dropped. So the
+      // registered text goes out alone; the manage link still rides the email.
+      const smsBase = tpl ? fillPct(tpl.smsBody, pct) : fill(n.smsCustomer, d);
+      const smsText = (n.market ?? 'US').toUpperCase() === 'VN' ? smsBase : `${smsBase}\nManage/cancel: ${manageUrl}`;
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
     }
     // Admin notification: who gets it = the Admin email, falling back to the

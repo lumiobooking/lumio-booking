@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { maySendSms, smsPolicyFor, type MessageKind } from './sms-policy';
 import { dialCodeFor } from '../common/phone';
 import { NotificationChannel, NotificationStatus, Prisma } from '@prisma/client';
@@ -8,6 +9,7 @@ import { EmailProvider, SmsProvider } from './providers/notification-provider.in
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { ESmsProvider } from './providers/esms.provider';
 import { routeSmsFor } from './providers/sms-routing';
+import { readEsmsCallback } from './providers/esms-callback';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
 import { BrevoConfig, BrevoEmailProvider } from './providers/brevo.provider';
 import { GmailOAuthConfig, GmailOAuthProvider } from './providers/gmail-oauth.provider';
@@ -28,6 +30,12 @@ function envGmailProvider(senderName?: string, replyTo?: string): GmailOAuthProv
     senderName: senderName || process.env.GMAIL_SENDER_NAME || 'Lumio Booking',
     replyTo,
   });
+}
+
+/** Public base URL of THIS api, for provider callbacks. Same resolution order
+ *  as webhook-signatures.ts, so eSMS and Twilio agree on what our address is. */
+function apiBase(): string {
+  return (process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || 'https://lumio-api-uqm6.onrender.com').replace(/\/$/, '');
 }
 
 /** Extracts the display name from a "Name <email>" string. */
@@ -145,7 +153,7 @@ export class NotificationsService {
    * Never throws: any failure returns null and the existing Twilio path runs,
    * which is what every salon does today.
    */
-  private async esmsForTenant(tenantId: string): Promise<{ apiKey: string; secretKey: string; brandname: string } | null> {
+  private async esmsForTenant(tenantId: string): Promise<{ apiKey: string; secretKey: string; brandname: string; callbackUrl: string } | null> {
     try {
       const [t, row] = await Promise.all([
         this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }),
@@ -158,6 +166,9 @@ export class NotificationsService {
         apiKey: String(esms.apiKey ?? ''),
         secretKey: String(esms.secretKey ?? ''),
         brandname: String(esms.brandname ?? ''),
+        // CodeResult 100 only means "accepted" — the real delivery outcome
+        // arrives HERE, so every send carries the address of our callback.
+        callbackUrl: `${apiBase()}/api/public/esms/callback`,
       };
     } catch {
       return null;
@@ -197,6 +208,35 @@ export class NotificationsService {
     const market = tenant?.market ?? null;
     const policy = smsPolicyFor(market);
     if (!policy.adHoursLocal && policy.adPerDayCap === null) return { held: null, policy }; // US/CA: unchanged, by design
+
+    // NĐ91's first condition, before any clock: advertising goes only to
+    // someone who agreed in advance. The campaign engine filters on
+    // smsConsent, but rebooking nudges (and any future caller) do not — this
+    // is the net under all of them. Only rows whose recipient matches a known
+    // customer are judged; an unknown number passes through to the hour/cap
+    // rules exactly as before. US/CA never reach this method at all.
+    const cust = await this.prisma.customer.findFirst({
+      where: { tenantId: input.tenantId, phone: input.recipient },
+      select: { smsConsent: true },
+    }).catch(() => null);
+    if (cust && cust.smsConsent === false) {
+      const held = await this.prisma.notification.create({
+        data: {
+          tenantId: input.tenantId,
+          channel: input.channel,
+          recipient: input.recipient,
+          subject: input.subject ?? null,
+          body: input.body,
+          status: NotificationStatus.FAILED,
+          provider: 'sms-policy',
+          error: 'Giữ lại: khách chưa đồng ý (hoặc đã từ chối) nhận tin quảng cáo — Nghị định 91/2020. / Held: this customer has not consented to (or opted out of) marketing SMS.',
+          relatedType: input.relatedType ?? null,
+          relatedId: input.relatedId ?? null,
+          sentAt: null,
+        },
+      });
+      return { held, policy };
+    }
 
     let nowMinutesLocal = 12 * 60; // an unreadable clock must not block a send outright
     try {
@@ -249,6 +289,11 @@ export class NotificationsService {
   async send(input: SendNotificationInput) {
     let status: NotificationStatus = NotificationStatus.PENDING;
     let error: string | null = null;
+    // The row's id is chosen BEFORE the provider call so it can double as the
+    // provider's idempotency key (eSMS RequestId): if anything retries this
+    // send, the customer still gets at most one text.
+    const rowId = randomUUID();
+    let providerMessageId: string | null = null;
 
     // Adverts pass through the market's rules before any provider is chosen.
     if (input.channel === NotificationChannel.SMS && input.kind === 'marketing') {
@@ -341,9 +386,11 @@ export class NotificationsService {
               // carries, and it is enough to tell Ho Chi Minh City from
               // Los Angeles. US/CA tenants resolve to '1' — unchanged.
               defaultDialCode: await this.dialCodeForTenant(input.tenantId),
+              requestId: rowId,
             });
       status = result.success ? NotificationStatus.SENT : NotificationStatus.FAILED;
       error = result.error ?? null;
+      providerMessageId = result.providerMessageId ?? null;
     } catch (err) {
       status = NotificationStatus.FAILED;
       error = String(err);
@@ -359,6 +406,7 @@ export class NotificationsService {
 
     return this.prisma.notification.create({
       data: {
+        id: rowId,
         tenantId: input.tenantId,
         channel: input.channel,
         recipient: input.recipient,
@@ -370,8 +418,84 @@ export class NotificationsService {
         relatedType: input.relatedType ?? null,
         relatedId: input.relatedId ?? null,
         sentAt: status === NotificationStatus.SENT ? new Date() : null,
+        // The provider's own message id (eSMS SMSID) — the delivery callback
+        // finds this row by it. Spread-typed because the local Prisma client
+        // may be stale; the column exists in the migration either way.
+        ...({ providerMessageId } as Record<string, unknown>),
       },
     });
+  }
+
+  /**
+   * Settle a notification row from an eSMS delivery callback.
+   *
+   * eSMS retries a failed callback 5 times and then never again, so this
+   * method NEVER throws: an unmatched or half-formed callback is acknowledged
+   * and dropped, because a 500 here buys nothing but five identical retries.
+   * The row is found by SMSID first (what eSMS knows), then by our own id
+   * (the RequestId we passed at send time) — and only rows that actually went
+   * out through eSMS can be touched, so a forged callback cannot rewrite a
+   * Twilio salon's history.
+   */
+  async applyEsmsCallback(query: Record<string, unknown>) {
+    try {
+      const r = readEsmsCallback(query ?? {});
+      if (r.outcome === 'pending' || (!r.smsId && !r.requestId)) return { ok: true };
+
+      const ors: Record<string, unknown>[] = [];
+      if (r.smsId) ors.push({ providerMessageId: r.smsId });
+      if (r.requestId) ors.push({ id: r.requestId });
+      const row = (await this.prisma.notification.findFirst({
+        where: { provider: 'esms', OR: ors } as never,
+        select: { id: true, status: true, deliveredAt: true } as never,
+      })) as { id: string; status: NotificationStatus; deliveredAt: Date | null } | null;
+      if (!row) return { ok: true };
+
+      if (r.outcome === 'delivered') {
+        await this.prisma.notification.update({
+          where: { id: row.id },
+          data: {
+            status: NotificationStatus.SENT,
+            error: null,
+            ...({ deliveredAt: row.deliveredAt ?? new Date() } as Record<string, unknown>),
+          },
+        });
+      } else if (!row.deliveredAt) {
+        // A failure callback can race a delivery one; a row already marked
+        // delivered stays delivered.
+        await this.prisma.notification.update({
+          where: { id: row.id },
+          data: { status: NotificationStatus.FAILED, error: r.reason ?? 'Callback eSMS báo gửi thất bại' },
+        });
+      }
+    } catch {
+      // Swallowed by design — see the note above.
+    }
+    return { ok: true };
+  }
+
+  /**
+   * The customer said stop — make it stick.
+   *
+   * Called when an inbound message matches the market's opt-out words
+   * (sms-policy isOptOut: TU CHOI, HUY, STOP...), from whichever channel the
+   * words arrived on. Clears smsConsent on every customer record carrying that
+   * number in the tenant, so the marketing gate holds all future adverts.
+   * Transactional messages (booking receipts, reminders) are untouched —
+   * refusing adverts is not refusing your own appointment confirmation.
+   */
+  async recordSmsOptOut(tenantId: string, phone: string): Promise<number> {
+    const p = String(phone ?? '').trim();
+    if (!p) return 0;
+    try {
+      const r = await this.prisma.customer.updateMany({
+        where: { tenantId, phone: p },
+        data: { smsConsent: false },
+      });
+      return r.count;
+    } catch {
+      return 0;
+    }
   }
 
   /** List a tenant's notification history (Salon Admin). */

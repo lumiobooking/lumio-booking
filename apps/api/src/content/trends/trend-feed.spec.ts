@@ -209,6 +209,46 @@ describe('ranking and the overlay', () => {
     expect(out).toHaveLength(1);
   });
 
+  it('never lets YouTube views crowd Instagram likes off the screen', () => {
+    // The bug this pins: perDay means views on YouTube and likes on Instagram.
+    // A trending video earns tens of thousands of views a day, a very good
+    // nail-art post earns hundreds of likes — so on one ranked ladder YouTube
+    // took all twelve slots and the Instagram tab rendered empty while its
+    // rows sat fetched and fresh in the table.
+    const yt = Array.from({ length: 20 }, (_, i) => item({
+      id: `y${i}`, source: 'youtube', title: `video ${i}`, via: `term ${i % 5}`, perDay: 40_000 + i,
+    }));
+    const ig = Array.from({ length: 6 }, (_, i) => item({
+      id: `i${i}`, source: 'instagram', title: `post ${i}`, via: `#tag${i}`, perDay: 300 - i,
+    }));
+
+    const out = diversify(rankItems([...yt, ...ig]), 4, 12);
+
+    expect(out.filter((x) => x.source === 'instagram').length).toBeGreaterThanOrEqual(5);
+    expect(out.filter((x) => x.source === 'youtube').length).toBeGreaterThanOrEqual(5);
+    expect(out).toHaveLength(12);
+  });
+
+  it('yields the spare turns when one source runs out, wasting no slot', () => {
+    const yt = Array.from({ length: 12 }, (_, i) => item({
+      id: `y${i}`, source: 'youtube', title: `video ${i}`, via: `term ${i}`, perDay: 9_000,
+    }));
+    const ig = [item({ id: 'i0', source: 'instagram', title: 'the one post', via: '#nails', perDay: 120 })];
+
+    const out = diversify(rankItems([...yt, ...ig]), 4, 12);
+
+    expect(out).toHaveLength(12);
+    expect(out.some((x) => x.id === 'i0')).toBe(true);
+    expect(out.filter((x) => x.source === 'youtube')).toHaveLength(11);
+  });
+
+  it('is unchanged when only one source is present', () => {
+    const only = Array.from({ length: 5 }, (_, i) => item({
+      id: `y${i}`, source: 'youtube', title: `video ${i}`, via: `term ${i}`, perDay: 100 - i,
+    }));
+    expect(diversify(only, 4, 12).map((x) => x.id)).toEqual(['y0', 'y1', 'y2', 'y3', 'y4']);
+  });
+
   it('annotates each card with the salon service and the upcoming holiday it is about', () => {
     const cards = overlay(
       [item({ id: 'a', title: 'Labor Day nail set: red, white and a star', count: 96_000, perDay: 48_000, growthPct: 210, publishedAt: '2026-08-30T12:00:00Z' }),

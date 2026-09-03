@@ -220,8 +220,15 @@ export class TrendFeedService {
 
   /** Instagram: top media on the trade's hashtags, as THIS tenant's connected account. */
   async pullInstagram(tenantId: string, scope: string): Promise<TrendItem[]> {
+    // The page we ask THROUGH must be one that actually has Instagram linked.
+    // Selecting the tenant's oldest row and hoping was wrong twice over: a
+    // salon that connected a second Page later, and now any salon with a Zalo
+    // OA (which lives in this same table with no igId), would resolve to a row
+    // without Instagram and report 'not_connected' — a status the screen
+    // suppresses, so the panel went quietly empty while the salon's Instagram
+    // was connected and fine. Ask the same question feedFor asks.
     const pg = await this.prisma.messengerPage.findFirst({
-      where: { tenantId },
+      where: { tenantId, igId: { not: null } },
       orderBy: { createdAt: 'asc' },
       select: { igId: true, pageToken: true },
     }).catch(() => null);

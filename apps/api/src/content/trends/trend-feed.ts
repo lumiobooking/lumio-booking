@@ -424,22 +424,63 @@ export function rankItems(items: TrendItem[]): TrendItem[] {
 }
 
 /**
- * Keep the feed from being one creator's whole channel: at most two items per
- * `via` (search term / hashtag), and no two with the same title.
+ * Keep the feed from being one creator's whole channel — AND from being one
+ * platform's whole channel.
+ *
+ * WHY THE SOURCES TAKE TURNS
+ *
+ * rankItems sorts everything on `perDay`, but that number means views on
+ * YouTube and likes on Instagram. A trending video earns views by the tens of
+ * thousands a day; a very good nail-art post earns likes by the hundreds. On
+ * one ladder YouTube therefore wins every rung, and Instagram — the feed a
+ * nail salon actually wants to look at — was ranked out of a twelve-card
+ * screen while its data sat in the table, fetched and fresh. The screen said
+ * nothing was wrong because nothing had failed.
+ *
+ * So the sources take turns instead of competing on a scale they do not
+ * share: each keeps its own ranking, and the screen is dealt round-robin.
+ * A source with fewer items simply runs out and yields its remaining turns,
+ * so no slot is ever wasted holding a seat. With one source present this is
+ * byte-for-byte the old behaviour.
+ *
+ * The other two rules are unchanged: at most `perVia` items per search term
+ * or hashtag, and no two cards with the same title.
  */
 export function diversify(items: TrendItem[], perVia = 4, limit = 12): TrendItem[] {
+  // Group by source, keeping the ranking each source arrived with.
+  const lanes = new Map<string, TrendItem[]>();
+  for (const it of items) {
+    const k = it.source ?? '';
+    lanes.set(k, [...(lanes.get(k) ?? []), it]);
+  }
+
   const seenTitle = new Set<string>();
   const viaCount = new Map<string, number>();
   const out: TrendItem[] = [];
-  for (const it of items) {
-    const t = it.title.toLowerCase();
-    if (seenTitle.has(t)) continue;
-    const n = viaCount.get(it.via ?? '') ?? 0;
-    if (n >= perVia) continue;
-    seenTitle.add(t);
-    viaCount.set(it.via ?? '', n + 1);
-    out.push(it);
-    if (out.length >= limit) break;
+  const queues = [...lanes.values()];
+  const cursor = queues.map(() => 0);
+
+  // Deal one card from each lane per pass until the screen is full or every
+  // lane is spent.
+  let dealt = true;
+  while (out.length < limit && dealt) {
+    dealt = false;
+    for (let i = 0; i < queues.length && out.length < limit; i += 1) {
+      const q = queues[i];
+      while (cursor[i] < q.length) {
+        const it = q[cursor[i]];
+        cursor[i] += 1;
+        const t = it.title.toLowerCase();
+        if (seenTitle.has(t)) continue;
+        const n = viaCount.get(it.via ?? '') ?? 0;
+        if (n >= perVia) continue;
+        seenTitle.add(t);
+        viaCount.set(it.via ?? '', n + 1);
+        out.push(it);
+        dealt = true;
+        break;
+      }
+    }
   }
   return out;
 }

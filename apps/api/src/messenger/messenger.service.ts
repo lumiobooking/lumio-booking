@@ -7,6 +7,7 @@ import {
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
+import { fetchZaloProfileName, sendZaloText } from './zalo-oa';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
 import { withBookingLink } from './booking-link';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
@@ -56,7 +57,7 @@ function wallToUtcISO(local: string, tz: string): string {
 }
 
 type Turn = { role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean };
-type Channel = 'messenger' | 'instagram';
+type Channel = 'messenger' | 'instagram' | 'zalo';
 export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
@@ -1375,6 +1376,28 @@ export class MessengerService implements OnModuleInit {
 
     const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId, pageId: thread.pageId } });
     const sendToken = pg?.pageToken || conn.pageToken;
+
+    // A Zalo thread's manual reply goes out the Zalo mouth — Graph would 400
+    // on an OA-scoped user id and the receptionist would think Zalo is down.
+    if (((thread as unknown as { channel?: string }).channel ?? '') === 'zalo') {
+      const zr = await sendZaloText(sendToken, thread.senderId, body.slice(0, 1900));
+      const zAt = new Date().toISOString();
+      const hist0 = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      const turn = { role: 'assistant', content: body, manual: true, at: zAt, ...(zr.ok ? {} : { failed: true }) };
+      await this.prisma.messengerThread.update({
+        where: { id: thread.id },
+        data: {
+          history: [...hist0, turn].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
+          lastText: body.slice(0, 300), lastMessageAt: new Date(), readAt: new Date(),
+          handoff: true, handoffAt: new Date(),
+        } as never,
+      }).catch(() => undefined);
+      if (!zr.ok) throw new BadRequestException(zr.error || 'Zalo từ chối tin nhắn (có thể đã quá cửa sổ trả lời).');
+      await this.audit(tenantId, 'messenger.manual_send');
+      this.events.publish(tenantId, 'message');
+      return { ok: true as const, messageId: null, recipientId: thread.senderId, at: zAt, channel: 'zalo' };
+    }
+
     const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(sendToken)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1872,6 +1895,11 @@ export class MessengerService implements OnModuleInit {
     }).catch(() => undefined);
   }
 
+  /** The Zalo webhook's door into the brain. Same body, third mouth. */
+  async inboundZalo(oaId: string, senderId: string, text: string, tsMs?: number): Promise<void> {
+    return this.handleMessage(oaId, senderId, text, tsMs, 'zalo');
+  }
+
   private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger'): Promise<void> {
     // Route by Facebook Page id OR the linked Instagram account id: any of the
     // tenant's pages leads to the SAME brain — one brain, many mouths.
@@ -1887,7 +1915,9 @@ export class MessengerService implements OnModuleInit {
     });
     // Best-effort: resolve the customer's display name once (User Profile API).
     if (!thread.senderName) {
-      const name = await this.fetchSenderName(page.pageToken, senderId);
+      const name = channel === 'zalo'
+        ? await fetchZaloProfileName(page.pageToken, senderId)
+        : await this.fetchSenderName(page.pageToken, senderId);
       if (name) await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { senderName: name } }).catch(() => undefined);
     }
     // When the customer last wrote. Drives the waiting timer in the inbox and
@@ -2087,7 +2117,7 @@ export class MessengerService implements OnModuleInit {
       }
       return;
     }
-    await this.sendText(conn.pageToken, senderId, reply);
+    await this.sendText(conn.pageToken, senderId, reply, ((fresh as unknown as { channel?: string }).channel === 'zalo') ? 'zalo' : undefined);
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
     const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
     const outAt = new Date().toISOString();
@@ -3633,7 +3663,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     });
   }
 
-  private async sendText(pageToken: string, recipientId: string, text: string): Promise<void> {
+  private async sendText(pageToken: string, recipientId: string, text: string, channel?: Channel): Promise<void> {
+    // Zalo is a different mouth entirely: its own endpoint, its own auth
+    // header, no echo/mid machinery (Zalo webhooks do not echo our sends).
+    if (channel === 'zalo') {
+      const r = await sendZaloText(pageToken, recipientId, text);
+      if (!r.ok) this.logger.warn(`Zalo send failed: ${String(r.error).slice(0, 120)}`);
+      return;
+    }
     try {
       // metadata comes back on the Messenger echo; Instagram drops it, so we
       // also remember the message id the Send API returns.

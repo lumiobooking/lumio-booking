@@ -7,11 +7,13 @@ import { InboxEventsService } from './inbox-events.service';
 import { MessengerService } from './messenger.service';
 import { MessengerController } from './messenger.controller';
 import { MessengerWebhookController } from './messenger-webhook.controller';
+import { ZaloOaService } from './zalo-oa.service';
+import { ZaloController, ZaloWebhookController } from './zalo.controller';
 
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
-  controllers: [MessengerController, MessengerWebhookController],
-  providers: [InboxEventsService, MessengerService],
+  controllers: [MessengerController, MessengerWebhookController, ZaloController, ZaloWebhookController],
+  providers: [InboxEventsService, MessengerService, ZaloOaService],
   exports: [InboxEventsService, MessengerService],
 })
 export class MessengerModule {}

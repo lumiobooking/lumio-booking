@@ -1262,6 +1262,8 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
             <Field label="Template xác nhận lịch"><input style={ui.input} value={es.znsBookingTempId} onChange={(e) => setEs({ ...es, znsBookingTempId: e.target.value })} placeholder="TempID" /></Field>
             <Field label="Template nhắc lịch"><input style={ui.input} value={es.znsReminderTempId} onChange={(e) => setEs({ ...es, znsReminderTempId: e.target.value })} placeholder="TempID" /></Field>
           </div>
+
+          <ZaloOaPanel token={token} />
         </div>
       )}
 
@@ -1516,5 +1518,90 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
 
       <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('branding', f, 'Branding')}>{t('se.br.save')}</button>
     </Card>
+  );
+}
+
+/**
+ * Zalo OA — the bot's third mouth (after Messenger and Instagram).
+ *
+ * Self-contained on purpose: its own GET /zalo on mount, its own connect and
+ * disconnect calls, no coupling to the notification-settings save button —
+ * connecting an OA and saving SMS copy are different acts with different
+ * blast radii. Secrets are write-only: the server never echoes them back.
+ */
+function ZaloOaPanel({ token }: { token: string | null }) {
+  const [st, setSt] = useState<{ connected: boolean; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null } | null>(null);
+  const [f, setF] = useState({ appId: '', appSecret: '', oaSecretKey: '', oaid: '', oaName: '', accessToken: '', refreshToken: '' });
+  const [zMsg, setZMsg] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'err'; text?: string }>({ kind: 'idle' });
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
+
+  useEffect(() => {
+    let alive = true;
+    apiFetch<{ connected: boolean; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null }>('/zalo', { token })
+      .then((r) => { if (!alive) return; setSt(r); setF((v) => ({ ...v, appId: r.appId ?? '', oaid: r.oaid ?? '', oaName: r.oaName ?? '' })); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [token]);
+
+  const connect = async () => {
+    setZMsg({ kind: 'busy' });
+    try {
+      const r = await apiFetch<{ connected: boolean; oaid: string }>('/zalo/connect', { method: 'POST', token, body: f });
+      setSt((v) => ({ ...(v ?? { oaid: '' }), ...r }));
+      setF((v) => ({ ...v, appSecret: '', oaSecretKey: '', accessToken: '', refreshToken: '' }));
+      setZMsg({ kind: 'ok', text: 'Đã kết nối Zalo OA — bot sẽ trả lời tin nhắn Zalo như Messenger.' });
+    } catch (e) {
+      setZMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Kết nối thất bại' });
+    }
+  };
+  const disconnect = async () => {
+    setZMsg({ kind: 'busy' });
+    try {
+      await apiFetch('/zalo/disconnect', { method: 'POST', token });
+      setSt({ connected: false, oaid: '' });
+      setZMsg({ kind: 'ok', text: 'Đã ngắt kết nối.' });
+    } catch (e) {
+      setZMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Không ngắt được' });
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--c1e293b)' }}>
+      <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
+        Bot Zalo OA (tùy chọn){' '}
+        {st?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>đã kết nối{st.oaName ? ` · ${st.oaName}` : ''}</span>}
+      </div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px', lineHeight: 1.5 }}>
+        Cùng một bộ não AI đang trả lời Messenger/Instagram — thêm cái miệng Zalo. Khách nhắn Zalo OA của tiệm,
+        bot tư vấn và chốt lịch, tin hiện trong cùng Hộp thư. Lấy 6 giá trị bên dưới trong Zalo Developers
+        (App ID + Secret key của app; OA Secret Key trong phần Webhook; Access + Refresh token trong Công cụ khai thác API).
+        Dán URL webhook này vào cấu hình app Zalo: <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{`${apiBase}/public/zalo/webhook`}</code>
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+        <Field label="App ID"><input style={ui.input} value={f.appId} onChange={(e) => setF({ ...f, appId: e.target.value })} /></Field>
+        <Field label="App Secret Key"><input style={ui.input} type="password" value={f.appSecret} onChange={(e) => setF({ ...f, appSecret: e.target.value })} placeholder={st?.connected ? 'Đã lưu' : ''} /></Field>
+        <Field label="OA Secret Key (webhook)"><input style={ui.input} type="password" value={f.oaSecretKey} onChange={(e) => setF({ ...f, oaSecretKey: e.target.value })} placeholder={st?.connected ? 'Đã lưu' : ''} /></Field>
+        <Field label="OA ID"><input style={ui.input} value={f.oaid} onChange={(e) => setF({ ...f, oaid: e.target.value })} /></Field>
+        <Field label="Tên OA (tùy chọn)"><input style={ui.input} value={f.oaName} onChange={(e) => setF({ ...f, oaName: e.target.value })} placeholder="Tiệm Nail ABC" /></Field>
+        <Field label="Access token"><input style={ui.input} type="password" value={f.accessToken} onChange={(e) => setF({ ...f, accessToken: e.target.value })} placeholder={st?.connected ? 'Đã lưu' : ''} /></Field>
+        <Field label="Refresh token"><input style={ui.input} type="password" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} placeholder={st?.connected ? 'Đã lưu' : ''} /></Field>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button
+          style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: '#0068ff', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
+          disabled={zMsg.kind === 'busy'}
+          onClick={connect}
+        >{zMsg.kind === 'busy' ? 'Đang xử lý…' : (st?.connected ? 'Cập nhật kết nối' : 'Kết nối Zalo OA')}</button>
+        {st?.connected && (
+          <button
+            style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 13 }}
+            disabled={zMsg.kind === 'busy'}
+            onClick={disconnect}
+          >Ngắt kết nối</button>
+        )}
+      </div>
+      {zMsg.kind === 'ok' && <p style={{ color: '#22c55e', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
+      {zMsg.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
+    </div>
   );
 }
